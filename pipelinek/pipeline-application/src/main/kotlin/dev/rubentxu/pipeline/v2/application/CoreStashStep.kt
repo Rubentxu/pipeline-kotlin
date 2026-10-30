@@ -150,7 +150,7 @@ object CoreStashStep {
 
     private val capabilityRoutedHandler: StepHandler<StashInput, TypedStepOutput> =
         StepHandler { input, ctx ->
-            val ops: StashOperations = ctx.capabilities.get(STASH_OPERATIONS_CAPABILITY)
+            val ops: StashOperations = ctx.capabilities.get(STASH_OPERATIONS_CAPABILITY, StashOperations::class)
             when (val result = ops.stash(input)) {
                 is StashSuccess -> StashOutput(stashedCount = result.entries.size)
                 is StashFailed -> StashFailureOutput(
@@ -297,7 +297,7 @@ object CoreUnstashStep {
 
     private val capabilityRoutedHandler: StepHandler<UnstashInput, TypedStepOutput> =
         StepHandler { input, ctx ->
-            val ops: StashOperations = ctx.capabilities.get(STASH_OPERATIONS_CAPABILITY)
+            val ops: StashOperations = ctx.capabilities.get(STASH_OPERATIONS_CAPABILITY, StashOperations::class)
             when (val result = ops.unstash(input)) {
                 is StashRestoredResult -> UnstashOutput(restoredCount = result.entries.size)
                 is StashFailed -> UnstashFailureOutput(

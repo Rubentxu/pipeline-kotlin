@@ -177,7 +177,7 @@ object CoreArchiveArtifactsStep {
     private val capabilityRoutedHandler: StepHandler<ArchiveArtifactsInput, TypedStepOutput> =
         StepHandler { input, ctx ->
             val ops: ArchiveArtifactsOperations =
-                ctx.capabilities.get(ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY)
+                ctx.capabilities.get(ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY, ArchiveArtifactsOperations::class)
             when (val result = ops.archive(input)) {
                 is ArchiveArtifactsSuccess -> {
                     if (input.name != null) {
@@ -193,7 +193,7 @@ object CoreArchiveArtifactsStep {
                             )
                         }
                         val index: dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability =
-                            ctx.capabilities.get(ARTIFACT_INDEX_CAPABILITY)
+                            ctx.capabilities.get(ARTIFACT_INDEX_CAPABILITY, dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability::class)
                         val handle = dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactHandle(
                             name = input.name,
                             files = result.files.map {

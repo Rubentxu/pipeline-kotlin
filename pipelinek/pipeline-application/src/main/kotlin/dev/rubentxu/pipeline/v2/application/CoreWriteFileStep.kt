@@ -115,7 +115,7 @@ object CoreWriteFileStep {
 
     private val capabilityRoutedHandler: StepHandler<CoreWriteFileInput, CoreWriteFileOutput> =
         StepHandler { input, ctx ->
-            val ops: WorkspaceOperations = ctx.capabilities.get(WORKSPACE_OPERATIONS_CAPABILITY)
+            val ops: WorkspaceOperations = ctx.capabilities.get(WORKSPACE_OPERATIONS_CAPABILITY, WorkspaceOperations::class)
             ops.writeFile(file = input.file, text = input.text, encoding = input.encoding)
             CoreWriteFileOutput
         }

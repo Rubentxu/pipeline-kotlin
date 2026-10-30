@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.application.durable.DurableStepExecutor
 import dev.rubentxu.pipeline.v2.application.durable.ExternalSubprocessRecovery
 import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.RecoveryInterpretationEngine
+import dev.rubentxu.pipeline.v2.application.durable.CanonicalCapabilityBindings
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.RunOutcomeReducer
@@ -102,9 +103,15 @@ object ScriptedFrontendRunner {
             records = records,
             runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot),
         )
+        // The ONE holder of the scripted surface's capability collaborators. The
+        // scripted path binds no milestone store, no artifact index and no plugin
+        // contributor, so this holder provisions exactly what it always did — and
+        // both the boundary and the invoker read it, so admission and execution
+        // cannot disagree about which capabilities exist.
+        val capabilityBindings = CanonicalCapabilityBindings()
         val executor = DurableStepExecutor(
             eventSink = eventSink,
-            executionBoundary = RegistryExecutionBoundary.adapt(milestoneStateStore = null),
+            executionBoundary = RegistryExecutionBoundary.adapt(capabilityBindings = capabilityBindings),
             records = records,
         )
         // The scripted surface runs the SAME authorities as the canonical coordinator,
@@ -114,6 +121,7 @@ object ScriptedFrontendRunner {
 
         val invoker = ScriptedRegistryInvoker(
             registry = registry,
+            capabilityBindings = capabilityBindings,
             eventSink = eventSink,
             invocationResolver = resolver,
             stepExecutor = executor,

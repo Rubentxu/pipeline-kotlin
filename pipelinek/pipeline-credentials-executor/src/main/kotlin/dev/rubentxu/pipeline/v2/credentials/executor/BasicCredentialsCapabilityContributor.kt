@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
+import dev.rubentxu.pipeline.v2.domain.step.CapabilitySlot
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
@@ -47,8 +48,8 @@ class BasicCredentialsCapabilityContributor(
     private val source: BasicCredentialSource = provider?.let { ProviderBackedSource(it) }
         ?: NoBasicCredentialSource
 
-    override fun capabilities(): Map<StepCapability, Any> =
-        mapOf(BASIC_CREDENTIALS_CAPABILITY to source)
+    override fun capabilities(): Map<StepCapability, CapabilitySlot> =
+        mapOf(BASIC_CREDENTIALS_CAPABILITY to CapabilitySlot.of(source))
 
     /**
      * Translates the store's vocabulary into the narrow one.

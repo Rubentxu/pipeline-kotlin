@@ -148,7 +148,7 @@ object SlotPlanStepDefinition : StepDefinition<SlotPlanInput, SlotPlanOutput> {
     )
 
     override val handler = StepHandler<SlotPlanInput, SlotPlanOutput> { input, context ->
-        val slotInvoker: BodySlotInvoker = context.capabilities.get(BODY_SLOT_CAPABILITY)
+        val slotInvoker: BodySlotInvoker = context.capabilities.get(BODY_SLOT_CAPABILITY, BodySlotInvoker::class)
 
         when (val forward = runSlot(slotInvoker, input.forwardSlot)) {
             is SlotRun.Cancelled -> SlotPlanOutput(

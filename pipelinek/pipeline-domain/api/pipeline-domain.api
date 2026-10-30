@@ -7458,6 +7458,60 @@ public final class dev/rubentxu/pipeline/v2/domain/step/CancellationReason$Compa
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal$Companion;
+	public abstract fun describe ()Ljava/lang/String;
+	public abstract fun getKey-w0JyN1w ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal$Absent : dev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-w0JyN1w ()Ljava/lang/String;
+	public final fun copy-b1cZ3xE (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal$Absent;
+	public static synthetic fun copy-b1cZ3xE$default (Ldev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal$Absent;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal$Absent;
+	public fun describe ()Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKey-w0JyN1w ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal$Companion {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal$Incompatible : dev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/reflect/KClass;Lkotlin/reflect/KClass;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-w0JyN1w ()Ljava/lang/String;
+	public final fun component2 ()Lkotlin/reflect/KClass;
+	public final fun component3 ()Lkotlin/reflect/KClass;
+	public final fun copy-lHJY2EI (Ljava/lang/String;Lkotlin/reflect/KClass;Lkotlin/reflect/KClass;)Ldev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal$Incompatible;
+	public static synthetic fun copy-lHJY2EI$default (Ldev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal$Incompatible;Ljava/lang/String;Lkotlin/reflect/KClass;Lkotlin/reflect/KClass;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal$Incompatible;
+	public fun describe ()Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActual ()Lkotlin/reflect/KClass;
+	public final fun getExpected ()Lkotlin/reflect/KClass;
+	public fun getKey-w0JyN1w ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/CapabilityRefusedException : java/lang/RuntimeException {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal;)V
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/domain/step/CapabilityRefusal;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/CapabilitySlot {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/step/CapabilitySlot$Companion;
+	public synthetic fun <init> (Ljava/lang/Object;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun holdsSameInstanceAs (Ldev/rubentxu/pipeline/v2/domain/step/CapabilitySlot;)Z
+	public final fun read-40KO7Hc (Ljava/lang/String;Lkotlin/reflect/KClass;)Ljava/lang/Object;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/CapabilitySlot$Companion {
+	public final fun of (Ljava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/CapabilitySlot;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/CompositeCapabilityContributor : dev/rubentxu/pipeline/v2/domain/step/RuntimeCapabilityContributor {
 	public fun <init> (Ljava/util/List;)V
 	public fun capabilities ()Ljava/util/Map;
@@ -8301,7 +8355,7 @@ public final class dev/rubentxu/pipeline/v2/domain/step/StepCapability {
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/step/StepCapabilityAccess {
 	public abstract fun available ()Ljava/util/Set;
-	public abstract fun get-b1cZ3xE (Ljava/lang/String;)Ljava/lang/Object;
+	public abstract fun get-40KO7Hc (Ljava/lang/String;Lkotlin/reflect/KClass;)Ljava/lang/Object;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/step/StepCodec {

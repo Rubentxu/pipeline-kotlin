@@ -10,7 +10,7 @@ import java.nio.file.Path
  * `dev.rubentxu.pipeline.v2.application.Capabilities.kt` so plugin
  * handlers can declare `WORKSPACE_IDENTITY_CAPABILITY` in their
  * `StepContract.requiredCapabilities` and read the workspace root from
- * `StepHandlerContext.capabilities.get(...)` instead of closing over
+ * `StepHandlerContext.capabilities.get(KEY, Type::class)` instead of closing over
  * a `() -> Path` resolver that reads the launcher system property.
  * The capability is populated by
  * `dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess`

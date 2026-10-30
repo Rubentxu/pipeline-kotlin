@@ -192,8 +192,8 @@ object CoreMilestoneStep {
 
     private val capabilityRoutedHandler: StepHandler<MilestoneInput, MilestoneOutput> =
         StepHandler { input, ctx ->
-            val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
-            val ops: MilestoneOperations = ctx.capabilities.get(MILESTONE_OPERATIONS_CAPABILITY)
+            val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY, EventSink::class)
+            val ops: MilestoneOperations = ctx.capabilities.get(MILESTONE_OPERATIONS_CAPABILITY, MilestoneOperations::class)
 
             // Delegate state management to the capability (run-scoped MilestoneStateStore).
             // The handler does NOT hold mutable state.

@@ -141,7 +141,7 @@ private fun runDurablePipelineOwned(
     // `CanonicalRuntimeContext.workspaceBase`; the capability bridge
     // populates `WORKSPACE_IDENTITY_CAPABILITY` from
     // `context.shOptions.workspaceRoot`. Plugins consume the typed
-    // seam via `StepHandlerContext.capabilities.get<WorkspaceIdentity>(...)`
+    // seam via `StepHandlerContext.capabilities.get(WORKSPACE_IDENTITY_CAPABILITY, WorkspaceIdentity::class)`
     // instead of reading a process-global property. The system-property
     // bridge has been removed: no production code reads
     // `pipeline.workspace.root` any more (the historical writers were

@@ -179,12 +179,12 @@ object CoreArtifactQueryStep {
      * Reads the index; fails closed with `INPUT_INVALID` when the
      * name is not recorded. Capability admission is fail-closed at
      * prepare-time by the registry boundary; the handler can call
-     * `ctx.capabilities.get(...)` directly.
+     * `ctx.capabilities.get(KEY, Type::class)` directly.
 */
     private val capabilityRoutedHandler: StepHandler<ArtifactQueryInput, TypedStepOutput> =
         StepHandler { input, ctx ->
             val index: ArtifactIndexCapability =
-                ctx.capabilities.get(ARTIFACT_INDEX_CAPABILITY)
+                ctx.capabilities.get(ARTIFACT_INDEX_CAPABILITY, ArtifactIndexCapability::class)
             val handle = index.query(input.name)
                 ?: return@StepHandler ArtifactQueryFailureOutput(
                     failureKind = FailureKind.USER,

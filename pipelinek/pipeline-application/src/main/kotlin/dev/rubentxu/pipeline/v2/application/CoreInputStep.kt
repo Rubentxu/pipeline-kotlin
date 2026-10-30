@@ -75,10 +75,10 @@ object CoreInputStep {
     )
 
     private val handler: StepHandler<CoreInputInput, CoreInputOutput> = StepHandler { input, ctx ->
-        val decisions: InputDecisions = ctx.capabilities.get(INPUT_DECISIONS_CAPABILITY)
-        val continuation: BodyContinuation = ctx.capabilities.get(BODY_CONTINUATION_CAPABILITY)
-        val budget: ExecutionBudget = ctx.capabilities.get(EXECUTION_BUDGET_CAPABILITY)
-        val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
+        val decisions: InputDecisions = ctx.capabilities.get(INPUT_DECISIONS_CAPABILITY, InputDecisions::class)
+        val continuation: BodyContinuation = ctx.capabilities.get(BODY_CONTINUATION_CAPABILITY, BodyContinuation::class)
+        val budget: ExecutionBudget = ctx.capabilities.get(EXECUTION_BUDGET_CAPABILITY, ExecutionBudget::class)
+        val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY, EventSink::class)
 
         // The question is observable even when the declaration is rejected: the
         // event carries what the author wrote, not what the Step went on to do.

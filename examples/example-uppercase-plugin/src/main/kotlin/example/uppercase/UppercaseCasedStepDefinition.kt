@@ -61,7 +61,7 @@ object UppercaseCasedStepDefinition : StepDefinition<UppercaseInput, UppercaseOu
         // no plugin id, no way to reach a second one. `get` is a total lookup that throws rather
         // than returning a null the Step would then have to decide what to do with — a Step that
         // passed admission and found nothing here is a defect in admission, not a case to handle.
-        val table: CaseTable = context.capabilities.get(EXAMPLE_CASE_TABLE_CAPABILITY)
+        val table: CaseTable = context.capabilities.get(EXAMPLE_CASE_TABLE_CAPABILITY, CaseTable::class)
         UppercaseOutput(value = table.apply(input.text))
     }
 }

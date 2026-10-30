@@ -263,10 +263,10 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
 
     override val handler = StepHandler<SagaChainInput, SagaChainOutput> { input, context ->
         val operations: CompensationOperations =
-            context.capabilities.get(SAGA_COMPENSATION_CAPABILITY)
-        val plan: SagaPlanOperations = context.capabilities.get(SAGA_PLAN_CAPABILITY)
-        val saga: SagaLifecycle = context.capabilities.get(SAGA_LIFECYCLE_CAPABILITY)
-        val slots: BodySlotInvoker = context.capabilities.get(BODY_SLOT_CAPABILITY)
+            context.capabilities.get(SAGA_COMPENSATION_CAPABILITY, CompensationOperations::class)
+        val plan: SagaPlanOperations = context.capabilities.get(SAGA_PLAN_CAPABILITY, SagaPlanOperations::class)
+        val saga: SagaLifecycle = context.capabilities.get(SAGA_LIFECYCLE_CAPABILITY, SagaLifecycle::class)
+        val slots: BodySlotInvoker = context.capabilities.get(BODY_SLOT_CAPABILITY, BodySlotInvoker::class)
 
         val sagaId = SagaId.of(input.sagaId)
         val contract = contractOf(input.providerContract)

@@ -61,7 +61,7 @@ object UppercaseObservedStepDefinition : StepDefinition<UppercaseInput, Uppercas
         // The outcome is deliberately NOT inspected. An unregistered kind and a codec refusal are
         // both named results the runtime surfaces; turning either into a Step failure would be
         // wrong, because the uppercase work already succeeded and an observation is not the work.
-        val emission = context.capabilities.get<PluginEventEmission>(PLUGIN_EVENT_EMISSION_CAPABILITY)
+        val emission = context.capabilities.get(PLUGIN_EVENT_EMISSION_CAPABILITY, PluginEventEmission::class)
         emission.emit(
             "example.uppercase.applied",
             UppercaseApplied(inputLength = input.text.length, outputLength = output.value.length),

@@ -14,7 +14,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  *   [dev.rubentxu.pipeline.v2.domain.step.StepContract.requiredCapabilities];
  *   admission is fail-closed before the handler runs when it is not
  *   available.
- * - The corresponding `StepHandlerContext.capabilities.get<ShellOperations>(SHELL_OPERATIONS_CAPABILITY)`
+ * - The corresponding `StepHandlerContext.capabilities.get(SHELL_OPERATIONS_CAPABILITY, ShellOperations::class)`
  *   is the only call-site a registry-routed sh handler is allowed to use.
 */
 val SHELL_OPERATIONS_CAPABILITY: StepCapability = StepCapability("shellOperations")

@@ -57,7 +57,7 @@ class CoreUtilsReadJsonStepDefinition : StepDefinition<ReadJsonInput, ReadJsonOu
     )
 
     override val handler = StepHandler<ReadJsonInput, ReadJsonOutput> { input, ctx ->
-        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
 
         val target: Path = WorkspacePathAnchors.currentDirectory(
             location = location,

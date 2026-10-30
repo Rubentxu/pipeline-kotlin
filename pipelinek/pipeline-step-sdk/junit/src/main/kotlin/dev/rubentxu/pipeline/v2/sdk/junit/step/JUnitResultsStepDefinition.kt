@@ -83,7 +83,7 @@ class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResult
         // handler runs and throws EngineInvariantViolation if any are
         // missing, so reaching this `get(...)` is guaranteed to
         // succeed when the handler was admitted.
-        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
         // The report path anchors on
         // CURRENT_DIRECTORY, so a `dir(...)` scope scopes the report the same
         // way it scopes `sh`. Same value the legacy capability supplied; what

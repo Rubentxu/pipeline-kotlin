@@ -51,6 +51,10 @@ import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
+import dev.rubentxu.pipeline.v2.domain.step.CapabilityRefusal
+import dev.rubentxu.pipeline.v2.domain.step.CapabilityRefusedException
+import dev.rubentxu.pipeline.v2.domain.step.CapabilitySlot
+import kotlin.reflect.KClass
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_LIFECYCLE_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
@@ -73,8 +77,15 @@ import java.nio.file.Path
  * Lookup is fail-closed: [get] on a capability that is not available throws rather than returning a
  * nullable/`Any?` sentinel, so a handler can only ever start once capability admission has confirmed
  * availability.
+ *
+ * ## Why this class cannot be constructed directly
+ * The constructor is `internal`, and [CanonicalCapabilityBindings] is the only thing that calls
+ * it. The bridge decides WHICH capabilities an invocation has; letting a caller construct one
+ * with a different set of collaborators would put a second decision site next to the first, and
+ * two decision sites are exactly what the fail-closed contract cannot afford: a Step could pass
+ * admission against one table and run against another.
 */
-open class CanonicalRuntimeCapabilityAccess(
+class CanonicalRuntimeCapabilityAccess internal constructor(
     context: CanonicalRuntimeContext,
     // Milestone state store for MILESTONE_OPERATIONS_CAPABILITY.
     // Always non-null in production (coordinator provides it); nullable for test/adapter flexibility.
@@ -88,7 +99,7 @@ open class CanonicalRuntimeCapabilityAccess(
     /**
      * Behaviour supplying the capabilities an OFFICIAL_PLUGIN contributes.
      * A CONTRIBUTOR rather than a map, and the difference is the whole point of
-     * H2b. A `Map<StepCapability, Any>` has to live somewhere, and it was
+     * H2b. A `Map<StepCapability, CapabilitySlot>` has to live somewhere, and it was
      * briefly parked on `ShOptions` to spare this class a parameter — which
      * turned a carrier of execution FACTS into a runtime service locator and
      * bought nothing but a line count. A contributor is composed at the
@@ -100,14 +111,25 @@ open class CanonicalRuntimeCapabilityAccess(
     private val capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
 ) : StepCapabilityAccess {
 
-    private val provided: Map<StepCapability, Any> = buildProvided(context)
+    private val provided: Map<StepCapability, CapabilitySlot> = buildProvided(context)
 
     override fun available(): Set<StepCapability> = provided.keys
 
-    @Suppress("UNCHECKED_CAST")
-    open override fun <T : Any> get(key: StepCapability): T =
-        provided[key] as? T
-            ?: throw IllegalArgumentException("capability unavailable to this invocation: $key")
+    /**
+     * The bound value, read as the type the consumer declared.
+     *
+     * Two refusals, both named, neither a cast: the key is not part of this
+     * invocation's provision ([CapabilityRefusal.Absent]), or the provisioned
+     * value is not of the declared type ([CapabilityRefusal.Incompatible]).
+     * The absent case keeps the wording this bridge has always used, byte for
+     * byte, because it reaches the operator through the same diagnostic as
+     * before.
+     */
+    override fun <T : Any> get(key: StepCapability, type: KClass<T>): T {
+        val slot = provided[key]
+            ?: throw CapabilityRefusedException(CapabilityRefusal.Absent(key))
+        return slot.read(key, type)
+    }
 
     /**
      * Exposes [NETWORK_EGRESS_CAPABILITY] only when this run is entitled to ASK.
@@ -127,11 +149,11 @@ open class CanonicalRuntimeCapabilityAccess(
 */
     private fun egressPermission(
         context: CanonicalRuntimeContext,
-        builder: MutableMap<StepCapability, Any>,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         val gate = context.shOptions.networkEgress
         if (gate.permitsAny) {
-            builder[NETWORK_EGRESS_CAPABILITY] = gate
+            builder[NETWORK_EGRESS_CAPABILITY] = CapabilitySlot.of(gate)
         }
     }
 
@@ -144,11 +166,11 @@ open class CanonicalRuntimeCapabilityAccess(
      * always exists, so the adapter always constructs and the capability is always exposed,
      * so `core.sh` retains its declared require-set.
 */
-    // protected (not private) so test harnesses can substitute a synthetic platform
-    // observation without touching production logic; production always uses this impl.
-    protected fun buildProvided(context: CanonicalRuntimeContext): Map<StepCapability, Any> {
-        val builder: MutableMap<StepCapability, Any> = mutableMapOf(
-            EVENT_SINK_CAPABILITY to context.eventSink,
+    // private because the class itself is the only thing that builds the table: a
+    // subclass could not widen it without also becoming a second decision site.
+    private fun buildProvided(context: CanonicalRuntimeContext): Map<StepCapability, CapabilitySlot> {
+        val builder: MutableMap<StepCapability, CapabilitySlot> = mutableMapOf(
+            EVENT_SINK_CAPABILITY to CapabilitySlot.of(context.eventSink),
         )
         // The table is assembled in a fixed order and the order IS a property:
         // `available()` hands out the key set, so insertion order is observable.
@@ -177,10 +199,10 @@ open class CanonicalRuntimeCapabilityAccess(
      * does not own. Identity is allowed through, so a plugin contributing the
      * very same instance is not a conflict.
 */
-    private fun bindContributedCapabilities(builder: MutableMap<StepCapability, Any>) {
+    private fun bindContributedCapabilities(builder: MutableMap<StepCapability, CapabilitySlot>) {
         for ((capability, value) in capabilityContributor.capabilities()) {
             val existing = builder[capability]
-            require(existing == null || existing === value) {
+            require(existing == null || existing.holdsSameInstanceAs(value)) {
                 "capability $capability is contributed twice: by the runtime core and by a plugin"
             }
             builder[capability] = value
@@ -194,7 +216,7 @@ open class CanonicalRuntimeCapabilityAccess(
 */
     private fun bindProcessAndStageCapabilities(
         context: CanonicalRuntimeContext,
-        builder: MutableMap<StepCapability, Any>,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         val shellOps: ShellOperations = ShOperationsAdapter(
             runIdString = context.runId,
@@ -205,20 +227,22 @@ open class CanonicalRuntimeCapabilityAccess(
             secretPatternRegistry = context.secretPatternRegistry,
             outputWakeups = context.outputWakeups,
         )
-        builder[SHELL_OPERATIONS_CAPABILITY] = shellOps
+        builder[SHELL_OPERATIONS_CAPABILITY] = CapabilitySlot.of(shellOps)
         // Workspace file operations bound to the current stage identity.
         // The adapter also receives the shared execution location, so
         // file Steps resolve against the same current directory the shell vertical
         // observes inside a `dir` scope. Previously it rebuilt its own
         // WorkspaceResolver per operation and could never see the scope, which is
         // the divergence the scope shape exists to remove.
-        builder[WORKSPACE_OPERATIONS_CAPABILITY] = workspaceOperationsFor(context)
+        builder[WORKSPACE_OPERATIONS_CAPABILITY] = CapabilitySlot.of(workspaceOperationsFor(context))
         // Narrow stage identity (name + index) for handlers needing the current
         // stage as a default (core.emit.event StageMarkedUnstable fallback). Derived from the
         // runtime context; never exposes the context itself.
-        builder[STAGE_IDENTITY_CAPABILITY] = StageIdentity(
-            name = context.stageName,
-            index = context.stageIndex,
+        builder[STAGE_IDENTITY_CAPABILITY] = CapabilitySlot.of(
+            StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
         )
         // The durable EXECUTION LANE, derived HERE from the
         // runtime's own operation identity — run id plus the parallel lineage the
@@ -234,10 +258,12 @@ open class CanonicalRuntimeCapabilityAccess(
         // process, like core.lock) can honour the block deadline through a typed
         // capability instead of escaping the watchdog. "No budget" is a real
         // value (null), hence unconditional exposure: admission stays deterministic.
-        builder[EXECUTION_BUDGET_CAPABILITY] = ExecutionBudget(context.shOptions.timeoutMs)
-        builder[EXECUTION_LANE_CAPABILITY] = ExecutionLaneId.of(
-            runId = context.runId,
-            branchLineage = context.opId.parallelLineage,
+        builder[EXECUTION_BUDGET_CAPABILITY] = CapabilitySlot.of(ExecutionBudget(context.shOptions.timeoutMs))
+        builder[EXECUTION_LANE_CAPABILITY] = CapabilitySlot.of(
+            ExecutionLaneId.of(
+                runId = context.runId,
+                branchLineage = context.opId.parallelLineage,
+            ),
         )
     }
 
@@ -253,7 +279,7 @@ open class CanonicalRuntimeCapabilityAccess(
 */
     private fun bindDurableChannelCapabilities(
         context: CanonicalRuntimeContext,
-        builder: MutableMap<StepCapability, Any>,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         val root = context.controlDirRoot
         // The POSIX file lock coordinator for core.lock.
@@ -272,8 +298,10 @@ open class CanonicalRuntimeCapabilityAccess(
         // always registered. The hold registry inside FileLockCoordinator is
         // process-scoped, so a fresh instance per context still observes every
         // hold this JVM has taken.
-        builder[LOCK_COORDINATION_CAPABILITY] = FileLockCoordinator(
-            root.resolve("locks"),
+        builder[LOCK_COORDINATION_CAPABILITY] = CapabilitySlot.of(
+            FileLockCoordinator(
+                root.resolve("locks"),
+            ),
         )
         // The filesystem answer channel for core.input.
         // Anchored to the CONTROL ROOT for the same reason the lock is: a
@@ -283,8 +311,10 @@ open class CanonicalRuntimeCapabilityAccess(
         // question is answered. The control directory root always exists, so
         // there is always somewhere to publish the request — the operator can
         // always find it and answer it.
-        builder[INPUT_DECISIONS_CAPABILITY] = FileInputDecisions(
-            root.resolve("inputs"),
+        builder[INPUT_DECISIONS_CAPABILITY] = CapabilitySlot.of(
+            FileInputDecisions(
+                root.resolve("inputs"),
+            ),
         )
         // the compensation intent port.
         //
@@ -293,7 +323,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // worse than no promise at all, so its absence has to be a refusal at admission
         // rather than a null the handler discovers halfway through a forward effect.
         context.sagaCompensation?.let { operations ->
-            builder[SAGA_COMPENSATION_CAPABILITY] = operations
+            builder[SAGA_COMPENSATION_CAPABILITY] = CapabilitySlot.of(operations)
         }
         // the compensation PLAN port.
         //
@@ -302,7 +332,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // that has no durable state to answer from, and a Step that reports an observation
         // must not reach a handler whose write would go nowhere.
         context.sagaPlan?.let { plan ->
-            builder[SAGA_PLAN_CAPABILITY] = plan
+            builder[SAGA_PLAN_CAPABILITY] = CapabilitySlot.of(plan)
         }
         // the compensation RUNTIME.
         //
@@ -311,7 +341,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // reach a handler that has no durable state to decide from, no body to compensate
         // through, or no way to record what happened.
         context.sagaRuntime?.let { runtime ->
-            builder[SAGA_RUNTIME_CAPABILITY] = runtime
+            builder[SAGA_RUNTIME_CAPABILITY] = CapabilitySlot.of(runtime)
             // the Saga's LIFECYCLE — the runtime that can also KEEP the
             // effects of a Saga that ended well, instead of only undoing them.
             //
@@ -320,7 +350,7 @@ open class CanonicalRuntimeCapabilityAccess(
             // runtime cannot close one. The check is a type test on the bound object, so the
             // capability and the port can never drift apart.
             if (runtime is SagaLifecycle) {
-                builder[SAGA_LIFECYCLE_CAPABILITY] = runtime
+                builder[SAGA_LIFECYCLE_CAPABILITY] = CapabilitySlot.of(runtime)
             }
         }
     }
@@ -334,13 +364,15 @@ open class CanonicalRuntimeCapabilityAccess(
 */
     private fun bindWorkspaceObservationCapabilities(
         context: CanonicalRuntimeContext,
-        builder: MutableMap<StepCapability, Any>,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         // Raw environmental observation for platform-classification handlers
         // (core.isUnix). The single remaining System.getProperty("os.name") read lives HERE,
         // in the bridge adapter — never inside a handler.
-        builder[PLATFORM_IDENTITY_CAPABILITY] = PlatformIdentity(
-            osName = System.getProperty("os.name", ""),
+        builder[PLATFORM_IDENTITY_CAPABILITY] = CapabilitySlot.of(
+            PlatformIdentity(
+                osName = System.getProperty("os.name", ""),
+            ),
         )
         // Canonical workspace observation for workspace-projection
         // handlers (core.pwd and official plugins). A nested `dir` scope carries
@@ -355,8 +387,10 @@ open class CanonicalRuntimeCapabilityAccess(
         // composes the effective workspace + canonical OpId into the deterministic
         // `tmp-pwd-<sha256(opId)>` resource path (–, /)
         val effectiveWorkspaceRoot = context.shOptions.workingDirectory ?: context.shOptions.workspaceRoot
-        builder[WORKSPACE_IDENTITY_CAPABILITY] = WorkspaceIdentity(
-            workspaceRoot = effectiveWorkspaceRoot,
+        builder[WORKSPACE_IDENTITY_CAPABILITY] = CapabilitySlot.of(
+            WorkspaceIdentity(
+                workspaceRoot = effectiveWorkspaceRoot,
+            ),
         )
         // The typed execution location, registered alongside
         // the legacy WorkspaceIdentity above so consumers migrate per vertical
@@ -369,7 +403,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // boundary could receive the current directory.
         // This is a pure binding: it introduces no new behaviour and changes no
         // value the legacy consumers already observe.
-        builder[EXECUTION_LOCATION_CAPABILITY] = executionLocationFor(context)
+        builder[EXECUTION_LOCATION_CAPABILITY] = CapabilitySlot.of(executionLocationFor(context))
         // The ONLY capability consumed by
         // CorePwdTmpStep.handler. The adapter binds the runtime's
         // [runIdString], [OpId], [ShOptions] (workspaceRoot), [EventSink] —
@@ -383,7 +417,7 @@ open class CanonicalRuntimeCapabilityAccess(
             workspaceRoot = effectiveWorkspaceRoot,
             eventSink = context.eventSink,
         )
-        builder[TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] = tmpOps
+        builder[TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] = CapabilitySlot.of(tmpOps)
     }
 
     /**
@@ -396,7 +430,7 @@ open class CanonicalRuntimeCapabilityAccess(
 */
     private fun bindWorkspaceDestructionCapabilities(
         context: CanonicalRuntimeContext,
-        builder: MutableMap<StepCapability, Any>,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         val root = context.controlDirRoot
         // DeleteDir operations for core.deleteDir.
@@ -420,7 +454,7 @@ open class CanonicalRuntimeCapabilityAccess(
             // heuristic that retires.
             executionLocation = executionLocationFor(context),
         )
-        builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
+        builder[DELETE_DIR_OPERATIONS_CAPABILITY] = CapabilitySlot.of(deleteOps)
         // CleanWs operations for core.cleanWs (registry candidate).
         // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex],
         // [controlDirRoot], and [EventSink] — exactly the inputs needed to resolve the
@@ -443,7 +477,7 @@ open class CanonicalRuntimeCapabilityAccess(
             // heuristic that retires.
             executionLocation = executionLocationFor(context),
         )
-        builder[CLEAN_WS_OPERATIONS_CAPABILITY] = cleanWsOps
+        builder[CLEAN_WS_OPERATIONS_CAPABILITY] = CapabilitySlot.of(cleanWsOps)
     }
 
     /**
@@ -456,7 +490,7 @@ open class CanonicalRuntimeCapabilityAccess(
 */
     private fun bindWorkspaceContentCapabilities(
         context: CanonicalRuntimeContext,
-        builder: MutableMap<StepCapability, Any>,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         val root = context.controlDirRoot
         // ArchiveArtifacts operations for core.archiveArtifacts.
@@ -479,7 +513,7 @@ open class CanonicalRuntimeCapabilityAccess(
             // `dir(...)` scope narrows what the pattern can match.
             executionLocation = executionLocationFor(context),
         )
-        builder[ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] = archiveOps
+        builder[ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] = CapabilitySlot.of(archiveOps)
         // Stash/unstash capability. Same anchor as
         // ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY. Both CoreStashStep and
         // CoreUnstashStep share the same STASH_OPERATIONS_CAPABILITY seam.
@@ -496,7 +530,7 @@ open class CanonicalRuntimeCapabilityAccess(
             // location every other workspace-aware Step reads.
             executionLocation = executionLocationFor(context),
         )
-        builder[STASH_OPERATIONS_CAPABILITY] = stashOps
+        builder[STASH_OPERATIONS_CAPABILITY] = CapabilitySlot.of(stashOps)
         // Core.publishHTML capability. Same anchor as
         // STASH_OPERATIONS_CAPABILITY. CorePublishHtmlStep shares the same
         // PUBLISH_HTML_OPERATIONS_CAPABILITY seam.
@@ -512,7 +546,7 @@ open class CanonicalRuntimeCapabilityAccess(
             // ReportDir follows the shared location too.
             executionLocation = executionLocationFor(context),
         )
-        builder[PUBLISH_HTML_OPERATIONS_CAPABILITY] = publishHtmlOps
+        builder[PUBLISH_HTML_OPERATIONS_CAPABILITY] = CapabilitySlot.of(publishHtmlOps)
     }
 
     /**
@@ -526,7 +560,7 @@ open class CanonicalRuntimeCapabilityAccess(
 */
     private fun bindOptionalSeamCapabilities(
         context: CanonicalRuntimeContext,
-        builder: MutableMap<StepCapability, Any>,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         // Milestone state operations (core.milestone). The store is optional
         // so existing call-sites that don't bind it see no change; when bound, the
@@ -535,7 +569,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // NOT per handler invocation — mirroring the legacy dispatcher's per-run semantics.
         milestoneStateStore?.let { store ->
             val milestoneOps: MilestoneOperations = MilestoneOperationsAdapter(store)
-            builder[MILESTONE_OPERATIONS_CAPABILITY] = milestoneOps
+            builder[MILESTONE_OPERATIONS_CAPABILITY] = CapabilitySlot.of(milestoneOps)
         }
         // Per-run artifact index for the
         // core.archiveArtifacts → core.artifact.query bridge. Bound at
@@ -547,7 +581,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // returns typed USER failure (NotFound). Both fail-closed per
         // the registry boundary's contract.
         artifactIndex?.let { idx ->
-            builder[ARTIFACT_INDEX_CAPABILITY] = idx
+            builder[ARTIFACT_INDEX_CAPABILITY] = CapabilitySlot.of(idx)
         }
         // Body-reentry seam.
         // BODY_INVOKER_CAPABILITY is exposed ONLY when the canonical runtime context carries
@@ -557,7 +591,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // it without the adapter present fails closed at capability admission, exactly like
         // every other capability in this bridge.
         context.bodyInvoker?.let { adapter ->
-            builder[BODY_INVOKER_CAPABILITY] = adapter
+            builder[BODY_INVOKER_CAPABILITY] = CapabilitySlot.of(adapter)
         }
         // The public body-reentry seam for a Step that declared
         // BodyExecutionOwner.HANDLER_CONTINUATION (as amended). Bound ONLY when the
@@ -569,7 +603,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // capability coherence check; a HANDLER_CONTINUATION handler that runs without this
         // binding never runs at all.
         context.bodyContinuation?.let { continuation ->
-            builder[BODY_CONTINUATION_CAPABILITY] = continuation
+            builder[BODY_CONTINUATION_CAPABILITY] = CapabilitySlot.of(continuation)
         }
         // the slot seam. Exposed ONLY when the engine bound a slot
         // invoker for this invocation, which it does only for a
@@ -578,7 +612,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // handler that asks for a slot of a body it does not have must fail
         // closed at admission, never receive a seam that cannot honour it.
         context.bodySlotInvoker?.let { slotInvoker ->
-            builder[BODY_SLOT_CAPABILITY] = slotInvoker
+            builder[BODY_SLOT_CAPABILITY] = CapabilitySlot.of(slotInvoker)
         }
 
         // The plugin event seam, bound ONLY when the composition actually produced a
@@ -586,8 +620,9 @@ open class CanonicalRuntimeCapabilityAccess(
         // at all, and a Step declaring the capability is then refused at admission by the ordinary
         // fail-closed path — never handed a seam that silently drops its observations.
         context.pluginEventEmitter?.let { emitter ->
-            builder[PLUGIN_EVENT_EMISSION_CAPABILITY] =
-                PluginEventEmissionAdapter(emitter, context.runId)
+            builder[PLUGIN_EVENT_EMISSION_CAPABILITY] = CapabilitySlot.of(
+                    PluginEventEmissionAdapter(emitter, context.runId)
+            )
         }
     }
 

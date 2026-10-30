@@ -172,11 +172,11 @@ object CoreLockStep {
     )
 
     private val handler: StepHandler<CoreLockInput, CoreLockOutput> = StepHandler { input, ctx ->
-        val coordinator: LockCoordinator = ctx.capabilities.get(LOCK_COORDINATION_CAPABILITY)
-        val continuation: BodyContinuation = ctx.capabilities.get(BODY_CONTINUATION_CAPABILITY)
-        val lane: ExecutionLaneId = ctx.capabilities.get(EXECUTION_LANE_CAPABILITY)
-        val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
-        val budget: ExecutionBudget = ctx.capabilities.get(EXECUTION_BUDGET_CAPABILITY)
+        val coordinator: LockCoordinator = ctx.capabilities.get(LOCK_COORDINATION_CAPABILITY, LockCoordinator::class)
+        val continuation: BodyContinuation = ctx.capabilities.get(BODY_CONTINUATION_CAPABILITY, BodyContinuation::class)
+        val lane: ExecutionLaneId = ctx.capabilities.get(EXECUTION_LANE_CAPABILITY, ExecutionLaneId::class)
+        val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY, EventSink::class)
+        val budget: ExecutionBudget = ctx.capabilities.get(EXECUTION_BUDGET_CAPABILITY, ExecutionBudget::class)
 
         // The owner is the durable EXECUTION LANE, derived by the bridge from the
         // runtime's own operation identity. Same lane re-enters (Jenkins is

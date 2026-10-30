@@ -119,7 +119,7 @@ object CoreFileExistsStep {
 
     private val capabilityRoutedHandler: StepHandler<CoreFileExistsInput, CoreFileExistsOutput> =
         StepHandler { input, ctx ->
-            val ops: WorkspaceOperations = ctx.capabilities.get(WORKSPACE_OPERATIONS_CAPABILITY)
+            val ops: WorkspaceOperations = ctx.capabilities.get(WORKSPACE_OPERATIONS_CAPABILITY, WorkspaceOperations::class)
             val result = ops.fileExists(file = input.file)
             CoreFileExistsOutput(exists = result.exists)
         }

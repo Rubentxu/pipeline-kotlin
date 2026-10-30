@@ -185,7 +185,7 @@ object CoreEmitEventStep {
                     ),
                 )
             }
-            val sink: dev.rubentxu.pipeline.v2.events.EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
+            val sink: dev.rubentxu.pipeline.v2.events.EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY, dev.rubentxu.pipeline.v2.events.EventSink::class)
             when (input.kind) {
                 "StageMarkedUnstable" -> {
                     val message = input.payload["message"]
@@ -195,7 +195,7 @@ object CoreEmitEventStep {
                                 "StageMarkedUnstable requires 'message' in payload",
                             ),
                         )
-                    val stageIdentity = ctx.capabilities.get<StageIdentity>(STAGE_IDENTITY_CAPABILITY)
+                    val stageIdentity = ctx.capabilities.get(STAGE_IDENTITY_CAPABILITY, StageIdentity::class)
                     sink.append(
                         StageMarkedUnstable(
                             eventId = UUID.randomUUID().toString(),

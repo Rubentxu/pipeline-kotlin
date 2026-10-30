@@ -176,8 +176,8 @@ object CorePwdStep {
     private val capabilityRoutedHandler: StepHandler<PwdInput, PwdOutput> =
         StepHandler { _, ctx ->
             val location: ExecutionSite =
-                ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
-            val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
+                ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
+            val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY, EventSink::class)
             val cwd = location.cwd.toAbsolutePath()
             val root = location.workspace.root.toAbsolutePath()
             val path = cwd.toString()

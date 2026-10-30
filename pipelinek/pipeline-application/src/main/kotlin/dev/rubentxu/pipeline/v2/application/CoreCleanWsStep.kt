@@ -170,7 +170,7 @@ object CoreCleanWsStep {
 */
     private val capabilityRoutedHandler: StepHandler<CleanWsInput, CleanWsOutput> =
         StepHandler { input, ctx ->
-            val ops: CleanWsOperations = ctx.capabilities.get(CLEAN_WS_OPERATIONS_CAPABILITY)
+            val ops: CleanWsOperations = ctx.capabilities.get(CLEAN_WS_OPERATIONS_CAPABILITY, CleanWsOperations::class)
             val result = ops.clean(input)
             CleanWsOutput(
                 deletedFiles = result.deletedFiles,

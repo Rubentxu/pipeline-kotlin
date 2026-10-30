@@ -65,7 +65,7 @@ class CoreUtilsZipStepDefinition : StepDefinition<ZipInput, ZipOutput> {
 
     override val handler: StepHandler<ZipInput, ZipOutput> =
         StepHandler { input, ctx ->
-            val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+            val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
             val stepKey = "core-utils.zip"
 
             val target = WorkspacePathAnchors.currentDirectory(

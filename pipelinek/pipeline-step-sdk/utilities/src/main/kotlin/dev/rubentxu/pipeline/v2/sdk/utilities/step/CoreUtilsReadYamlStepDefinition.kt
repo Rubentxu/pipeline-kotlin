@@ -63,7 +63,7 @@ class CoreUtilsReadYamlStepDefinition : StepDefinition<ReadYamlInput, ReadYamlOu
     )
 
     override val handler = StepHandler<ReadYamlInput, ReadYamlOutput> { input, ctx ->
-        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
 
         // Source: file XOR text — already enforced by the sealed type, but we
         // also handle the on-disk / in-memory split here.

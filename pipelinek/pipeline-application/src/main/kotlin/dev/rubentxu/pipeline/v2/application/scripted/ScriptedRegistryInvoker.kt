@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess
+import dev.rubentxu.pipeline.v2.application.durable.CanonicalCapabilityBindings
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationRecord
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationResolver
@@ -229,13 +229,14 @@ internal class ScriptedRegistryInvoker(
     private val registry: StepRegistry,
     private val runtimeContextFactory: (call: ScriptedRegistryCall) -> CanonicalRuntimeContext,
     /**
-     * Capability bridge construction. The default is the canonical bridge over the
-     * runtime context; harnesses may substitute a bridge whose OBSERVATION sources
-     * are synthetic (e.g. a non-host platform) without changing any production logic.
-     * Admission stays fail-closed and replay never consults this factory.
+     * The collaborators the capability table is built from.
+     *
+     * The scripted surface binds no milestone store, no artifact index and no
+     * plugin contributor, so the default holder provisions the same capabilities
+     * the scripted path always had. Admission stays fail-closed and replay never
+     * consults this holder.
 */
-    private val capabilityAccessFactory: (CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess =
-        { context -> CanonicalRuntimeCapabilityAccess(context) },
+    private val capabilityBindings: CanonicalCapabilityBindings = CanonicalCapabilityBindings(),
     /**
      * Pre-decode durable metadata authority. Derived from the registry this invoker already
      * holds, so scripted and canonical resolve a Step's effects, replay policy and recovery
@@ -477,7 +478,7 @@ internal class ScriptedRegistryInvoker(
             registry = registry,
             key = call.stepKey,
             encodedInput = call.encodedInput,
-            availableCapabilities = capabilityAccessFactory(runtime).available(),
+            availableCapabilities = capabilityBindings.access(runtime).available(),
         )
         val ready = when (preparation) {
             is ExecutionPreparation.Ready -> preparation.prepared

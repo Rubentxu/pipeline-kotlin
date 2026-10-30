@@ -88,7 +88,7 @@ class GitCheckoutStepDefinition(
         // so the canonical engine admits the invocation AND so the
         // capability admission is fail-closed before the handler runs.
         // The handler reads the canonical workspace root from
-        // ctx.capabilities.get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
+        // ctx.capabilities.get(WORKSPACE_IDENTITY_CAPABILITY, WorkspaceIdentity::class)
         // and never falls back to ambient process state.
         requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
@@ -128,7 +128,7 @@ class GitCheckoutStepDefinition(
         // boundary re-checks the declared capabilities before the handler
         // runs and throws if any are missing, so reaching this `get(...)`
         // is guaranteed to succeed when the handler was admitted.
-        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
         // `checkout` anchors on
         // CURRENT_DIRECTORY, so a `dir(...)` scope moves where the repository
         // lands. This is the value the legacy capability already supplied

@@ -66,7 +66,7 @@ class CoreUtilsFindFilesStepDefinition : StepDefinition<FindFilesInput, FindFile
 
     override val handler: StepHandler<FindFilesInput, FindFilesOutput> =
         StepHandler { input, ctx ->
-            val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+            val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
 
             val base = WorkspacePathAnchors.currentDirectory(
                 location = location,

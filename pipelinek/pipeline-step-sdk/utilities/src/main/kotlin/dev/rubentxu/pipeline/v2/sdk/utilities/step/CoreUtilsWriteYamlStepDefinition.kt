@@ -82,7 +82,7 @@ class CoreUtilsWriteYamlStepDefinition : StepDefinition<WriteYamlInput, WriteYam
 
         when (val dest = input.destination) {
             is WriteYamlDestination.ToFile -> {
-                val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+                val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
                 val target: Path = WorkspacePathAnchors.currentDirectory(
                     location = location,
                     stepKey = "core-utils.writeYaml",

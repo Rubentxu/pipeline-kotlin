@@ -12,7 +12,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * - A handler may use it only if it declares it in its
  *   [dev.rubentxu.pipeline.v2.domain.step.StepContract.requiredCapabilities];
  *   admission is fail-closed before the handler runs when it is not available.
- * - `context.capabilities.get<LockCoordinator>(LOCK_COORDINATION_CAPABILITY)` is
+ * - `context.capabilities.get(LOCK_COORDINATION_CAPABILITY, LockCoordinator::class)` is
  *   the only call site a `lock` handler is allowed to use for coordination.
  * `core.lock` declares this TOGETHER WITH
  * [dev.rubentxu.pipeline.v2.domain.step.BODY_CONTINUATION_CAPABILITY], because

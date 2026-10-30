@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.domain.step
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import kotlin.reflect.KClass
 
 /**
  * Canonical serialized form of a step input/output payload (JSON today).
@@ -41,8 +42,21 @@ interface StepCapabilityAccess {
     /** Capabilities actually available to this invocation (for fail-closed admission). */
     fun available(): Set<StepCapability>
 
-    /** Returns the typed value bound to [key]. Fails if [key] is not available. */
-    fun <T : Any> get(key: StepCapability): T
+    /**
+     * Returns the value bound to [key], read as the declared [type].
+     *
+     * The declared type is part of the CALL, not of the implementation: a
+     * consumer says which shape it expects, and the seam either hands over a
+     * value of that shape or refuses with a named reason. The erased form of
+     * this method — a type parameter the caller supplies and the seam cannot
+     * verify — said nothing at runtime, so a value of the wrong shape was
+     * delivered and the mismatch surfaced inside the consumer as a cast
+     * failure. Here the two possible refusals are facts the caller can read:
+     * the key is not part of this invocation's provision
+     * ([CapabilityRefusal.Absent]), or the provisioned value is not of the
+     * declared type ([CapabilityRefusal.Incompatible]).
+     */
+    fun <T : Any> get(key: StepCapability, type: KClass<T>): T
 }
 
 /**

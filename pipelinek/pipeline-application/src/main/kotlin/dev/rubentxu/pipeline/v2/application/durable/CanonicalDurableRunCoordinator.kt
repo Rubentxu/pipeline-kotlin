@@ -163,6 +163,20 @@ internal class CanonicalDurableRunCoordinator(
     private val artifactIndex = ArtifactIndexAdapter.build()
     private val bodyInvokerAdapter = CanonicalBodyInvokerAdapter()
 
+    /**
+     * The collaborators the capability table is built from, held ONCE.
+     *
+     * Admission (PREPARE) and execution (EXECUTE) both read the capability
+     * table, and both read it through this holder, so the two moments cannot
+     * disagree about which capabilities exist. The holder is the only place
+     * that decides it.
+     */
+    private val capabilityBindings = CanonicalCapabilityBindings(
+        milestoneStateStore = milestoneStateStore,
+        artifactIndex = artifactIndex,
+        capabilityContributor = capabilityContributor,
+    )
+
     // The body execution policy authority. The production default
     // composes TWO declared-policy authorities, both fail-closed and neither key-specific:
     //   1. the OPEN StepRegistry (same seam that resolves handlers) — a core or external
@@ -210,9 +224,8 @@ internal class CanonicalDurableRunCoordinator(
     // Typed input preparation behind a narrow collaborator.
     private val typedInputPreparation: DurableTypedInputPreparation = DurableTypedInputPreparation(
         stepRegistry = stepRegistry,
-        milestoneStateStore = milestoneStateStore,
-        artifactIndex = artifactIndex,
-        capabilityContributor = capabilityContributor, // H2b: the same set EXECUTE will see
+        // The SAME holder EXECUTE will consult: one capability set, two moments.
+        capabilityBindings = capabilityBindings,
     )
 
     /**
@@ -231,13 +244,8 @@ internal class CanonicalDurableRunCoordinator(
      * never names a decoded command type.
     */
     private val executionBoundary: CommonExecutionBoundary = RegistryExecutionBoundary.adapt(
-        // Pass milestoneStateStore so RegistryExecutionBoundary can provide
-        // MILESTONE_OPERATIONS_CAPABILITY during handler execution.
-        // Pass artifactIndex so the producer (core.archiveArtifacts)
-        // and the consumer (core.artifact.query) share one instance per run.
-        milestoneStateStore = milestoneStateStore,
-        artifactIndex = artifactIndex,
-        capabilityContributor = capabilityContributor,
+        // The SAME holder PREPARE consulted: one capability set, two moments.
+        capabilityBindings = capabilityBindings,
     )
 
     // The executor folds ONE operation; the traversal owns the cursor.

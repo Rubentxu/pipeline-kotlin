@@ -139,7 +139,7 @@ object CoreReadFileStep {
 
     private val capabilityRoutedHandler: StepHandler<CoreReadFileInput, CoreReadFileOutput> =
         StepHandler { input, ctx ->
-            val ops: WorkspaceOperations = ctx.capabilities.get(WORKSPACE_OPERATIONS_CAPABILITY)
+            val ops: WorkspaceOperations = ctx.capabilities.get(WORKSPACE_OPERATIONS_CAPABILITY, WorkspaceOperations::class)
             val result = ops.readFile(file = input.file, encoding = input.encoding)
             CoreReadFileOutput(content = result.content, exists = result.exists)
         }

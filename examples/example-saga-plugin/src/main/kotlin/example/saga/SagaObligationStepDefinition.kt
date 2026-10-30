@@ -153,9 +153,9 @@ object SagaObligationStepDefinition : StepDefinition<SagaObligationInput, SagaOb
         // The port, handed over as a value. The plugin never sees the runtime context, the
         // event store or the journal: only this narrow port, already bound to this invocation.
         val operations: CompensationOperations =
-            context.capabilities.get(SAGA_COMPENSATION_CAPABILITY)
+            context.capabilities.get(SAGA_COMPENSATION_CAPABILITY, CompensationOperations::class)
         val plan: SagaPlanOperations =
-            context.capabilities.get(SAGA_PLAN_CAPABILITY)
+            context.capabilities.get(SAGA_PLAN_CAPABILITY, SagaPlanOperations::class)
 
         val sagaId = SagaId.of(input.sagaId)
         val actionPlan = SagaActionPlan(

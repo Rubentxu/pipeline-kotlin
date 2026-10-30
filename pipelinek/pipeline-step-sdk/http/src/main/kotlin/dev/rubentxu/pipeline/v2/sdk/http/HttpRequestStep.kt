@@ -92,9 +92,9 @@ object HttpRequestStep {
             // is the typed access, NOT a second policy check. The runtime's part of
             // the decision happened at prepare-time, when it decided whether to hand
             // out the egress gate at all.
-            val egressGate: NetworkEgressGate = ctx.capabilities.get(NETWORK_EGRESS_CAPABILITY)
-            val transport: HttpTransport = ctx.capabilities.get(HTTP_TRANSPORT_CAPABILITY)
-            val credentials: BasicCredentialSource = ctx.capabilities.get(BASIC_CREDENTIALS_CAPABILITY)
+            val egressGate: NetworkEgressGate = ctx.capabilities.get(NETWORK_EGRESS_CAPABILITY, NetworkEgressGate::class)
+            val transport: HttpTransport = ctx.capabilities.get(HTTP_TRANSPORT_CAPABILITY, HttpTransport::class)
+            val credentials: BasicCredentialSource = ctx.capabilities.get(BASIC_CREDENTIALS_CAPABILITY, BasicCredentialSource::class)
 
             // PURE decision, applied once, here at the Step. Neither the
             // compiler nor the transport resolves a rejection: a blank URL or a

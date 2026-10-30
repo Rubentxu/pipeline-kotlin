@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.domain.step
 /**
  * One source of runtime capabilities, asked to contribute the ones it owns.
  * ## Why a contributor, and why it takes no context
- * A finished `Map<StepCapability, Any>` has to travel somewhere, and every place
+ * A finished `Map<StepCapability, CapabilitySlot>` has to travel somewhere, and every place
  * it travels is a decision about ownership. Parking it on `ShOptions` was tried
  * `ShOptions` carries FACTS and POLICIES for one
  * execution — workspace root, working directory, timeout, sandbox, network
@@ -37,7 +37,16 @@ package dev.rubentxu.pipeline.v2.domain.step
  * the last is how a plugin ends up shadowing a core seam.
 */
 fun interface RuntimeCapabilityContributor {
-    fun capabilities(): Map<StepCapability, Any>
+    /**
+     * The capabilities this contributor owns, each one carrying its value
+     * inside a [CapabilitySlot].
+     *
+     * The slot is what lets the table stay heterogeneous without travelling as
+     * `Any`: a contributor binds a live port, and the slot keeps the type
+     * check at the moment the value is read rather than at the moment it is
+     * bound.
+     */
+    fun capabilities(): Map<StepCapability, CapabilitySlot>
 }
 
 /**
@@ -49,8 +58,8 @@ class CompositeCapabilityContributor(
     private val contributors: List<RuntimeCapabilityContributor>,
 ) : RuntimeCapabilityContributor {
 
-    override fun capabilities(): Map<StepCapability, Any> {
-        val merged = LinkedHashMap<StepCapability, Any>()
+    override fun capabilities(): Map<StepCapability, CapabilitySlot> {
+        val merged = LinkedHashMap<StepCapability, CapabilitySlot>()
         val owner = HashMap<StepCapability, String>()
         for (contributor in contributors) {
             for ((capability, value) in contributor.capabilities()) {

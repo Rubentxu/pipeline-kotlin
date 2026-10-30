@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.http
 
+import dev.rubentxu.pipeline.v2.domain.step.CapabilitySlot
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
@@ -34,6 +35,6 @@ class HttpCapabilityContributor(
      * which `CompositeCapabilityContributor` refuses by design — and rightly: first
      * wins and last wins both let one side silently shadow the other.
 */
-    override fun capabilities(): Map<StepCapability, Any> =
-        mapOf(HTTP_TRANSPORT_CAPABILITY to transport)
+    override fun capabilities(): Map<StepCapability, CapabilitySlot> =
+        mapOf(HTTP_TRANSPORT_CAPABILITY to CapabilitySlot.of(transport))
 }

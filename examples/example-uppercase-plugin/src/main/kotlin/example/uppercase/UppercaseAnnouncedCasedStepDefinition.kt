@@ -62,8 +62,8 @@ object UppercaseAnnouncedCasedStepDefinition : StepDefinition<UppercaseInput, Up
         // Two lookups through the same narrow typed port. The handler is handed values, never the
         // thing that produced them, which is why it cannot tell — and must not care — that one of
         // them came from this very JAR.
-        val table: CaseTable = context.capabilities.get(EXAMPLE_CASE_TABLE_CAPABILITY)
-        val emission = context.capabilities.get<PluginEventEmission>(PLUGIN_EVENT_EMISSION_CAPABILITY)
+        val table: CaseTable = context.capabilities.get(EXAMPLE_CASE_TABLE_CAPABILITY, CaseTable::class)
+        val emission = context.capabilities.get(PLUGIN_EVENT_EMISSION_CAPABILITY, PluginEventEmission::class)
 
         val cased = table.apply(input.text)
         // The outcome is not inspected, for the same reason the observed Step does not inspect it:

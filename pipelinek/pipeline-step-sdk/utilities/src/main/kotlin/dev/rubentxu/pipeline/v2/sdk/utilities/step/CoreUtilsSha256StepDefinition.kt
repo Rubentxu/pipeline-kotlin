@@ -74,7 +74,7 @@ class CoreUtilsSha256StepDefinition : StepDefinition<Sha256Input, Sha256Output> 
             )
         }
 
-        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
         val target: Path = WorkspacePathAnchors.currentDirectory(
             location = location,
             stepKey = "core-utils.sha256",

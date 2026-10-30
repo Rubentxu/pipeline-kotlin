@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import kotlin.reflect.KClass
 
 /**
  * The fallback route of `core.waitUntil` REFUSES instead of reporting a verdict it did not reach.
@@ -157,13 +158,16 @@ class CoreWaitUntilStepTest {
 
         override fun available(): Set<StepCapability> = availableCapabilities
 
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : Any> get(key: StepCapability): T {
+        override fun <T : Any> get(key: StepCapability, type: KClass<T>): T {
             requested += key
             require(key in availableCapabilities) {
                 "capability unavailable to this invocation: $key"
             }
-            return sink as T
+            require(type.isInstance(sink)) {
+                "capability $key is not of the declared type: expected ${type.simpleName}, " +
+                    "found ${sink::class.simpleName}"
+            }
+            return type.java.cast(sink)
         }
     }
 

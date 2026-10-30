@@ -1,5 +1,6 @@
 package example.uppercase
 
+import dev.rubentxu.pipeline.v2.domain.step.CapabilitySlot
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
@@ -52,8 +53,8 @@ class CaseTable(private val rules: Map<Char, String>) {
 */
 class UppercaseCaseTableContributor : RuntimeCapabilityContributor {
 
-    override fun capabilities(): Map<StepCapability, Any> = mapOf(
-        EXAMPLE_CASE_TABLE_CAPABILITY to DEFAULT_TABLE,
+    override fun capabilities(): Map<StepCapability, CapabilitySlot> = mapOf(
+        EXAMPLE_CASE_TABLE_CAPABILITY to CapabilitySlot.of(DEFAULT_TABLE),
     )
 
     private companion object {

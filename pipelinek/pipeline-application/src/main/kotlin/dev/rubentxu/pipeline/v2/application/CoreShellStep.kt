@@ -415,7 +415,7 @@ object CoreShellStep {
 */
     private val capabilityRoutedHandler: StepHandler<CoreShellInput, CoreShellOutput> =
         StepHandler { input, ctx ->
-            val ops: ShellOperations = ctx.capabilities.get(SHELL_OPERATIONS_CAPABILITY)
+            val ops: ShellOperations = ctx.capabilities.get(SHELL_OPERATIONS_CAPABILITY, ShellOperations::class)
             val result: ShellInvocationResult = ops.invoke(
                 command = input.command,
                 runId = ctx.runId,

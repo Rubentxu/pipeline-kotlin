@@ -155,7 +155,7 @@ object CoreDeleteDirStep {
 */
     private val capabilityRoutedHandler: StepHandler<DeleteDirInput, DeleteDirOutput> =
         StepHandler { input, ctx ->
-            val ops: DeleteDirOperations = ctx.capabilities.get(DELETE_DIR_OPERATIONS_CAPABILITY)
+            val ops: DeleteDirOperations = ctx.capabilities.get(DELETE_DIR_OPERATIONS_CAPABILITY, DeleteDirOperations::class)
             val result = ops.delete(input)
             DeleteDirOutput(
                 path = result.path,

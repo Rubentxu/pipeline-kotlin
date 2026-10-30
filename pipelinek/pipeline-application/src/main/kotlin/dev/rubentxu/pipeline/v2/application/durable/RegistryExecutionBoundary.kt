@@ -1,15 +1,12 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
-import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
-import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -42,87 +39,34 @@ import kotlinx.coroutines.CancellationException
 object RegistryExecutionBoundary {
 
     /**
-     * Creates a [CommonExecutionBoundary] that executes registry Steps, with optional
-     * [MilestoneStateStore] support for milestone Steps.
-     * @param milestoneStateStore Optional store for milestone ordinal state. When provided,
-     *   the MILESTONE_OPERATIONS_CAPABILITY is populated for core.milestone execution.
-     *   Always non-null in production; nullable for test/adapter flexibility.
-*/
-    fun adapt(milestoneStateStore: MilestoneStateStore?): CommonExecutionBoundary =
-        adapt(
-            milestoneStateStore = milestoneStateStore,
-            artifactIndex = null,
-        )
-
-    /**
-     * Per-run artifact index threaded
-     * into the registry boundary's capability bridge. The same instance
-     * is shared between the producer (core.archiveArtifacts) and the
-     * consumer (core.artifact.query). When null the capability stays
-     * unexposed and both Steps fail closed at registry-prepare-time.
-     * The EXECUTE-time capability access must be built from the same
-     * [RuntimeCapabilityContributor] the PREPARE-time admission used. It was not, and
-     * the effect was that every plugin Step declaring a contributor-provided capability
-     * — `http.transport`, `credentials.basic` — was ADMITTED and then threw
-     * `EngineInvariantViolation` on execute. `http.request` could not run at all.
-     * The gap was invisible to 's own proof because that proof asserted the
-     * capability was *available* from a hand-built access; nothing ran a Step through
-     * this boundary. A capability nobody can reach is not a capability, and the
-     * honest test for one is executing.
-     * @param milestoneStateStore Optional store for milestone ordinal state. When provided,
-     *   the MILESTONE_OPERATIONS_CAPABILITY is populated for core.milestone execution.
-     *   Always non-null in production; nullable for test/adapter flexibility.
-     * @param artifactIndex Optional per-run ArtifactIndexCapability. Same lifetime as the run.
-     *   When provided, ARTIFACT_INDEX_CAPABILITY is exposed to both core.archiveArtifacts
-     *   and core.artifact.query.
-     * @param capabilityContributor The run's plugin capability contributors. Same value
-     *   admission saw. When null, no contributor-provided capability is exposed here and
-     *   any Step declaring one fails closed at the execute-time re-check — which is the
-     *   correct direction for a missing capability, but it is NOT a substitute for
-     *   production passing the real one.
-*/
-    fun adapt(
-        milestoneStateStore: MilestoneStateStore?,
-        artifactIndex: ArtifactIndexCapability?,
-        capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
-    ): CommonExecutionBoundary =
+     * Creates a [CommonExecutionBoundary] that executes registry Steps over the
+     * capabilities [bindings] names.
+     *
+     * The collaborator set is not spelled out here: it is held by
+     * [CanonicalCapabilityBindings], which the caller composes once and shares
+     * with the preparation that admitted the Step. That is what makes the
+     * EXECUTE-time table the SAME table admission saw.
+    */
+    fun adapt(capabilityBindings: CanonicalCapabilityBindings): CommonExecutionBoundary =
         CommonExecutionBoundary { prepared, context ->
-            coexecute(prepared, context) { ctx ->
-                CanonicalRuntimeCapabilityAccess(
-                    ctx,
-                    milestoneStateStore = milestoneStateStore,
-                    artifactIndex = artifactIndex,
-                    capabilityContributor = capabilityContributor,
-                )
-            }
+            coexecute(prepared, context, capabilityBindings)
         }
 
     /**
      * Executes a [PreparedRegistryExecution] and returns both the closed
      * [dev.rubentxu.pipeline.v2.domain.StepOutcome] AND the encoded typed `O` (or `null` if the
      * handler returned `Unit`, threw, or surfaced a Failure).
-*/
+    */
     @Suppress("UNCHECKED_CAST")
     suspend fun coexecute(
         prepared: PreparedRegistryExecution,
         context: CanonicalRuntimeContext,
-    ): CommonExecutionResult = coexecute(prepared, context) { CanonicalRuntimeCapabilityAccess(context) }
-
-    /**
-     * Overload with an explicit capability-bridge factory. Production callers use the
-     * canonical bridge; harnesses that substitute OBSERVATION sources (e.g. a synthetic
-     * platform) supply a factory returning a bridge with the same fail-closed contract.
-*/
-    @Suppress("UNCHECKED_CAST")
-    suspend fun coexecute(
-        prepared: PreparedRegistryExecution,
-        context: CanonicalRuntimeContext,
-        capabilityAccessFactory: (CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess,
+        capabilityBindings: CanonicalCapabilityBindings,
     ): CommonExecutionResult {
         // Erasure boundary: the concrete payload type lives behind the codec / in the prepared input.
         val definition = prepared.definition as StepDefinition<Any, Any>
         val contract = definition.contract
-        val access = capabilityAccessFactory(context)
+        val access = capabilityBindings.access(context)
 
         // Hard fail-closed re-check against the ACTUAL runtime access, immediately before the handler.
         // Admission is authoritative in prepare; reaching execute already implies capabilities were

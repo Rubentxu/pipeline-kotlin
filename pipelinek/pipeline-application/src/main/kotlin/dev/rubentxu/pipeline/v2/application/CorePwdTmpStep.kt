@@ -57,7 +57,7 @@ typealias PwdTmpOutput = PwdOutput
  * Concretely, the handler is:
  * ```kotlin
  * val ops: TemporaryWorkspaceOperations =
- *     ctx.capabilities.get(TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY)
+ *     ctx.capabilities.get(TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY, TemporaryWorkspaceOperations::class)
  * val result = ops.resolveOrCreate
  * PwdTmpOutput(path = result.path)
  * ```
@@ -164,7 +164,7 @@ object CorePwdTmpStep {
     private val capabilityRoutedHandler: StepHandler<PwdTmpInput, PwdTmpOutput> =
         StepHandler { _, ctx ->
             val ops: TemporaryWorkspaceOperations =
-                ctx.capabilities.get(TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY)
+                ctx.capabilities.get(TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY, TemporaryWorkspaceOperations::class)
             val result: TempWorkspaceResult = ops.resolveOrCreate()
             PwdTmpOutput(path = result.path)
         }

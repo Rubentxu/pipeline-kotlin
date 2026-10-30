@@ -164,7 +164,7 @@ object CorePublishHtmlStep {
 
     private val capabilityRoutedHandler: StepHandler<PublishHtmlInput, TypedStepOutput> =
         StepHandler { input, ctx ->
-            val ops: PublishHtmlOperations = ctx.capabilities.get(PUBLISH_HTML_OPERATIONS_CAPABILITY)
+            val ops: PublishHtmlOperations = ctx.capabilities.get(PUBLISH_HTML_OPERATIONS_CAPABILITY, PublishHtmlOperations::class)
             when (val result = ops.publish(input)) {
                 is PublishHtmlPublished -> PublishHtmlOutput(
                     publishedCount = result.entries.size,

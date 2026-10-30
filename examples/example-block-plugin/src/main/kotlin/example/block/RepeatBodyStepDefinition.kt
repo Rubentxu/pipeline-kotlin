@@ -163,7 +163,7 @@ object RepeatBodyStepDefinition : StepDefinition<RepeatInput, RepeatOutput> {
     )
 
     override val handler = StepHandler<RepeatInput, RepeatOutput> { input, context ->
-        val continuation: BodyContinuation = context.capabilities.get(BODY_CONTINUATION_CAPABILITY)
+        val continuation: BodyContinuation = context.capabilities.get(BODY_CONTINUATION_CAPABILITY, BodyContinuation::class)
         var succeeded = 0
         var attempted = 0
         for (iteration in 1..input.times) {

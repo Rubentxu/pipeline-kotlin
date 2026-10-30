@@ -128,8 +128,8 @@ object CoreIsUnixStep {
 
     private val capabilityRoutedHandler: StepHandler<IsUnixInput, IsUnixOutput> =
         StepHandler { _, ctx ->
-            val platform: PlatformIdentity = ctx.capabilities.get(PLATFORM_IDENTITY_CAPABILITY)
-            val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
+            val platform: PlatformIdentity = ctx.capabilities.get(PLATFORM_IDENTITY_CAPABILITY, PlatformIdentity::class)
+            val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY, EventSink::class)
             val isUnix = classify(platform.osName)
             sink.append(
                 UnixDetected(

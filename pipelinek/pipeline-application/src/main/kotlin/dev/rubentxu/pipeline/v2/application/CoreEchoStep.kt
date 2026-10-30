@@ -86,7 +86,7 @@ object CoreEchoStep {
         )
 
         override val handler: StepHandler<EchoInput, String> = StepHandler { input, ctx ->
-            val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
+            val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY, EventSink::class)
             echo(StepContext(runId = ctx.runId.value), input.text, sink, ctx.stepIndex)
         }
     }

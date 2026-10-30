@@ -57,7 +57,7 @@ class CoreUtilsWriteJsonStepDefinition : StepDefinition<WriteJsonInput, WriteJso
     )
 
     override val handler = StepHandler<WriteJsonInput, WriteJsonOutput> { input, ctx ->
-        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
 
         val target: Path = WorkspacePathAnchors.currentDirectory(
             location = location,

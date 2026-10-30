@@ -66,7 +66,7 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
 
     override val handler: StepHandler<UnzipInput, UnzipOutput> =
         StepHandler { input, ctx ->
-            val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+            val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
 
             val archive = WorkspacePathAnchors.currentDirectory(
                 location = location,

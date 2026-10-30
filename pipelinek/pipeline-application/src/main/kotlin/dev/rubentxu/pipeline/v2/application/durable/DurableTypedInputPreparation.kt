@@ -1,8 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.StepNode
-import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 
@@ -15,16 +13,15 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 */
 internal class DurableTypedInputPreparation(
     private val stepRegistry: StepRegistry,
-    private val milestoneStateStore: MilestoneStateStore,
-    private val artifactIndex: ArtifactIndexCapability?,
     /**
-     * H2b: the SAME contributor EXECUTE will consult.
-     * Without this, PREPARE built its own capability view and EXECUTE built
-     * another, and a Step could pass admission and then find its capability
-     * missing. One contributor, two moments, one answer.
+     * The collaborator set the capability table is built from, shared with the
+     * execution boundary.
+     *
+     * One holder, two moments, one answer: PREPARE asks it for the available
+     * capabilities and EXECUTE asks it for the same table, so a Step can never
+     * pass admission against one table and run against another.
      */
-    private val capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor =
-        dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
+    private val capabilityBindings: CanonicalCapabilityBindings,
 ) {
 
     /** Closed outcome of typed preparation; the coordinator interprets each case. */
@@ -38,12 +35,7 @@ internal class DurableTypedInputPreparation(
             registry = stepRegistry,
             key = step.pluginStepId,
             encodedInput = EncodedStepValue(step.payload.encoded),
-            availableCapabilities = CanonicalRuntimeCapabilityAccess(
-                runtime,
-                milestoneStateStore = milestoneStateStore,
-                artifactIndex = artifactIndex,
-                capabilityContributor = capabilityContributor,
-            ).available(),
+            availableCapabilities = capabilityBindings.access(runtime).available(),
         )
         return when (admission) {
             is ExecutionPreparation.Rejected -> TypedPreparation.Rejected(admission.reason)

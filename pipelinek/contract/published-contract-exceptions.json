@@ -892,6 +892,38 @@
         "dev/rubentxu/pipeline/v2/events/shape/TypedEvent"
       ],
       "evidence": "Measured on the published SDK artifacts of the releases v0.62.0..v0.90.0: every one of them publishes these removals, and the candidate's published surface does not."
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "8314fb04a4ea606a8d217befda800738e24a9421",
+      "surface": "dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess.get",
+      "change": "the accessor of the capability table changes its signature: the erased one-argument form get(String):Object disappears from the published ABI and the two-argument form get(String, KClass):Object appears in its place. A consumer that linked the erased descriptor gets NoSuchMethodError, and a consumer that called it from Kotlin gets an arity error at compile time",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "BINARY and SOURCE, and the break has a NAME. The erased accessor published the type of the value it handed over and enforced nothing at runtime: the type parameter was erased, so the only check that ever ran was the null check. A value of another shape was therefore delivered as if it were the one that was asked for, and the mismatch surfaced later, inside the consumer, as a cast failure - the wrong reason, in the wrong place.",
+        "What replaced it is not a second authority over the table: the shape is declared at the point of reading, the access checks it once, and a refusal that is not the declared shape carries the facts of the mismatch - the expected type and the type that was actually provisioned - instead of a cast error. The refusal vocabulary is closed: absent and incompatible, with the capability key in both.",
+        "The observable behaviour of the product does not change. The capability that is absent still fails with the message it has always failed with, and the capability that is present is still delivered as the very instance the runtime context carries. The consumers were already declaring the type they wanted; what changed is that the access now checks it instead of trusting the consumer to.",
+        "Who was reachable, measured rather than assumed: the accessor lives in the domain module, whose declared maturity is EXPERIMENTAL, and every stable release measured here publishes it. The other modules this change touches - the application, the step SDK, the credentials executor and the example plugins - are not published artifacts, so their migration crosses no published surface.",
+        "The alternative considered and rejected: keeping the erased accessor and adding the checked one beside it. It was rejected because it would leave two ways of reading the same table, and the erased one would keep handing over a value of the wrong shape - a second, weaker authority over the same capabilities, which is what this product forbids.",
+        "Not recorded here: the composition change that gives the capability table a single owner, and the migration of every consumer to the declared form. Both are internal to modules that are not published; only the accessor crosses the published surface."
+      ],
+      "removal_boundary": "the accessor may not return to a form that hands over a value without declaring the shape it expects, and the capability table may not go back to carrying untyped values; absent and incompatible are the only two ways the access may say no, and neither may be replaced by a cast failure raised somewhere else",
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.47.0",
+        "0.48.0",
+        "0.56.0",
+        "0.57.0",
+        "0.61.0",
+        "0.62.0",
+        "0.75.0",
+        "0.90.0",
+        "0.91.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/domain/step/StepCapabilityAccess#get-b1cZ3xE(Ljava/lang/String;)Ljava/lang/Object;"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.56.0, v0.61.0, v0.62.0, v0.75.0, v0.90.0 and v0.91.0 - each sdk.zip verified against the SHA256SUMS of its own release, and each pipeline-domain jar inspected with javap: every one of them publishes StepCapabilityAccess.get(String):Object, and the candidate's published surface does not. The same signature is present in the locally resolved pipeline-domain artifacts 0.47.0, 0.48.0 and 0.57.0. The releases of the same train that exist only as candidates carry a version suffix of their own and were not measured; the approval covers the stable versions it names, which are the ones a consumer resolves."
     }
   ]
 }

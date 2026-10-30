@@ -29,8 +29,7 @@ import java.nio.file.StandardCopyOption
  * {controlDirRoot}/retry-control/{sha256(controlOpId)}.attempts.json
  * </pre>
  * ## Single-writer law
- * No other component writes to the control file. The dispatch loop in
- * [dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator]
+ * No other component writes to the control file. `RetryEngine`
  * is the only caller of [beginAttempt] and [updateStatus]. Child executors,
  * step handlers, [dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShExecution],
  * and event projectors MUST NOT mutate the control file.

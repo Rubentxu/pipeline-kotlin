@@ -58,9 +58,10 @@ object ShOptionsExecutionLocationAdapter {
      * known to be PipelineK. It used to be the other way round — `null` became
      * `Managed`, the permitting case — and the KDoc above called that the
      * "fail-closed choice for destruction" when it was the fail-OPEN one. The
-     * permission was reachable with an unstated owner: `ShOptions.EMPTY`, the
-     * default of `CanonicalDurableRunCoordinator`, states no owner and points at
-     * a shared temp directory.
+     * permission was reachable with an unstated owner: `ShOptions.EMPTY` states
+     * no owner and points at a shared temp directory, and the coordinator used to
+     * be able to fall back to it. The transport is now derived from the run's
+     * policy, which always states an owner, so that fallback is gone.
 */
     fun from(
         workspaceRoot: Path?,

@@ -1,18 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.domain.step.CompositeCapabilityContributor
-import dev.rubentxu.pipeline.v2.domain.step.AllowAll
-import dev.rubentxu.pipeline.v2.domain.step.DenyAll
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
-import dev.rubentxu.pipeline.v2.application.durable.RunOutputRetention
 import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter
-import dev.rubentxu.pipeline.v2.output.RetainUntil
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import kotlinx.coroutines.runBlocking
 import dev.rubentxu.pipeline.v2.events.durable.EventRecordReadPortStoreAdapter
 import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
@@ -61,110 +55,60 @@ import kotlinx.serialization.json.Json
  * This function is `internal` rather than `private` only because Kotlin file
  * privacy would prevent the two run worlds from calling it. No public API or
  * CLI contract is introduced.
+ *
+ * ## What the coordinator no longer receives
+ *
+ * The coordinator used to take twenty-nine parameters, and this function was the
+ * place that spelled them out one by one. Most of them are now DERIVED inside the
+ * coordinator, from the three groups the request already carries:
+ *
+ * ```text
+ * state       the durable spine (journal, cursor, sink, wakeups, saga)
+ * policy      what the run was given (clock, replay policy, control root, sandbox, ...)
+ * composition what the run resolves against (steps, directives, events, capabilities)
+ * ```
+ *
+ * Three decisions moved out of THIS file and into the coordinator, and that is the
+ * point of the cut — they were values a caller could contradict:
+ *
+ *  - the **shell transport** is a consequence of the policy (the workspace root, the
+ *    sandbox profile, the network egress and the workspace ownership all follow from
+ *    facts the policy already holds), so it is derived and not passed;
+ *  - the **output retention** is a PRODUCT decision (`ExplicitReleaseOnly`), so it is
+ *    a value the coordinator owns rather than a knob this file turns;
+ *  - the **capability set** is composed from the composition's plugin contributions
+ *    and the policy's credential provider, INSIDE the coordinator, so that the ONE
+ *    instance is the one the run's admission, execution and directive seam consult.
+ *
+ * What is left here are the facts this file is the authority for: the credential
+ * seam, the divergence policy, the gate's environment, the two durable control
+ * journals (whose constructors create directories, so they cannot be derived
+ * without writing to disk at composition time), and the scripted seam — which is
+ * `null` here because the scripted frontend runs on ITS OWN runner. That surface
+ * composes the same durable authorities, but it adapts its execution boundary
+ * WITHOUT the coordinator's capability contributor, so the two surfaces do not
+ * carry the same capability set. This file states that difference instead of
+ * hiding it behind a claim of symmetry.
  */
 internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlocking {
     val state = request.state
     val policy = request.policy
     CanonicalDurableRunCoordinator(
-        // The ONE registry this run resolves plugin event kinds against, on the write
-        // side and on the read-back side. Resolved in PluginComposition, before this
-        // function was called, and already cross-checked against what the plugins emit.
-        eventRegistry = request.composition.events,
-        wakeups = state.outputWakeups,
-        // ONE composite, consulted by both admission and execution.
-        //
-        // The plugin side comes from the composition, resolved under the same classloader
-        // swap as the steps these capabilities back. The credential side stays here because it is
-        // per-run state — it wraps the store THIS invocation opened, so it cannot come from
-        // classpath discovery. The two never collide: a plugin deliberately contributes only its
-        // own transport.
-        capabilityContributor = CompositeCapabilityContributor(
-            request.composition.capabilityContributors +
-                dev.rubentxu.pipeline.v2.credentials.executor.BasicCredentialsCapabilityContributor(
-                    policy.credentialProvider,
-                ),
-        ),
-        journal = state.journal,
-        cursorStore = state.cursorStore,
-        clock = policy.clock,
-        effectReplayPolicy = policy.effectReplayPolicy,
-        eventSink = state.eventSink,
+        // The run's durable spine, what it was given, and what it resolves against.
+        // The three groups are the whole request: the coordinator derives the rest.
+        state = state,
+        policy = policy,
+        composition = request.composition,
+        // The credential seam. The adapter over the executor THIS invocation opened;
+        // the store it wraps is per-run state, so it cannot come from the composition.
         credentialScopePort = WithCredentialsExecutorScopeAdapter(
             policy.withCredentialsExecutor,
             state.eventSink,
         ),
-        controlDirRoot = policy.controlDirRoot,
-        workspaceBase = policy.workspace.base,
-        shOptions = ShOptions(
-            // With --workspace <dir>, the project's own directory IS the
-            // workspace — stages share it (Jenkins-familiar semantics). Adding
-            // .resolve("workspace") would point to a subdirectory of the project root
-            // (typically nonexistent), and every `sh` step would fail with
-            // "No such file or directory" because gradlew/mvn/node live in
-            // the project root itself. Without --workspace we keep the legacy
-            // per-stage layout.
-            workspaceRoot = policy.workspace.base ?: policy.controlDirRoot.resolve("workspace"),
-            captureStdout = false,
-            timeoutMs = null,
-            env = emptyMap(),
-            sandbox = SandboxConfigResolver.resolve(policy.sandboxProfile),
-            // Carry the ownership the CLI decided into the runtime transport, so the
-            // destructive guard reads the real owner of this root instead of
-            // re-deriving `Managed`.
-            workspaceOwnership = policy.workspace.ownership,
-            // Egress is DENIED unless the operator asked for it with --allow-network.
-            // The bridge turns the operator's request into the generic NETWORK_EGRESS_CAPABILITY,
-            // and a step that needs the network declares it — so the default run
-            // cannot reach one. The two ends are gates, not verdicts: `--allow-network`
-            // is [AllowAll] and the default is [DenyAll], which are the SAME interface as a
-            // future per-destination allowlist — so adding one later is a new value here
-            // and not a new code path through the runtime, the step, or the admission check.
-            networkEgress = if (policy.allowNetwork) AllowAll else DenyAll,
-        ),
-        // Core steps first, then external plugin contributions, frozen by PluginComposition
-        // before this call.
-        stepRegistry = request.composition.steps,
-        secretPatternRegistry = policy.secretPatternRegistry,
-        // Forwarded so the dispatch can build the invocation-bound intent port.
-        sagaBinding = state.sagaBinding,
-        // Production wire-up. The retry aggregate is reconciled against the on-disk
-        // control journal so a `run` invocation with the same --db and --control-root
-        // reuses the prior aggregate terminal state and does not re-launch child bodies
-        // that already succeeded or failed terminally.
-        retryControlJournal = FileBasedRetryControlJournal(policy.controlDirRoot),
-        // Durable waitUntil control journal. Matches the retryControlJournal pattern —
-        // persisted before child effects, read on plan(), authoritative over the
-        // aggregate state on replay.
-        waitUntilControlJournal = FileBasedWaitUntilControlJournal(policy.controlDirRoot),
-        // Per-run artifact index for the core.archiveArtifacts -> core.artifact.query
-        // bridge. Constructed fresh per run; the same instance is shared between the
-        // producer (archive with name=...) and the consumer (artifactQuery) within the run.
-        artifactIndex = dev.rubentxu.pipeline.v2.application.durable.ArtifactIndexAdapter.build(),
-        // The run's terminal state is the ONLY thing that can authorise discarding
-        // its output, and the runtime is the authority that knows it. Declared here — ONCE, where
-        // every other composition decision is declared — so the policy is a value a reviewer can
-        // read rather than a branch somebody can find at the call site.
-        //
-        // `ExplicitReleaseOnly`, and the reason is the product's own console: `pipeline console
-        // --control-dir` reads the transcript of a run that ALREADY FINISHED, so a
-        // `RunTerminalPlus` here would delete the very output the product exists to serve. That is
-        // a product decision, and it has a stated consequence: nothing releases automatically, and
-        // the operator-release surface that would exercise `OperatorReleased` is not built yet.
-        //
-        // The store arrives as a SUPPLIER, so this policy that retains never opens (and never
-        // recovers) the Output Plane for the release it will not perform.
-        outputRetention = RunOutputRetention(
-            retention = { OutputPlaneProvider.storeFor(policy.controlDirRoot) },
-            policy = RetainUntil.ExplicitReleaseOnly,
-        ),
-        // Resolved in PluginComposition, under the same classloader swap that produced
-        // the step registry and the event registry, and frozen before this call.
-        //
-        // `core.when` and `core.agent` are CORE definitions that enter through the
-        // SAME open registry as any vendor directive, which is what keeps "open by key"
-        // honest. If either had needed its own registration path, the seam would
-        // not be open.
-        directiveRegistry = request.composition.directives,
+        // The divergence POLICY, as a port. The coordinator declares the interface and
+        // its collaborator declares it too, so the implementation is chosen HERE and
+        // reaches the run without a downcast that would refuse every other policy.
+        divergenceDetector = StrictFingerprintDivergenceDetector(),
         // Gates read the environment the STAGE actually declares, plus
         // the process environment for names the stage names explicitly.
         //
@@ -192,6 +136,21 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
                 host = System.getenv(),
             )
         },
+        // Production wire-up. The retry aggregate is reconciled against the on-disk
+        // control journal so a `run` invocation with the same --db and --control-root
+        // reuses the prior aggregate terminal state and does not re-launch child bodies
+        // that already succeeded or failed terminally.
+        retryControlJournal = FileBasedRetryControlJournal(policy.controlDirRoot),
+        // Durable waitUntil control journal. Matches the retryControlJournal pattern —
+        // persisted before child effects, read on plan(), authoritative over the
+        // aggregate state on replay.
+        waitUntilControlJournal = FileBasedWaitUntilControlJournal(policy.controlDirRoot),
+        // The scripted seam is NOT bound here, and the null is a fact rather than an
+        // omission: the scripted frontend (ScriptedFrontendRunner) composes the same
+        // durable authorities on its own runner, and no canonical run binds it. A run
+        // that reaches a scripted stage without this seam says so instead of quietly
+        // executing a stage that did nothing.
+        scriptedStageExecution = null,
     ).run(request.pipeline, request.runId)
 }
 

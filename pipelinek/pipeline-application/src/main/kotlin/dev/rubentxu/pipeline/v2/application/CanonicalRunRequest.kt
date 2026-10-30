@@ -59,11 +59,22 @@ internal data class CanonicalRunState(
  * Everything a run was GIVEN: the ports it may use, the permissions it holds
  * and the places it writes to.
  *
- * Grouped because detekt allows ten constructor parameters and a run needs
- * seventeen facts. The grouping is by seam, not by convenience: each field
- * below answers a different question ("when is it now?", "may it reach the
- * network?", "where does it keep its control state?"), so a reviewer can read
- * one group without holding the others in mind.
+ * Grouped by seam, not by convenience: each field below answers a different
+ * question ("when is it now?", "may it reach the network?", "where does it keep
+ * its control state?"), so a reviewer can read one group without holding the
+ * others in mind.
+ *
+ * ## What this group does NOT decide
+ *
+ * Two facts of a run are CONSEQUENCES of this group, and they are derived rather than
+ * passed, because a caller could contradict either of them:
+ *
+ * - the **shell transport** — the workspace root, the sandbox profile, the network
+ *   egress and the workspace ownership all follow from fields already here;
+ * - the **output retention** — a product decision, not a caller's.
+ *
+ * Both are derived by [dev.rubentxu.pipeline.v2.application.durable.canonicalShellOptions]
+ * and [dev.rubentxu.pipeline.v2.application.durable.canonicalOutputRetention].
  */
 internal data class CanonicalRunPolicy(
     val clock: Clock,

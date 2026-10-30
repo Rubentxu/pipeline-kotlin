@@ -328,9 +328,8 @@ object DslCompiledPipelineCompiler {
      * up from `StepDescriptorRegistry.standard` and the runtime `ContextOverlay` pushed
      * by the coordinator when dispatching the block.
      * BlockStepNode is the canonical representation
-     * for all block-type steps. The coordinator's [CanonicalDurableRunCoordinator.dispatchBody]
-     * handles the body children with proper per-child journal rows and context-stack
-     * restoration.
+     * for all block-type steps. `BodyExecutionEngine` handles the body children with
+     * proper per-child journal rows and context-stack restoration.
      */
     /**
      * The same node, addressed by [slot].

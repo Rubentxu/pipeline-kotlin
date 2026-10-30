@@ -31,11 +31,12 @@ import dev.rubentxu.pipeline.v2.domain.durable.ParallelDecision.Start
  *    dispatcher) are the runner's concern. The plan names the branches; the
  *    runner chooses HOW to launch them.
  * ## Migration note (post)
- * The plan port defined here is the seam the canonical coordinator will
- * consume once it migrates its inline `runParallelStage` loop behind an
- * Engine (this is part of, InvocationEngine seam). Until then
- * the canonical `CanonicalDurableRunCoordinator.runParallelStage` continues
- * to inline the branch dispatch and join, and this port is a pure contract
+ * The plan port defined here is the seam the durable path will consume once
+ * it routes its branch decision through this port (this is part of the
+ * InvocationEngine seam). The parallel dispatch and join no longer live in
+ * `CanonicalDurableRunCoordinator` — the coordinator exposes a single `run`
+ * entry point and delegates the aggregate to `ParallelStageEngine` — but
+ * this port has NO production consumer yet: it remains a pure contract
  * test target.
 */
 fun interface BranchInvoker {

@@ -17,23 +17,23 @@ import kotlinx.coroutines.runBlocking
  * this adapter and can re-enter the canonical body machinery by calling [invoke] with a
  * previously-issued [BodyRef].
  * ## Why this exists
- * Before the body execution machinery ([CanonicalDurableRunCoordinator.dispatchBody])
- * dispatched children directly via the canonical shared loop. The [BodyInvoker] port was
+ * Before the body execution machinery was extracted into [BodyExecutionEngine], the
+ * coordinator dispatched children directly via the canonical shared loop. The [BodyInvoker] port was
  * declared but never bound to a real implementation: registry-driven block-step handlers
  * had no way to re-enter the engine. This adapter is the engine-side implementation:
- * - `open(bodyRef, runner)` is called by the canonical coordinator when it enters a body,
+ * - `open(bodyRef, runner)` is called by [BodyExecutionEngine] when it enters a body,
  *   registering a `BodyRef -> suspend () -> StepOutcome` mapping for the body's lifetime.
  * - `invoke(bodyRef, ctx)` is called by a registered handler when it wants to execute
  *   its body. The adapter looks up the runner, invokes it, and wraps the typed outcome
  *   in the closed [BodyOutcome] algebra.
  * ## Single-shared-path contract
  * The mapping from [BodyRef] to body-children is populated by the **same**
- * [CanonicalDurableRunCoordinator.dispatchBody] function that dispatches the legacy
+ * [BodyExecutionEngine] function that dispatches the legacy
  * executable body Steps. This adapter never iterates body children itself,
- * so the durable coordinator's body-child loop count remains exactly one.
+ * so the durable engine's body-child loop count remains exactly one.
  * ## Lifetime
  * The adapter is per-run. A fresh adapter starts with an empty `openBodies`. The
- * canonical coordinator creates one in its default constructor and closes every body it
+ * coordinator creates one per run and the body engine closes every body it
  * opened in a `finally` clause, so the adapter's map stays bounded by the depth of
  * nested bodies. The adapter is not a global service-locator and is not thread-safe
  * across runs.
@@ -42,11 +42,11 @@ class CanonicalBodyInvokerAdapter : BodyInvoker {
 
     /**
      * BodyRef -> body runner for bodies currently open in this coordinator run.
-     * Populated by [open] from [CanonicalDurableRunCoordinator.dispatchBody], drained by
+     * Populated by [open] from [BodyExecutionEngine], drained by
      * [close]. The runner receives the [BodyInvocationContext] the caller hands to
      * [invoke], so the same BodyRef can re-execute the body under different attempt /
      * patch / decorator contexts (retry attempt, waitUntil poll, parallel branch) without
-     * the coordinator having to open a new BodyRef per context. Per-attempt identity
+     * the engine having to open a new BodyRef per context. Per-attempt identity
      * reaches the runner through `context.attempt`, scope patches through `context.patch`,
      * and non-context decorations (timestamps) through `context.decorator`.
      * The runner signature evolves from
@@ -58,11 +58,11 @@ class CanonicalBodyInvokerAdapter : BodyInvoker {
 
     /**
      * Registers [runner] under [bodyRef] for the lifetime of the body.
-     * Called from [CanonicalDurableRunCoordinator.dispatchBody] when entering a body
+     * Called from [BodyExecutionEngine] when entering a body
      * scope. The [runner] closure receives the [BodyInvocationContext] supplied by the
      * engine / caller at invocation time, so a single BodyRef can re-execute the body
      * under different attempt/patch/decorator contexts. Duplicate registration of the same
-     * [bodyRef] is a programmer defect (the coordinator's finally clause must have run)
+     * [bodyRef] is a programmer defect (the engine's finally clause must have run)
      * and is silently replaced; the earlier entry's runner is leaked but is no longer
      * reachable through [invoke].
 */
@@ -72,8 +72,8 @@ class CanonicalBodyInvokerAdapter : BodyInvoker {
 
     /**
      * Removes the body registered under [bodyRef].
-     * Called from [CanonicalDurableRunCoordinator.dispatchBody] in its `finally`. The
-     * canonical coordinator uses [open]/[close] as a structured bracket around the
+     * Called from [BodyExecutionEngine] in its `finally`. The
+     * body engine uses [open]/[close] as a structured bracket around the
      * shared body-child loop call, so the map never grows beyond the nesting depth.
 */
     fun close(bodyRef: BodyRef) {

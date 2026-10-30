@@ -1,9 +1,13 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
+import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
+import dev.rubentxu.pipeline.v2.application.CanonicalRunState
+import dev.rubentxu.pipeline.v2.application.PluginComposition
+import dev.rubentxu.pipeline.v2.application.RuntimeWorkspaceTransport
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceException
@@ -13,10 +17,14 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
+import dev.rubentxu.pipeline.v2.domain.directive.GateContext
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
 import dev.rubentxu.pipeline.v2.events.NullEventSink
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemorySagaObligationStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -32,23 +40,24 @@ import java.time.Instant
  *
  * A caller that hands [CanonicalDurableRunCoordinator] a [DivergenceDetector] gets THAT detector
  * composed into the run. The coordinator's constructor declares the interface, and so does its
- * collaborator ([DurableInvocationResolver]), so the only thing standing between the two is a
- * downcast in the coordinator's own body:
+ * collaborator ([DurableInvocationResolver]), so the only thing that could stand between the two
+ * is a downcast in the coordinator's own body:
  *
  * ```kotlin
  * divergenceDetector = divergenceDetector as StrictFingerprintDivergenceDetector
  * ```
  *
- * That cast is the defect. It narrows a declared port to ONE implementation, so every detector
- * that is not [StrictFingerprintDivergenceDetector] dies with a [ClassCastException] at
- * CONSTRUCTION — before the pipeline has said a single word. The caller cannot choose a different
- * divergence policy, and cannot even find out that the choice was refused: the run never starts.
+ * That cast WAS the defect. It narrowed a declared port to ONE implementation, so every detector
+ * that is not [dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector] died
+ * with a [ClassCastException] at CONSTRUCTION — before the pipeline had said a single word. The
+ * caller could not choose a different divergence policy, and could not even find out that the
+ * choice was refused: the run never started.
  *
  * ## The capacity this serves
  *
  * The durable engine can be composed with a divergence policy other than the strict fingerprint
  * one — a policy that compares something else, or one that a test injects. The parameter says it
- * can. The cast says it cannot, and says it by throwing.
+ * can. A cast would say it cannot, and would say it by throwing.
  *
  * ## Why this instrument
  *
@@ -59,6 +68,11 @@ import java.time.Instant
  * disk, no process, no network and no clock. The control root is a path that does NOT exist: if
  * anything in this composition tried to write there, the row would say so instead of passing
  * unnoticed.
+ *
+ * The composition is now written in the coordinator's CURRENT shape — the three groups (state,
+ * policy, composition) plus the ports it is given — so this row also says that the grouping
+ * accepts a detector that is not the strict one, and that a caller who says nothing about the
+ * divergence policy still gets a complete composition.
  *
  * The second row is the other end of the same port: the resolver consults the detector it was
  * given. It is green before the cut and green after it — it is here to say what the port MEANS
@@ -113,20 +127,48 @@ class DivergenceDetectorPortTest {
      */
     private fun coordinator(detector: DivergenceDetector): CanonicalDurableRunCoordinator =
         CanonicalDurableRunCoordinator(
-            journal = InMemoryOperationJournal(FixedClock),
-            cursorStore = InMemoryReplayCursorStore(FixedClock),
-            clock = FixedClock,
-            effectReplayPolicy = DefaultEffectReplayPolicy(),
-            eventSink = NullEventSink,
+            state = state(),
+            policy = policy(),
+            composition = PluginComposition.resolve(pluginClassLoader = null),
             credentialScopePort = CredentialScopePort { _, _ ->
                 CredentialScopeOutcome.Unavailable(CredentialScopeFailure.StoreUnavailable("not used"))
             },
-            controlDirRoot = Path.of("/nonexistent-control-root"),
             divergenceDetector = detector,
-            // The coordinator resolves every step through the open registry; this row
-            // never dispatches one, it only exercises the divergence gate.
-            stepRegistry = CoreStepRegistryFactory.registry(),
+            // This row never dispatches a stage, so the gate's facts are empty. The gate
+            // DECISION is pure and lives in the domain; the engine interprets it.
+            gateContext = { GateContext.EMPTY },
+            // Both control journals are absent, so the run would keep the inline retry loop
+            // and the inline polling. Their file-backed counterparts create their directory in
+            // their constructor, so binding them here would write to disk at composition time.
+            retryControlJournal = null,
+            waitUntilControlJournal = null,
+            // The scripted seam is not bound: the scripted frontend runs on its own runner.
+            scriptedStageExecution = null,
         )
+
+    /** The run's durable spine: the journal, the cursor store, the sink and the Saga seam. */
+    private fun state(): CanonicalRunState = CanonicalRunState(
+        journal = InMemoryOperationJournal(FixedClock),
+        cursorStore = InMemoryReplayCursorStore(FixedClock),
+        eventSink = NullEventSink,
+        outputWakeups = null,
+        sagaBinding = SagaCompensationBinding(InMemorySagaObligationStore(), LEASE_EPOCH),
+    )
+
+    /** What the run was given: the clock, the replay policy, the control root and the rest. */
+    private fun policy(): CanonicalRunPolicy = CanonicalRunPolicy(
+        clock = FixedClock,
+        effectReplayPolicy = DefaultEffectReplayPolicy(),
+        controlDirRoot = Path.of("/nonexistent-control-root"),
+        sandboxProfile = SandboxProfile.NONE,
+        // No workspace base: the run would resolve the per-stage layout under the control root,
+        // and nothing in this composition creates one.
+        workspace = RuntimeWorkspaceTransport(base = null, ownership = WorkspaceOwnership.PIPELINEK),
+        credentialProvider = null,
+        withCredentialsExecutor = null,
+        allowNetwork = false,
+        secretPatternRegistry = SecretPatternRegistry(),
+    )
 
     /** The resolver, composed with the detector it is given. */
     private fun resolver(detector: DivergenceDetector): DurableInvocationResolver =
@@ -180,5 +222,9 @@ class DivergenceDetectorPortTest {
     private class PermissiveDetector : DivergenceDetector {
         override fun check(current: DurableOperation, journaled: DurableOperation?): Result<Unit> =
             Result.success(Unit)
+    }
+
+    private companion object {
+        const val LEASE_EPOCH = 1L
     }
 }

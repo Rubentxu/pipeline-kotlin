@@ -36,12 +36,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.Sched
  *
  * ## Migration note
  *
- * The policy defined here is the seam the canonical coordinator will consume
- * once it migrates its inline retry loop behind an engine (this is part of
- * the InvocationEngine seam, which extracts the metadata/fingerprint/
- * journal/replay/capability boundary). Until then, the canonical
- * `CanonicalDurableRunCoordinator.dispatchBody` continues to inline the
- * retry loop, and this policy is a pure contract test target.
+ * The policy defined here is the seam the durable path will consume once it
+ * routes its retry decision through this port (this is part of the
+ * InvocationEngine seam, which extracts the metadata/fingerprint/
+ * journal/replay/capability boundary). The retry loop itself already left
+ * the coordinator — `BodyExecutionEngine` owns it, and `RetryEngine` owns
+ * the aggregate when a control journal is bound — but this port has NO
+ * production consumer yet: it remains a pure contract test target.
  */
 fun interface DurableControlEnginePolicy {
     /**

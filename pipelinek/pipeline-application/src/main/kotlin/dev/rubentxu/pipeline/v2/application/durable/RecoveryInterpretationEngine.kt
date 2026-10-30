@@ -17,7 +17,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 /**
  * The INTERPRETATION half of durable recovery
  * [DurableInvocationResolver] decides. This interprets. The two were previously one `when`
- * block inside `CanonicalDurableRunCoordinator.dispatch`, which meant the coordinator both
+ * block inside `CanonicalDurableRunCoordinator`, which meant the coordinator both
  * decided what a resumed run may do and performed the journal write, the cursor advance and
  * the lifecycle events that followed from it. Splitting them is what lets the decision stay
  * pure and testable in isolation while the effects

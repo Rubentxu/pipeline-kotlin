@@ -23,8 +23,8 @@ import java.nio.file.StandardCopyOption
  * Mirrors [FileBasedRetryControlJournal] but for the waitUntil
  * predicate polling loop. File at `{controlDirRoot}/wait-until-control/{sha256(controlOpId)}.attempts.json`.
  * ## Single-writer law
- * No other component writes to the control file. The dispatch loop in
- * [CanonicalDurableRunCoordinator] is the only caller of [beginAttempt] and
+ * No other component writes to the control file. `WaitUntilEngine` is the
+ * only caller of [beginAttempt] and
  * [updateStatus].
  * ## Persist-before-effects contract
  * [beginAttempt] writes the control row to the file BEFORE returning. The caller

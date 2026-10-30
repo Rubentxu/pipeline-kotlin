@@ -9,13 +9,13 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
  * registers its public [StepDefinition]s through the SAME mechanism an external plugin uses
  * ([CoreEchoStep] and every other core Step). The coordinator
  * and dispatcher never hardcode which definitions are registered here and never mutate it.
- * Compose external plugin definitions by registering them onto the returned mutable registry at the
- * composition root:
- * ```
- * val registry = CoreStepRegistryFactory.registry
- * externalPlugin.registerInto(registry)
- * CanonicalDurableRunCoordinator(..., stepRegistry = registry)
- * ```
+ *
+ * The coordinator does NOT take a registry any more: it takes the COMPOSITION
+ * ([PluginComposition]), so that the Step registry, the Directive registry and the Event registry a
+ * run resolves against are all resolved under ONE classloader swap. This factory is where that
+ * composition starts — [PluginComposition.resolve] builds its registry from [builder] before the
+ * external discovery joins it — and it is the factory a composition with no external JARs gets
+ * whole.
  * Deterministic and fresh per call; no global/singleton registry. The caller owns the returned
  * registry's lifecycle.
 */

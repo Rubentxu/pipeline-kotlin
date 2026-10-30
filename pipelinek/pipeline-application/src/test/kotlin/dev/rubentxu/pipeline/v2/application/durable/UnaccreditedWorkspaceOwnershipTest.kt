@@ -19,9 +19,16 @@ import java.nio.file.Path
  * choice when it was the fail-open one.
  *
  * The path to it was live, not theoretical: `ShOptions.EMPTY` states no owner
- * and is the default of `CanonicalDurableRunCoordinator`, and it points at a
- * shared temp directory. An unaccredited root that could be deleted was a real
+ * and points at a shared temp directory, and the coordinator used to be able to
+ * fall back to it. An unaccredited root that could be deleted was a real
  * possibility, not a shape on paper.
+ *
+ * The fallback is gone: the run's shell transport is now DERIVED from the run's
+ * policy (`canonicalShellOptions`), and the derivation always carries an
+ * explicit owner — the policy holds a non-nullable `WorkspaceOwnership`, so the
+ * transport never states "nobody claimed this root". The refusal case below is
+ * still the right one to hold, because a caller may still hand the adapter a
+ * `null` owner directly.
  *
  * Pure and total: the lease and the authorisation are values, and nothing here
  * touches a disk, a clock or a process.

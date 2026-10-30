@@ -7,7 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 /**
  * Durable control journal for the waitUntil predicate polling loop.
  * ## Single-writer law
- * The dispatch loop in [CanonicalDurableRunCoordinator] is the only caller of journal
+ * The waitUntil aggregate loop in `WaitUntilEngine` is the only caller of journal
  * operations. Child executors, step handlers, and event projectors MUST NOT mutate
  * the control file.
  * ## Persist-before-effects contract

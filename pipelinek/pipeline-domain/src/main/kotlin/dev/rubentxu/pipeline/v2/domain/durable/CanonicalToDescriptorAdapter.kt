@@ -12,17 +12,16 @@ import java.nio.file.Path
  * ## Why this exists
  * Created `BodyInterpreter` with its own descriptor family
  * ([BodyExecutionProjectionDescriptor], [BlockShellScopeDescriptor]) because
- * `pipeline-domain` cannot depend on the canonical coordinator's private
- * types. That worked for tests and for the seam itself, but it left the
- * canonical coordinator untouched: it still inlines the dispatch loop,
- * still holds its private `BlockShellScope` / `BodyExecutionProjection`
- * types, and still branches on `is BodyShellScope.Directory` etc.
+ * `pipeline-domain` cannot depend on the canonical coordinator's types.
+ * That worked for tests and for the seam itself, but it left the
+ * canonical coordinator untouched: it still inlined the dispatch loop,
+ * still held its own `BlockShellScope` / `BodyExecutionProjection`
+ * types, and still branched on `is BodyShellScope.Directory` etc.
  * This is the **adapter** that lets the canonical
- * coordinator publish its types and consume the interpreter. Once this
- * adapter is in place, the inline loops
- * (`dispatchBody`, `runParallelStage`, retry loop) to consume the
- * interpreter + durable control engine policy + branch invoker without
- * changing the durable event/journal byte stream.
+ * coordinator publish its types and consume the interpreter. The inline
+ * loops have since moved behind the engines (`BodyExecutionEngine`,
+ * `ParallelStageEngine`, `RetryEngine`), so the coordinator no longer
+ * branches on any of them.
  * ## What this is NOT
  *  - NOT an effect. The adapter is a pure transformation between two
  *    type families; the canonical coordinator remains the effectful
@@ -34,13 +33,13 @@ import java.nio.file.Path
  *  - NOT a Step-name branch. The adapter never reads a StepKey; it only
  *    transforms values.
  * ## Migration note
- * The canonical types (`BlockShellScope`, `BodyExecutionProjection`) are
- * currently `private` inside `CanonicalDurableRunCoordinator`. To make this
- * adapter usable by the canonical code, those types must be published
- * (moved to `:pipeline-domain` or made public inside `:pipeline-application`).
- * The adapter publishes the types and introduces the canonical
- * coordinator's `interpret(...)` call site; the inline loops then move
- * behind the engines.
+ * The canonical types (`BlockShellScope`, `BodyExecutionProjection`) are NOT
+ * private inside `CanonicalDurableRunCoordinator`: they live in
+ * `CanonicalStructuralDecisions.kt` (`:pipeline-application`), and the body
+ * loop that used to be inlined in the coordinator now belongs to
+ * `BodyExecutionEngine`. The family this adapter maps is the domain's own
+ * published `CanonicalBlockShellScope` / `CanonicalBodyExecutionProjection`,
+ * whose descriptor twins are what `BodyInterpreter` consumes.
 */
 object CanonicalToDescriptorAdapter {
 
@@ -115,18 +114,19 @@ object CanonicalToDescriptorAdapter {
 
 /**
  * Stand-in mirror of the canonical coordinator's
- * private `BlockShellScope` and `BodyExecutionProjection` types.
+ * `BlockShellScope` and `BodyExecutionProjection` types.
  * ## Why a mirror, not a re-export
- * The canonical types are `private sealed interface` inside
- * `CanonicalDurableRunCoordinator.kt`; they cannot be re-exported without
- * publishing them. The mirror lets the adapter + golden parity tests
+ * The canonical types are `internal sealed interface` inside
+ * `CanonicalStructuralDecisions.kt` (`:pipeline-application`); they cannot
+ * be re-exported from `:pipeline-domain` without publishing them. The mirror
+ * lets the adapter + golden parity tests
  * reason about the canonical shape WITHOUT forcing the publication in this
- * WU. Once /3 publishes the canonical types, the mirror collapses
+ * WU. Once the canonical types are published, the mirror collapses
  * and the adapter consumes them directly.
  * The mirror is intentionally minimal: it names the variants, carries the
  * payload, and is `Any`-typed in the adapter's signature so a future
  * unification of the two type families is a search-and-replace away.
- * Variants mirror the canonical private types:
+ * Variants mirror the canonical types:
  *  - `BlockShellScope`: None / Directory / TimestampsScope / EnvScope /
  *    Timeout / Retry / WaitUntilScope.
  *  - `BodyExecutionProjection`: Scope / CredentialLease / InvalidInput /

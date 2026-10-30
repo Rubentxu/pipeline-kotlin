@@ -1,211 +1,190 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 
-import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
-import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
-import dev.rubentxu.pipeline.v2.application.StepMetadata
+import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
+import dev.rubentxu.pipeline.v2.application.CanonicalRunState
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
+import dev.rubentxu.pipeline.v2.application.PreResolvedComposition
+import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
+import dev.rubentxu.pipeline.v2.application.StepMetadata
+import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyRejection
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver
+import dev.rubentxu.pipeline.v2.domain.step.CompositeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.RegistryBodyPolicyResolver
+import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialLeaseAdmission
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
-// Durable waitUntil reconciliation driver and identity factory.
-
-// Control journal + reconciliation driver.
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
+import dev.rubentxu.pipeline.v2.domain.EnvironmentSpec
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.FailureKind
-import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.StageBody
-import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
-import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
-import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
-import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
-import dev.rubentxu.pipeline.v2.events.registry.EventRegistry
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
-import java.nio.file.Path
+import dev.rubentxu.pipeline.v2.domain.directive.GateContext
+import dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateEvaluator
+import dev.rubentxu.pipeline.v2.credentials.executor.BasicCredentialsCapabilityContributor
 
-/** Executes the linear canonical core subset with the durable journal and replay cursor. */
-class CanonicalDurableRunCoordinator(
-    private val journal: OperationJournal,
-    private val cursorStore: ReplayCursorStore,
-    private val clock: Clock,
-    private val effectReplayPolicy: EffectReplayPolicy,
-    private val eventSink: EventSink,
-    // The open event registry for this run. Empty rather than null, so that
-    // "a plugin declared nothing" and "nothing is registered" are the same typed refusal.
-    private val eventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry =
-        dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create(),
-    private val credentialScopePort: CredentialScopePort,
-    private val controlDirRoot: Path,
-    /** Optional project-workspace override (--workspace <dir>). */
-    private val workspaceBase: Path? = null,
-    private val shOptions: ShOptions = ShOptions.EMPTY,
-    // The run's output-wake signal, forwarded to dispatch so the shell path
-    // can announce committed chunks to the run's live observer. Null for
-    // compositions without an observer; the observer's poll deadline covers
-    // the silence either way.
-    wakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
-    // Active secret registry threaded to the
-    // runtime context so the durable console transcript is redacted at the
-    // transcript seam before reaching the observable event plane.
-    private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
-    // OFFICIAL_PLUGIN capability contributions. PREPARE and EXECUTE
-    // must observe the SAME set, so both get this one contributor. The
-    // alternative tried first — a `Map<StepCapability, Any>` on `ShOptions` to
-    // avoid this parameter — kept the count and lost the architecture.
-    private val capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
-    private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
-    // durable metadata resolved by structural step key (pre-decode). Nullable default so a
-    // registry-injected constructor can opt into the composite; when absent the composite
-    // over [stepRegistry] is the authority.
-    private val stepMetadataResolver: StepMetadataResolver? = null,
-    // The open StepRegistry (plugin definitions) that resolves both metadata and
-    // execution. Required: there is exactly ONE way to prepare and execute a step, and it
-    // starts here. No global registry, no service locator, no singleton.
-    private val stepRegistry: StepRegistry,
-    // Optional retry control journal. When bound, the retry branch of `dispatchBody`
-    // Routes through RetryReconciliationDriver. When null, the inline
-    // retry loop is preserved bit-equivalent — existing callers and tests see no change.
-    private val retryControlJournal: FileBasedRetryControlJournal? = null,
-    // Optional waitUntil control journal. When bound, the waitUntil
-    // branch routes through the WaitUntilReconciler (durable polling aggregate). When null,
-    // The inline polling loop is preserved — existing callers and tests see no change
-    private val waitUntilControlJournal: WaitUntilControlJournal? = null,
-    // Milestone state store scoped to this coordinator/run. Each coordinator instance
-    // creates its own MilestoneStateStore by default, so all milestone invocations within a run
-    // share the same store (shared by all pipeline stages in the run) while concurrent runs
-    // are fully isolated. This mirrors the legacy CanonicalMilestoneNodeDispatcher.lastReachedOrdinal
-    // scope (per run, not global classloader). No longer nullable — production always gets
-    // a store; tests that need to control the store explicitly pass their own instance.
-    private val milestoneStateStore: MilestoneStateStore = MilestoneStateStore(),
-
-    // Per-run artifact index for the core.archiveArtifacts →
-    // core.artifact.query bridge. Defaults to a fresh InMemoryArtifactIndex
-    // when absent; tests that need to control the index explicitly pass
-    // their own instance. Lifetime is the coordinator lifetime — i.e. one
-    // index per run, shared between the producer (archive with name=...) and
-    // the consumer (artifactQuery). When null is supplied (legacy callers),
-    // the bridge stays unwired and both Steps fail closed at runtime.
-    private val artifactIndex: dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability? = null,
-
-    // The body execution policy authority. Composed in the class body
-    // (see bodyPolicyResolver below). A caller may inject another authority to characterize
-    // the fail-closed laws. Appended last so existing positional call-sites compile unchanged.
-    private val injectedBodyPolicyResolver: BodyPolicyResolver? = null,
-
-    // The body-reentry adapter bound under BODY_INVOKER_CAPABILITY.
-    // Per-run lifetime: a fresh adapter is constructed when no caller injects one; the canonical
-    // coordinator passes it into CanonicalRuntimeContext for every dispatch so the capability
-    // bridge exposes the seam and any registered handler can re-enter the engine through the
-    // shared body-child loop. When the caller wires a custom adapter (e.g. tests) the
-    // single shared-loop law is preserved: the adapter NEVER iterates body children itself.
-    private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter = CanonicalBodyInvokerAdapter(),
-
-    // The open DirectiveRegistry. When bound, every stage's declared
-    // directives are admitted against it BEFORE the stage starts (pure
-    // decision via StageDirectivePlanner, interpreted here at the effect
-    // boundary); a denial fails the run closed with a typed USER failure and
-    // the stage body never dispatches. When null, stages declaring directives
-    // are denied (no composition = no resolution), and stages without
-    // directives behave exactly as before: the seam is additive.
-    private val directiveRegistry: dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry? = null,
-
-    /**
-     * The facts a gate is evaluated against, read at the effect boundary.
-     * Takes the CURRENT STAGE's declared environment: a gate is a property of
-     * the stage that carries it, and the stage's own `environment { }` block
-     * is the only environment the DSL can express. Reading a pipeline-level or
-     * ambient environment instead would make the same script gate differently
-     * for reasons its author never wrote.
-*/
-    private val gateContext: (
-        stageEnvironment: dev.rubentxu.pipeline.v2.domain.EnvironmentSpec,
-    ) -> dev.rubentxu.pipeline.v2.domain.directive.GateContext =
-        { dev.rubentxu.pipeline.v2.domain.directive.GateContext.EMPTY },
-
-    /**
-     * The PURE decision. Injected so the engine interprets a verdict
-     * rather than computing one, keeping "decide" and "interpret" separate as
-     * the architecture requires.
-*/
-    private val gateEvaluator: (
-        predicate: dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate,
-        context: dev.rubentxu.pipeline.v2.domain.directive.GateContext,
-    ) -> dev.rubentxu.pipeline.v2.domain.directive.GateVerdict =
-        { predicate, context ->
-            dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateEvaluator.evaluate(predicate, context)
-        },
-
-    /**
-     * The reattach wait, forwarded to the composed [ExternalSubprocessRecovery].
-     * `null`, which is every production call site, leaves the observer on its own real-executor
-     * default, so no production behaviour or timing changes. The dependency and its rationale live
-     * on the observer's constructor; this parameter is the coordinator's own view of it.
-*/
-    private val reattachPoll: ((Path, Long) -> Int?)? = null,
-
-    /**
-     * What a run's terminal state does to its output, consulted in exactly one place —
-     * the `finally` of [run]. [RunOutputRetention] is the only production seam that can turn that
-     * into an `OutputPruneIntent`, so the store is never told and cannot learn.
-*/
-    private val outputRetention: RunOutputRetention? = null,
-
-    /**
-     * How a [StageBody.Scripted] body becomes a runnable artifact. Injected because the
-     * registry is composed where artifacts are compiled, not here. `null` means this coordinator
-     * cannot run scripted bodies, and a scripted stage then says exactly that rather than
-     * degrading into a stage that quietly did nothing.
-*/
-    private val scriptedStageExecution: ScriptedStageExecution? = null,
-
-    /**
-     * the per-run Saga seam.
-     *
-     * When bound, every dispatch of this run can offer the compensation intent port, and the
-     * obligations it writes land in the run's own database. When null (every pre-existing
-     * call site), the capability stays unexposed and a Step that declares it is refused at
-     * admission — the fail-closed direction, never a port that silently forgets a promise.
-     */
-    sagaBinding: SagaCompensationBinding? = null,
+/**
+ * Executes the linear canonical core subset with the durable journal and replay cursor.
+ *
+ * ## What this class receives, and why so little
+ *
+ * The constructor takes NINE parameters, and each one is a fact the run cannot derive:
+ *
+ * ```text
+ * state              where the run's durable state lives (journal, cursor, sink, saga)
+ * policy             what the run was GIVEN (clock, replay policy, control root, sandbox, ...)
+ * composition        what the run resolves against (steps, directives, events, capabilities)
+ * credentialScopePort  the credential seam
+ * divergenceDetector   the divergence POLICY, as a port
+ * gateContext          the facts a gate is read against
+ * retryControlJournal  the durable retry aggregate, or null for the inline loop
+ * waitUntilControlJournal  the durable waitUntil aggregate, or null for the inline loop
+ * scriptedStageExecution   how a scripted body becomes an artifact, or null
+ * ```
+ *
+ * Only the last one is kept as a property of this class: it is the only one of the nine that is
+ * READ while the run executes. The other eight are consumed while the run is BUILT — they are
+ * inputs of the construction, not state the coordinator carries — so they are constructor
+ * parameters and nothing more. A fact this class keeps would be a second copy of a fact the
+ * composition already owns.
+ *
+ * Everything else the run uses is DERIVED inside this class, and the derivation is where the
+ * guarantees live. The three groups above are the reasons:
+ *
+ * - **[CanonicalRunState]** owns the run's durable state. Two facts that used to be separate
+ *   constructor parameters — the journal and the cursor store — are one fact ("this run's
+ *   durable spine"), and they cannot now be supplied by two different worlds.
+ * - **[CanonicalRunPolicy]** owns what the run was given. The shell transport and the output
+ *   retention are consequences of this group, not inputs: a caller could previously hand the
+ *   coordinator a workspace root that was not the run's, or a retention policy that deleted
+ *   what the product keeps. Both are now computed by
+ *   [canonicalShellOptions] and [canonicalOutputRetention].
+ * - **[PreResolvedComposition]** owns what the run resolves against. The Step registry, the
+ *   Directive registry, the Event registry and the plugin capabilities all come from ONE
+ *   composition, resolved under ONE classloader swap, so PREPARE and EXECUTE cannot see
+ *   different registries.
+ *
+ * ## The one execution, the one capability set
+ *
+ * The capability contributor is built HERE, once, from the composition's plugin contributions
+ * and the policy's credential provider. It is then handed to the SAME instance in all four
+ * places that need it — PREPARE, EXECUTE, the directive seam and the runtime context — so there
+ * is exactly one set of capabilities in the run. Two sets would mean a Step admitted by one and
+ * refused by the other.
+ *
+ * ## What is NOT a parameter, and why
+ *
+ * - The **metadata resolver**: the composite over the run's own registry IS the authority.
+ * - The **body policy resolver**: it blends the open registry with the canonical core table,
+ *   and both are facts this class already holds.
+ * - The **body invoker adapter**: one per run, and nothing else may construct one.
+ * - The **milestone store** and the **artifact index**: both are per-run and side-effect free.
+ * - The **reattach poll**: the recovery observer's own default is the real executor; a
+ *   parameter here was a second spelling of the same thing.
+ * - The **gate evaluator**: the decision is PURE and lives in the domain; the engine
+ *   interprets it. A caller may not bring its own.
+ *
+ * ## The nulls that remain
+ *
+ * The three nullable parameters are **absences of a capability**, not defaults: a run with no
+ * retry control journal keeps the inline retry loop, a run with no waitUntil journal keeps the
+ * inline polling, and a run with no scripted execution says so instead of degrading into a
+ * stage that quietly did nothing. There is no fourth kind of null here: every other fact has
+ * exactly one answer, and this class computes it.
+ */
+internal class CanonicalDurableRunCoordinator(
+    state: CanonicalRunState,
+    policy: CanonicalRunPolicy,
+    composition: PreResolvedComposition,
+    credentialScopePort: CredentialScopePort,
+    divergenceDetector: DivergenceDetector,
+    gateContext: (EnvironmentSpec) -> GateContext,
+    retryControlJournal: FileBasedRetryControlJournal?,
+    waitUntilControlJournal: WaitUntilControlJournal?,
+    private val scriptedStageExecution: ScriptedStageExecution?,
 ) {
+    // The run's durable spine, the ports it was given and the values derived from them.
+    private val journal = state.journal
+    private val cursorStore = state.cursorStore
+    private val eventSink = state.eventSink
+    private val clock = policy.clock
+    private val controlDirRoot = policy.controlDirRoot
+    private val workspaceBase = policy.workspace.base
+
+    // The registries the run resolves against. ONE composition, resolved under ONE classloader
+    // swap: the Step registry that resolves handlers, the Directive registry that admits the
+    // stage's directives and the Event registry the run writes against are the same three
+    // registries PREPARE and EXECUTE see.
+    private val stepRegistry: StepRegistry = composition.steps
+    private val directiveRegistry = composition.directives
+    private val eventRegistry = composition.events
+
+    /**
+     * The ONE capability set of this run.
+     *
+     * The plugin side comes from the composition, resolved under the same classloader swap as
+     * the steps these capabilities back. The credential side stays here because it is per-run
+     * state — it wraps the store THIS invocation opened, so it cannot come from classpath
+     * discovery. The two never collide: a plugin deliberately contributes only its own
+     * transport.
+     */
+    private val capabilityContributor: RuntimeCapabilityContributor = CompositeCapabilityContributor(
+        composition.capabilityContributors +
+            BasicCredentialsCapabilityContributor(policy.credentialProvider),
+    )
+
+    // The shell transport and the output retention are CONSEQUENCES of the policy, not inputs.
+    private val shOptions = canonicalShellOptions(policy)
+    private val outputRetention = canonicalOutputRetention {
+        OutputPlaneProvider.storeFor(policy.controlDirRoot)
+    }
+
+    // The per-run aggregates. Each is created ONCE and shared by every holder that needs it,
+    // because each of them is a shared surface, not a value:
+    //   milestoneStateStore — the milestone state the run's handlers read and write;
+    //   artifactIndex      — the bridge between the producer (core.archiveArtifacts) and the
+    //                        consumer (core.artifact.query) WITHIN this run;
+    //   bodyInvokerAdapter — the one adapter the body engine, the runtime contexts and the
+    //                        body dispatch all speak through.
+    // Creating one per holder would give the run two artifact indexes and two body adapters,
+    // which is the defect this grouping removes.
+    private val milestoneStateStore = MilestoneStateStore()
+    private val artifactIndex = ArtifactIndexAdapter.build()
+    private val bodyInvokerAdapter = CanonicalBodyInvokerAdapter()
+
     // The body execution policy authority. The production default
     // composes TWO declared-policy authorities, both fail-closed and neither key-specific:
     //   1. the OPEN StepRegistry (same seam that resolves handlers) — a core or external
     //      plugin Step whose descriptor declares a body resolves here identically;
     //   2. the canonical descriptor table (StepDescriptorRegistry.standard) — the core
     //      block Steps without a registered handler (dir/withEnv/timeout/retry/...).
-    private val bodyPolicyResolver: BodyPolicyResolver =
-        injectedBodyPolicyResolver ?: run {
-            val canonical = StepDescriptorRegistry.standard().bodyPolicyResolver(BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING)
-            val fromRegistry = RegistryBodyPolicyResolver(
-                registry = stepRegistry,
-                support = BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING,
-            )
-            BodyPolicyResolver { key ->
-                when (val resolved = fromRegistry.resolve(key)) {
-                    is BodyPolicyResolution.Resolved -> resolved
-                    // Unknown in the open registry: fall back to the canonical core table.
-                    is BodyPolicyResolution.Rejected ->
-                        if (resolved.reason is BodyPolicyRejection.UnknownStep) canonical.resolve(key)
-                        else resolved
-                }
+    private val bodyPolicyResolver: BodyPolicyResolver = run {
+        val canonical = StepDescriptorRegistry.standard().bodyPolicyResolver(BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING)
+        val fromRegistry = RegistryBodyPolicyResolver(
+            registry = stepRegistry,
+            support = BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING,
+        )
+        BodyPolicyResolver { key ->
+            when (val resolved = fromRegistry.resolve(key)) {
+                is BodyPolicyResolution.Resolved -> resolved
+                // Unknown in the open registry: fall back to the canonical core table.
+                is BodyPolicyResolution.Rejected ->
+                    if (resolved.reason is BodyPolicyRejection.UnknownStep) canonical.resolve(key)
+                    else resolved
             }
         }
+    }
     // The durable row of ONE invocation. It is the single holder of the journal port on this
     // surface: the resolver READS the row, the executor ADMITS and SETTLES it, and the recovery
     // interpreter SETTLES the recovered terminal. Three writers, one shape, one owner.
@@ -216,12 +195,12 @@ class CanonicalDurableRunCoordinator(
         // [StrictFingerprintDivergenceDetector] here, which made every other implementation die
         // with a ClassCastException at CONSTRUCTION — before the run had said anything.
         divergenceDetector = divergenceDetector,
-        effectReplayPolicy = effectReplayPolicy,
+        effectReplayPolicy = policy.effectReplayPolicy,
         records = invocationRecords,
         // The external-subprocess compatibility hook is COMPOSED here and
         // reaches the resolver only as a port. The resolver decides when recovery applies; this
         // adapter owns the only place that knows a control directory and a live process exist.
-        runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot, reattachPoll),
+        runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot),
     )
 
     // Typed input preparation behind a narrow collaborator.
@@ -232,15 +211,13 @@ class CanonicalDurableRunCoordinator(
         capabilityContributor = capabilityContributor, // H2b: the same set EXECUTE will see
     )
 
-
     /**
-     * Effective pre-decode metadata authority. An explicit [stepMetadataResolver] wins;
-     * otherwise the composite over [stepRegistry] is the authority (core keys -> the registry's
-     * own core definitions, other keys -> registry metadata, unknown -> hard defect).
+     * Effective pre-decode metadata authority: the composite over the run's OWN registry
+     * (core keys -> the registry's own core definitions, other keys -> registry metadata,
+     * unknown -> hard defect).
      * The durable coordinator only ever consumes [StepMetadata]; it does not know where it came from.
-*/
-    private val metadataResolver: StepMetadataResolver = stepMetadataResolver
-        ?: RegistryStepMetadataResolver.composite(stepRegistry)
+    */
+    private val metadataResolver: StepMetadataResolver = RegistryStepMetadataResolver.composite(stepRegistry)
 
     /**
      * The effective step executor. There is exactly ONE seam and exactly ONE implementation
@@ -248,7 +225,7 @@ class CanonicalDurableRunCoordinator(
      * [RegistryExecutionBoundary] over the registry it already owns.
      * The coordinator only ever hands an opaque [PreparedRegistryExecution] to this seam and
      * never names a decoded command type.
-*/
+    */
     private val executionBoundary: CommonExecutionBoundary = RegistryExecutionBoundary.adapt(
         // Pass milestoneStateStore so RegistryExecutionBoundary can provide
         // MILESTONE_OPERATIONS_CAPABILITY during handler execution.
@@ -272,7 +249,13 @@ class CanonicalDurableRunCoordinator(
     // The BEFORE_STAGE directive seam. It admits, decodes, composes
     // evaluates and observes, then returns a closed verdict; this class keeps the run's control
     // flow, because only the owner of the loop may decide what the run does next.
-    private val beforeStageDirectives = BeforeStageDirectiveEngine(eventSink, gateContext, gateEvaluator, capabilityContributor)
+    // The gate's DECISION is pure and lives in the domain; the engine interprets it.
+    private val beforeStageDirectives = BeforeStageDirectiveEngine(
+        eventSink,
+        gateContext,
+        WhenPredicateEvaluator::evaluate,
+        capabilityContributor,
+    )
     // The INTERPRETATION of a recovery resolution. The DECISION already
     // lives in invocationResolver; this engine performs the journal write and the lifecycle
     // events that a resolution names, and reports ProceedToExecution for the one resolution
@@ -302,11 +285,11 @@ class CanonicalDurableRunCoordinator(
         eventRegistry = eventRegistry,
         eventSink = eventSink,
         clock = clock,
-        outputWakeups = wakeups,
+        outputWakeups = state.outputWakeups,
         controlDirRoot = controlDirRoot,
         workspaceBase = workspaceBase,
-        secretPatternRegistry = secretPatternRegistry,
-        sagaBinding = sagaBinding,
+        secretPatternRegistry = policy.secretPatternRegistry,
+        sagaBinding = state.sagaBinding,
     )
     private val bodyDispatch = CanonicalBodyDispatch(
         bodyPolicyResolver = bodyPolicyResolver,
@@ -421,7 +404,7 @@ class CanonicalDurableRunCoordinator(
                 } catch (e: java.io.IOException) {
                     runLifecycle.fold(RunOutcome.Failure(
                         PipelineFailure(
-                            dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                            FailureKind.INFRASTRUCTURE,
                             "Failed to create stage workspace '${workspacePath}': ${e.message}"
                         ),
                     ))
@@ -455,8 +438,11 @@ class CanonicalDurableRunCoordinator(
                 // finalisation live in StageExecutionEngine, so this arm is a call, not a copy.
                 if (steps == null && stage.body is StageBody.Scripted) {
                     val scripted = scriptedStageExecution ?: throw EngineInvariantViolation(
-                        "stage '${stage.name}' has a scripted body but no ScriptedStageExecution is " +
-                            "bound, so it cannot be resolved to an artifact. Bind it in the composition root.",
+                        "stage '${stage.name}' has a scripted body but this run carries no " +
+                            "ScriptedStageExecution, so it cannot be resolved to an artifact. The " +
+                            "scripted frontend runs on its own runner, which composes the same " +
+                            "durable authorities; a scripted body inside a canonical run needs " +
+                            "this seam bound.",
                     )
                     when (val verdict = stageExecution.runScriptedStage(
                         stage, stageIndex, scripted, stageShOptions, runId, ambient,
@@ -496,7 +482,7 @@ class CanonicalDurableRunCoordinator(
             if (e is IllegalStateException || e is EngineInvariantViolation) throw e
             runLifecycle.fold(RunOutcome.Failure(
                 PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                    FailureKind.INFRASTRUCTURE,
                     "Unexpected error during pipeline run: ${e.message}"
                 ),
             ))
@@ -506,13 +492,8 @@ class CanonicalDurableRunCoordinator(
             runLifecycle.closeRun(runId)
             // The run has ENDED, the only moment that can authorise discarding its
             // output. Not gated on the bookend invariant: that asks whether RunFinished may be EMITTED.
-            outputRetention?.onRunTerminal(runId)
+            outputRetention.onRunTerminal(runId)
         }
         return runLifecycle.outcome()
     }
-
-    private companion object {
-        const val REATTACH_TIMEOUT_MS = 60_000L
-    }
 }
-

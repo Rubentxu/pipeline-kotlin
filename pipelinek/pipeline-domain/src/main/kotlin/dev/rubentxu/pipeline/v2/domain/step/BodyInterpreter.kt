@@ -15,8 +15,8 @@ import java.nio.file.Path
  *     the scope to project, the `ShOptions` patch to apply, whether the body is
  *     a credential lease (which has its own acquisition preamble), or whether
  *     the shape is unimplemented.
- * Before, the equivalent of step 2 was inlined in
- * `CanonicalDurableRunCoordinator.dispatchBody` as a sequence of `when` arms
+ * Before, the equivalent of step 2 was inlined in the canonical coordinator
+ * as a sequence of `when` arms
  * over the projection, mixed with event emission and `Files.createDirectories`
  * side effects. The interpretation logic itself was pure (mapping projection
  * to scope + `ShOptions` patch + context overlay), but it was not separable

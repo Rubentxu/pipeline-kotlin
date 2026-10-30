@@ -15,7 +15,7 @@ import dev.rubentxu.pipeline.v2.output.RunLifecycle
  * them into `report? ` would make a failed release indistinguishable from a deliberate retention —
  * Which is the same defect exists to prevent on the read side
 */
-sealed interface RunOutputDisposition {
+internal sealed interface RunOutputDisposition {
 
     /** The configured [RetainUntil] keeps this run's output. Nothing was attempted. */
     data object Retained : RunOutputDisposition
@@ -74,20 +74,24 @@ sealed interface RunOutputDisposition {
  * — the coordinator would have been interpreting a collaborator's verdict. So this owns the sentence,
  * through a defaulted sink so a caller can route it (tests assert on the disposition, not on stderr)
  * while the default is the operator's terminal, which is where a post-run diagnostic belongs.
- * ## Why this is public
- * [CanonicalDurableRunCoordinator] is public and takes this as an optional constructor parameter,
- * which is the same convention its other optional collaborators already follow (`StepRegistry`,
- * `DirectiveRegistry`, `WaitUntilControlJournal`). Kotlin will not let a public constructor expose an
- * `internal` type, and the alternatives were worse: a lambda would erase the verdict the coordinator
- * has to report, and a public marker interface plus an internal implementation would add a second
- * name for one thing.
- * Public here means "the runtime's retention seam is nameable", NOT "the output store is published".
- * The half that the publication does not publish — `SegmentOutputStore`, its layout and its recovery — moved
- * into `:pipeline-output-store` when the plane was split, and is reached only through the
- * [OutputRetentionPort] interface. Nothing in this type names it, and the published artifact does
- * not contain it.
+ * ## Why this is internal
+ *
+ * This type used to be public because the coordinator that holds it was: a public constructor cannot
+ * expose an `internal` type, so the retention had to be public too, and the KDoc here explained that
+ * necessity at length. The coordinator is now `internal` — it is a composition detail of
+ * `:pipeline-application`, it holds `internal` policy types, and no caller outside this module ever
+ * built one — so the necessity is gone and the explanation with it. The retention is now DERIVED,
+ * by [canonicalOutputRetention], from the product decision
+ * [dev.rubentxu.pipeline.v2.output.RetainUntil.ExplicitReleaseOnly], so it is not a value a caller
+ * may choose either.
+ *
+ * Being internal here means "the runtime's retention seam is nameable inside this module", NOT "the
+ * output store is published". The half that the publication does not publish — `SegmentOutputStore`,
+ * its layout and its recovery — moved into `:pipeline-output-store` when the plane was split, and is
+ * reached only through the [OutputRetentionPort] interface. Nothing in this type names it, and the
+ * published artifact does not contain it.
 */
-class RunOutputRetention(
+internal class RunOutputRetention(
     private val retention: () -> OutputRetentionPort,
     private val policy: RetainUntil,
     private val report: (String) -> Unit = { message -> System.err.println(message) },

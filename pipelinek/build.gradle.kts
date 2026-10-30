@@ -93,7 +93,14 @@ repositories {
 // behave the same, so one version cannot carry both. The 0.91.0 train opens
 // here (ProductVersion 0.91.0) and its first candidate can be tagged
 // v0.91.0-rc1.
-version = "0.91.0"
+// 2026-10-30: the 0.91.0 train closed at v0.91.0, and the law holds here
+// too: this tree has moved since that candidate. The closures of PKQ.M0
+// through PKQ.M6 give the lease ownership, the event feed, the durable
+// engine, the CLI and the Output Plane one owner each, so what this
+// artifact does is not what v0.91.0 did; the two artifacts do NOT behave
+// the same, and one version cannot carry both. The 0.92.0 train opens here
+// (ProductVersion 0.92.0) and its first candidate can be tagged v0.92.0-rc1.
+version = "0.92.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

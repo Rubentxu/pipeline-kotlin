@@ -1222,6 +1222,29 @@ sys.exit(2)
 PY
 }
 
+# The id of the run the product recorded last, under a run's control root.
+#
+# The product writes one record per run definition under control/last-run/. The
+# FILE is named after the definition, not after the run, so its name says
+# nothing about the id; the id is the FIRST line of the record, and a
+# correlation id may follow on a second line. Reading the first line is the
+# only reading that is right for a current record and for a legacy one-line
+# record alike.
+#
+# Eight places in this launcher asked for that id, and each of them carried its
+# own copy of the loop. They are all this function now. It prints the id, or
+# nothing when the run left no record; what an absent id MEANS is the caller's
+# business, because the eight callers do not mean the same thing by it.
+last_run_id() {
+    local record
+    for record in "$1"/control/last-run/*; do
+        [[ -f "$record" ]] || continue
+        head -1 "$record" || true
+        return 0
+    done
+    return 0
+}
+
 # The narration of a run, from the moment the run starts.
 #
 # A process that prints without a trailing newline leaves the console mid-line,
@@ -2082,7 +2105,6 @@ check_events_refusal() {
     local -n er_verdict_stderr="$6"
     local -n er_verdict_is_run="$7"
     local run_id=""
-    local record
     local refusal_code=0
     # The scenario's own run is the FIXTURE: it writes a history that the
     # read verb is then asked about. So the run has to succeed — a scenario
@@ -2100,11 +2122,7 @@ check_events_refusal() {
     # The id of the run that was written. The launcher reads it from the
     # run's own record of its last run, because the id is a UUID the
     # launcher cannot know in advance.
-    for record in "$er_root"/control/last-run/*; do
-        [[ -f "$record" ]] || continue
-        run_id="$(head -1 "$record")"
-        break
-    done
+    run_id="$(last_run_id "$er_root")"
     if [[ -z "$run_id" ]]; then
         printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$er_name"
         failed=$((failed + 1))
@@ -2845,12 +2863,7 @@ scenario_execute() {
         fi
 
         local recover_run_id=""
-        local recover_record
-        for recover_record in "$root"/control/last-run/*; do
-            [[ -f "$recover_record" ]] || continue
-            recover_run_id="$(head -1 "$recover_record")"
-            break
-        done
+        recover_run_id="$(last_run_id "$root")"
         if [[ -z "$recover_run_id" ]]; then
             printf 'FAIL %-52s the crashed run left no run id, so it cannot be recovered\n' "$name"
             failed=$((failed + 1))
@@ -3002,12 +3015,7 @@ scenario_execute() {
         # the run's own record of its last run, for the same reason the cancel
         # flow reads it there: the id is a UUID nobody can know in advance.
         local state_run_id=""
-        local state_record
-        for state_record in "$root"/control/last-run/*; do
-            [[ -f "$state_record" ]] || continue
-            state_run_id="$(head -1 "$state_record")"
-            break
-        done
+        state_run_id="$(last_run_id "$root")"
         if [[ -z "$state_run_id" ]]; then
             printf 'FAIL %-52s the run left no run id, so its state cannot be read\n' "$name"
             failed=$((failed + 1))
@@ -3079,12 +3087,7 @@ scenario_execute() {
         # record of its last run, because the id is a UUID the launcher cannot
         # know in advance and the operator would have to copy it by hand.
         local run_id=""
-        local record
-        for record in "$root"/control/last-run/*; do
-            [[ -f "$record" ]] || continue
-            run_id="$(head -1 "$record")"
-            break
-        done
+        run_id="$(last_run_id "$root")"
         if [[ -z "$run_id" ]]; then
             printf 'FAIL %-52s the crashed run left no run id, so it cannot be closed\n' "$name"
             failed=$((failed + 1))
@@ -3238,12 +3241,7 @@ scenario_execute() {
         fi
 
         local run_id=""
-        local record
-        for record in "$root"/control/last-run/*; do
-            [[ -f "$record" ]] || continue
-            run_id="$(head -1 "$record")"
-            break
-        done
+        run_id="$(last_run_id "$root")"
         if [[ -z "$run_id" ]]; then
             printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$name"
             failed=$((failed + 1))
@@ -3361,12 +3359,7 @@ scenario_execute() {
         # failure belongs to. That is the defect this scenario exists to catch, and
         # it is invisible to a reader that only looks at successful runs.
         local sv_run_id=""
-        local record
-        for record in "$root"/control/last-run/*; do
-            [[ -f "$record" ]] || continue
-            sv_run_id="$(head -1 "$record")"
-            break
-        done
+        sv_run_id="$(last_run_id "$root")"
         if [[ -z "$sv_run_id" ]]; then
             printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$name"
             failed=$((failed + 1))
@@ -3440,12 +3433,7 @@ scenario_execute() {
         fi
 
         local follow_run_id=""
-        local record
-        for record in "$root"/control/last-run/*; do
-            [[ -f "$record" ]] || continue
-            follow_run_id="$(head -1 "$record")"
-            break
-        done
+        follow_run_id="$(last_run_id "$root")"
         if [[ -z "$follow_run_id" ]]; then
             printf 'FAIL %-52s the run left no run id, so there is no history to follow\n' "$name"
             failed=$((failed + 1))
@@ -3519,12 +3507,7 @@ scenario_execute() {
         # invents a stage. That is the defect this scenario exists to catch, and it
         # is invisible to a reader that only looks at runs that succeeded.
         local fs_run_id=""
-        local record
-        for record in "$root"/control/last-run/*; do
-            [[ -f "$record" ]] || continue
-            fs_run_id="$(head -1 "$record")"
-            break
-        done
+        fs_run_id="$(last_run_id "$root")"
         if [[ -z "$fs_run_id" ]]; then
             printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$name"
             failed=$((failed + 1))

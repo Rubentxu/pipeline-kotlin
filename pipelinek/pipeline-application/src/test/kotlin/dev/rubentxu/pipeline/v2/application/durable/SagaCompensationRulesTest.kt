@@ -74,10 +74,23 @@ class SagaCompensationRulesTest {
     }
 
     @Test
-    fun `a cancelled or unstable body is uncertainty, not failure and not success`() {
+    fun `a cancelled body says the call was cancelled and not that the answer was lost`() {
+        // The body was stopped on purpose, so nobody is waiting for an answer that will never
+        // come. Saying the answer was lost would send the interpreter looking for a lost
+        // acknowledgement that never existed.
+        assertEquals(
+            CompensationObservation.Uncertain(UncertaintyReason.CALL_CANCELLED),
+            SagaCompensationRules.observationOf(BodyOutcome.Cancelled(dev.rubentxu.pipeline.v2.domain.step.CancellationReason.Deadline)),
+        )
+    }
+
+    @Test
+    fun `an unstable body is uncertainty, not failure and not success`() {
+        // The body ran and did not settle: the answer is genuinely unknown, which is a
+        // different fact from a call that was cancelled.
         assertEquals(
             CompensationObservation.Uncertain(UncertaintyReason.ACK_LOST),
-            SagaCompensationRules.observationOf(BodyOutcome.Cancelled(dev.rubentxu.pipeline.v2.domain.step.CancellationReason.Deadline)),
+            SagaCompensationRules.observationOf(BodyOutcome.Completed(StepOutcome.Unstable)),
         )
     }
 

@@ -63,9 +63,25 @@ internal object SagaCompensationRules {
      * unstable did not establish that the resource was put back, and the
      * difference between "not back" and "nobody knows" decides whether the
      * Saga may continue compensating.
+     *
+     * ## Why a cancelled body and an unstable body are NOT the same uncertainty
+     *
+     * Both are uncertain — neither established that the resource was put back — but they
+     * are uncertain for different reasons, and the reason is what a reader of the run needs.
+     *
+     * A cancelled body was stopped before it answered: the call may still have reached the
+     * provider, and the run was stopped on purpose. An unstable body answered without
+     * settling anything, so what is missing is the acknowledgement of the effect. Naming
+     * both with the same reason told the reader that the acknowledgement was lost when the
+     * truth was that the call was cancelled, and the remediation the two need is not the
+     * same.
+     *
+     * The interpreter that runs this table already read the same cancelled body as a
+     * cancelled CALL, so the table and the interpreter were answering the same question with
+     * two different reasons.
      */
     fun observationOf(outcome: BodyOutcome): CompensationObservation = when (outcome) {
-        is BodyOutcome.Cancelled -> CompensationObservation.Uncertain(UncertaintyReason.ACK_LOST)
+        is BodyOutcome.Cancelled -> CompensationObservation.Uncertain(UncertaintyReason.CALL_CANCELLED)
 
         is BodyOutcome.Completed -> when (val result = outcome.outcome) {
             is StepOutcome.Success -> CompensationObservation.Confirmed(receipt = null)

@@ -12,8 +12,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
-import dev.rubentxu.pipeline.v2.domain.step.BodySlots
-import dev.rubentxu.pipeline.v2.domain.step.SlotResolution
 import dev.rubentxu.pipeline.v2.domain.step.BodyContinuation
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
@@ -128,21 +126,12 @@ internal class StepDispatchEngine(
     /**
      * SAGA: a slot the handler asked for and the engine cannot honour.
      *
-     * A CONTAINED failure, not an exception: the handler's own outcome is where
-     * that violation belongs, and an exception would tear the run down instead
-     * of reporting it. ENGINE, because the contract was the engine's to keep —
-     * the handler named a slot the body does not have.
+     * The slot seam has ONE owner ([SagaSlotDispatcher]), and this engine no longer decides
+     * what a missing or ambiguous slot answers: the dispatcher owns that answer, because it
+     * owns the resolution of the address. What the engine owns is the OTHER half — the single
+     * re-entry reference the dispatcher walks the child through — so the slot's child travels
+     * the same spine as every other body child instead of opening a second path into it.
      */
-    private fun slotFailure(message: String): BodyOutcome =
-        BodyOutcome.Completed(
-            StepOutcome.Failure(
-                PipelineFailure(
-                    kind = FailureKind.ENGINE,
-                    message = message,
-                ),
-            ),
-        )
-
     suspend fun dispatch(
         step: StepNode,
         runId: RunId,
@@ -251,64 +240,21 @@ internal class StepDispatchEngine(
 
         val bodySlotInvoker: BodySlotInvoker? =
             if (ownedBodies != null) {
-                BodySlotInvoker { slot, slotContext ->
-                    when (
-                        val resolution = BodySlots.resolve(
-                            // The ADDRESS of each child: the name the plugin gave it, or its
-                            // kind when nobody named it. So a body that names its children can
-                            // hold two of the same kind, and a body that names none behaves
-                            // exactly as it did before names existed.
-                            ownedBodies.map { it.address },
-                            slot,
-                        )
-                    ) {
-                        is SlotResolution.Missing -> slotFailure(
-                            "no body slot '${slot.value}' in the body of '${step.pluginStepId.value}'",
-                        )
-
-                        is SlotResolution.Ambiguous -> slotFailure(
-                            "body slot '${slot.value}' is ambiguous in the body of " +
-                                "'${step.pluginStepId.value}': ${resolution.matches} children share that address",
-                        )
-
-                        is SlotResolution.Found -> {
-                            val childIndex = resolution.childIndex
-                            val child = ownedBodies[childIndex]
-                            val attemptSegment = slotContext.attempt?.let { segment ->
-                                listOf(BlockSegment(segment.index, segment.key))
-                            }.orEmpty()
-                            val childBodyPath = bodyPath + attemptSegment +
-                                BlockSegment(childIndex, child.pluginStepId)
-                            // The patch is projected onto BOTH surfaces: the context AND the
-                            // options the child is launched with. A body that has to recognise
-                            // its own operation key can only do it if the key reaches the
-                            // process, and a process is launched with the options.
-                            when (
-                                val projection = projectInvocationPatch(
-                                    executionContext,
-                                    stageShOptions,
-                                    slotContext.patch,
-                                )
-                            ) {
-                                is InvocationPatchProjection.Refused -> slotFailure(projection.reason)
-
-                                is InvocationPatchProjection.Applied -> {
-                                    val outcome = dispatch(
-                                        child,
-                                        runId,
-                                        stageName,
-                                        stageIndex,
-                                        stepIndex,
-                                        projection.shOptions,
-                                        childBodyPath,
-                                        projection.context,
-                                    ).result.outcome
-                                    BodyOutcome.Completed(outcome)
-                                }
-                            }
-                        }
-                    }
-                }
+                SagaSlotDispatcher(
+                    ownedBodies = ownedBodies,
+                    ownerName = step.pluginStepId.value,
+                    reentry = childReentry,
+                ).invoker(
+                    SagaSlotRequest(
+                        runId = runId,
+                        stageName = stageName,
+                        stageIndex = stageIndex,
+                        stepIndex = stepIndex,
+                        bodyPath = bodyPath,
+                        stageShOptions = stageShOptions,
+                        executionContext = executionContext,
+                    ),
+                )
             } else {
                 null
             }

@@ -1,12 +1,13 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.BodyInvocationContext
 import dev.rubentxu.pipeline.v2.domain.step.BodyInvoker
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodyRef
-import dev.rubentxu.pipeline.v2.domain.step.CancellationReason
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -90,14 +91,35 @@ class CanonicalBodyInvokerAdapter : BodyInvoker {
      *   handler can fold the body result into its own logic exactly as it would a child
      *   outcome. Per-attempt identity, scope patches and decorators reach the runner
      *   through [BodyInvocationContext]; the binding is no longer context-decorative.
-     * - **Unknown bodyRef**: returns [BodyOutcome.Cancelled] with
-     *   [CancellationReason.ParentCancelled]. The handler never blocks the dispatch and
-     *   the typed algebra remains closed; an unknown bodyRef is never a structural reason
-     *   to throw, it is a runtime decision the handler can fold.
+     * - **Unknown bodyRef**: returns [BodyOutcome.Completed] carrying a typed engine
+     *   failure. The handler never blocks the dispatch and the typed algebra remains
+     *   closed; an unknown bodyRef is never a structural reason to throw, it is a runtime
+     *   decision the handler can fold.
+     *
+     * ## Why an absent body is a FAILURE and not a cancellation
+     *
+     * A cancellation says the run was stopped on purpose: a deadline expired, the parent
+     * scope was cancelled, the scope shut down. None of those happened here — what happened is
+     * that the handler named a body this run does not have open. The domain says so itself:
+     * a cancellation is an execution mechanism and is never reclassified as a step failure,
+     * and the symmetric half matters just as much, because an ABSENCE is not a mechanism
+     * either. Calling it one made the handler read "the run was stopped" where the truth was
+     * "the body you named does not exist", and the two demand different remediation.
+     *
+     * The engine adapter is where an unknown body encoding fails closed, and the vocabulary
+     * is the one a missing SLOT already uses: a contained engine failure inside the
+     * handler's own outcome.
 */
     override suspend fun invoke(body: BodyRef, context: BodyInvocationContext): BodyOutcome {
         val runner = openBodies[body]
-            ?: return BodyOutcome.Cancelled(CancellationReason.ParentCancelled)
+            ?: return BodyOutcome.Completed(
+                StepOutcome.Failure(
+                    PipelineFailure(
+                        kind = FailureKind.ENGINE,
+                        message = "body ref '${body.encoded}' is not open in this run",
+                    ),
+                ),
+            )
         return BodyOutcome.Completed(runner(context))
     }
 

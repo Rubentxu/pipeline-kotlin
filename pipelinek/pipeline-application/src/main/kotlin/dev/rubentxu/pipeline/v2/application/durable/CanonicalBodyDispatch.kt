@@ -296,21 +296,6 @@ internal class CanonicalBodyDispatch(
     }
 
     /**
-     * folds a body outcome and the scope cleanup outcome into a single
-     * total StepOutcome per design Cleanup is idempotent and never throws.
-     *
-     * Total algebra: cleanup Failed over Success, Unstable or Failure always yields a
-     * typed operational Failure (INFRASTRUCTURE). Cleaned leaves the body outcome intact.
-     */
-    private fun mergeBodyAndCleanup(bodyOutcome: StepOutcome, cleanup: CredentialScopeCleanup): StepOutcome =
-        when (cleanup) {
-            CredentialScopeCleanup.Cleaned -> bodyOutcome
-            is CredentialScopeCleanup.Failed -> StepOutcome.Failure(
-                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, cleanup.message),
-            )
-        }
-
-    /**
      * emit a typed [dev.rubentxu.pipeline.v2.events.StepFailed] for a credential-lease
      * admission failure. The lease rejection happens BEFORE any child StepStarted, so
      * this event is the only per-step observability the outcome has.

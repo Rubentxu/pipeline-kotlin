@@ -160,11 +160,13 @@ class WaitUntilEngine(
                     val pollOutcome: BodyOutcome = invokeBodyOnce(bodyRef, attempt)
 
                     val pollDurationMs = System.currentTimeMillis() - pollStartMs
-                    val completedOutcome: StepOutcome? = when (pollOutcome) {
-                        is BodyOutcome.Completed -> pollOutcome.outcome
-                        is BodyOutcome.Cancelled -> null
-                    }
-                    val predicateSatisfied = completedOutcome is StepOutcome.Success
+                    // The poll's answer is read ONCE, by the fold that owns the reading. The
+                    // engine never inspects the body outcome field by field, so there is one
+                    // place where a body's answer becomes the predicate's verdict, and no
+                    // carrier that can hold "nothing" in the middle of the translation.
+                    val predicateOutcome: WaitUntilPredicateOutcome =
+                        waitUntilPredicateOutcome(pollOutcome)
+                    val predicateSatisfied = predicateOutcome is WaitUntilPredicateOutcome.Satisfied
 
                     // Emit updated WaitUntilPolled with actual result (AFTER journal write).
                     eventSink.append(
@@ -178,26 +180,6 @@ class WaitUntilEngine(
                             conditionResult = predicateSatisfied,
                         ),
                     )
-
-                    val predicateOutcome: WaitUntilPredicateOutcome = when {
-                        pollOutcome is BodyOutcome.Cancelled -> WaitUntilPredicateOutcome.Cancelled(
-                            reason = pollOutcome.reason,
-                        )
-                        completedOutcome is StepOutcome.Success -> WaitUntilPredicateOutcome.Satisfied
-                        completedOutcome is StepOutcome.Failure -> WaitUntilPredicateOutcome.Failed(completedOutcome.failure)
-                        completedOutcome is StepOutcome.Unstable -> WaitUntilPredicateOutcome.Failed(
-                            PipelineFailure(
-                                FailureKind.SCRIPT,
-                                "waitUntil body marked unstable",
-                            ),
-                        )
-                        else -> WaitUntilPredicateOutcome.Failed(
-                            PipelineFailure(
-                                FailureKind.SCRIPT,
-                                "waitUntil body returned an unhandled outcome",
-                            ),
-                        )
-                    }
 
                     when (predicateOutcome) {
                         is WaitUntilPredicateOutcome.Satisfied -> {

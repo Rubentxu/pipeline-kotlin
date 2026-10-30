@@ -131,8 +131,9 @@ object JsonEventLog {
      * surfacing upward, and "this runtime knows the row and cannot read it" is corruption — so it
      * cannot infer one from the other.
      *
-     * The vocabulary itself lives in [DomainEventJsonDecoder], next to the table that decodes it,
-     * so that the list of what can be read and the arms that read it are one thing and not two.
+     * The vocabulary itself lives in [EventKindMatrix], the table that binds every kind to the
+     * type that owns it, so that what can be read and the arms that read it are one thing and
+     * not two.
      */
     fun knowsKind(kind: String): Boolean = DomainEventJsonDecoder.knowsKind(kind)
 
@@ -176,12 +177,27 @@ object JsonEventLog {
             // The payload echo survives only as a fallback for a document whose SHAPE was unusable,
             // which is a fact about the payload as a whole rather than about one field.
             when (val first = decodeFirstOutcome(payload)) {
-                is EventDecodeOutcome.Decoded -> StoredRowDecode.Accepted(first.event)
+                is EventDecodeOutcome.Decoded ->
+                    // The column and the payload are two statements about the same row, and the
+                    // column is the one that was trusted to classify it. When they disagree the
+                    // row is not what the column said it was, and it is refused rather than
+                    // accepted under the payload's own name.
+                    if (first.event.kind == rowKind) {
+                        StoredRowDecode.Accepted(first.event)
+                    } else {
+                        StoredRowDecode.Refused(
+                            dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload(
+                                "row kind \"$rowKind\" does not match the payload kind \"${first.event.kind}\"",
+                            ),
+                        )
+                    }
                 is EventDecodeOutcome.Failed -> StoredRowDecode.Refused(
                     when (val c = first.cause) {
                         is EventDecodeFailure.UnknownEventKind ->
                             dev.rubentxu.pipeline.v2.events.UndecodableReason.UnknownKind(c.kind)
                         is EventDecodeFailure.UnreadableField ->
+                            dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload(c.description)
+                        is EventDecodeFailure.KindMismatch ->
                             dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload(c.description)
                     }
                 )

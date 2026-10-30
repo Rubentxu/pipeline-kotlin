@@ -20,13 +20,18 @@ import org.junit.jupiter.api.Test
  *     held nothing, which is a refusal and not an absence;
  *  2. a null or empty `kind` COLUMN refuses, even when the payload is perfectly decodable;
  *  3. an unknown `kind` COLUMN refuses as version skew, which an operator can act on;
- *  4. otherwise the payload is decoded once and its own cause is carried through.
+ *  4. otherwise the payload is decoded once and its own cause is carried through;
+ *  5. a payload that decodes into an event of ANOTHER kind refuses, naming both words.
  *
  * Rules 2 and 3 are the ones that look redundant and are not. The first version of this read the
  * kind out of the PAYLOAD, which makes the classification wrong exactly when it matters: a row can
  * be unreadable *because* of its payload, and then the payload is the one thing that cannot be
  * trusted to name the row. The `kind` COLUMN is written by `bindInsert` from the event and is NOT
  * NULL, so it is the authority that survives.
+ *
+ * Rule 5 is what makes rule 2 worth its cost. A column and a payload are two statements about the
+ * same row, and when they disagree the row is not what the column said it was -- accepting it
+ * under the payload's own name would answer a question nobody asked.
  *
  * Pure and total: no store, no database, no clock. `Instant.now()` is never consulted, and one case
  * below says why that matters.
@@ -169,16 +174,23 @@ class JsonEventLogDecodeStoredRowTest {
         assertTrue(reason is UndecodableReason.MalformedPayload, "got $reason")
     }
 
-    // --- the kind table is one list, not two -------------------------------------
+    // --- the column and the payload are two statements about the same row -------
 
     @Test
-    fun `the column is accepted for exactly the kinds this codec knows`() {
-        // `knowsKind` and the decoder are meant to read the SAME list, so a kind
-        // the column accepts must be one the decoder can actually build. Proving
-        // it for RunStarted is enough to catch the split; the whole table is a
-        // fixture the codec owns, not a promise this test should re-state.
-        assertTrue(JsonEventLog.knowsKind("RunStarted"))
-        assertTrue(JsonEventLog.knowsKind("RunCorrelated"))
-        assertTrue(!JsonEventLog.knowsKind("RunStartedTypo"))
+    fun `a payload that decodes into another kind refuses, naming both words`() {
+        // The column says CompilationStarted and the payload is a perfectly decodable
+        // RunStarted. Both words are known to this binary, so neither rule 2 nor rule 3
+        // applies; the row is refused because the two statements disagree about what the
+        // row IS.
+        val reason = refusedReason(
+            JsonEventLog.decodeStoredRow(validPayload(kind = "RunStarted"), rowKind = "CompilationStarted"),
+        )
+
+        val detail = (reason as UndecodableReason.MalformedPayload).detail
+        assertTrue(
+            detail.contains("CompilationStarted") && detail.contains("RunStarted"),
+            "the refusal must name BOTH words, or an operator cannot tell which side of the " +
+                "row drifted; got \"$detail\"",
+        )
     }
 }

@@ -113,6 +113,18 @@ internal sealed interface EventDecodeFailure {
     data class UnknownEventKind(val kind: String) : EventDecodeFailure {
         override val description: String = "no decoder for kind \"$kind\""
     }
+
+    /**
+     * The payload was read into an event whose own kind is not the kind that was announced.
+     *
+     * The matrix says which kind belongs to which type, and the decoder built a type. When the
+     * two do not agree, the row was not what it announced itself to be: that is damage, not skew,
+     * and it is refused instead of accepted under a kind nobody asked for.
+     */
+    data class KindMismatch(val announcedKind: String, val decodedKind: String) : EventDecodeFailure {
+        override val description: String =
+            "kind \"$announcedKind\" decoded into an event whose kind is \"$decodedKind\""
+    }
 }
 
 /** How much of an offending VALUE a cause quotes. Bounded for the same reason as the payload. */
@@ -146,11 +158,15 @@ internal sealed interface EventDecodeOutcome {
  *
  * ## The vocabulary is declared once
  *
- * [KNOWN_KINDS] is the closed list of kinds this binary can decode, and the `when` below is the
- * decoder for it. The list is a restatement, not a second authority: a kind in the list with no
- * decoder arm cannot decode, and a decoder arm with no list entry is not announced. The `else` arm
- * at the bottom of the table is what keeps that honest — a kind added to the table without an arm
- * lands in a stated failure instead of becoming a fabricated event.
+ * The kinds this binary can decode are [EventKind]'s, and the `when` below is the decoder for
+ * them. The kinds are not restated here: a kind this binary does not know is refused BEFORE the
+ * table is entered, and a kind it knows has an arm, because the table is exhaustive over
+ * [EventKind] and the compiler says so.
+ *
+ * What the table cannot hold is the WIRING: an arm that builds the wrong type for a kind, and a
+ * type whose own kind literal no longer names its constant, are strings to the compiler and
+ * invisible to it. So the decoder compares what it built against the kind that was announced, and
+ * refuses the row when the two disagree.
  *
  * The failure vocabulary is internal to the module, on purpose: [JsonEventLog.decode] and
  * [JsonEventLog.decodeStoredRow] keep their public shapes, so nothing outside this module can
@@ -164,58 +180,10 @@ internal object DomainEventJsonDecoder {
      * refusal needs that distinction — "this runtime is older than the row" is version skew worth
      * surfacing upward, and "this runtime knows the row and cannot read it" is corruption — so it
      * cannot infer one from the other.
-     * It is also the answer to the question the `else` arm of [decode] raises. That arm
-     * is correct as a REJECTION: an unknown kind must not become a fabricated event. What it cannot
-     * be, on its own, is silent, because the caller has no way to report it.
-     * The set is the closed vocabulary [decode] switches on, restated. Duplication rather than
-     * reflection is deliberate: a reflective scan of a `when` over string literals would be a
-     * compiler-plugin job wearing a fitness's clothes. What keeps the two honest is not a test but
-     * the decoder itself: a kind announced here and missing from the table lands in that `else`
-     * arm and fails with a stated reason, instead of decoding into something nobody announced.
+     * The answer is the vocabulary's own: [EventKindMatrix] holds the kinds this binary reads and
+     * writes, and this asks it. There is no second list to keep in step with the table.
 */
-    fun knowsKind(kind: String): Boolean = kind in KNOWN_KINDS
-
-    /**
-     * The wire discriminators this binary can decode. The single list both [knowsKind] and the
-     * architecture fitness read, so "what can be read" has one answer rather than two that can
-     * drift.
-*/
-    private val KNOWN_KINDS: Set<String> = setOf(
-        // RunCorrelated carries the external
-        // correlationId + ownerId + startedAtMs bound to the runId.
-        "RunCorrelated", "RunStarted", "CompilationStarted", "CompilationFinished", "RunFinished",
-        "StageStarted", "StageFinished", "StepStarted", "StepFinished",
-        "AgentResolved", "ExecutionTargetResolved",
-        "ParallelBranchStarted", "ParallelBranchFinished",
-        "RetryAttemptStarted", "RetryAttemptFinished",
-        "TimeoutScheduled", "StepFailed", "EchoOutputCaptured",
-        "CredentialBound", "CredentialUsed", "CredentialUnbound",
-        "GitCheckoutStarted", "GitCheckoutCompleted", "GitCheckoutFailed", "GitPollChanged",
-        "FileWritten", "FileRead", "FileExistsChecked",
-        "ArtifactArchived", "ArtifactArchiveFailed",
-        "StashCreated", "StashRestored", "StashFailed",
-        "HtmlReportPublished", "HtmlReportSkipped", "HtmlReportFailed",
-        "DirEntered", "DirExited", "DirDeleted", "WsCleaned",
-        "CatchErrorTriggered", "DirectiveAdmitted", "DirectiveDenied",
-        "GateEvaluated", "StageMarkedUnstable", "WorkflowLoaded",
-        "WaitUntilPolled", "WaitUntilCompleted",
-        "PwdResolved", "UnixDetected",
-        "MilestoneReached", "MilestoneAborted",
-        "LockRequested", "LockAcquired", "LockReleased", "LockSkipped", "LockAcquireFailed",
-        "InputRequested", "InputProceed", "InputAborted", "InputDenied",
-        "HttpRequestStarted", "HttpResponseReceived", "HttpStatusRejected", "HttpRequestFailed",
-        "TimeoutTriggered", "TimestampsEntered", "TimestampsExited",
-        "StepAdmissionObserved", "PostConditionSelected", "StageSkipped",
-        "PluginEventEmitted",
-        // the armed-obligation notification. The payload carries the promise's
-        // identity and plan, never the provider's content.
-        "CompensationArmed",
-        // the three facts of the compensation loop. The slot travels with them
-        // because it is the join with the journal rows of the body that ran.
-        "CompensationStarted",
-        "CompensationFinished",
-        "SagaTerminal",
-    )
+    fun knowsKind(kind: String): Boolean = EventKindMatrix.knows(kind)
 
     fun decode(s: String): EventDecodeOutcome {
         fun absent(field: String) = EventDecodeOutcome.Failed(EventDecodeFailure.UnreadableField(field, null))
@@ -225,7 +193,7 @@ internal object DomainEventJsonDecoder {
         val runId = EventJsonFields.stringField(s, "runId") ?: return absent("runId")
         val sequence = EventJsonFields.longField(s, "sequence")
             ?: return absent("sequence")
-        val kind = EventJsonFields.stringField(s, "kind") ?: return absent("kind")
+        val kindWire = EventJsonFields.stringField(s, "kind") ?: return absent("kind")
         val occurredAtStr = EventJsonFields.stringField(s, "occurredAt")
             ?: return absent("occurredAt")
         // An occurredAt that is present but unparseable is refused. Falling back to
@@ -237,12 +205,17 @@ internal object DomainEventJsonDecoder {
         } catch (_: Exception) {
             return unreadable("occurredAt", occurredAtStr)
         }
+        // The kind is resolved to the vocabulary BEFORE the table is entered: a kind this binary
+        // does not know is refused with its own reason, and every arm below is reached only for a
+        // kind the vocabulary holds.
+        val kind = EventKindMatrix.fromWire(kindWire)
+            ?: return EventDecodeOutcome.Failed(EventDecodeFailure.UnknownEventKind(kindWire))
 
         val event = when (kind) {
-            "RunStarted" -> {
+            EventKind.RunStarted -> {
                 val scriptPath = EventJsonFields.stringField(s, "scriptPath")
                     ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("scriptPath", "RunStarted"),
+                        EventDecodeFailure.UnreadableField("scriptPath", kind.wire),
                     )
                 RunStarted(
                     eventId = eventId,
@@ -255,18 +228,18 @@ internal object DomainEventJsonDecoder {
             // Decode the correlation event so
             // the durable log can re-emit it on a replay / observe
             // without losing the correlationId binding.
-            "RunCorrelated" -> {
+            EventKind.RunCorrelated -> {
                 val correlationIdStr = EventJsonFields.stringField(s, "correlationId")
                     ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("correlationId", "RunCorrelated"),
+                        EventDecodeFailure.UnreadableField("correlationId", kind.wire),
                     )
                 val ownerId = EventJsonFields.stringField(s, "ownerId")
                     ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("ownerId", "RunCorrelated"),
+                        EventDecodeFailure.UnreadableField("ownerId", kind.wire),
                     )
                 val startedAtMs = EventJsonFields.longField(s, "startedAtMs")
                     ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("startedAtMs", "RunCorrelated"),
+                        EventDecodeFailure.UnreadableField("startedAtMs", kind.wire),
                     )
                 RunCorrelated(
                     eventId = eventId,
@@ -278,13 +251,13 @@ internal object DomainEventJsonDecoder {
                     startedAtMs = startedAtMs,
                 )
             }
-            "CompilationStarted" -> CompilationStarted(
+            EventKind.CompilationStarted -> CompilationStarted(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
             )
-            "CompilationFinished" -> {
+            EventKind.CompilationFinished -> {
                 val cacheKey = EventJsonFields.parseCacheKey(s)
                     ?: return absent("cacheKey")
                 val diagnostics = EventJsonDecoder.decodeDiagnostics(s)
@@ -297,7 +270,7 @@ internal object DomainEventJsonDecoder {
                     diagnostics = diagnostics,
                 )
             }
-            "RunFinished" -> {
+            EventKind.RunFinished -> {
                 val outcome = EventJsonFields.stringField(s, "outcome") ?: "unknown"
                 val diagnostics = EventJsonDecoder.decodeDiagnostics(s)
                 RunFinished(
@@ -309,7 +282,7 @@ internal object DomainEventJsonDecoder {
                     diagnostics = diagnostics,
                 )
             }
-            "StageStarted" -> StageStarted(
+            EventKind.StageStarted -> StageStarted(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -317,7 +290,7 @@ internal object DomainEventJsonDecoder {
                 stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0,
                 stageName = EventJsonFields.stringField(s, "stageName") ?: "",
             )
-            "StageFinished" -> StageFinished(
+            EventKind.StageFinished -> StageFinished(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -326,7 +299,7 @@ internal object DomainEventJsonDecoder {
                 stageName = EventJsonFields.stringField(s, "stageName") ?: "",
                 outcome = EventJsonFields.stringField(s, "outcome") ?: "unknown",
             )
-            "StepStarted" -> StepStarted(
+            EventKind.StepStarted -> StepStarted(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -336,7 +309,7 @@ internal object DomainEventJsonDecoder {
                 stepName = EventJsonFields.stringField(s, "stepName") ?: "",
                 stepType = EventJsonFields.stringField(s, "stepType") ?: "",
             )
-            "StepFinished" -> StepFinished(
+            EventKind.StepFinished -> StepFinished(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -350,7 +323,7 @@ internal object DomainEventJsonDecoder {
                 // must not invent one.
                 outcome = EventJsonFields.optionalStringField(s, OptionalEventField.OUTCOME),
             )
-            "AgentResolved" -> AgentResolved(
+            EventKind.AgentResolved -> AgentResolved(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -358,7 +331,7 @@ internal object DomainEventJsonDecoder {
                 agentLabel = EventJsonFields.stringField(s, "agentLabel") ?: "",
                 remoteUri = EventJsonFields.optionalStringField(s, OptionalEventField.REMOTE_URI),
             )
-            "ExecutionTargetResolved" -> ExecutionTargetResolved(
+            EventKind.ExecutionTargetResolved -> ExecutionTargetResolved(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -369,7 +342,7 @@ internal object DomainEventJsonDecoder {
                 requirement = EventJsonFields.stringField(s, "requirement") ?: "",
                 targetId = EventJsonFields.stringField(s, "targetId") ?: "",
             )
-            "ParallelBranchStarted" -> ParallelBranchStarted(
+            EventKind.ParallelBranchStarted -> ParallelBranchStarted(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -378,7 +351,7 @@ internal object DomainEventJsonDecoder {
                 branchName = EventJsonFields.stringField(s, "branchName") ?: "",
                 parentStageIndex = EventJsonFields.intField(s, "parentStageIndex") ?: 0,
             )
-            "ParallelBranchFinished" -> ParallelBranchFinished(
+            EventKind.ParallelBranchFinished -> ParallelBranchFinished(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -388,7 +361,7 @@ internal object DomainEventJsonDecoder {
                 parentStageIndex = EventJsonFields.intField(s, "parentStageIndex") ?: 0,
                 outcome = EventJsonFields.stringField(s, "outcome") ?: "unknown",
             )
-            "RetryAttemptStarted" -> RetryAttemptStarted(
+            EventKind.RetryAttemptStarted -> RetryAttemptStarted(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -400,7 +373,7 @@ internal object DomainEventJsonDecoder {
                 stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0,
                 stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
             )
-            "RetryAttemptFinished" -> RetryAttemptFinished(
+            EventKind.RetryAttemptFinished -> RetryAttemptFinished(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -413,7 +386,7 @@ internal object DomainEventJsonDecoder {
                 stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
                 outcome = EventJsonFields.stringField(s, "outcome") ?: "unknown",
             )
-            "TimeoutScheduled" -> TimeoutScheduled(
+            EventKind.TimeoutScheduled -> TimeoutScheduled(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -425,7 +398,7 @@ internal object DomainEventJsonDecoder {
                 stageIndex = EventJsonFields.intField(s, "stageIndex")?.takeIf { it != -1 },
                 stepIndex = EventJsonFields.intField(s, "stepIndex")?.takeIf { it != -1 },
             )
-            "StepFailed" -> {
+            EventKind.StepFailed -> {
                 val failureKindStr = EventJsonFields.stringField(s, "failureKind") ?: "UNKNOWN"
                 val failureKind = try {
                     FailureKind.valueOf(failureKindStr)
@@ -448,7 +421,7 @@ internal object DomainEventJsonDecoder {
                     message = EventJsonFields.stringField(s, "message") ?: "",
                 )
             }
-            "EchoOutputCaptured" -> EchoOutputCaptured(
+            EventKind.EchoOutputCaptured -> EchoOutputCaptured(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
@@ -456,7 +429,7 @@ internal object DomainEventJsonDecoder {
                 stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
                 content = EventJsonFields.stringField(s, "content") ?: "",
             )
-            "CredentialBound" -> {
+            EventKind.CredentialBound -> {
                 // An ABSENT purpose keeps its documented `API_KEY` default: a missing optional
                 // field is a tolerated shape. A PRESENT-but-unreadable token is not the same
                 // defect and MUST NOT be folded into that default — `BoundPurpose` has no
@@ -480,7 +453,7 @@ internal object DomainEventJsonDecoder {
                     purpose = purpose,
                 )
             }
-            "CredentialUsed" -> {
+            EventKind.CredentialUsed -> {
                 // Same rule as `CredentialBound` above: absent keeps the documented default,
                 // present-but-unreadable refuses rather than inventing a binding kind.
                 val purpose = when (val purposeStr = EventJsonFields.stringField(s, "purpose")) {
@@ -499,7 +472,7 @@ internal object DomainEventJsonDecoder {
                     stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
                 )
             }
-            "CredentialUnbound" -> {
+            EventKind.CredentialUnbound -> {
                 val credIdStr = EventJsonFields.stringField(s, "credentialsId") ?: ""
                 CredentialUnbound(
                     eventId = eventId,
@@ -510,7 +483,7 @@ internal object DomainEventJsonDecoder {
                 )
             }
             // SCM Events
-            "GitCheckoutStarted" -> {
+            EventKind.GitCheckoutStarted -> {
                 val url = EventJsonFields.stringField(s, "url") ?: ""
                 val branch = EventJsonFields.stringField(s, "branch") ?: ""
                 val credIdStr = EventJsonFields.stringField(s, "credentialsRef")
@@ -524,7 +497,7 @@ internal object DomainEventJsonDecoder {
                     credentialsRef = credIdStr?.let { CredentialsRef(CredentialsId(it)) },
                 )
             }
-            "GitCheckoutCompleted" -> {
+            EventKind.GitCheckoutCompleted -> {
                 val url = EventJsonFields.stringField(s, "url") ?: ""
                 val branch = EventJsonFields.stringField(s, "branch") ?: ""
                 val sha = EventJsonFields.stringField(s, "sha") ?: ""
@@ -542,7 +515,7 @@ internal object DomainEventJsonDecoder {
                     durationMs = durationMs,
                 )
             }
-            "GitCheckoutFailed" -> {
+            EventKind.GitCheckoutFailed -> {
                 val url = EventJsonFields.stringField(s, "url") ?: ""
                 val branch = EventJsonFields.stringField(s, "branch") ?: ""
                 val reason = EventJsonFields.stringField(s, "reason") ?: ""
@@ -558,7 +531,7 @@ internal object DomainEventJsonDecoder {
                     exitCode = exitCode,
                 )
             }
-            "GitPollChanged" -> {
+            EventKind.GitPollChanged -> {
                 val url = EventJsonFields.stringField(s, "url") ?: ""
                 val branch = EventJsonFields.stringField(s, "branch") ?: ""
                 val previousSha = EventJsonFields.stringField(s, "previousSha")
@@ -575,7 +548,7 @@ internal object DomainEventJsonDecoder {
                 )
             }
             // Jenkins File + Artefact Events
-            "FileWritten" -> {
+            EventKind.FileWritten -> {
                 val pathStr = EventJsonFields.stringField(s, "path") ?: ""
                 val path = java.nio.file.Paths.get(pathStr)
                 val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
@@ -592,7 +565,7 @@ internal object DomainEventJsonDecoder {
                     atomicallyMoved = atomicallyMoved,
                 )
             }
-            "FileRead" -> {
+            EventKind.FileRead -> {
                 val pathStr = EventJsonFields.stringField(s, "path") ?: ""
                 val path = java.nio.file.Paths.get(pathStr)
                 val sha256 = EventJsonFields.stringField(s, "sha256")
@@ -607,7 +580,7 @@ internal object DomainEventJsonDecoder {
                     size = size,
                 )
             }
-            "FileExistsChecked" -> {
+            EventKind.FileExistsChecked -> {
                 val pathStr = EventJsonFields.stringField(s, "path") ?: ""
                 val path = java.nio.file.Paths.get(pathStr)
                 val exists = EventJsonFields.boolField(s, "exists") ?: false
@@ -620,9 +593,9 @@ internal object DomainEventJsonDecoder {
                     exists = exists,
                 )
             }
-            "ArtifactArchived" -> {
+            EventKind.ArtifactArchived -> {
                 val files = EventJsonDecoder.decodeArtifactEntriesOrRefuse(s)
-                    ?: return unreadable("files", "ArtifactArchived")
+                    ?: return unreadable("files", kind.wire)
                 ArtifactArchived(
                     eventId = eventId,
                     runId = runId,
@@ -631,7 +604,7 @@ internal object DomainEventJsonDecoder {
                     files = files,
                 )
             }
-            "ArtifactArchiveFailed" -> {
+            EventKind.ArtifactArchiveFailed -> {
                 val reason = EventJsonFields.stringField(s, "reason") ?: ""
                 ArtifactArchiveFailed(
                     eventId = eventId,
@@ -642,13 +615,13 @@ internal object DomainEventJsonDecoder {
                 )
             }
             // Core.stash/core.unstash durable cross-stage data movement
-            "StashCreated" -> {
+            EventKind.StashCreated -> {
                 val stageName = EventJsonFields.stringField(s, "stageName")
                     ?: return absent("stageName")
                 val name = EventJsonFields.stringField(s, "name")
                     ?: return absent("name")
                 val files = EventJsonDecoder.decodeStashedEntriesOrRefuse(s)
-                    ?: return unreadable("files", "StashCreated")
+                    ?: return unreadable("files", kind.wire)
                 StashCreated(
                     eventId = eventId,
                     runId = runId,
@@ -659,13 +632,13 @@ internal object DomainEventJsonDecoder {
                     files = files,
                 )
             }
-            "StashRestored" -> {
+            EventKind.StashRestored -> {
                 val stageName = EventJsonFields.stringField(s, "stageName")
                     ?: return absent("stageName")
                 val name = EventJsonFields.stringField(s, "name")
                     ?: return absent("name")
                 val entries = EventJsonDecoder.decodeRestoredEntriesOrRefuse(s)
-                    ?: return unreadable("entries", "StashRestored")
+                    ?: return unreadable("entries", kind.wire)
                 StashRestored(
                     eventId = eventId,
                     runId = runId,
@@ -676,7 +649,7 @@ internal object DomainEventJsonDecoder {
                     entries = entries,
                 )
             }
-            "StashFailed" -> {
+            EventKind.StashFailed -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val name = EventJsonFields.stringField(s, "name") ?: ""
                 val operation = EventJsonFields.stringField(s, "operation") ?: ""
@@ -693,7 +666,7 @@ internal object DomainEventJsonDecoder {
                 )
             }
             // Core.publishHTML durable HTML report publishing
-            "HtmlReportPublished" -> {
+            EventKind.HtmlReportPublished -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val reportName = EventJsonFields.stringField(s, "reportName") ?: ""
                 val reportDir = EventJsonFields.stringField(s, "reportDir") ?: ""
@@ -711,7 +684,7 @@ internal object DomainEventJsonDecoder {
                     targetPath = targetPath,
                 )
             }
-            "HtmlReportSkipped" -> {
+            EventKind.HtmlReportSkipped -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val reportName = EventJsonFields.stringField(s, "reportName") ?: ""
                 val reportDir = EventJsonFields.stringField(s, "reportDir") ?: ""
@@ -727,7 +700,7 @@ internal object DomainEventJsonDecoder {
                     reason = reason,
                 )
             }
-            "HtmlReportFailed" -> {
+            EventKind.HtmlReportFailed -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val reportName = EventJsonFields.stringField(s, "reportName") ?: ""
                 val reportDir = EventJsonFields.stringField(s, "reportDir") ?: ""
@@ -750,7 +723,7 @@ internal object DomainEventJsonDecoder {
                     reason = reason,
                 )
             }
-            "DirectiveAdmitted" -> {
+            EventKind.DirectiveAdmitted -> {
                 val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val directiveKey = EventJsonFields.stringField(s, "directiveKey") ?: ""
@@ -768,7 +741,7 @@ internal object DomainEventJsonDecoder {
                     policy = policy,
                 )
             }
-            "DirectiveDenied" -> {
+            EventKind.DirectiveDenied -> {
                 val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val directiveKey = EventJsonFields.stringField(s, "directiveKey") ?: ""
@@ -784,7 +757,7 @@ internal object DomainEventJsonDecoder {
                     reason = reason,
                 )
             }
-            "GateEvaluated" -> {
+            EventKind.GateEvaluated -> {
                 val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val directiveKeys = EventJsonFields.stringListField(s, "directiveKeys") ?: emptyList()
@@ -802,7 +775,7 @@ internal object DomainEventJsonDecoder {
                     reason = reason,
                 )
             }
-            "StageSkipped" -> {
+            EventKind.StageSkipped -> {
                 val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val reason = EventJsonFields.stringField(s, "reason") ?: ""
@@ -816,7 +789,7 @@ internal object DomainEventJsonDecoder {
                     reason = reason,
                 )
             }
-            "PostConditionSelected" -> {
+            EventKind.PostConditionSelected -> {
                 val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val stageOutcome = EventJsonFields.stringField(s, "stageOutcome") ?: ""
@@ -834,7 +807,7 @@ internal object DomainEventJsonDecoder {
                     skippedConditions = skippedConditions,
                 )
             }
-            "DirEntered" -> {
+            EventKind.DirEntered -> {
                 val path = EventJsonFields.stringField(s, "path") ?: ""
                 val previousPath = EventJsonFields.stringField(s, "previousPath") ?: ""
                 DirEntered(
@@ -846,7 +819,7 @@ internal object DomainEventJsonDecoder {
                     previousPath = previousPath,
                 )
             }
-            "DirExited" -> {
+            EventKind.DirExited -> {
                 val path = EventJsonFields.stringField(s, "path") ?: ""
                 val restoredTo = EventJsonFields.stringField(s, "restoredTo") ?: ""
                 DirExited(
@@ -858,7 +831,7 @@ internal object DomainEventJsonDecoder {
                     restoredTo = restoredTo,
                 )
             }
-            "DirDeleted" -> {
+            EventKind.DirDeleted -> {
                 val path = EventJsonFields.stringField(s, "path") ?: ""
                 val deletedCount = EventJsonFields.intField(s, "deletedCount") ?: 0
                 val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
@@ -872,7 +845,7 @@ internal object DomainEventJsonDecoder {
                     sha256 = sha256,
                 )
             }
-            "WsCleaned" -> {
+            EventKind.WsCleaned -> {
                 val deletedFiles = EventJsonFields.intField(s, "deletedFiles") ?: 0
                 val deletedDirs = EventJsonFields.intField(s, "deletedDirs") ?: 0
                 val patterns = EventJsonDecoder.decodeStringList(s, "patterns")
@@ -888,7 +861,7 @@ internal object DomainEventJsonDecoder {
                     sha256 = sha256,
                 )
             }
-            "CatchErrorTriggered" -> {
+            EventKind.CatchErrorTriggered -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 // Both results now cross the codec as a CLOSED vocabulary.
                 // `buildResult` stays nullable (a declared absence is legitimate: the DSL's
@@ -924,7 +897,7 @@ internal object DomainEventJsonDecoder {
                     message = message,
                 )
             }
-            "StageMarkedUnstable" -> {
+            EventKind.StageMarkedUnstable -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val message = EventJsonFields.stringField(s, "message") ?: ""
                 StageMarkedUnstable(
@@ -936,7 +909,7 @@ internal object DomainEventJsonDecoder {
                     message = message,
                 )
             }
-            "WorkflowLoaded" -> {
+            EventKind.WorkflowLoaded -> {
                 val path = EventJsonFields.stringField(s, "path") ?: ""
                 val stepCount = EventJsonFields.intField(s, "stepCount") ?: 0
                 val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
@@ -950,7 +923,7 @@ internal object DomainEventJsonDecoder {
                     sha256 = sha256,
                 )
             }
-            "WaitUntilPolled" -> {
+            EventKind.WaitUntilPolled -> {
                 val attempt = EventJsonFields.intField(s, "attempt") ?: 1
                 val durationMs = EventJsonFields.longField(s, "durationMs") ?: 0L
                 val conditionResult = EventJsonFields.boolField(s, "conditionResult") ?: false
@@ -964,7 +937,7 @@ internal object DomainEventJsonDecoder {
                     conditionResult = conditionResult,
                 )
             }
-            "WaitUntilCompleted" -> {
+            EventKind.WaitUntilCompleted -> {
                 val totalAttempts = EventJsonFields.intField(s, "totalAttempts") ?: 0
                 val totalDurationMs = EventJsonFields.longField(s, "totalDurationMs") ?: 0L
                 // Was `?: "completed"`. Same defect, opposite direction: a missing
@@ -987,7 +960,7 @@ internal object DomainEventJsonDecoder {
                     outcome = outcome,
                 )
             }
-            "PwdResolved" -> {
+            EventKind.PwdResolved -> {
                 val path = EventJsonFields.stringField(s, "path") ?: ""
                 val workspaceRoot = EventJsonFields.stringField(s, "workspaceRoot") ?: ""
                 val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
@@ -1001,7 +974,7 @@ internal object DomainEventJsonDecoder {
                     sha256 = sha256,
                 )
             }
-            "UnixDetected" -> {
+            EventKind.UnixDetected -> {
                 val isUnix = EventJsonFields.boolField(s, "isUnix") ?: false
                 val osName = EventJsonFields.stringField(s, "osName") ?: ""
                 val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
@@ -1015,7 +988,7 @@ internal object DomainEventJsonDecoder {
                     sha256 = sha256,
                 )
             }
-            "MilestoneReached" -> {
+            EventKind.MilestoneReached -> {
                 val ordinal = EventJsonFields.intField(s, "ordinal") ?: 0
                 val label = EventJsonFields.optionalStringField(s, OptionalEventField.LABEL)
                 MilestoneReached(
@@ -1027,7 +1000,7 @@ internal object DomainEventJsonDecoder {
                     label = label,
                 )
             }
-            "MilestoneAborted" -> {
+            EventKind.MilestoneAborted -> {
                 val ordinal = EventJsonFields.intField(s, "ordinal") ?: 0
                 val reason = EventJsonFields.stringField(s, "reason") ?: ""
                 MilestoneAborted(
@@ -1040,7 +1013,7 @@ internal object DomainEventJsonDecoder {
                 )
             }
             // / lock events
-            "LockRequested" -> {
+            EventKind.LockRequested -> {
                 val resource = EventJsonFields.stringField(s, "resource") ?: ""
                 val reason = EventJsonFields.optionalStringField(s, OptionalEventField.REASON)
                 val skipIfLocked = EventJsonFields.boolField(s, "skipIfLocked") ?: false
@@ -1054,21 +1027,21 @@ internal object DomainEventJsonDecoder {
                     skipIfLocked = skipIfLocked,
                 )
             }
-            "LockAcquired" -> LockAcquired(
+            EventKind.LockAcquired -> LockAcquired(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
                 resource = EventJsonFields.stringField(s, "resource") ?: "",
             )
-            "LockReleased" -> LockReleased(
+            EventKind.LockReleased -> LockReleased(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
                 resource = EventJsonFields.stringField(s, "resource") ?: "",
             )
-            "LockSkipped" -> {
+            EventKind.LockSkipped -> {
                 val resource = EventJsonFields.stringField(s, "resource") ?: ""
                 val reason = EventJsonFields.stringField(s, "reason") ?: ""
                 LockSkipped(
@@ -1080,7 +1053,7 @@ internal object DomainEventJsonDecoder {
                     reason = reason,
                 )
             }
-            "LockAcquireFailed" -> {
+            EventKind.LockAcquireFailed -> {
                 val resource = EventJsonFields.stringField(s, "resource") ?: ""
                 val reason = EventJsonFields.stringField(s, "reason") ?: ""
                 LockAcquireFailed(
@@ -1093,7 +1066,7 @@ internal object DomainEventJsonDecoder {
                 )
             }
             // / httpRequest events
-            "HttpRequestStarted" -> {
+            EventKind.HttpRequestStarted -> {
                 HttpRequestStarted(
                     eventId = eventId,
                     runId = runId,
@@ -1104,7 +1077,7 @@ internal object DomainEventJsonDecoder {
                     headerCount = EventJsonFields.longField(s, "headerCount")?.toInt() ?: 0,
                 )
             }
-            "HttpResponseReceived" -> {
+            EventKind.HttpResponseReceived -> {
                 HttpResponseReceived(
                     eventId = eventId,
                     runId = runId,
@@ -1115,7 +1088,7 @@ internal object DomainEventJsonDecoder {
                     durationMs = EventJsonFields.longField(s, "durationMs") ?: 0L,
                 )
             }
-            "HttpStatusRejected" -> {
+            EventKind.HttpStatusRejected -> {
                 HttpStatusRejected(
                     eventId = eventId,
                     runId = runId,
@@ -1126,7 +1099,7 @@ internal object DomainEventJsonDecoder {
                     accepted = EventJsonFields.stringField(s, "accepted") ?: "",
                 )
             }
-            "HttpRequestFailed" -> {
+            EventKind.HttpRequestFailed -> {
                 HttpRequestFailed(
                     eventId = eventId,
                     runId = runId,
@@ -1137,7 +1110,7 @@ internal object DomainEventJsonDecoder {
                 )
             }
             // / input events
-            "InputRequested" -> {
+            EventKind.InputRequested -> {
                 val message = EventJsonFields.stringField(s, "message") ?: ""
                 val submitter = EventJsonFields.optionalStringField(s, OptionalEventField.SUBMITTER)
                 val id = EventJsonFields.optionalStringField(s, OptionalEventField.ID)
@@ -1151,7 +1124,7 @@ internal object DomainEventJsonDecoder {
                     id = id,
                 )
             }
-            "InputProceed" -> {
+            EventKind.InputProceed -> {
                 val submitter = EventJsonFields.optionalStringField(s, OptionalEventField.SUBMITTER)
                 val message = EventJsonFields.optionalStringField(s, OptionalEventField.MESSAGE)
                 InputProceed(
@@ -1163,7 +1136,7 @@ internal object DomainEventJsonDecoder {
                     message = message,
                 )
             }
-            "InputAborted" -> {
+            EventKind.InputAborted -> {
                 val submitter = EventJsonFields.optionalStringField(s, OptionalEventField.SUBMITTER)
                 val message = EventJsonFields.optionalStringField(s, OptionalEventField.MESSAGE)
                 InputAborted(
@@ -1175,14 +1148,14 @@ internal object DomainEventJsonDecoder {
                     message = message,
                 )
             }
-            "InputDenied" -> InputDenied(
+            EventKind.InputDenied -> InputDenied(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
                 reason = EventJsonFields.stringField(s, "reason") ?: "",
             )
-            "TimeoutTriggered" -> {
+            EventKind.TimeoutTriggered -> {
                 val stageOrStep = EventJsonFields.stringField(s, "stageOrStep") ?: ""
                 val action = EventJsonFields.stringField(s, "action") ?: "interrupt"
                 val durationMs = EventJsonFields.longField(s, "durationMs") ?: 0L
@@ -1200,19 +1173,19 @@ internal object DomainEventJsonDecoder {
             // but NOT decodable (decodeEvent returned null), silently dropping
             // them from every replay/observation surface that reads persisted
             // history through JsonEventLog.
-            "TimestampsEntered" -> TimestampsEntered(
+            EventKind.TimestampsEntered -> TimestampsEntered(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
             )
-            "TimestampsExited" -> TimestampsExited(
+            EventKind.TimestampsExited -> TimestampsExited(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
             )
-            "StepAdmissionObserved" -> {
+            EventKind.StepAdmissionObserved -> {
                 val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
                 val stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0
                 val stepKey = EventJsonFields.stringField(s, "stepKey") ?: ""
@@ -1240,7 +1213,7 @@ internal object DomainEventJsonDecoder {
             // rather than a missing one. So a malformed carrier line decodes to null here, the
             // same as a line this function cannot classify at all, and the registry refuses it
             // again on the read-back side. Two fail-closed hops beat one confident fabrication.
-            "PluginEventEmitted" -> {
+            EventKind.PluginEventEmitted -> {
                 val registryKind = EventJsonFields.stringField(s, "registryKind")
                 val schemaVersion = EventJsonFields.intField(s, "schemaVersion")
                 if (registryKind.isNullOrBlank() || schemaVersion == null) {
@@ -1261,7 +1234,7 @@ internal object DomainEventJsonDecoder {
             // decode the armed-obligation notification. The knowledge of how this
             // event is encoded lives in CompensationArmedCodec, so the dispatcher here stays a
             // dispatcher and does not grow one branch per event.
-            "CompensationArmed" -> CompensationArmedCodec.decode(
+            EventKind.CompensationArmed -> CompensationArmedCodec.decode(
                 s = s,
                 eventId = eventId,
                 runId = runId,
@@ -1271,28 +1244,40 @@ internal object DomainEventJsonDecoder {
             // the loop's three facts. Their knowledge of how they are encoded
             // lives in SagaLoopCodec, so the dispatcher here stays a dispatcher and the file
             // does not grow one branch per event.
-            "CompensationStarted",
-            "CompensationFinished",
-            "SagaTerminal",
+            EventKind.CompensationStarted,
+            EventKind.CompensationFinished,
+            EventKind.SagaTerminal,
             -> SagaLoopCodec.decode(
-                kind = kind,
+                kind = kind.wire,
                 s = s,
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
             )
-            else -> return EventDecodeOutcome.Failed(EventDecodeFailure.UnknownEventKind(kind))
         }
-        return EventDecodeOutcome.Decoded(event ?: return malformedBranch(kind))
+        val decoded = event ?: return malformedBranch(kind.wire)
+        // The matrix says which kind belongs to which type. When the arm built a different one,
+        // the row was not what it announced itself to be, and it is refused rather than accepted
+        // under a kind nobody asked for.
+        if (!EventKindMatrix.declares(kind, decoded.kind)) {
+            return EventDecodeOutcome.Failed(
+                EventDecodeFailure.KindMismatch(
+                    announcedKind = kind.wire,
+                    decodedKind = decoded.kind,
+                ),
+            )
+        }
+        return EventDecodeOutcome.Decoded(decoded)
     }
 
     /**
-     * Unreachable by construction, and stated rather than asserted.
-     * The `when (kind)` above is exhaustive over every decodable kind, and its only fallthrough arm
-     * is the `else` that already returned. Kotlin cannot see that, so this arm exists to make the
-     * exhaustiveness a checked property rather than an `!!`: a kind added to the decoder without a
-     * matching arm lands HERE at compile time instead of becoming a null at runtime.
+     * The arm for this kind produced no event.
+     *
+     * The table is exhaustive over [EventKind] and the compiler says so, but an arm may still
+     * answer that its event cannot be built from this payload: the codec behind it reads fields
+     * this object does not have to be told about, and it declines rather than inventing. That
+     * refusal is a stated failure, not a null nobody reads.
 */
     private fun malformedBranch(kind: String): EventDecodeOutcome = EventDecodeOutcome.Failed(
         EventDecodeFailure.UnreadableField("kind", "the decoder produced no event for kind \"$kind\"")

@@ -169,7 +169,18 @@ internal object EventJsonWriter {
     fun jsonStringList(values: List<String>): String =
         values.joinToString(prefix = "[", postfix = "]", separator = ",") { jsonString(it) }
 
+    /**
+     * The row this event travels as.
+     *
+     * The wire kind that is written is the one the DOMAIN declares, so no byte of the row
+     * changes. What changes is that the row is certified before it is written: the matrix says
+     * which kind belongs to this event's type, and a domain type whose own kind literal stopped
+     * naming its constant would otherwise travel under a kind no reader could decode.
+     */
     fun encodeEvent(event: DomainEvent): String {
+        // The certification comes before the row is built: a disagreement is a defect in the
+        // domain, and nothing of it reaches the wire.
+        EventKindMatrix.certify(EventKindMatrix.of(event), event.kind)
         val sb = StringBuilder()
         sb.append("{")
         sb.append("\"eventId\":")

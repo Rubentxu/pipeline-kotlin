@@ -34,6 +34,14 @@ object SagaLoopCodec {
      * per event is a dispatcher whose SIZE is the price of every new event. The knowledge of
      * how these three are encoded lives here, so the caller needs ONE branch for the whole
      * family and this file owns the rest.
+     *
+     * ## Why the three words are not written here
+     *
+     * This family used to spell out its own three kinds, and that spelling was a second copy of
+     * the vocabulary: a kind renamed in the vocabulary would leave these words behind, and the
+     * family would then answer null for a kind the dispatcher had already recognised — an event
+     * that vanishes without a word. The words now come from [EventKindMatrix], the one place
+     * that knows how a wire string names a kind, so the family cannot fall out of step with it.
      */
     fun decode(
         kind: String,
@@ -42,8 +50,8 @@ object SagaLoopCodec {
         runId: String,
         sequence: Long,
         occurredAt: Instant,
-    ): DomainEvent? = when (kind) {
-        "CompensationStarted" -> decodeStarted(
+    ): DomainEvent? = when (EventKindMatrix.fromWire(kind)) {
+        EventKind.CompensationStarted -> decodeStarted(
             s = s,
             eventId = eventId,
             runId = runId,
@@ -51,7 +59,7 @@ object SagaLoopCodec {
             occurredAt = occurredAt,
         )
 
-        "CompensationFinished" -> decodeFinished(
+        EventKind.CompensationFinished -> decodeFinished(
             s = s,
             eventId = eventId,
             runId = runId,
@@ -59,7 +67,7 @@ object SagaLoopCodec {
             occurredAt = occurredAt,
         )
 
-        "SagaTerminal" -> decodeTerminal(
+        EventKind.SagaTerminal -> decodeTerminal(
             s = s,
             eventId = eventId,
             runId = runId,

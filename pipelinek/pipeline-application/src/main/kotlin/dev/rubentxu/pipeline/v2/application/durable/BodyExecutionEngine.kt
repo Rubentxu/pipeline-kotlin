@@ -266,19 +266,6 @@ internal class BodyExecutionEngine(
             val pollAttemptPath = parentBodyPath + BlockSegment(pollCount, dev.rubentxu.pipeline.v2.domain.PluginStepId("wait-until-poll"))
             val pollStartMs = System.currentTimeMillis()
 
-            // Emit WaitUntilPolled before the poll attempt
-            eventSink.append(
-                WaitUntilPolled(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runId.value,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    attempt = pollCount,
-                    durationMs = 0L,
-                    conditionResult = false, // unknown until body runs
-                ),
-            )
-
             val pollOutcome = invokeBodyChildren(
                 block,
                 runId,
@@ -293,7 +280,9 @@ internal class BodyExecutionEngine(
 
             val pollDurationMs = System.currentTimeMillis() - pollStartMs
 
-            // Update the WaitUntilPolled event with actual duration
+            // ONE event per attempt, same rule as the durable branch: the
+            // poll's own record, with the measured duration and the evaluated
+            // verdict. There is no mirror emitted before the body runs.
             eventSink.append(
                 WaitUntilPolled(
                     eventId = UUID.randomUUID().toString(),

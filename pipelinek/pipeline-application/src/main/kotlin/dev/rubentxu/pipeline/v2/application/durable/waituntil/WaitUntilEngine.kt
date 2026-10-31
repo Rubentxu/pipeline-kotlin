@@ -161,19 +161,6 @@ class WaitUntilEngine(
                     }
 
                     val pollStartMs = System.currentTimeMillis()
-                    // Emit WaitUntilPolled BEFORE the predicate evaluation
-                    // (observability mirror).
-                    eventSink.append(
-                        WaitUntilPolled(
-                            eventId = UUID.randomUUID().toString(),
-                            runId = runId.value,
-                            sequence = 0L,
-                            occurredAt = Instant.now(),
-                            attempt = attempt,
-                            durationMs = 0L,
-                            conditionResult = false,
-                        ),
-                    )
 
                     val pollOutcome: BodyOutcome = invokeBodyOnce(bodyRef, attempt)
 
@@ -186,7 +173,13 @@ class WaitUntilEngine(
                         waitUntilPredicateOutcome(pollOutcome)
                     val predicateSatisfied = predicateOutcome is WaitUntilPredicateOutcome.Satisfied
 
-                    // Emit updated WaitUntilPolled with actual result (AFTER journal write).
+                    // ONE event per attempt. The poll's own record: the duration
+                    // it took and the verdict the predicate actually evaluated to.
+                    // There is no mirror emitted before the evaluation — a
+                    // mirror published a second `WaitUntilPolled` per attempt,
+                    // with `durationMs = 0L` and `conditionResult = false`,
+                    // i.e. a poll that had not happened yet, answering for one
+                    // that had.
                     eventSink.append(
                         WaitUntilPolled(
                             eventId = UUID.randomUUID().toString(),

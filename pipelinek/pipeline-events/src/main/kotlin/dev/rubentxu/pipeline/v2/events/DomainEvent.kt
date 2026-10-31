@@ -835,8 +835,13 @@ data class WorkflowLoaded(
 
 /**
  * Emitted on each poll iteration of a `waitUntil` step.
+ *
+ * ONE event per attempt: the record of the poll that ran, not an advance
+ * notice about one. The attempt's own verdict travels with it, so the event
+ * stream and the console cannot report a poll that has not happened yet.
+ *
  * @param attempt 1-based attempt number
- * @param durationMs Elapsed time since waitUntil started (ms)
+ * @param durationMs Elapsed time of THIS poll (ms)
  * @param conditionResult Whether the condition returned true this iteration
 */
 data class WaitUntilPolled(

@@ -42,8 +42,12 @@ import java.util.UUID
  * - Event shape beyond what the waitUntil aggregate itself owns
  *   ([WaitUntilPolled] / [WaitUntilCompleted]).
  * - The legacy compat polling loop (no `waitUntilControlJournal`): the
- *   canonical coordinator keeps its inline legacy loop bit-equivalent for
- *   callers that have not yet opted into the durable waitUntil aggregate.
+ *   canonical coordinator keeps its inline legacy loop for callers that have
+ *   not yet opted into the durable waitUntil aggregate. It applies the SAME
+ *   rule — the backoff ceiling IS the deadline, and the poll whose interval
+ *   reached it is the last poll — and it projects its terminal from the same
+ *   [WaitUntilCompletion] algebra, so the two branches cannot disagree about
+ *   when a wait ends or about how it says so.
  * ## Plan-only invariant
  * `plan()` is the pure read path and is unchanged in semantics from
  * [WaitUntilReconciliationDriver]: read the journal, build the input,
@@ -141,6 +145,20 @@ class WaitUntilEngine(
                         fingerprint = fingerprint,
                         status = OperationStatus.RUNNING,
                     )
+
+                    // A FRESH start pays the initial interval before its first
+                    // poll, exactly as the inline loop does
+                    // (`BodyExecutionEngine.executeWaitUntilInline` delays
+                    // `initialRecurrencePeriod` before poll 1). Without it the
+                    // durable path polled at once and then waited 2x, 4x, ...:
+                    // the same ladder of intervals, but a different schedule,
+                    // so `initialRecurrencePeriod` meant two different things
+                    // in the two branches. A RESUMED attempt does not pay it
+                    // again: that attempt's interval was already waited for
+                    // before the interruption.
+                    if (decision is WaitUntilReconciliationDecision.ScheduleAttempt && attempt == 1) {
+                        kotlinx.coroutines.delay(initialRecurrencePeriodMs)
+                    }
 
                     val pollStartMs = System.currentTimeMillis()
                     // Emit WaitUntilPolled BEFORE the predicate evaluation

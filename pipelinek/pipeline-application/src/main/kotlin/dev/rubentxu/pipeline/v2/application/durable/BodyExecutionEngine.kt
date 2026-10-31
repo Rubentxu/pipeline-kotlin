@@ -25,6 +25,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilCompletion
 import java.nio.file.Files
 import java.util.UUID
 
@@ -307,7 +308,11 @@ internal class BodyExecutionEngine(
 
             when (pollOutcome) {
                 is StepOutcome.Success -> {
-                    // Condition satisfied
+                    // Condition satisfied. The terminal is projected from the
+                    // SAME algebra the durable branch projects it from, so
+                    // the wire token and the typed result cannot disagree
+                    // between the two branches.
+                    val completion = WaitUntilCompletion.Satisfied
                     val totalDurationMs = System.currentTimeMillis() - overallStartMs
                     eventSink.append(
                         WaitUntilCompleted(
@@ -317,15 +322,24 @@ internal class BodyExecutionEngine(
                             occurredAt = Instant.now(),
                             totalAttempts = pollCount,
                             totalDurationMs = totalDurationMs,
-                            outcome = "completed",
+                            outcome = completion.wireOutcome,
                         ),
                     )
-                    return StepOutcome.Success
+                    return completion.toStepOutcome()
                 }
                 else -> {
                     // Condition not satisfied (failure, unstable, etc.) — retry with backoff
                     if (currentBackoffMs >= maxBackoffMs) {
-                        // Backoff exceeded — deadline exceeded
+                        // THE CEILING IS THE DEADLINE. This poll ran with an
+                        // interval that had reached the ceiling, so it was the
+                        // LAST poll: the condition did not hold, and the wait
+                        // ends here. Same rule, same terminal and same message
+                        // as the durable branch, because both project it from
+                        // [WaitUntilCompletion].
+                        val completion = WaitUntilCompletion.DeadlineExceeded(
+                            attempt = pollCount,
+                            ceilingMs = maxBackoffMs,
+                        )
                         val totalDurationMs = System.currentTimeMillis() - overallStartMs
                         eventSink.append(
                             WaitUntilCompleted(
@@ -335,15 +349,10 @@ internal class BodyExecutionEngine(
                                 occurredAt = Instant.now(),
                                 totalAttempts = pollCount,
                                 totalDurationMs = totalDurationMs,
-                                outcome = "deadline-exceeded",
+                                outcome = completion.wireOutcome,
                             ),
                         )
-                        return StepOutcome.Failure(
-                            dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                                dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT,
-                                "waitUntil condition not met after $pollCount polls (${maxBackoffMs}ms backoff ceiling exceeded)",
-                            ),
-                        )
+                        return completion.toStepOutcome()
                     }
                     // Exponential backoff: double currentBackoffMs, cap at maxBackoffMs
                     currentBackoffMs = minOf(currentBackoffMs * 2, maxBackoffMs)
@@ -460,7 +469,11 @@ internal class BodyExecutionEngine(
                 // The coordinator hands the body to the engine through the public
                 // BodyInvoker port; the engine plans, persists, polls and folds
                 // outcomes, all `StepKey`-blind. The waitUntil legacy loop (no
-                // waitUntilControlJournal) remains bit-equivalent inline below.
+                // waitUntilControlJournal) is the inline loop below, and it now
+                // applies the SAME rule — the backoff ceiling is the deadline —
+                // and projects its terminal from the same [WaitUntilCompletion]
+                // algebra, so the two branches cannot diverge on when a wait
+                // ends or on how it says so.
                 val waitUntilControlOpId =
                     dev.rubentxu.pipeline.v2.application.durable.WaitUntilIdentityFactory.controlOperationId(
                         runId.value, stageIndex, stepIndex, parentBodyPath,
@@ -484,8 +497,10 @@ internal class BodyExecutionEngine(
                     )
                 outcome = waitUntilEngine.execute(bodyRef)
             } else if (scope is BlockShellScope.WaitUntilScope) {
-                // Legacy waitUntil (no journal): the inline polling
-                // loop remains bit-equivalent.
+                // Legacy waitUntil (no journal): the inline polling loop.
+                // It is not the shipped path — the production composition root
+                // always binds a control journal — but it is kept, and it now
+                // agrees with the durable branch on the terminal.
                 outcome = executeWaitUntilInline(
                     scope = scope,
                     block = block,

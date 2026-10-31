@@ -393,7 +393,7 @@ class StageScope(
     }
 
     /**
-     * Polls a condition closure until it returns true or a deadline elapses.
+     * Polls a condition closure until it returns true or the backoff ceiling is reached.
      * Jenkins verbatim:
      * `waitUntil(initialRecurrencePeriod: Long = 1) { condition }`
      * Jenkins also carries a `quiet: Boolean = false`. It is NOT accepted here: this engine's
@@ -425,9 +425,17 @@ class StageScope(
      * used by `retry`, `timeout`, `timestamps`, `dir`, `withCredentials`,
      * `script`, etc. documents the pattern; it does not break
      * consistency by fixing one builder.
-     * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1000ms)
-     * @param maxBackoffMs Ceiling in milliseconds the poll interval backs off to
-     *   (default 60000ms); must be at least `initialRecurrencePeriod`
+     * @param initialRecurrencePeriod The interval of the FIRST poll, in milliseconds
+     *   (default 1000ms). The wait sleeps one interval before every poll, and the
+     *   interval doubles after each poll whose condition did not hold.
+     * @param maxBackoffMs The ceiling the poll interval backs off to (default
+     *   60000ms); must be at least `initialRecurrencePeriod`. **This ceiling IS
+     *   the wait's deadline.** A poll whose interval has reached the ceiling is
+     *   the LAST poll: if the condition still has not held, the wait ends there
+     *   with `deadline-exceeded` and the run fails with a TIMEOUT cause. There
+     *   is no separate wall-clock deadline in this API, so the wall-clock
+     *   duration of a wait is the sum of the intervals it waited, not
+     *   `maxBackoffMs` itself.
      * @param body Lambda producing the nested steps whose last step emits
      *   WaitUntilPredicateEvaluated(true/false)
 */

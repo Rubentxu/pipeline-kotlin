@@ -23,8 +23,11 @@ data class WaitUntilReconciliationInput(
     val initialRecurrencePeriodMs: Long,
 
     /**
-     * Maximum backoff interval in milliseconds. The reconciler uses this to
-     * decide whether to advance to the next poll or terminate with
+     * Maximum backoff interval in milliseconds, and — because there is no
+     * separate wall-clock deadline in this aggregate — THE DEADLINE of the
+     * wait. The reconciler compares the CURRENT poll's interval against this
+     * value: a poll whose interval has reached the ceiling is the last poll,
+     * and if the condition still has not held the wait terminates with
      * [WaitUntilReconciliationDecision.DeadlineExceeded].
 */
     val maxBackoffMs: Long,

@@ -66,6 +66,12 @@ sealed interface WaitUntilCompletion {
 
     /**
      * The backoff ceiling was reached at poll [attempt].
+     *
+     * The ceiling IS the deadline of the wait: the poll at [attempt] ran with an
+     * interval that had reached it, so it was the last poll, and the condition
+     * had not held. There is no separate wall-clock deadline in the waitUntil
+     * API, so this is the only terminal a wait that never satisfies can reach.
+     *
      * [ceilingMs] is carried because the failure message quotes it, and a message that
      * had to be assembled at the call site would put the wording back outside the case
      * that owns the terminal.

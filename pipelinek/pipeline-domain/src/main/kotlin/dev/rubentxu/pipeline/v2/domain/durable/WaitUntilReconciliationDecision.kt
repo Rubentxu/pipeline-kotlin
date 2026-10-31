@@ -49,7 +49,14 @@ sealed interface WaitUntilReconciliationDecision {
         val nextBackoffMs: Long,
     ) : WaitUntilReconciliationDecision
 
-    /** The backoff ceiling was reached at attempt [attempt]; terminate with failure. */
+    /**
+     * The backoff ceiling was reached at attempt [attempt]; terminate with failure.
+     *
+     * The ceiling IS the deadline: the poll at [attempt] ran with an interval
+     * that had reached it, so it was the last poll, and the condition had not
+     * held. [attempt] is the poll that was actually run, not the one that would
+     * have come next: the terminal names the poll the operator can count.
+     */
     data class DeadlineExceeded(val attempt: Int) : WaitUntilReconciliationDecision
 
     /**

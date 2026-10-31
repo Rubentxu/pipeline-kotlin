@@ -27,8 +27,12 @@ import javax.xml.parsers.SAXParserFactory
  *   <testsuite tests="N" failures="F" errors="E" skipped="S" time="T">
  *     <testcase>...</testcase>
  *   </testsuite>
- * Old JUnit (junit-3) reports the same schema with a <testsuites>
- * wrapper; we sum across all <testsuite> children if present.
+ * A report may wrap its suites in a <testsuites> root. That wrapper
+ * REPEATS the totals of the suites it wraps, so its attributes are never
+ * added to theirs: the suites are the finest declaration of the run and
+ * they are counted once. The wrapper's own totals are used only when the
+ * document declares no suite at all, so a report that carries its totals
+ * nowhere else does not become a report with no tests.
 */
 object JUnitReportParser {
 
@@ -87,37 +91,82 @@ object JUnitReportParser {
                 "Empty or XML without a <testsuite(s)> root: $reportPath",
             )
         }
+        val totals = handler.totals
         return JUnitReportSummary(
-            tests = handler.tests,
-            failures = handler.failures,
-            errors = handler.errors,
-            skipped = handler.skipped,
-            durationSeconds = handler.durationSeconds,
+            tests = totals.tests,
+            failures = totals.failures,
+            errors = totals.errors,
+            skipped = totals.skipped,
+            durationSeconds = totals.durationSeconds,
             reportPath = reportPath,
+        )
+    }
+
+    /**
+     * The counters one element of the schema declares.
+     *
+     * A report that wraps its suites declares the same run twice: once in
+     * the wrapper and once in each suite it wraps, and the wrapper's
+     * numbers are the sum of the suites'. Keeping the two apart is what
+     * lets the parser use the finest declaration without counting the same
+     * tests twice.
+     */
+    private data class Totals(
+        val tests: Int = 0,
+        val failures: Int = 0,
+        val errors: Int = 0,
+        val skipped: Int = 0,
+        val durationSeconds: Double = 0.0,
+    ) {
+        operator fun plus(other: Totals): Totals = Totals(
+            tests = tests + other.tests,
+            failures = failures + other.failures,
+            errors = errors + other.errors,
+            skipped = skipped + other.skipped,
+            durationSeconds = durationSeconds + other.durationSeconds,
         )
     }
 
     private class CountingHandler : DefaultHandler() {
         var sawRoot: Boolean = false
-        var tests: Int = 0
-        var failures: Int = 0
-        var errors: Int = 0
-        var skipped: Int = 0
-        var durationSeconds: Double = 0.0
+
+        private var sawSuite: Boolean = false
+        private var suites: Totals = Totals()
+        private var wrapper: Totals? = null
+
+        /**
+         * The totals the report declares, counted once: the suites when the
+         * document declares any, and the wrapper's own totals only when it
+         * declares none.
+         */
+        val totals: Totals
+            get() = if (sawSuite) suites else wrapper ?: Totals()
 
         override fun startElement(uri: String?, localName: String?, qName: String?, attributes: Attributes?) {
             when (qName) {
-                "testsuite", "testsuites" -> {
+                // The wrapper's attributes repeat the totals of the suites it
+                // wraps, so they are held apart and never added to them.
+                "testsuites" -> {
                     sawRoot = true
-                    if (attributes != null) {
-                        tests += attributes.getValue("tests")?.toIntOrNull() ?: 0
-                        failures += attributes.getValue("failures")?.toIntOrNull() ?: 0
-                        errors += attributes.getValue("errors")?.toIntOrNull() ?: 0
-                        skipped += attributes.getValue("skipped")?.toIntOrNull() ?: 0
-                        attributes.getValue("time")?.toDoubleOrNull()?.let { durationSeconds += it }
-                    }
+                    wrapper = readTotals(attributes)
+                }
+                "testsuite" -> {
+                    sawRoot = true
+                    sawSuite = true
+                    suites += readTotals(attributes)
                 }
             }
+        }
+
+        private fun readTotals(attributes: Attributes?): Totals {
+            if (attributes == null) return Totals()
+            return Totals(
+                tests = attributes.getValue("tests")?.toIntOrNull() ?: 0,
+                failures = attributes.getValue("failures")?.toIntOrNull() ?: 0,
+                errors = attributes.getValue("errors")?.toIntOrNull() ?: 0,
+                skipped = attributes.getValue("skipped")?.toIntOrNull() ?: 0,
+                durationSeconds = attributes.getValue("time")?.toDoubleOrNull() ?: 0.0,
+            )
         }
     }
 

@@ -76,6 +76,27 @@ class JUnitReportParserTest {
     }
 
     @Test
+    fun `a report whose wrapper declares the totals is counted once`() {
+        // The aggregated form: the wrapper carries the totals of the whole run
+        // and the suite below carries the same totals. The two describe the
+        // SAME tests, so adding them reports twice as many tests as the run
+        // had — and the step publishes that figure as the outcome.
+        val summary = parse(
+            """
+            <testsuites tests="7" failures="2" errors="1" skipped="3" time="1.5">
+              <testsuite name="suite" tests="7" failures="2" errors="1" skipped="3" time="1.5"/>
+            </testsuites>
+            """.trimIndent(),
+        )
+
+        assertEquals(7, summary.tests)
+        assertEquals(2, summary.failures)
+        assertEquals(1, summary.errors)
+        assertEquals(3, summary.skipped)
+        assertEquals(1.5, summary.durationSeconds)
+    }
+
+    @Test
     fun `a report whose suites are empty is a report with no tests`() {
         // The wrapper with nothing inside it. A build that ran no suite still
         // published a report, and the report says the run had no tests — which
@@ -87,6 +108,22 @@ class JUnitReportParserTest {
         assertEquals(0, summary.failures)
         assertEquals(0, summary.errors)
         assertEquals(0, summary.skipped)
+    }
+
+    @Test
+    fun `a report that declares its totals only in the wrapper keeps them`() {
+        // The wrapper with nothing inside it and its own totals. Dropping them
+        // would turn a report that declares two failures into a report with no
+        // tests and no failures, and the step would call a red run green.
+        val summary = parse(
+            """<testsuites tests="7" failures="2" errors="1" skipped="3" time="1.5"/>""",
+        )
+
+        assertEquals(7, summary.tests)
+        assertEquals(2, summary.failures)
+        assertEquals(1, summary.errors)
+        assertEquals(3, summary.skipped)
+        assertEquals(1.5, summary.durationSeconds)
     }
 
     @Test

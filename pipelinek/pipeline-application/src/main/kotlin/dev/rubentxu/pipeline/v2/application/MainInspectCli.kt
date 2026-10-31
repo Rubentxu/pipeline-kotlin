@@ -1,26 +1,11 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.OpId
-import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
-import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader
-import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
-import dev.rubentxu.pipeline.v2.output.store.DiagnosticText
-import dev.rubentxu.pipeline.v2.output.StreamingUtf8Decoder
-import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.events.DomainEvent
-import dev.rubentxu.pipeline.v2.events.RunFinished
-import dev.rubentxu.pipeline.v2.events.StageFinished
-import dev.rubentxu.pipeline.v2.events.StageStarted
-import dev.rubentxu.pipeline.v2.events.StepFailed
-import dev.rubentxu.pipeline.v2.events.StepFinished
-import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
-import dev.rubentxu.pipeline.v2.runtime.inspect.IntrospectionRefusal
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
-import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
-import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import dev.rubentxu.pipeline.v2.runtime.profile.summarize
 import java.nio.file.Paths
 
@@ -69,6 +54,25 @@ import java.nio.file.Paths
  * operation and not to the run. The whole-run reports read the event plane only, so they do
  * not demand a control root.
  *
+ * ## The division of labour: this verb coordinates, it does not do the work
+ *
+ * The verb used to hold all three responsibilities in one object: it read the durable lanes,
+ * it decided which rows the document shows, and it wrote the document. It is now a
+ * coordinator that owns the request's SHAPE (the parse, the modes, the exit codes) and
+ * delegates the work to three owners:
+ *
+ * | Responsibility | Owner | What it decides |
+ * |---|---|---|
+ * | Reading the facts | [InspectionReader] | whether the durable lanes may be opened, and what they answered |
+ * | Selecting the rows | [InspectionSelection] | which operation each event belongs to, and which rows the query keeps |
+ * | Presenting them | [InspectionPresentation] | the exact bytes the operator reads |
+ *
+ * The split is by REACH, not by file: the selection is pure and can be pinned by a unit
+ * test; the reads touch the filesystem and cannot; the presentation is the surface a consumer
+ * of the CLI actually sees. Nothing here decides which rows are shown — that decision has
+ * exactly one owner, [InspectionSelection], and it was MOVED there rather than copied, so
+ * there is no second place free to disagree with it.
+ *
  * Exit codes follow the canonical contract:
  *   0 — the document (or the whole-run report) was emitted;
  *   2 — usage error or refused read (missing run id, unknown option, refused value,
@@ -92,13 +96,14 @@ object MainInspectCli {
      *   * `Step`     — the step ordinal within the stage (--step).
      *   * `Outcome`  — the outcome value the record carried (success / failure / unstable / aborted).
      *   * `Message`  — the typed failure message, when the record has one.
-     *   * `ConsoleTail` — the last `logTail` bytes of the Output Plane for THIS row's operation.
-     *     Resolved per operation, not once for the run: see [operationIdPerEvent] for the
-     *     measurement that made the run-scoped value wrong.
+     *   * `ConsoleTail` - the last `logTail` bytes of the Output Plane for THIS row's operation.
+     *     Resolved per operation, not once for the run: see
+     *     [InspectionSelection.operationIdPerEvent] for the measurement that made the run-scoped
+     *     value wrong.
      *
      * Adding a sixth case is a compile-time break for every call site that pattern-matches
      * over [InspectField]; that is the discipline that makes the projection closed.
-*/
+    */
     sealed class InspectField(val cli: String) {
         abstract fun extract(record: InspectionRecord): String
 
@@ -163,7 +168,7 @@ object MainInspectCli {
      * shared mapping. The query then drives the read — the event store for the run's events,
      * the Output Plane for the console tail each event's operation printed, and the filters
      * and the context window over the records that survive them.
-*/
+    */
     fun main(args: Array<String>): Int {
         // The parser is the only place that knows which options carry a value, so it is the
         // only place that can tell the run id from an option's value. The verb reads the run
@@ -240,23 +245,13 @@ object MainInspectCli {
         // be re-asked here, and this catch only knew about IOException, so a `--db` pointing at a
         // missing directory escaped as a raw java.sql.SQLException with a fourteen-frame stack
         // trace and exit 1 — the code this CLI reserves for a run that executed and failed.
-        val admission = admitEventStore(compiled.dbPath, EventStorePurpose.Read)
-        if (admission is EventStoreAdmission.Refused) {
-            System.err.println(admission.refusal.render())
-            return 2
-        }
-        val events: List<DomainEvent> = try {
-            (admission as EventStoreAdmission.Admitted).store.use { store ->
-                store.eventsFor(runId).toList()
-            }
-        } catch (e: java.io.IOException) {
-            System.err.println("inspect: cannot read event store at ${compiled.dbPath}: ${e.message}")
-            return 2
-        }
+        val dbPath = compiled.dbPath
+        val controlRoot = compiled.controlRoot
+        val events = readRunEvents(runId, dbPath, wholeRunReport = false) ?: return 2
 
         // Resolve each event to its operation BEFORE any Output Plane read, because the
         // tail belongs to the operation and not to the run.
-        val opIds: List<OpId?> = operationIdPerEvent(events, runId)
+        val opIds: List<OpId?> = InspectionSelection.operationIdPerEvent(events, runId)
 
         if (compiled.logTail > 0 && compiled.opId != null &&
             opIds.none { it?.format() == compiled.opId }
@@ -276,283 +271,62 @@ object MainInspectCli {
             return 2
         }
 
-        val consoleTails: Map<String, InspectConsoleTail> = consoleTailsByOperation(
+        val consoleTails: Map<String, InspectConsoleTail> = InspectionReader.readConsoleTails(
             opIds = opIds,
             runId = runId,
-            controlRoot = compiled.controlRoot,
+            controlRoot = controlRoot,
             tailBytes = compiled.logTail.toLong(),
             scopeOpId = compiled.opId,
         )
 
         val records: List<InspectionRecord> = events.mapIndexed { index, event ->
-            toInspectionRecord(event, opIds[index], consoleTails)
+            InspectionSelection.toRecord(event, opIds[index], consoleTails)
         }
 
-        val filtered = applyFilters(records, compiled)
+        val filtered = InspectionSelection.applyFilters(records, compiled)
         val withContext = if (compiled.context > 0) {
-            applyContextWindow(records, filtered, compiled)
+            InspectionSelection.applyContextWindow(records, filtered, compiled)
         } else {
             filtered
         }
 
-        emitDocument(System.out, runId, compiled, withContext)
+        InspectionPresentation.emitDocument(System.out, runId, compiled, withContext)
         return 0
     }
 
     /**
-     * Resolve each event to the operation whose console tail it may report, in event order.
+     * The ONE read of a run's events, with the two policies the verb has over it.
      *
-     * ## The defect this removes
+     * The read itself belongs to [InspectionReader]; what this adds is the verb's exit-code
+     * contract over its answer, and it is written ONCE so the record table and the three
+     * whole-run reports cannot drift apart on it:
      *
-     * `--log-tail` used to be answered ONCE for the whole run and the same value stamped onto
-     * every row. Measured in an earlier build against distribution 0.62.0, a two-stage run whose first
-     * stage printed `DESPUES` and whose second stage exited 7:
+     *  - a refused lane is a refusal: the sentence goes to stderr and the verb exits 2;
+     *  - an EMPTY run is a refusal only for a whole-run report (`--profile`, `--explain`,
+     *    `--telemetry`): those have nothing to say about a run that published no events, and
+     *    saying so is the honest answer. For the record table an empty run is an empty
+     *    document, which is what the operator asked for.
      *
-     * ```text
-     * STAGE          OUTCOME   CONSOLETAIL
-     *  build/sh-0    StepStarted  DESPUES
-     *  verify/sh-0   failure     DESPUES     <- a FAILURE carrying the other step's transcript
-     * ```
-     *
-     * Thirteen rows, thirteen copies, and the failure's row quoted a step that SUCCEEDED. Same
-     * defect class as the `ok` verdict, in the opposite direction: a projection rendering a fact
-     * its event does not carry. [InspectField.ConsoleTail] had always promised "the Output Plane
-     * for THE FAILED STEP'S OP"; this function is what makes the promise true.
-     *
-     * ## Why a fold, and what it cannot do
-     *
-     * `StepFailed` carries `stepIndex` but NOT `stageIndex`, and an [OpId] needs both. The fold
-     * therefore keeps the op of the most recent [StepStarted] — a step runs inside its stage, so
-     * the open step's op is the right one — while every event that carries its own indices
-     * prefers them.
-     *
-     * Both stage boundaries CLEAR the open op: a stage-level row belongs to a stage, and a stage
-     * is not an operation. `StageFinished` was measured inheriting the last step's op and printing
-     * that step's transcript on the row that closes its stage — the same defect as the failure row,
-     * one level up, and found by reading the rendered document rather than by a test.
-     * `StageSkipped` needs no case: a skipped stage never opened a step, so `open` is already null.
-     *
-     * What the fold cannot decide: a `StepFailed` from a PARALLEL branch that reports after a
-     * sibling started. The event carries nothing to resolve it with, so it inherits the sibling.
-     * Stated rather than hidden, because wrong-but-present attribution is precisely what the
-     * measurement above removes.
-     *
-     * Pure: no clock, no filesystem, no reader. [OpId] is the typed authority for the format —
-     * this never re-templates the string.
-*/
-    internal fun operationIdPerEvent(events: List<DomainEvent>, runId: String): List<OpId?> {
-        var open: OpId? = null
-        return events.map { event ->
-            open = when (event) {
-                // A stage boundary closes every operation the stage opened. Both ends, not one:
-                // closing only the opening end leaves the stage's own summary row holding the last
-                // step's transcript.
-                is StageStarted, is StageFinished -> null
-                is StepStarted -> OpId(runId, event.stageIndex, event.stepIndex)
-                is StepFinished -> OpId(runId, event.stageIndex, event.stepIndex)
-                else -> open
-            }
-            open
-        }
-    }
-
-    /**
-     * Read each operation's tail ONCE and index it by opId.
-     *
-     * Bounded by the number of DISTINCT operations in the run, not by the number of rows: a
-     * 40-step run reads 40 indexed tails and stamps them onto however many rows each owns.
-     *
-     * [scopeOpId] (`--log-tail-op`) narrows the eligible set to the operation the operator named,
-     * so every other row projects silence rather than someone else's transcript. [main] has
-     * already validated that a named operation belongs to the run, which is what lets
-     * [OutputRefusal.UnknownStream] mean one thing here — "this operation has no output stream" —
-     * instead of two.
-*/
-    private fun consoleTailsByOperation(
-        opIds: List<OpId?>,
+     * Null means the verb must exit 2; the reason is already on stderr.
+    */
+    private fun readRunEvents(
         runId: String,
-        controlRoot: String,
-        tailBytes: Long,
-        scopeOpId: String?,
-    ): Map<String, InspectConsoleTail> {
-        if (tailBytes <= 0) return emptyMap()
-        val eligible = opIds.filterNotNull().map { it.format() }.toSet()
-            .let { if (scopeOpId != null) it.intersect(setOf(scopeOpId)) else it }
-        if (eligible.isEmpty()) return emptyMap()
-        return try {
-            val plane = OutputPlaneProvider.storeForReading(java.nio.file.Paths.get(controlRoot))
-            val reader = FrameIndexedObservationOutputReader(plane.frameIndex(), plane, plane)
-            eligible.associateWith { opId ->
-                // Every case of the read ADT is carried through. `ObservationOutputRead` already
-                // separates "the page" from "the store could not answer", and collapsing the
-                // second into an empty transcript made a dangling commit indistinguishable from a
-                // step that printed nothing.
-                when (val r = reader.readTail(runId, opId, tailBytes)) {
-                    is ObservationOutputRead.Page ->
-                        InspectConsoleTail.Bytes(decodePageBytesAsUtf8Impl(r.page.records))
-                    is ObservationOutputRead.Refused -> when (r.reason) {
-                        // The op is known to belong to this run (see [scopeOpId]), so a missing
-                        // stream is a FACT about it: it printed nothing. `Bytes("")` states that;
-                        // `NotRequested` would state a different fact, and `Unreadable` would
-                        // claim the bytes are lost when the plane is simply empty.
-                        is OutputRefusal.UnknownStream -> InspectConsoleTail.Bytes("")
-                        else -> InspectConsoleTail.Unreadable(r.reason)
-                    }
+        dbPath: String,
+        wholeRunReport: Boolean,
+    ): List<DomainEvent>? {
+        return when (val read = InspectionReader.readRunEvents(runId, dbPath)) {
+            is InspectionEventRead.Refused -> {
+                System.err.println(read.reason)
+                null
+            }
+            is InspectionEventRead.Admitted ->
+                if (wholeRunReport && read.events.isEmpty()) {
+                    System.err.println("inspect: this event store holds no events for run '$runId'.")
+                    null
+                } else {
+                    read.events
                 }
-            }
-        } catch (e: java.io.IOException) {
-            // Previously this became `NotRequested`, which rendered as silence on every row —
-            // the same "printed nothing" lie the class above was built to remove. An unreadable
-            // plane is unreadable on every row, and each row now says so.
-            eligible.associateWith { InspectConsoleTail.Unreadable(OutputRefusal.StorageError(DiagnosticText.from(e))) }
         }
-    }
-
-    /**
-     * Translate one [DomainEvent] into the row shape that [InspectField] extractors read from.
-     * The mapping is intentionally narrow: the five [InspectField] cases are the contract,
-     * not the union of every DomainEvent subtype.
-     *
-     * [opId] is this row's operation, or null when the event belongs to no step. A row with no
-     * operation has no transcript, and says nothing rather than borrowing one.
-*/
-    private fun toInspectionRecord(
-        event: DomainEvent,
-        opId: OpId?,
-        consoleTails: Map<String, InspectConsoleTail>,
-    ): InspectionRecord {
-        val stepName: String? = (event as? StepStarted)?.stepName
-            ?: (event as? StepFinished)?.stepName
-            ?: (event as? StepFailed)?.stepName
-        val stepOrdinal: Long? = (event as? StepStarted)?.stepIndex?.toLong()
-            ?: (event as? StepFinished)?.stepIndex?.toLong()
-            ?: (event as? StepFailed)?.stepIndex?.toLong()
-        val outcome: String = when (event) {
-            is RunFinished -> when (event.outcome) {
-                "success" -> "success"
-                "unstable" -> "unstable"
-                "failure", "aborted" -> "failure"
-                else -> event.outcome
-            }
-            is StepFailed -> "failure"
-            // A step's terminal event carries the step's verdict, so this row can say it. It used to
-            // fall through to the event's kind, which made the column answer "StepFinished" to a
-            // question about the outcome — the kind, not the result. A row written before the
-            // verdict was published carries none, and falls back to the kind it always showed.
-            is StepFinished -> event.outcome ?: event.kind
-            else -> event.kind
-        }
-        val message: String? = (event as? StepFailed)?.message
-        return InspectionRecord(
-            stage = stepName,
-            stepOrdinal = stepOrdinal,
-            outcome = outcome,
-            message = message,
-            consoleTail = opId?.let { consoleTails[it.format()] } ?: InspectConsoleTail.NotRequested,
-        )
-    }
-
-    private fun applyFilters(
-        records: List<InspectionRecord>,
-        q: CompiledInspectionQuery,
-    ): List<InspectionRecord> {
-        if (!q.failed && q.kind == null && q.stage == null && q.step == null) return records
-        return records.filter { rec ->
-            (q.failed && rec.outcome == "failure") ||
-                (q.kind != null && kindOf(rec) == q.kind) ||
-                (q.stage != null && rec.stage == q.stage) ||
-                (q.step != null && rec.stepOrdinal == q.step)
-        }
-    }
-
-    private fun kindOf(rec: InspectionRecord): String = rec.outcome
-
-    private fun applyContextWindow(
-        all: List<InspectionRecord>,
-        matched: List<InspectionRecord>,
-        q: CompiledInspectionQuery,
-    ): List<InspectionRecord> {
-        if (matched.isEmpty() || q.context == 0) return matched
-        val selected = mutableSetOf<Int>()
-        val matchedIndices = matched.mapNotNull { rec ->
-            all.indexOfFirst { it === rec }
-        }.toSet()
-        matchedIndices.forEach { idx ->
-            val from = (idx - q.context).coerceAtLeast(0)
-            val to = (idx + q.context).coerceAtMost(all.size - 1)
-            for (i in from..to) selected.add(i)
-        }
-        return selected.sorted().map { all[it] }
-    }
-
-    private fun emitDocument(
-        out: java.io.PrintStream,
-        runId: String,
-        q: CompiledInspectionQuery,
-        records: List<InspectionRecord>,
-    ) {
-        val cols = q.fields ?: defaultColumns()
-        when (q.format) {
-            InspectFormat.TEXT -> {
-                out.println("inspect run=$runId")
-                out.println("  ${cols.joinToString(separator = " ") { it.cli }}")
-                records.forEach { rec ->
-                    out.println("  " + cols.joinToString(separator = " ") { it.extract(rec) })
-                }
-            }
-            InspectFormat.JSON -> {
-                out.println("{")
-                out.println("  \"runId\": \"$runId\",")
-                out.println("  \"records\": [")
-                records.forEachIndexed { i, rec ->
-                    val fields = cols.joinToString(separator = ",") { f ->
-                        "\"${f.cli.lowercase()}\": \"${escapeJson(f.extract(rec))}\""
-                    }
-                    val sep = if (i < records.size - 1) "," else ""
-                    out.println("    {$fields}$sep")
-                }
-                out.println("  ]")
-                out.println("}")
-            }
-        }
-    }
-
-    private fun escapeJson(s: String): String = escapeJsonText(s)
-
-    private fun defaultColumns(): List<InspectField> = listOf(
-        InspectField.Stage, InspectField.Step, InspectField.Outcome, InspectField.Message,
-    )
-
-    /**
-     * Decode a stream of per-frame byte buffers as one continuous UTF-8 transcript.
-     *
-     * `ObservationOutputReader.decodeWindow` decodes one frame at a time on purpose: the contract
-     * is per-frame determinism, and a carry-over buffer would re-decode the same bytes differently
-     * depending on where a reader resumed. `inspect --log-tail`, however, presents ONE transcript
-     * to a human; a multi-byte codepoint straddling a frame boundary must be reassembled or the
-     * tail shows two U+FFFD characters instead of the original character. That defect is named
-     * for the human-facing surface; this helper is the fix.
-     *
-     * The decoder is the same [StreamingUtf8Decoder] the [StreamingUtf8DecoderTest] exercises; the
-     * bytes are not re-decoded character-by-character — the full byte array per frame is fed
-     * through the incremental decoder in [r.page.records] order, oldest first, and the final
-     * `String` is the assembled transcript.
-*/
-    private fun decodePageBytesAsUtf8(records: List<dev.rubentxu.pipeline.v2.application.observation.ObservationRecord.Output>): String =
-        decodePageBytesAsUtf8Impl(records)
-
-    /**
-     * Internal-visible entry for the byte-stream decode so a unit test can pin the
-     * contract (a multi-byte codepoint straddling two records reassembles into one character)
-     * without paying for the heavier MainInspectCli fixture.
-*/
-    internal fun decodePageBytesAsUtf8Impl(records: List<dev.rubentxu.pipeline.v2.application.observation.ObservationRecord.Output>): String {
-        val decoder = StreamingUtf8Decoder()
-        val out = StringBuilder(records.sumOf { it.bytes.size })
-        for (r in records) {
-            out.append(decoder.decode(r.bytes))
-        }
-        return out.toString()
     }
 
     /**
@@ -563,7 +337,7 @@ object MainInspectCli {
      * existing test surface (`MainInspectCli.parseInspect`) keeps compiling without changes.
      * `MainInspectCli.parseInspect` is the test seam; `CliInspectParser.parse` is the production
      * entry point. Both return the same typed [InspectParseResult].
-*/
+    */
     @Suppress("CyclomaticComplexMethod")
     fun parseInspect(args: Array<String>): InspectParseResult = CliInspectParser.parse(args)
 
@@ -625,12 +399,14 @@ object MainInspectCli {
 
         return when (result) {
             is RuntimeIntrospectionResult.Observation -> {
-                println(renderRunState(result.observation))
+                println(InspectionPresentation.renderRunState(result.observation))
                 0
             }
 
             is RuntimeIntrospectionResult.Refused -> {
-                System.err.println("inspect: ${renderIntrospectionRefusal(result.refusal, runId)}")
+                System.err.println(
+                    "inspect: ${InspectionPresentation.renderIntrospectionRefusal(result.refusal, runId)}",
+                )
                 2
             }
         }
@@ -652,23 +428,7 @@ object MainInspectCli {
 
         // Read-only admission: a missing store is refused here and no file is
         // created, so profiling a mistyped run id cannot fabricate a database.
-        val admission = admitEventStore(dbPath, EventStorePurpose.Read)
-        if (admission is EventStoreAdmission.Refused) {
-            System.err.println(admission.refusal.render())
-            return 2
-        }
-        val events: List<DomainEvent> = try {
-            (admission as EventStoreAdmission.Admitted).store.use { store ->
-                store.eventsFor(runId).toList()
-            }
-        } catch (e: java.io.IOException) {
-            System.err.println("inspect: cannot read event store at $dbPath: ${e.message}")
-            return 2
-        }
-        if (events.isEmpty()) {
-            System.err.println("inspect: this event store holds no events for run '$runId'.")
-            return 2
-        }
+        val events = readRunEvents(runId, dbPath, wholeRunReport = true) ?: return 2
 
         val outcome = summarize(RunCostProjection.project(events))
         val lines = when (query.format) {
@@ -694,23 +454,7 @@ object MainInspectCli {
 
         // Read-only admission: a missing store is refused and no file is
         // created, so explaining a mistyped run id cannot fabricate a database.
-        val admission = admitEventStore(dbPath, EventStorePurpose.Read)
-        if (admission is EventStoreAdmission.Refused) {
-            System.err.println(admission.refusal.render())
-            return 2
-        }
-        val events: List<DomainEvent> = try {
-            (admission as EventStoreAdmission.Admitted).store.use { store ->
-                store.eventsFor(runId).toList()
-            }
-        } catch (e: java.io.IOException) {
-            System.err.println("inspect: cannot read event store at $dbPath: ${e.message}")
-            return 2
-        }
-        if (events.isEmpty()) {
-            System.err.println("inspect: this event store holds no events for run '$runId'.")
-            return 2
-        }
+        val events = readRunEvents(runId, dbPath, wholeRunReport = true) ?: return 2
 
         val diagnosis = RunExplainProjection.project(events)
         val lines = when (query.format) {
@@ -740,23 +484,7 @@ object MainInspectCli {
                 "inspect",
             )
 
-        val admission = admitEventStore(dbPath, EventStorePurpose.Read)
-        if (admission is EventStoreAdmission.Refused) {
-            System.err.println(admission.refusal.render())
-            return 2
-        }
-        val events: List<DomainEvent> = try {
-            (admission as EventStoreAdmission.Admitted).store.use { store ->
-                store.eventsFor(runId).toList()
-            }
-        } catch (e: java.io.IOException) {
-            System.err.println("inspect: cannot read event store at $dbPath: ${e.message}")
-            return 2
-        }
-        if (events.isEmpty()) {
-            System.err.println("inspect: this event store holds no events for run '$runId'.")
-            return 2
-        }
+        val events = readRunEvents(runId, dbPath, wholeRunReport = true) ?: return 2
 
         val trace = RunTelemetryProjection.fromEvents(runId, events)
         if (query.otlp) {
@@ -765,45 +493,6 @@ object MainInspectCli {
         }
         RunTelemetryReport.jsonLines(trace).forEach(::println)
         return 0
-    }
-
-    /** The one line the state surface prints. */
-    private fun renderRunState(observation: RuntimeObservation): String = when (observation) {
-        is RuntimeObservation.Running -> "run-state running"
-
-        is RuntimeObservation.Terminal ->
-            "run-state terminal outcome=${renderTerminalOutcome(observation.terminal)} at=${observation.terminalAtMs}"
-
-        is RuntimeObservation.LiveButEmpty -> "run-state empty"
-
-        is RuntimeObservation.Unobservable -> "run-state unobservable"
-    }
-
-    /** The run's outcome word, from the book's own vocabulary. */
-    private fun renderTerminalOutcome(terminal: TerminalObservation): String = when (terminal) {
-        is TerminalObservation.Succeeded -> "succeeded"
-        is TerminalObservation.Failed -> "failed"
-        is TerminalObservation.Unstable -> "unstable"
-        is TerminalObservation.Aborted -> "aborted"
-        is TerminalObservation.Cancelled -> "cancelled"
-        is TerminalObservation.Other -> terminal.rawOutcome
-    }
-
-    /** The refusal, in the operator's words. */
-    private fun renderIntrospectionRefusal(refusal: IntrospectionRefusal, runId: String): String = when (refusal) {
-        is IntrospectionRefusal.UnknownRun -> "this instance does not know run '$runId'."
-        IntrospectionRefusal.NoControlRoot -> "there is no control root to read the run's state from."
-        IntrospectionRefusal.NoEventStore -> "the event plane is not configured for this instance."
-        IntrospectionRefusal.NoOutputPlane -> "the output plane is not configured for this instance."
-        is IntrospectionRefusal.LeaseHeldByAnother ->
-            "run $runId is being published by '${refusal.heldBy}' (fencing token ${refusal.fencingToken})."
-
-        is IntrospectionRefusal.StorageError -> "the run's storage failed: ${refusal.cause}"
-        is IntrospectionRefusal.InconsistentLeaseState ->
-            "the run's lease state is inconsistent: ${refusal.details}"
-
-        is IntrospectionRefusal.UnknownOperation ->
-            "this instance does not know operation '${refusal.operationId}' (attempt ${refusal.attempt})."
     }
 
     /**
@@ -816,124 +505,3 @@ object MainInspectCli {
         return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
 }
-
-/** Parsed inspection query. Immutable data class. */
-data class CompiledInspectionQuery(
-    val failed: Boolean = false,
-    val kind: String? = null,
-    val stage: String? = null,
-    val step: Long? = null,
-    val context: Int = 0,
-    val logTail: Int = 0,
-    /**
-     * When set, the `--log-tail` scope is one operation (this opId),
-     * not the whole run. The per-op read filters frames whose stream id carries this
-     * opId as a middle segment. When null, the tail is the run-wide last-N-bytes path.
-*/
-    val opId: String? = null,
-    val fields: List<MainInspectCli.InspectField>? = null,
-    val format: MainInspectCli.InspectFormat = MainInspectCli.InspectFormat.TEXT,
-    val controlRoot: String? = null,
-    val dbPath: String? = null,
-    /**
-     * Report the RUN's lifecycle state instead of its records.
-     *
-     * The state is the run's own terminal fact — the event lane's `RunFinished`
-     * bookend — read through the published introspection port. It is a MODE
-     * and not another filter: the filters below select RECORDS, and a record
-     * is not a run. Asking for the state of a filtered view of a run has no
-     * honest answer, so the two are not combined.
-     */
-    val state: Boolean = false,
-    /**
-     * Report the RUN's cost profile instead of its records. A mode like
-     * [state]: both answer about the run as a whole, so the parser refuses a
-     * query that asks for both reports at once.
-     */
-    val profile: Boolean = false,
-    /**
-     * Report the RUN's diagnosis instead of its records: typed findings with
-     * evidence references, one whole-run report like [state] and [profile].
-     */
-    val explain: Boolean = false,
-    /**
-     * Export the RUN's facts as redacted telemetry signals instead of its
-     * records: the fourth whole-run report mode.
-     */
-    val telemetry: Boolean = false,
-    /**
-     * Render the telemetry export in the OpenTelemetry shape instead of the
-     * line-delimited one. Not a mode of its own: it is another rendering of
-     * the telemetry export, so the parser refuses it without `--telemetry`.
-     */
-    val otlp: Boolean = false,
-    /**
-     * The run this query is about, read from the ONE positional argument this
-     * verb owns. Null means the operator wrote none.
-     *
-     * It travels HERE and not in the verb because the parser is the only place
-     * that knows which options carry a value: the run id is whichever argument
-     * is not an option and not an option's value, and a verb that looked for it
-     * by position would have to guess.
-     */
-    val runId: String? = null,
-)
-
-/** Result of [MainInspectCli.parseInspect]. */
-sealed interface InspectParseResult {
-    data class Parsed(val value: CompiledInspectionQuery) : InspectParseResult
-
-    /**
-     * The refusal, as the typed error the renderer turns into a sentence.
-     *
-     * Not a string: the words the operator reads belong to [toCliExit], and a
-     * parser that hands out its own sentences is a second rendering free to
-     * disagree with the first.
-     */
-    data class Rejected(val error: CliError) : InspectParseResult
-}
-
-/**
- * What the console tail of an inspected record actually IS.
- *
- * Three states, because the Output Plane's own contract keeps them apart and a nullable `String`
- * did not. [ObservationOutputRead] already distinguishes "the page" from "the store could not
- * answer", and [dev.rubentxu.pipeline.v2.output.OutputRefusal] spells out what a refusal means:
- * the bytes are NOT absent, they are unread. Rendering that as an empty transcript told a consumer
- * that a step printed nothing, which is the one fact it would act on.
- *
- * The empty [Bytes] case is deliberately still a value rather than folded into [NotRequested]: "this
- * step ran and printed nothing" and "nothing was asked for" are different answers to different
- * questions, and only the first one is evidence about the step.
-*/
-sealed interface InspectConsoleTail {
-
-    /** `--log-tail` was not requested, so there is nothing to report either way. */
-    data object NotRequested : InspectConsoleTail
-
-    /** The bytes the Output Plane served, decoded. Empty is a FACT: the step printed nothing. */
-    data class Bytes(val text: String) : InspectConsoleTail
-
-    /** A tail was requested and the plane could not answer. Never render this as empty output. */
-    data class Unreadable(val reason: OutputRefusal) : InspectConsoleTail
-}
-
-/**
- * One inspected record — the row shape that the projection fields read from.
- *
- * Kept as a data class, not a sealed ADT: every record carries all five columns, with `null` for
- * the ones that do not apply, because the consumer chooses which fields to project and a row that
- * has `null` for un-requested fields is not a different SHAPE of record.
- *
- * [consoleTail] is the exception, and the exception is the point: its states are not "which columns
- * this row fills in" but "what the Output Plane answered". A `null` there would have to mean both
- * "un-requested" and "refused", which are different facts about a run, so it is a closed ADT
- * instead. Every other field is still a nullable projection.
-*/
-data class InspectionRecord(
-    val stage: String? = null,
-    val stepOrdinal: Long? = null,
-    val outcome: String = "",
-    val message: String? = null,
-    val consoleTail: InspectConsoleTail = InspectConsoleTail.NotRequested,
-)

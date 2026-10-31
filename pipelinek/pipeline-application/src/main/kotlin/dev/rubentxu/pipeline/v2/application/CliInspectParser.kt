@@ -166,6 +166,88 @@ private fun rejectInspect(error: CliError): InspectParseResult.Rejected =
     InspectParseResult.Rejected(error)
 
 /**
+ * Parsed inspection query. Immutable data class.
+ *
+ * It lives here, next to the parser that builds it, because the parser is its only producer: the
+ * verb receives it already compiled. The type keeps its FQN, so nothing that names it stops
+ * compiling.
+*/
+data class CompiledInspectionQuery(
+    val failed: Boolean = false,
+    val kind: String? = null,
+    val stage: String? = null,
+    val step: Long? = null,
+    val context: Int = 0,
+    val logTail: Int = 0,
+    /**
+     * When set, the `--log-tail` scope is one operation (this opId),
+     * not the whole run. The per-op read filters frames whose stream id carries this
+     * opId as a middle segment. When null, the tail is the run-wide last-N-bytes path.
+*/
+    val opId: String? = null,
+    val fields: List<MainInspectCli.InspectField>? = null,
+    val format: MainInspectCli.InspectFormat = MainInspectCli.InspectFormat.TEXT,
+    val controlRoot: String? = null,
+    val dbPath: String? = null,
+    /**
+     * Report the RUN's lifecycle state instead of its records.
+     *
+     * The state is the run's own terminal fact — the event lane's `RunFinished`
+     * bookend — read through the published introspection port. It is a MODE
+     * and not another filter: the filters below select RECORDS, and a record
+     * is not a run. Asking for the state of a filtered view of a run has no
+     * honest answer, so the two are not combined.
+     */
+    val state: Boolean = false,
+    /**
+     * Report the RUN's cost profile instead of its records. A mode like
+     * [state]: both answer about the run as a whole, so the parser refuses a
+     * query that asks for both reports at once.
+     */
+    val profile: Boolean = false,
+    /**
+     * Report the RUN's diagnosis instead of its records: typed findings with
+     * evidence references, one whole-run report like [state] and [profile].
+     */
+    val explain: Boolean = false,
+    /**
+     * Export the RUN's facts as redacted telemetry signals instead of its
+     * records: the fourth whole-run report mode.
+     */
+    val telemetry: Boolean = false,
+    /**
+     * Render the telemetry export in the OpenTelemetry shape instead of the
+     * line-delimited one. Not a mode of its own: it is another rendering of the
+     * telemetry export, so the parser refuses it without `--telemetry`.
+     */
+    val otlp: Boolean = false,
+    /**
+     * The run this query is about, read from the ONE positional argument this
+     * verb owns. Null means the operator wrote none.
+     *
+     * It travels HERE and not in the verb because the parser is the only place
+     * that knows which options carry a value: the run id is whichever argument
+     * is not an option and not an option's value, and a verb that looked for it
+     * by position would have to guess.
+     */
+    val runId: String? = null,
+)
+
+/** Result of [MainInspectCli.parseInspect]. */
+sealed interface InspectParseResult {
+    data class Parsed(val value: CompiledInspectionQuery) : InspectParseResult
+
+    /**
+     * The refusal, as the typed error the renderer turns into a sentence.
+     *
+     * Not a string: the words the operator reads belong to [toCliExit], and a
+     * parser that hands out its own sentences is a second rendering free to
+     * disagree with the first.
+     */
+    data class Rejected(val error: CliError) : InspectParseResult
+}
+
+/**
  * The refusal when a query carries more than one whole-run report.
  *
  * The four modes answer four different questions, and a query that asks

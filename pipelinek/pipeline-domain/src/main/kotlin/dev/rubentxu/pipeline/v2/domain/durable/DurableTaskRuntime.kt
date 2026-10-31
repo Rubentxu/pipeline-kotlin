@@ -106,14 +106,52 @@ data class TaskExecutionRequest(
 }
 
 /**
- * Port for durable process execution
- * The single authorised home for process creation in the runtime
- * Production may contain `ProcessBuilder` only inside this
- * port's adapter). Every sh / git / tar execution must migrate onto this
- * Seam so that the spec invariants hold in ONE place
- * concurrent stdout/stderr drains, O(chunk) memory, timeout/cancel while
- * the process lives, process-tree termination, atomic durable result,
- * and reconcile-after-restart.
+ * Port for durable process execution — of GENERIC TASKS.
+ *
+ * ## What this port guarantees
+ *
+ * A [TaskSpec] executed durably: concurrent stdout/stderr drains, O(chunk) memory, a deadline or
+ * a cancellation that fires WHILE the process lives, process-tree termination, an atomic durable
+ * result and reconcile-after-restart. Those invariants hold in ONE place, and that place is this
+ * port's adapter.
+ *
+ * ## What this port is NOT
+ *
+ * It is NOT the only place where this product creates a process. It used to say it was — this
+ * KDoc claimed that "production may contain `ProcessBuilder` only inside this port's adapter" and
+ * that every `sh`/`git`/`tar` execution had to migrate onto this seam — and that claim was false,
+ * and worse than no claim at all: a reader designs against a limit the code does not have.
+ *
+ * There are FOUR places in the product that reach for a process, each with its own protocol, its
+ * own guarantees and its own readers. Three of them CREATE one; the fourth only sends signals.
+ * They live in `pipeline-step-sdk/runtime`, under
+ * `dev.rubentxu.pipeline.v2.sdk.runtime.durable`:
+ *
+ *  - `task/ProcessDurableTaskRuntime` CREATES the generic task's child, and owns the invariants
+ *    listed above.
+ *  - `ShellProcessLauncher` CREATES the durable shell's wrapper child, and owns the argv that
+ *    carries the wrapper and nothing else, the session the child leads, and the routing of the
+ *    two output descriptors — a pure function of the composition.
+ *  - `ProcessRendezvousHost` CREATES the rendezvous's FIFOs and the ingest agent's JVM, and owns
+ *    the FIFO's type and permissions, the agent's detachment, and the readiness wait that keeps
+ *    the child from blocking on a FIFO nobody reads.
+ *  - `ShellWatchdog` CREATES none — it only sends `kill` signals — and owns the deadline's
+ *    authority: the flag written BEFORE the kill, and the cookie scan that ends the whole
+ *    session.
+ *
+ * ## Why they are not one thing
+ *
+ * They are four different contracts: a generic task, a durable shell, an auxiliary agent and a
+ * signal. Even the two that end a child end it differently, on purpose: the generic task's child
+ * is a direct child of this JVM, so its tree is the handle's descendants, while the durable
+ * shell's child leads its own session, so its unit of termination is the session and the tree is
+ * discovered by the operation cookie in the environment.
+ *
+ * The durable shell does NOT travel through this port, and this port does not claim it: the `sh`
+ * step runs on the durable shell's own substrate on Linux, and on this port on the platforms where
+ * that substrate cannot run. The two routes are different SUBSTRATES for different PLATFORMS, not
+ * two choices for the same step.
+ *
  * ## Contract
  * - Returns exactly one [TaskExecutionResult]; step failure is data
  *   (`exitCode`/`timedOut`/`cancelled`), never an exception. Throwing is

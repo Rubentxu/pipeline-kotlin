@@ -48,6 +48,26 @@ internal data class ChildDescriptorPlan(
  * routing of the child's two output descriptors. Nothing else. The watchdog, the terminal decision
  * and the cleanup are other components and are not here.
  *
+ * ## This is a process-creation site, and it is not the port's adapter
+ *
+ * The product reaches for a process in FOUR places, and this is one of them: the durable shell's
+ * child. It is NOT the adapter of `DurableTaskRuntime`, and it does not travel through that port.
+ * The port is for GENERIC TASKS — an argv or a script executed as a task — while the durable shell
+ * has a protocol of its own: a wrapper argv, a session of its own, a transcript with its own
+ * grammar and a `result.txt` whose contents mean something else entirely. The two families even
+ * write the same file names with different grammars, so they cannot share a reader; that is what
+ * [ShellProtocolLayout] exists to say.
+ *
+ * What is therefore THIS class's own:
+ *
+ *  - the argv carries the wrapper and nothing else (the rule below);
+ *  - the child leads its own session, so the unit of termination is the session;
+ *  - the routing of the child's two output descriptors is a pure function of the composition.
+ *
+ * What is NOT this class's, and lives with the mechanism that really implements it: the DEADLINE
+ * and the termination are [ShellWatchdog]'s; the verdict on the transcript is [TranscriptDrain]'s;
+ * the names of the protocol are [ShellProtocolLayout]'s.
+ *
  * ## The two rules this states
  *
  * **The argv is the wrapper and nothing else.** `setsid`, `bash`, and the wrapper's path. The

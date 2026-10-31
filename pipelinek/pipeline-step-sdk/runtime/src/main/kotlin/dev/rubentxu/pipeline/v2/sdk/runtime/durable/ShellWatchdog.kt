@@ -15,6 +15,22 @@ import java.util.concurrent.atomic.AtomicBoolean
  * result of the execution to the executor, the transcript to [TranscriptDrain], and the names of
  * the protocol to [ShellProtocolLayout].
  *
+ * ## This is a signalling site, not an executor
+ *
+ * The product reaches for a process in FOUR places, and this is the one that does not create one:
+ * the `kill` this class sends are SIGNALS, not work. It creates no child, owns no child, and is
+ * not the adapter of `DurableTaskRuntime`.
+ *
+ * The distinction matters because the child it stops was launched by [ShellProcessLauncher] and is
+ * not this class's to run: this one decides WHEN the execution must stop and says so with a
+ * signal that reaches the whole session. The deadline of the durable shell is therefore HERE, and
+ * the deadline of the generic task route is NOT — that route has its own timeout and its own tree
+ * kill, because its child is a direct child of the JVM rather than a session leader.
+ *
+ * What is therefore THIS class's own: the authority of the expiry (the flag), the escalation to
+ * SIGKILL, and the cookie scan that sweeps whoever survived it. What is NOT this class's: the
+ * child's launch, the classification of the terminal, and the release of the resources.
+ *
  * ## The two facts, and why they are not one
  *
  * There are two marks of an expired execution and they are NOT the same fact:

@@ -22,9 +22,40 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * The production [DurableTaskRuntime] — the SINGLE authorised home for
- * `ProcessBuilder` in the runtime (gate; implementation +
- * Concurrent output pumps + timeout/cancel tree)
+ * The production [DurableTaskRuntime] — the adapter of that port, and the executor of GENERIC
+ * DURABLE TASKS.
+ *
+ * ## What this owns
+ *
+ * The execution of a [TaskSpec]: an argv ([TaskSpec.ExecTask]) or a script written to a file
+ * ([TaskSpec.ShellScriptTask]), with the concurrent output pumps, the deadline that fires while
+ * the process lives and the tree kill that ends it. This is the ONE site that owns the port's
+ * invariants.
+ *
+ * ## What this is NOT
+ *
+ * It is NOT the only place where the product creates a process, and it used to claim it was: this
+ * KDoc said this was "the SINGLE authorised home for `ProcessBuilder` in the runtime". That claim
+ * was false — the durable shell's launcher, the rendezvous's host and the watchdog's signals
+ * create processes too — and it was false in the direction that matters, because it hid WHY there
+ * are several mechanisms.
+ *
+ * The product reaches for a process in FOUR places, and each of the other three exists for a
+ * reason this class does not cover:
+ *
+ *  - the durable shell's launcher, whose child leads its own session and carries its own protocol;
+ *  - the rendezvous's host, which creates the FIFOs and the auxiliary agent's JVM;
+ *  - the watchdog, which creates no child and only sends `kill` signals.
+ *
+ * ## Why the two terminations differ, on purpose
+ *
+ * This class kills the tree it can SEE: the child is a direct child of this JVM, so
+ * `ProcessHandle.descendants()` is the tree and `destroyForcibly` on each is the kill. The durable
+ * shell's child leads a session of its own, so its tree cannot be reached that way; there the unit
+ * of termination is the SESSION and the tree is discovered by the operation cookie in the
+ * environment. Two mechanisms, because two different process topologies — not two implementations
+ * of one.
+ *
  * ## Spec invariants implemented here
  * - **ExecTask preserves argv**: `ProcessBuilder(argv)` with no shell in
  * Between — ("argv con spaces/quotes sin shell") holds by

@@ -23,8 +23,10 @@ import java.nio.file.StandardOpenOption
  * drains two descriptors and appends. That is the whole of it, and it
  * is what keeps it from being a second runtime.
  * ## The launch contract
- * This `main(args)` is what the Runtime launches via `ProcessBuilder` +
- * `setsid`. The argv's shape is fixed by [AgentRendezvous.Args], which the
+ * This `main(args)` is what the runtime's rendezvous host launches via
+ * `ProcessBuilder` + `setsid` — it is an AUXILIARY process, not a step and
+ * not a generic task, so it does not travel through the `DurableTaskRuntime`
+ * port. The argv's shape is fixed by [AgentRendezvous.Args], which the
  * runtime writes and this agent reads, so the two cannot drift on it. The
  * secret does NOT travel in the argv: a command-line argument is readable
  * through `/proc/<pid>/cmdline` by every user on the host, so the secret

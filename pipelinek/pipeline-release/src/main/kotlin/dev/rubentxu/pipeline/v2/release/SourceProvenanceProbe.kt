@@ -14,10 +14,9 @@ import java.util.UUID
 
 /**
  * The effectful half of [SourceProvenance]: reads the facts the pure decider
- * needs. Git execution goes through the canonical [DurableTaskRuntime]
- * ProcessDurableTaskRuntime is the single authorised process home);
- * this module constructs processes as little as the runtime lets it — which
- * is to say, never directly.
+ * needs. Git execution goes through the canonical [DurableTaskRuntime] port,
+ * whose production adapter is [ProcessDurableTaskRuntime]; this module
+ * constructs no process directly.
  * Every query degrades to [SourceProvenance.PROVENANCE_UNKNOWN] or a zero
  * count when Git cannot answer, and the decider decides what an unanswered
  * question means. The probe never decides — it observes.

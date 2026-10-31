@@ -16,6 +16,26 @@ import java.util.concurrent.TimeUnit
  * The effects live here and the POLICY lives in [AgentRendezvous], because a policy that can only
  * be exercised against a real FIFO, a real agent JVM and a real clock cannot be observed at all:
  * the agent path has no executable scenario in this tree.
+ *
+ * ## This is a process-creation site, and it is not the port's adapter
+ *
+ * The product reaches for a process in FOUR places, and this is one of them — the one that creates
+ * TWO things: the `mkfifo` that materialises the rendezvous, and the JVM of the ingest agent. It
+ * is NOT the adapter of `DurableTaskRuntime` and it does not travel through that port, because
+ * NEITHER of the two things it creates is a step: a FIFO is a file with a name, and the agent is
+ * an AUXILIARY process that owns the read ends, redacts in memory and whose life is bounded by the
+ * EOF of the FIFO. Neither is a generic task, and neither is a durable shell.
+ *
+ * What is therefore THIS class's own:
+ *
+ *  - the type and the permissions of the FIFO, checked rather than assumed;
+ *  - the DETACHMENT of the agent, which must outlive the runtime's process group or a `kill -9`
+ *    on the runtime would take the agent down with it;
+ *  - the READINESS wait, which is what keeps the child from deadlocking on a FIFO it is opening
+ *    for write while nobody reads it yet.
+ *
+ * What is NOT this class's: the policy of the rendezvous is [AgentRendezvous]'s, the child's own
+ * launch is [ShellProcessLauncher]'s, and the names of the protocol are [ShellProtocolLayout]'s.
  */
 internal class ProcessRendezvousHost(
     private val opId: String,

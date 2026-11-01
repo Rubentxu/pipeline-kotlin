@@ -1811,12 +1811,14 @@ public final class dev/rubentxu/pipeline/v2/runtime/recover/TerminalReceipt {
 
 public final class dev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
-	public final fun component1 ()Ljava/lang/String;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-dSDXgeU ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy-gBgJAOI (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext;
+	public static synthetic fun copy-gBgJAOI$default (Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRunId-dSDXgeU ()Ljava/lang/String;
 	public final fun getSpanId ()Ljava/lang/String;
 	public final fun getTraceId ()Ljava/lang/String;
 	public fun hashCode ()I
@@ -1824,7 +1826,6 @@ public final class dev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext {
 }
 
 public final class dev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext$Companion {
-	public final fun of-gBgJAOI (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext;
 }
 
 public final class dev/rubentxu/pipeline/v2/runtime/telemetry/RunTelemetryKt {

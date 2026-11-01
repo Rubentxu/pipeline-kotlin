@@ -299,16 +299,21 @@ class TelemetryIdentityTest {
      * Un contexto vivo que lleva el trace id histórico de su propia ejecución
      * se RECHAZA: los dos tienen la misma forma y un recolector no puede
      * distinguirlos mirando.
+     *
+     * Se rechaza por TODA vía de construcción, no sólo por una. El
+     * constructor es la vía obvia, y una copia es una construcción más:
+     * un guard que vive en una fábrica que el llamante puede esquivar no
+     * protege nada.
      */
     @Test
-    fun `the live context refuses the historical trace id of its own run`() {
+    fun `the live context refuses the historical trace id of its own run however it is built`() {
         val runId = RunId("run-1")
         val historical = TelemetryTrace.traceIdOf(runId.value)
         val live = "0123456789abcdef0123456789abcdef"
         val span = "0123456789abcdef"
 
         val refusal = assertThrows(IllegalArgumentException::class.java) {
-            LiveTraceContext.of(runId, historical, span)
+            LiveTraceContext(runId, historical, span)
         }
         assertTrue(
             refusal.message.orEmpty().contains("HISTORICAL"),
@@ -318,13 +323,19 @@ class TelemetryIdentityTest {
 
         // Un trace id vivo que NO es el derivado se acepta: un guard que
         // rechaza todo no protege nada.
-        val context = LiveTraceContext.of(runId, live, span)
+        val context = LiveTraceContext(runId, live, span)
         assertEquals(live, context.traceId)
         assertEquals(span, context.spanId)
 
+        // Y la copia no es una puerta trasera: una copia es una construcción
+        // más, y la construcción es donde vive el rechazo.
+        assertThrows(IllegalArgumentException::class.java) {
+            context.copy(traceId = historical)
+        }
+
         // Y uno mal formado se rechaza también, con el motivo del formato.
         assertThrows(IllegalArgumentException::class.java) {
-            LiveTraceContext.of(runId, "not-a-trace-id", span)
+            LiveTraceContext(runId, "not-a-trace-id", span)
         }
     }
 

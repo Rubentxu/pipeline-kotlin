@@ -12,9 +12,15 @@ import dev.rubentxu.pipeline.v2.domain.RunId
  * never guesses a name.
  *
  * The version is pinned, not tracked: it moves only when a product decision
- * moves it, never because an upstream release happened. An export that says
- * which conventions it speaks is an export a consumer can reason about; an
- * export that says "whatever is current" is one nobody can.
+ * moves it, never because an upstream release happened.
+ *
+ * The pin is this product's half of the agreement, and the agreement is
+ * read HERE: the exported document states the schema it speaks
+ * (`telemetry.schema`), and the upstream conventions version is not part
+ * of that document. A consumer that needs to know which conventions an
+ * export speaks therefore reads the pin from the product, not from the
+ * payload — so the product that pins a version it cannot show is honest
+ * about it here rather than leaving a collector to guess.
  */
 const val OTEL_SEMCONV_CICD_VERSION: String = "1.44.0"
 
@@ -451,16 +457,25 @@ data class TelemetryIdentityTable(
 
 /**
  * The live W3C context of an ACTIVE execution: the trace id and the span id
- * the propagator carried in.
+ * the propagator carried in, and the run they belong to.
  *
  * The two shapes are types, not strings, and the type is the point: the
  * historical trace id and the live trace id are both 32 hexadecimal
  * characters, and a consumer that receives one of them cannot tell which it
  * holds by looking. Here they cannot even be confused at compile time, and
- * the one place where they could be confused at runtime — a live context
- * carrying the derived id — is refused.
+ * they cannot be confused at runtime either: the context carries the run it
+ * belongs to, so it can tell a live trace id from the derived one, and it
+ * refuses the derived one.
+ *
+ * The refusal lives in the CONSTRUCTION, not in one factory that a caller
+ * could step around. A context that knew the run only because a factory
+ * had been asked to build it would still be buildable without that factory,
+ * and the hole would be the obvious path: the constructor itself. So the
+ * constructor carries the run, and every way of building a context — the
+ * constructor, the copy — goes through the same refusal.
  */
 data class LiveTraceContext(
+    val runId: RunId,
     val traceId: String,
     val spanId: String,
 ) {
@@ -471,30 +486,21 @@ data class LiveTraceContext(
         require(SPAN_ID.matches(spanId)) {
             "the live span id must be 16 lowercase hexadecimal characters, and '$spanId' is not"
         }
+        // The historical trace id is a digest of the run id, and a live
+        // trace id is 32 hexadecimal characters: the two have the same
+        // shape, and a collector cannot tell them apart by looking. A live
+        // context that carried the derived id would publish the synthetic
+        // trace as if it were a real one, and every fact correlated through
+        // it would be a fact about a trace that never existed.
+        val historical = TelemetryTrace.traceIdOf(runId.value)
+        require(traceId != historical) {
+            "the live trace id is the HISTORICAL trace id derived from the run id ('$historical'): " +
+                "a derived id may not be published as a live W3C trace id"
+        }
     }
 
     companion object {
         private val TRACE_ID: Regex = Regex("^[0-9a-f]{32}$")
         private val SPAN_ID: Regex = Regex("^[0-9a-f]{16}$")
-
-        /**
-         * The live context of one run, refusing the conflation.
-         *
-         * The historical trace id is a digest of the run id, and a live
-         * trace id is 32 hexadecimal characters: the two have the same
-         * shape, and a collector cannot tell them apart by looking. A live
-         * context that carried the derived id would publish the synthetic
-         * trace as if it were a real one, and every fact correlated through
-         * it would be a fact about a trace that never existed. So the
-         * context is refused at the moment it is built, naming both ids.
-         */
-        fun of(runId: RunId, traceId: String, spanId: String): LiveTraceContext {
-            val historical = TelemetryTrace.traceIdOf(runId.value)
-            require(traceId != historical) {
-                "the live trace id is the HISTORICAL trace id derived from the run id ('$historical'): " +
-                    "a derived id may not be published as a live W3C trace id"
-            }
-            return LiveTraceContext(traceId, spanId)
-        }
     }
 }

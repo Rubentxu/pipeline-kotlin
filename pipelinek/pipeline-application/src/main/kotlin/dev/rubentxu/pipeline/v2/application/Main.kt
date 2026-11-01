@@ -48,6 +48,7 @@ internal val CLI_ENVIRONMENT: List<Pair<String, String>> = listOf(
     "PIPELINEK_SCRIPT_CACHE_DIR" to "compiled .pipeline.kts cache directory (default off)",
     "PIPELINE_SANDBOX_ALLOW_EXTRA" to "comma-separated env keys the sandbox keeps despite its deny-list",
     "PIPELINE_SANDBOX_PATH_KEEP" to "comma-separated PATH prefixes the sandbox keeps after normalising",
+    PipelineTelemetryFactory.OTEL_ENABLED_ENV to "enable the optional OpenTelemetry SDK (default false)",
 )
 
 /**
@@ -331,27 +332,29 @@ fun main(args: Array<String>) {
     if (config.dbPath == null) {
         // The branch reports the exit code and the process owner ends the process with it:
         // a branch that holds resources has to give them back before this point.
-        System.exit(
+        val exitCode = withPipelineTelemetry {
             runVolatilePipeline(
                 config = config,
                 secretPatternRegistry = secretPatternRegistry,
                 compiledQuery = compiledQuery,
                 scriptPath = scriptPath,
                 outputProtocol = outputProtocol,
-            ),
-        )
+            )
+        }
+        System.exit(exitCode)
         return
     }
     // The durable branch owns resources and gives them back before it returns, so the process
     // ends here and not in the middle of the run: the exit code is the branch's to report, and
     // the place that ends the process is the one that owns it.
-    System.exit(
+    val exitCode = withPipelineTelemetry {
         runDurablePipeline(
             config = config,
             dbPath = config.dbPath,
             secretPatternRegistry = secretPatternRegistry,
             compiledQuery = compiledQuery,
             scriptPath = scriptPath,
-        ),
-    )
+        )
+    }
+    System.exit(exitCode)
 }

@@ -136,6 +136,16 @@ sourceSets.main {
 }
 
 dependencies {
+    // OpenTelemetry is an implementation detail of the CLI adapter, not a published contract.
+    // The SDK/autoconfigure/OTLP exporter provide the standard engine, environment configuration,
+    // and wire protocol that this product should not reimplement. Kept behind explicit opt-in in
+    // OpenTelemetryRuntime so the default CLI path creates no SDK threads or network exporters.
+    implementation(platform(libs.opentelemetry.bom))
+    implementation(libs.opentelemetry.api)
+    implementation(libs.opentelemetry.sdk)
+    implementation(libs.opentelemetry.sdk.autoconfigure)
+    implementation(libs.opentelemetry.exporter.otlp)
+
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
     // The event plane is split in two: the contract above, the durable implementation below. The

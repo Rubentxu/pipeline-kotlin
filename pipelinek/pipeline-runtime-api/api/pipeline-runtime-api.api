@@ -1809,6 +1809,24 @@ public final class dev/rubentxu/pipeline/v2/runtime/recover/TerminalReceipt {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSpanId ()Ljava/lang/String;
+	public final fun getTraceId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext$Companion {
+	public final fun of-gBgJAOI (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext;
+}
+
 public final class dev/rubentxu/pipeline/v2/runtime/telemetry/RunTelemetryKt {
 	public static final field DIMENSION_OVERFLOW Ljava/lang/String;
 	public static final field TELEMETRY_SCHEMA Ljava/lang/String;
@@ -1885,6 +1903,94 @@ public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryExport$Ex
 	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind : java/lang/Enum {
+	public static final field ATTEMPT_ID Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public static final field CORRELATION_ID Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public static final field FENCING_TOKEN Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public static final field HISTORICAL_TRACE_ID Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public static final field LIVE_SPAN_ID Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public static final field LIVE_TRACE_ID Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public static final field OPERATION_ID Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public static final field RUN_ID Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKt {
+	public static final field OTEL_SEMCONV_CICD_STATUS Ljava/lang/String;
+	public static final field OTEL_SEMCONV_CICD_VERSION Ljava/lang/String;
+	public static final field PIPELINEK_FIELD_NAMESPACE Ljava/lang/String;
+	public static final field TELEMETRY_INVALID_INTERVAL_COUNTER Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner : java/lang/Enum {
+	public static final field ENGINE Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;
+	public static final field INVOKER Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;
+	public static final field LEASE Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;
+	public static final field PROJECTION Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;
+	public static final field PROPAGATOR Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityRule {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;Ljava/util/Set;Ljava/util/Set;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;
+	public final fun component3 ()Ljava/util/Set;
+	public final fun component4 ()Ljava/util/Set;
+	public final fun component5 ()Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public final fun component6 ()Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;Ljava/util/Set;Ljava/util/Set;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityRule;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityRule;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;Ljava/util/Set;Ljava/util/Set;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityRule;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAllowedUses ()Ljava/util/Set;
+	public final fun getDerivedFrom ()Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public final fun getForbiddenUses ()Ljava/util/Set;
+	public final fun getKind ()Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;
+	public final fun getOwner ()Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityOwner;
+	public final fun getTravel ()Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityTable {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityTable$Companion;
+	public fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/List;)V
+	public final fun allowedAttributeKeys ()Ljava/util/Set;
+	public final fun allowedDimensionKeys ()Ljava/util/Set;
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;Ljava/util/List;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityTable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityTable;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityTable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttributeVocabulary ()Ljava/util/List;
+	public final fun getDimensionVocabulary ()Ljava/util/List;
+	public final fun getIdentities ()Ljava/util/List;
+	public fun hashCode ()I
+	public final fun ruleOf (Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityKind;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityRule;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityTable$Companion {
+	public final fun getDefault ()Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityTable;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityUse : java/lang/Enum {
+	public static final field CAUSALITY Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityUse;
+	public static final field HISTORICAL_JOIN Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityUse;
+	public static final field IDEMPOTENCY Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityUse;
+	public static final field JOIN_INVOCATION Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityUse;
+	public static final field JOIN_RUN Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityUse;
+	public static final field WRITE_AUTHORITY Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityUse;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityUse;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryIdentityUse;
 }
 
 public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryPolicy {
@@ -2000,5 +2106,70 @@ public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTrace {
 
 public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTrace$Companion {
 	public final fun traceIdOf (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$Attribute : dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$Attribute;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$Attribute;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$Attribute;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKey ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$HistoricalTraceField : dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$HistoricalTraceField;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$LiveSpanField : dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$LiveSpanField;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$LiveTraceField : dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$LiveTraceField;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$Nowhere : dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTravel$Nowhere;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyEntry {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyEntry;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyEntry;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyEntry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKey ()Ljava/lang/String;
+	public final fun getRole ()Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole : java/lang/Enum {
+	public static final field CLASS Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole;
+	public static final field IDENTITY Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole;
+	public static final field INDEX Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole;
+	public static final field OUTCOME Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryVocabularyRole;
 }
 

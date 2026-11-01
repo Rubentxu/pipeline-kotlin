@@ -150,20 +150,17 @@ data class TelemetryPolicy(
          * The shipped policy: durable identities and coarse classes only.
          * Deliberately small, and deliberately not extensible by callers —
          * widening it is a product decision, not a configuration one.
+         *
+         * The allowlists are READ from the identity table rather than
+         * written here, so the vocabulary of the export and the vocabulary
+         * of the product are one thing: a key that travels is a key the
+         * table names, and a key the table does not name does not travel.
+         * The set of keys is unchanged by that move — what changed is
+         * where they are decided.
          */
         val Default: TelemetryPolicy = TelemetryPolicy(
-            allowedAttributeKeys = setOf(
-                "run.id",
-                "stage.index",
-                "step.index",
-                "compile.outcome",
-                "failure.class",
-            ),
-            allowedDimensionKeys = setOf(
-                "operation_kind",
-                "status",
-                "failure_class",
-            ),
+            allowedAttributeKeys = TelemetryIdentityTable.Default.allowedAttributeKeys(),
+            allowedDimensionKeys = TelemetryIdentityTable.Default.allowedDimensionKeys(),
         )
     }
 }

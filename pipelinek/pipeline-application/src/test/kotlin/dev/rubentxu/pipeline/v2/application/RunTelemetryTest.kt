@@ -419,6 +419,48 @@ class RunTelemetryTest {
     }
 
     @Test
+    fun `a run that crashed leaves its spans open and invents no terminal`() {
+        // The run started, a stage started, a step started, and then the
+        // process died: there is no terminal for any of them, because the
+        // journal does not have one.
+        val trace = RunTelemetryProjection.fromEvents(
+            "run-1",
+            listOf(
+                runStart(at = 0),
+                stageStart(at = 10, index = 0),
+                stepStart(at = 20, stage = 0, step = 0),
+            ),
+        )
+
+        assertTrue(
+            trace.signals.none { it is TelemetrySignal.SpanEnded },
+            "una ejecución que se quedó sin terminal no puede tener finales inventados: el journal " +
+                "no los tiene y la proyección no los fabrica",
+        )
+        assertTrue(
+            trace.signals.none { it is TelemetrySignal.Histogram && it.name == "pipelinek.step_duration_ms" },
+            "un span abierto no mide duración: la duración se mide contra un final que no existe",
+        )
+        assertEquals(
+            3,
+            trace.signals.filterIsInstance<TelemetrySignal.SpanStarted>().size,
+            "lo que SÍ ocurrió se declara: el run, la etapa y el paso se abrieron",
+        )
+
+        val document = Json.parseToJsonElement(RunTelemetryOtlp.document(trace)).jsonObject
+        val spans = document["resourceSpans"]!!.jsonArray
+            .flatMap { it.jsonObject["scopeSpans"]!!.jsonArray }
+            .flatMap { it.jsonObject["spans"]!!.jsonArray }
+            .map { it.jsonObject }
+
+        assertTrue(
+            spans.none { it.containsKey("endTimeUnixNano") },
+            "un span incompleto no viaja como un span terminado: el formato OTLP exige un final, " +
+                "así que el final que no existe simplemente no se escribe",
+        )
+    }
+
+    @Test
     fun `the OTLP document carries the trace and the spans`() {
         val trace = RunTelemetryProjection.fromEvents(
             "run-1",

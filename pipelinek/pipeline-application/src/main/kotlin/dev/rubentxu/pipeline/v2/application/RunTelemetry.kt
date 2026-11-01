@@ -13,6 +13,7 @@ import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
+import dev.rubentxu.pipeline.v2.runtime.telemetry.TELEMETRY_INVALID_INTERVAL_COUNTER
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TELEMETRY_SCHEMA
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryPolicy
@@ -237,7 +238,7 @@ object RunTelemetryProjection {
         if (endedAtMs < span.startedAtMs) {
             signals.add(
                 counter(
-                    "pipelinek.invalid_interval_total",
+                    TELEMETRY_INVALID_INTERVAL_COUNTER,
                     buildMap {
                         put("operation_kind", operationKind)
                         put("status", status)

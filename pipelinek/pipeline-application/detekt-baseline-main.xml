@@ -6,7 +6,7 @@
     <ID>AbstractClassCanBeInterface:MainEventsCli.kt:MainEventsCli.EventsInspectionFlag$EventsInspectionFlag</ID>
     <ID>AbstractClassCanBeInterface:MainEventsCli.kt:MainEventsCli.EventsInspectionParseResult$EventsInspectionParseResult</ID>
     <ID>AbstractClassCanBeInterface:MilestoneOperations.kt:MilestoneAdvanceResult$MilestoneAdvanceResult</ID>
-    <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$suspend fun run: RunOutcome</ID>
+    <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun runBody: RunOutcome</ID>
     <ID>CyclomaticComplexMethod:Main.kt:fun main</ID>
     <ID>CyclomaticComplexMethod:PluginAdmissionGate.kt:PluginAdmissionGate$fun admitThenLoad: PluginAdmissionResult</ID>
     <ID>CyclomaticComplexMethod:SimplePipelineCompiler.kt:SimplePipelineCompiler$override fun compile: CompileResult</ID>

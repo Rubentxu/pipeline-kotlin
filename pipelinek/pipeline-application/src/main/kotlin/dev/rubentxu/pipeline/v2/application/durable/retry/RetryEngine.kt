@@ -1,6 +1,12 @@
 package dev.rubentxu.pipeline.v2.application.durable.retry
 
+import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
+import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
+import dev.rubentxu.pipeline.v2.application.LiveSpans
+import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
+import dev.rubentxu.pipeline.v2.application.liveStatusOfStepOutcome
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
@@ -17,6 +23,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciler
 import dev.rubentxu.pipeline.v2.domain.step.AttemptSegment
 import dev.rubentxu.pipeline.v2.domain.step.BodyInvocationContext
 import dev.rubentxu.pipeline.v2.domain.step.BodyInvoker
+import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
 import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
@@ -64,7 +71,7 @@ import java.util.UUID
  * `BodyRunnerPort`, or `BlockExecutor` collaborator. The port count for body
  * Re-entry is exactly ONE across the application
 */
-class RetryEngine(
+internal class RetryEngine(
     private val journal: FileBasedRetryControlJournal,
     private val eventSink: EventSink,
     private val bodyInvoker: BodyInvoker,
@@ -78,6 +85,7 @@ class RetryEngine(
     private val stepIndex: Int,
     private val blockId: StepId,
     private val blockPluginStepId: PluginStepId,
+    private val telemetry: PipelineTelemetry,
 ) {
 
     init {
@@ -243,20 +251,7 @@ class RetryEngine(
                         ),
                     )
 
-                    // Body re-entry through the public BodyInvoker port. The
-                    // canonical coordinator already opened the runner under
-                    // bodyRef; the engine only passes the per-attempt
-                    // BodyInvocationContext. The runner projects `attempt`
-                    // onto the per-attempt deterministic bodyPath segment.
-                    val outcome = bodyInvoker.invoke(
-                        bodyRef,
-                        BodyInvocationContext(
-                            attempt = AttemptSegment(
-                                index = attempt,
-                                key = PluginStepId("retry-attempt"),
-                            ),
-                        ),
-                    )
+                    val outcome = invokeAttemptUnderSpan(bodyRef, attempt)
 
                     val attemptOutcome = when (outcome) {
                         is dev.rubentxu.pipeline.v2.domain.step.BodyOutcome.Completed ->
@@ -320,6 +315,64 @@ class RetryEngine(
                 "retry reconciliation loop exceeded budget ($maxAttempts)",
             ),
         )
+    }
+
+    /**
+     * Invokes the body for ONE attempt, under that attempt's own span.
+     *
+     * Body re-entry through the public BodyInvoker port. The canonical
+     * coordinator already opened the runner under `bodyRef`; the engine only
+     * passes the per-attempt BodyInvocationContext. The runner projects
+     * `attempt` onto the per-attempt deterministic bodyPath segment.
+     *
+     * The attempt span wraps THIS call and only this call: the attempt is the
+     * body invocation, and a span that also covered the journal writes and the
+     * terminal transition would be measuring the bookkeeping and calling it
+     * the attempt.
+     *
+     * The REUSE arms of the loop open no span at all. A replay that reuses a
+     * durable terminal did not run the body, and a span that said it had would
+     * be a fabricated effect.
+     */
+    private suspend fun invokeAttemptUnderSpan(
+        bodyRef: dev.rubentxu.pipeline.v2.domain.step.BodyRef,
+        attempt: Int,
+    ): BodyOutcome {
+        val span = LiveSpans.open(
+            telemetry = telemetry,
+            name = LiveSpanNames.RETRY_ATTEMPT,
+            attributes = listOf(
+                LiveSpanAttributes.runId(runId.value),
+                LiveSpanAttributes.stageIndex(stageIndex),
+                LiveSpanAttributes.stepIndex(stepIndex),
+            ),
+        )
+        val outcome = try {
+            bodyInvoker.invoke(
+                bodyRef,
+                BodyInvocationContext(
+                    attempt = AttemptSegment(
+                        index = attempt,
+                        key = PluginStepId("retry-attempt"),
+                    ),
+                ),
+            )
+        } catch (throwable: Throwable) {
+            LiveSpans.end(span, LiveSpanStatus.Failed)
+            throw throwable
+        }
+        LiveSpans.end(
+            span,
+            when (outcome) {
+                is BodyOutcome.Completed -> liveStatusOfStepOutcome(outcome.outcome)
+
+                // A cancelled body is a terminal, not a failure of the
+                // attempt's work: the cancellation is the parent's decision,
+                // and the attempt did not complete. The span says the same.
+                is BodyOutcome.Cancelled -> LiveSpanStatus.Failed
+            },
+        )
+        return outcome
     }
 }
 

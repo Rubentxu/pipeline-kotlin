@@ -51,8 +51,49 @@ internal data class ScriptCompilation(
  * A compilation produces a LIST of diagnostics. The failure keeps the LAST error
  * message that is not blank, because that is the one the author has to act on, and
  * falls back to "Kotlin compilation failed" when there is none.
+ *
+ * ## The live span it opens
+ *
+ * The compilation is a boundary of the run, so it opens a span of its own: the
+ * time a script took to compile is a fact an operator asks for, and it is
+ * invisible if the only visible boundary is the run as a whole. The span ends
+ * with the compilation's own verdict — a script that did not compile never
+ * reaches the run's span, so this is the only place where that fact appears.
  */
 internal fun compileScriptForRun(
+    eventStore: EventSink,
+    runId: String,
+    scriptPath: Path,
+    pluginJars: List<String>,
+    telemetry: PipelineTelemetry,
+): ScriptCompilation {
+    val span = LiveSpans.open(
+        telemetry = telemetry,
+        name = LiveSpanNames.COMPILE,
+        attributes = listOf(LiveSpanAttributes.runId(runId)),
+    )
+    val compilation = try {
+        compileScript(eventStore, runId, scriptPath, pluginJars)
+    } catch (throwable: Throwable) {
+        LiveSpans.end(span, LiveSpanStatus.Failed)
+        throw throwable
+    }
+    LiveSpans.end(
+        span,
+        if (compilation.failure == null) LiveSpanStatus.Completed else LiveSpanStatus.Failed,
+    )
+    return compilation
+}
+
+/**
+ * The compilation itself, without the live span around it.
+ *
+ * The body is the reader of the script; the span above is the observation of
+ * that reading. Splitting them keeps the reader's own logic — the reflective
+ * unwrapping, the diagnostic choice — free of the observation, so a change in
+ * one does not have to be reasoned about in the other.
+ */
+private fun compileScript(
     eventStore: EventSink,
     runId: String,
     scriptPath: Path,

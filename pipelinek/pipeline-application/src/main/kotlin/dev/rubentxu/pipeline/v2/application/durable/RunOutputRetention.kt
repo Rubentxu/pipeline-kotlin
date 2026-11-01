@@ -1,5 +1,10 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
+import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
+import dev.rubentxu.pipeline.v2.application.LiveSpans
+import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.output.OutputPruneIntent
 import dev.rubentxu.pipeline.v2.output.OutputPruneReport
@@ -98,6 +103,12 @@ internal class RunOutputRetention(
     private val retention: () -> OutputRetentionPort,
     private val policy: RetainUntil,
     private val report: (String) -> Unit = { message -> System.err.println(message) },
+    /**
+     * The live tracing seam. The release is the LAST boundary of a run, and
+     * this is the ONE place that knows whether the output was kept, released,
+     * or refused by the filesystem.
+     */
+    private val telemetry: PipelineTelemetry,
 ) {
 
     /**
@@ -116,6 +127,42 @@ internal class RunOutputRetention(
      * message.
 */
     fun onRunTerminal(runId: RunId): RunOutputDisposition {
+        // The release span covers the WHOLE terminal handling: the decision to
+        // release or retain, the prune itself and the report. A span that
+        // covered only the prune would say "the release took no time" for a
+        // run whose output was simply kept.
+        val span = LiveSpans.open(
+            telemetry = telemetry,
+            name = LiveSpanNames.RELEASE,
+            attributes = listOf(
+                LiveSpanAttributes.runId(runId.value),
+            ),
+        )
+        val disposition = try {
+            release(runId)
+        } catch (throwable: Throwable) {
+            LiveSpans.end(span, LiveSpanStatus.Failed)
+            throw throwable
+        }
+        LiveSpans.end(
+            span,
+            when (disposition) {
+                // A kept output is not a failed release: the policy decided to
+                // keep it, and the boundary did what it was asked.
+                RunOutputDisposition.Retained -> LiveSpanStatus.Completed
+                is RunOutputDisposition.Released -> LiveSpanStatus.Completed
+                // The filesystem refused the deletion the terminal authorised.
+                is RunOutputDisposition.ReleaseFailed -> LiveSpanStatus.Failed
+            },
+        )
+        return disposition
+    }
+
+    /**
+     * The effect itself, without the span: consult the policy, prune only if
+     * it authorised one, and report what happened.
+     */
+    private fun release(runId: RunId): RunOutputDisposition {
         val intent = intentFor(runId) ?: return RunOutputDisposition.Retained
         val disposition = try {
             RunOutputDisposition.Released(retention().prune(intent))

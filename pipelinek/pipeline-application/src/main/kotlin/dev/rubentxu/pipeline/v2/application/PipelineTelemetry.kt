@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
 import io.opentelemetry.api.common.AttributeKey
+import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk
 import io.opentelemetry.sdk.resources.Resource
 import java.util.concurrent.TimeUnit
@@ -8,12 +10,68 @@ import java.util.concurrent.TimeUnit
 /**
  * Application-owned seam for live tracing. Runtime/domain modules do not depend on OpenTelemetry.
  * The CLI opts in with [OTEL_ENABLED_ENV]; otherwise no SDK, exporter, or worker is constructed.
+ *
+ * ## WHY THE PORT KNOWS WHETHER IT IS ENABLED
+ *
+ * A disabled runtime must cost NOTHING: no span, no attribute list, no call
+ * into an exporter. The only way to guarantee that is for the boundary to be
+ * able to ask before it builds anything, so [enabled] is part of the port and
+ * the first thing every boundary checks.
+ *
+ * ## WHY A SPAN CAN BE DISCARDED AND NOT ONLY ENDED
+ *
+ * A boundary sometimes knows that the work a span describes did NOT happen —
+ * a replay skipped an effect that a previous attempt had already performed.
+ * Ending the span would publish a span saying the effect ran. Discarding it
+ * leaves it unended, and an unended span is never exported. That is the
+ * difference between a truthful trace and a flattering one.
  */
 internal interface PipelineTelemetry : AutoCloseable {
-    fun startSpan(name: String): PipelineSpan
+    /** Whether this runtime produces spans at all. */
+    val enabled: Boolean
+
+    /** Starts a span with [attributes] and hands it to the caller. */
+    fun startSpan(name: String, attributes: List<TelemetryAttribute>): PipelineSpan
 }
 
-internal fun interface PipelineSpan : AutoCloseable
+/**
+ * A span in flight.
+ *
+ * The two endings are different on purpose: [end] publishes the span with a
+ * status, [discard] publishes nothing at all.
+ */
+internal interface PipelineSpan {
+    /** Ends the span with [status], so it becomes exportable. */
+    fun end(status: LiveSpanStatus)
+
+    /** Abandons the span: it is never ended and therefore never exported. */
+    fun discard()
+}
+
+/**
+ * The telemetry that produces NOTHING.
+ *
+ * It is the default for a run that did not opt in, and it is also what a
+ * composition hands to an engine that must be exercised without a collector.
+ * It is a real implementation of the port rather than a null: the port is
+ * held by value all the way down, so a boundary never has to ask whether
+ * there is an observer — it asks [PipelineTelemetry.enabled], and a disabled
+ * one answers before anything is built.
+ */
+internal object NoopPipelineTelemetry : PipelineTelemetry {
+    override val enabled: Boolean = false
+
+    override fun startSpan(name: String, attributes: List<TelemetryAttribute>): PipelineSpan = NoopPipelineSpan
+
+    override fun close() = Unit
+}
+
+/** The span that does nothing, and publishes nothing. */
+internal object NoopPipelineSpan : PipelineSpan {
+    override fun end(status: LiveSpanStatus) = Unit
+
+    override fun discard() = Unit
+}
 
 internal object PipelineTelemetryFactory {
     const val OTEL_ENABLED_ENV: String = "PIPELINEK_OTEL_ENABLED"
@@ -62,23 +120,24 @@ internal object PipelineTelemetryFactory {
         warning: (String) -> Unit = { System.err.println(it) },
     ): PipelineTelemetry = SdkPipelineTelemetry(sdk, warning)
 
-    private object NoopPipelineTelemetry : PipelineTelemetry {
-        private val span = PipelineSpan { }
-
-        override fun startSpan(name: String): PipelineSpan = span
-
-        override fun close() = Unit
-    }
-
     private class SdkPipelineTelemetry(
         private val sdk: io.opentelemetry.sdk.OpenTelemetrySdk,
         private val warning: (String) -> Unit,
     ) : PipelineTelemetry {
         private val tracer = sdk.getTracer(TRACER_SCOPE)
 
-        override fun startSpan(name: String): PipelineSpan {
-            val span = tracer.spanBuilder(name).startSpan()
-            return PipelineSpan { span.end() }
+        override val enabled: Boolean = true
+
+        override fun startSpan(name: String, attributes: List<TelemetryAttribute>): PipelineSpan {
+            val builder = tracer.spanBuilder(name)
+            attributes.forEach { attribute ->
+                when (attribute) {
+                    is TelemetryAttribute.Text -> builder.setAttribute(attribute.key, attribute.value)
+                    is TelemetryAttribute.Count -> builder.setAttribute(attribute.key, attribute.value)
+                    is TelemetryAttribute.Flag -> builder.setAttribute(attribute.key, attribute.value)
+                }
+            }
+            return SdkPipelineSpan(builder.startSpan())
         }
 
         override fun close() {
@@ -94,6 +153,23 @@ internal object PipelineTelemetryFactory {
                 ),
                 warning = warning,
             )
+        }
+    }
+
+    private class SdkPipelineSpan(private val span: io.opentelemetry.api.trace.Span) : PipelineSpan {
+        override fun end(status: LiveSpanStatus) {
+            // The failure class is a word from the product's own closed vocabulary, never a
+            // message from the run, so it carries nothing a redaction rule would have
+            // removed. It is written here because the outcome is only known at the end.
+            status.failureClass?.let { span.setAttribute(LiveSpanAttributes.FAILURE_CLASS, it) }
+            span.setStatus(if (status == LiveSpanStatus.Completed) StatusCode.OK else StatusCode.ERROR)
+            span.end()
+        }
+
+        override fun discard() {
+            // Deliberately empty: the span is NOT ended, and an unended span is never
+            // exported. Ending it here would publish a span describing an effect that the
+            // replay skipped.
         }
     }
 }
@@ -135,13 +211,22 @@ internal fun runTelemetryCleanup(
     }
 }
 
-internal fun withPipelineTelemetry(run: () -> Int): Int {
+/**
+ * Runs [run] with a telemetry runtime and closes the runtime afterwards.
+ *
+ * The runtime is HANDED to the run rather than kept here, because the
+ * boundaries that produce spans live inside the run and the runtime has to
+ * reach them. The close still happens here, in a `finally`, so a run that
+ * throws still flushes what it produced — and a close that throws still does
+ * not change the run's exit code.
+ */
+internal fun withPipelineTelemetry(run: (PipelineTelemetry) -> Int): Int {
     return withPipelineTelemetry(PipelineTelemetryFactory.create(), run)
 }
 
-internal fun withPipelineTelemetry(telemetry: PipelineTelemetry, run: () -> Int): Int {
+internal fun withPipelineTelemetry(telemetry: PipelineTelemetry, run: (PipelineTelemetry) -> Int): Int {
     return try {
-        run()
+        run(telemetry)
     } finally {
         runCatching { telemetry.close() }
     }

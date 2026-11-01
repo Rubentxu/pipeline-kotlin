@@ -100,10 +100,19 @@ internal fun runDurablePipeline(
     secretPatternRegistry: SecretPatternRegistry,
     compiledQuery: CompiledObservationQuery,
     scriptPath: Path,
+    telemetry: PipelineTelemetry,
 ): Int =
     try {
         ResourceScope().use { scope ->
-            runDurablePipelineOwned(scope, config, dbPath, secretPatternRegistry, compiledQuery, scriptPath)
+            runDurablePipelineOwned(
+                scope = scope,
+                config = config,
+                dbPath = dbPath,
+                secretPatternRegistry = secretPatternRegistry,
+                compiledQuery = compiledQuery,
+                scriptPath = scriptPath,
+                telemetry = telemetry,
+            )
         }
     } catch (refused: CommandRefused) {
         refused.exitCode
@@ -119,6 +128,7 @@ private fun runDurablePipelineOwned(
     secretPatternRegistry: SecretPatternRegistry,
     compiledQuery: CompiledObservationQuery,
     scriptPath: Path,
+    telemetry: PipelineTelemetry,
 ): Int {
     // Durable mode: the run's events are kept in a SQLite journal. The narration is composed by
     // the SAME authority the volatile world asks, so the two worlds differ in WHERE the events
@@ -162,6 +172,7 @@ private fun runDurablePipelineOwned(
         scriptPath = scriptPath,
         scriptContent = definition.content,
         pluginJars = config.pluginJars,
+        telemetry = telemetry,
     )
     val compilation = source.compilation
     val scripted = source.scripted
@@ -201,7 +212,7 @@ private fun runDurablePipelineOwned(
     // admitted, which is precisely the defect S6/G removed once already.
     // The refusal travels as a value: the scope still holds the lease and the
     // store, and it gives them back before the process ends.
-    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot)) {
+    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry)) {
         is PluginAdmission.Admitted -> admission.composition
         is PluginAdmission.Refused -> throw CommandRefused(admission.exitCode)
     }
@@ -244,6 +255,7 @@ private fun runDurablePipelineOwned(
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
                 outputWakeups = outputObserver.wakeups,
+                telemetry = telemetry,
             )
             compiledPipeline != null -> {
                 // The SAME analysis the volatile world runs, and the SAME refusal.
@@ -281,6 +293,8 @@ private fun runDurablePipelineOwned(
                             ),
                             // S6/G: the frozen composition, not a step registry plus a classloader.
                             composition = composition,
+                            // The live tracing seam, the SAME one the volatile world hands over.
+                            telemetry = telemetry,
                         ),
                     )
                 } else {
@@ -361,12 +375,14 @@ private fun compileDurableScript(
     scriptPath: Path,
     scriptContent: String,
     pluginJars: List<String>,
+    telemetry: PipelineTelemetry,
 ): DurableScript {
     val compilation = compileScriptForRun(
         eventStore = eventStore,
         runId = runId,
         scriptPath = scriptPath,
         pluginJars = pluginJars,
+        telemetry = telemetry,
     )
     val scripted = resolveScriptedFrontend(
         compilation = compilation,

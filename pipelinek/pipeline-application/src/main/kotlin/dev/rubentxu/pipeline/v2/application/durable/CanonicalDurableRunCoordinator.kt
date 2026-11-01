@@ -3,11 +3,17 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
 import dev.rubentxu.pipeline.v2.application.CanonicalRunState
+import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
+import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
+import dev.rubentxu.pipeline.v2.application.LiveSpans
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
+import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.PreResolvedComposition
 import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
+import dev.rubentxu.pipeline.v2.application.liveStatusOfRunOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyRejection
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
@@ -41,7 +47,7 @@ import dev.rubentxu.pipeline.v2.credentials.executor.BasicCredentialsCapabilityC
  *
  * ## What this class receives, and why so little
  *
- * The constructor takes NINE parameters, and each one is a fact the run cannot derive:
+ * The constructor takes TEN parameters, and each one is a fact the run cannot derive:
  *
  * ```text
  * state              where the run's durable state lives (journal, cursor, sink, saga)
@@ -53,13 +59,13 @@ import dev.rubentxu.pipeline.v2.credentials.executor.BasicCredentialsCapabilityC
  * retryControlJournal  the durable retry aggregate, or null for the inline loop
  * waitUntilControlJournal  the durable waitUntil aggregate, or null for the inline loop
  * scriptedStageExecution   how a scripted body becomes an artifact, or null
+ * telemetry             the live tracing seam
  * ```
  *
- * Only the last one is kept as a property of this class: it is the only one of the nine that is
- * READ while the run executes. The other eight are consumed while the run is BUILT — they are
- * inputs of the construction, not state the coordinator carries — so they are constructor
- * parameters and nothing more. A fact this class keeps would be a second copy of a fact the
- * composition already owns.
+ * Only the last two are kept as properties of this class: they are the only ones READ while the
+ * run executes. The other eight are consumed while the run is BUILT — they are inputs of the
+ * construction, not state the coordinator carries — so they are constructor parameters and nothing
+ * more. A fact this class keeps would be a second copy of a fact the composition already owns.
  *
  * Everything else the run uses is DERIVED inside this class, and the derivation is where the
  * guarantees live. The three groups above are the reasons:
@@ -115,6 +121,7 @@ internal class CanonicalDurableRunCoordinator(
     retryControlJournal: FileBasedRetryControlJournal?,
     waitUntilControlJournal: WaitUntilControlJournal?,
     private val scriptedStageExecution: ScriptedStageExecution?,
+    private val telemetry: PipelineTelemetry,
 ) {
     // The run's durable spine, the ports it was given and the values derived from them.
     private val journal = state.journal
@@ -148,9 +155,10 @@ internal class CanonicalDurableRunCoordinator(
 
     // The shell transport and the output retention are CONSEQUENCES of the policy, not inputs.
     private val shOptions = canonicalShellOptions(policy)
-    private val outputRetention = canonicalOutputRetention {
-        OutputPlaneProvider.storeFor(policy.controlDirRoot)
-    }
+    private val outputRetention = canonicalOutputRetention(
+        store = { OutputPlaneProvider.storeFor(policy.controlDirRoot) },
+        telemetry = telemetry,
+    )
 
     // The per-run aggregates. Each is created ONCE and shared by every holder that needs it,
     // because each of them is a shared surface, not a value:
@@ -255,11 +263,12 @@ internal class CanonicalDurableRunCoordinator(
         eventSink = eventSink,
         executionBoundary = executionBoundary,
         records = invocationRecords,
+        telemetry = telemetry,
     )
 
     // The run-lifecycle bookends and the running outcome live in
     // the extracted engine (same events, same ordering, same quirks).
-    private val runLifecycle = RunLifecycleEngine(eventSink)
+    private val runLifecycle = RunLifecycleEngine(eventSink, telemetry)
     // The BEFORE_STAGE directive seam. It admits, decodes, composes
     // evaluates and observes, then returns a closed verdict; this class keeps the run's control
     // flow, because only the owner of the loop may decide what the run does next.
@@ -274,11 +283,12 @@ internal class CanonicalDurableRunCoordinator(
     // lives in invocationResolver; this engine performs the journal write and the lifecycle
     // events that a resolution names, and reports ProceedToExecution for the one resolution
     // That is not a recovery case.: it advances no cursor — that is traversal state
-    private val recoveryInterpretation = RecoveryInterpretationEngine(eventSink, invocationRecords)
+    private val recoveryInterpretation = RecoveryInterpretationEngine(eventSink, invocationRecords, telemetry)
     private val bodyExecutionEngine = BodyExecutionEngine(
         eventSink,
         clock,
         bodyInvokerAdapter,
+        telemetry,
         retryControlJournal,
         waitUntilControlJournal,
     )
@@ -328,6 +338,7 @@ internal class CanonicalDurableRunCoordinator(
         stepRegistry = stepRegistry,
         runtimeContexts = runtimeContexts,
         bodyDispatch = bodyDispatch,
+        telemetry = telemetry,
     )
     // A parallel stage is a composite with its own durable aggregate, not a
     // Step, so it does not belong to the step spine. It dispatches branch steps back through
@@ -350,7 +361,39 @@ internal class CanonicalDurableRunCoordinator(
         eventSink = eventSink,
     )
 
+    /**
+     * The run, observed.
+     *
+     * The span is opened here and not inside the body because the span is
+     * about the WHOLE run: the validation that can refuse it, the stages it
+     * executes and the outcome it produces. A span that started after the
+     * validation would say nothing about a run that never started.
+     */
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
+        val span = LiveSpans.open(
+            telemetry = telemetry,
+            name = LiveSpanNames.RUN,
+            attributes = listOf(LiveSpanAttributes.runId(runId.value)),
+        )
+        val outcome = try {
+            runBody(pipeline, runId)
+        } catch (throwable: Throwable) {
+            LiveSpans.end(span, LiveSpanStatus.Failed)
+            throw throwable
+        }
+        LiveSpans.end(span, liveStatusOfRunOutcome(outcome))
+        return outcome
+    }
+
+    /**
+     * The body of the run, without the observation around it.
+     *
+     * The body is the run's control flow, and this wrapper is its
+     * observation. Splitting them keeps the loop free of telemetry: the
+     * loop's `return@runBody` labels are the loop's own, and the span cannot
+     * be ended by a branch that does not know about it.
+     */
+    private suspend fun runBody(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
         try {
             CompiledPipelineValidator.validate(pipeline, bodyPolicyResolver)
         } catch (e: BlockNestingExceededException) {
@@ -375,7 +418,7 @@ internal class CanonicalDurableRunCoordinator(
                 // The BEFORE_STAGE directive seam is interpreted by
                 // BeforeStageDirectiveEngine, which admits, decodes, composes, evaluates and
                 // OBSERVES, then returns a closed verdict. Only this loop owns the run's control
-                // flow: a collaborator may not write `return@run` or `continue@stagesLoop`.
+                // flow: a collaborator may not write `return@runBody` or `continue@stagesLoop`.
                 when (
                     val verdict = beforeStageDirectives.interpret(stage, stageIndex, runId, directiveRegistry)
                 ) {
@@ -386,7 +429,7 @@ internal class CanonicalDurableRunCoordinator(
                             verdict.kind,
                             verdict.reason,
                         )))
-                        return@run runLifecycle.outcome()
+                        return@runBody runLifecycle.outcome()
                     }
 
                     is BeforeStageDirectiveEngine.Verdict.SkipStage -> {
@@ -407,7 +450,7 @@ internal class CanonicalDurableRunCoordinator(
                             ambient = ambient,
                         )?.let { failure ->
                             runLifecycle.fold(RunOutcome.Failure(failure))
-                            return@run runLifecycle.outcome()
+                            return@runBody runLifecycle.outcome()
                         }
                         continue@stagesLoop
                     }
@@ -432,7 +475,7 @@ internal class CanonicalDurableRunCoordinator(
                             "Failed to create stage workspace '${workspacePath}': ${e.message}"
                         ),
                     ))
-                    return@run runLifecycle.outcome()
+                    return@runBody runLifecycle.outcome()
                 }
                 val stageBaseOptions = shOptions.copy(workspaceRoot = workspacePath)
                 val stageShOptions = stage.projectShellOptions(stageBaseOptions)
@@ -453,7 +496,7 @@ internal class CanonicalDurableRunCoordinator(
                         is StageExecutionEngine.StageVerdict.Completed -> ambient = verdict.context
                         is StageExecutionEngine.StageVerdict.Abort -> {
                             runLifecycle.fold(RunOutcome.Failure(verdict.failure))
-                            return@run runLifecycle.outcome()
+                            return@runBody runLifecycle.outcome()
                         }
                     }
                     continue@stagesLoop
@@ -474,7 +517,7 @@ internal class CanonicalDurableRunCoordinator(
                         is StageExecutionEngine.StageVerdict.Completed -> ambient = verdict.context
                         is StageExecutionEngine.StageVerdict.Abort -> {
                             runLifecycle.fold(RunOutcome.Failure(verdict.failure))
-                            return@run runLifecycle.outcome()
+                            return@runBody runLifecycle.outcome()
                         }
                     }
                     continue@stagesLoop
@@ -490,13 +533,13 @@ internal class CanonicalDurableRunCoordinator(
                 // The stage body, its continuation and its `post`
                 // finalizers live in StageExecutionEngine. The run loop keeps only the two
                 // things a stage may say to a run: carry on carrying this context, or abort
-                // with this typed reason. A collaborator may not write return@run.
+                // with this typed reason. A collaborator may not write return@runBody.
                 when (val verdict = stageExecution.runLinearStage(stage, stageIndex, steps1, stageShOptions, runId, ambient)) {
                     is StageExecutionEngine.StageVerdict.Completed -> ambient = verdict.context
 
                     is StageExecutionEngine.StageVerdict.Abort -> {
                         runLifecycle.fold(RunOutcome.Failure(verdict.failure))
-                        return@run runLifecycle.outcome()
+                        return@runBody runLifecycle.outcome()
                     }
                 }
             }
@@ -511,6 +554,11 @@ internal class CanonicalDurableRunCoordinator(
                 ),
             ))
         } finally {
+            // A stage that threw before its finalizer ran still has an OPEN
+            // span. Closing them here is what keeps the trace from showing a
+            // stage that never ended — the same reason the run's bookends are
+            // closed in a `finally` and not on the happy path only.
+            runLifecycle.closeOpenStages()
             // The closing bookend is the engine's; the correlation
             // invariant (RunFinished only if RunStarted was emitted) lives there.
             runLifecycle.closeRun(runId)

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner
 import dev.rubentxu.pipeline.v2.application.scripted.ScriptedStructuralAddress
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
@@ -38,13 +39,19 @@ import java.nio.file.Path
  * Is exactly the defect the runner's own KDoc records — precedence written twice, with the
  * two copies free to disagree about whether an `Unstable` step means an `Unstable` run.
 */
-class ScriptedStageExecution(
+internal class ScriptedStageExecution(
     private val scriptedArtifacts: ScriptedStageRegistry,
     private val stepRegistry: StepRegistry,
     private val journal: OperationJournal,
     private val eventSink: EventSink,
     private val clock: Clock,
     private val controlDirRoot: Path,
+    /**
+     * The live tracing seam. A scripted stage delegates to the SAME frontend runner
+     * as the standalone scripted surface, so it opens the SAME boundaries — the two
+     * surfaces must not differ in what they can be observed doing.
+     */
+    private val telemetry: PipelineTelemetry,
 ) {
 
     /** What one scripted stage body produced. Closed: a stage either ran, or said why it did not. */
@@ -148,6 +155,7 @@ class ScriptedStageExecution(
                 stageIndex = stageIndex,
                 stageName = stage.name,
             ),
+            telemetry = telemetry,
         )
 
         return when (outcome) {

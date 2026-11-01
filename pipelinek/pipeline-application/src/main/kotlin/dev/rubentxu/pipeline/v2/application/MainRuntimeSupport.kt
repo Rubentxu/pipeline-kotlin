@@ -179,7 +179,11 @@ internal fun composeNarratingEventStore(
  * Both execution paths call THIS, so the two cannot disagree about what was admitted, what the
  * policy said about it, or whether it left a record.
  */
-internal fun admitPluginsForRun(config: CliFlags, controlDirRoot: Path): PluginAdmission =
+internal fun admitPluginsForRun(
+    config: CliFlags,
+    controlDirRoot: Path,
+    telemetry: PipelineTelemetry,
+): PluginAdmission =
     admitThenCompose(
         config.pluginJars,
         // The policy is OPT-IN: without the file the runtime admits plugins as it always has.
@@ -187,6 +191,7 @@ internal fun admitPluginsForRun(config: CliFlags, controlDirRoot: Path): PluginA
         // The row is written before the decision returns, which is what makes the journal an
         // audit trail rather than a log.
         AdmissionControlJournal(controlDirRoot),
+        telemetry,
     )
 
 /**
@@ -231,8 +236,10 @@ internal fun admitThenCompose(
     pluginJars: List<String>,
     trust: PluginTrustSource? = null,
     journal: AdmissionControlJournal? = null,
-): PluginAdmission =
-    when (val outcome = PluginCompositionAdmitter.admitThenCompose(pluginJars, trust, journal)) {
+    telemetry: PipelineTelemetry,
+): PluginAdmission {
+    val span = LiveSpans.open(telemetry = telemetry, name = LiveSpanNames.ADMISSION)
+    val admission = when (val outcome = PluginCompositionAdmitter.admitThenCompose(pluginJars, trust, journal)) {
         is CompositionOutcome.Composed -> {
             outcome.composition.also { composition ->
                 // The trust decision is reported BEFORE the composition, because admission comes
@@ -278,6 +285,17 @@ internal fun admitThenCompose(
             PluginAdmission.Refused(exitCode = 3)
         }
     }
+    // A refusal is NOT a failed run: nothing ran. The span says so, so a trace
+    // does not report a broken pipeline where the truth is a refused admission.
+    LiveSpans.end(
+        span,
+        when (admission) {
+            is PluginAdmission.Admitted -> LiveSpanStatus.Completed
+            is PluginAdmission.Refused -> LiveSpanStatus.Rejected
+        },
+    )
+    return admission
+}
 
 /**
  * The operator's trust material, read from the file they named, or `null` when they named none.

@@ -332,13 +332,14 @@ fun main(args: Array<String>) {
     if (config.dbPath == null) {
         // The branch reports the exit code and the process owner ends the process with it:
         // a branch that holds resources has to give them back before this point.
-        val exitCode = withPipelineTelemetry {
+        val exitCode = withPipelineTelemetry { telemetry ->
             runVolatilePipeline(
                 config = config,
                 secretPatternRegistry = secretPatternRegistry,
                 compiledQuery = compiledQuery,
                 scriptPath = scriptPath,
                 outputProtocol = outputProtocol,
+                telemetry = telemetry,
             )
         }
         System.exit(exitCode)
@@ -347,13 +348,14 @@ fun main(args: Array<String>) {
     // The durable branch owns resources and gives them back before it returns, so the process
     // ends here and not in the middle of the run: the exit code is the branch's to report, and
     // the place that ends the process is the one that owns it.
-    val exitCode = withPipelineTelemetry {
+    val exitCode = withPipelineTelemetry { telemetry ->
         runDurablePipeline(
             config = config,
             dbPath = config.dbPath,
             secretPatternRegistry = secretPatternRegistry,
             compiledQuery = compiledQuery,
             scriptPath = scriptPath,
+            telemetry = telemetry,
         )
     }
     System.exit(exitCode)

@@ -151,6 +151,11 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
         // that reaches a scripted stage without this seam says so instead of quietly
         // executing a stage that did nothing.
         scriptedStageExecution = null,
+        // The live tracing seam, handed to the run that opens the spans of the
+        // boundaries it crosses. It is a FACT OF THE RUN and not of the durable
+        // state, so it travels with the request and never with the state a
+        // resumed run reads back.
+        telemetry = request.telemetry,
     ).run(request.pipeline, request.runId)
 }
 

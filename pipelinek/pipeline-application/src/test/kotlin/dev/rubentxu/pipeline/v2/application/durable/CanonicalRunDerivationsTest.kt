@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
+
 import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
 import dev.rubentxu.pipeline.v2.application.RuntimeWorkspaceTransport
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
@@ -125,7 +127,7 @@ class CanonicalRunDerivationsTest {
                 "the output store must not be resolved: this policy authorises no release",
             )
         }
-        val retention = canonicalOutputRetention(store)
+        val retention = canonicalOutputRetention(store, NoopPipelineTelemetry)
 
         assertNull(
             retention.intentFor(RunId("run-1")),

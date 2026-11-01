@@ -31,6 +31,12 @@ internal fun runScriptedFrontend(
     controlDirRoot: Path,
     sandboxProfile: SandboxProfile,
     outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
+    /**
+     * The live tracing seam. The scripted frontend runs the SAME canonical authorities
+     * as the coordinator, so it opens the SAME boundaries — a scripted run that traced
+     * nothing would be a surface that hides the run it is executing.
+     */
+    telemetry: PipelineTelemetry,
 ): RunOutcome? {
     // Frontend runs on the SAME durable authority: identical journal instance,
     // identical composed registry, identical event sink and control root.
@@ -58,6 +64,7 @@ internal fun runScriptedFrontend(
             ),
             controlDirRoot = controlDirRoot,
             outputWakeups = outputWakeups,
+            telemetry = telemetry,
         )
     }
     return when (outcome) {

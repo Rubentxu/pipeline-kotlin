@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
+import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationRecord
@@ -35,7 +36,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  * Main must never see this class name or any Step key; it selects the
  * [ScriptedFrontendForm] ADT case and delegates composition here.
 */
-object ScriptedFrontendRunner {
+internal object ScriptedFrontendRunner {
 
     /** Compiled lowered source + its compatibility identity (what Main carries). */
     data class EntryPointArtifact(
@@ -76,6 +77,9 @@ object ScriptedFrontendRunner {
         // Null (and every pre-existing call site) announces nothing and the
         // observer converges on its poll deadline.
         outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
+        // The live tracing seam. The scripted frontend runs the SAME canonical
+        // authorities as the coordinator, so it opens the SAME boundaries.
+        telemetry: PipelineTelemetry,
     ): Outcome {
         // Fail-closed artifact compatibility: never silently replay an old artifact.
         if (entryPoint.artifact.fingerprintMaterial() != expectedArtifact.fingerprintMaterial()) {
@@ -113,11 +117,12 @@ object ScriptedFrontendRunner {
             eventSink = eventSink,
             executionBoundary = RegistryExecutionBoundary.adapt(capabilityBindings = capabilityBindings),
             records = records,
+            telemetry = telemetry,
         )
         // The scripted surface runs the SAME authorities as the canonical coordinator,
         // with the materialiser supplied by the engine's own default — so a recovered `core.sh`
         // returns the same value on both surfaces, and neither composition site can forget it.
-        val interpretation = RecoveryInterpretationEngine(eventSink, records)
+        val interpretation = RecoveryInterpretationEngine(eventSink, records, telemetry)
 
         val invoker = ScriptedRegistryInvoker(
             registry = registry,

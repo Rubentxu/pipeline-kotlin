@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable.waituntil
 
+import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
+
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilControlState
 import dev.rubentxu.pipeline.v2.application.observation.HumanConsoleRenderer
@@ -83,6 +85,7 @@ class WaitUntilPollEventTest {
             stepIndex = 0,
             blockId = StepId("step-1"),
             blockPluginStepId = PluginStepId("core.waitUntil"),
+            telemetry = NoopPipelineTelemetry,
         )
 
         val outcome = runBlocking { engine.execute(BodyRef("body/wait-until")) }

@@ -1,6 +1,12 @@
 package dev.rubentxu.pipeline.v2.application.durable.waituntil
 
+import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
+import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
+import dev.rubentxu.pipeline.v2.application.LiveSpans
+import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilControlJournal
+import dev.rubentxu.pipeline.v2.application.liveStatusOfStepOutcome
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilReconciliationDriver
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.FailureKind
@@ -64,7 +70,7 @@ import java.util.UUID
  * each poll owns a distinct journal OpId. The engine is `StepKey`-blind:
  * it does not branch on concrete `PluginStepId`.
 */
-class WaitUntilEngine(
+internal class WaitUntilEngine(
     private val journal: WaitUntilControlJournal,
     private val eventSink: EventSink,
     private val bodyInvoker: BodyInvoker,
@@ -78,6 +84,7 @@ class WaitUntilEngine(
     private val stepIndex: Int,
     private val blockId: StepId,
     private val blockPluginStepId: PluginStepId,
+    private val telemetry: PipelineTelemetry,
 ) {
 
     init {
@@ -126,215 +133,255 @@ class WaitUntilEngine(
      *    ([FailureKind.REPLAY_COMPATIBILITY]).
 */
     suspend fun execute(bodyRef: BodyRef): StepOutcome {
-        val overallStartMs = System.currentTimeMillis()
-        while (true) {
-            val decision = plan()
-            when (decision) {
-                is WaitUntilReconciliationDecision.ScheduleAttempt,
-                is WaitUntilReconciliationDecision.ResumeAttempt -> {
-                    val attempt = when (decision) {
-                        is WaitUntilReconciliationDecision.ScheduleAttempt -> decision.attempt
-                        is WaitUntilReconciliationDecision.ResumeAttempt -> decision.attempt
-                        else -> error("unreachable: handled by outer when")
-                    }
-
-                    journal.beginAttempt(
-                        controlOpId = controlOpId,
-                        attempt = attempt,
-                        currentBackoffMs = initialRecurrencePeriodMs,
-                        fingerprint = fingerprint,
-                        status = OperationStatus.RUNNING,
-                    )
-
-                    // A FRESH start pays the initial interval before its first
-                    // poll, exactly as the inline loop does
-                    // (`BodyExecutionEngine.executeWaitUntilInline` delays
-                    // `initialRecurrencePeriod` before poll 1). Without it the
-                    // durable path polled at once and then waited 2x, 4x, ...:
-                    // the same ladder of intervals, but a different schedule,
-                    // so `initialRecurrencePeriod` meant two different things
-                    // in the two branches. A RESUMED attempt does not pay it
-                    // again: that attempt's interval was already waited for
-                    // before the interruption.
-                    if (decision is WaitUntilReconciliationDecision.ScheduleAttempt && attempt == 1) {
-                        kotlinx.coroutines.delay(initialRecurrencePeriodMs)
-                    }
-
-                    val pollStartMs = System.currentTimeMillis()
-
-                    val pollOutcome: BodyOutcome = invokeBodyOnce(bodyRef, attempt)
-
-                    val pollDurationMs = System.currentTimeMillis() - pollStartMs
-                    // The poll's answer is read ONCE, by the fold that owns the reading. The
-                    // engine never inspects the body outcome field by field, so there is one
-                    // place where a body's answer becomes the predicate's verdict, and no
-                    // carrier that can hold "nothing" in the middle of the translation.
-                    val predicateOutcome: WaitUntilPredicateOutcome =
-                        waitUntilPredicateOutcome(pollOutcome)
-                    val predicateSatisfied = predicateOutcome is WaitUntilPredicateOutcome.Satisfied
-
-                    // ONE event per attempt. The poll's own record: the duration
-                    // it took and the verdict the predicate actually evaluated to.
-                    // There is no mirror emitted before the evaluation — a
-                    // mirror published a second `WaitUntilPolled` per attempt,
-                    // with `durationMs = 0L` and `conditionResult = false`,
-                    // i.e. a poll that had not happened yet, answering for one
-                    // that had.
-                    eventSink.append(
-                        WaitUntilPolled(
-                            eventId = UUID.randomUUID().toString(),
-                            runId = runId.value,
-                            sequence = 0L,
-                            occurredAt = Instant.now(),
-                            attempt = attempt,
-                            durationMs = pollDurationMs,
-                            conditionResult = predicateSatisfied,
-                        ),
-                    )
-
-                    when (predicateOutcome) {
-                        is WaitUntilPredicateOutcome.Satisfied -> {
-                            // The terminal is decided ONCE, as a
-                            // `WaitUntilCompletion`, and the durable status, the
-                            // typed result and the wire token are all projections
-                            // of it. This site used to write all three by hand.
-                            val completion = WaitUntilCompletion.Satisfied
-                            journal.updateStatus(
-                                controlOpId = controlOpId,
-                                attempt = attempt,
-                                status = completion.durableStatus,
-                                fingerprint = fingerprint,
-                            )
-                            emitCompleted(overallStartMs, attempt, completion.wireOutcome)
-                            return completion.toStepOutcome()
-                        }
-                        is WaitUntilPredicateOutcome.Failed -> {
-                            // Predicate failed: persist FAILED on this poll so
-                            // the next plan emits
-                            // AdvanceAfterPredicateUnsatisfied (or
-                            // DeadlineExceeded), not ResumeAttempt. Without
-                            // this persistence the loop would re-execute the
-                            // same RUNNING poll indefinitely.
-                            journal.updateStatus(
-                                controlOpId = controlOpId,
-                                attempt = attempt,
-                                status = OperationStatus.FAILED,
-                                fingerprint = fingerprint,
-                            )
-                            // Fall through to the next plan iteration.
-                        }
-                        is WaitUntilPredicateOutcome.Unsatisfied -> {
-                            // Same persistence discipline as Failed: mark the
-                            // current poll terminal so the planner advances.
-                            journal.updateStatus(
-                                controlOpId = controlOpId,
-                                attempt = attempt,
-                                status = OperationStatus.FAILED,
-                                fingerprint = fingerprint,
-                            )
-                            // Fall through to advance.
-                        }
-                        is WaitUntilPredicateOutcome.Cancelled -> {
-                            // Body returned BodyOutcome.Cancelled: persist
-                            // ABORTED on this poll so the planner emits
-                            // Aborted (or the durable journal shows a
-                            // terminal state), not ResumeAttempt.
-                            // Same terminal as the reconciler's
-                            // `Aborted`, and here it DOES persist, because the
-                            // fresh path owns a row that is still RUNNING. The
-                            // terminal does not decide that; the branch does.
-                            val completion = WaitUntilCompletion.Aborted(
-                                WaitUntilAbortCause.BodyCancelled(predicateOutcome.reason),
-                            )
-                            journal.updateStatus(
-                                controlOpId = controlOpId,
-                                attempt = attempt,
-                                status = completion.durableStatus,
-                                fingerprint = fingerprint,
-                            )
-                            emitCompleted(overallStartMs, attempt, completion.wireOutcome)
-                            return completion.toStepOutcome()
-                        }
-                    }
-                }
-
-                is WaitUntilReconciliationDecision.AdvanceAfterPredicateSatisfied -> {
-                    // The same `Satisfied` terminal the fresh loop
-                    // reaches at line ~216. One case, two arrival paths, which is
-                    // the point: fresh and restart are not two vocabularies.
-                    val completion = WaitUntilCompletion.Satisfied
-                    journal.updateStatus(
-                        controlOpId = controlOpId,
-                        attempt = decision.attempt,
-                        status = completion.durableStatus,
-                        fingerprint = fingerprint,
-                    )
-                    emitCompleted(overallStartMs, decision.attempt, completion.wireOutcome)
-                    return completion.toStepOutcome()
-                }
-
-                is WaitUntilReconciliationDecision.AdvanceAfterPredicateUnsatisfied -> {
-                    journal.beginAttempt(
-                        controlOpId = controlOpId,
-                        attempt = decision.attempt,
-                        currentBackoffMs = decision.nextBackoffMs,
-                        fingerprint = fingerprint,
-                        status = OperationStatus.RUNNING,
-                    )
-                    kotlinx.coroutines.delay(decision.nextBackoffMs)
-                }
-
-                is WaitUntilReconciliationDecision.DeadlineExceeded -> {
-                    val completion = WaitUntilCompletion.DeadlineExceeded(
-                        attempt = decision.attempt,
-                        ceilingMs = maxBackoffMs,
-                    )
-                    journal.updateStatus(
-                        controlOpId = controlOpId,
-                        attempt = decision.attempt,
-                        status = completion.durableStatus,
-                        fingerprint = fingerprint,
-                    )
-                    emitCompleted(overallStartMs, decision.attempt, completion.wireOutcome)
-                    return completion.toStepOutcome()
-                }
-
-                is WaitUntilReconciliationDecision.Aborted -> {
-                    // READ-ONLY. The reconciler returns `Aborted` precisely
-                    // BECAUSE it read a durable row whose status already is ABORTED, so
-                    // there is no transition left to persist. Writing it back could only
-                    // ever be a no-op, and it was: `updateStatus` requires an existing
-                    // control row for the attempt it is given and throws otherwise, so the
-                    // write below used to throw `IllegalStateException` on an attempt that
-                    // existed nowhere — the branch never emitted its event and never
-                    // returned its typed failure, and the abort escaped as an untyped crash.
-                    // The terminal is still the same `Aborted` the fresh
-                    // cancellation produces. What differs is the persistence, and that
-                    // stays here: this branch has nothing to write.
-                    val completion = WaitUntilCompletion.Aborted(
-                        WaitUntilAbortCause.DurableRowAlreadyAborted,
-                    )
-                    emitCompleted(overallStartMs, decision.attempt, completion.wireOutcome)
-                    return completion.toStepOutcome()
-                }
-
-                is WaitUntilReconciliationDecision.RejectDivergence -> {
-                    return StepOutcome.Failure(
-                        PipelineFailure(
-                            FailureKind.REPLAY_COMPATIBILITY,
-                            "waitUntil control fingerprint divergence: ${decision.reason}",
-                        ),
-                    )
-                }
-            }
-        }
-        @Suppress("UNREACHABLE_CODE")
-        return StepOutcome.Failure(
-            PipelineFailure(
-                FailureKind.ENGINE,
-                "waitUntil loop terminated without a terminal decision (unreachable)",
+        // The waitUntil span wraps the WHOLE aggregate, and not one span per
+        // poll: the aggregate is the unit an operator reasons about ("this
+        // wait took four polls"), and a span per poll would say the same
+        // thing four times.
+        val span = LiveSpans.open(
+            telemetry = telemetry,
+            name = LiveSpanNames.WAIT_UNTIL,
+            attributes = listOf(
+                LiveSpanAttributes.runId(runId.value),
+                LiveSpanAttributes.stageIndex(stageIndex),
+                LiveSpanAttributes.stepIndex(stepIndex),
             ),
         )
+        // The terminal the span is closed with. The loop reaches a terminal
+        // from several places, so the outcome is recorded where it is decided
+        // and the span is closed ONCE, on every path — including the path
+        // where the body threw and there is no terminal at all.
+        var terminal: StepOutcome? = null
+
+        fun terminated(outcome: StepOutcome): StepOutcome {
+            terminal = outcome
+            return outcome
+        }
+
+        try {
+            val overallStartMs = System.currentTimeMillis()
+            while (true) {
+                val decision = plan()
+                when (decision) {
+                    is WaitUntilReconciliationDecision.ScheduleAttempt,
+                    is WaitUntilReconciliationDecision.ResumeAttempt -> {
+                        val attempt = when (decision) {
+                            is WaitUntilReconciliationDecision.ScheduleAttempt -> decision.attempt
+                            is WaitUntilReconciliationDecision.ResumeAttempt -> decision.attempt
+                            else -> error("unreachable: handled by outer when")
+                        }
+
+                        journal.beginAttempt(
+                            controlOpId = controlOpId,
+                            attempt = attempt,
+                            currentBackoffMs = initialRecurrencePeriodMs,
+                            fingerprint = fingerprint,
+                            status = OperationStatus.RUNNING,
+                        )
+
+                        // A FRESH start pays the initial interval before its first
+                        // poll, exactly as the inline loop does
+                        // (`BodyExecutionEngine.executeWaitUntilInline` delays
+                        // `initialRecurrencePeriod` before poll 1). Without it the
+                        // durable path polled at once and then waited 2x, 4x, ...:
+                        // the same ladder of intervals, but a different schedule,
+                        // so `initialRecurrencePeriod` meant two different things
+                        // in the two branches. A RESUMED attempt does not pay it
+                        // again: that attempt's interval was already waited for
+                        // before the interruption.
+                        if (decision is WaitUntilReconciliationDecision.ScheduleAttempt && attempt == 1) {
+                            kotlinx.coroutines.delay(initialRecurrencePeriodMs)
+                        }
+
+                        val pollStartMs = System.currentTimeMillis()
+
+                        val pollOutcome: BodyOutcome = invokeBodyOnce(bodyRef, attempt)
+
+                        val pollDurationMs = System.currentTimeMillis() - pollStartMs
+                        // The poll's answer is read ONCE, by the fold that owns the reading. The
+                        // engine never inspects the body outcome field by field, so there is one
+                        // place where a body's answer becomes the predicate's verdict, and no
+                        // carrier that can hold "nothing" in the middle of the translation.
+                        val predicateOutcome: WaitUntilPredicateOutcome =
+                            waitUntilPredicateOutcome(pollOutcome)
+                        val predicateSatisfied = predicateOutcome is WaitUntilPredicateOutcome.Satisfied
+
+                        // ONE event per attempt. The poll's own record: the duration
+                        // it took and the verdict the predicate actually evaluated to.
+                        // There is no mirror emitted before the evaluation — a
+                        // mirror published a second `WaitUntilPolled` per attempt,
+                        // with `durationMs = 0L` and `conditionResult = false`,
+                        // i.e. a poll that had not happened yet, answering for one
+                        // that had.
+                        eventSink.append(
+                            WaitUntilPolled(
+                                eventId = UUID.randomUUID().toString(),
+                                runId = runId.value,
+                                sequence = 0L,
+                                occurredAt = Instant.now(),
+                                attempt = attempt,
+                                durationMs = pollDurationMs,
+                                conditionResult = predicateSatisfied,
+                            ),
+                        )
+
+                        when (predicateOutcome) {
+                            is WaitUntilPredicateOutcome.Satisfied -> {
+                                // The terminal is decided ONCE, as a
+                                // `WaitUntilCompletion`, and the durable status, the
+                                // typed result and the wire token are all projections
+                                // of it. This site used to write all three by hand.
+                                val completion = WaitUntilCompletion.Satisfied
+                                journal.updateStatus(
+                                    controlOpId = controlOpId,
+                                    attempt = attempt,
+                                    status = completion.durableStatus,
+                                    fingerprint = fingerprint,
+                                )
+                                emitCompleted(overallStartMs, attempt, completion.wireOutcome)
+                                return terminated(completion.toStepOutcome())
+                            }
+                            is WaitUntilPredicateOutcome.Failed -> {
+                                // Predicate failed: persist FAILED on this poll so
+                                // the next plan emits
+                                // AdvanceAfterPredicateUnsatisfied (or
+                                // DeadlineExceeded), not ResumeAttempt. Without
+                                // this persistence the loop would re-execute the
+                                // same RUNNING poll indefinitely.
+                                journal.updateStatus(
+                                    controlOpId = controlOpId,
+                                    attempt = attempt,
+                                    status = OperationStatus.FAILED,
+                                    fingerprint = fingerprint,
+                                )
+                                // Fall through to the next plan iteration.
+                            }
+                            is WaitUntilPredicateOutcome.Unsatisfied -> {
+                                // Same persistence discipline as Failed: mark the
+                                // current poll terminal so the planner advances.
+                                journal.updateStatus(
+                                    controlOpId = controlOpId,
+                                    attempt = attempt,
+                                    status = OperationStatus.FAILED,
+                                    fingerprint = fingerprint,
+                                )
+                                // Fall through to advance.
+                            }
+                            is WaitUntilPredicateOutcome.Cancelled -> {
+                                // Body returned BodyOutcome.Cancelled: persist
+                                // ABORTED on this poll so the planner emits
+                                // Aborted (or the durable journal shows a
+                                // terminal state), not ResumeAttempt.
+                                // Same terminal as the reconciler's
+                                // `Aborted`, and here it DOES persist, because the
+                                // fresh path owns a row that is still RUNNING. The
+                                // terminal does not decide that; the branch does.
+                                val completion = WaitUntilCompletion.Aborted(
+                                    WaitUntilAbortCause.BodyCancelled(predicateOutcome.reason),
+                                )
+                                journal.updateStatus(
+                                    controlOpId = controlOpId,
+                                    attempt = attempt,
+                                    status = completion.durableStatus,
+                                    fingerprint = fingerprint,
+                                )
+                                emitCompleted(overallStartMs, attempt, completion.wireOutcome)
+                                return terminated(completion.toStepOutcome())
+                            }
+                        }
+                    }
+
+                    is WaitUntilReconciliationDecision.AdvanceAfterPredicateSatisfied -> {
+                        // The same `Satisfied` terminal the fresh loop
+                        // reaches at line ~216. One case, two arrival paths, which is
+                        // the point: fresh and restart are not two vocabularies.
+                        val completion = WaitUntilCompletion.Satisfied
+                        journal.updateStatus(
+                            controlOpId = controlOpId,
+                            attempt = decision.attempt,
+                            status = completion.durableStatus,
+                            fingerprint = fingerprint,
+                        )
+                        emitCompleted(overallStartMs, decision.attempt, completion.wireOutcome)
+                        return terminated(completion.toStepOutcome())
+                    }
+
+                    is WaitUntilReconciliationDecision.AdvanceAfterPredicateUnsatisfied -> {
+                        journal.beginAttempt(
+                            controlOpId = controlOpId,
+                            attempt = decision.attempt,
+                            currentBackoffMs = decision.nextBackoffMs,
+                            fingerprint = fingerprint,
+                            status = OperationStatus.RUNNING,
+                        )
+                        kotlinx.coroutines.delay(decision.nextBackoffMs)
+                    }
+
+                    is WaitUntilReconciliationDecision.DeadlineExceeded -> {
+                        val completion = WaitUntilCompletion.DeadlineExceeded(
+                            attempt = decision.attempt,
+                            ceilingMs = maxBackoffMs,
+                        )
+                        journal.updateStatus(
+                            controlOpId = controlOpId,
+                            attempt = decision.attempt,
+                            status = completion.durableStatus,
+                            fingerprint = fingerprint,
+                        )
+                        emitCompleted(overallStartMs, decision.attempt, completion.wireOutcome)
+                        return terminated(completion.toStepOutcome())
+                    }
+
+                    is WaitUntilReconciliationDecision.Aborted -> {
+                        // READ-ONLY. The reconciler returns `Aborted` precisely
+                        // BECAUSE it read a durable row whose status already is ABORTED, so
+                        // there is no transition left to persist. Writing it back could only
+                        // ever be a no-op, and it was: `updateStatus` requires an existing
+                        // control row for the attempt it is given and throws otherwise, so the
+                        // write below used to throw `IllegalStateException` on an attempt that
+                        // existed nowhere — the branch never emitted its event and never
+                        // returned its typed failure, and the abort escaped as an untyped crash.
+                        // The terminal is still the same `Aborted` the fresh
+                        // cancellation produces. What differs is the persistence, and that
+                        // stays here: this branch has nothing to write.
+                        val completion = WaitUntilCompletion.Aborted(
+                            WaitUntilAbortCause.DurableRowAlreadyAborted,
+                        )
+                        emitCompleted(overallStartMs, decision.attempt, completion.wireOutcome)
+                        return terminated(completion.toStepOutcome())
+                    }
+
+                    is WaitUntilReconciliationDecision.RejectDivergence -> {
+                        return terminated(
+                            StepOutcome.Failure(
+                                PipelineFailure(
+                                    FailureKind.REPLAY_COMPATIBILITY,
+                                    "waitUntil control fingerprint divergence: ${decision.reason}",
+                                ),
+                            ),
+                        )
+                    }
+                }
+            }
+            @Suppress("UNREACHABLE_CODE")
+            return terminated(
+                StepOutcome.Failure(
+                    PipelineFailure(
+                        FailureKind.ENGINE,
+                        "waitUntil loop terminated without a terminal decision (unreachable)",
+                    ),
+                ),
+            )
+        } finally {
+            // The span is closed HERE and only here: every terminal the loop
+            // can reach goes through `terminated`, so this is the one place
+            // that knows the outcome, and the one place that closes the span.
+            // A body that threw never reached a terminal, and the span says
+            // Failed rather than nothing.
+            LiveSpans.end(
+                span,
+                terminal?.let { liveStatusOfStepOutcome(it) } ?: LiveSpanStatus.Failed,
+            )
+        }
     }
 
     /**

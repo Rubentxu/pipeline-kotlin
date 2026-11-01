@@ -1,9 +1,17 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
+import dev.rubentxu.pipeline.v2.application.LiveSpanHandle
+import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
+import dev.rubentxu.pipeline.v2.application.LiveSpans
+import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.application.liveStatusOfStageOutcome
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
@@ -45,10 +53,28 @@ import java.util.UUID
  * sequence, and the durable `UNIQUE(run_id, sequence)` constraint applies to
  * that assigned value.
 */
-internal class RunLifecycleEngine(private val eventSink: EventSink) {
+internal class RunLifecycleEngine(
+    private val eventSink: EventSink,
+    private val telemetry: PipelineTelemetry,
+) {
 
     private var runStartedEmitted: Boolean = false
     private var outcome: RunOutcome = RunOutcome.Success
+
+    /**
+     * The stage spans this run has opened and not yet closed.
+     *
+     * The stage span is opened where the stage STARTS ([stageStarted]) and closed
+     * where the stage REACHES AN OUTCOME ([stageEnded]); the two are deliberately
+     * not in the same method, because the events they write are also unbalanced by
+     * design: a stage that is aborted mid-way never emits its `StageFinished`, and
+     * the span must follow the same truth rather than inventing a terminal the
+     * stage never reached.
+     *
+     * The map is what makes the exception path honest: [closeOpenStages] ends
+     * whatever is left, so a stage whose body threw does not leak an open span.
+     */
+    private val openStageSpans = mutableMapOf<Int, LiveSpanHandle>()
 
     /** Opens the run: resets per-run state and emits the RunStarted bookend. */
     fun openRun(pipeline: CompiledPipeline, runId: RunId) {
@@ -90,6 +116,46 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
                 stageName = stageName,
             ),
         )
+        // The stage span opens here, where the stage's START is a fact. The three
+        // bodies (linear, parallel, scripted) all reach this method, so there is
+        // exactly one place that opens a stage span and no body that has to
+        // remember to.
+        LiveSpans.open(
+            telemetry = telemetry,
+            name = LiveSpanNames.STAGE,
+            attributes = listOf(
+                LiveSpanAttributes.runId(runId.value),
+                LiveSpanAttributes.stageIndex(stageIndex),
+            ),
+        )?.let { span -> openStageSpans[stageIndex] = span }
+    }
+
+    /**
+     * Closes the stage span of the stage that REACHED AN OUTCOME.
+     *
+     * The stage's terminal is a fact when the body ends, whatever the body's shape,
+     * so this is the one place the span is closed. A stage whose body threw never
+     * reaches it, and [closeOpenStages] is what covers that case: a span that was
+     * opened and never ended would be a span the exporter never sees, which is
+     * exactly the "incomplete span" the packaging rules forbid publishing as a
+     * completed one.
+     */
+    fun stageEnded(stageIndex: Int, outcome: StageOutcome) {
+        val span = openStageSpans.remove(stageIndex) ?: return
+        LiveSpans.end(span, liveStatusOfStageOutcome(outcome))
+    }
+
+    /**
+     * Ends the stage spans that are still open when the run stops.
+     *
+     * A stage that threw never reached [stageEnded], and its span would otherwise
+     * stay open forever. Ending it as Failed is the truth: the stage did not
+     * complete, and the run is not going to tell the operator otherwise.
+     */
+    fun closeOpenStages() {
+        val leftovers = openStageSpans.values.toList()
+        openStageSpans.clear()
+        leftovers.forEach { span -> LiveSpans.end(span, LiveSpanStatus.Failed) }
     }
 
     fun stageFinished(runId: RunId, stageIndex: Int, stageName: String, outcome: String) {

@@ -1,5 +1,11 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
+import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
+import dev.rubentxu.pipeline.v2.application.LiveSpans
+import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.application.liveStatusOfStepOutcome
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
@@ -56,6 +62,7 @@ internal class DurableStepExecutor(
     private val eventSink: EventSink,
     private val executionBoundary: CommonExecutionBoundary,
     private val records: DurableInvocationRecord,
+    private val telemetry: PipelineTelemetry,
 ) {
 
     /**
@@ -75,10 +82,29 @@ internal class DurableStepExecutor(
     ): CommonExecutionResult {
         records.admit(operationId, fingerprint, input, journaled)
 
+        // The plugin-invoke span wraps the EFFECT, and only the effect: the journal
+        // admission above is bookkeeping, and the terminal append below happens after
+        // the effect is already over. A span that covered both would say "the plugin
+        // ran for this long" while measuring the journal.
+        val span = LiveSpans.open(
+            telemetry = telemetry,
+            name = LiveSpanNames.STEP_INVOKE,
+            attributes = listOf(
+                LiveSpanAttributes.runId(lifecycleContext.runId),
+                LiveSpanAttributes.stageIndex(lifecycleContext.stageIndex),
+                LiveSpanAttributes.stepIndex(lifecycleContext.stepIndex),
+            ),
+        )
         val executionStartMs = System.currentTimeMillis()
-        val executionResult = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
-            executionBoundary.execute(prepared, runtime)
+        val executionResult = try {
+            StepExecutionBoundary(eventSink).execute(lifecycleContext) {
+                executionBoundary.execute(prepared, runtime)
+            }
+        } catch (throwable: Throwable) {
+            LiveSpans.end(span, LiveSpanStatus.Failed)
+            throw throwable
         }
+        LiveSpans.end(span, liveStatusOfStepOutcome(executionResult.outcome))
         val outcome = executionResult.outcome
         val executionEndMs = System.currentTimeMillis()
         records.settle(

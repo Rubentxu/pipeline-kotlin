@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
+
 import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
 import dev.rubentxu.pipeline.v2.application.CanonicalRunState
 import dev.rubentxu.pipeline.v2.application.PluginComposition
@@ -144,6 +146,9 @@ class DivergenceDetectorPortTest {
             waitUntilControlJournal = null,
             // The scripted seam is not bound: the scripted frontend runs on its own runner.
             scriptedStageExecution = null,
+            // The live tracing seam is bound to the disabled observer: this row observes a
+            // decision, not a trace, and a disabled observer must cost nothing.
+            telemetry = NoopPipelineTelemetry,
         )
 
     /** The run's durable spine: the journal, the cursor store, the sink and the Saga seam. */

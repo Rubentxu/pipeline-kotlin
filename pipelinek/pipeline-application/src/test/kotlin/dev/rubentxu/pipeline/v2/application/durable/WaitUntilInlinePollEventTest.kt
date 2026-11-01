@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
+
 import dev.rubentxu.pipeline.v2.application.observation.HumanConsoleRenderer
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
@@ -59,6 +61,7 @@ class WaitUntilInlinePollEventTest {
             eventSink = sink,
             clock = FixedClock,
             bodyInvokerAdapter = CanonicalBodyInvokerAdapter(),
+            telemetry = NoopPipelineTelemetry,
         )
 
         val outcome = runBlocking {

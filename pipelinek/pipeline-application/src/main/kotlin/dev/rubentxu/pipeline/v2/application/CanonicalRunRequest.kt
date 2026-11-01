@@ -107,4 +107,10 @@ internal data class CanonicalRunRequest(
     val state: CanonicalRunState,
     val policy: CanonicalRunPolicy,
     val composition: PreResolvedComposition,
+    // The live tracing seam. It travels with the REQUEST and not with the
+    // durable state, and the distinction is not cosmetic: the state is what a
+    // RESUMED run reads back, and an observer of a process that is long gone
+    // is not a fact a resumed run may inherit. A resumed run gets a fresh
+    // observer and a fresh span, never the previous attempt's.
+    val telemetry: PipelineTelemetry,
 )

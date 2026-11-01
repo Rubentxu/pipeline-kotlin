@@ -338,14 +338,21 @@ internal class StageExecutionEngine(
         ambient: ExecutionContext,
         decision: StageFinishedDecision,
     ): PipelineFailure? {
-        runPostBlock(
+        val postFailure = runPostBlock(
             stage = stage,
             stageIndex = stageIndex,
             stageOutcome = outcome,
             runId = runId,
             stageShOptions = stageShOptions,
             ambient = ambient,
-        )?.let { return it }
+        )
+        // The stage span ends HERE, on BOTH paths, and not after the early
+        // return the failing finalizer used to take. A stage whose finalizer
+        // failed reached an outcome too — a failed one — and a span left open
+        // is a span the exporter never publishes, which would make the trace
+        // quieter than the run.
+        runLifecycle.stageEnded(stageIndex, if (postFailure == null) outcome else StageOutcome.Failed)
+        postFailure?.let { return it }
         when (decision) {
             is StageFinishedDecision.Emit ->
                 runLifecycle.stageFinished(runId, stageIndex, stage.name, decision.outcome.wire)

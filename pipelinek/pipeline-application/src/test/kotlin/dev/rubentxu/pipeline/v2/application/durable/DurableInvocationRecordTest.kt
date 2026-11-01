@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
+
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
@@ -186,7 +188,7 @@ class DurableInvocationRecordTest {
         val recoveryJournal = journal()
         val recoveryRecords = DurableInvocationRecord(recoveryJournal)
         runBlocking {
-            RecoveryInterpretationEngine(NullEventSink, recoveryRecords).interpret(
+            RecoveryInterpretationEngine(NullEventSink, recoveryRecords, NoopPipelineTelemetry).interpret(
                 resolution = InvocationReconciliation.RecoverRunning(lostTerminal()),
                 request = RecoveryInterpretationEngine.Request(
                     operationId = OP_ID,
@@ -283,6 +285,7 @@ class DurableInvocationRecordTest {
                 CommonExecutionResult(StepOutcome.Success, EncodedStepValue("42"))
             },
             records = records,
+            telemetry = NoopPipelineTelemetry,
         )
 
     /** One row, in the shape the journal holds it. */

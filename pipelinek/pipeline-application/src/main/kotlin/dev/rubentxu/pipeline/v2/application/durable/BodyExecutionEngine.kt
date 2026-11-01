@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
@@ -59,6 +60,7 @@ internal class BodyExecutionEngine(
     private val eventSink: EventSink,
     private val clock: Clock,
     private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter,
+    private val telemetry: PipelineTelemetry,
     private val retryControlJournal: FileBasedRetryControlJournal? = null,
     private val waitUntilControlJournal: WaitUntilControlJournal? = null,
 ) {
@@ -450,6 +452,7 @@ internal class BodyExecutionEngine(
                     stepIndex = stepIndex,
                     blockId = block.id,
                     blockPluginStepId = block.pluginStepId,
+                    telemetry = telemetry,
                 )
                 outcome = retryEngine.execute(bodyRef)
             } else if (scope is BlockShellScope.WaitUntilScope && waitUntilControlJournal != null) {
@@ -483,6 +486,7 @@ internal class BodyExecutionEngine(
                         stepIndex = stepIndex,
                         blockId = block.id,
                         blockPluginStepId = block.pluginStepId,
+                        telemetry = telemetry,
                     )
                 outcome = waitUntilEngine.execute(bodyRef)
             } else if (scope is BlockShellScope.WaitUntilScope) {

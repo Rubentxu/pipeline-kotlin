@@ -1,5 +1,11 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
+import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
+import dev.rubentxu.pipeline.v2.application.LiveSpans
+import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.application.liveStatusOfStepOutcome
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
@@ -54,6 +60,12 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 internal class RecoveryInterpretationEngine(
     private val eventSink: EventSink,
     private val records: DurableInvocationRecord,
+    /**
+     * The live tracing seam. The recovery is one of the boundaries a trace
+     * has to show, and this engine is the ONE place that knows whether the
+     * invocation's effect was re-run, refused, or SKIPPED by the replay.
+     */
+    private val telemetry: PipelineTelemetry,
     /**
      * How a recovered terminal becomes a Step's typed value. NOT nullable, and that is
      * a correction rather than a style choice.
@@ -134,6 +146,18 @@ internal class RecoveryInterpretationEngine(
         /** The invocation is settled; the caller returns this carrier without executing. */
         data class Settled(val result: CommonExecutionResult) : RecoveryInterpretation
 
+        /**
+         * The invocation was settled by REUSING a terminal this run did NOT produce.
+         *
+         * It is a distinct shape and not a flavour of [Settled] because the
+         * difference is not cosmetic: a reused terminal means the effect did
+         * not run in this run, and a trace that cannot say so would claim an
+         * execution that never happened. The consumer therefore DISCARDS the
+         * span of the dispatch instead of ending it, and the effect leaves no
+         * span at all in the replay.
+         */
+        data class Reused(val result: CommonExecutionResult) : RecoveryInterpretation
+
         /** Not a recovery case: the caller proceeds to the effective executor. */
         data object ProceedToExecution : RecoveryInterpretation
     }
@@ -186,11 +210,30 @@ internal class RecoveryInterpretationEngine(
             // them into a Step's value is neither this class's job nor the resolver's: it is the
             // Step's own projection, reached through the generic materialiser. This engine persists
             // what comes back and emits the lifecycle — it re-classifies nothing.
+            //
+            // The recovery span is a NEW span, never the original invocation's:
+            // a replay does not re-use span ids, it opens a span of its own
+            // for what it actually did — reconcile, materialise and settle.
+            val span = LiveSpans.open(
+                telemetry = telemetry,
+                name = LiveSpanNames.RECOVERY,
+                attributes = listOf(
+                    LiveSpanAttributes.runId(request.lifecycleContext.runId),
+                    LiveSpanAttributes.stageIndex(request.lifecycleContext.stageIndex),
+                    LiveSpanAttributes.stepIndex(request.lifecycleContext.stepIndex),
+                ),
+            )
             val terminal = resolution.terminal
             val materialised = materialize(request, terminal, System.currentTimeMillis())
-            val result = StepExecutionBoundary(eventSink).execute(request.lifecycleContext) {
-                materialised.result
+            val result = try {
+                StepExecutionBoundary(eventSink).execute(request.lifecycleContext) {
+                    materialised.result
+                }
+            } catch (throwable: Throwable) {
+                LiveSpans.end(span, LiveSpanStatus.Failed)
+                throw throwable
             }
+            LiveSpans.end(span, liveStatusOfStepOutcome(result.outcome))
             records.settle(
                 operationId = request.operationId,
                 fingerprint = request.fingerprint,
@@ -215,7 +258,14 @@ internal class RecoveryInterpretationEngine(
 
         // Reuse is the one arm that emits nothing: the journal row is already terminal, so
         // re-emitting StepStarted/StepFinished or re-appending it would duplicate the record.
-        InvocationReconciliation.ReuseCompleted -> RecoveryInterpretation.Settled(
+        //
+        // And it opens NO span either. The effect this invocation describes
+        // happened in an EARLIER run, and a span that says it happened here
+        // would be a fabricated execution: the replay skipped it, so the
+        // replay leaves no trace of it. The distinct [RecoveryInterpretation.Reused]
+        // shape is what lets the consumer discard its own span instead of
+        // ending it as a completed execution.
+        InvocationReconciliation.ReuseCompleted -> RecoveryInterpretation.Reused(
             CommonExecutionResult(outcome = StepOutcome.Success),
         )
 

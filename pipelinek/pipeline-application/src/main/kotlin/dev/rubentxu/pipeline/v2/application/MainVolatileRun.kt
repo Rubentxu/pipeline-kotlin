@@ -60,9 +60,10 @@ internal fun runVolatilePipeline(
     compiledQuery: CompiledObservationQuery,
     scriptPath: Path,
     outputProtocol: OutputProtocol,
+    telemetry: PipelineTelemetry,
 ): Int =
     try {
-        runVolatilePipelineOwned(config, secretPatternRegistry, compiledQuery, scriptPath, outputProtocol)
+        runVolatilePipelineOwned(config, secretPatternRegistry, compiledQuery, scriptPath, outputProtocol, telemetry)
     } catch (refused: CommandRefused) {
         refused.exitCode
     }
@@ -82,6 +83,7 @@ private fun runVolatilePipelineOwned(
     compiledQuery: CompiledObservationQuery,
     scriptPath: Path,
     outputProtocol: OutputProtocol,
+    telemetry: PipelineTelemetry,
 ): Int {
     // the single-runtime-spine storage rule (single runtime spine): storage choice must not select a
     // different execution algorithm. Without --db the run uses the
@@ -111,6 +113,7 @@ private fun runVolatilePipelineOwned(
         runId = runId,
         scriptPath = scriptPath,
         pluginJars = config.pluginJars,
+        telemetry = telemetry,
     )
 
     val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
@@ -137,7 +140,7 @@ private fun runVolatilePipelineOwned(
     // ended the process HERE would skip the branch's own `finally`, and what that finally
     // releases is the output observer — a thread. So the rule is the same everywhere: a refusal
     // UNWINDS, and the place that owns the process ends it.
-    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot)) {
+    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry)) {
         is PluginAdmission.Admitted -> admission.composition
         is PluginAdmission.Refused -> throw CommandRefused(admission.exitCode)
     }
@@ -248,6 +251,10 @@ private fun runVolatilePipelineOwned(
                     // There is no path here that can reach a registry without a directive registry
                     // having been resolved under the same loader.
                     composition = composition,
+                    // The live tracing seam. It travels with the REQUEST and not with the
+                    // durable state: observation is not state, and a state that could be
+                    // resumed must not carry a live observer of a process that is long gone.
+                    telemetry = telemetry,
                 ),
             )
         } else {

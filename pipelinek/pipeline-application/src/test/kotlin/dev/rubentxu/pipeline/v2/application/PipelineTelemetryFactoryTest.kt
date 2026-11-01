@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
 import io.opentelemetry.sdk.OpenTelemetrySdk
 import io.opentelemetry.sdk.common.CompletableResultCode
 import io.opentelemetry.sdk.trace.SdkTracerProvider
@@ -25,7 +26,7 @@ class PipelineTelemetryFactoryTest {
             warning = warnings::add,
         )
 
-        telemetry.startSpan("run").close()
+        telemetry.startSpan("run", emptyList()).end(LiveSpanStatus.Completed)
         telemetry.close()
 
         assertEquals(false, sdkCreated)
@@ -58,7 +59,7 @@ class PipelineTelemetryFactoryTest {
             warning = warnings::add,
         )
 
-        telemetry.startSpan("run").close()
+        telemetry.startSpan("run", emptyList()).end(LiveSpanStatus.Completed)
         telemetry.close()
 
         assertEquals(1, warnings.size)
@@ -127,7 +128,9 @@ class PipelineTelemetryFactoryTest {
     @Test
     fun exporterShutdownFailureDoesNotChangeTheRunExitCode() {
         val telemetry = object : PipelineTelemetry {
-            override fun startSpan(name: String): PipelineSpan = PipelineSpan { }
+            override val enabled: Boolean = true
+            override fun startSpan(name: String, attributes: List<TelemetryAttribute>): PipelineSpan =
+                RecordingSpan
             override fun close() = error("collector-unavailable")
         }
 
@@ -157,7 +160,7 @@ class PipelineTelemetryFactoryTest {
         val telemetry = PipelineTelemetryFactory.sdkPipelineTelemetry(sdk, warnings::add)
 
         val exitCode = withPipelineTelemetry(telemetry) {
-            telemetry.startSpan("pipelinek.run").close()
+            telemetry.startSpan("pipelinek.run", emptyList()).end(LiveSpanStatus.Completed)
             17
         }
 
@@ -169,7 +172,14 @@ class PipelineTelemetryFactoryTest {
     }
 
     private object RecordingTelemetry : PipelineTelemetry {
-        override fun startSpan(name: String): PipelineSpan = PipelineSpan { }
+        override val enabled: Boolean = true
+        override fun startSpan(name: String, attributes: List<TelemetryAttribute>): PipelineSpan =
+            RecordingSpan
         override fun close() = Unit
+    }
+
+    private object RecordingSpan : PipelineSpan {
+        override fun end(status: LiveSpanStatus) = Unit
+        override fun discard() = Unit
     }
 }

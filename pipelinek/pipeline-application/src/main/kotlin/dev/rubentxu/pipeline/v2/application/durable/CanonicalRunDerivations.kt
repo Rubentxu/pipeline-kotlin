@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
+import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.domain.step.AllowAll
 import dev.rubentxu.pipeline.v2.domain.step.DenyAll
 import dev.rubentxu.pipeline.v2.output.OutputRetentionPort
@@ -96,8 +97,12 @@ internal fun canonicalShellOptions(policy: CanonicalRunPolicy): ShOptions = ShOp
  * recovery it never uses. [RetainUntil.ExplicitReleaseOnly] authorises nothing at all, so with
  * this derivation the supplier is never invoked.
  */
-internal fun canonicalOutputRetention(store: () -> OutputRetentionPort): RunOutputRetention =
+internal fun canonicalOutputRetention(
+    store: () -> OutputRetentionPort,
+    telemetry: PipelineTelemetry,
+): RunOutputRetention =
     RunOutputRetention(
         retention = store,
         policy = RetainUntil.ExplicitReleaseOnly,
+        telemetry = telemetry,
     )

@@ -44,7 +44,10 @@ object RunCostProjection {
 
     private const val OPEN_INTERVAL_SOURCE = "bounded-by-last-observed-event"
 
-    fun project(events: List<DomainEvent>): CostInput {
+    fun project(events: List<DomainEvent>): CostInput = project(events.asSequence())
+
+    /** Consume an event stream without requiring the reader to retain the run's history. */
+    fun project(events: Sequence<DomainEvent>): CostInput {
         val state = EventFold()
         events.forEach(state::apply)
         return CostInput(runEvidence(state), costSamples(state))

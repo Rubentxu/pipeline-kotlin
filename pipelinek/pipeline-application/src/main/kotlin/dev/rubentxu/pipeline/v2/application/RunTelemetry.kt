@@ -63,13 +63,20 @@ object RunTelemetryProjection {
         runId: String,
         events: List<DomainEvent>,
         policy: TelemetryPolicy = TelemetryPolicy.Default,
+    ): TelemetryTrace = fromEvents(runId, events.asSequence(), policy)
+
+    /** Project an ordered event stream without retaining a second copy of the journal. */
+    fun fromEvents(
+        runId: String,
+        events: Sequence<DomainEvent>,
+        policy: TelemetryPolicy = TelemetryPolicy.Default,
     ): TelemetryTrace {
         val traceId = TelemetryTrace.traceIdOf(runId)
         val signals = buildSignals(runId, traceId, events)
         return redactAndLimit(TelemetryTrace(runId, traceId, signals), policy)
     }
 
-    private fun buildSignals(runId: String, traceId: String, events: List<DomainEvent>): List<TelemetrySignal> {
+    private fun buildSignals(runId: String, traceId: String, events: Sequence<DomainEvent>): List<TelemetrySignal> {
         val signals = mutableListOf<TelemetrySignal>()
         val ids = SpanIdAllocator(traceId)
         var runSpan: OpenSpan? = null
@@ -327,27 +334,34 @@ object RunTelemetryProjection {
  */
 object RunTelemetryReport {
 
-    fun jsonLines(trace: TelemetryTrace): List<String> = listOf(
-        "{\"schema\":\"$TELEMETRY_SCHEMA\",\"runId\":\"${escape(trace.runId)}\",\"traceId\":\"${escape(trace.traceId)}\"}",
-    ) + trace.signals.map { signal ->
-        val traceField = "\"traceId\":\"${escape(trace.traceId)}\","
-        when (signal) {
-            is TelemetrySignal.SpanStarted ->
-                "{\"kind\":\"span_started\",$traceField\"name\":\"${escape(signal.name)}\",\"spanId\":\"${signal.spanId}\"," +
-                    "\"parentSpanId\":${signal.parentSpanId?.let { "\"$it\"" } ?: "null"}," +
-                    "\"startedAtMs\":${signal.startedAtMs},\"attributes\":${attributes(signal.attributes)}}"
+    fun jsonLines(trace: TelemetryTrace): List<String> = buildList {
+        forEachJsonLine(trace, ::add)
+    }
 
-            is TelemetrySignal.SpanEnded ->
-                "{\"kind\":\"span_ended\",$traceField\"name\":\"${escape(signal.name)}\",\"spanId\":\"${signal.spanId}\"," +
-                    "\"endedAtMs\":${signal.endedAtMs},\"status\":\"${escape(signal.status)}\"}"
+    /** Emit the unchanged JSONL contract one complete line at a time. */
+    fun forEachJsonLine(trace: TelemetryTrace, emit: (String) -> Unit) {
+        emit("{\"schema\":\"$TELEMETRY_SCHEMA\",\"runId\":\"${escape(trace.runId)}\",\"traceId\":\"${escape(trace.traceId)}\"}")
+        trace.signals.forEach { signal ->
+            val traceField = "\"traceId\":\"${escape(trace.traceId)}\","
+            val line = when (signal) {
+                is TelemetrySignal.SpanStarted ->
+                    "{\"kind\":\"span_started\",$traceField\"name\":\"${escape(signal.name)}\",\"spanId\":\"${signal.spanId}\"," +
+                        "\"parentSpanId\":${signal.parentSpanId?.let { "\"$it\"" } ?: "null"}," +
+                        "\"startedAtMs\":${signal.startedAtMs},\"attributes\":${attributes(signal.attributes)}}"
 
-            is TelemetrySignal.Counter ->
-                "{\"kind\":\"counter\",$traceField\"name\":\"${escape(signal.name)}\",\"value\":${signal.value}," +
-                    "\"dimensions\":${dimensions(signal.dimensions)}}"
+                is TelemetrySignal.SpanEnded ->
+                    "{\"kind\":\"span_ended\",$traceField\"name\":\"${escape(signal.name)}\",\"spanId\":\"${signal.spanId}\"," +
+                        "\"endedAtMs\":${signal.endedAtMs},\"status\":\"${escape(signal.status)}\"}"
 
-            is TelemetrySignal.Histogram ->
-                "{\"kind\":\"histogram\",$traceField\"name\":\"${escape(signal.name)}\",\"milliseconds\":${signal.milliseconds}," +
-                    "\"dimensions\":${dimensions(signal.dimensions)}}"
+                is TelemetrySignal.Counter ->
+                    "{\"kind\":\"counter\",$traceField\"name\":\"${escape(signal.name)}\",\"value\":${signal.value}," +
+                        "\"dimensions\":${dimensions(signal.dimensions)}}"
+
+                is TelemetrySignal.Histogram ->
+                    "{\"kind\":\"histogram\",$traceField\"name\":\"${escape(signal.name)}\",\"milliseconds\":${signal.milliseconds}," +
+                        "\"dimensions\":${dimensions(signal.dimensions)}}"
+            }
+            emit(line)
         }
     }
 

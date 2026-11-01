@@ -22,10 +22,10 @@ import java.nio.file.Paths
  * decide that an empty answer is a refusal for them. The policy stays with the caller; the read
  * only reports what happened.
 */
-internal sealed interface InspectionEventRead {
+internal sealed interface InspectionEventRead<out T> {
 
-    /** The lane answered. The list may be empty: an empty run is an answer, not a refusal. */
-    data class Admitted(val events: List<DomainEvent>) : InspectionEventRead
+    /** The lane answered and [value] is the projection produced from its event stream. */
+    data class Admitted<T>(val value: T) : InspectionEventRead<T>
 
     /**
      * The lane refused, and [reason] is the sentence the operator reads.
@@ -34,7 +34,7 @@ internal sealed interface InspectionEventRead {
      * is the only place that knows WHY it could not answer, so it is the only place that can say
      * so once.
     */
-    data class Refused(val reason: String) : InspectionEventRead
+    data class Refused(val reason: String) : InspectionEventRead<Nothing>
 }
 
 /**
@@ -68,21 +68,50 @@ internal object InspectionReader {
      * rendering, or the read failure naming the path. A caller that adds a sentence of its own
      * would make the same refusal readable two ways.
     */
-    fun readRunEvents(runId: String, dbPath: String): InspectionEventRead {
+    fun readRunEvents(runId: String, dbPath: String): InspectionEventRead<List<DomainEvent>> =
+        foldRunEvents(runId, dbPath, wholeRunReport = false) { it.toList() }
+
+    /**
+     * Consume a run's history in bounded, store-authoritative pages.
+     *
+     * The page limit is an allocation bound, not a claim that the run is complete. The cursor
+     * and `hasMore` come from EventStore, so ordering and progress remain the store's authority.
+     * The callback must consume the single-use sequence before it returns; the store remains
+     * admitted for that whole scope and is closed even when projection fails.
+     */
+    fun <T> foldRunEvents(
+        runId: String,
+        dbPath: String,
+        wholeRunReport: Boolean,
+        fold: (Sequence<DomainEvent>) -> T,
+    ): InspectionEventRead<T> {
         val admission = admitEventStore(dbPath, EventStorePurpose.Read)
         if (admission is EventStoreAdmission.Refused) {
             return InspectionEventRead.Refused(admission.refusal.render())
         }
-        val events: List<DomainEvent> = try {
+        return try {
             (admission as EventStoreAdmission.Admitted).store.use { store ->
-                store.eventsFor(runId).toList()
+                val firstPage = store.readSlice(runId, after = null, limit = EVENT_PAGE_SIZE)
+                if (wholeRunReport && firstPage.events.isEmpty()) {
+                    return@use InspectionEventRead.Refused(
+                        "inspect: this event store holds no events for run '$runId'.",
+                    )
+                }
+                val events = sequence {
+                    var page = firstPage
+                    while (true) {
+                        yieldAll(page.events)
+                        if (!page.hasMore) break
+                        page = store.readSlice(runId, page.nextCursor, EVENT_PAGE_SIZE)
+                    }
+                }
+                InspectionEventRead.Admitted(fold(events))
             }
         } catch (e: java.io.IOException) {
-            return InspectionEventRead.Refused(
+            InspectionEventRead.Refused(
                 "inspect: cannot read event store at $dbPath: ${e.message}",
             )
         }
-        return InspectionEventRead.Admitted(events)
     }
 
     /**
@@ -161,3 +190,5 @@ internal object InspectionReader {
         return out.toString()
     }
 }
+
+private const val EVENT_PAGE_SIZE = 256

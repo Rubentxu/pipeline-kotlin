@@ -313,19 +313,20 @@ object MainInspectCli {
         runId: String,
         dbPath: String,
         wholeRunReport: Boolean,
-    ): List<DomainEvent>? {
-        return when (val read = InspectionReader.readRunEvents(runId, dbPath)) {
+    ): List<DomainEvent>? = foldRunEvents(runId, dbPath, wholeRunReport) { it.toList() }
+
+    private fun <T> foldRunEvents(
+        runId: String,
+        dbPath: String,
+        wholeRunReport: Boolean,
+        fold: (Sequence<DomainEvent>) -> T,
+    ): T? {
+        return when (val read = InspectionReader.foldRunEvents(runId, dbPath, wholeRunReport, fold)) {
             is InspectionEventRead.Refused -> {
                 System.err.println(read.reason)
                 null
             }
-            is InspectionEventRead.Admitted ->
-                if (wholeRunReport && read.events.isEmpty()) {
-                    System.err.println("inspect: this event store holds no events for run '$runId'.")
-                    null
-                } else {
-                    read.events
-                }
+            is InspectionEventRead.Admitted -> read.value
         }
     }
 
@@ -428,9 +429,9 @@ object MainInspectCli {
 
         // Read-only admission: a missing store is refused here and no file is
         // created, so profiling a mistyped run id cannot fabricate a database.
-        val events = readRunEvents(runId, dbPath, wholeRunReport = true) ?: return 2
+        val costInput = foldRunEvents(runId, dbPath, wholeRunReport = true, RunCostProjection::project) ?: return 2
 
-        val outcome = summarize(RunCostProjection.project(events))
+        val outcome = summarize(costInput)
         val lines = when (query.format) {
             MainInspectCli.InspectFormat.JSON -> RunCostReport.jsonLines(runId, outcome)
             MainInspectCli.InspectFormat.TEXT -> RunCostReport.textLines(runId, outcome)
@@ -454,9 +455,7 @@ object MainInspectCli {
 
         // Read-only admission: a missing store is refused and no file is
         // created, so explaining a mistyped run id cannot fabricate a database.
-        val events = readRunEvents(runId, dbPath, wholeRunReport = true) ?: return 2
-
-        val diagnosis = RunExplainProjection.project(events)
+        val diagnosis = foldRunEvents(runId, dbPath, wholeRunReport = true, RunExplainProjection::project) ?: return 2
         val lines = when (query.format) {
             MainInspectCli.InspectFormat.JSON -> RunExplainReport.jsonLines(runId, diagnosis)
             MainInspectCli.InspectFormat.TEXT -> RunExplainReport.textLines(runId, diagnosis)
@@ -484,14 +483,14 @@ object MainInspectCli {
                 "inspect",
             )
 
-        val events = readRunEvents(runId, dbPath, wholeRunReport = true) ?: return 2
-
-        val trace = RunTelemetryProjection.fromEvents(runId, events)
+        val trace = foldRunEvents(runId, dbPath, wholeRunReport = true) { events ->
+            RunTelemetryProjection.fromEvents(runId, events)
+        } ?: return 2
         if (query.otlp) {
             println(RunTelemetryOtlp.document(trace))
             return 0
         }
-        RunTelemetryReport.jsonLines(trace).forEach(::println)
+        RunTelemetryReport.forEachJsonLine(trace, ::println)
         return 0
     }
 

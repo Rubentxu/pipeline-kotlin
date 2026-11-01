@@ -27,12 +27,15 @@ object RunExplainProjection {
 
     const val EVENT_LANE: String = "event-journal"
 
-    fun project(events: List<DomainEvent>): Diagnosis = when {
-        events.isEmpty() -> Diagnosis.Refused("unknown-run")
-        else -> classify(factsOf(events), Completeness.EventsOnly)
+    fun project(events: List<DomainEvent>): Diagnosis = project(events.asSequence())
+
+    fun project(events: Sequence<DomainEvent>): Diagnosis {
+        var observed = false
+        val facts = factsOf(events.onEach { observed = true })
+        return if (observed) classify(facts, Completeness.EventsOnly) else Diagnosis.Refused("unknown-run")
     }
 
-    internal fun factsOf(events: List<DomainEvent>): DiagnosisFacts {
+    internal fun factsOf(events: Sequence<DomainEvent>): DiagnosisFacts {
         var runEnded: Fact.RunEnded? = null
         var firstFailure: Fact.StepBroke? = null
         var neverClosed: Inference.StepNeverClosed? = null

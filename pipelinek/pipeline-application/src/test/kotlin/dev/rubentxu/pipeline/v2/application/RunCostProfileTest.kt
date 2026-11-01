@@ -58,6 +58,13 @@ class RunCostProfileTest {
         StepFailed("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, "deploy", "sh", FailureKind.SCRIPT, "exit 1")
 
     @Test
+    fun `sequence projection preserves the list-based profile result`() {
+        val events = listOf(run(at = 0), stepStart(at = 20), stepFinish(at = 80), finished("success", at = 100))
+
+        assertEquals(RunCostProjection.project(events), RunCostProjection.project(events.asSequence().constrainOnce()))
+    }
+
+    @Test
     fun `a completed run measures compile and step dispatch from its own events`() {
         val events = listOf(
             run(at = 0),

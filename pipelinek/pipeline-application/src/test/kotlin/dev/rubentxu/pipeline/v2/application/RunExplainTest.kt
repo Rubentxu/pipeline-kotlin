@@ -45,6 +45,14 @@ class RunExplainTest {
         StepFailed("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), 0, step, name, "sh", FailureKind.SCRIPT, message)
 
     @Test
+    fun `sequence projection preserves list diagnosis and consumes an empty history as refusal`() {
+        val events = listOf(start(at = 0), stepStart(at = 10), finished("failure", at = 30))
+
+        assertEquals(RunExplainProjection.project(events), RunExplainProjection.project(events.asSequence().constrainOnce()))
+        assertEquals(Diagnosis.Refused("unknown-run"), RunExplainProjection.project(emptySequence()))
+    }
+
+    @Test
     fun `a store with no events is a typed refusal, never a success-shaped diagnosis`() {
         assertEquals(Diagnosis.Refused("unknown-run"), RunExplainProjection.project(emptyList()))
     }

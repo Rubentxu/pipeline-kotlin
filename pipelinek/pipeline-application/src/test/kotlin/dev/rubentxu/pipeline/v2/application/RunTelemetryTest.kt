@@ -68,6 +68,20 @@ class RunTelemetryTest {
         StepFailed("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), null, step, "deploy", "sh", FailureKind.SCRIPT, "exit 1")
 
     @Test
+    fun `sequence projection and incremental JSONL preserve the existing export`() {
+        val events = listOf(runStart(at = 0), stageStart(at = 10, index = 0), stepStart(at = 20, stage = 0, step = 0),
+            stepFinish(at = 40, stage = 0, step = 0), stageFinish(at = 50, index = 0), runFinish("success", at = 60))
+        val expected = RunTelemetryProjection.fromEvents("run-1", events)
+        val streamed = RunTelemetryProjection.fromEvents("run-1", events.asSequence().constrainOnce())
+        val lines = mutableListOf<String>()
+
+        RunTelemetryReport.forEachJsonLine(streamed, lines::add)
+
+        assertEquals(expected, streamed)
+        assertEquals(RunTelemetryReport.jsonLines(expected), lines)
+    }
+
+    @Test
     fun `the run, compile and step spans nest under their parents and pair their ends`() {
         val trace = RunTelemetryProjection.fromEvents(
             "run-1",

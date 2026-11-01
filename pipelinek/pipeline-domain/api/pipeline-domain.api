@@ -351,6 +351,7 @@ public final class dev/rubentxu/pipeline/v2/domain/CompiledPipeline$Companion {
 public final class dev/rubentxu/pipeline/v2/domain/CompiledPipelineValidator {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/CompiledPipelineValidator;
 	public final fun validate (Ldev/rubentxu/pipeline/v2/domain/CompiledPipeline;)V
+	public final fun validate (Ldev/rubentxu/pipeline/v2/domain/CompiledPipeline;Ldev/rubentxu/pipeline/v2/domain/step/BodyPolicyResolver;)V
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/CompiledRunRequest {

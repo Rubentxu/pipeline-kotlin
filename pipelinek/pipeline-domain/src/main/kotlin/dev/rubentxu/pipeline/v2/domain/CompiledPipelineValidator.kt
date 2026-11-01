@@ -1,5 +1,10 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
+import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
+import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver
+
 /**
  * Thrown when block nesting depth exceeds the maximum allowed depth.
 */
@@ -14,25 +19,42 @@ class BlockNestingExceededException(
  * - Stage uniqueness
  * - Step uniqueness within same parent block or stage
  * - Block nesting depth <= 3
- * - BlockStepNode.pluginStepId must declare a body (StepBody.Declared) in the registry
+ * - BlockStepNode.pluginStepId must resolve to an executable body policy
 */
 object CompiledPipelineValidator {
-    private val descriptorRegistry = StepDescriptorRegistry.standard()
+    private val standardBodyPolicyResolver = StepDescriptorRegistry.standard()
+        .bodyPolicyResolver(BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING_FOLDING)
 
-    fun validate(pipeline: CompiledPipeline) {
+    fun validate(pipeline: CompiledPipeline) = validate(pipeline, standardBodyPolicyResolver)
+
+    /** Validates against the same body declarations the execution route resolves. */
+    fun validate(pipeline: CompiledPipeline, bodyPolicyResolver: BodyPolicyResolver) {
         require(pipeline.stages.isNotEmpty()) { "CompiledPipeline must contain at least one stage" }
         val stageIds = mutableSetOf<StageId>()
+
+        fun visitSteps(steps: List<StepNode>, parentPath: String, depth: Int) {
+            val stepIds = mutableSetOf<StepId>()
+            steps.forEach { step ->
+                require(stepIds.add(step.id)) {
+                    "Duplicate step id '${step.id.value}' within $parentPath"
+                }
+                visitStep(step, parentPath, depth, bodyPolicyResolver)
+            }
+        }
 
         fun visitStage(stage: StageNode) {
             require(stageIds.add(stage.id)) { "Duplicate stage id '${stage.id.value}'" }
             when (val body = stage.body) {
-                is StageBody.Steps -> body.steps.forEach { step ->
-                    visitStep(step, "stage '${stage.name}'", depth = 0)
-                }
+                is StageBody.Steps -> visitSteps(body.steps, "stage '${stage.name}'", depth = 0)
                 is StageBody.NestedStages -> body.stages.forEach(::visitStage)
                 is StageBody.Parallel -> {
                     require(body.branches.size >= 2) { "Parallel stage '${stage.name}' requires at least two branches" }
                     body.branches.forEach { branch ->
+                        val branchSteps = branch.body as? StageBody.Steps
+                            ?: throw IllegalArgumentException("Parallel branch '${branch.name}' must contain steps")
+                        require(branchSteps.steps.size == 1) {
+                            "Parallel branch '${branch.name}' must contain exactly one step"
+                        }
                         visitStage(branch)
                     }
                 }
@@ -46,8 +68,8 @@ object CompiledPipelineValidator {
                 // edge concern answered fail-closed at dispatch, not a compile-time property.
                 is StageBody.Scripted -> Unit
             }
-            stage.post?.conditions?.values?.flatten()?.forEach { step ->
-                visitStep(step, "post-condition of stage '${stage.name}'", depth = 0)
+            stage.post?.conditions?.forEach { (condition, steps) ->
+                visitSteps(steps, "${condition} post-condition of stage '${stage.name}'", depth = 0)
             }
         }
 
@@ -64,6 +86,7 @@ object CompiledPipelineValidator {
         step: StepNode,
         parentPath: String,
         depth: Int,
+        bodyPolicyResolver: BodyPolicyResolver,
     ) {
         when (step) {
             is OpaqueStepNode -> {
@@ -74,12 +97,12 @@ object CompiledPipelineValidator {
             is BlockStepNode -> {
                 //: the declaration is one value. A node that carries a body must resolve to a
                 // declared body row; a terminal row (StepBody.None) has no cardinality to consult.
-                val declaredBody = descriptorRegistry.get(step.pluginStepId)?.body?.declared
-                require(declaredBody != null) {
-                    "BlockStepNode '${step.id.value}' (pluginStepId=${step.pluginStepId.value}) carries a body but the registry " +
-                        "declares no body for that Step. Block steps must declare StepBody.Declared in StepDescriptorRegistry."
+                val resolution = bodyPolicyResolver.resolve(step.pluginStepId)
+                val bodyPolicy = requireNotNull((resolution as? BodyPolicyResolution.Resolved)?.policy) {
+                    "BlockStepNode '${step.id.value}' (pluginStepId=${step.pluginStepId.value}) carries a body but the resolver " +
+                        "does not resolve an executable body policy: ${(resolution as? BodyPolicyResolution.Rejected)?.reason}"
                 }
-                require(step.body.isNotEmpty() || declaredBody.invocation == BodyInvocationPolicy.ZERO_OR_MORE) {
+                require(step.body.isNotEmpty() || bodyPolicy is BodyExecutionPolicy.Retrying) {
                     "BlockStepNode '${step.id.value}' must have non-empty body unless its declared invocation is ZERO_OR_MORE"
                 }
 
@@ -92,9 +115,14 @@ object CompiledPipelineValidator {
                 val childBlockIds = mutableSetOf<StepId>()
                 step.body.forEach { child ->
                     require(childBlockIds.add(child.id)) {
-                        "Duplicate step id '${child.id.value}' within block '${step.id.value}': ${parentPath}"
+                        "Duplicate step id '${child.id.value}' within block '${step.id.value}': $parentPath"
                     }
-                    visitStep(child, "${parentPath}/${step.id.value}", depth = depth + 1)
+                    visitStep(
+                        child,
+                        "${parentPath}/${step.id.value}",
+                        depth = depth + 1,
+                        bodyPolicyResolver = bodyPolicyResolver,
+                    )
                 }
             }
         }

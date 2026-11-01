@@ -22,6 +22,8 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialLeaseA
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
+import dev.rubentxu.pipeline.v2.domain.CompiledPipelineValidator
+import dev.rubentxu.pipeline.v2.domain.BlockNestingExceededException
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.EnvironmentSpec
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
@@ -349,6 +351,17 @@ internal class CanonicalDurableRunCoordinator(
     )
 
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
+        try {
+            CompiledPipelineValidator.validate(pipeline, bodyPolicyResolver)
+        } catch (e: BlockNestingExceededException) {
+            return RunOutcome.Failure(
+                PipelineFailure(FailureKind.USER, "Invalid compiled pipeline: ${e.message}"),
+            )
+        } catch (e: IllegalArgumentException) {
+            return RunOutcome.Failure(
+                PipelineFailure(FailureKind.USER, "Invalid compiled pipeline: ${e.message}"),
+            )
+        }
         runLifecycle.openRun(pipeline, runId)
         // Ambient execution context is a run-local immutable value threaded
         // explicitly through dispatch; no coordinator field, no restore idiom.

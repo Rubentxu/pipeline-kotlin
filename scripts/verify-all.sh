@@ -572,6 +572,29 @@ if [[ "$subset" == 1 ]]; then
     printf 'This is NOT the AGENTS.md section 4 gate and its wall clock is not a gate measurement.\n\n'
 fi
 
+# --- The gate's own census of scenarios ---------------------------------------
+#
+# Two inventories of the E2E scenarios exist, and until now neither looked at
+# the other: the gate counted what the launcher said, and the launcher counted
+# what it found. A scenario that ended up unexecuted -- deleted, renamed,
+# moved, or simply never selected -- was invisible to both, because a count
+# that is only compared with itself is a transcription, not a measurement.
+#
+# The census is taken HERE, before any stage runs, and is compared with the
+# launcher's own report after stage 3. The order carries the guarantee: the
+# tree can change while the gate builds and the launcher reads the tree later,
+# so a census taken at the end would agree with the launcher by construction
+# and would never see the change.
+#
+# The two rules are deliberately NOT the same rule. The launcher asks for
+# regular files and leaves out the `example-*-plugin` fixtures; the gate asks
+# for the programs the tree holds. A gate that copied the launcher's rule
+# would be comparing the launcher with itself, and the copy would rot in
+# silence. When the two readings disagree, the disagreement is NAMED: a
+# criterion that differs is a fact about the project, and a fact that is
+# hidden behind a number that still adds up is exactly the hole this closes.
+gate_scenarios_census="$(plan_scenarios)"
+
 # --- JDK resolution ----------------------------------------------------------
 # Prefer an explicit JAVA_HOME that already satisfies the requirement; then the
 # asdf installations this repository has used; then whatever is on PATH.
@@ -1519,6 +1542,13 @@ stage2_wall_ms=$(( $(now_ms) - stage2_started_ms ))
 e2e_not_run=0
 e2e_stage3_ran=0
 
+# The two censuses, and the verdict of the contrast between them. The counts
+# live here, with their origin, so that the verdict line can name where each
+# number comes from instead of printing a figure nobody can trace.
+e2e_census_gate=0
+e2e_census_launcher=0
+e2e_census_contrast="NOT_RUN"
+
 # The suffix travels WITH the verdict line. A gap that only exists in the
 # stage log disappears the moment somebody quotes the one line that says the
 # gate passed, which is the only line anybody actually reads. Same argument as
@@ -1552,9 +1582,24 @@ tests_suffix() {
 
 # How much of the E2E stage was OBSERVED rather than merely executed. It travels
 # with the verdict line for the same reason the test census does.
+#
+# Every number names its origin, because a number without its content is not
+# evidence: two of them are the launcher's (what it observed, and how many
+# executions it made), one is the gate's own (what it planned on disk), and the
+# last is the contrast between the two (the gate compared the inventories
+# NAME BY NAME and they agreed). The three counts are different questions and
+# they usually answer the same number, which is exactly why a reader who sees
+# only one of them cannot tell a measurement from a transcription.
+#
+#   launcher_observed   guarantees the launcher really compared.
+#   launcher_executions executions the launcher made.
+#   gate_planned        scenarios the gate found in the tree before the stages.
+#   launcher_scenarios  distinct scenarios the launcher's report names.
+#   contrast            the verdict of comparing the last two, name by name.
 scenarios_suffix() {
     if [[ "$e2e_stage3_ran" == 1 && -n "$e2e_observed" ]]; then
-        printf '  scenarios=observed:%s executed:%s' "$e2e_observed" "$e2e_executed"
+        printf '  scenarios=launcher_observed:%s launcher_executions:%s gate_planned:%s launcher_scenarios:%s contrast:%s' \
+            "$e2e_observed" "$e2e_executed" "$e2e_census_gate" "$e2e_census_launcher" "$e2e_census_contrast"
     else
         printf '  scenarios=NOT_RUN'
     fi
@@ -1724,6 +1769,56 @@ fi
     if (( e2e_cost_n != e2e_cost_expected )); then
         fail "stage 3: the cost report prices ${e2e_cost_n} scenario(s) and the launcher says ${e2e_cost_expected} reached a verdict"
     fi
+    # The gate's census and the launcher's census, compared NAME BY NAME.
+    #
+    # The counts above are the launcher's own arithmetic: it says how many
+    # scenarios it selected and how many reached a verdict, and the two are
+    # checked against each other. That check cannot fail for the reason that
+    # matters here, because both numbers come from the same place -- a
+    # scenario the launcher never selected is invisible to both of them. The
+    # gate holds its own reading of the tree, taken before the stages ran,
+    # and this is where the two readings meet.
+    #
+    # The comparison is by name and not by count. A count that does not add up
+    # says that something happened; a name says WHICH, and a renamed or moved
+    # scenario is only ever visible as a name. The launcher's census is the
+    # first field of its cost lines: one line per scenario that reached a
+    # verdict, carrying the path relative to the examples directory -- the
+    # same coordinate the gate's census uses.
+    launcher_scenarios="$(printf '%s\n' "$stage3_cost" | sed 's/^ *//' | awk '{ print $1 }' \
+        | LC_ALL=C sort -u)"
+    gate_scenarios="$(printf '%s\n' "$gate_scenarios_census" | LC_ALL=C sort -u)"
+    e2e_census_gate="$(printf '%s\n' "$gate_scenarios" | grep -c . || true)"
+    e2e_census_launcher="$(printf '%s\n' "$launcher_scenarios" | grep -c . || true)"
+    # `comm` compares with the collation of the locale it runs in, and it
+    # REFUSES to compare two lists it does not consider sorted. Both lists
+    # above were sorted with LC_ALL=C, so `comm` has to run with LC_ALL=C too:
+    # under a UTF-8 collation the same bytes are a different order, and the
+    # refusal (which lands on stderr and leaves stdout empty) would read as
+    # "no difference" -- the one answer this comparison must never give by
+    # accident.
+    census_missing="$(LC_ALL=C comm -23 <(printf '%s\n' "$gate_scenarios") \
+        <(printf '%s\n' "$launcher_scenarios") | grep -v '^$' || true)"
+    census_unexpected="$(LC_ALL=C comm -13 <(printf '%s\n' "$gate_scenarios") \
+        <(printf '%s\n' "$launcher_scenarios") | grep -v '^$' || true)"
+    if [[ -n "$census_missing" || -n "$census_unexpected" ]]; then
+        {
+            printf 'verify-all: the scenarios the gate planned and the scenarios the launcher ran\n'
+            printf '  are not the same set, and a difference that is not named is a difference nobody\n'
+            printf '  can act on.\n'
+            if [[ -n "$census_missing" ]]; then
+                printf '  planned here and NOT executed by the launcher:\n'
+                printf '%s\n' "$census_missing" | sed 's/^/    examples\//'
+            fi
+            if [[ -n "$census_unexpected" ]]; then
+                printf '  executed by the launcher and NOT planned here:\n'
+                printf '%s\n' "$census_unexpected" | sed 's/^/    examples\//'
+            fi
+        } >&2
+        e2e_census_contrast="MISMATCH"
+        fail "stage 3: the gate planned ${e2e_census_gate} scenario(s) and the launcher ran ${e2e_census_launcher}; they are not the same set"
+    fi
+    e2e_census_contrast="ok"
     component_set "e2e:scenarios" "$e2e_cost_total_ms" \
         "sum of every scenario the launcher priced; they run in parallel"
     component_require "e2e:scenarios" "the cost of the scenarios is part of the baseline"

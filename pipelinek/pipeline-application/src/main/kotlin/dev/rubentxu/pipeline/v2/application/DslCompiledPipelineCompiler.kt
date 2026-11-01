@@ -69,7 +69,11 @@ object DslCompiledPipelineCompiler {
                 semanticInputs = mapOf("pluginLockDigest" to pluginLockDigest.value),
             ),
         )
-        val stages = spec.stages.map(::stageNode)
+        // The pipeline's stage scope: sibling stages mint their identity into the
+        // pipeline root, so two of them that normalize to the same token would share
+        // one StageId. The scope is where that collision is caught.
+        val stageScope = IdentityScope("the pipeline's stage scope")
+        val stages = spec.stages.map { stageNode(it, stageScope) }
 
         return CompiledPipeline(
             id = definitionId,
@@ -79,19 +83,26 @@ object DslCompiledPipelineCompiler {
         )
     }
 
-    private fun stageNode(stage: dev.rubentxu.pipeline.v2.dsl.StageSpec): StageNode {
-        val stageToken = stableToken(stage.name)
+    private fun stageNode(
+        stage: dev.rubentxu.pipeline.v2.dsl.StageSpec,
+        stageScope: IdentityScope,
+    ): StageNode {
+        val stageToken = stageScope.tokenFor(stage.name)
         val stageId = StageId(stageToken)
         val body = when {
             stage.steps.size == 1 && stage.steps.single() is StepSpec.Parallel -> {
                 val parallel = stage.steps.single() as StepSpec.Parallel
+                // Sibling branches mint their identity into the same parallel body,
+                // so they share one scope.
+                val branchScope = IdentityScope("stage '$stageToken' parallel branch scope")
                 StageBody.Parallel(
                     parallel.branches.map { branch ->
+                        val branchToken = "$stageToken/branch-${branchScope.tokenFor(branch.name)}"
                         StageNode(
-                            id = StageId("$stageToken/branch-${stableToken(branch.name)}"),
+                            id = StageId(branchToken),
                             name = branch.name,
                             body = StageBody.Steps(
-                                stepNodes(branch.steps, "$stageToken/branch-${stableToken(branch.name)}"),
+                                stepNodes(branch.steps, branchToken),
                             ),
                         )
                     },
@@ -135,13 +146,16 @@ object DslCompiledPipelineCompiler {
 */
     private fun stepNodes(steps: List<StepSpec>, parentToken: String): List<StepNode> {
         val occurrences = mutableMapOf<String, Int>()
+        // Sibling steps mint their identity into the same parent token, so they share
+        // one scope.
+        val scope = IdentityScope("the body of '$parentToken'")
         return steps.flatMap { step ->
             // The counter follows the INNER name (see [identityName]): two named `sh` steps
             // are `sh-0` and `sh-1`. The name is what tells siblings apart.
             val identity = step.identityName
             val occurrence = occurrences[identity] ?: 0
             occurrences[identity] = occurrence + 1
-            stepNode(step, parentToken, occurrence)
+            stepNode(step, parentToken, occurrence, scope)
         }
     }
 
@@ -166,11 +180,16 @@ object DslCompiledPipelineCompiler {
      * The name is independent of the kind: two steps of the same kind can live in one
      * body as long as the plugin named them apart.
      */
-    private fun slotNode(step: StepSpec.Slot, parentToken: String, occurrence: Int): List<StepNode> {
+    private fun slotNode(
+        step: StepSpec.Slot,
+        parentToken: String,
+        occurrence: Int,
+        scope: IdentityScope,
+    ): List<StepNode> {
         if (step.step is StepSpec.Slot) {
             error("A slot cannot name another slot: '${step.slotName}'")
         }
-        val named = stepNode(step.step, parentToken, occurrence)
+        val named = stepNode(step.step, parentToken, occurrence, scope)
         if (named.size != 1) {
             error(
                 "A slot names exactly one step: '${step.slotName}' lowered to " +
@@ -184,7 +203,12 @@ object DslCompiledPipelineCompiler {
      * Converts one StepSpec into one or more canonical StepNode IR nodes.
      * Body-aware steps → BlockStepNode; terminal steps → OpaqueStepNode.
 */
-    private fun stepNode(step: StepSpec, parentToken: String, occurrence: Int): List<StepNode> {
+    private fun stepNode(
+        step: StepSpec,
+        parentToken: String,
+        occurrence: Int,
+        scope: IdentityScope,
+    ): List<StepNode> {
         return when (step) {
             // Carries the plugin StepKey + already
             // encoded input verbatim. The compiler NEVER knows a concrete external StepKey, never
@@ -193,7 +217,7 @@ object DslCompiledPipelineCompiler {
             // core.echo / core.sh.
             is StepSpec.RegistryStepSpec -> listOf(
                 OpaqueStepNode(
-                    id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),
+                    id = StepId("$parentToken/${scope.tokenFor(step.name)}-$occurrence"),
                     pluginStepId = step.stepKey,
                     payload = VersionedStepPayload(
                         step.schemaVersion,
@@ -206,20 +230,23 @@ object DslCompiledPipelineCompiler {
             // recursively (the SAME lowering every core Block Step uses). Runtime admission
             // resolves the declared BodyExecutionPolicy from the open registry and rejects
             // fail-closed BEFORE any child runs. The compiler never knows a concrete key.
-            is StepSpec.RegistryBlockSpec -> listOf(
-                BlockStepNode(
-                    id = StepId("$parentToken/${stableToken(step.name)}-body-$occurrence"),
-                    pluginStepId = step.stepKey,
-                    payload = VersionedStepPayload(
-                        step.schemaVersion,
-                        step.encodedInput.value,
+            is StepSpec.RegistryBlockSpec -> {
+                val token = scope.tokenFor(step.name)
+                listOf(
+                    BlockStepNode(
+                        id = StepId("$parentToken/$token-body-$occurrence"),
+                        pluginStepId = step.stepKey,
+                        payload = VersionedStepPayload(
+                            step.schemaVersion,
+                            step.encodedInput.value,
+                        ),
+                        body = stepNodes(step.body, "$parentToken/$token-body-$occurrence"),
                     ),
-                    body = stepNodes(step.body, "$parentToken/${stableToken(step.name)}-body-$occurrence"),
-                ),
-            )
-            is StepSpec.Slot -> slotNode(step, parentToken, occurrence)
+                )
+            }
+            is StepSpec.Slot -> slotNode(step, parentToken, occurrence, scope)
             is StepSpec.WriteFile -> listOf(
-                writeFileNode(step, "$parentToken/${stableToken(step.name)}-$occurrence"),
+                writeFileNode(step, "$parentToken/${scope.tokenFor(step.name)}-$occurrence"),
             )
             // A control scope is a body-bearing step, exactly like `dir` or `retry`.
             // It used to be rewritten into a linear sequence of shell segments; now it
@@ -229,41 +256,49 @@ object DslCompiledPipelineCompiler {
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
+                scope = scope,
             )
             is StepSpec.WarnError -> blockStepNode(
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
+                scope = scope,
             )
             is StepSpec.TimeoutBlock -> blockStepNode(
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
+                scope = scope,
             )
             is StepSpec.RetryBlock -> blockStepNode(
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
+                scope = scope,
             )
             is StepSpec.Dir -> blockStepNode(
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
+                scope = scope,
             )
             is StepSpec.WithCredentialsBlock -> blockStepNode(
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
+                scope = scope,
             )
             is StepSpec.Timestamps -> blockStepNode(
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
+                scope = scope,
             )
             is StepSpec.WithEnv -> blockStepNode(
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
+                scope = scope,
             )
             // WaitUntil projects to canonical BlockStepNode (body-owning).
             // The else -> OpaqueStepNode catch-all MUST NOT fire for this key.
@@ -271,6 +306,7 @@ object DslCompiledPipelineCompiler {
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
+                scope = scope,
             )
             // Core.lock lowers through the SAME block machinery; the
             // Wire payload is produced exclusively by CoreLockWireCodec
@@ -279,6 +315,7 @@ object DslCompiledPipelineCompiler {
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
+                scope = scope,
             )
             // Core.input lowers through the SAME block machinery; the
             // Wire payload is produced exclusively by CoreInputWireCodec
@@ -287,7 +324,10 @@ object DslCompiledPipelineCompiler {
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
+                scope = scope,
             )
+            // `unstable` mints a FIXED token ('unstable'), not one derived from an
+            // author-controlled name, so it has no scope to mint into.
             is StepSpec.Unstable -> rewriteUnstable(
                 message = step.message,
                 parentToken = parentToken,
@@ -299,7 +339,7 @@ object DslCompiledPipelineCompiler {
             // milestonePayload removed at.
             else -> listOf(
                 OpaqueStepNode(
-                    id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),
+                    id = StepId("$parentToken/${scope.tokenFor(step.name)}-$occurrence"),
                     pluginStepId = PluginStepId("core.${step.name}"),
                     payload = VersionedStepPayload(PAYLOAD_SCHEMA_VERSION, encodePayload(step)),
                 ),
@@ -329,8 +369,13 @@ object DslCompiledPipelineCompiler {
         is BlockStepNode -> copy(slot = slot)
     }
 
-    private fun blockStepNode(step: StepSpec, parentToken: String, occurrence: Int): List<StepNode> {
-        val tokenPrefix = stableToken(step.name)
+    private fun blockStepNode(
+        step: StepSpec,
+        parentToken: String,
+        occurrence: Int,
+        scope: IdentityScope,
+    ): List<StepNode> {
+        val tokenPrefix = scope.tokenFor(step.name)
         val stepId = StepId("$parentToken/${tokenPrefix}-body-$occurrence")
 
         val body = stepNodes(when (step) {
@@ -830,13 +875,71 @@ object DslCompiledPipelineCompiler {
         }
     }
 
-    private fun stableToken(value: String): String = value
-        .trim()
-        .lowercase()
-        .replace(Regex("[^a-z0-9]+"), "-")
-        .trim('-')
-        .ifBlank { error("DSL names must contain at least one alphanumeric character: '$value'") }
-
     /** Shared utility. Same bytes, same lowercase hex as the previous local helper */
     private fun sha256(value: String): String = Sha256.ofText(value)
+}
+
+/**
+ * The normalization that turns a DSL name into an identity token.
+ *
+ * It is deliberately lossy —lower case, and every run of non-alphanumerics becomes a
+ * single dash— and it is NOT injective: `build+test`, `build test` and `build_test` all
+ * normalize to `build-test`. [IdentityScope] is the piece that refuses to let two
+ * DIFFERENT names share one token.
+ */
+private fun stableToken(value: String): String = value
+    .trim()
+    .lowercase()
+    .replace(Regex("[^a-z0-9]+"), "-")
+    .trim('-')
+    .ifBlank { error("DSL names must contain at least one alphanumeric character: '$value'") }
+
+/**
+ * The identity scope of a set of siblings: the names that live under the same parent and
+ * therefore mint their identities into the same parent token.
+ *
+ * The compiler is the authority that MINTS identities, so it is also the place where a
+ * collision has to be caught: two different names that normalize to the same token would
+ * mint the SAME [dev.rubentxu.pipeline.v2.domain.StageId] or
+ * [dev.rubentxu.pipeline.v2.domain.StepId], and the durable journal records that identity
+ * as the step's own name — so the two steps would be indistinguishable after the fact.
+ *
+ * The scope REFUSES that collision at compile time, naming both original names and the
+ * trajectory where they collided. It refuses only between DIFFERENT names: the same name
+ * repeated in one body is legitimate, and the occurrence counter already tells those
+ * siblings apart.
+ *
+ * The IR validator keeps its own, independent check on the IR it receives; this scope is
+ * the compiler's, and it exists so that the collision is caught where the identity is
+ * born — with a diagnostic that names the two names — instead of downstream.
+ *
+ * RESUME COMPATIBILITY. The refusal changes NOTHING about the identities that do not
+ * collide: the id scheme, `COMPILER_VERSION` and the `definitionId` are untouched, and
+ * the tokens themselves are the same tokens as before. Every pipeline that compiles
+ * today therefore keeps its ids byte-identical, and a durable journal written by an
+ * earlier run resumes against them unchanged. That is why the answer to a collision is
+ * to REFUSE the pipeline and not to renumber it: an injective id scheme would have
+ * moved the id of every colliding pipeline and, with `COMPILER_VERSION` inside the
+ * `definitionId`, its definition digest too.
+ */
+private class IdentityScope(private val trajectory: String) {
+    private val origins = mutableMapOf<String, String>()
+
+    /**
+     * The identity token of [original] inside this scope.
+     *
+     * @throws IllegalStateException when a DIFFERENT name already owns that token.
+     */
+    fun tokenFor(original: String): String {
+        val token = stableToken(original)
+        val owner = origins.putIfAbsent(token, original)
+        if (owner != null && owner != original) {
+            error(
+                "DSL names '$owner' and '$original' normalize to the same identity token " +
+                    "'$token' in $trajectory: two different names cannot share one identity. " +
+                    "Rename one of them.",
+            )
+        }
+        return token
+    }
 }

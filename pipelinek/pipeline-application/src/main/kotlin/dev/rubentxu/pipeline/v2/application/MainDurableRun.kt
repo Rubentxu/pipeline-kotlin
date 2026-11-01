@@ -31,11 +31,11 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.KotlinScriptedSourceMapper
+import dev.rubentxu.pipeline.v2.scripting.ScriptedFrontendForm
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSource
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceId
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering.LoweringResult
-import dev.rubentxu.pipeline.v2.scripting.isRuntimeReturning
 import kotlinx.serialization.json.Json
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -708,18 +708,19 @@ private fun resolveScriptedFrontend(
     val result = compilation.result
     val artifact: dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.EntryPointArtifact? =
         if (result.isSuccess) {
-            val mapping = KotlinScriptedSourceMapper().map(
-                ScriptedSource(ScriptedSourceId(scriptPath.fileName.toString()), scriptContent),
-            )
-            val mappedCalls = if (mapping is dev.rubentxu.pipeline.v2.scripting.ScriptedSourceMapping.Mapped) {
-                mapping.calls.filter { it.kind.isRuntimeReturning() }
-            } else emptyList()
             // The R3 lowering emits a generator-level entry-point body only. A
             // `pipeline { stages { stage { ... } } }` structure keeps the eager
             // PipelineSpec frontend as-is (no DSL-body migration). Frontend FORM
             // selection, never an execution-authority switch.
-            val isGeneratorLevelSource = mappedCalls.isNotEmpty() &&
-                !Regex("""\bpipeline\s*\{""").containsMatchIn(scriptContent)
+            //
+            // The FORM is read from the STRUCTURE the compiler already parsed
+            // — does the source CALL the eager DSL's entry point? — and never
+            // from a match over the script's text: a comment or a string that
+            // mentions `pipeline {` is prose, and prose does not decide which
+            // frontend runs.
+            val isGeneratorLevelSource = ScriptedFrontendForm.select(
+                ScriptedSource(ScriptedSourceId(scriptPath.fileName.toString()), scriptContent),
+            ) == ScriptedFrontendForm.Form.GENERATOR_LEVEL
             if (isGeneratorLevelSource) {
                 when (val lowered = ScriptedSourceLowering.lower(
                     sourceId = ScriptedSourceId(scriptPath.fileName.toString()),

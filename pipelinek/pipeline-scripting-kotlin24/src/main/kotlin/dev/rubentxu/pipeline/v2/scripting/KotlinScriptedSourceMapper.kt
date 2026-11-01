@@ -20,7 +20,26 @@ import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
  * in a `.pipeline.kts` body.
 */
 class KotlinScriptedSourceMapper : ScriptedSourceMapper {
-    override fun map(source: ScriptedSource): ScriptedSourceMapping = synchronized(parserLock) {
+    /**
+     * The structural facts ONE parse of a scripted source yields.
+     *
+     * The mapping and the eager-DSL declaration travel together because the
+     * compiler's PSI already knows both: asking it twice for the same text
+     * would buy the same answer twice.
+    */
+    internal data class Structure(
+        val mapping: ScriptedSourceMapping,
+        val declaresEagerDslEntryPoint: Boolean,
+    )
+
+    override fun map(source: ScriptedSource): ScriptedSourceMapping = structure(source).mapping
+
+    /**
+     * Reads [source] ONCE and reports the two facts the frontend FORM
+     * selection needs: the mapped scripted calls, and whether the source
+     * DECLARES the eager DSL entry point.
+    */
+    internal fun structure(source: ScriptedSource): Structure = synchronized(parserLock) {
         val disposable = Disposer.newDisposable()
         try {
             val environment = KotlinCoreEnvironment.createForProduction(
@@ -35,6 +54,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
             val calls = mutableListOf<ScriptedMappedCall>()
             val loopScopes = mutableListOf<ScriptedLoopScope>()
             val diagnostics = mutableListOf<ScriptedSourceDiagnostic>()
+            var declaresEagerDslEntryPoint = false
 
             file.accept(object : KtTreeVisitorVoid() {
                 /**
@@ -66,6 +86,15 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
 
                 override fun visitCallExpression(expression: KtCallExpression) {
                     val isDotQualified = expression.parent is KtDotQualifiedExpression
+                    // The eager DSL entry point is a CALL to `pipeline`. Not a
+                    // mention of the word: a comment or a string that says
+                    // `pipeline {` is prose, and prose does not declare a DSL.
+                    // The frontend FORM is read from this flag, so the flag has
+                    // to mean "this program calls the DSL", not "these letters
+                    // appear somewhere in the file".
+                    if (!isDotQualified && expression.calleeName() == EAGER_DSL_ENTRY_POINT_NAME) {
+                        declaresEagerDslEntryPoint = true
+                    }
                     val location = source.locationAt(expression.textRange.startOffset)
                     when {
                         // Unqualified generator-level `sh(...)`: a shell step call.
@@ -154,11 +183,14 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                 }
             })
 
-            if (diagnostics.isEmpty()) {
-                ScriptedSourceMapping.Mapped(calls, loopScopes)
-            } else {
-                ScriptedSourceMapping.InvalidSyntax(diagnostics)
-            }
+            Structure(
+                mapping = if (diagnostics.isEmpty()) {
+                    ScriptedSourceMapping.Mapped(calls, loopScopes)
+                } else {
+                    ScriptedSourceMapping.InvalidSyntax(diagnostics)
+                },
+                declaresEagerDslEntryPoint = declaresEagerDslEntryPoint,
+            )
         } finally {
             Disposer.dispose(disposable)
         }
@@ -175,6 +207,21 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
     private fun ScriptedSource.columnAt(offset: Int): Int {
         val before = text.substring(0, offset)
         return before.length - before.lastIndexOf('\n')
+    }
+
+    /**
+     * The name a call is written with, with any receiver and any type
+     * arguments removed. `pipeline { }`, `pipeline(config) { }` and
+     * `pipeline<Config> { }` all answer `pipeline`: the FORM of a source turns
+     * on WHICH function is called, not on how the call happens to be spelled.
+    */
+    private fun KtCallExpression.calleeName(): String? {
+        val callee = calleeExpression ?: return null
+        val written = (callee as? KtDotQualifiedExpression)?.selectorExpression?.text ?: callee.text
+        // A generic call spells its type arguments next to the name
+        // (`pipeline<Config> { }`): what is CALLED is the name, not the name
+        // plus its arguments.
+        return written.substringBefore('<').trim().takeIf { it.isNotEmpty() }
     }
 
     /**
@@ -296,6 +343,13 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
     private companion object {
         /** Kotlin compiler PSI application state is process-global. */
         val parserLock = Any()
+
+        /**
+         * The eager DSL's entry point. A source that CALLS it declares the
+         * eager `PipelineSpec` frontend; a source that merely mentions the
+         * word declares nothing at all.
+        */
+        const val EAGER_DSL_ENTRY_POINT_NAME = "pipeline"
 
         /**
          * Fixed parse-side file name: the `.kts` suffix makes the PSI parser

@@ -8,7 +8,7 @@
     <ID>UnsafeCallOnNullableType:GitCheckoutExecutor.kt:GitCheckoutExecutor$remoteShaResult.getOrNull()!!</ID>
     <ID>UnusedPrivateProperty:GitCheckoutStepDefinition.kt:GitCheckoutStepDefinition$private val clock: Clock = Clock.systemUTC()</ID>
     <ID>UnusedPrivateProperty:GitCheckoutStepDefinition.kt:GitCheckoutStepDefinition$private val eventSink: EventSink? = null</ID>
-    <ID>UnusedPrivateProperty:GitCheckoutStepDefinition.kt:GitCheckoutStepDefinition$private val executorFactory: (workspaceRoot: Path) -&gt; GitCheckoutExecutor = { workspaceRoot -&gt; GitCheckoutExecutor( poll = GitPollExecutor(), changelog = GitChangelogWriter(), credentialsApplier = GitCredentialsApplier( tempDir = Files.createTempDirectory("scm-git-step"), credentials = GitCredentials(), ), ) }</ID>
+    <ID>UnusedPrivateProperty:GitCheckoutStepDefinition.kt:GitCheckoutStepDefinition$private val executorFactory: (workspaceRoot: Path, transcript: GitTranscript?) -&gt; GitCheckoutExecutor = { workspaceRoot, transcript -&gt; GitCheckoutExecutor( poll = GitPollExecutor(), changelog = GitChangelogWriter(), credentialsApplier = GitCredentialsApplier( tempDir = Files.createTempDirectory("scm-git-step"), credentials = GitCredentials(), ), transcript = transcript, ) }</ID>
     <ID>UnusedPrivateProperty:GitCheckoutStepDefinition.kt:GitCheckoutStepDefinition$private val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? = null</ID>
     <ID>UnusedPrivateProperty:GitCredentialsApplier.kt:GitCredentialsApplier$private val linkedSecretResolver: CredentialLinkedSecretResolver? = null</ID>
     <ID>UnusedPrivateProperty:GitCredentialsApplier.kt:GitCredentialsApplier$private val secretStore: SecretStore? = null</ID>

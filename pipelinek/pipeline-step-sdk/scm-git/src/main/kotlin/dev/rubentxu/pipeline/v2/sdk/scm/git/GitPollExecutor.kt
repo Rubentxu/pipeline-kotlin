@@ -7,7 +7,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskRuntime
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.runCaptured
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import java.nio.file.Path
@@ -38,9 +37,17 @@ class GitPollExecutor(
      * @param url Repository URL (https or file://)
      * @param branch Branch name
      * @param credentialsApplier GitCredentialsApplier for env injection (may be null — no-op)
+     * @param transcript the host's transcript destination, or null when this composition has
+     *   none. What `ls-remote` printed is published there, so a reader can see the answer the
+     *   remote gave — including the authentication error that ends the checkout.
      * @return Result containing SHA string, or failure classification
 */
-    fun execute(url: String, branch: String, credentialsApplier: GitCredentialsApplier? = null): Result<String> {
+    fun execute(
+        url: String,
+        branch: String,
+        credentialsApplier: GitCredentialsApplier? = null,
+        transcript: GitTranscript? = null,
+    ): Result<String> {
         return try {
             val args = listOf("git", "ls-remote", url, branch)
             // ls-remote historically used redirectErrorStream(true); emulate
@@ -55,7 +62,7 @@ class GitPollExecutor(
                 timeoutMs = timeoutSeconds * 1000,
                 env = secretEnv,
             )
-            val captured = runBlocking { runtimeInstance.runCaptured(request) }
+            val captured = runBlocking { runtimeInstance.runCapturedTo(request, transcript) }
 
             if (captured.timedOut) {
                 return Result.failure(IllegalStateException("git ls-remote timed out after ${timeoutSeconds}s"))

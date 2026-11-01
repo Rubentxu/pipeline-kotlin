@@ -16,7 +16,6 @@ import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
 import dev.rubentxu.pipeline.v2.events.GitCheckoutStarted
 import dev.rubentxu.pipeline.v2.events.GitPollChanged
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.runCaptured
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import java.nio.file.Path
@@ -41,21 +40,40 @@ import java.util.UUID
  * Events route through injected EventSink.
  * @param poll GitPollExecutor for ls-remote
  * @param changelog GitChangelogWriter for changelog.txt
- * @param credentialsApplier GitCredentialsApplier for temp file auth
+ * @param credentialsApplier GitCredentialsApplier for temp file auth. Null means "this checkout
+ *   authenticates with nothing": a checkout whose spec declares credentials and finds no applier
+ *   refuses instead of running unauthenticated.
  * @param clock Clock for event timestamps
  * @param secretStore SecretStore for credential resolution (may be null in test paths)
  * @param secretPatternRegistry SecretPatternRegistry for scrubbing GitCheckoutFailed.reason
+ * @param transcript the host's transcript destination. Null means "this composition has no
+ *   destination": the checkout still runs, and its diagnostics still say what went wrong.
 */
 open class GitCheckoutExecutor(
     private val poll: GitPollExecutor,
     private val changelog: GitChangelogWriter,
-    private val credentialsApplier: GitCredentialsApplier,
+    private val credentialsApplier: GitCredentialsApplier?,
     private val clock: Clock = Clock.systemUTC(),
     private val secretStore: SecretStore? = null,
     private val secretPatternRegistry: SecretPatternRegistry = SecretPatternRegistry(),
     private val taskRuntime: DurableTaskRuntime? = null,
     private val gitControlRoot: Path = Files.createTempDirectory("git-tasks"),
+    private val transcript: GitTranscript? = null,
 ) : AutoCloseable {
+
+    /**
+     * Scrubs [text] with the registry that decides what is a secret in THIS run.
+     *
+     * The host's transcript carries the run's registry, and that registry is the same one the
+     * run's own diagnostics are scrubbed with. Preferring it over the constructor argument means
+     * the transcript and the failure message agree on what a secret is; the argument remains for
+     * the compositions that have a registry and no transcript.
+     *
+     * A FUNCTION and not a captured property: the registry is chosen where the scrub happens,
+     * so the choice is part of the behaviour instead of a value frozen at construction time.
+     */
+    private fun scrubSecrets(text: String): String =
+        (transcript?.secretPatterns ?: secretPatternRegistry).scrub(text)
 
     /**
      * The runtime used to execute git subcommands. Lazily built per instance
@@ -70,6 +88,18 @@ open class GitCheckoutExecutor(
         )
     }
 
+    /**
+     * Runs one git command and returns what it printed.
+     *
+     * The command's output goes to TWO places: the capture the caller reads for its own
+     * diagnostics, and the host's transcript, which is where a reader finds out WHY a checkout
+     * failed. The two are the same bytes seen twice — the capture is the whole text, the
+     * transcript is the stream — and neither is derived from the other, so publishing cannot
+     * shorten what the capture holds.
+     *
+     * The writer is created per command and flushed before this function returns, because the
+     * redactor's lookahead only becomes decidable at end-of-stream.
+     */
     private fun runGit(args: List<String>, env: Map<String, String>, timeoutMs: Long): dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.CapturedRun {
         guardProcessBuilderArgs(args)
         val secretEnv = env.mapValues { (_, v) -> SecretHandle.plain(v) }
@@ -80,7 +110,7 @@ open class GitCheckoutExecutor(
             timeoutMs = timeoutMs,
             env = secretEnv,
         )
-        return runBlocking { runtimeInstance.runCaptured(request) }
+        return runBlocking { runtimeInstance.runCapturedTo(request, transcript) }
     }
 
     companion object {
@@ -144,7 +174,22 @@ open class GitCheckoutExecutor(
             // instead of an uncaught throw that would crash the JVM path.
             return Result.failure(e)
         }
+        // The environment git runs with. It is empty unless credentials were applied, and it is
+        // built AFTER they were applied because applying them is what writes the files the
+        // environment points at.
+        val env: Map<String, String>
         if (gitCreds != null) {
+            // The applier is the only thing that can put credentials in front of git. A checkout
+            // that DECLARED credentials and has no applier refuses here: running git
+            // unauthenticated would turn a declared credential into an anonymous attempt, and
+            // the failure would then read as "the server said no" instead of "the run never
+            // used the credential it declared".
+            val applier = credentialsApplier ?: return Result.failure(
+                IllegalStateException(
+                    "scm-git.checkout: credentials were declared but no GitCredentialsApplier is " +
+                        "available to apply them. Refusing to run git unauthenticated."
+                )
+            )
             val stringCred = gitCreds.string
             val userCred = gitCreds.user
             val passCred = gitCreds.pass
@@ -152,28 +197,24 @@ open class GitCheckoutExecutor(
             val sshPassphraseCred = gitCreds.sshPassphrase
             when {
                 stringCred != null -> {
-                    credentialsApplier.apply(stringCred, spec.url)
-                    credentialsFilePath = credentialsApplier.credentialsFilePath()
+                    applier.apply(stringCred, spec.url)
+                    credentialsFilePath = applier.credentialsFilePath()
                 }
                 userCred != null && passCred != null -> {
-                    credentialsApplier.apply(userCred, passCred, spec.url)
-                    gitConfigFilePath = credentialsApplier.gitConfigFilePath()
+                    applier.apply(userCred, passCred, spec.url)
+                    gitConfigFilePath = applier.gitConfigFilePath()
                 }
                 sshKeyCred != null -> {
-                    credentialsApplier.applySsh(sshKeyCred, sshPassphraseCred, spec.url)
+                    applier.applySsh(sshKeyCred, sshPassphraseCred, spec.url)
                 }
             }
+            // buildEnv must be called AFTER apply/applySsh, which write the temp files.
+            env = applier.buildEnv()
+        } else {
+            env = emptyMap()
         }
 
         return try {
-            // Apply credentials BEFORE executeInternal so buildEnv is available for all git spawns.
-            // buildEnv must be called AFTER apply/applySsh which write the temp files.
-            val env = if (gitCreds != null) {
-                credentialsApplier.buildEnv()
-            } else {
-                emptyMap()
-            }
-
             executeInternal(req, spec, workspace, gitDir, startMs, req.previousRemoteSha, env)
                 .map { it.copy(credentialsFilePath = credentialsFilePath, gitConfigFilePath = gitConfigFilePath) }
         } catch (e: Exception) {
@@ -181,7 +222,7 @@ open class GitCheckoutExecutor(
             // GitCheckoutFailed.reason must be scrubbed before emission.
             // Scrub removes registered secret patterns (canaries + real credentials).
             val rawReason = e.message?.take(256) ?: "Unknown error"
-            val scrubbedReason = secretPatternRegistry.scrub(rawReason)
+            val scrubbedReason = scrubSecrets(rawReason)
             val failure = try {
                 emitEvent(req, GitCheckoutFailed(
                     eventId = newEventId(),
@@ -219,7 +260,7 @@ open class GitCheckoutExecutor(
         val workspaceRoot = req.workspaceRoot
 
         // Step 2: ls-remote to get remote SHA (with buildEnv wired into ProcessBuilder)
-        val remoteShaResult = poll.execute(url, branch, credentialsApplier)
+        val remoteShaResult = poll.execute(url, branch, credentialsApplier, transcript)
         if (remoteShaResult.isFailure) {
             val durationMs = System.currentTimeMillis() - startMs
             val errorMsg = remoteShaResult.exceptionOrNull()?.message ?: "Unknown"
@@ -307,7 +348,7 @@ open class GitCheckoutExecutor(
 
             // Append changelog
             if (spec.changelog) {
-                changelog.append(workspaceRoot, spec.relativeTargetDir, currentSha, "HEAD")
+                changelog.append(workspaceRoot, spec.relativeTargetDir, currentSha, "HEAD", transcript)
             }
 
             val durationMs = System.currentTimeMillis() - startMs
@@ -348,7 +389,7 @@ open class GitCheckoutExecutor(
 
         // Append changelog
         if (spec.changelog) {
-            changelog.append(workspaceRoot, spec.relativeTargetDir, null, "HEAD")
+            changelog.append(workspaceRoot, spec.relativeTargetDir, null, "HEAD", transcript)
         }
 
         val durationMs = System.currentTimeMillis() - startMs
@@ -370,9 +411,11 @@ open class GitCheckoutExecutor(
         // If the applier has built-in credentials (test path), return them directly.
         // This preserves backward compatibility with tests that construct GitCredentials directly.
         // However, apply needs secretStore to resolve the actual secret bytes.
-        val applierCreds = credentialsApplier.credentials
-        if (applierCreds.string != null || applierCreds.user != null || applierCreds.pass != null ||
-            applierCreds.sshKey != null) {
+        val applierCreds = credentialsApplier?.credentials
+        if (applierCreds != null &&
+            (applierCreds.string != null || applierCreds.user != null || applierCreds.pass != null ||
+                applierCreds.sshKey != null)
+        ) {
             // Ensure secretStore is available — apply will need it to resolve secret bytes
             if (secretStore == null && req.secretStore == null) {
                 throw IllegalStateException(
@@ -465,6 +508,11 @@ open class GitCheckoutExecutor(
             val args = listOf("git", "-C", workspace.toString(), "rev-parse", ref)
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
             if (captured.succeeded) captured.stdout.trim() else null
+        } catch (refused: GitTranscriptRefused) {
+            // A refusal is not "the command said nothing": the run lost the record of what git
+            // printed, and a null here would read like an absent SHA — a fact the checkout
+            // would then act on. The refusal travels instead.
+            throw refused
         } catch (e: Exception) {
             null
         }
@@ -507,18 +555,20 @@ open class GitCheckoutExecutor(
      * Emits a SEMANTIC event about what the checkout did.
      * ## Why git's own stdout does not come through here
      * This used to have a sibling, `emitEcho`, which pushed `git`'s stdout and stderr into
-     * `EchoOutputCaptured`. That was a second authority over process bytes, and gives
-     * those bytes to the Output Plane — which this module does not reach. So `scm.git` was
-     * keeping the transcript alive in the event log as a side effect of having an `EventSink`.
+     * `EchoOutputCaptured`. That was a second authority over process bytes: the event log
+     * carried process output, and the Output Plane — where process output belongs — was
+     * unreachable from this module. So `scm.git` kept the transcript alive in the event log
+     * as a side effect of having an `EventSink`.
      * Removing it loses nothing a caller could act on:
      *  - **Failures** already carry their stderr, in the typed failure itself
      *    (`"git clone failed${captured.stderr.prependIndent()}"`).
      *  - **Progress** lines like `Cloning into '…'` are process logging, not a semantic fact, and
      *    their rightful home is the transcript — not the event plane.
-     * What this DOES leave open, stated plainly rather than papered over: this module still has no
-     * path to the Output Plane, so a `git` transcript is not retrievable through a cursor today.
-     * That is a capability gap, not a second authority, and it closes when the Output Plane is
-     * published as a contract plugins can write to.
+     * What this DOES leave open, stated plainly rather than papered over: the git transcript is
+     * published to the Output Plane through the injected [GitTranscript] port, so a reader CAN
+     * retrieve it with a cursor — but what lives there is the PROCESS OUTPUT, not the semantic
+     * fact. The events remain the only place a reader finds what the checkout DID. Two
+     * authorities over two different questions, with no overlap between them.
      * ## A record that cannot be written is not a warning
      * The sink is where the run's memory of the checkout lives, so a write it refuses takes the
      * fact away. This used to print a warning on stderr and let the checkout carry on: the
@@ -539,7 +589,7 @@ open class GitCheckoutExecutor(
      * GitCheckoutFailed.reason must be scrubbed before emission.
 */
     private fun scrubReason(reason: String): String {
-        return secretPatternRegistry.scrub(reason)
+        return scrubSecrets(reason)
     }
 
     private fun newEventId(): String = java.util.UUID.randomUUID().toString()
@@ -548,7 +598,8 @@ open class GitCheckoutExecutor(
         // Wipe credentials files AFTER execute completes.
         // This ensures the credentials file persists through execute and
         // is available for verification by callers after execute returns.
-        credentialsApplier.close()
+        // A composition with no applier has no file to wipe.
+        credentialsApplier?.close()
     }
 }
 

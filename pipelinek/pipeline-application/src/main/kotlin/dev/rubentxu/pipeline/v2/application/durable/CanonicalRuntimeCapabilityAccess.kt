@@ -62,6 +62,7 @@ import dev.rubentxu.pipeline.v2.domain.saga.SAGA_RUNTIME_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SagaLifecycle
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import dev.rubentxu.pipeline.v2.sdk.scm.git.SCM_GIT_TRANSCRIPT_CAPABILITY
 import java.nio.file.Path
 
 /**
@@ -228,6 +229,33 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
             outputWakeups = context.outputWakeups,
         )
         builder[SHELL_OPERATIONS_CAPABILITY] = CapabilitySlot.of(shellOps)
+        // The transcript destination for this step's subprocesses, over the Output Plane.
+        //
+        // The core binds the PLUGIN's seam on purpose. The Output Plane's durable authority
+        // lives here, the `scm-git` plugin lives BELOW it in the dependency graph, and the
+        // dependency cannot be inverted — a plugin cannot reach the core's store. So the
+        // destination is INJECTED: the core binds the capability, the plugin asks for it.
+        // The plugin never learns which store the bytes land in; the core never learns how git
+        // spells its argv. The alternative — a generic core-owned port plus a second
+        // capability for the secret registry — would split ONE fact into two grants and put
+        // the run's registry behind its own admission decision.
+        //
+        // The registry travels with the destination because redaction is a write-side
+        // obligation: the producer masks before the bytes leave it, and it needs the run's
+        // registry to do it — the same registry the shell's pump uses, so a git transcript and
+        // a shell transcript are scrubbed by the same rule.
+        //
+        // The store is resolved lazily, on the first byte, so a step that printed nothing
+        // leaves no transcript behind that says it produced console output.
+        builder[SCM_GIT_TRANSCRIPT_CAPABILITY] = CapabilitySlot.of(
+            OutputPlaneGitTranscript(
+                runId = context.runId,
+                opId = context.opId.format(),
+                controlDirRoot = context.controlDirRoot,
+                secretPatterns = context.secretPatternRegistry,
+                outputWakeups = context.outputWakeups,
+            ),
+        )
         // Workspace file operations bound to the current stage identity.
         // The adapter also receives the shared execution location, so
         // file Steps resolve against the same current directory the shell vertical

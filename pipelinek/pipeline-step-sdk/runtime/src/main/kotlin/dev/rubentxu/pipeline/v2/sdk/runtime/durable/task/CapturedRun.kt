@@ -48,10 +48,32 @@ data class CapturedRun(
  * [dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionResult] is
  * consumed in exactly one place. Adding a future fourth case to the
  * decider is a compile error here, not a silent gap.
+ *
+ * ## The publisher
+ * [publishTo] is an OPTIONAL second destination for the very same chunks
+ * the capture accumulates. It exists because a caller that only wants the
+ * transcript (a plugin streaming a subprocess into the Output Plane)
+ * would otherwise have to re-implement the pump, the capture and the
+ * two-channel split — three places to keep honest. The publisher receives
+ * the chunk as it arrives, so it sees the process's own framing, not a
+ * reconstruction of it.
+ *
+ * The publisher does NOT replace the capture: [CapturedRun.stdout] and
+ * [CapturedRun.stderr] are still the whole text, because a caller that
+ * needs to parse a git answer needs the whole answer, not a window.
+ * A publisher that fails does not corrupt the capture: the chunk is
+ * accumulated first, so a publisher exception surfaces as a failed run
+ * with the capture intact, never as a truncated capture.
 */
-suspend fun DurableTaskRuntime.runCaptured(request: TaskExecutionRequest): CapturedRun {
+suspend fun DurableTaskRuntime.runCaptured(
+    request: TaskExecutionRequest,
+    publishTo: ExecutionOutputSink? = null,
+): CapturedRun {
     val chunks: MutableList<OutputChunk> = Collections.synchronizedList(mutableListOf())
-    val sink = ExecutionOutputSink { chunk -> chunks.add(chunk) }
+    val sink = ExecutionOutputSink { chunk ->
+        chunks.add(chunk)
+        publishTo?.append(chunk)
+    }
     val result = execute(request, sink)
     val stdout = chunks.filter { it.stream == TaskStream.STDOUT }
         .joinToString("") { it.data.toString(Charsets.UTF_8) }

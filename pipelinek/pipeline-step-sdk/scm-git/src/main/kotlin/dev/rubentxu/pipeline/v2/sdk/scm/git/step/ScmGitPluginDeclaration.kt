@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
 import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
 import dev.rubentxu.pipeline.v2.sdk.runtime.PluginCompatibilityResource
+import dev.rubentxu.pipeline.v2.sdk.scm.git.SCM_GIT_TRANSCRIPT_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.PluginContributions
 import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
@@ -93,9 +94,16 @@ object ScmGitPluginDeclaration {
             trust = provider.trust,
             contributions = PluginContributions(
                 steps = listOf(
-                    PluginStepContribution(ScmGitCheckoutKey.VALUE, setOf(EXECUTION_LOCATION_CAPABILITY)),
+                    PluginStepContribution(
+                        ScmGitCheckoutKey.VALUE,
+                        setOf(EXECUTION_LOCATION_CAPABILITY, SCM_GIT_TRANSCRIPT_CAPABILITY),
+                    ),
                 ),
-                capabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
+                // The manifest's top-level set and the set its Step contracts actually require
+                // must be EQUAL, and both directions are checked. The transcript capability
+                // appears in BOTH halves: it is what the Step requires, and it is what the
+                // host is told this plugin needs.
+                capabilities = setOf(EXECUTION_LOCATION_CAPABILITY, SCM_GIT_TRANSCRIPT_CAPABILITY),
             ),
         )
     }

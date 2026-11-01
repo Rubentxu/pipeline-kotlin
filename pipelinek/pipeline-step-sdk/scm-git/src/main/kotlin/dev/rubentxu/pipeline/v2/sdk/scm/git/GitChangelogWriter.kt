@@ -6,7 +6,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskRuntime
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.runCaptured
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import java.nio.file.Path
@@ -42,8 +41,17 @@ class GitChangelogWriter(
      * @param relativeTargetDir Relative directory inside workspace
      * @param previousSha SHA to start from (excluded), or null/empty for all history
      * @param endRef Git ref for end of range (e.g., "HEAD")
+     * @param transcript the host's transcript destination, or null when this composition has
+     *   none. What `git log` printed is published there, so a reader can see the log the
+     *   changelog was derived from.
 */
-    fun append(workspace: Path, relativeTargetDir: String, previousSha: String?, endRef: String): Result<Unit> {
+    fun append(
+        workspace: Path,
+        relativeTargetDir: String,
+        previousSha: String?,
+        endRef: String,
+        transcript: GitTranscript? = null,
+    ): Result<Unit> {
         return try {
             val targetDir = workspace.resolve(relativeTargetDir)
             val changelogFile = workspace.resolve("changelog.txt")
@@ -79,7 +87,7 @@ class GitChangelogWriter(
                 timeoutMs = timeoutSeconds * 1000,
                 env = emptyMap(),
             )
-            val captured = runBlocking { runtimeInstance.runCaptured(request) }
+            val captured = runBlocking { runtimeInstance.runCapturedTo(request, transcript) }
             if (captured.timedOut) {
                 return Result.failure(IllegalStateException("git log timed out after ${timeoutSeconds}s"))
             }
@@ -117,6 +125,12 @@ class GitChangelogWriter(
             }
 
             Result.success(Unit)
+        } catch (refused: GitTranscriptRefused) {
+            // A refusal is not "the changelog could not be written": the run lost the record of
+            // what git printed, and that fact travels instead of being flattened into a
+            // failure nobody reads. The caller that ignores a changelog failure must not be
+            // able to ignore this one.
+            throw refused
         } catch (e: Exception) {
             Result.failure(e)
         }

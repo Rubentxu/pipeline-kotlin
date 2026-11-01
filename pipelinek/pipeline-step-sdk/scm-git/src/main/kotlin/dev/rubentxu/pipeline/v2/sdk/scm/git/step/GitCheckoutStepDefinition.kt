@@ -24,6 +24,9 @@ import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutRequest
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCredentialsApplier
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitPollExecutor
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitChangelogWriter
+import dev.rubentxu.pipeline.v2.sdk.scm.git.GitTranscript
+import dev.rubentxu.pipeline.v2.sdk.scm.git.GitTranscriptRefused
+import dev.rubentxu.pipeline.v2.sdk.scm.git.SCM_GIT_TRANSCRIPT_CAPABILITY
 import dev.rubentxu.pipeline.v2.events.NullEventSink
 import java.nio.file.Files
 import java.nio.file.Path
@@ -54,16 +57,18 @@ val SCM_GIT_OPERATIONS_CAPABILITY: StepCapability = StepCapability("scm-git.oper
  * (the default) it is resolved against the typed workspace root.
 */
 class GitCheckoutStepDefinition(
-    private val executorFactory: (workspaceRoot: Path) -> GitCheckoutExecutor = { workspaceRoot ->
-        GitCheckoutExecutor(
-            poll = GitPollExecutor(),
-            changelog = GitChangelogWriter(),
-            credentialsApplier = GitCredentialsApplier(
-                tempDir = Files.createTempDirectory("scm-git-step"),
-                credentials = GitCredentials(),
-            ),
-        )
-    },
+    private val executorFactory: (workspaceRoot: Path, transcript: GitTranscript?) -> GitCheckoutExecutor =
+        { workspaceRoot, transcript ->
+            GitCheckoutExecutor(
+                poll = GitPollExecutor(),
+                changelog = GitChangelogWriter(),
+                credentialsApplier = GitCredentialsApplier(
+                    tempDir = Files.createTempDirectory("scm-git-step"),
+                    credentials = GitCredentials(),
+                ),
+                transcript = transcript,
+            )
+        },
     private val eventSink: EventSink? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? = null,
@@ -90,7 +95,15 @@ class GitCheckoutStepDefinition(
         // The handler reads the canonical workspace root from
         // ctx.capabilities.get(WORKSPACE_IDENTITY_CAPABILITY, WorkspaceIdentity::class)
         // and never falls back to ambient process state.
-        requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
+        //
+        // The transcript capability is REQUIRED, not optional: a checkout whose output
+        // cannot be persisted produces a diagnostic nobody can reconstruct, and the
+        // failure is silent in the worst way — the checkout says "authentication failed"
+        // and the bytes that would have said WHY stayed inside the plugin.
+        requiredCapabilities = setOf<StepCapability>(
+            EXECUTION_LOCATION_CAPABILITY,
+            SCM_GIT_TRANSCRIPT_CAPABILITY,
+        ),
     )
 
     /**
@@ -159,7 +172,12 @@ class GitCheckoutStepDefinition(
             )
         }
         val workspaceRoot: Path = capabilityWorkspaceRoot
-        val executor = executorFactory(workspaceRoot)
+        // The transcript destination is read from the typed capability seam, exactly like the
+        // execution location: the handler does not know WHICH store the bytes land in, only
+        // that there is one. The admission is fail-closed, so a Step admitted without the
+        // destination never reaches this line.
+        val transcript: GitTranscript = ctx.capabilities.get(SCM_GIT_TRANSCRIPT_CAPABILITY, GitTranscript::class)
+        val executor = executorFactory(workspaceRoot, transcript)
         val spec = CheckoutSpec(
             scm = GitScm(
                 url = input.url,
@@ -210,6 +228,12 @@ class GitCheckoutStepDefinition(
      * exception class.
 */
     private fun classifyFailureKind(throwable: Throwable): FailureKind = when {
+        // The transcript could not be persisted. This is INFRASTRUCTURE by TYPE, not by
+        // message: the bytes of the checkout's own output are missing, so the run's
+        // record is incomplete — that is an infrastructure fault whatever the git
+        // command said, and reading the message here would let a word in the
+        // command's output decide the kind.
+        throwable is GitTranscriptRefused -> FailureKind.INFRASTRUCTURE
         // Heuristic: the SCM/Git executor wraps auth failures in a
         // dedicated exception type. Until the SCM domain grows a typed
         // FailureKind, we use the throwable message prefix as a

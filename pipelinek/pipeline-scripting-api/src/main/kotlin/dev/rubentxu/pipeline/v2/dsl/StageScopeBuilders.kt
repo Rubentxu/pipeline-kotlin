@@ -23,16 +23,43 @@ import dev.rubentxu.pipeline.v2.domain.scm.Scm
  */
 internal class CarrierRegistry {
 
-    private val unconsumed = LinkedHashMap<Any, String>()
+    /**
+     * A key that identifies a carrier by REFERENCE, not by value.
+     *
+     * WHY NOT A PLAIN KEY: the carriers are `data class`es (`CheckoutSpec`
+     * wraps `GitScm`), so two carriers built by two calls with the same
+     * arguments are EQUAL. A map keyed by equality therefore holds ONE entry
+     * for two distinct carriers: consuming one removes that entry, and the
+     * other carrier -- discarded -- is never refused. OBSERVED before this
+     * fix: two `scmGit` calls with the same URL, of which only one was
+     * consumed, produced an ADMITTED stage. The author asked for two
+     * checkouts, got one, and the gate reported that nothing was pending.
+     *
+     * WHY A WRAPPER AND NOT `IdentityHashMap`: the obligations are read back
+     * in the diagnostic, and that diagnostic has to be REPRODUCIBLE. An
+     * `IdentityHashMap` iterates in an unspecified order; a `LinkedHashMap`
+     * keyed by this wrapper keeps the order in which the carriers were
+     * produced, so the same stage always refuses in the same order.
+     */
+    private class IdentityKey(val carrier: Any) {
+        private val identityHash = System.identityHashCode(carrier)
+
+        override fun hashCode(): Int = identityHash
+
+        override fun equals(other: Any?): Boolean =
+            other is IdentityKey && other.carrier === carrier
+    }
+
+    private val unconsumed = LinkedHashMap<IdentityKey, String>()
 
     /** Records that [carrier] was produced by a pure builder and must be consumed. */
     fun register(carrier: Any, builderName: String) {
-        unconsumed[carrier] = builderName
+        unconsumed[IdentityKey(carrier)] = builderName
     }
 
     /** Marks [carrier] as consumed. */
     fun markConsumed(carrier: Any) {
-        unconsumed.remove(carrier)
+        unconsumed.remove(IdentityKey(carrier))
     }
 
     /** True when no carrier is pending consumption. */

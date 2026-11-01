@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.MapRuntimeConfig
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
@@ -36,6 +37,14 @@ import org.junit.jupiter.api.Test
  * appending a step to the stage is not a gate: it turns a construction error
  * into a runtime step failure, and the author sees a failed step instead of
  * a pipeline that was never built.
+ *
+ * And a carrier is an IDENTITY, not a value. `CheckoutSpec` is a data class,
+ * so two carriers built by two calls with the same arguments are EQUAL. The
+ * registry used to be keyed by equality, which made two distinct carriers
+ * share ONE obligation: consuming one removed that entry, and the other
+ * carrier — discarded — was never refused. The stage was admitted with a
+ * lie in it. Two carriers are two obligations, and a consumption cancels
+ * exactly one of them.
  *
  * ## Why the instrument is this cheap
  * The question is asked of a declaration the author wrote, so it is a pure call
@@ -129,6 +138,42 @@ class StageScopeCarrierConsumptionTest {
         assertTrue(
             nested.any { it is StepSpec.Checkout },
             "the checkout the author asked for is in the IR: $nested",
+        )
+    }
+
+    @Test
+    @DisplayName("consuming one of two equal carriers does not cancel the obligation of the other")
+    fun `consuming one of two equal carriers does not cancel the obligation of the other`() {
+        val failure = assertThrows(IllegalStateException::class.java) {
+            build {
+                val consumed = scmGit("https://example.test/igual.git")
+                scmGit("https://example.test/igual.git")
+                checkout(consumed)
+            }
+        }
+        assertTrue(
+            failure.message.orEmpty().contains("never used (discarded)"),
+            "the second, discarded carrier is still refused: ${failure.message}",
+        )
+    }
+
+    @Test
+    @DisplayName("two equal carriers can both be consumed and both checkouts reach the IR")
+    fun `two equal carriers can both be consumed and both checkouts reach the IR`() {
+        val spec = build {
+            val first = scmGit("https://example.test/igual.git")
+            val second = scmGit("https://example.test/igual.git")
+            checkout(first)
+            checkout(second)
+        }
+        assertTrue(
+            spec.topLevelSteps().none { it is StepSpec.Error },
+            "an admitted stage carries no error step: ${spec.topLevelSteps()}",
+        )
+        assertEquals(
+            2,
+            spec.topLevelSteps().count { it is StepSpec.Checkout },
+            "both checkouts the author asked for are in the IR: ${spec.topLevelSteps()}",
         )
     }
 }

@@ -8,6 +8,45 @@ import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.scm.Scm
 
 /**
+ * The MUST_CONSUME carriers registered in a STAGE, and their consumptions.
+ *
+ * The registry is a STAGE's, not a scope's: `retry`, `dir`,
+ * `withCredentials`, `slot`, `catchError` and the rest are lexical blocks of
+ * one stage, and the admission point of the gate is the stage. A nested scope
+ * therefore SHARES the stage's registry by reference.
+ *
+ * WHY A CLASS AND NOT A `var` MAP: the map is the RULE, and the rule must not
+ * be replaceable from outside — a `var MutableMap` invites a silent
+ * `registry = LinkedHashMap()` that drops every registration without any
+ * visible symptom. The holder owns the map, exposes only the four operations
+ * the gate needs, and the scope only holds a reference to the holder.
+ */
+internal class CarrierRegistry {
+
+    private val unconsumed = LinkedHashMap<Any, String>()
+
+    /** Records that [carrier] was produced by a pure builder and must be consumed. */
+    fun register(carrier: Any, builderName: String) {
+        unconsumed[carrier] = builderName
+    }
+
+    /** Marks [carrier] as consumed. */
+    fun markConsumed(carrier: Any) {
+        unconsumed.remove(carrier)
+    }
+
+    /** True when no carrier is pending consumption. */
+    fun isEmpty(): Boolean = unconsumed.isEmpty()
+
+    /** The human-readable verdict: one clause per discarded carrier. */
+    fun discardedDetail(): String = unconsumed.entries.joinToString(", ") { (_, name) ->
+        "$name returned a value that was never used (discarded); its return value must be used, " +
+            "e.g. by passing it to a consuming builder, or the builder must be called in statement position " +
+            "for a builder that declares MAY_DISCARD"
+    }
+}
+
+/**
  * Shared mutable state for the stage DSL builders.
  * `[MustUseReturnValues]` is applied at
  * CLASS level, not per function, because Kotlin 2.4 restricts the annotation to
@@ -62,14 +101,35 @@ open class StageScopeCore(
     // marks that exact carrier as consumed. Anything registered and never
     // marked is rejected. Adding a new MUST_CONSUME builder requires no
     // change here, and no builder is named in this file.
-    private val unconsumedCarriers = LinkedHashMap<Any, String>()
+    // THE REGISTRY BELONGS TO THE STAGE, NOT TO THE SCOPE.
+    // ======================================================
+    // OBSERVED: the registry used to be a field PER SCOPE INSTANCE while the
+    // only admission point is the STAGE (`StagesScope.stage(..)` calls
+    // `rejectUnconsumedCarriers()` on the root scope). Two wrong outcomes
+    // followed, and both were observable:
+    //
+    //  - a carrier produced INSIDE a nested block (`retry`, `dir`,
+    //    `withCredentials`, `slot`, `catchError`, ...) was registered in a map
+    //    nobody ever read: the stage closed, the pipeline ran, and the
+    //    checkout the author asked for never happened;
+    //  - a carrier produced in the stage and CONSUMED inside a nested block
+    //    was marked in the NESTED registry, so the stage still believed it
+    //    was unconsumed and refused a pipeline that had used the carrier
+    //    exactly as it was meant to be used.
+    //
+    // A nested scope is a lexical block of the same stage, not a stage of its
+    // own: it shares the carrier registry BY REFERENCE, so the stage-level
+    // verdict sees every carrier the stage produced and every consumption the
+    // stage performed. `internal` keeps this off the published ABI: the
+    // registry is an implementation detail of the admission gate.
+    internal var carrierRegistry: CarrierRegistry = CarrierRegistry()
 
     /**
      * Records that [carrier] was produced by a pure builder and must be
      * consumed by the end of the stage.
 */
     protected fun <T : Any> registerMustConsume(carrier: T, builderName: String): T {
-        unconsumedCarriers[carrier] = builderName
+        carrierRegistry.register(carrier, builderName)
         return carrier
     }
 
@@ -80,7 +140,7 @@ open class StageScopeCore(
      * be marked, not the `scm` value inside it.
 */
     protected fun markCarrierConsumed(carrier: Any) {
-        unconsumedCarriers.remove(carrier)
+        carrierRegistry.markConsumed(carrier)
     }
 
     /**
@@ -89,16 +149,28 @@ open class StageScopeCore(
      * process is admitted — so the gate cannot produce a partial effect.
 */
     internal fun rejectUnconsumedCarriers() {
-        if (unconsumedCarriers.isEmpty()) return
-        val detail = unconsumedCarriers.entries.joinToString(", ") { (carrier, name) ->
-            "$name returned a value that was never used (discarded); its return value must be used, " +
-                "e.g. by passing it to a consuming builder, or the builder must be called in statement position " +
-                "for a builder that declares MAY_DISCARD"
-        }
-        error("Pure builder consumption gate: $detail")
+        if (carrierRegistry.isEmpty()) return
+        val detail = carrierRegistry.discardedDetail()
+        // `kotlin.error` EXPLICITO, NOT the bare `error(..)`:
+        // this class declares a MEMBER `error(message, failureKind)` that
+        // APPENDS a `StepSpec.Error` to the stage, and a member shadows the
+        // top-level `kotlin.error` inside the class body. OBSERVED before the
+        // fix: the bare call resolved to the member, so the gate never
+        // refused anything — it appended a step, the pipeline was built, and
+        // the discard surfaced as a RUNTIME step failure instead of a
+        // pipeline that was never built. A gate that reports its verdict as a
+        // step is not a gate.
+        kotlin.error("Pure builder consumption gate: $detail")
     }
 
-    protected fun nestedScope(): StageScope = StageScope(stageName, runtimeConfig)
+    /**
+     * A nested scope is a lexical block of the SAME stage, so it shares the
+     * stage's carrier registry by reference: a carrier produced inside it is
+     * seen by the stage-level admission, and a consumption performed inside it
+     * is seen too.
+    */
+    protected fun nestedScope(): StageScope =
+        StageScope(stageName, runtimeConfig).also { it.carrierRegistry = carrierRegistry }
 
     fun echo(text: String) {
         steps.add(StepSpec.Echo(text))

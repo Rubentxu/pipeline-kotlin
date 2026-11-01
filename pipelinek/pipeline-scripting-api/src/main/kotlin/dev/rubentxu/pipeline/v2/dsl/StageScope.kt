@@ -167,7 +167,7 @@ class StageScope(
         message: String? = null,
         block: StageScope.() -> Unit,
     ) {
-        val inner = StageScope(stageName, runtimeConfig)
+        val inner = nestedScope()
         inner.block()
         steps.add(StepSpec.CatchError(
             buildResult = buildResult,
@@ -204,7 +204,7 @@ class StageScope(
         message: String? = null,
         block: StageScope.() -> Unit,
     ) {
-        val inner = StageScope(stageName, runtimeConfig)
+        val inner = nestedScope()
         inner.block()
         steps.add(StepSpec.CatchError(
             buildResult = LegacyResultVocabulary.catchBuildResult(buildResult, "buildResult"),
@@ -232,7 +232,7 @@ class StageScope(
         catchInterruptions: Boolean = true,
         block: StageScope.() -> Unit,
     ) {
-        val inner = StageScope(stageName, runtimeConfig)
+        val inner = nestedScope()
         inner.block()
         steps.add(StepSpec.WarnError(
             message = message,
@@ -449,7 +449,7 @@ class StageScope(
         // then snapshot that list as data on the structural StepSpec.
         // This is the same shape used by retry/timeout/timestamps/dir
         // (see AGENTS.md DSL-vs-runtime section + receipt)
-        val inner = StageScope(stageName, runtimeConfig)
+        val inner = nestedScope()
         inner.body()
         steps.add(StepSpec.WaitUntilBlock(
             initialRecurrencePeriod = initialRecurrencePeriod,
@@ -468,7 +468,7 @@ class StageScope(
      * @param block Nested steps to execute with timestamp decoration
 */
     fun timestamps(block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName, runtimeConfig)
+        val inner = nestedScope()
         inner.block()
         steps.add(StepSpec.Timestamps(steps = inner.steps()))
     }
@@ -480,7 +480,7 @@ class StageScope(
      * @param block Nested steps to execute with ANSI color decoration
 */
     fun ansiColor(colorMapName: String = "xterm", block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName, runtimeConfig)
+        val inner = nestedScope()
         inner.block()
         steps.add(StepSpec.AnsiColor(colorMapName = colorMapName, steps = inner.steps()))
     }
@@ -492,7 +492,7 @@ class StageScope(
      * @param block Nested steps to execute
 */
     fun node(label: String? = null, block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName, runtimeConfig)
+        val inner = nestedScope()
         inner.block()
         steps.add(StepSpec.NodeNoOp(label = label, steps = inner.steps()))
     }
@@ -667,7 +667,7 @@ class StageScope(
      * @param block Nested steps to execute with timeout
 */
     fun timeout(time: Long, unit: String, block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName, runtimeConfig)
+        val inner = nestedScope()
         inner.block()
         steps.add(StepSpec.TimeoutBlock(time = time, unit = unit, steps = inner.steps()))
     }
@@ -679,7 +679,7 @@ class StageScope(
      * @param block Nested steps to execute with retry
 */
     fun retry(count: Int, block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName, runtimeConfig)
+        val inner = nestedScope()
         inner.block()
         steps.add(StepSpec.RetryBlock(count = count, conditions = null, steps = inner.steps()))
     }

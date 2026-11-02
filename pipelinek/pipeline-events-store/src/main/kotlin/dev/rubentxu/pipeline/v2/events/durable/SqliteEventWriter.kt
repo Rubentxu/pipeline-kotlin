@@ -97,7 +97,9 @@ import java.util.concurrent.atomic.AtomicLong
  * - the single WRITER THREAD that drains the queue in batches and commits each batch inside one
  *   transaction, so the COMMIT is the durable unit;
  * - the FLUSH barrier, which is a wait for the writer to make progress and not a promise about
- *   the future.
+ *   the future;
+ * - the REFUSAL of an event the database would not take, and the report that tells the producer
+ *   that the event is missing from the log.
  *
  * ## What this is NOT
  *
@@ -137,8 +139,24 @@ internal class SqliteEventWriter(
         /** A real event to insert. */
         data class Event(val event: DomainEvent) : PendingWrite
 
-        /** Barrier: released after every prior entry is committed. */
-        data class FlushBarrier(val done: java.util.concurrent.CountDownLatch) : PendingWrite
+        /**
+         * Barrier: released after every prior entry is committed.
+         *
+         * It also CARRIES the appends the database refused before it. The barrier is the point
+         * at which a producer asks whether its events are durable, and an append is ASSIGNED
+         * before it is committed, so this is the first moment at which "your event was not
+         * stored" can be told to the producer that enqueued it.
+         */
+        class FlushBarrier : PendingWrite {
+            val done = java.util.concurrent.CountDownLatch(1)
+
+            /**
+             * The appends the database refused before this barrier, published by the writer just
+             * before the barrier is released.
+             */
+            @Volatile
+            var refusals: List<EventAppendRefusal> = emptyList()
+        }
 
         /** Terminal: stop the writer loop. */
         data object Stop : PendingWrite
@@ -148,6 +166,15 @@ internal class SqliteEventWriter(
     private var writerThread: Thread? = null
     @Volatile private var writerError: Throwable? = null
 
+    /**
+     * Every append the database refused, in the order it refused them.
+     *
+     * The list is CUMULATIVE on purpose: a barrier reports what the store has refused since it
+     * opened, not only what it refused since the previous barrier. A refusal that a later
+     * barrier forgot would be a refusal the producer never heard about.
+     */
+    private val refusedAppends = java.util.concurrent.CopyOnWriteArrayList<EventAppendRefusal>()
+
     // Prepared once on the persistent writer connection; created in init
     // AFTER schema creation (the table must exist first). This owner exists
     // only in the producer's lane: a reader's store has no writer connection
@@ -155,6 +182,7 @@ internal class SqliteEventWriter(
     // capability over the producer's file.
     private val writerConnection: Connection = connections()
     private var insertStatement: java.sql.PreparedStatement? = null
+    private var savepointStatement: java.sql.Statement? = null
 
     init {
         // The schema is created, the journal is migrated and backfilled, and
@@ -170,6 +198,7 @@ internal class SqliteEventWriter(
         insertStatement = writerConnection.prepareStatement(
             "INSERT INTO events (event_id, run_id, sequence, kind, occurred_at, payload) VALUES (?, ?, ?, ?, ?, ?)"
         )
+        savepointStatement = writerConnection.createStatement()
         val thread = Thread({ writerLoop() }, "sqlite-event-writer")
         thread.isDaemon = false
         thread.start()
@@ -373,6 +402,9 @@ internal class SqliteEventWriter(
         val insert = requireNotNull(insertStatement) {
             "the writer loop only runs on a writable store"
         }
+        val savepoint = requireNotNull(savepointStatement) {
+            "the writer loop only runs on a writable store"
+        }
         val batch = ArrayList<PendingWrite>(256)
         while (true) {
             try {
@@ -387,11 +419,13 @@ internal class SqliteEventWriter(
                 try {
                     for (pending in batch) {
                         when (pending) {
-                            is PendingWrite.Event -> {
-                                bindInsert(insert, pending.event)
-                                insert.executeUpdate()
-                            }
-                            is PendingWrite.FlushBarrier, PendingWrite.Stop -> {} // handled post-commit
+                            is PendingWrite.Event ->
+                                insertIsolated(insert, savepoint, pending.event)
+                            // The barrier publishes the refusals it covers BEFORE the commit that
+                            // follows it: an event enqueued after the barrier is not part of what
+                            // this barrier answers for.
+                            is PendingWrite.FlushBarrier -> pending.refusals = refusedAppends.toList()
+                            is PendingWrite.Stop -> {} // handled post-commit
                         }
                     }
                     connection.commit()
@@ -427,6 +461,42 @@ internal class SqliteEventWriter(
         }
     }
 
+    /**
+     * Inserts ONE event inside its own savepoint.
+     *
+     * The savepoint is what makes a refusal PER EVENT: rolling back to it undoes that row alone,
+     * so the events that share the transaction with it stay in the transaction and are committed
+     * with the rest of the batch. A batch-wide rollback would undo up to 511 events of OTHER runs
+     * with the guilty one, and the writer would have no way to tell which row was guilty.
+     *
+     * A failure the savepoint cannot undo is not a row-level refusal: it means the transaction
+     * itself is broken, and a broken transaction takes the writer down with it.
+     */
+    private fun insertIsolated(
+        insert: java.sql.PreparedStatement,
+        savepoint: java.sql.Statement,
+        event: DomainEvent,
+    ) {
+        savepoint.execute("SAVEPOINT $SAVEPOINT_NAME")
+        try {
+            bindInsert(insert, event)
+            insert.executeUpdate()
+        } catch (e: Throwable) {
+            try {
+                savepoint.execute("ROLLBACK TO SAVEPOINT $SAVEPOINT_NAME")
+                savepoint.execute("RELEASE SAVEPOINT $SAVEPOINT_NAME")
+            } catch (undoFailure: Throwable) {
+                // The transaction is no longer trustworthy: undoing one row failed. The refusal
+                // is the CAUSE and the undo is the symptom, so the cause stays attached.
+                undoFailure.addSuppressed(e)
+                throw undoFailure
+            }
+            refusedAppends.add(EventAppendRefusal(event, e))
+            return
+        }
+        savepoint.execute("RELEASE SAVEPOINT $SAVEPOINT_NAME")
+    }
+
     private fun bindInsert(ps: java.sql.PreparedStatement, event: DomainEvent) {
         ps.setString(1, event.eventId)
         ps.setString(2, event.runId)
@@ -441,10 +511,14 @@ internal class SqliteEventWriter(
      * durably committed. Implemented with a one-shot latch carried through
      * the queue behind the pending events (ordering guarantee of the
      * single writer).
+     *
+     * It is also where a REFUSED append is reported. The producer learns here that an event it
+     * enqueued is missing from the log, which is the only moment at which the log can be said
+     * to hold that event.
 */
     fun flush() {
         writerError?.let { throw IllegalStateException("event writer failed", it) }
-        val barrier = java.util.concurrent.CountDownLatch(1)
+        val barrier = PendingWrite.FlushBarrier()
         try {
             // A barrier enqueued while the
             // writer is DYING is stranded and burns the full 60 s bound.
@@ -461,11 +535,11 @@ internal class SqliteEventWriter(
             // be stranded, and `await` returns immediately, so the writer's
             // real error surfaces instead of a timeout.
             val released = if (writerError != null) {
-                barrier.countDown()
+                barrier.done.countDown()
                 true
             } else {
-                appendQueue.put(PendingWrite.FlushBarrier(barrier))
-                barrier.await(60, TimeUnit.SECONDS)
+                appendQueue.put(barrier)
+                barrier.done.await(60, TimeUnit.SECONDS)
             }
             if (!released) {
                 // A timed-out barrier almost always means
@@ -480,6 +554,10 @@ internal class SqliteEventWriter(
             throw IllegalStateException("interrupted during flush", e)
         }
         writerError?.let { throw IllegalStateException("event writer failed during flush", it) }
+        val refusals = barrier.refusals
+        if (refusals.isNotEmpty()) {
+            throw EventAppendRefusedException(refusals)
+        }
     }
 
     @Volatile private var closed = false
@@ -500,7 +578,63 @@ internal class SqliteEventWriter(
                 Thread.currentThread().interrupt()
             }
             runCatching { insertStatement?.close() }
+            runCatching { savepointStatement?.close() }
             runCatching { writerConnection.close() }
         }
     }
+
+    private companion object {
+        /**
+         * The name of the savepoint that isolates ONE event's insert from the rest of the batch.
+         *
+         * The writer opens and closes it around every event, so the name is fixed: a name per
+         * event would need a counter the writer would have to keep in step with the queue, and
+         * the savepoint is closed before the next one is opened.
+         */
+        const val SAVEPOINT_NAME = "event_append"
+    }
 }
+
+/**
+ * One append the database refused: the event it would not take, and the cause it gave.
+ *
+ * A refusal is a fact about ONE event. It is not a fact about the store: the events around it are
+ * committed and the writer keeps taking writes.
+ */
+internal data class EventAppendRefusal(val event: DomainEvent, val cause: Throwable)
+
+/**
+ * The refusal of one or more appends, reported when a producer asks whether its events are
+ * durable.
+ *
+ * The report arrives at the BARRIER because that is where the durability question is asked: an
+ * append is ASSIGNED before it is committed, so the barrier is the first moment at which a
+ * producer can be told that an event is NOT in the log. One channel for the truth about
+ * durability is worth more than a promise per event that nobody would read.
+ */
+internal class EventAppendRefusedException(
+    val refusals: List<EventAppendRefusal>,
+) : IllegalStateException(renderRefusals(refusals))
+
+/**
+ * Renders the refusals for a human: which event, in which run, and why the database said no.
+ *
+ * The list is bounded: a log that refused a thousand events says how many and names the first
+ * few, so the diagnostic cannot become the thing that hides the failure.
+ */
+private fun renderRefusals(refusals: List<EventAppendRefusal>): String {
+    val head = refusals.take(MAX_RENDERED_REFUSALS)
+    val named = head.joinToString("; ") { refusal ->
+        val event = refusal.event
+        "runId=${event.runId} sequence=${event.sequence} eventId=${event.eventId} " +
+            "cause=${refusal.cause.javaClass.simpleName}: ${refusal.cause.message}"
+    }
+    val hidden = refusals.size - head.size
+    val more = if (hidden > 0) " (and $hidden more not named here)" else ""
+    return "the event store refused ${refusals.size} append(s): $named$more"
+}
+
+/**
+ * How many refusals a diagnostic names before it counts the rest.
+ */
+private const val MAX_RENDERED_REFUSALS = 10

@@ -141,3 +141,8 @@ goal-compass.json
 # kept on disk and ignored.
 /ROADMAP.md
 /backlog/
+# The importer that moved the 2026-11 audit plan into the board. It is a
+# management tool, not product: it carries the task texts that already live
+# in Backlog.md, and a second copy of them in Git is the drift this
+# repository keeps paying for.
+/backlog-import-auditoria-2026-11.sh

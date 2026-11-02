@@ -58,6 +58,11 @@ RULES: list[tuple[str, str, str]] = [
     ("verify", "source guard", "scripts/check-process-exits.py"),
     ("verify", "source guard", "scripts/check-scenario-process-creation.py"),
     ("verify", "source guard", "scripts/check-durable-shell-cost.py"),
+    # The reader of the E2E receipt. It reads the account the launcher wrote
+    # and decides whether the gate may consume it; it produces no artifact of
+    # the product and ships nothing, so it is the numerator and not the
+    # denominator.
+    ("verify", "source guard", "scripts/check-e2e-receipt.py"),
     # The per-task clock the gate reads to report what each part of the build
     # cost. It produces no artifact and ships nothing, so it is the numerator
     # and not the denominator; the catch-all rule below would otherwise call it

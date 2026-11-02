@@ -138,6 +138,59 @@ set -Eeuo pipefail
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$here/.." && pwd)"
 
+# The launcher's own options, and the one positional argument.
+#
+# The filter stays positional: `run.sh 'control-flow/*'`. The options are
+# spelled out, and an option the launcher does not know is REFUSED rather
+# than taken for a filter: a typo in a flag that became a filter would run
+# nothing and report "no scenario matches", which reads like a choice.
+receipt_path="${PIPELINEK_E2E_RECEIPT:-}"
+keep_artifacts=0
+filter=""
+positional_taken=0
+while (( $# > 0 )); do
+    case "$1" in
+        --receipt)
+            if (( $# < 2 )); then
+                echo "run.sh: --receipt needs a path" >&2
+                exit 2
+            fi
+            receipt_path="$2"; shift 2 ;;
+        --receipt=*)
+            receipt_path="${1#--receipt=}"; shift ;;
+        --diagnostics)
+            if (( $# < 2 )); then
+                echo "run.sh: --diagnostics needs a scope" >&2
+                exit 2
+            fi
+            if [[ "$2" != "local" ]]; then
+                echo "run.sh: --diagnostics only knows 'local', got: $2" >&2
+                exit 2
+            fi
+            keep_artifacts=1; shift 2 ;;
+        --diagnostics=*)
+            if [[ "${1#--diagnostics=}" != "local" ]]; then
+                echo "run.sh: --diagnostics only knows 'local', got: ${1#--diagnostics=}" >&2
+                exit 2
+            fi
+            keep_artifacts=1; shift ;;
+        -*)
+            echo "run.sh: unknown option: $1" >&2
+            echo "  the launcher takes --receipt <path> and --diagnostics local." >&2
+            exit 2 ;;
+        *)
+            if (( positional_taken == 1 )); then
+                echo "run.sh: only one scenario filter is accepted, got two: $1" >&2
+                exit 2
+            fi
+            filter="$1"; positional_taken=1; shift ;;
+    esac
+done
+if [[ -n "$receipt_path" && ! "$receipt_path" == /* ]]; then
+    echo "run.sh: the receipt path must be absolute, got: $receipt_path" >&2
+    exit 2
+fi
+
 # The product's path, as a function and NOT as a variable. A variable would be
 # a door: a later edit could invoke the product through it and escape the
 # clock, and a hung scenario that escapes the clock is the one failure this
@@ -182,13 +235,364 @@ export PIPELINEK_TMPDIR="$cycle_base"
 export TMPDIR="$cycle_base"
 
 cycle_root="$(mktemp -d "$cycle_base/pipelinek-e2e-XXXXXXXX")"
+
+# The rows of the receipt, in the launcher's own format.
+#
+# The receipt is a document other programs read, so it cannot be built by
+# concatenating strings: a scenario whose name carried a quote would produce a
+# document no reader could parse. The rows are therefore written in a format
+# whose separators cannot appear in a name, a reason or a path, and the JSON is
+# assembled from them by a reader that knows the format.
+#
+# The file exists from the moment the cycle exists, because the receipt is
+# written even when the cycle ends early: a receipt that describes a cycle
+# which never reached its scenarios has to be able to say exactly that.
+receipt_rows_file="$cycle_root/receipt.rows"
+: > "$receipt_rows_file"
+
+# The passphrase of the machine's credential store. It is declared HERE, empty,
+# because the receipt's leak guard reads it and the guard runs from the exit
+# trap: a run that dies before the store was seeded has no secret to leak, and
+# a guard that asked for a value that does not exist yet would turn a clean
+# early exit into an unbound-variable crash.
+store_passphrase=""
+
+# Where the artefacts of a failing cycle are kept, when the operator asked for
+# them to be kept. Empty means nothing was kept.
+#
+# The directory is created BEFORE the cycle runs and not while it is being
+# deleted, because the receipt names it: a receipt that says "the evidence is
+# at ..." has to name a place that already exists, and a place invented during
+# the removal is a place nobody can look at.
+diagnostics_dir=""
+if (( keep_artifacts == 1 )); then
+    kept_base="${XDG_STATE_HOME:-$HOME/.local/state}/pipelinek/verification-cycles"
+    if mkdir -p "$kept_base" 2>/dev/null; then
+        diagnostics_dir="$(mktemp -d "$kept_base/diagnostics-XXXXXXXX" 2>/dev/null || true)"
+    fi
+    if [[ -z "$diagnostics_dir" ]]; then
+        printf 'run.sh: the diagnostics directory could not be created; the artefacts will be deleted.\n' >&2
+    fi
+fi
+
+# The removal of the cycle.
+#
+# The artefacts of a cycle are what an operator reads when a scenario failed,
+# so deleting them is the default only because a cycle that outlives its run is
+# residue. `--diagnostics local` asks for them to be kept, and then they are
+# MOVED OUT of the cycle rather than left inside it: the gate owns the
+# directory the cycle lives in and deletes it when the run ends, and artefacts
+# that die with the gate were not kept at all.
 cleanup() {
-    rm -rf "$cycle_root"
+    if [[ -n "$diagnostics_dir" ]]; then
+        if ! mv "$cycle_root" "$diagnostics_dir/scenarios" 2>/dev/null; then
+            # A diagnostics directory that could not be filled is not a promise
+            # kept quietly: the operator asked for the artefacts and would
+            # otherwise believe they were there.
+            diagnostics_dir=""
+            rm -rf "$cycle_root"
+        fi
+    else
+        rm -rf "$cycle_root"
+    fi
     if [[ "$cycle_base_owned" == 1 ]]; then
         rm -rf "$cycle_base"
     fi
 }
-trap cleanup EXIT
+
+# The receipt, as a document other programs read.
+#
+# It is written to a name of its own and then MOVED into place, so a reader
+# never sees half a document: a receipt that was interrupted is a receipt that
+# does not exist.
+#
+# And a receipt that cannot be written does NOT stop the cycle. The receipt is
+# an account of what happened, and an account that could not be written must
+# not turn a run that behaved into a run that failed. The refusal is reported
+# and the verdicts of the scenarios stand: the launcher is the harness, and a
+# harness defect is not a defect of the product it exercises.
+#
+# The ONE exception is a receipt that carries a secret. That receipt is not
+# published at all: see receipt_is_clean below.
+write_receipt() {
+    [[ -n "$receipt_path" ]] || return 0
+    local out_dir
+    out_dir="$(dirname -- "$receipt_path")"
+    if ! mkdir -p "$out_dir" 2>/dev/null; then
+        printf 'run.sh: the receipt was NOT written: %s could not be created\n' "$out_dir" >&2
+        return 0
+    fi
+    if ! PIPELINEK_RECEIPT_ROWS="$receipt_rows_file" \
+        PIPELINEK_RECEIPT_OUT="$receipt_path" \
+        PIPELINEK_RECEIPT_SHA="${PIPELINEK_E2E_SHA:-}" \
+        PIPELINEK_RECEIPT_HOST="${PIPELINEK_E2E_HOST:-}" \
+        PIPELINEK_RECEIPT_JDK="${PIPELINEK_E2E_JDK:-}" \
+        PIPELINEK_RECEIPT_SCOPE="${PIPELINEK_E2E_SCOPE:-unknown}" \
+        PIPELINEK_RECEIPT_FILTER="${filter}" \
+        PIPELINEK_RECEIPT_GENERATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        PIPELINEK_RECEIPT_PASSED="${passed:-0}" \
+        PIPELINEK_RECEIPT_FAILED="${failed:-0}" \
+        PIPELINEK_RECEIPT_BLOCKED="${blocked:-0}" \
+        PIPELINEK_RECEIPT_SELECTED="${scenario_index:-0}" \
+        PIPELINEK_RECEIPT_SCENARIOS="${observed_scenarios:-0}" \
+        PIPELINEK_RECEIPT_CHECKS="${observed_expectations:-0}" \
+        PIPELINEK_RECEIPT_EXECUTIONS="${observed_executions:-0}" \
+        PIPELINEK_RECEIPT_STEPS="${finished_steps:-0}" \
+        PIPELINEK_RECEIPT_UNSTABLE="${unstable_runs:-0}" \
+        PIPELINEK_RECEIPT_SEEDED="${seeded:-0}" \
+        PIPELINEK_RECEIPT_DURABLE="${durable_runs:-0}" \
+        PIPELINEK_RECEIPT_CACHE_WRITTEN="${cache_written:-0}" \
+        PIPELINEK_RECEIPT_CACHE_PRESENT="${cache_present:-0}" \
+        PIPELINEK_RECEIPT_DIAGNOSTICS="$diagnostics_dir" \
+        python3 - >/dev/null 2>"$cycle_root/receipt-error.txt" <<'PY'
+import json
+import os
+import sys
+
+SCHEMA = "pipelinek.e2e-receipt/1"
+UNIT = "\x1f"
+
+rows_path = os.environ["PIPELINEK_RECEIPT_ROWS"]
+out_path = os.environ["PIPELINEK_RECEIPT_OUT"]
+
+
+def text(name, default=""):
+    value = os.environ.get(name)
+    return default if value is None else value
+
+
+def number(name):
+    raw = text(name, "0")
+    try:
+        return int(raw)
+    except ValueError:
+        return 0
+
+
+scenarios = {}
+order = []
+
+
+def scenario_of(name):
+    if name not in scenarios:
+        scenarios[name] = {
+            "scenario": name,
+            "stage": "(root)",
+            "verdict": "none",
+            "elapsedMs": 0,
+            "reason": "",
+            "checks": 0,
+            "executions": 0,
+            "steps": 0,
+            "outcome": "none",
+            "durableReruns": 0,
+            "seeded": 0,
+            "root": "",
+            "runs": [],
+            "traces": [],
+        }
+        order.append(name)
+    return scenarios[name]
+
+
+def as_int(raw):
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+with open(rows_path, "r", encoding="utf-8", errors="replace") as handle:
+    for raw_line in handle:
+        line = raw_line.rstrip("\n")
+        if not line:
+            continue
+        kind = line[0]
+        # Every field is PRECEDED by the separator, so a reader splits the row
+        # and the first piece is empty: the separator is what says "the first
+        # field starts here", and a row that began with a bare value would
+        # make the reader guess whether the first piece was a field or a
+        # separator that had lost its partner.
+        fields = line[1:].split(UNIT)
+        if fields and fields[0] == "":
+            fields = fields[1:]
+        if kind == "S":
+            row = scenario_of(fields[0])
+            row["stage"] = fields[1]
+            row["verdict"] = fields[2]
+            row["elapsedMs"] = as_int(fields[3])
+            row["reason"] = fields[4]
+            row["checks"] = as_int(fields[5])
+            row["executions"] = as_int(fields[6])
+            row["steps"] = as_int(fields[7])
+            row["outcome"] = fields[8]
+            row["durableReruns"] = as_int(fields[9])
+            row["seeded"] = as_int(fields[10])
+            row["root"] = fields[11] if len(fields) > 11 else ""
+        elif kind == "E":
+            row = scenario_of(fields[0])
+            row["runs"].append({
+                "runId": fields[1] if len(fields) > 1 else "",
+                "db": fields[2] if len(fields) > 2 else "",
+                "cache": fields[3] if len(fields) > 3 else "unknown",
+                "outcome": fields[4] if len(fields) > 4 else "unknown",
+                "steps": as_int(fields[5]) if len(fields) > 5 else 0,
+                "exitCode": as_int(fields[6]) if len(fields) > 6 else 0,
+                "label": fields[7] if len(fields) > 7 else "",
+            })
+        elif kind == "T":
+            row = scenario_of(fields[0])
+            row["traces"].append({
+                "runId": fields[1] if len(fields) > 1 else "",
+                "db": fields[2] if len(fields) > 2 else "",
+                "traceId": fields[3] if len(fields) > 3 else "",
+                "rootSpanId": fields[4] if len(fields) > 4 else "",
+                "parentSpanId": fields[5] if len(fields) > 5 else "",
+            })
+
+document = {
+    "schema": SCHEMA,
+    "sha": text("PIPELINEK_RECEIPT_SHA", "unknown"),
+    "generatedAt": text("PIPELINEK_RECEIPT_GENERATED", "unknown"),
+    "host": text("PIPELINEK_RECEIPT_HOST", "unknown"),
+    "jdk": text("PIPELINEK_RECEIPT_JDK", "unknown"),
+    "scope": {
+        "filter": text("PIPELINEK_RECEIPT_FILTER", ""),
+        "gate": text("PIPELINEK_RECEIPT_SCOPE", "unknown"),
+        "selected": number("PIPELINEK_RECEIPT_SELECTED"),
+    },
+    # The totals, and the two populations they count.
+    #
+    # `executions` is how many times the product was INVOKED: a scenario that
+    # replays its run durably invoked the product twice. `runs` is how many
+    # execution IDENTITIES the ledger recorded: the replay resumed the same
+    # run, so it did not add a second identity.
+    #
+    # The two are counted separately and reconciled separately, because they
+    # answer different questions. Publishing one number under two names would
+    # make a reader believe the ledger saw an invocation it never saw, and a
+    # receipt that overstates what it can show is a receipt nobody can trust.
+    "totals": {
+        "scenarios": len(order),
+        "passed": number("PIPELINEK_RECEIPT_PASSED"),
+        "failed": number("PIPELINEK_RECEIPT_FAILED"),
+        "blocked": number("PIPELINEK_RECEIPT_BLOCKED"),
+        "checks": number("PIPELINEK_RECEIPT_CHECKS"),
+        "executions": number("PIPELINEK_RECEIPT_EXECUTIONS"),
+        "runs": sum(len(scenarios[name]["runs"]) for name in order),
+        "steps": number("PIPELINEK_RECEIPT_STEPS"),
+        "unstable": number("PIPELINEK_RECEIPT_UNSTABLE"),
+        "seeded": number("PIPELINEK_RECEIPT_SEEDED"),
+        "durableReruns": number("PIPELINEK_RECEIPT_DURABLE"),
+    },
+    "cache": {
+        "written": number("PIPELINEK_RECEIPT_CACHE_WRITTEN"),
+        "present": number("PIPELINEK_RECEIPT_CACHE_PRESENT"),
+    },
+    # Where the artefacts of this cycle were kept, when the operator asked for
+    # them to be kept. Empty says they were deleted, which is the truth a
+    # reader needs: a path that points at a deleted directory is a path that
+    # sends them nowhere.
+    "diagnostics": text("PIPELINEK_RECEIPT_DIAGNOSTICS", ""),
+    "scenarios": [scenarios[name] for name in order],
+    # The gate seals this section when it finishes: the launcher knows what
+    # the cycle did, and only the gate knows what the RUN of the gate was.
+    "gate": None,
+}
+
+tmp_path = out_path + ".tmp"
+with open(tmp_path, "w", encoding="utf-8") as handle:
+    json.dump(document, handle, indent=2, ensure_ascii=False, sort_keys=False)
+    handle.write("\n")
+os.replace(tmp_path, out_path)
+PY
+    then
+        printf 'run.sh: the receipt was NOT written: the document could not be produced\n' >&2
+        if [[ -s "$cycle_root/receipt-error.txt" ]]; then
+            sed 's/^/    /' "$cycle_root/receipt-error.txt" >&2
+        fi
+        return 0
+    fi
+    if ! receipt_is_clean "$receipt_path"; then
+        rm -f "$receipt_path"
+        printf 'run.sh: the receipt was NOT written: it carried a secret this run holds\n' >&2
+        return 0
+    fi
+    receipt_written=1
+    return 0
+}
+
+# The secrets this run holds.
+#
+# The receipt is the ONE artefact of a cycle that outlives the run: the gate
+# keeps it, so that a reader can find out later what happened and where the
+# evidence is. That is exactly why a secret must never reach it.
+#
+# The launcher holds a small and KNOWN set of secret values -- the passphrase
+# of the machine's credential store and the fixtures it seeds into the
+# scenarios -- and those are the values a receipt must not carry. The list is
+# explicit rather than a pattern, because a pattern that guessed which text
+# was a secret would be a second authority about the secrets of this product,
+# and the launcher is the only thing that knows them.
+known_secrets() {
+    if [[ -n "$store_passphrase" ]]; then
+        printf '%s\n' "$store_passphrase"
+    fi
+    printf '%s\n' \
+        'e2e-fixture-secret' \
+        'e2e-fixture-user' \
+        'e2e-fixture-pass' \
+        'e2e-fixture-key' \
+        'e2e-fixture-file-contents'
+}
+
+# Whether the produced document carries none of those values.
+#
+# The check is a literal substring search, and it fails CLOSED: a receipt that
+# carries a secret is deleted rather than published, and the launcher says so
+# out loud. A silent deletion would leave the reader with a missing receipt
+# and no reason, and a missing receipt with no reason is a hole.
+#
+# The patterns travel on a pipe and never on a command line: a passphrase on
+# the arguments of a process is readable by every other process of the
+# machine, and this one never leaves the stage.
+receipt_is_clean() {
+    local path="$1" secret
+    local -a patterns=()
+    while IFS= read -r secret; do
+        [[ -n "$secret" ]] || continue
+        patterns+=("$secret")
+    done < <(known_secrets)
+    (( ${#patterns[@]} == 0 )) && return 0
+    if printf '%s\n' "${patterns[@]}" | grep -qF -f - "$path" 2>/dev/null; then
+        return 1
+    fi
+    return 0
+}
+
+# The exit of the launcher.
+#
+# The receipt is written HERE, and not only on the happy path, because the
+# interesting receipt is the one of a cycle that failed. The order is the
+# point: the account comes before the removal, because the removal is what
+# takes the evidence away.
+receipt_written=0
+on_exit() {
+    local status=$?
+    trap - EXIT
+    if (( receipt_written == 0 )); then
+        write_receipt || true
+    fi
+    cleanup || true
+    if [[ -n "$receipt_path" && -f "$receipt_path" ]]; then
+        printf 'receipt: %s\n' "$receipt_path"
+    fi
+    if [[ -n "$diagnostics_dir" && -d "$diagnostics_dir" ]]; then
+        printf 'diagnostics: %s\n' "$diagnostics_dir"
+    fi
+    exit "$status"
+}
+trap on_exit EXIT
 
 # The product compiles every script it runs, and that compilation is the
 # dominant cost of a scenario: a pipeline that takes a second to execute
@@ -350,6 +754,37 @@ cache_snapshot() {
         [[ -f "$f" ]] || continue
         printf '%s %s\n' "$(basename -- "$f")" "$(sha256sum -- "$f" | cut -d' ' -f1)"
     done | LC_ALL=C sort
+}
+
+# Whether an execution reused a compiled script or paid for one.
+#
+# The PRODUCT publishes the key of the compilation it made -- the identity of
+# the artifact it compiled or reused -- and the key is also the name of that
+# artifact in the cache. The launcher compares the name against the cache as
+# it was BEFORE the cycle began: an artifact that was already there was
+# reused, and an artifact that was not there was produced by this cycle.
+#
+# The launcher never computes a key of its own. A launcher that derived the
+# key would be a second authority about what the product compiled, and a
+# second authority that disagreed with the first would serve the wrong
+# artifact without anybody noticing.
+cache_state_for() {
+    local key="$1"
+    if [[ -z "$key" ]]; then
+        printf 'unknown'
+        return 0
+    fi
+    if [[ -f "$cycle_root/compiled.keys" ]] && grep -qxF -- "$key" "$cycle_root/compiled.keys"; then
+        printf 'cached'
+        return 0
+    fi
+    if [[ -f "$cycle_root/cache-before.txt" ]] \
+        && grep -q -- "^$key\.jar " "$cycle_root/cache-before.txt"; then
+        printf 'cached'
+        return 0
+    fi
+    printf '%s\n' "$key" >> "$cycle_root/compiled.keys"
+    printf 'compiled'
 }
 
 # The cache root keeps one namespace per distribution that has ever run
@@ -558,6 +993,18 @@ seeded=0
 durable_runs=0
 failures=()
 
+# What the cycle OBSERVED, in the numbers the receipt publishes. They are
+# initialised here, before anything runs, because the receipt is written even
+# when the cycle ends early: a receipt describing a cycle that never reached
+# its scenarios has to be able to say exactly that.
+observed_scenarios=0
+observed_expectations=0
+observed_executions=0
+finished_steps=0
+unstable_runs=0
+cache_written=0
+cache_present=0
+
 scenario_index=0
 
 # --- The clocks ---------------------------------------------------------------
@@ -587,6 +1034,21 @@ stage_deadline=$(( $(date +%s) + STAGE_TIMEOUT_SECONDS ))
 scenario_deadline=0
 scenario_budget="$SCENARIO_TIMEOUT_SECONDS"
 clock_marker=""
+
+# What the scenario under test did, one entry per execution of the product.
+#
+# The arrays run in parallel because the launcher learns about an execution
+# in pieces and at different moments: the label and the exit code are known
+# before the product runs, the run identity only after its receipt is read,
+# and the conclusion only after the run's own events are. A record that had
+# to be complete before the first fact was known could not be written at all.
+scenario_exec_labels=()
+scenario_exec_run_ids=()
+scenario_exec_dbs=()
+scenario_exec_caches=()
+scenario_exec_outcomes=()
+scenario_exec_steps=()
+scenario_exec_codes=()
 
 # The clock has to WORK, not merely exist: a launcher whose clock never fires
 # lets a hung scenario hang the run, which is the very thing the clock is
@@ -1603,6 +2065,22 @@ run_scenario() {
     scenario_steps=0
     scenario_outcome="none"
 
+    # The runs this scenario produced, in the order it produced them. The
+    # receipt names them, because the run's identity is the key that
+    # correlates this scenario with the product's own `inspect --telemetry`,
+    # which is where the trace and the parents of every span live.
+    scenario_run_ids=()
+    scenario_run_dbs=()
+
+    # The executions this scenario made, in the order it made them.
+    scenario_exec_labels=()
+    scenario_exec_run_ids=()
+    scenario_exec_dbs=()
+    scenario_exec_caches=()
+    scenario_exec_outcomes=()
+    scenario_exec_steps=()
+    scenario_exec_codes=()
+
     local started_ms
     started_ms="$(now_ms)"
 
@@ -1692,6 +2170,91 @@ emit_scenario_markers() {
     for (( i = before_failures; i < ${#failures[@]}; i++ )); do
         printf '__FAILURE__ %s\n' "${failures[$i]}"
     done
+
+    # The executions this scenario made, one line each.
+    #
+    # The label comes LAST because it is the only free text here: everything
+    # before it is a single word, so a reader can take the first seven fields
+    # and treat the rest as the label without having to guess where one ends.
+    local ex_label ex_run ex_db ex_cache ex_outcome ex_steps ex_code
+    for (( i = 0; i < ${#scenario_exec_labels[@]}; i++ )); do
+        ex_label="${scenario_exec_labels[$i]}"
+        ex_run="${scenario_exec_run_ids[$i]:-none}"
+        ex_db="${scenario_exec_dbs[$i]:-}"
+        ex_cache="${scenario_exec_caches[$i]:-unknown}"
+        ex_outcome="${scenario_exec_outcomes[$i]:-unknown}"
+        ex_steps="${scenario_exec_steps[$i]:-0}"
+        ex_code="${scenario_exec_codes[$i]:-0}"
+        [[ -z "$ex_db" ]] && ex_db="-"
+        printf '__EXEC__ %s %s %s %s %s %s %s\n' \
+            "$ex_run" "$ex_db" "$ex_cache" "$ex_outcome" "$ex_steps" "$ex_code" "$ex_label"
+    done
+
+    # The runs this scenario produced, and -- for a scenario that did NOT
+    # pass -- the trace that locates the cause.
+    #
+    # The trace is READ from the product, never derived here: the product
+    # decides what a span is and what its parent is, and a harness that
+    # recomputed the trace identifier would be a second authority about the
+    # run's own identity. The read happens only for a scenario that failed,
+    # because the trace is what an operator needs when something is wrong and
+    # a green cycle pays nothing for it.
+    local rid db trace t_trace t_root t_parent
+    for (( i = 0; i < ${#scenario_run_ids[@]}; i++ )); do
+        rid="${scenario_run_ids[$i]}"
+        db="${scenario_run_dbs[$i]:-}"
+        if [[ "$verdict" == "ok" || -z "$db" || ! -f "$db" ]]; then
+            continue
+        fi
+        # The trace is READ from the product, and never derived here: the
+        # product decides what a span is, what its identifier is and what its
+        # parent is. A harness that recomputed the trace identifier would be a
+        # second authority about the run's own identity, and the two would
+        # disagree the first time the product changed its mind.
+        #
+        # The read is the product's own export, and the reader asks it three
+        # questions: which trace the run belongs to, which span is the root of
+        # that trace, and what that root hangs under. The parent is "-" when
+        # the root hangs under nothing, which is what the event plane records
+        # for a run that starts its own trace: the trace an OPERATOR attached
+        # the run to lives in the live spans, and those travel to a collector
+        # rather than to the event store this read sees.
+        trace="$(timeout --kill-after=5s 30 "$(product_path)" inspect "$rid" --db "$db" --telemetry 2>/dev/null \
+            | python3 -c '
+import json
+import sys
+
+trace = ""
+root = ""
+parent = ""
+for raw in sys.stdin.buffer:
+    line = raw.strip()
+    if not line.startswith(b"{"):
+        continue
+    try:
+        document = json.loads(line)
+    except ValueError:
+        continue
+    if not trace and document.get("kind") is None and document.get("traceId"):
+        trace = document.get("traceId") or ""
+        continue
+    if not root and document.get("kind") == "span_started" \
+            and document.get("parentSpanId") is None:
+        root = document.get("spanId") or ""
+        parent = ""
+print(trace + "\t" + root + "\t" + parent)
+' 2>/dev/null || true)"
+        t_trace="" t_root="" t_parent=""
+        if [[ -n "$trace" ]]; then
+            IFS=$'\t' read -r t_trace t_root t_parent <<< "$trace" || true
+        fi
+        if [[ -n "$t_trace" ]]; then
+            [[ -n "$t_root" ]] || t_root="-"
+            [[ -n "$t_parent" ]] || t_parent="-"
+            printf '__TRACE__ %s %s %s %s %s\n' \
+                "$rid" "${db:--}" "$t_trace" "$t_root" "$t_parent"
+        fi
+    done
 }
 
 # The run's own conclusion, read from the product.
@@ -1714,12 +2277,19 @@ read_run_verdict() {
     # one of them. Asking the documents for their fields is what keeps the
     # question "what did this run conclude" a question ABOUT the product's
     # record, and not a question about where the writer put its keys.
+    #
+    # The same reading brings back the key of the compilation the run made.
+    # The PRODUCT publishes it -- the compilation event carries the identity
+    # of the artifact it compiled or reused -- so the launcher never has to
+    # derive it, and a launcher that derived it would be a second authority
+    # about what was compiled.
     printf '%s\n' "$events" | python3 -c '
 import json
 import sys
 
-outcome = None
+outcome = ""
 steps = 0
+cache = ""
 for raw in sys.stdin.buffer:
     line = raw.strip()
     if not line.startswith(b"{"):
@@ -1737,9 +2307,14 @@ for raw in sys.stdin.buffer:
             outcome = value
     elif kind == "StepFinished":
         steps += 1
-if outcome is None:
-    sys.exit(1)
-print("outcome=" + outcome + " steps=" + str(steps))
+    elif kind == "CompilationFinished":
+        key = document.get("cacheKey")
+        if isinstance(key, dict):
+            value = key.get("value")
+            version = key.get("version")
+            if isinstance(value, str) and isinstance(version, str) and value and version:
+                cache = version + "-" + value
+print("outcome=" + outcome + " steps=" + str(steps) + " cache=" + cache)
 '
 }
 
@@ -1778,6 +2353,22 @@ check_execution() {
     local wanted
     local acceptable=""
 
+    # Every execution is recorded, including the ones that fail before the
+    # launcher learns anything else about them.
+    #
+    # The receipt is the account of what the cycle DID, and an execution that
+    # disappeared from it because it failed early would be exactly the one an
+    # operator would want to read. The values that are not known yet are
+    # filled in later, where they become known.
+    local exec_index="${#scenario_exec_labels[@]}"
+    scenario_exec_labels+=("$ex_label")
+    scenario_exec_run_ids+=("none")
+    scenario_exec_dbs+=("$ex_db")
+    scenario_exec_caches+=("unknown")
+    scenario_exec_outcomes+=("unknown")
+    scenario_exec_steps+=("0")
+    scenario_exec_codes+=("$ex_code")
+
     if [[ "$ex_code" != "$ex_expect_exit" ]]; then
         printf 'FAIL %-52s exit %s, expected %s\n' "$ex_label" "$ex_code" "$ex_expect_exit"
         show_printed "$ex_stdout"
@@ -1811,11 +2402,17 @@ check_execution() {
         local receipt=""
         receipt="$(launch_receipt_run_id "$ex_stderr")" || receipt_state=$?
         case "$receipt_state" in
-            0) run_id="$receipt" ;;
+            0)
+                run_id="$receipt"
+                scenario_run_ids+=("$run_id")
+                scenario_run_dbs+=("$ex_db")
+                scenario_exec_run_ids[$exec_index]="$run_id"
+                ;;
             1)
                 # A receipt IS there and could not be read. Saying nothing
                 # here would make the launcher look like it had nothing to
                 # check, and the check it skipped is one the run promised.
+                [[ "$ex_is_run" == "1" ]] && scenario_exec_run_ids[$exec_index]="unknown"
                 printf 'FAIL %-52s %s\n' "$ex_label" "$receipt"
                 check_detail="$receipt"
                 return 1
@@ -1832,12 +2429,19 @@ check_execution() {
                     check_detail="the run ended well but $receipt"
                     return 1
                 fi
+                [[ "$ex_is_run" == "1" ]] && scenario_exec_run_ids[$exec_index]="unknown"
                 ;;
         esac
         if [[ -n "$run_id" ]]; then
-            local verdict="" run_outcome="" run_steps=0
+            local verdict="" run_outcome="" run_steps=0 run_cache=""
             verdict="$(read_run_verdict "$ex_db" "$run_id" || true)"
-            if [[ -z "$verdict" ]]; then
+            run_outcome="$(sed -n 's/.*outcome=\([a-z]*\).*/\1/p' <<<"$verdict")"
+            run_steps="$(sed -n 's/.*steps=\([0-9]*\).*/\1/p' <<<"$verdict")"
+            run_cache="$(sed -n 's/.*cache=\([a-z0-9-]*\).*/\1/p' <<<"$verdict")"
+            if [[ -z "$run_outcome" ]]; then
+                # The run published no conclusion: either its events could not
+                # be read, or it reached none. A run that FAILED may
+                # legitimately leave none; a run that ended well did not.
                 if [[ "$ex_code" == 0 ]]; then
                     printf 'FAIL %-52s the run %s exited 0 without publishing a verdict\n' \
                         "$ex_label" "$run_id"
@@ -1845,8 +2449,6 @@ check_execution() {
                     return 1
                 fi
             else
-                run_outcome="$(sed -n 's/^outcome=\([a-z]*\).*/\1/p' <<<"$verdict")"
-                run_steps="$(sed -n 's/.*steps=\([0-9]*\).*/\1/p' <<<"$verdict")"
                 scenario_guarantees=$((scenario_guarantees + 1))
                 scenario_steps=$((scenario_steps + run_steps))
                 scenario_outcome="$run_outcome"
@@ -1869,6 +2471,10 @@ check_execution() {
                     return 1
                 fi
             fi
+            # What the compilation cost, and what the run concluded.
+            scenario_exec_caches[$exec_index]="$(cache_state_for "$run_cache")"
+            scenario_exec_outcomes[$exec_index]="${run_outcome:-unknown}"
+            scenario_exec_steps[$exec_index]="${run_steps:-0}"
         fi
     fi
 
@@ -2008,6 +2614,14 @@ compare_worlds() {
     else
         durable_run="$durable_receipt"
         volatile_run="$volatile_receipt"
+        # Both paths of a durable comparison are runs, and the receipt names
+        # both: the durable one and the volatile one are different runs with
+        # different identities, and a reader who saw only one of them would
+        # read the wrong journal.
+        scenario_run_ids+=("$durable_run")
+        scenario_run_ids+=("$volatile_run")
+        scenario_run_dbs+=("$cw_root/events.db")
+        scenario_run_dbs+=("")
     fi
 
     # The comparisons this scenario is owed, counted before any of them
@@ -3747,6 +4361,26 @@ scenario_slug() {
     printf '%s' "${1#"$here"/}" | tr '/.' '--'
 }
 
+# The directory a scenario's artefacts live in, ONCE the cycle is over.
+#
+# When the operator asked for the diagnostics to be kept, the artefacts are
+# MOVED out of the cycle, so the place to look is not the place they were
+# produced in. A receipt that named the old place would send an operator to a
+# directory that no longer exists, and a path that leads nowhere is worse than
+# no path at all.
+scenario_artifacts_root() {
+    local slug="$1"
+    if [[ -n "$diagnostics_dir" ]]; then
+        printf '%s\n' "$diagnostics_dir/scenarios/$slug"
+        return 0
+    fi
+    # The artefacts were deleted with the cycle, so there is NO place to look.
+    # The empty string says exactly that, and it carries the same meaning the
+    # receipt's own `diagnostics` field carries when nothing was kept: a path
+    # that leads nowhere is worse than no path at all.
+    printf '\n'
+}
+
 # How many scenarios run at once. They are isolated BY DESIGN -- each one gets
 # its own root, its own working directory, its own credential store, its own
 # durable database and its own control root -- so they do not need to take
@@ -3788,7 +4422,9 @@ fi
 # scenarios prints "0 scenario(s), 0 passed, 0 failed" and exits 0, which reads
 # exactly like a green -- the shape this launcher spent a whole cycle learning to
 # refuse elsewhere.
-filter="${1:-}"
+#
+# The filter itself was parsed with the launcher's own options, at the top of
+# the script, so that an unknown option is refused before anything is built.
 selected=()
 while IFS= read -r script; do
     rel="${script#"$here"/}"
@@ -3897,12 +4533,131 @@ observed_executions=0
 finished_steps=0
 unstable_runs=0
 
+# One row, encoded so that a reader never has to guess where a field ends.
+#
+# The separator is the ASCII unit separator and it separates the fields of a
+# row; the record separator separates the rows of a scenario from each other.
+#
+# The fields are JOINED here instead of being spelled out as a format with one
+# placeholder per field. A format carries the number of fields in two places
+# -- the placeholders and the arguments -- and when the two disagree the
+# reader receives a row that is silently short, which is a receipt that lies
+# about what it observed. Joining cannot disagree with itself.
+#
+# The separator is also REMOVED from every field before the field is written.
+# A value that carried the separator would split a field in two and the reader
+# would read the second half as the next field, so the character is replaced
+# rather than trusted.
+emit_row() {
+    local kind="$1"
+    shift
+    local field
+    local encoded=""
+    for field in "$@"; do
+        field="${field//$'\037'/ }"
+        field="${field//$'\036'/ }"
+        encoded+=$'\037'"$field"
+    done
+    printf '%s%s\n' "$kind" "$encoded" >> "$receipt_rows_file"
+}
+
+# One scenario, as the receipt publishes it.
+#
+# The facts arrive already encoded: the caller has read them from the markers
+# the scenario published, and reading them a second time here would be a
+# second reading of the same evidence -- which is exactly how two accounts of
+# one run drift apart.
+#
+# The row is written in THREE kinds rather than one, because a scenario with
+# two executions and one trace is a shape that does not fit in a single line
+# without nesting, and a nested encoding is a format whose rules a reader has
+# to implement twice. S is the scenario, E is one of its executions, T is one
+# of its traces.
+receipt_row() {
+    local name="$1" verdict="$2" elapsed="$3" reason="$4" checks="$5"
+    local executions="$6" steps="$7" outcome="$8" durable="$9" seeded="${10}"
+    local blob="${11}" traces="${12}" root="${13}"
+    local family record rest
+    local -a parts
+
+    family="${name%%/*}"
+    if [[ "$family" == "$name" ]]; then family="(root)"; fi
+
+    emit_row S "$name" "$family" "$verdict" "$elapsed" "$reason" "$checks" \
+        "$executions" "$steps" "$outcome" "$durable" "$seeded" "$root"
+
+    rest="$blob"
+    while [[ -n "$rest" ]]; do
+        record="${rest%%$'\036'*}"
+        if [[ "$record" == "$rest" ]]; then rest=""; else rest="${rest#*$'\036'}"; fi
+        IFS=$'\037' read -r -a parts <<< "$record" || true
+        emit_row E "$name" "${parts[0]:-}" "${parts[1]:-}" "${parts[2]:-}" \
+            "${parts[3]:-}" "${parts[4]:-}" "${parts[5]:-}" "${parts[6]:-}"
+    done
+
+    rest="$traces"
+    while [[ -n "$rest" ]]; do
+        record="${rest%%$'\036'*}"
+        if [[ "$record" == "$rest" ]]; then rest=""; else rest="${rest#*$'\036'}"; fi
+        IFS=$'\037' read -r -a parts <<< "$record" || true
+        emit_row T "$name" "${parts[0]:-}" "${parts[1]:-}" "${parts[2]:-}" \
+            "${parts[3]:-}" "${parts[4]:-}"
+    done
+}
+
 for script in ${selected[@]+"${selected[@]}"}; do
     slug="$(scenario_slug "$script")"
     file="$verdict_dir/$slug.txt"
+    row_name="${script#"$here"/}"
+    row_verdict="none"
+    row_elapsed="0"
+    row_checks="0"
+    row_executions="0"
+    row_steps="0"
+    row_outcome="none"
+    row_durable="0"
+    row_seeded="0"
+    row_exec_blob=""
+    row_traces=""
+    row_reason=""
+
+    # The executions this scenario made, and the traces that locate them.
+    #
+    # They are read BEFORE the verdict, because a scenario that failed to
+    # produce a verdict may still have produced runs: the identity of the run
+    # is what an operator needs, and a missing report must not hide it.
+    if [[ -f "$file" ]]; then
+        while IFS= read -r marker; do
+            rest="${marker#__EXEC__ }"
+            ex_run="${rest%% *}"; rest="${rest#* }"
+            ex_db="${rest%% *}"; rest="${rest#* }"
+            ex_cache="${rest%% *}"; rest="${rest#* }"
+            ex_outcome="${rest%% *}"; rest="${rest#* }"
+            ex_steps="${rest%% *}"; rest="${rest#* }"
+            ex_code="${rest%% *}"; rest="${rest#* }"
+            if [[ -n "$row_exec_blob" ]]; then row_exec_blob+=$'\036'; fi
+            row_exec_blob+="$ex_run"$'\037'"$ex_db"$'\037'"$ex_cache"$'\037'"$ex_outcome"$'\037'"$ex_steps"$'\037'"$ex_code"$'\037'"$rest"
+        done < <(grep '^__EXEC__ ' "$file" 2>/dev/null || true)
+        while IFS= read -r marker; do
+            rest="${marker#__TRACE__ }"
+            t_run="${rest%% *}"; rest="${rest#* }"
+            t_db="${rest%% *}"; rest="${rest#* }"
+            t_trace="${rest%% *}"; rest="${rest#* }"
+            t_root="${rest%% *}"; rest="${rest#* }"
+            t_parent="$rest"
+            [[ -z "$t_trace" ]] && continue
+            if [[ -n "$row_traces" ]]; then row_traces+=$'\036'; fi
+            row_traces+="$t_run"$'\037'"$t_db"$'\037'"$t_trace"$'\037'"$t_root"$'\037'"$t_parent"
+        done < <(grep '^__TRACE__ ' "$file" 2>/dev/null || true)
+    fi
+
     if [[ ! -f "$file" ]]; then
         failed=$((failed + 1))
-        failures+=("${script#"$here"/}: the scenario produced no verdict at all")
+        row_reason="$row_name: the scenario produced no verdict at all"
+        failures+=("$row_reason")
+        receipt_row "$row_name" "$row_verdict" "$row_elapsed" "$row_reason" "$row_checks" \
+            "$row_executions" "$row_steps" "$row_outcome" "$row_durable" "$row_seeded" \
+            "$row_exec_blob" "$row_traces" "$(scenario_artifacts_root "$slug")"
         continue
     fi
 
@@ -3916,8 +4671,10 @@ for script in ${selected[@]+"${selected[@]}"}; do
     # verdict, and a scenario without a line is a failure of the harness rather
     # than a pass nobody can see.
     human_lines="$(grep -v -e '^__VERDICT__ ' -e '^__FAILURE__ ' -e '^__COUNTS__ ' \
-                         -e '^__ELAPSED__ ' -e '^[[:space:]]*$' "$file" | wc -l || true)"
+                         -e '^__ELAPSED__ ' -e '^__EXEC__ ' -e '^__TRACE__ ' \
+                         -e '^[[:space:]]*$' "$file" | wc -l || true)"
     grep -v -e '^__VERDICT__ ' -e '^__FAILURE__ ' -e '^__COUNTS__ ' -e '^__ELAPSED__ ' \
+        -e '^__EXEC__ ' -e '^__TRACE__ ' \
         "$file" || true
 
     local_ms="$(grep -m 1 '^__ELAPSED__ ' "$file" 2>/dev/null | sed 's/^__ELAPSED__ //' || true)"
@@ -3927,7 +4684,11 @@ for script in ${selected[@]+"${selected[@]}"}; do
 
     if (( human_lines == 0 )); then
         failed=$((failed + 1))
-        failures+=("${script#"$here"/}: the scenario produced a verdict but no line in the report")
+        row_reason="$row_name: the scenario produced a verdict but no line in the report"
+        failures+=("$row_reason")
+        receipt_row "$row_name" "$row_verdict" "$row_elapsed" "$row_reason" "$row_checks" \
+            "$row_executions" "$row_steps" "$row_outcome" "$row_durable" "$row_seeded" \
+            "$row_exec_blob" "$row_traces" "$(scenario_artifacts_root "$slug")"
         continue
     fi
 
@@ -3955,16 +4716,36 @@ for script in ${selected[@]+"${selected[@]}"}; do
 
     verdict_line="$(grep -m 1 '^__VERDICT__ ' "$file" 2>/dev/null || true)"
     case "${verdict_line#__VERDICT__ }" in
-        ok)      passed=$((passed + 1)) ;;
-        fail)    failed=$((failed + 1)) ;;
-        blocked) blocked=$((blocked + 1)) ;;
-        *)       failed=$((failed + 1))
-                 failures+=("${script#"$here"/}: the scenario produced no readable verdict") ;;
+        ok)      passed=$((passed + 1)); row_verdict="ok" ;;
+        fail)    failed=$((failed + 1)); row_verdict="fail" ;;
+        blocked) blocked=$((blocked + 1)); row_verdict="blocked" ;;
+        *)       failed=$((failed + 1)); row_verdict="none"
+                 row_reason="${script#"$here"/}: the scenario produced no readable verdict"
+                 failures+=("$row_reason") ;;
     esac
+
+    row_elapsed="${local_ms:-0}"
+    row_checks="${local_observed:-0}"
+    row_executions="${local_executions:-0}"
+    row_steps="${local_steps:-0}"
+    row_outcome="${local_outcome:-none}"
+    row_durable="${local_durable:-0}"
+    row_seeded="${local_seeded:-0}"
 
     while IFS= read -r reason; do
         [[ -n "$reason" ]] && failures+=("$reason")
     done < <(grep '^__FAILURE__ ' "$file" 2>/dev/null | sed 's/^__FAILURE__ //' || true)
+
+    # The reason of this scenario, in one line: the failures it published,
+    # joined. A scenario can publish several, and a reader of the receipt
+    # wants the whole story of it in the place where it looks.
+    row_reason="$(grep '^__FAILURE__ ' "$file" 2>/dev/null | sed 's/^__FAILURE__ //' \
+        | paste -sd ';' - 2>/dev/null || true)"
+    [[ -n "$row_reason" ]] || row_reason=""
+
+    receipt_row "$row_name" "$row_verdict" "$row_elapsed" "$row_reason" "$row_checks" \
+        "$row_executions" "$row_steps" "$row_outcome" "$row_durable" "$row_seeded" \
+        "$row_exec_blob" "$row_traces" "$(scenario_artifacts_root "$slug")"
 done
 
 # Every selected scenario reached exactly one bucket -- passed, failed or

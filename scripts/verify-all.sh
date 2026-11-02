@@ -41,6 +41,10 @@
 #   scripts/verify-all.sh --stage 3 --scenario 'control-flow/*'
 # Filters compose; --list never invokes Gradle; a filter that selects nothing is
 # an error rather than a green, for the same reason an empty census is not zero.
+#   scripts/verify-all.sh --diagnostics local
+# `--diagnostics local` is NOT a filter: it keeps the E2E artefacts of the run
+# so an operator can read them, and the run still measures the whole gate. The
+# path of what was kept travels with the verdict line.
 # The gate has four stages, and a stage number that names a fifth is a typo: a
 # typo that selected nothing would run nothing and print a clean verdict, which
 # is the same silent green this script refuses everywhere else.
@@ -75,6 +79,36 @@ subset=0
 stage_given=0
 module_given=0
 scenario_given=0
+# Whether the E2E artefacts are kept for the operator to read.
+#
+# This is NOT a filter. A filter selects what the run MEASURES, and any filter
+# turns the verdict into a subset; keeping the artefacts selects what the run
+# LEAVES BEHIND, and the run still measures everything it would have measured
+# without the flag. So the verdict stays the full gate's verdict, and the path
+# of what was kept travels with it, because an artefact nobody knows the
+# address of is an artefact nobody reads.
+diagnostics_local=0
+
+# The state of the E2E stage, declared HERE so that the exit trap can read it
+# whatever the run did. A trap that asked for a variable the run never reached
+# would crash on the way out and replace the exit status of the run with the
+# exit status of the crash, which is how a failing stage turns into a
+# confusing one.
+e2e_not_run=0
+e2e_stage3_ran=0
+e2e_observed=""
+e2e_executed=""
+e2e_scope="full"
+receipt_state="NOT_RUN"
+diagnostics_path=""
+
+# The verdict of THIS run, as the receipt has to record it.
+#
+# It starts at FAIL because that is the safe direction: a run that ends
+# without ever deciding its verdict has not earned a PASS, and a receipt that
+# said PASS for a run that did not decide would be a claim nobody observed.
+# Every place that decides a verdict sets it here.
+gate_verdict="FAIL"
 
 # The help is the header, and the header is the help: the range of lines the
 # old text named by hand had drifted past the end of the comment block and
@@ -96,6 +130,16 @@ while [[ $# -gt 0 ]]; do
         --module)    module_filter="${2:-}"; module_given=1; subset=1; shift ;;
         --scenario)  scenario_filter="${2:-}"; scenario_given=1; subset=1; shift ;;
         --test)      test_filters+=("${2:-}"); subset=1; shift ;;
+        --diagnostics)
+            if [[ "${2:-}" != "local" ]]; then
+                echo "verify-all: --diagnostics only knows 'local'" >&2; exit 2
+            fi
+            diagnostics_local=1; shift ;;
+        --diagnostics=*)
+            if [[ "${1#--diagnostics=}" != "local" ]]; then
+                echo "verify-all: --diagnostics only knows 'local'" >&2; exit 2
+            fi
+            diagnostics_local=1; shift ;;
         -h|--help)   usage; exit 0 ;;
         *) echo "verify-all: unknown argument '$1'" >&2; exit 2 ;;
     esac
@@ -445,17 +489,128 @@ read_timings() {
 # from is a number nobody can compare against a number from another machine,
 # and the budget of a fixed number of seconds only means something on a
 # declared host.
-print_host_description() {
-    local cores ram_mb gradle_version
-    cores="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
-    [[ -n "$cores" ]] || cores=unknown
-    ram_mb="$(awk '/^MemTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo 2>/dev/null || true)"
-    [[ -n "$ram_mb" ]] || ram_mb=unknown
-    gradle_version="$(sed -nE 's/^distributionUrl=.*gradle-([0-9.]+)-(bin|all)\.zip.*$/\1/p' \
+#
+# The reading happens ONCE, in read_host, and everything that needs the host
+# reads what it read. Two readings of the same machine in the same run would
+# be two numbers, and the receipt would carry one of them while the report
+# printed the other -- which is the same defect as a count that does not add
+# up, only harder to see.
+host_cores=""
+host_ram_mb=""
+host_gradle=""
+host_description=""
+read_host() {
+    host_cores="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
+    [[ -n "$host_cores" ]] || host_cores=unknown
+    host_ram_mb="$(awk '/^MemTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo 2>/dev/null || true)"
+    [[ -n "$host_ram_mb" ]] || host_ram_mb=unknown
+    host_gradle="$(sed -nE 's/^distributionUrl=.*gradle-([0-9.]+)-(bin|all)\.zip.*$/\1/p' \
         pipelinek/gradle/wrapper/gradle-wrapper.properties 2>/dev/null | head -1)"
-    [[ -n "$gradle_version" ]] || gradle_version=unknown
-    printf '    reference host: %s cpu(s), %s MB of RAM, JDK %s, Gradle %s\n' \
-        "$cores" "$ram_mb" "${java_version:-unknown}" "$gradle_version"
+    [[ -n "$host_gradle" ]] || host_gradle=unknown
+    host_description="$(printf '%s cpu(s), %s MB of RAM, JDK %s, Gradle %s' \
+        "$host_cores" "$host_ram_mb" "${java_version:-unknown}" "$host_gradle")"
+}
+
+print_host_description() {
+    printf '    reference host: %s\n' "$host_description"
+}
+
+# --- The receipt of the E2E stage ---------------------------------------------
+# The receipt is the ONE artefact of a run that outlives it. The cycle is
+# removed when the run ends -- that is the promise the gate makes about its
+# own temporaries -- so the receipt cannot live inside the cycle. It lives in
+# a directory of its own under the state area, and it is exactly the compact
+# metadata AGENTS.md section 3 says to preserve: the SHA, what ran, the
+# counts, the outcome and the wall clock.
+#
+# It is NOT a second census of the scenarios. The gate keeps its own reading
+# of the tree, taken before the stages ran, and compares it with the
+# launcher's name by name; the receipt ADDS a third reading to that contrast.
+# A receipt that agrees with the gate is a second witness, not a replacement,
+# and a receipt that disagrees is a disagreement to be NAMED.
+#
+# The directory of receipts is bounded. An unbounded directory of accounts of
+# runs that nobody reads is a directory nobody can keep.
+RECEIPT_KEEP=10
+receipt_dir=""
+receipt_file=""
+
+# The receipts that are older than the bound, oldest first.
+#
+# The names carry the timestamp, and the order is the byte order, so the byte
+# order IS the chronological order: the oldest are the ones that sort first.
+receipts_to_prune() {
+    find "$receipt_dir" -maxdepth 1 -type f -name '*.json' -print 2>/dev/null \
+        | LC_ALL=C sort | head -n "-$RECEIPT_KEEP"
+}
+
+# The receipt of this run: where it lives, what the world looks like to it,
+# and the environment the launcher needs to write it.
+#
+# The facts about the world are read ONCE, here, and travel to the launcher
+# in the environment. The launcher never has to guess which SHA it is running
+# against, and the gate never has to read a fact back from the document it
+# asked for.
+prepare_receipt() {
+    local sha short stamp
+    sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)"
+    short="${sha:0:12}"
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    receipt_dir="$state_base/receipts"
+    if ! mkdir -p "$receipt_dir" 2>/dev/null; then
+        echo "verify-all: the receipt directory could not be created: $receipt_dir" >&2
+        return 1
+    fi
+    receipt_file="$receipt_dir/$stamp-$short.json"
+    # The old receipts are pruned BEFORE the new one is written, so the
+    # directory never holds more than the bound plus the run in progress.
+    local old
+    while IFS= read -r old; do
+        [[ -n "$old" ]] || continue
+        rm -f "$old"
+    done < <(receipts_to_prune)
+    # The scope says what this run MEASURED. A run with any filter measured
+    # less than the gate, and a receipt that does not say so would let a
+    # subset be quoted as the gate.
+    if [[ "$subset" == 1 ]]; then
+        e2e_scope="subset"
+    else
+        e2e_scope="full"
+    fi
+    export PIPELINEK_E2E_SHA="$sha"
+    export PIPELINEK_E2E_HOST="$host_description"
+    export PIPELINEK_E2E_JDK="${java_version:-unknown}"
+    export PIPELINEK_E2E_SCOPE="$e2e_scope"
+    return 0
+}
+
+# The gate's own verdict, written into the receipt.
+#
+# The launcher knows what the cycle did; only the gate knows what the RUN of
+# the gate was. The receipt is the document that survives, so it has to carry
+# both, and it has to carry the verdict WHATEVER it was: a receipt that only
+# says "PASS" when the run passed is a receipt that says nothing about the
+# runs that failed.
+#
+# The seal happens in the exit trap, so it happens on every outcome: the run
+# that died in stage 1 has a receipt to seal only if it got that far, and a
+# run that never reached stage 3 has no receipt at all.
+seal_receipt() {
+    local verdict="$1"
+    [[ -n "$receipt_file" && -f "$receipt_file" ]] || return 0
+    local wall_ms=$(( $(now_ms) - started_at_ms ))
+    if ! python3 scripts/check-e2e-receipt.py seal \
+        --receipt "$receipt_file" \
+        --verdict "$verdict" \
+        --scope "$e2e_scope" \
+        --wall-ms "$wall_ms" \
+        --budget-seconds "$BUDGET_SECONDS" \
+        --tests-rewritten "${xml_fresh_tests:-0}" \
+        --tests-read "${xml_read_tests:-0}" \
+        --sealed-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; then
+        echo "verify-all: the receipt could not be sealed: $receipt_file" >&2
+    fi
+    return 0
 }
 
 # --- Plan resolution ---------------------------------------------------------
@@ -594,6 +749,12 @@ fi
 # criterion that differs is a fact about the project, and a fact that is
 # hidden behind a number that still adds up is exactly the hole this closes.
 gate_scenarios_census="$(plan_scenarios)"
+# How many scenarios that census holds, counted ONCE and here. The gate
+# PLANNED these before any stage ran, so a verdict line printed on the
+# way out of a failing run still says what the run was going to do. A
+# zero read at the end of the stage would say "the gate planned nothing",
+# which is a different thing entirely from "the comparison never ran".
+e2e_census_gate="$(printf '%s\n' "$gate_scenarios_census" | grep -c . || true)"
 
 # --- JDK resolution ----------------------------------------------------------
 # Prefer an explicit JAVA_HOME that already satisfies the requirement; then the
@@ -648,6 +809,11 @@ echo "    JAVA_HOME=$JAVA_HOME"
 java_version_output="$("$JAVA_HOME/bin/java" -version 2>&1)"
 printf '%s\n' "$java_version_output" | sed 's/^/    /'
 java_version="$(printf '%s\n' "$java_version_output" | awk 'NR==1 { print $3 }' | tr -d '"')"
+
+# The host is read ONCE, here, and every consumer -- the report at the end and
+# the receipt the E2E stage writes -- reads what was read. The JDK is already
+# resolved at this point, so the description carries the same JDK the run used.
+read_host
 
 # --- The owned cycle ----------------------------------------------------------
 # Everything this run writes belongs to ONE directory, and that directory is
@@ -901,6 +1067,12 @@ cleanup_logs() {
     local status=$?
     measure_residue
     report_residue
+    # The account is sealed BEFORE the removal. The removal is what takes the
+    # evidence of the run away, and an account that was not sealed when the
+    # run ended says nothing about how the run ended. The seal happens on
+    # EVERY outcome: the receipt of a failed run is the one an operator comes
+    # back to read.
+    seal_receipt "$gate_verdict"
     rm -rf "$cycle_dir"
     return "$status"
 }
@@ -1544,8 +1716,8 @@ e2e_stage3_ran=0
 
 # The two censuses, and the verdict of the contrast between them. The counts
 # live here, with their origin, so that the verdict line can name where each
-# number comes from instead of printing a figure nobody can trace.
-e2e_census_gate=0
+# number comes from instead of printing a figure nobody can trace. The
+# gate's own census is counted where it was taken, before the stages ran.
 e2e_census_launcher=0
 e2e_census_contrast="NOT_RUN"
 
@@ -1605,6 +1777,23 @@ scenarios_suffix() {
     fi
 }
 
+# Whether the receipt of the E2E stage is an account the gate could read.
+# It travels with the verdict line for the same reason the test census does:
+# the receipt is the trace of the run, and a run whose trace nobody could
+# read says it passed without saying what it passed ON.
+#
+#   ok       the receipt was written, and it held up against its own totals
+#            and against the gate's census.
+#   invalid  it was written, and it did not hold up.
+#   absent   it was not written at all.
+#   NOT_RUN  the E2E stage did not run, so there was no receipt to write.
+#
+# A run that never asked for the E2E stage says NOT_RUN instead of staying
+# silent, because a silent field reads like a zero.
+receipt_suffix() {
+    printf '  receipt=%s' "$receipt_state"
+}
+
 # How much of the build REALLY ran. It travels with the verdict line for the
 # same reason the test census does: the seconds on the line are the same
 # whether the tasks executed or the cache answered for them, and a reader who
@@ -1633,8 +1822,8 @@ tasks_suffix() {
 # unrepresentable -- one string, one `%s` -- and each field keeps saying NOT_RUN
 # rather than going quiet when its stage was skipped.
 evidence_suffixes() {
-    printf '%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
-        "$(residue_suffix)" "$(components_suffix)" "$(tasks_suffix)"
+    printf '%s%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
+        "$(receipt_suffix)" "$(residue_suffix)" "$(components_suffix)" "$(tasks_suffix)"
 }
 
 stage3_started_ms=$(now_ms)
@@ -1652,13 +1841,26 @@ if (( stage_budget <= 0 )); then
     fail "stage 3: the gate has no budget left for the E2E stage"
 fi
 export PIPELINEK_E2E_BUDGET_SECONDS="$stage_budget"
+
+# The receipt of this cycle. The launcher writes it and the gate reads it back
+# and seals its own verdict into it.
+#
+# The receipt is asked for ALWAYS: a receipt that only exists when somebody
+# remembered to ask for it is a receipt that is missing exactly when it was
+# needed. And the launcher is told WHERE to write it, so the gate never has
+# to go looking for a document it does not know the name of.
+prepare_receipt || fail "stage 3: the receipt could not be prepared"
+
+launcher_args=()
 if [[ -n "$scenario_filter" ]]; then
-    ./examples/run.sh "$scenario_filter" > "$log_dir/stage3.log" 2>&1 \
-        || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (the tail of the stage log is above)"; }
-else
-    ./examples/run.sh > "$log_dir/stage3.log" 2>&1 \
-        || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (the tail of the stage log is above)"; }
+    launcher_args+=("$scenario_filter")
 fi
+launcher_args+=(--receipt "$receipt_file")
+if [[ "$diagnostics_local" == 1 ]]; then
+    launcher_args+=(--diagnostics local)
+fi
+./examples/run.sh "${launcher_args[@]}" > "$log_dir/stage3.log" 2>&1 \
+    || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (the tail of the stage log is above)"; }
 # Reading the log with -a: the scenario output can carry NUL bytes, and without
 # it the match is reported as a binary file with no text, which is
 # indistinguishable from the summary being absent.
@@ -1674,8 +1876,6 @@ e2e_stage3_ran=1
 # cost nobody can weigh against what it bought. A census line the launcher did
 # not print leaves the field empty rather than zero: an absent count is not a
 # count of nothing, it is a count nobody took.
-e2e_observed=""
-e2e_executed=""
 e2e_census="$(grep -aE '^[0-9]+ of [0-9]+ executed scenario' "$log_dir/stage3.log" || true)"
 if [[ -n "$e2e_census" ]]; then
     e2e_observed="$(sed -nE 's/^([0-9]+) of [0-9]+ executed scenario.*/\1/p' <<<"$e2e_census")"
@@ -1819,6 +2019,59 @@ fi
         fail "stage 3: the gate planned ${e2e_census_gate} scenario(s) and the launcher ran ${e2e_census_launcher}; they are not the same set"
     fi
     e2e_census_contrast="ok"
+
+# The receipt, read back and checked.
+#
+# The gate does not take the receipt's word for anything: the receipt is
+# validated against the totals it carries and against the gate's own census,
+# and a receipt that does not hold up FAILS the run. A receipt that is absent
+# says "nothing is known about what ran", and a gate that published a PASS
+# next to it would be publishing a claim it never observed. So the answer to
+# a receipt that does not hold up is failure -- and the failure names the
+# HARNESS, because a defect of the harness is not a defect of the product it
+# exercises.
+#
+# The check happens HERE, after the launcher's own census line has been read
+# and BEFORE anything else is derived from it, so that a verdict line printed
+# on the way out still carries what the launcher observed. A verdict line that
+# lost a field because the run failed is a verdict line that says less than
+# the run knew.
+#
+# The census the receipt is contrasted with is the gate's own reading of the
+# tree, taken BEFORE the stages ran. It is a third witness, not a replacement:
+# the name-by-name contrast below still stands on its own, and it stands even
+# if this receipt were deleted.
+printf '%s' "$gate_scenarios_census" > "$cycle_dir/planned-scenarios.txt"
+receipt_product="$repo_root/pipelinek/pipeline-application/build/install/pipelinek/bin/pipelinek"
+if [[ ! -f "$receipt_file" ]]; then
+    receipt_state="absent"
+    echo "verify-all: the E2E receipt was NOT written: $receipt_file" >&2
+    echo "  the launcher refuses to publish a receipt it cannot write, or one that" >&2
+    echo "  carries a secret; either way there is no account of this cycle to read." >&2
+    fail_with_verdict "stage 3: the E2E receipt is absent"
+fi
+if python3 scripts/check-e2e-receipt.py check \
+        --receipt "$receipt_file" \
+        --census "$cycle_dir/planned-scenarios.txt" \
+        --product "$receipt_product"; then
+    receipt_state="ok"
+else
+    receipt_state="invalid"
+    fail_with_verdict "stage 3: the E2E receipt is not a sound account (a defect of the harness, not of the product)"
+fi
+
+# Where the receipt is, so that a reader of the report can find the trace of
+# the run without having to know the naming convention of the directory.
+printf '    receipt: %s\n' "$receipt_file"
+
+# Where the launcher kept the artefacts of the cycle, when the operator asked
+# for them to be kept. The path is the LAUNCHER's own statement about where it
+# put them, read from its report: the gate does not go looking for a
+# directory it did not create.
+diagnostics_path="$(grep -aE '^diagnostics: ' "$log_dir/stage3.log" | head -1 | sed 's/^diagnostics: //' || true)"
+if [[ -n "$diagnostics_path" ]]; then
+    printf '    diagnostics kept at: %s\n' "$diagnostics_path"
+fi
     component_set "e2e:scenarios" "$e2e_cost_total_ms" \
         "sum of every scenario the launcher priced; they run in parallel"
     component_require "e2e:scenarios" "the cost of the scenarios is part of the baseline"
@@ -1918,6 +2171,7 @@ if [[ "$subset" == 1 ]]; then
     # subset that spends 900 is not evidence the gate would. Comparing either
     # against 900 s would be a number about nothing, so none is printed.
     echo "    elapsed ${total}s (SUBSET: not compared against the ${BUDGET_SECONDS}s gate)"
+    gate_verdict="SUBSET"
     printf '\nPASS (subset)  sha=%s  elapsed=%ss%s\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$(evidence_suffixes)"
     printf 'This is not the gate. Quote scripts/verify-all.sh with no filters for that.\n'
@@ -1941,6 +2195,7 @@ fi
 # evidence, and a scenario the product cannot launch without a TTY is a gap to
 # name, not a defect to redden the whole gate over.
 if (( e2e_not_run > 0 )); then
+    gate_verdict="INCOMPLETE"
     printf '\nINCOMPLETE  sha=%s  elapsed=%ss  budget=%ss%s\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" \
         "$BUDGET_SECONDS" "$(evidence_suffixes)"
@@ -1952,6 +2207,7 @@ else
     # subset, and every `fail` keep their logs: those are exactly the runs an
     # operator has to come back and read.
     VERIFY_ALL_VERDICT=PASS
+    gate_verdict="PASS"
     printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss%s\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" \
         "$BUDGET_SECONDS" "$(evidence_suffixes)"

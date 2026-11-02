@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
@@ -42,8 +43,15 @@ import java.util.UUID
  * UNCHANGED.
 */
 
-/** The single seam by which body children re-enter the coordinator's dispatch. */
-fun interface BodyChildDispatcher {
+/**
+ * The single seam by which body children re-enter the coordinator's dispatch.
+ *
+ * It is INTERNAL because it carries the scope's parent, which is an internal
+ * value: a public seam that took an internal type would widen the published
+ * surface of the module for no consumer, and the module's own contract says
+ * the seam exists for the engine, not for anybody outside it.
+ */
+internal fun interface BodyChildDispatcher {
     suspend fun dispatchChild(
         child: StepNode,
         runId: RunId,
@@ -52,7 +60,7 @@ fun interface BodyChildDispatcher {
         stepIndex: Int,
         childShOptions: ShOptions,
         bodyPath: List<BlockSegment>,
-        executionContext: ExecutionContext,
+        spanScope: SpanScope,
     ): StepOutcome
 }
 
@@ -79,7 +87,7 @@ internal class BodyExecutionEngine(
         stepIndex: Int,
         childShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
-        executionContext: ExecutionContext,
+        spanScope: SpanScope,
         leaseBindings: List<CredentialBindingSpec> = emptyList(),
         dispatcher: BodyChildDispatcher,
     ): StepOutcome {
@@ -99,7 +107,7 @@ internal class BodyExecutionEngine(
                 stepIndex,
                 childShOptions,
                 childOpId.bodyPath,
-                executionContext,
+                spanScope,
             )
             if (leaseBindings.isNotEmpty()) {
                 for (binding in leaseBindings) {
@@ -250,7 +258,7 @@ internal class BodyExecutionEngine(
         stepIndex: Int,
         childShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
-        executionContext: ExecutionContext,
+        spanScope: SpanScope,
     dispatcher: BodyChildDispatcher,
     ): StepOutcome {
         val overallStartMs = System.currentTimeMillis()
@@ -276,7 +284,7 @@ internal class BodyExecutionEngine(
                 stepIndex,
                 childShOptions,
                 pollAttemptPath,
-                executionContext,
+                spanScope,
                 dispatcher = dispatcher,
             )
 
@@ -370,11 +378,11 @@ internal class BodyExecutionEngine(
         stepIndex: Int,
         childShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
-        context: ExecutionContext,
+        spanScope: SpanScope,
         dispatcher: BodyChildDispatcher,
         bodyInvokerAdapter: CanonicalBodyInvokerAdapter,
     ): StepOutcome {
-        var contextInBody = context
+        val scopeInBody = spanScope
         var outcome: StepOutcome = StepOutcome.Success
         val bodyRef = dev.rubentxu.pipeline.v2.domain.step.BodyRefs.childBody(parentBodyPath)
         bodyInvokerAdapter.open(bodyRef) { ctx ->
@@ -391,7 +399,7 @@ internal class BodyExecutionEngine(
             // the options the children are launched with. The two surfaces are projected
             // together because a patch that reaches only one of them does not happen: the
             // context would say `FOO=1` while the process runs without it.
-            when (val projection = projectInvocationPatch(contextInBody, childShOptions, ctx.patch)) {
+            when (val projection = projectInvocationPatch(scopeInBody.ambient, childShOptions, ctx.patch)) {
                 is InvocationPatchProjection.Refused -> StepOutcome.Failure(
                     PipelineFailure(
                         dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
@@ -407,7 +415,7 @@ internal class BodyExecutionEngine(
                     stepIndex = stepIndex,
                     childShOptions = projection.shOptions,
                     parentBodyPath = attemptBasePath,
-                    executionContext = projection.context,
+                    spanScope = scopeInBody.withAmbient(projection.context),
                     dispatcher = dispatcher,
                 )
             }
@@ -454,7 +462,7 @@ internal class BodyExecutionEngine(
                     blockPluginStepId = block.pluginStepId,
                     telemetry = telemetry,
                 )
-                outcome = retryEngine.execute(bodyRef)
+                outcome = retryEngine.execute(bodyRef, scopeInBody.parent)
             } else if (scope is BlockShellScope.WaitUntilScope && waitUntilControlJournal != null) {
                 // WaitUntil aggregate is owned by WaitUntilEngine
                 // (dev.rubentxu.pipeline.v2.application.durable.waituntil.WaitUntilEngine).
@@ -488,7 +496,7 @@ internal class BodyExecutionEngine(
                         blockPluginStepId = block.pluginStepId,
                         telemetry = telemetry,
                     )
-                outcome = waitUntilEngine.execute(bodyRef)
+                outcome = waitUntilEngine.execute(bodyRef, scopeInBody.parent)
             } else if (scope is BlockShellScope.WaitUntilScope) {
                 // Legacy waitUntil (no journal): the inline polling loop.
                 // It is not the shipped path — the production composition root
@@ -503,7 +511,7 @@ internal class BodyExecutionEngine(
                     stepIndex = stepIndex,
                     childShOptions = childShOptions,
                     parentBodyPath = parentBodyPath,
-                    executionContext = contextInBody,
+                    spanScope = scopeInBody,
                     dispatcher = dispatcher,
                 )
             } else {
@@ -546,7 +554,7 @@ internal class BodyExecutionEngine(
                     stepIndex,
                     childShOptions,
                     attemptBasePath,
-                    contextInBody,
+                    scopeInBody,
                     dispatcher = dispatcher,
                 )
                 when (attemptOutcome) {

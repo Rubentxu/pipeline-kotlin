@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
@@ -126,7 +127,7 @@ internal class RunOutputRetention(
      * disposition is returned as well as reported, so a caller can act on it rather than parse a
      * message.
 */
-    fun onRunTerminal(runId: RunId): RunOutputDisposition {
+    fun onRunTerminal(runId: RunId, parent: LiveSpanParent): RunOutputDisposition {
         // The release span covers the WHOLE terminal handling: the decision to
         // release or retain, the prune itself and the report. A span that
         // covered only the prune would say "the release took no time" for a
@@ -134,6 +135,7 @@ internal class RunOutputRetention(
         val span = LiveSpans.open(
             telemetry = telemetry,
             name = LiveSpanNames.RELEASE,
+            parent = parent,
             attributes = listOf(
                 LiveSpanAttributes.runId(runId.value),
             ),

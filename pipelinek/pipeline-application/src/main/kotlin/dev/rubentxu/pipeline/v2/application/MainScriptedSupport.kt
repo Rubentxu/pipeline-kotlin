@@ -65,6 +65,10 @@ internal fun runScriptedFrontend(
             controlDirRoot = controlDirRoot,
             outputWakeups = outputWakeups,
             telemetry = telemetry,
+            // A standalone scripted run has no canonical run span above it: the
+            // scripted frontend IS the run. Its boundaries therefore hang under
+            // the session's own parent, which is the only parent that exists.
+            spanParent = telemetry.sessionParent,
         )
     }
     return when (outcome) {

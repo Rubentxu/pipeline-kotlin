@@ -238,7 +238,11 @@ internal fun admitThenCompose(
     journal: AdmissionControlJournal? = null,
     telemetry: PipelineTelemetry,
 ): PluginAdmission {
-    val span = LiveSpans.open(telemetry = telemetry, name = LiveSpanNames.ADMISSION)
+    val span = LiveSpans.open(
+        telemetry = telemetry,
+        name = LiveSpanNames.ADMISSION,
+        parent = telemetry.sessionParent,
+    )
     val admission = when (val outcome = PluginCompositionAdmitter.admitThenCompose(pluginJars, trust, journal)) {
         is CompositionOutcome.Composed -> {
             outcome.composition.also { composition ->

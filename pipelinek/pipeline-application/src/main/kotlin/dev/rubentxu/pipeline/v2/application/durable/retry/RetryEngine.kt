@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable.retry
 
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
@@ -193,7 +194,10 @@ internal class RetryEngine(
      * engine's fold; the engine itself is `StepKey`-blind (no `when(stepKey)`,
      * no `if (pluginStepId == ...)`).
 */
-    suspend fun execute(bodyRef: dev.rubentxu.pipeline.v2.domain.step.BodyRef): StepOutcome {
+    suspend fun execute(
+        bodyRef: dev.rubentxu.pipeline.v2.domain.step.BodyRef,
+        parent: LiveSpanParent,
+    ): StepOutcome {
         // The loop is bounded by `2 * maxAttempts + 1` ticks to guarantee
         // progress. Each failed attempt consumes two ticks (an
         // `AdvanceAfterFailure` plan + the subsequent `ScheduleAttempt` plan);
@@ -251,7 +255,7 @@ internal class RetryEngine(
                         ),
                     )
 
-                    val outcome = invokeAttemptUnderSpan(bodyRef, attempt)
+                    val outcome = invokeAttemptUnderSpan(bodyRef, attempt, parent)
 
                     val attemptOutcome = when (outcome) {
                         is dev.rubentxu.pipeline.v2.domain.step.BodyOutcome.Completed ->
@@ -337,10 +341,12 @@ internal class RetryEngine(
     private suspend fun invokeAttemptUnderSpan(
         bodyRef: dev.rubentxu.pipeline.v2.domain.step.BodyRef,
         attempt: Int,
+        parent: LiveSpanParent,
     ): BodyOutcome {
         val span = LiveSpans.open(
             telemetry = telemetry,
             name = LiveSpanNames.RETRY_ATTEMPT,
+            parent = parent,
             attributes = listOf(
                 LiveSpanAttributes.runId(runId.value),
                 LiveSpanAttributes.stageIndex(stageIndex),

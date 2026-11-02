@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
-import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -28,7 +28,7 @@ internal data class SagaSlotRequest(
     val stepIndex: Int,
     val bodyPath: List<BlockSegment>,
     val stageShOptions: ShOptions,
-    val executionContext: ExecutionContext,
+    val spanScope: SpanScope,
 )
 
 /**
@@ -103,7 +103,7 @@ internal class SagaSlotDispatcher(
                 // with the options.
                 when (
                     val projection = projectInvocationPatch(
-                        request.executionContext,
+                        request.spanScope.ambient,
                         request.stageShOptions,
                         slotContext.patch,
                     )
@@ -119,7 +119,7 @@ internal class SagaSlotDispatcher(
                             stepIndex = request.stepIndex,
                             childShOptions = projection.shOptions,
                             bodyPath = childBodyPath,
-                            executionContext = projection.context,
+                            spanScope = request.spanScope.withAmbient(projection.context),
                         ),
                     )
                 }

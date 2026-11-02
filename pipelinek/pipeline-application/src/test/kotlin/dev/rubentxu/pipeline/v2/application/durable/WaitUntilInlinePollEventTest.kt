@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
+import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
 
 import dev.rubentxu.pipeline.v2.application.observation.HumanConsoleRenderer
@@ -84,7 +86,7 @@ class WaitUntilInlinePollEventTest {
                     env = emptyMap(),
                 ),
                 parentBodyPath = emptyList(),
-                executionContext = ExecutionContext.EMPTY,
+                spanScope = SpanScope(ExecutionContext.EMPTY, LiveSpanParent.Root),
                 dispatcher = SatisfyingDispatcher(),
             )
         }
@@ -143,7 +145,7 @@ class WaitUntilInlinePollEventTest {
             stepIndex: Int,
             childShOptions: ShOptions,
             bodyPath: List<BlockSegment>,
-            executionContext: ExecutionContext,
+            spanScope: SpanScope,
         ): StepOutcome = StepOutcome.Success
     }
 

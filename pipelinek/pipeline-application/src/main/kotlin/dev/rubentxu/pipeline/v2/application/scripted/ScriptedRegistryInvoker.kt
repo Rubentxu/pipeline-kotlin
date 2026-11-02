@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.scripted
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalCapabilityBindings
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationRecord
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationResolver
 import dev.rubentxu.pipeline.v2.application.durable.DurableStepExecutor
@@ -249,6 +250,15 @@ internal class ScriptedRegistryInvoker(
     private val invocationResolver: DurableInvocationResolver,
     private val stepExecutor: DurableStepExecutor,
     private val recoveryInterpretation: RecoveryInterpretationEngine,
+    /**
+     * The span the scripted surface's own boundaries hang under.
+     *
+     * The scripted surface is reached from TWO places — a canonical stage, or
+     * a standalone scripted run — and each knows what caused it. The parent
+     * travels here so the surface's spans say the same thing about their
+     * cause instead of guessing it from an ambient value.
+     */
+    private val spanParent: LiveSpanParent = LiveSpanParent.Root,
 ) {
 
     /** Read-only definition accessor so callers can project typed outputs through the
@@ -421,6 +431,7 @@ internal class ScriptedRegistryInvoker(
                         // Passing it verbatim is what lets a recovered value be materialised here
                         // exactly as it is on the canonical surface.
                         stepPayload = call.encodedInput.value,
+                        parent = spanParent,
                     ),
                 ) as RecoveryInterpretationEngine.RecoveryInterpretation.Settled
 
@@ -495,6 +506,7 @@ internal class ScriptedRegistryInvoker(
             prepared = ready,
             runtime = runtime,
             lifecycleContext = lifecycleFor(call),
+            parent = spanParent,
         )
 
         return when (val outcome = execution.outcome) {

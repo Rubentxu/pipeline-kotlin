@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable.waituntil
 
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
 
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilControlJournal
@@ -88,7 +89,7 @@ class WaitUntilPollEventTest {
             telemetry = NoopPipelineTelemetry,
         )
 
-        val outcome = runBlocking { engine.execute(BodyRef("body/wait-until")) }
+        val outcome = runBlocking { engine.execute(BodyRef("body/wait-until"), LiveSpanParent.Root) }
 
         assertEquals(StepOutcome.Success, outcome, "the predicate held, so the wait succeeded")
 

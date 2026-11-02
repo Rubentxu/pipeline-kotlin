@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner
 import dev.rubentxu.pipeline.v2.application.scripted.ScriptedStructuralAddress
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
@@ -116,10 +117,11 @@ internal class ScriptedStageExecution(
         stageIndex: Int,
         runId: RunId,
         shOptions: ShOptions,
+        spanParent: LiveSpanParent,
     ): Verdict {
         val ref = (stage.body as? StageBody.Scripted)?.ref
             ?: return Verdict.Refused(Refusal.UnknownArtifact("<stage '${stage.name}' is not a scripted body>"))
-        return run(ref, stage, stageIndex, runId, shOptions)
+        return run(ref, stage, stageIndex, runId, shOptions, spanParent)
     }
 
     /** The same path, addressed by its ref, so the edge is testable without building a stage. */
@@ -129,6 +131,7 @@ internal class ScriptedStageExecution(
         stageIndex: Int,
         runId: RunId,
         shOptions: ShOptions,
+        spanParent: LiveSpanParent,
     ): Verdict {
         val entryPoint = when (val resolution = scriptedArtifacts.resolve(ref)) {
             is ScriptedStageResolution.Resolved -> resolution.entryPoint
@@ -156,6 +159,7 @@ internal class ScriptedStageExecution(
                 stageName = stage.name,
             ),
             telemetry = telemetry,
+            spanParent = spanParent,
         )
 
         return when (outcome) {

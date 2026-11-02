@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
@@ -155,12 +156,16 @@ internal class StageExecutionEngine(
         runId: RunId,
         ambient: ExecutionContext,
     ): StageVerdict {
-        runLifecycle.stageStarted(runId, stageIndex, stage.name)
+        // The stage's span is the parent of every step the stage dispatches: the
+        // stage caused them, and a trace that does not say so is a list of
+        // events with timestamps.
+        val stageParent = runLifecycle.stageStarted(runId, stageIndex, stage.name)
         var context = ambient
         var stageUnstable = false
         for (stepIndex in steps.indices) {
             val dispatched = stepDispatch.dispatch(
-                steps[stepIndex], runId, stage.name, stageIndex, stepIndex, stageShOptions, emptyList(), context,
+                steps[stepIndex], runId, stage.name, stageIndex, stepIndex, stageShOptions, emptyList(),
+                SpanScope(context, stageParent),
             )
             context = dispatched.context
             // The stage fold needs the OUTCOME, so it projects it explicitly and leaves the
@@ -222,8 +227,10 @@ internal class StageExecutionEngine(
         runId: RunId,
         ambient: ExecutionContext,
     ): StageVerdict {
-        runLifecycle.stageStarted(runId, stageIndex, stage.name)
-        val bodyOutcome = when (val verdict = scriptedExecution.run(stage, stageIndex, runId, stageShOptions)) {
+        val stageParent = runLifecycle.stageStarted(runId, stageIndex, stage.name)
+        val bodyOutcome = when (
+            val verdict = scriptedExecution.run(stage, stageIndex, runId, stageShOptions, stageParent)
+        ) {
             is ScriptedStageExecution.Verdict.Completed -> verdict.outcome
             is ScriptedStageExecution.Verdict.Refused -> StepOutcome.Failure(
                 PipelineFailure(
@@ -430,6 +437,10 @@ internal class StageExecutionEngine(
         // the walk, so the event lists and the executed nodes can never
         // disagree about which blocks fired.
         var dispatched = 0
+        // A finalizer belongs to the stage it finalises, so it hangs under
+        // that stage's span — and under the run's span when the stage never
+        // opened one, which is the case of a stage that was skipped.
+        val stageScope = SpanScope(ambient, runLifecycle.parentFor(stageIndex))
         for (condition in PostPlanner.selectedConditions(plan, stageOutcome)) {
             val nodes = plan.bodies[condition].orEmpty()
             for ((index, node) in nodes.withIndex()) {
@@ -442,7 +453,7 @@ internal class StageExecutionEngine(
                     stepIndex = POST_BASE_STEP_INDEX + dispatched,
                     stageShOptions = stageShOptions,
                     bodyPath = bodyPath,
-                    executionContext = ambient,
+                    spanScope = stageScope,
                 )
                 dispatched++
                 if (dispatchedStep.result.outcome !is StepOutcome.Success) {

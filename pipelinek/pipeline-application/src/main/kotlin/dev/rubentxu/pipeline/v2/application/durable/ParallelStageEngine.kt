@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
@@ -73,7 +74,11 @@ internal class ParallelStageEngine(
         // an accidental implementation difference, not a different Stage semantic.
         // Exactly one StageStarted, same stage identity as the StageFinished emitted
         // by the caller's continuation handling.
-        runLifecycle.stageStarted(runId, stageIndex, stage.name)
+        val stageParent = runLifecycle.stageStarted(runId, stageIndex, stage.name)
+        // The branches hang under the stage's span, and they carry that fact
+        // EXPLICITLY: they run on another dispatcher, where an ambient parent
+        // would already be gone by the time the branch opened its span.
+        val stageScope = SpanScope(executionContext, stageParent)
 
         // Plan the parallel aggregate from durable facts BEFORE any branch
         // launches. The reconciler is pure; this class is the single writer.
@@ -148,7 +153,7 @@ internal class ParallelStageEngine(
             }
         }
 
-        val branchOutcomes = launchBranches(branches, branchesToRun, runId, stageIndex, stageShOptions, executionContext)
+        val branchOutcomes = launchBranches(branches, branchesToRun, runId, stageIndex, stageShOptions, stageScope)
 
         // Fold the typed branch outcomes (exact semantic knowledge at fresh
         // execution time) and close the aggregate row with the lossless carrier.
@@ -202,7 +207,7 @@ internal class ParallelStageEngine(
         runId: RunId,
         stageIndex: Int,
         stageShOptions: ShOptions,
-        executionContext: ExecutionContext,
+        spanScope: SpanScope,
     ): List<StepOutcome> {
         val deferred: List<kotlinx.coroutines.Deferred<StepOutcome>> = kotlinx.coroutines.supervisorScope {
             branchesToRun.map { branchIndex ->
@@ -220,7 +225,7 @@ internal class ParallelStageEngine(
                         ),
                     )
                     val branchOutcome = executeBranchSteps(
-                        branch, runId, stageIndex, branchIndex, stageShOptions, executionContext,
+                        branch, runId, stageIndex, branchIndex, stageShOptions, spanScope,
                     )
                     // Exhaustive WITHOUT `else`, on purpose. This used to end
                     // in `else -> "success"`, which meant a `StepOutcome` case nobody had
@@ -433,10 +438,10 @@ internal class ParallelStageEngine(
         stageIndex: Int,
         branchIndex: Int,
         stageShOptions: ShOptions,
-        executionContext: ExecutionContext,
+        spanScope: SpanScope,
     ): StepOutcome {
-        // Immutable value; today branchContext == parentContext.
-        val branchContext = executionContext
+        // Immutable value; today the branch scope IS the stage scope.
+        val branchScope = spanScope
         // Parallel branches get ISOLATED cwds. The workspace is
         // derived purely from (controlDirRoot, stageIndex, branchIndex) and carried in
         // the branch's immutable ShOptions copy — no coordinator state is mutated and
@@ -473,7 +478,7 @@ internal class ParallelStageEngine(
                 stepIndex,
                 branchShOptions,
                 bodyPath,
-                branchContext,
+                branchScope,
             )
             // A parallel branch only needs to KNOW the outcome, so it projects it here. The
             // carrier is not destroyed to make that possible — `Dispatched` still holds the encoded

@@ -1,12 +1,12 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialLeaseAdmission
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup
 import dev.rubentxu.pipeline.v2.application.durable.credentials.LeaseAdmission
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.ContextOverlay
-import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -58,7 +58,7 @@ internal class CanonicalBodyDispatch(
         stepIndex: Int,
         stageShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
-        executionContext: ExecutionContext,
+        spanScope: SpanScope,
         // the ONE re-entry reference: a child dispatched here walks the canonical
         // spine again through exactly this call site, the same one every other body
         // path uses.
@@ -84,8 +84,8 @@ internal class CanonicalBodyDispatch(
             // the typed decoders above report expected invalid input as a value.
             BodyExecutionProjection.InvalidInput(error.message ?: "invalid body input")
         }
-        // no parent capture, no restore — executionContext is the caller's value and stays it.
-        val contextInBody = executionContext
+        // no parent capture, no restore — the scope is the caller's value and stays it.
+        val scopeInBody = spanScope
         // The FOLD is the scope's own outcome rule: the children run in the caller's
         // context and the fold decides what the scope's outcome IS. It is kept aside
         // because it applies AFTER the body has run, to the outcome the body produced.
@@ -104,7 +104,7 @@ internal class CanonicalBodyDispatch(
                 stepIndex = stepIndex,
                 stageShOptions = stageShOptions,
                 parentBodyPath = parentBodyPath,
-                executionContext = executionContext,
+                spanScope = scopeInBody,
                 reentry = reentry,
             )
             is BodyExecutionProjection.InvalidInput -> return StepOutcome.Failure(
@@ -128,7 +128,7 @@ internal class CanonicalBodyDispatch(
         val scope = fold?.let { BlockShellScope.None }
             ?: (projection as BodyExecutionProjection.Scope).scope
         val projected = bodyExecutionEngine.projectScope(
-            scope, block, runId, stageIndex, stepIndex, stageShOptions, contextInBody,
+            scope, block, runId, stageIndex, stepIndex, stageShOptions, scopeInBody.ambient,
         )
 
         // B11 / W2: bind the body-reentry seam by registering the body with the adapter.
@@ -167,7 +167,7 @@ internal class CanonicalBodyDispatch(
             stepIndex = stepIndex,
             childShOptions = projected.shOptions,
             parentBodyPath = parentBodyPath,
-            context = contextInBody,
+            spanScope = scopeInBody,
             dispatcher = reentry,
             bodyInvokerAdapter = bodyInvokerAdapter,
         )
@@ -250,7 +250,7 @@ internal class CanonicalBodyDispatch(
         stepIndex: Int,
         childShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
-        executionContext: ExecutionContext,
+        spanScope: SpanScope,
         reentry: BodyChildDispatcher,
         leaseBindings: List<CredentialBindingSpec> = emptyList(),
     ): StepOutcome = bodyExecutionEngine.invokeBodyChildren(
@@ -261,7 +261,7 @@ internal class CanonicalBodyDispatch(
         stepIndex,
         childShOptions,
         parentBodyPath,
-        executionContext,
+        spanScope,
         leaseBindings,
         reentry,
     )
@@ -295,7 +295,7 @@ internal class CanonicalBodyDispatch(
         stepIndex: Int,
         stageShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
-        executionContext: ExecutionContext,
+        spanScope: SpanScope,
         reentry: BodyChildDispatcher,
     ): StepOutcome {
         // observability fix: an admission failure here is a REAL observable
@@ -321,10 +321,12 @@ internal class CanonicalBodyDispatch(
                 )
             }
         }
-        val childContext = executionContext.pushed(
-            ContextOverlay.Environment(
-                dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(
-                    leased.env.mapValues { (_, handle) -> handle.borrow { bytes -> String(bytes, Charsets.UTF_8) } },
+        val childScope = spanScope.withAmbient(
+            spanScope.ambient.pushed(
+                ContextOverlay.Environment(
+                    dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(
+                        leased.env.mapValues { (_, handle) -> handle.borrow { bytes -> String(bytes, Charsets.UTF_8) } },
+                    ),
                 ),
             ),
         )
@@ -346,7 +348,7 @@ internal class CanonicalBodyDispatch(
                 stepIndex = stepIndex,
                 childShOptions = childShOptions,
                 parentBodyPath = parentBodyPath,
-                executionContext = childContext,
+                spanScope = childScope,
                 reentry = reentry,
                 leaseBindings = bindings,
             )

@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
@@ -131,6 +132,17 @@ internal class RecoveryInterpretationEngine(
          * receive bytes that differ from the ones the compiler produced.
 */
         val stepPayload: String? = null,
+
+        /**
+         * The span this recovery hangs under.
+         *
+         * A recovery is the SAME operation being settled, not a new operation:
+         * the dispatch that asked for the reconciliation is what caused it, so
+         * the recovery's span is that dispatch's child. The parent travels with
+         * the request because the request IS the seam, and a recovery that
+         * opened a root span would claim nothing caused it.
+         */
+        val parent: LiveSpanParent = LiveSpanParent.Root,
     )
 
     /**
@@ -217,6 +229,7 @@ internal class RecoveryInterpretationEngine(
             val span = LiveSpans.open(
                 telemetry = telemetry,
                 name = LiveSpanNames.RECOVERY,
+                parent = request.parent,
                 attributes = listOf(
                     LiveSpanAttributes.runId(request.lifecycleContext.runId),
                     LiveSpanAttributes.stageIndex(request.lifecycleContext.stageIndex),

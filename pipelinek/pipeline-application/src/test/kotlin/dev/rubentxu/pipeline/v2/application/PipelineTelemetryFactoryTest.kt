@@ -26,7 +26,7 @@ class PipelineTelemetryFactoryTest {
             warning = warnings::add,
         )
 
-        telemetry.startSpan("run", emptyList()).end(LiveSpanStatus.Completed)
+        telemetry.startSpan("run", emptyList(), LiveSpanParent.Root).end(LiveSpanStatus.Completed)
         telemetry.close()
 
         assertEquals(false, sdkCreated)
@@ -59,7 +59,7 @@ class PipelineTelemetryFactoryTest {
             warning = warnings::add,
         )
 
-        telemetry.startSpan("run", emptyList()).end(LiveSpanStatus.Completed)
+        telemetry.startSpan("run", emptyList(), LiveSpanParent.Root).end(LiveSpanStatus.Completed)
         telemetry.close()
 
         assertEquals(1, warnings.size)
@@ -129,8 +129,12 @@ class PipelineTelemetryFactoryTest {
     fun exporterShutdownFailureDoesNotChangeTheRunExitCode() {
         val telemetry = object : PipelineTelemetry {
             override val enabled: Boolean = true
-            override fun startSpan(name: String, attributes: List<TelemetryAttribute>): PipelineSpan =
-                RecordingSpan
+            override val sessionParent: LiveSpanParent = LiveSpanParent.Root
+            override fun startSpan(
+                name: String,
+                attributes: List<TelemetryAttribute>,
+                parent: LiveSpanParent,
+            ): PipelineSpan = RecordingSpan
             override fun close() = error("collector-unavailable")
         }
 
@@ -160,7 +164,7 @@ class PipelineTelemetryFactoryTest {
         val telemetry = PipelineTelemetryFactory.sdkPipelineTelemetry(sdk, warnings::add)
 
         val exitCode = withPipelineTelemetry(telemetry) {
-            telemetry.startSpan("pipelinek.run", emptyList()).end(LiveSpanStatus.Completed)
+            telemetry.startSpan("pipelinek.run", emptyList(), LiveSpanParent.Root).end(LiveSpanStatus.Completed)
             17
         }
 
@@ -173,8 +177,12 @@ class PipelineTelemetryFactoryTest {
 
     private object RecordingTelemetry : PipelineTelemetry {
         override val enabled: Boolean = true
-        override fun startSpan(name: String, attributes: List<TelemetryAttribute>): PipelineSpan =
-            RecordingSpan
+        override val sessionParent: LiveSpanParent = LiveSpanParent.Root
+        override fun startSpan(
+            name: String,
+            attributes: List<TelemetryAttribute>,
+            parent: LiveSpanParent,
+        ): PipelineSpan = RecordingSpan
         override fun close() = Unit
     }
 

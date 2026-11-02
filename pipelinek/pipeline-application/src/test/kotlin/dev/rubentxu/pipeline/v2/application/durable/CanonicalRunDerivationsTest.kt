@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
 
 import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
@@ -135,7 +136,7 @@ class CanonicalRunDerivationsTest {
         )
         assertEquals(
             RunOutputDisposition.Retained,
-            retention.onRunTerminal(RunId("run-1")),
+            retention.onRunTerminal(RunId("run-1"), LiveSpanParent.Root),
             "the run reached its terminal state and its output was kept, without resolving the store",
         )
     }

@@ -84,6 +84,7 @@ class LiveSpanVocabularyTest {
         val handle = LiveSpans.open(
             telemetry = observer,
             name = LiveSpanNames.RUN,
+            parent = LiveSpanParent.Root,
             attributes = listOf(LiveSpanAttributes.runId("run-1")),
         )
 
@@ -109,6 +110,7 @@ class LiveSpanVocabularyTest {
         LiveSpans.open(
             telemetry = observer,
             name = LiveSpanNames.STEP_DISPATCH,
+            parent = LiveSpanParent.Root,
             attributes = listOf(
                 LiveSpanAttributes.runId("run-1"),
                 LiveSpanAttributes.stageIndex(2),
@@ -143,7 +145,7 @@ class LiveSpanVocabularyTest {
             onStart = { _, _ -> throw IllegalStateException("the collector is unreachable") },
         )
 
-        val handle = LiveSpans.open(telemetry = observer, name = LiveSpanNames.RUN)
+        val handle = LiveSpans.open(telemetry = observer, name = LiveSpanNames.RUN, parent = LiveSpanParent.Root)
 
         assertNull(handle, "an observer that failed to open a span has no span to hand back")
     }
@@ -160,7 +162,7 @@ class LiveSpanVocabularyTest {
     @DisplayName("a span that fails to end does not fail the caller")
     fun aSpanThatFailsToEndDoesNotFailTheCaller() {
         val observer = RecordingLiveSpanObserver()
-        val handle = LiveSpans.open(telemetry = observer, name = LiveSpanNames.RUN)
+        val handle = LiveSpans.open(telemetry = observer, name = LiveSpanNames.RUN, parent = LiveSpanParent.Root)
         assertNotNull(handle, "an enabled observer opens a span")
         observer.opened.single().failOnEnd = true
 
@@ -181,7 +183,7 @@ class LiveSpanVocabularyTest {
     @DisplayName("the first ending wins")
     fun theFirstEndingWins() {
         val observer = RecordingLiveSpanObserver()
-        val handle = LiveSpans.open(telemetry = observer, name = LiveSpanNames.STEP_DISPATCH)
+        val handle = LiveSpans.open(telemetry = observer, name = LiveSpanNames.STEP_DISPATCH, parent = LiveSpanParent.Root)
         assertNotNull(handle, "an enabled observer opens a span")
 
         LiveSpans.end(handle, LiveSpanStatus.Rejected)
@@ -204,7 +206,7 @@ class LiveSpanVocabularyTest {
     @DisplayName("a discarded span is never ended")
     fun aDiscardedSpanIsNeverEnded() {
         val observer = RecordingLiveSpanObserver()
-        val handle = LiveSpans.open(telemetry = observer, name = LiveSpanNames.STEP_DISPATCH)
+        val handle = LiveSpans.open(telemetry = observer, name = LiveSpanNames.STEP_DISPATCH, parent = LiveSpanParent.Root)
         assertNotNull(handle, "an enabled observer opens a span")
 
         LiveSpans.discard(handle)

@@ -4,6 +4,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
 import dev.rubentxu.pipeline.v2.application.CanonicalRunState
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
+import dev.rubentxu.pipeline.v2.application.LiveSpanHandle
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
@@ -13,6 +14,7 @@ import dev.rubentxu.pipeline.v2.application.PreResolvedComposition
 import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
+import dev.rubentxu.pipeline.v2.application.liveSpanParentOf
 import dev.rubentxu.pipeline.v2.application.liveStatusOfRunOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyRejection
@@ -373,10 +375,11 @@ internal class CanonicalDurableRunCoordinator(
         val span = LiveSpans.open(
             telemetry = telemetry,
             name = LiveSpanNames.RUN,
+            parent = telemetry.sessionParent,
             attributes = listOf(LiveSpanAttributes.runId(runId.value)),
         )
         val outcome = try {
-            runBody(pipeline, runId)
+            runBody(pipeline, runId, span)
         } catch (throwable: Throwable) {
             LiveSpans.end(span, LiveSpanStatus.Failed)
             throw throwable
@@ -393,7 +396,11 @@ internal class CanonicalDurableRunCoordinator(
      * loop's `return@runBody` labels are the loop's own, and the span cannot
      * be ended by a branch that does not know about it.
      */
-    private suspend fun runBody(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
+    private suspend fun runBody(
+        pipeline: CompiledPipeline,
+        runId: RunId,
+        runSpan: LiveSpanHandle?,
+    ): RunOutcome {
         try {
             CompiledPipelineValidator.validate(pipeline, bodyPolicyResolver)
         } catch (e: BlockNestingExceededException) {
@@ -405,7 +412,7 @@ internal class CanonicalDurableRunCoordinator(
                 PipelineFailure(FailureKind.USER, "Invalid compiled pipeline: ${e.message}"),
             )
         }
-        runLifecycle.openRun(pipeline, runId)
+        runLifecycle.openRun(pipeline, runId, runSpan)
         // Ambient execution context is a run-local immutable value threaded
         // explicitly through dispatch; no coordinator field, no restore idiom.
         var ambient = ExecutionContext.EMPTY
@@ -564,7 +571,7 @@ internal class CanonicalDurableRunCoordinator(
             runLifecycle.closeRun(runId)
             // The run has ENDED, the only moment that can authorise discarding its
             // output. Not gated on the bookend invariant: that asks whether RunFinished may be EMITTED.
-            outputRetention.onRunTerminal(runId)
+            outputRetention.onRunTerminal(runId, liveSpanParentOf(runSpan))
         }
         return runLifecycle.outcome()
     }

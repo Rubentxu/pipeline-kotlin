@@ -5,6 +5,8 @@ import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.application.SpanScope
+import dev.rubentxu.pipeline.v2.application.liveSpanParentOf
 import dev.rubentxu.pipeline.v2.application.liveStatusOfStepOutcome
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
@@ -103,7 +105,7 @@ internal class StepDispatchEngine(
      * once and handed to the body dispatch on every body, so the engine and every body path
      * share exactly one call site back into [dispatch].
      */
-    private val childReentry = BodyChildDispatcher { child, runId, stageName, stageIndex, stepIndex, childShOptions, bodyPath, executionContext ->
+    private val childReentry = BodyChildDispatcher { child, runId, stageName, stageIndex, stepIndex, childShOptions, bodyPath, spanScope ->
         dispatchChild(
             child,
             runId,
@@ -112,7 +114,7 @@ internal class StepDispatchEngine(
             stepIndex,
             childShOptions,
             bodyPath,
-            executionContext,
+            spanScope,
         )
     }
 
@@ -148,7 +150,7 @@ internal class StepDispatchEngine(
         stepIndex: Int,
         stageShOptions: ShOptions,
         bodyPath: List<BlockSegment> = emptyList(),
-        executionContext: ExecutionContext = ExecutionContext.EMPTY,
+        spanScope: SpanScope = SpanScope.EMPTY,
     ): Dispatched {
         // The dispatch span: the boundary between the decision to run a step
         // and its result. It is opened here, at the ONE place every step
@@ -156,12 +158,18 @@ internal class StepDispatchEngine(
         val span = LiveSpans.open(
             telemetry = telemetry,
             name = LiveSpanNames.STEP_DISPATCH,
+            parent = spanScope.parent,
             attributes = listOf(
                 LiveSpanAttributes.runId(runId.value),
                 LiveSpanAttributes.stageIndex(stageIndex),
                 LiveSpanAttributes.stepIndex(stepIndex),
             ),
         )
+        // Everything this dispatch causes hangs under THIS span, not under
+        // whatever caused the dispatch. The body's children, the effect and
+        // the recovery are children of the step that was dispatched, which is
+        // the truth about what caused them.
+        val innerScope = spanScope.withParent(liveSpanParentOf(span))
         // How the dispatch ended, for the span. `spanStatus` is the status the
         // span is closed with; `spanSkipped` says the step's effect was NOT
         // produced by this run, which is the one case where the span is
@@ -214,7 +222,7 @@ internal class StepDispatchEngine(
                         // The patch is projected onto BOTH surfaces — the context AND the options
                         // the body is launched with — so a body that runs under a patched
                         // environment really runs under it.
-                        when (val projection = projectInvocationPatch(executionContext, stageShOptions, bodyContext.patch)) {
+                        when (val projection = projectInvocationPatch(innerScope.ambient, stageShOptions, bodyContext.patch)) {
                             is InvocationPatchProjection.Refused -> BodyOutcome.Completed(
                                 StepOutcome.Failure(
                                     PipelineFailure(FailureKind.ENGINE, projection.reason),
@@ -230,7 +238,7 @@ internal class StepDispatchEngine(
                                     stepIndex = stepIndex,
                                     stageShOptions = projection.shOptions,
                                     parentBodyPath = bodyPath + attemptSegment,
-                                    executionContext = projection.context,
+                                    spanScope = innerScope.withAmbient(projection.context),
                                     reentry = childReentry,
                                 ),
                             )
@@ -246,12 +254,12 @@ internal class StepDispatchEngine(
                             stepIndex,
                             stageShOptions,
                             bodyPath,
-                            executionContext,
+                            innerScope,
                             childReentry,
                         )
                         // R14: a body-only dispatch has no typed value of its own, so the carrier is
                         // built explicitly with a null encoded output rather than narrowed from one.
-                        return terminal(Dispatched(CommonExecutionResult(outcome = body), executionContext))
+                        return terminal(Dispatched(CommonExecutionResult(outcome = body), innerScope.ambient))
                     }
                     null
                 }
@@ -290,7 +298,7 @@ internal class StepDispatchEngine(
                             stepIndex = stepIndex,
                             bodyPath = bodyPath,
                             stageShOptions = stageShOptions,
-                            executionContext = executionContext,
+                            spanScope = innerScope,
                         ),
                     )
                 } else {
@@ -334,7 +342,7 @@ internal class StepDispatchEngine(
                         operationId = preparation.operationId,
                         input = preparation.input,
                         message = preparation.reason,
-                        context = executionContext,
+                        context = innerScope.ambient,
                     ),
                 )
                 is DispatchPreparation.Ready -> preparation
@@ -382,6 +390,9 @@ internal class StepDispatchEngine(
                     // belong in the fingerprint. Materialisation needs the payload, not the envelope,
                     // and the node still holds the exact bytes the compiler produced.
                     stepPayload = step.payload.encoded,
+                    // The recovery is the SAME operation being settled, so it hangs under the
+                    // dispatch that asked for it — not under a trace of its own.
+                    parent = innerScope.parent,
                 ),
             )
             when (interpretation) {
@@ -409,7 +420,7 @@ internal class StepDispatchEngine(
                             outcome = interpretation.result.outcome,
                         ),
                     )
-                    return terminal(Dispatched(interpretation.result, executionContext))
+                    return terminal(Dispatched(interpretation.result, innerScope.ambient))
                 }
                 is RecoveryInterpretationEngine.RecoveryInterpretation.Reused -> {
                     // The effect was SKIPPED by the replay: it happened in an
@@ -418,7 +429,7 @@ internal class StepDispatchEngine(
                     // span behind — a trace must never claim an execution that
                     // did not happen here. The span is discarded, not ended.
                     spanSkipped = true
-                    return Dispatched(interpretation.result, executionContext)
+                    return Dispatched(interpretation.result, innerScope.ambient)
                 }
                 RecoveryInterpretationEngine.RecoveryInterpretation.ProceedToExecution -> Unit
             }
@@ -454,7 +465,7 @@ internal class StepDispatchEngine(
                         input = input,
                         message = "schema mismatch for step '${step.pluginStepId.value}' on " +
                             "'${step.id.value}': ${typed.reason}",
-                        context = executionContext,
+                        context = innerScope.ambient,
                     ),
                 )
                 is DurableTypedInputPreparation.TypedPreparation.Ready -> typed.prepared
@@ -476,6 +487,7 @@ internal class StepDispatchEngine(
                 prepared = prepared,
                 runtime = runtime,
                 lifecycleContext = lifecycleContext,
+                parent = innerScope.parent,
             )
             // the RULE of what advances belongs to [CanonicalCursorAdvance]: the engine asks it for a
             // decision and performs the write the decision names. It does not repeat the predicate.
@@ -490,7 +502,7 @@ internal class StepDispatchEngine(
             // R14: `executeAndJournal` already returns the atomic carrier, so this is a COMPOSITION.
             // It used to be `Dispatched(execution.outcome, ...)`, which is the narrowing this whole
             // slice exists to remove: a recovered or a fresh encoded value died at this line.
-            return terminal(Dispatched(execution, executionContext))
+            return terminal(Dispatched(execution, innerScope.ambient))
         } finally {
             // The span is closed HERE and only here, so a dispatch that threw
             // still ends its span instead of leaking an open one. A span that
@@ -576,7 +588,7 @@ internal class StepDispatchEngine(
         stepIndex: Int,
         childShOptions: ShOptions,
         bodyPath: List<BlockSegment>,
-        executionContext: ExecutionContext,
+        spanScope: SpanScope,
     ): StepOutcome = dispatch(
         child,
         runId,
@@ -585,7 +597,7 @@ internal class StepDispatchEngine(
         stepIndex,
         childShOptions,
         bodyPath,
-        executionContext,
+        spanScope,
     ).result.outcome
 
 }

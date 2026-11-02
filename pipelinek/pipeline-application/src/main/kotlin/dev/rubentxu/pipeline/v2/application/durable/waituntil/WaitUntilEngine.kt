@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable.waituntil
 
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
@@ -132,7 +133,7 @@ internal class WaitUntilEngine(
      *  - `RejectDivergence` -> [StepOutcome.Failure]
      *    ([FailureKind.REPLAY_COMPATIBILITY]).
 */
-    suspend fun execute(bodyRef: BodyRef): StepOutcome {
+    suspend fun execute(bodyRef: BodyRef, parent: LiveSpanParent): StepOutcome {
         // The waitUntil span wraps the WHOLE aggregate, and not one span per
         // poll: the aggregate is the unit an operator reasons about ("this
         // wait took four polls"), and a span per poll would say the same
@@ -140,6 +141,7 @@ internal class WaitUntilEngine(
         val span = LiveSpans.open(
             telemetry = telemetry,
             name = LiveSpanNames.WAIT_UNTIL,
+            parent = parent,
             attributes = listOf(
                 LiveSpanAttributes.runId(runId.value),
                 LiveSpanAttributes.stageIndex(stageIndex),

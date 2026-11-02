@@ -70,6 +70,7 @@ internal fun compileScriptForRun(
     val span = LiveSpans.open(
         telemetry = telemetry,
         name = LiveSpanNames.COMPILE,
+        parent = telemetry.sessionParent,
         attributes = listOf(LiveSpanAttributes.runId(runId)),
     )
     val compilation = try {

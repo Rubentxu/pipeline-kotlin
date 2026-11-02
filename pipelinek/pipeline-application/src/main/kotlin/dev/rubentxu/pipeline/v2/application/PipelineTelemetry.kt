@@ -2,7 +2,11 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
 import io.opentelemetry.api.common.AttributeKey
+import io.opentelemetry.api.trace.SpanBuilder
+import io.opentelemetry.api.trace.SpanContext
 import io.opentelemetry.api.trace.StatusCode
+import io.opentelemetry.api.trace.TraceFlags
+import io.opentelemetry.api.trace.TraceState
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk
 import io.opentelemetry.sdk.resources.Resource
 import java.util.concurrent.TimeUnit
@@ -30,8 +34,19 @@ internal interface PipelineTelemetry : AutoCloseable {
     /** Whether this runtime produces spans at all. */
     val enabled: Boolean
 
-    /** Starts a span with [attributes] and hands it to the caller. */
-    fun startSpan(name: String, attributes: List<TelemetryAttribute>): PipelineSpan
+    /**
+     * The parent of the OUTERMOST spans this runtime opens.
+     *
+     * A run that an operator attached to an existing trace starts inside
+     * that trace; a run that was not attached starts its own. The answer is
+     * decided once, when the runtime is built, and every outermost span
+     * reads it from here — so the decision cannot differ between two spans
+     * of the same run.
+     */
+    val sessionParent: LiveSpanParent
+
+    /** Starts a span with [attributes] under [parent], and hands it to the caller. */
+    fun startSpan(name: String, attributes: List<TelemetryAttribute>, parent: LiveSpanParent): PipelineSpan
 }
 
 /**
@@ -41,6 +56,16 @@ internal interface PipelineTelemetry : AutoCloseable {
  * status, [discard] publishes nothing at all.
  */
 internal interface PipelineSpan {
+    /**
+     * The identity of this span, when the implementation knows it.
+     *
+     * A child span is parented by naming its parent's identity, so an
+     * implementation that cannot name itself cannot be a parent. `null` means
+     * exactly that, and the adapter treats it as "no parent" rather than
+     * inventing one.
+     */
+    val traceIdentity: TraceIdentity? get() = null
+
     /** Ends the span with [status], so it becomes exportable. */
     fun end(status: LiveSpanStatus)
 
@@ -61,7 +86,13 @@ internal interface PipelineSpan {
 internal object NoopPipelineTelemetry : PipelineTelemetry {
     override val enabled: Boolean = false
 
-    override fun startSpan(name: String, attributes: List<TelemetryAttribute>): PipelineSpan = NoopPipelineSpan
+    override val sessionParent: LiveSpanParent = LiveSpanParent.Root
+
+    override fun startSpan(
+        name: String,
+        attributes: List<TelemetryAttribute>,
+        parent: LiveSpanParent,
+    ): PipelineSpan = NoopPipelineSpan
 
     override fun close() = Unit
 }
@@ -75,6 +106,17 @@ internal object NoopPipelineSpan : PipelineSpan {
 
 internal object PipelineTelemetryFactory {
     const val OTEL_ENABLED_ENV: String = "PIPELINEK_OTEL_ENABLED"
+
+    /**
+     * The trace context an operator hands to the process.
+     *
+     * The operator's environment is the ONLY channel this product reads a
+     * trace context from. It is a channel the operator controls and the
+     * pipeline content does not, which is what makes the value trustworthy
+     * enough to become the parent of the run's spans.
+     */
+    const val OTEL_TRACEPARENT_ENV: String = "PIPELINEK_OTEL_TRACEPARENT"
+
     private const val SERVICE_NAME = "service.name"
     private const val DEPLOYMENT_ENVIRONMENT = "deployment.environment.name"
     private const val TRACER_SCOPE = "dev.rubentxu.pipeline.v2"
@@ -82,21 +124,44 @@ internal object PipelineTelemetryFactory {
     /** Selects a runtime by an explicit opt-in. Only the literal `true` enables the SDK. */
     internal fun create(
         environment: Map<String, String> = System.getenv(),
-        sdkFactory: () -> PipelineTelemetry = { createSdkRuntime() },
+        sdkFactory: (LiveSpanParent) -> PipelineTelemetry = { createSdkRuntime(it) },
         warning: (String) -> Unit = { System.err.println(it) },
     ): PipelineTelemetry {
         if (!environment[OTEL_ENABLED_ENV].equals("true", ignoreCase = true)) {
             return NoopPipelineTelemetry
         }
+        val sessionParent = sessionParentOf(environment, warning)
         return try {
-            sdkFactory()
+            sdkFactory(sessionParent)
         } catch (_: Exception) {
             warning("WARNING: OpenTelemetry initialization failed; continuing without telemetry.")
             NoopPipelineTelemetry
         }
     }
 
-    private fun createSdkRuntime(): PipelineTelemetry {
+    /**
+     * The parent of the outermost spans, read from the operator's environment.
+     *
+     * A value that is not well formed is not an error: the run still happens,
+     * it simply starts its own trace. The operator is told that the value was
+     * refused — WITHOUT the value itself, because a value an operator typed
+     * into an environment is still a value this product does not echo.
+     */
+    private fun sessionParentOf(
+        environment: Map<String, String>,
+        warning: (String) -> Unit,
+    ): LiveSpanParent {
+        val raw = environment[OTEL_TRACEPARENT_ENV]?.trim()
+        if (raw.isNullOrEmpty()) return LiveSpanParent.Root
+        val parsed = parseTraceParent(raw)
+        if (parsed == null) {
+            warning("WARNING: the configured trace context is not well formed; the run starts its own trace.")
+            return LiveSpanParent.Root
+        }
+        return LiveSpanParent.Remote(parsed)
+    }
+
+    private fun createSdkRuntime(sessionParent: LiveSpanParent): PipelineTelemetry {
         // Keep the official autoconfigure batch processor: its finite queue is configured by
         // OTEL_BSP_* and drops spans rather than blocking the pipeline when full. Do not add a
         // second queue, retry loop, or telemetry about telemetry here.
@@ -112,24 +177,31 @@ internal object PipelineTelemetryFactory {
             }
             .build()
             .openTelemetrySdk
-        return sdkPipelineTelemetry(sdk)
+        return sdkPipelineTelemetry(sdk, sessionParent = sessionParent)
     }
 
     internal fun sdkPipelineTelemetry(
         sdk: io.opentelemetry.sdk.OpenTelemetrySdk,
         warning: (String) -> Unit = { System.err.println(it) },
-    ): PipelineTelemetry = SdkPipelineTelemetry(sdk, warning)
+        sessionParent: LiveSpanParent = LiveSpanParent.Root,
+    ): PipelineTelemetry = SdkPipelineTelemetry(sdk, warning, sessionParent)
 
     private class SdkPipelineTelemetry(
         private val sdk: io.opentelemetry.sdk.OpenTelemetrySdk,
         private val warning: (String) -> Unit,
+        override val sessionParent: LiveSpanParent,
     ) : PipelineTelemetry {
         private val tracer = sdk.getTracer(TRACER_SCOPE)
 
         override val enabled: Boolean = true
 
-        override fun startSpan(name: String, attributes: List<TelemetryAttribute>): PipelineSpan {
+        override fun startSpan(
+            name: String,
+            attributes: List<TelemetryAttribute>,
+            parent: LiveSpanParent,
+        ): PipelineSpan {
             val builder = tracer.spanBuilder(name)
+            applyParent(builder, parent)
             attributes.forEach { attribute ->
                 when (attribute) {
                     is TelemetryAttribute.Text -> builder.setAttribute(attribute.key, attribute.value)
@@ -138,6 +210,30 @@ internal object PipelineTelemetryFactory {
                 }
             }
             return SdkPipelineSpan(builder.startSpan())
+        }
+
+        /**
+         * Attaches the span to the parent the product decided on.
+         *
+         * A parent with no identity of its own cannot be named, and a span
+         * that cannot name its parent is a root span — never a span with an
+         * invented link. The root case says so explicitly instead of leaving
+         * the ambient context of the tracing library to decide, because that
+         * context is exactly the thing this product refuses to depend on.
+         */
+        private fun applyParent(builder: SpanBuilder, parent: LiveSpanParent) {
+            when (parent) {
+                LiveSpanParent.Root -> builder.setNoParent()
+                is LiveSpanParent.Local -> {
+                    val identity = parent.handle.span.traceIdentity
+                    if (identity == null) {
+                        builder.setNoParent()
+                    } else {
+                        builder.setParent(parentContext(localSpanContext(identity)))
+                    }
+                }
+                is LiveSpanParent.Remote -> builder.setParent(parentContext(remoteSpanContext(parent.context)))
+            }
         }
 
         override fun close() {
@@ -157,6 +253,13 @@ internal object PipelineTelemetryFactory {
     }
 
     private class SdkPipelineSpan(private val span: io.opentelemetry.api.trace.Span) : PipelineSpan {
+
+        override val traceIdentity: TraceIdentity = TraceIdentity(
+            traceId = span.spanContext.traceId,
+            spanId = span.spanContext.spanId,
+            sampled = span.spanContext.traceFlags.isSampled,
+        )
+
         override fun end(status: LiveSpanStatus) {
             // The failure class is a word from the product's own closed vocabulary, never a
             // message from the run, so it carries nothing a redaction rule would have
@@ -173,6 +276,33 @@ internal object PipelineTelemetryFactory {
         }
     }
 }
+
+/** The context of a span this process opened: local, and therefore not remote. */
+private fun localSpanContext(identity: TraceIdentity): SpanContext = SpanContext.create(
+    identity.traceId,
+    identity.spanId,
+    if (identity.sampled) TraceFlags.getSampled() else TraceFlags.getDefault(),
+    TraceState.getDefault(),
+)
+
+/** The context of a span another process opened: remote, and therefore marked as such. */
+private fun remoteSpanContext(context: RemoteTraceContext): SpanContext = SpanContext.createFromRemoteParent(
+    context.traceId,
+    context.spanId,
+    if (context.sampled) TraceFlags.getSampled() else TraceFlags.getDefault(),
+    TraceState.getDefault(),
+)
+
+/**
+ * The context that carries [spanContext] as the parent.
+ *
+ * It is built on the ROOT context and never on the ambient one. The ambient
+ * context is the tracing library's own thread-local, and a parent read from
+ * it would be a parent nobody declared — the very ambiguity this product
+ * refuses. The parent of a span is always the one this product named.
+ */
+private fun parentContext(spanContext: SpanContext): io.opentelemetry.context.Context =
+    io.opentelemetry.context.Context.root().with(io.opentelemetry.api.trace.Span.wrap(spanContext))
 
 private val SAFE_RESOURCE_VALUE = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 

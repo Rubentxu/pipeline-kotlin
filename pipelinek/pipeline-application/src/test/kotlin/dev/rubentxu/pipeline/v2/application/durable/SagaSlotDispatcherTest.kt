@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
+import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.FailureKind
@@ -54,7 +56,7 @@ class SagaSlotDispatcherTest {
 
     private fun request(
         bodyPath: List<BlockSegment> = listOf(BlockSegment(0, PluginStepId("saga"))),
-        executionContext: ExecutionContext = ExecutionContext.EMPTY,
+        spanScope: SpanScope = SpanScope(ExecutionContext.EMPTY, LiveSpanParent.Root),
     ) = SagaSlotRequest(
         runId = runId,
         stageName = "build",
@@ -62,7 +64,7 @@ class SagaSlotDispatcherTest {
         stepIndex = 4,
         bodyPath = bodyPath,
         stageShOptions = options(),
-        executionContext = executionContext,
+        spanScope = spanScope,
     )
 
     private fun failureOf(outcome: BodyOutcome): dev.rubentxu.pipeline.v2.domain.PipelineFailure {
@@ -247,7 +249,7 @@ class SagaSlotDispatcherTest {
         var stepIndex: Int? = null
         var childShOptions: ShOptions? = null
         var bodyPath: List<BlockSegment> = emptyList()
-        var executionContext: ExecutionContext? = null
+        var spanScope: SpanScope? = null
 
         override suspend fun dispatchChild(
             child: StepNode,
@@ -257,7 +259,7 @@ class SagaSlotDispatcherTest {
             stepIndex: Int,
             childShOptions: ShOptions,
             bodyPath: List<BlockSegment>,
-            executionContext: ExecutionContext,
+            spanScope: SpanScope,
         ): StepOutcome {
             callCount += 1
             this.child = child
@@ -267,7 +269,7 @@ class SagaSlotDispatcherTest {
             this.stepIndex = stepIndex
             this.childShOptions = childShOptions
             this.bodyPath = bodyPath
-            this.executionContext = executionContext
+            this.spanScope = spanScope
             return result
         }
     }

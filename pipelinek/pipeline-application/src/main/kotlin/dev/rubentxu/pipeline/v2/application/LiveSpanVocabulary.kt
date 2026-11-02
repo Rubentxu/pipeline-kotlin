@@ -171,7 +171,7 @@ internal fun liveStatusOfStageOutcome(outcome: StageOutcome): LiveSpanStatus = w
  * second is a no-op, so a boundary that ends a span on two paths cannot
  * produce two outcomes.
  */
-internal class LiveSpanHandle internal constructor(private val span: PipelineSpan) {
+internal class LiveSpanHandle internal constructor(internal val span: PipelineSpan) {
     private var closed: Boolean = false
 
     /** Whether this span has already been ended or discarded. */
@@ -225,22 +225,28 @@ internal class LiveSpanHandle internal constructor(private val span: PipelineSpa
  */
 internal object LiveSpans {
     /**
-     * Opens a span, or returns null when there is nothing to open.
+     * Opens a span under [parent], or returns null when there is nothing to open.
      *
      * A null telemetry and a disabled telemetry both mean the same thing —
      * no span — and both cost nothing: no redaction probe, no allocation, no
      * call into the exporter. That is what "disabled adds no I/O" means in
      * practice, and it is why the check is first rather than last.
+     *
+     * The parent is REQUIRED and has no default. A default would be a
+     * silent invitation to open a root span by accident, and a root span is
+     * a span that claims nothing caused it — which is exactly the kind of
+     * claim that is wrong when the span actually has a parent.
      */
     fun open(
         telemetry: PipelineTelemetry?,
         name: String,
+        parent: LiveSpanParent,
         attributes: List<TelemetryAttribute> = emptyList(),
     ): LiveSpanHandle? {
         val port = telemetry ?: return null
         if (!port.enabled) return null
         return runCatching {
-            LiveSpanHandle(port.startSpan(name, redactLiveSpanAttributes(attributes)))
+            LiveSpanHandle(port.startSpan(name, redactLiveSpanAttributes(attributes), parent))
         }.getOrNull()
     }
 

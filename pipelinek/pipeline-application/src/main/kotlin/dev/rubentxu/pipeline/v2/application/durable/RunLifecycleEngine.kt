@@ -3,9 +3,11 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanHandle
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.application.liveSpanParentOf
 import dev.rubentxu.pipeline.v2.application.liveStatusOfStageOutcome
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
@@ -76,10 +78,20 @@ internal class RunLifecycleEngine(
      */
     private val openStageSpans = mutableMapOf<Int, LiveSpanHandle>()
 
+    /**
+     * The parent every stage of this run hangs under.
+     *
+     * It is the run's own span, when the run opened one. A run that opened no
+     * span has no parent to name, and its stages are then the outside — the
+     * honest answer for a run nobody could observe.
+     */
+    private var runParent: LiveSpanParent = LiveSpanParent.Root
+
     /** Opens the run: resets per-run state and emits the RunStarted bookend. */
-    fun openRun(pipeline: CompiledPipeline, runId: RunId) {
+    fun openRun(pipeline: CompiledPipeline, runId: RunId, runSpan: LiveSpanHandle?) {
         outcome = RunOutcome.Success
         runStartedEmitted = false
+        runParent = liveSpanParentOf(runSpan)
         eventSink.append(
             RunStarted(
                 eventId = UUID.randomUUID().toString(),
@@ -105,7 +117,7 @@ internal class RunLifecycleEngine(
      * values, same sequence-0 quirk the coordinator has always emitted; the
      * only variable is the outcome string.
 */
-    fun stageStarted(runId: RunId, stageIndex: Int, stageName: String) {
+    fun stageStarted(runId: RunId, stageIndex: Int, stageName: String): LiveSpanParent {
         eventSink.append(
             dev.rubentxu.pipeline.v2.events.StageStarted(
                 eventId = UUID.randomUUID().toString(),
@@ -123,12 +135,25 @@ internal class RunLifecycleEngine(
         LiveSpans.open(
             telemetry = telemetry,
             name = LiveSpanNames.STAGE,
+            parent = runParent,
             attributes = listOf(
                 LiveSpanAttributes.runId(runId.value),
                 LiveSpanAttributes.stageIndex(stageIndex),
             ),
         )?.let { span -> openStageSpans[stageIndex] = span }
+        return parentFor(stageIndex)
     }
+
+    /**
+     * The span a stage's own work hangs under.
+     *
+     * While the stage's span is open, that span IS the parent: the steps of
+     * the stage are its children. A stage that never opened one — a skipped
+     * stage, or a stage whose span could not be opened — falls back to the
+     * run, which is the closest thing that really caused it.
+     */
+    fun parentFor(stageIndex: Int): LiveSpanParent =
+        openStageSpans[stageIndex]?.let { LiveSpanParent.Local(it) } ?: runParent
 
     /**
      * Closes the stage span of the stage that REACHED AN OUTCOME.

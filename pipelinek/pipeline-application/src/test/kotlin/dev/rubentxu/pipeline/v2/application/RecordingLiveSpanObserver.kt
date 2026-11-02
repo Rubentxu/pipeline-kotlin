@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * The observer the live-span rows look at.
@@ -26,21 +27,55 @@ import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
  */
 internal class RecordingLiveSpanObserver(
     override val enabled: Boolean = true,
+    /**
+     * The parent of the OUTERMOST spans this observer is asked to open.
+     *
+     * It is stated rather than defaulted by the port, and a row may change it to
+     * pretend the observer was attached to a trace that already existed.
+     */
+    override val sessionParent: LiveSpanParent = LiveSpanParent.Root,
     /** What happens when the observer is asked to open a span. */
     private val onStart: (String, List<TelemetryAttribute>) -> Unit = { _, _ -> },
 ) : PipelineTelemetry {
 
-    /** Every span the production code opened, in the order it opened them. */
-    val opened: MutableList<RecordedLiveSpan> = mutableListOf()
+    /**
+     * Every span the production code opened, in the order it opened them.
+     *
+     * The list is a copy-on-write one because two runs may share a single
+     * observer while they interleave on two coroutines: the writes come from
+     * both, and a row that reads the list afterwards must see both without
+     * the read racing the write. A plain list would lose a span here or throw
+     * a concurrent modification, and the row would then be measuring the fake
+     * instead of the product.
+     */
+    val opened: MutableList<RecordedLiveSpan> = CopyOnWriteArrayList()
 
-    override fun startSpan(name: String, attributes: List<TelemetryAttribute>): PipelineSpan {
+    override fun startSpan(
+        name: String,
+        attributes: List<TelemetryAttribute>,
+        parent: LiveSpanParent,
+    ): PipelineSpan {
         onStart(name, attributes)
-        val span = RecordedLiveSpan(name = name, attributes = attributes)
+        val span = RecordedLiveSpan(name = name, attributes = attributes, parent = parent)
         opened += span
         return span
     }
 
     override fun close() = Unit
+
+    /**
+     * The recorded span that CAUSED [span], or null when nothing of ours did.
+     *
+     * A parent that is the session's own, or one that belongs to another
+     * process, is not a span this observer opened — and saying so is what
+     * lets a row tell "the span has no parent" from "the parent is not
+     * mine to see".
+     */
+    fun recordedParentOf(span: RecordedLiveSpan): RecordedLiveSpan? = when (val parent = span.parent) {
+        is LiveSpanParent.Local -> parent.handle.span as? RecordedLiveSpan
+        LiveSpanParent.Root -> null
+        is LiveSpanParent.Remote -> null
+    }
 }
 
 /**
@@ -55,6 +90,8 @@ internal class RecordingLiveSpanObserver(
 internal class RecordedLiveSpan(
     val name: String,
     val attributes: List<TelemetryAttribute>,
+    /** The parent this span was opened under, as the boundary declared it. */
+    val parent: LiveSpanParent,
 ) : PipelineSpan {
 
     /** The status the span was ENDED with, or null when it was never ended. */

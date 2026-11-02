@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
@@ -79,6 +80,7 @@ internal class DurableStepExecutor(
         prepared: PreparedRegistryExecution,
         runtime: CanonicalRuntimeContext,
         lifecycleContext: StepLifecycleContext,
+        parent: LiveSpanParent,
     ): CommonExecutionResult {
         records.admit(operationId, fingerprint, input, journaled)
 
@@ -89,6 +91,7 @@ internal class DurableStepExecutor(
         val span = LiveSpans.open(
             telemetry = telemetry,
             name = LiveSpanNames.STEP_INVOKE,
+            parent = parent,
             attributes = listOf(
                 LiveSpanAttributes.runId(lifecycleContext.runId),
                 LiveSpanAttributes.stageIndex(lifecycleContext.stageIndex),

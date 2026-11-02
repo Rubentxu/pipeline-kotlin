@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationRecord
@@ -80,6 +81,9 @@ internal object ScriptedFrontendRunner {
         // The live tracing seam. The scripted frontend runs the SAME canonical
         // authorities as the coordinator, so it opens the SAME boundaries.
         telemetry: PipelineTelemetry,
+        // The span the scripted surface's own boundaries hang under. The caller
+        // knows what caused the scripted run; the surface must not guess it.
+        spanParent: LiveSpanParent = LiveSpanParent.Root,
     ): Outcome {
         // Fail-closed artifact compatibility: never silently replay an old artifact.
         if (entryPoint.artifact.fingerprintMaterial() != expectedArtifact.fingerprintMaterial()) {
@@ -131,6 +135,7 @@ internal object ScriptedFrontendRunner {
             invocationResolver = resolver,
             stepExecutor = executor,
             recoveryInterpretation = interpretation,
+            spanParent = spanParent,
             metadataResolver = RegistryStepMetadataResolver.composite(registry),
             runtimeContextFactory = { call ->
                 CanonicalRuntimeContext(

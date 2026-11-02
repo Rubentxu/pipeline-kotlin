@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
 
 import dev.rubentxu.pipeline.v2.application.StepMetadata
@@ -178,6 +179,7 @@ class DurableInvocationRecordTest {
                 prepared = prepared(),
                 runtime = runtime(),
                 lifecycleContext = lifecycle(),
+                parent = LiveSpanParent.Root,
             )
         }
         val executionRow = rowOf(executionRecords.read(OP_ID), "the execution row")
@@ -241,6 +243,7 @@ class DurableInvocationRecordTest {
                 prepared = prepared(),
                 runtime = runtime(),
                 lifecycleContext = lifecycle(),
+                parent = LiveSpanParent.Root,
             )
         }
 

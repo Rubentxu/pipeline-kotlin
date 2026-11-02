@@ -59,6 +59,18 @@ internal data class ScriptCompilation(
  * invisible if the only visible boundary is the run as a whole. The span ends
  * with the compilation's own verdict — a script that did not compile never
  * reaches the run's span, so this is the only place where that fact appears.
+ *
+ * ## The metric it records
+ *
+ * The span says what happened to ONE compilation; the metric says how the
+ * compilations of many runs went. The compilation is measured as a boundary
+ * of its own because it is a boundary of its own: a script that takes thirty
+ * seconds to compile is a fact about the script, not about the run it starts.
+ *
+ * A compilation that threw instead of failing is recorded as an unclassified
+ * ending. The product does not turn the author's exception into a failure
+ * kind here — it rethrows it so the author reads their own message — so
+ * claiming a class would be a claim the product did not make.
  */
 internal fun compileScriptForRun(
     eventStore: EventSink,
@@ -73,12 +85,16 @@ internal fun compileScriptForRun(
         parent = telemetry.sessionParent,
         attributes = listOf(LiveSpanAttributes.runId(runId)),
     )
+    val measurement = telemetry.metrics.start(MetricBoundary.Compile)
     val compilation = try {
         compileScript(eventStore, runId, scriptPath, pluginJars)
     } catch (throwable: Throwable) {
+        measurement?.end(MetricOutcome(MetricStatus.Unknown))
         LiveSpans.end(span, LiveSpanStatus.Failed)
         throw throwable
     }
+    val outcome = compilation.failure?.let { metricOutcomeOf(it) } ?: MetricOutcome(MetricStatus.Success)
+    measurement?.end(outcome)
     LiveSpans.end(
         span,
         if (compilation.failure == null) LiveSpanStatus.Completed else LiveSpanStatus.Failed,

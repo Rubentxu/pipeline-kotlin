@@ -5,9 +5,13 @@ import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
+import dev.rubentxu.pipeline.v2.application.MetricBoundary
+import dev.rubentxu.pipeline.v2.application.MetricOutcome
+import dev.rubentxu.pipeline.v2.application.MetricStatus
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.durable.RetryControlJournal
 import dev.rubentxu.pipeline.v2.application.liveStatusOfStepOutcome
+import dev.rubentxu.pipeline.v2.application.metricOutcomeOf
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
@@ -337,6 +341,12 @@ internal class RetryEngine(
      * The REUSE arms of the loop open no span at all. A replay that reuses a
      * durable terminal did not run the body, and a span that said it had would
      * be a fabricated effect.
+     *
+     * The attempt is measured as a boundary of its own for the same reason it
+     * is spanned: an operator asks how long the ATTEMPTS took and how they
+     * ended, and a number that includes the retry bookkeeping answers a
+     * different question. A cancelled attempt is counted as a cancellation,
+     * because the attempt did not fail — it was stopped.
      */
     private suspend fun invokeAttemptUnderSpan(
         bodyRef: dev.rubentxu.pipeline.v2.domain.step.BodyRef,
@@ -353,6 +363,7 @@ internal class RetryEngine(
                 LiveSpanAttributes.stepIndex(stepIndex),
             ),
         )
+        val measurement = telemetry.metrics.start(MetricBoundary.RetryAttempt)
         val outcome = try {
             bodyInvoker.invoke(
                 bodyRef,
@@ -364,9 +375,11 @@ internal class RetryEngine(
                 ),
             )
         } catch (throwable: Throwable) {
+            measurement?.end(MetricOutcome(MetricStatus.Unknown))
             LiveSpans.end(span, LiveSpanStatus.Failed)
             throw throwable
         }
+        measurement?.end(metricOutcomeOf(outcome))
         LiveSpans.end(
             span,
             when (outcome) {

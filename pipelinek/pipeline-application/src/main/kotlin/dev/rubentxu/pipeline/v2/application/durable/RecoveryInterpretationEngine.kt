@@ -5,8 +5,12 @@ import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
+import dev.rubentxu.pipeline.v2.application.MetricBoundary
+import dev.rubentxu.pipeline.v2.application.MetricOutcome
+import dev.rubentxu.pipeline.v2.application.MetricStatus
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.liveStatusOfStepOutcome
+import dev.rubentxu.pipeline.v2.application.metricOutcomeOf
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
@@ -237,15 +241,18 @@ internal class RecoveryInterpretationEngine(
                 ),
             )
             val terminal = resolution.terminal
+            val measurement = telemetry.metrics.start(MetricBoundary.Recovery)
             val materialised = materialize(request, terminal, System.currentTimeMillis())
             val result = try {
                 StepExecutionBoundary(eventSink).execute(request.lifecycleContext) {
                     materialised.result
                 }
             } catch (throwable: Throwable) {
+                measurement?.end(MetricOutcome(MetricStatus.Unknown))
                 LiveSpans.end(span, LiveSpanStatus.Failed)
                 throw throwable
             }
+            measurement?.end(metricOutcomeOf(result.outcome))
             LiveSpans.end(span, liveStatusOfStepOutcome(result.outcome))
             records.settle(
                 operationId = request.operationId,

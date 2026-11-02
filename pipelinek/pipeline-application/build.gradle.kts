@@ -243,6 +243,17 @@ dependencies {
     // line above is the PRODUCT's `junit.results` OFFICIAL_PLUGIN, not a test dependency.
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
+    // The official in-memory metric reader, and nothing else from that jar.
+    //
+    // WHY THIS DEPENDENCY EXISTS AND WHY IT IS NOT REIMPLEMENTED HERE: the reader has to
+    // agree with the SDK that produced the metric. A reader written in this project would
+    // be a second understanding of the SDK's own aggregation, and a metric that this
+    // project's reader accepts while a real collector rejects is a metric that was never
+    // verified. The upstream artifact is the same reader the SDK's own tests use, it is
+    // linked by the tests alone (nothing in the distribution links it), and it is the only
+    // reason the dimension and cardinality guarantees can be asserted against something
+    // other than this project's own arithmetic.
+    testImplementation(libs.opentelemetry.sdk.testing)
 }
 
 tasks.test {

@@ -47,6 +47,19 @@ internal interface PipelineTelemetry : AutoCloseable {
 
     /** Starts a span with [attributes] under [parent], and hands it to the caller. */
     fun startSpan(name: String, attributes: List<TelemetryAttribute>, parent: LiveSpanParent): PipelineSpan
+
+    /**
+     * The metrics this runtime produces.
+     *
+     * A span says what HAPPENED along one path; a metric says how often and
+     * how long, across every run. The two answer different questions and
+     * neither replaces the other, so the runtime exposes both.
+     *
+     * The default is the metrics that produce nothing. A runtime that does
+     * not measure never has to be told so: the boundaries ask the port, and
+     * the port answers before anything is built.
+     */
+    val metrics: PipelineMetrics get() = NoopPipelineMetrics
 }
 
 /**
@@ -120,6 +133,7 @@ internal object PipelineTelemetryFactory {
     private const val SERVICE_NAME = "service.name"
     private const val DEPLOYMENT_ENVIRONMENT = "deployment.environment.name"
     private const val TRACER_SCOPE = "dev.rubentxu.pipeline.v2"
+    private const val METRIC_SCOPE = "dev.rubentxu.pipeline.v2"
 
     /** Selects a runtime by an explicit opt-in. Only the literal `true` enables the SDK. */
     internal fun create(
@@ -195,6 +209,8 @@ internal object PipelineTelemetryFactory {
 
         override val enabled: Boolean = true
 
+        override val metrics: PipelineMetrics = SdkPipelineMetrics(sdk.getMeter(METRIC_SCOPE))
+
         override fun startSpan(
             name: String,
             attributes: List<TelemetryAttribute>,
@@ -240,14 +256,26 @@ internal object PipelineTelemetryFactory {
             // A CLI invocation has a finite lifetime. Bound each flush and the shared shutdown so
             // an unavailable collector cannot hold the process open indefinitely. A failed signal
             // must not skip the other providers or the SDK shutdown.
-            runTelemetryCleanup(
-                actions = listOf(
+            //
+            // Each step of the way out carries the reason it is, so a failed export can be
+            // COUNTED and not only reported on stderr: a reader of the metrics then sees that
+            // the telemetry did not survive the trip, which is a fact no amount of local
+            // success can replace. The reason and the action live in ONE list, so the
+            // mapping from a failed step to its reason cannot drift.
+            val wayOut = listOf(
+                MetricExportLoss.TracerFlush to
                     { check(sdk.sdkTracerProvider.forceFlush().join(500, TimeUnit.MILLISECONDS).isSuccess) },
+                MetricExportLoss.MeterFlush to
                     { check(sdk.sdkMeterProvider.forceFlush().join(500, TimeUnit.MILLISECONDS).isSuccess) },
+                MetricExportLoss.LoggerFlush to
                     { check(sdk.sdkLoggerProvider.forceFlush().join(500, TimeUnit.MILLISECONDS).isSuccess) },
+                MetricExportLoss.Shutdown to
                     { check(sdk.shutdown().join(2, TimeUnit.SECONDS).isSuccess) },
-                ),
+            )
+            runTelemetryCleanup(
+                actions = wayOut.map { it.second },
                 warning = warning,
+                onFailure = { index -> metrics.exportLoss(wayOut[index].first) },
             )
         }
     }
@@ -323,17 +351,31 @@ internal fun safeTelemetryResourceAttributes(
         ?.let { put("deployment.environment.name", it) }
 }
 
-/** Attempts every bounded cleanup action and emits one sanitized diagnostic if any failed. */
+/**
+ * Attempts every bounded cleanup action and emits one sanitized diagnostic if any failed.
+ *
+ * [onFailure] is told WHICH action failed, right after it failed, so a caller
+ * that keeps a count of its own losses can add to it before the next action
+ * runs. It is told nothing else: a failure here is a fact about the export,
+ * and the only thing that may be published about it is the class of the
+ * failure.
+ *
+ * A failure to publish the loss must not stop the remaining cleanup, so the
+ * callback is itself guarded. A telemetry that cannot report its own loss
+ * still has to shut down cleanly.
+ */
 internal fun runTelemetryCleanup(
     actions: List<() -> Unit>,
     warning: (String) -> Unit,
+    onFailure: (Int) -> Unit = {},
 ) {
     var failed = false
-    actions.forEach { action ->
+    actions.forEachIndexed { index, action ->
         try {
             action()
         } catch (_: Exception) {
             failed = true
+            runCatching { onFailure(index) }
         }
     }
     if (failed) {

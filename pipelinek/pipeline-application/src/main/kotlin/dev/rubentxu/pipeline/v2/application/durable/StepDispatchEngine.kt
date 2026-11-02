@@ -4,10 +4,14 @@ import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
+import dev.rubentxu.pipeline.v2.application.MetricBoundary
+import dev.rubentxu.pipeline.v2.application.MetricOutcome
+import dev.rubentxu.pipeline.v2.application.MetricStatus
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.application.liveSpanParentOf
 import dev.rubentxu.pipeline.v2.application.liveStatusOfStepOutcome
+import dev.rubentxu.pipeline.v2.application.metricOutcomeOf
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
@@ -171,14 +175,23 @@ internal class StepDispatchEngine(
         // DISCARDED instead of ended.
         var spanStatus: LiveSpanStatus? = null
         var spanSkipped: Boolean = false
+        // How the dispatch ended, for the metric. The metric separates a
+        // REFUSAL from a FAILURE: a step that was turned away by the admission
+        // never ran, and a counter that merges the two tells an operator that
+        // the pipeline broke when it did not.
+        var metricOutcome: MetricOutcome? = null
+        // The dispatch boundary, measured at the ONE place every step reaches.
+        val dispatchMeasurement = telemetry.metrics.start(MetricBoundary.StepDispatch)
 
         fun terminal(dispatched: DispatchedStep): DispatchedStep {
             spanStatus = liveStatusOfStepOutcome(dispatched.result.outcome)
+            metricOutcome = metricOutcomeOf(dispatched.result.outcome)
             return dispatched
         }
 
         fun refuse(dispatched: DispatchedStep): DispatchedStep {
             spanStatus = LiveSpanStatus.Rejected
+            metricOutcome = MetricOutcome(MetricStatus.AdmissionRefused)
             return dispatched
         }
 
@@ -453,7 +466,7 @@ internal class StepDispatchEngine(
             // Rejected admission (typed field / unsupported command / missing capability) is a
             // terminal SCHEMA rejection (journal FAILED, common executor never runs).
             // extracted to DurableTypedInputPreparation.
-            val prepared = when (val typed = typedInputPreparation.prepare(step, runtime)) {
+            val prepared = when (val typed = measurePreparation(step, runtime)) {
                 is DurableTypedInputPreparation.TypedPreparation.Rejected -> return refuse(
                     schemaRejection(
                         operationId = operationId,
@@ -503,10 +516,16 @@ internal class StepDispatchEngine(
             // still ends its span instead of leaking an open one. A span that
             // was never ended is never exported, and an exported span that
             // says "running" is a lie the packaging rules forbid.
+            //
+            // The metric is closed with it, and it tells the same truth: a
+            // dispatch the replay SKIPPED counts nothing at all, because the
+            // effect it describes did not happen here.
             if (spanSkipped) {
                 LiveSpans.discard(span)
+                dispatchMeasurement?.discard()
             } else {
                 LiveSpans.end(span, spanStatus ?: LiveSpanStatus.Failed)
+                dispatchMeasurement?.end(metricOutcome ?: MetricOutcome(MetricStatus.Unknown))
             }
         }
     }
@@ -536,6 +555,40 @@ internal class StepDispatchEngine(
         context,
     )
 
+    /**
+     * The typed admission of one step, measured.
+     *
+     * The admission is a boundary of its own: it is where a payload is decoded
+     * and where a step that does not fit is turned away, and both facts are
+     * worth a duration. A refusal is recorded as a REFUSAL and not as a
+     * failure, because nothing ran and nothing broke — a counter that merges
+     * the two tells an operator that the pipeline is broken when it is not.
+     *
+     * A preparation that THREW is recorded as an unclassified ending: the
+     * product does not classify the throw here, so claiming a class would be
+     * a claim it did not make.
+     */
+    private fun measurePreparation(
+        step: StepNode,
+        runtime: CanonicalRuntimeContext,
+    ): DurableTypedInputPreparation.TypedPreparation {
+        val measurement = telemetry.metrics.start(MetricBoundary.StepPreparation)
+        val prepared = try {
+            typedInputPreparation.prepare(step, runtime)
+        } catch (throwable: Throwable) {
+            measurement?.end(MetricOutcome(MetricStatus.Unknown))
+            throw throwable
+        }
+        measurement?.end(
+            when (prepared) {
+                is DurableTypedInputPreparation.TypedPreparation.Rejected ->
+                    MetricOutcome(MetricStatus.AdmissionRefused)
+                is DurableTypedInputPreparation.TypedPreparation.Ready ->
+                    MetricOutcome(MetricStatus.Success)
+            },
+        )
+        return prepared
+    }
 
     /**
      * The body owner DECLARED by the Step's own descriptor, or `null` when the key is unknown

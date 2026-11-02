@@ -32,6 +32,7 @@ opentelemetry-api = { module = "io.opentelemetry:opentelemetry-api" }
 opentelemetry-sdk = { module = "io.opentelemetry:opentelemetry-sdk" }
 opentelemetry-sdk-autoconfigure = { module = "io.opentelemetry:opentelemetry-sdk-extension-autoconfigure" }
 opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp" }
+opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitLauncher" }
 kotlin-scripting-jvm-host = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm-host", version.ref = "kotlin" }

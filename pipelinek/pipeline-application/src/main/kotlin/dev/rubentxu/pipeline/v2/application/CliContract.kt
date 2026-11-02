@@ -399,6 +399,18 @@ sealed interface CliError {
      * an unknown one — and it says so through [MissingRequiredArgument].
      */
     data class UnknownSubcommand(val value: String, val expected: List<String>) : CliError
+
+    /**
+     * A run identity that cannot name a durable directory.
+     *
+     * The operator named a run with a token outside the durable alphabet.
+     * Refused rather than repaired: a name DERIVED from such a token can be
+     * the name of another run, and the reader would be served that run's
+     * frames while believing it observed the one it asked for. A refusal
+     * states a fact about the request; the other answer states a fact about a
+     * different run.
+     */
+    data class RunIdCannotNameADirectory(val runId: String) : CliError
 }
 
 /**

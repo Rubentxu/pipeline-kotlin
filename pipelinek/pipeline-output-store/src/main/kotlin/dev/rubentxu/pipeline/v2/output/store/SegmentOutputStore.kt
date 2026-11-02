@@ -829,14 +829,18 @@ class SegmentOutputStore(
     private fun streamKey(stream: OutputStreamId): String = safe(stream.value)
 
     /**
-     * The prefix every directory of this run's streams starts with: the folded run id and the
+     * The prefix every directory of this run's streams starts with: the run identity and the
      * separator that follows it.
+     * The identity is NOT folded, and an identity that cannot name a directory is refused rather
+     * than repaired — see [runDirectoryName]. This prefix is what a retention pass matches
+     * directories by, so an identity that lost its name would put one run's directories within
+     * another run's reach.
      * Deliberately NOT sufficient to identify a stream, and used only where the declaration cannot
      * answer — see [runStreamDirs], which excludes any directory another run has declared before
      * this prefix gets to claim it. The trailing separator is what makes it a prefix of *this run's*
      * names rather than of any run whose id merely starts with the same characters.
 */
-    private fun runPrefix(runId: String): String = safe(runId) + "_"
+    private fun runPrefix(runId: String): String = runDirectoryName(runId) + "_"
 
     /**
      * Drop any uncommitted bytes and return how many were dropped.
@@ -1221,13 +1225,20 @@ class SegmentOutputStore(
 }
 
 /**
- * The on-disk name for a stream or run identifier.
+ * The on-disk name for a STREAM identifier.
  * **Lossy and deliberately never undone.** Every character outside `[A-Za-z0-9._-]` folds onto `_`,
  * so `a/b` and `a_b` produce the same name. Nothing decodes these names back into identifiers:
  * [SegmentFrameIndex] writes the whole identifier into its own files and reads it back from
  * there, which is the only place the round trip is safe.
  * Shared rather than duplicated so the byte store and the frame index cannot drift into naming the
- * same run differently.
+ * same stream differently.
+ *
+ * ## What it does NOT name
+ *
+ * A RUN identity is not named by this. A run's own directory is named by [runDirectoryName], which
+ * refuses an identity it cannot represent instead of folding it into another run's name. The
+ * distinction matters because a stream identifier carries a run identity inside it, and a run
+ * identity that lost its name would silently become a different run.
 */
 internal fun safeStreamName(name: String): String = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
 

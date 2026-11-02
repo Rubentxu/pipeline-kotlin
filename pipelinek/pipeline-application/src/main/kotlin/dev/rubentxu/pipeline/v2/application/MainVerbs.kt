@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
+import dev.rubentxu.pipeline.v2.output.store.UnnameableRunIdentity
 import java.nio.file.Paths
 import java.nio.file.Files
 import java.util.Locale
@@ -87,7 +88,20 @@ internal sealed interface ReadOnlyVerbOutcome {
 internal fun handleReadOnlyVerb(args: Array<String>): ReadOnlyVerbOutcome {
     val verb = cliVerbFor(args)
     if (verb != null && verb.handler != null) {
-        return ReadOnlyVerbOutcome.Answered(verb.handler(args.drop(verb.words.size).toTypedArray()))
+        return ReadOnlyVerbOutcome.Answered(
+            try {
+                verb.handler(args.drop(verb.words.size).toTypedArray())
+            } catch (refusal: UnnameableRunIdentity) {
+                // The artifact plane refuses a run identity it cannot name, and
+                // that refusal is the answer to the request. It is rendered
+                // here, through the ONE mapping, so every verb of this family
+                // says the same thing about the same mistake.
+                val error = CliError.RunIdCannotNameADirectory(refusal.runId)
+                val exit = error.toCliExit()
+                exit.refusalLines(verb.label).forEach { System.err.println(it) }
+                exit
+            }
+        )
     }
     // The family word on its own is not a command. Saying so, and naming the
     // form that is, is the refusal the operator gets. The refusal is a

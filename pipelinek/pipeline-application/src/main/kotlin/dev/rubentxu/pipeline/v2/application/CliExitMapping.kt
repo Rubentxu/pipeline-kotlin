@@ -150,6 +150,10 @@ fun CliError.toCliExit(): CliExit = when (this) {
     is CliError.InvalidCombination -> CliExit.InvalidArgument("invalid combination: $reason")
     is CliError.OptionBelongsToVerb -> CliExit.InvalidArgument("option $option belongs to '$owner': $why")
     is CliError.UnknownSubcommand -> CliExit.InvalidArgument("unknown subcommand: $value", "expected one of: ${expected.joinToString(", ") { "'$it'" }}")
+    is CliError.RunIdCannotNameADirectory -> CliExit.InvalidArgument(
+        message = "run id '$runId' cannot name a durable directory",
+        hint = "a run id may contain only letters, digits, '.', '_' and '-'",
+    )
 }
 
 /**

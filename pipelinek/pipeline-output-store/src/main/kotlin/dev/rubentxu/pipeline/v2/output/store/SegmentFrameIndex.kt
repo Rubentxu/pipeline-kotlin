@@ -247,10 +247,10 @@ class SegmentFrameIndex(
     // ------------------------------------------------------------------ internals
 
     private fun streamsFile(runId: String): Path =
-        root.resolve(FRAMES_DIR).resolve("${safeStreamName(runId)}$STREAMS_SUFFIX")
+        root.resolve(FRAMES_DIR).resolve("${runDirectoryName(runId)}$STREAMS_SUFFIX")
 
     private fun framesFile(runId: String): Path =
-        root.resolve(FRAMES_DIR).resolve("${safeStreamName(runId)}$FRAMES_SUFFIX")
+        root.resolve(FRAMES_DIR).resolve("${runDirectoryName(runId)}$FRAMES_SUFFIX")
 
     /**
      * The sparse per-run offset index that turns [framesOfRun] from `O(N)` into `O(L)` for
@@ -261,7 +261,7 @@ class SegmentFrameIndex(
      * never an independent authority.
 */
     private fun offsetIndexFile(runId: String): Path =
-        root.resolve(FRAMES_DIR).resolve("${safeStreamName(runId)}$FRAMES_SUFFIX$OFFSET_INDEX_SUFFIX")
+        root.resolve(FRAMES_DIR).resolve("${runDirectoryName(runId)}$FRAMES_SUFFIX$OFFSET_INDEX_SUFFIX")
 
     /**
      * The per-run ordinal authority: an OS lock file beside the frames it protects.
@@ -274,7 +274,7 @@ class SegmentFrameIndex(
      * first of two frames sharing one, and the other is committed output no console can show again.
 */
     private fun ordinalAuthorityFile(runId: String): Path =
-        root.resolve(FRAMES_DIR).resolve("${safeStreamName(runId)}$AUTHORITY_SUFFIX")
+        root.resolve(FRAMES_DIR).resolve("${runDirectoryName(runId)}$AUTHORITY_SUFFIX")
 
     /**
      * Runs [block] as the sole ordinal allocator for [runId], across every process.

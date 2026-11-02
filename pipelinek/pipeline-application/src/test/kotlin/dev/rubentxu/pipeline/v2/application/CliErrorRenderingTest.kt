@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
+import java.nio.file.Paths
 
 /**
  * The words a refusal is made of.
@@ -101,6 +102,62 @@ import java.io.PrintStream
  * hidden.
  */
 class CliErrorRenderingTest {
+
+    @Test
+    fun `the refusal of a run identity that cannot name a directory names the identity`() {
+        // A run identity that cannot name a durable directory is a fact about the REQUEST, so the
+        // refusal says which identity it refused: an operator who typed one of two names has to be
+        // told which one was wrong.
+        val exit = CliError.RunIdCannotNameADirectory("a/b").toCliExit()
+
+        assertEquals(2, exit.code, "an unusable request is the invalid-argument case")
+        assertTrue(exit.message.contains("a/b"), exit.message)
+    }
+
+    @Test
+    fun `the refusal of a run identity that cannot name a directory names the accepted alphabet`() {
+        // The hint is where the operator's way out lives. A refusal that says only "that name is
+        // not allowed" leaves the operator to guess the alphabet; the alphabet is the answer, and
+        // it is the same one the durable lease enforces.
+        val exit = CliError.RunIdCannotNameADirectory("a/b").toCliExit()
+
+        val hint = requireNotNull(exit.hint) { "the refusal of an unnameable run id has no hint" }
+        assertTrue(hint.contains("'.'"), hint)
+        assertTrue(hint.contains("'_'"), hint)
+        assertTrue(hint.contains("'-'"), hint)
+    }
+
+    @Test
+    fun `a run identity that cannot name a directory is refused the same way by every verb that reads a run`() {
+        // The two verbs that ask the artifact plane about a RUN. They reach it through different
+        // doors — one lists the run's operations, the other composes the run's lanes — and they
+        // have to REFUSE the same identity the same way, because the refusal is about the identity
+        // and not about the verb that received it.
+        //
+        // The refusal happens before the product touches the disk: the identity is refused where
+        // the NAME is decided, and a name is decided before any path is read. These rows therefore
+        // need no store, no fixture and no directory that exists.
+        assertSameRefusal(
+            "run id 'a/b' cannot name a durable directory",
+            "operations" to capture { dispatch(arrayOf("operations", "a/b", "--control-root", controlRoot)) },
+            "observe" to capture {
+                dispatch(arrayOf("observe", "a/b", "--control-root", controlRoot, "--view", "console"))
+            },
+        )
+    }
+
+    @Test
+    fun `the refusal of an unnameable run id is a refusal and not a stack trace`() {
+        // The artifact plane refuses the identity by throwing a typed refusal, and the dispatcher
+        // turns it into words. A dispatcher that let the throw escape would answer the operator
+        // with the shape of a type and a stack, which is the failure this row exists to catch: the
+        // answer an operator reads is the one that looks like a defect.
+        val result = capture { dispatch(arrayOf("operations", "a/b", "--control-root", controlRoot)) }
+
+        assertFalse(result.stderr.contains("UnnameableRunIdentity"), result.stderr)
+        assertFalse(result.stderr.contains("Exception"), result.stderr)
+        assertTrue(result.stderr.contains("cannot name a durable directory"), result.stderr)
+    }
 
     @Test
     fun `the refusal of an unknown option names the option`() {
@@ -362,6 +419,30 @@ class CliErrorRenderingTest {
     }
 
     private data class Result(val exitCode: Int, val stdout: String, val stderr: String)
+
+    /**
+     * The code the read-only dispatcher answered with.
+     *
+     * The dispatcher is the door every read-only verb goes through, and it is where a refusal the
+     * artifact plane raised is turned into a decision. Calling it — rather than the verbs one by
+     * one — is what makes the comparison between the verbs a comparison of the SAME refusal
+     * answered by two doors.
+     */
+    private fun dispatch(args: Array<String>): Int =
+        when (val outcome = handleReadOnlyVerb(args)) {
+            is ReadOnlyVerbOutcome.Answered -> outcome.exit.code
+            ReadOnlyVerbOutcome.NotHandled -> fail("no verb answered ${args.toList()}")
+        }
+
+    /**
+     * A control root that does not exist, and is never created.
+     *
+     * The identity is refused where the name is decided, which is before any path is read, so
+     * nothing here is ever opened. The path is named anyway, so that the rows say WHERE the verb
+     * was pointed instead of leaving it to a reader to wonder.
+     */
+    private val controlRoot: String =
+        Paths.get(System.getProperty("java.io.tmpdir"), "pipelinek-unnameable-run").toString()
 
     private fun capture(block: () -> Int): Result {
         val out = ByteArrayOutputStream()

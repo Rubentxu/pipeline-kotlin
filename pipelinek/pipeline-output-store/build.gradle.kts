@@ -26,6 +26,14 @@ dependencies {
     // would fail to compile against a type it is legally allowed to see.
     api(project(":pipeline-output"))
 
+    // The rule that decides whether a run identity can name a durable directory belongs to the
+    // domain's `RunId`, and this plane asks it rather than keeping a second copy of the alphabet.
+    // A second copy is what let the artifact plane accept a run identity the durable lease
+    // refused, so the two planes disagreed about what an identity is. `implementation`, not `api`:
+    // the domain type is consulted, never exposed — this module's public surface is the Output
+    // Plane contract, and adding the domain to it would widen a published API for no reason.
+    implementation(project(":pipeline-domain"))
+
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
 }

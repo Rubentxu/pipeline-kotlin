@@ -472,9 +472,13 @@ object MainInspectCli {
      * and the run that produced it neither knows nor cares.
      *
      * With `--otlp` the same export is rendered in the OpenTelemetry shape
-     * instead: one document, with the spans and the metrics a collector
-     * expects. It is the same export, not another one — the policy ran
+     * instead. It is the same export, not another one — the policy ran
      * once, and the shape is the only thing that changed.
+     *
+     * The OTLP form is TWO documents, not one: a collector reads spans in a
+     * trace request and metrics in a metrics request, and a document that
+     * carries both is a document no collector accepts. The export stays
+     * line-delimited, so the consumer still tails it: one request per line.
      */
     private fun reportRunTelemetry(runId: String, query: CompiledInspectionQuery): Int {
         val dbPath = query.dbPath
@@ -487,7 +491,10 @@ object MainInspectCli {
             RunTelemetryProjection.fromEvents(runId, events)
         } ?: return 2
         if (query.otlp) {
-            println(RunTelemetryOtlp.document(trace))
+            val out = System.out
+            RunTelemetryOtlp.writeSpans(trace, out)
+            RunTelemetryOtlp.writeMetrics(trace, out)
+            out.flush()
             return 0
         }
         RunTelemetryReport.forEachJsonLine(trace, ::println)

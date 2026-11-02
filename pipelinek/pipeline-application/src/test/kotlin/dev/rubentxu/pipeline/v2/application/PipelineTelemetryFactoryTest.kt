@@ -80,6 +80,7 @@ class PipelineTelemetryFactoryTest {
                 "service.name" to "pipelinek.worker",
                 "service.version" to "2.4.1",
                 "deployment.environment.name" to "production-eu1",
+                TelemetrySource.KEY to TelemetrySource.LIVE,
             ),
             attributes,
         )

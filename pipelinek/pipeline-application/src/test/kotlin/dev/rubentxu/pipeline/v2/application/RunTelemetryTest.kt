@@ -11,13 +11,21 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetrySignal
+import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryTrace
+import io.opentelemetry.exporter.internal.otlp.traces.TraceRequestMarshaler
+import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest
+import io.opentelemetry.proto.trace.v1.Status.StatusCode as TraceStatus
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.io.ByteArrayOutputStream
+import java.nio.charset.StandardCharsets
 import java.time.Instant
 
 /**
@@ -28,6 +36,9 @@ import java.time.Instant
  * and an export a consumer cannot place.
  */
 class RunTelemetryTest {
+
+    /** A real wall-clock moment, so the format carries the timestamps. */
+    private val epoch: Long = 1_700_000_000_000L
 
     private var seq = 0L
 
@@ -461,76 +472,223 @@ class RunTelemetryTest {
             "lo que SÍ ocurrió se declara: el run, la etapa y el paso se abrieron",
         )
 
-        val document = Json.parseToJsonElement(RunTelemetryOtlp.document(trace)).jsonObject
-        val spans = document["resourceSpans"]!!.jsonArray
+        val documents = otlpDocuments(trace)
+        val spans = documents[0]["resourceSpans"]!!.jsonArray
             .flatMap { it.jsonObject["scopeSpans"]!!.jsonArray }
             .flatMap { it.jsonObject["spans"]!!.jsonArray }
             .map { it.jsonObject }
 
         assertTrue(
-            spans.none { it.containsKey("endTimeUnixNano") },
-            "un span incompleto no viaja como un span terminado: el formato OTLP exige un final, " +
-                "así que el final que no existe simplemente no se escribe",
+            spans.isEmpty(),
+            "un span incompleto no viaja como un span OTLP: el formato exige un final, y un final " +
+                "que no existe no se inventa. El hueco sigue visible en el informe plano, que sí " +
+                "puede declarar lo que quedó abierto",
         )
     }
 
     @Test
-    fun `the OTLP document carries the trace and the spans`() {
-        val trace = RunTelemetryProjection.fromEvents(
-            "run-1",
-            listOf(
-                runStart(at = 0),
-                stageStart(at = 120, index = 0),
-                stepStart(at = 130, stage = 0, step = 0),
-                stepFinish(at = 230, stage = 0, step = 0),
-                stageFinish(at = 240, index = 0),
-                runFinish("success", at = 250),
-            ),
+    fun `the OTLP export writes two standard documents and carries the trace and its spans`() {
+        val trace = completedRunTrace()
+
+        val documents = otlpDocuments(trace)
+
+        assertEquals(
+            2,
+            documents.size,
+            "un export OTLP son dos documentos estándar: uno de trazas y otro de métricas. " +
+                "Un solo documento con ambos no es una petición OTLP que ningún colector acepte",
         )
 
-        val document = Json.parseToJsonElement(RunTelemetryOtlp.document(trace)).jsonObject
-        val spans = document["resourceSpans"]!!.jsonArray
+        val spans = documents[0]["resourceSpans"]!!.jsonArray
             .flatMap { it.jsonObject["scopeSpans"]!!.jsonArray }
             .flatMap { it.jsonObject["spans"]!!.jsonArray }
             .map { it.jsonObject }
 
         assertEquals(3, spans.size)
         assertTrue(spans.all { it["traceId"]!!.jsonPrimitive.content == trace.traceId })
+        assertTrue(
+            spans.all { it.containsKey("endTimeUnixNano") },
+            "todo span que viaja es un span terminado: el formato exige un final",
+        )
         val runSpan = spans.first { it["name"]!!.jsonPrimitive.content == "pipelinek.run" }
-        assertEquals("0", runSpan["startTimeUnixNano"]!!.jsonPrimitive.content)
-        assertEquals("250000000", runSpan["endTimeUnixNano"]!!.jsonPrimitive.content)
+        assertEquals("1700000000000000000", runSpan["startTimeUnixNano"]!!.jsonPrimitive.content)
+        assertEquals("1700000000250000000", runSpan["endTimeUnixNano"]!!.jsonPrimitive.content)
     }
 
     @Test
-    fun `the OTLP document carries the run's metrics`() {
-        val trace = RunTelemetryProjection.fromEvents(
-            "run-1",
-            listOf(
-                runStart(at = 0),
-                stageStart(at = 120, index = 0),
-                stepStart(at = 130, stage = 0, step = 0),
-                stepFinish(at = 230, stage = 0, step = 0),
-                stageFinish(at = 240, index = 0),
-                runFinish("success", at = 250),
-            ),
-        )
+    fun `the OTLP export carries the run's metrics`() {
+        val trace = completedRunTrace()
 
-        val document = Json.parseToJsonElement(RunTelemetryOtlp.document(trace)).jsonObject
-        val metrics = document["resourceMetrics"]!!.jsonArray
+        val documents = otlpDocuments(trace)
+        val metrics = documents[1]["resourceMetrics"]!!.jsonArray
             .flatMap { it.jsonObject["scopeMetrics"]!!.jsonArray }
             .flatMap { it.jsonObject["metrics"]!!.jsonArray }
             .map { it.jsonObject }
 
         val counter = metrics.first { it["name"]!!.jsonPrimitive.content == "pipelinek.run_outcome_total" }
         val counterPoint = counter["sum"]!!.jsonObject["dataPoints"]!!.jsonArray.single().jsonObject
-        assertEquals("1", counterPoint["value"]!!.jsonPrimitive.content)
+        assertEquals("1", counterPoint["asInt"]!!.jsonPrimitive.content)
 
         val histogram = metrics.first { it["name"]!!.jsonPrimitive.content == "pipelinek.step_duration_ms" }
         val histogramPoint = histogram["histogram"]!!.jsonObject["dataPoints"]!!.jsonArray.single().jsonObject
         assertEquals("1", histogramPoint["count"]!!.jsonPrimitive.content)
-        assertEquals("100", histogramPoint["sum"]!!.jsonPrimitive.content)
+        assertEquals(100.0, histogramPoint["sum"]!!.jsonPrimitive.double)
         // One bucket per bound, plus the open one.
         assertEquals(10, histogramPoint["bucketCounts"]!!.jsonArray.size)
+    }
+
+    /**
+     * The document a collector reads is the document the OFFICIAL OTLP model
+     * accepts. The test encodes the very same data the exporter writes with
+     * the official marshaler, in the official protobuf wire format, and hands
+     * it to the official generated model: what comes back must be the export
+     * itself, span for span.
+     *
+     * A decoder written in this project would prove nothing: it would only
+     * say that this project agrees with itself.
+     */
+    @Test
+    fun `the exported spans are a document the official OTLP model reads back`() {
+        val trace = completedRunTrace()
+
+        val bytes = ByteArrayOutputStream()
+        TraceRequestMarshaler.create(RunTelemetryOtlp.spans(trace).toList()).writeBinaryTo(bytes)
+        val request = ExportTraceServiceRequest.parseFrom(bytes.toByteArray())
+
+        val scopeSpans = request.resourceSpansList.single().scopeSpansList.single()
+        val official = scopeSpans.spansList
+        assertEquals(3, official.size)
+        assertEquals("dev.rubentxu.pipeline.v2", scopeSpans.scope.name)
+        official.forEach { span ->
+            assertEquals(trace.traceId, span.traceId.toByteArray().toHex())
+            assertTrue(span.endTimeUnixNano > span.startTimeUnixNano, "un span del modelo oficial tiene final")
+        }
+        val runSpan = official.first { it.name == "pipelinek.run" }
+        assertEquals(1_700_000_000_000_000_000L, runSpan.startTimeUnixNano)
+        assertEquals(1_700_000_000_250_000_000L, runSpan.endTimeUnixNano)
+        assertEquals(TraceStatus.STATUS_CODE_OK, runSpan.status.code)
+    }
+
+    /**
+     * The two producers of this product's telemetry must be tellable apart by
+     * the document itself: the one that publishes a run while it happens, and
+     * the one that publishes a finished run read back from the journal.
+     */
+    @Test
+    fun `the historical export names its producer`() {
+        val trace = RunTelemetryProjection.fromEvents(
+            "run-1",
+            listOf(runStart(at = 0), runFinish("success", at = 250)),
+        )
+
+        val documents = otlpDocuments(trace)
+        val resource = documents[0]["resourceSpans"]!!.jsonArray.single()
+            .jsonObject["resource"]!!.jsonObject
+        val attributes = resource["attributes"]!!.jsonArray.map { it.jsonObject }
+
+        val source = attributes.first { it["key"]!!.jsonPrimitive.content == TelemetrySource.KEY }
+        assertEquals(
+            TelemetrySource.HISTORICAL,
+            source["value"]!!.jsonObject["stringValue"]!!.jsonPrimitive.content,
+            "el documento dice QUIÉN lo publicó: sin esa etiqueta un backend no puede distinguir " +
+                "una ejecución observada en vivo de la misma ejecución leída del diario",
+        )
+    }
+
+    /**
+     * A span whose final precedes its own start measures nothing: its
+     * duration would be negative, and no collector can read that as a
+     * measurement. The projection does not produce such a span — it counts
+     * the contradiction instead — but the writer is the last gate before
+     * publishing, so it refuses on its own terms, and the trace it is handed
+     * is built here to reach that gate.
+     */
+    @Test
+    fun `a span whose end precedes its start does not travel as a measurement`() {
+        val trace = TelemetryTrace(
+            runId = "run-1",
+            traceId = TelemetryTrace.traceIdOf("run-1"),
+            signals = listOf(
+                TelemetrySignal.SpanStarted("pipelinek.run", "0123456789abcdef", null, 100L, emptyList()),
+                TelemetrySignal.SpanEnded("pipelinek.run", "0123456789abcdef", 50L, "success"),
+            ),
+        )
+
+        assertTrue(
+            RunTelemetryOtlp.spans(trace).count() == 0,
+            "un span cuyo final precede a su inicio no se publica: su duración sería negativa, " +
+                "y una duración negativa no es una medida",
+        )
+    }
+
+    /**
+     * The export must not grow with the history it carries. The spans
+     * travel in BOUNDED batches, each batch one request, so a hundred
+     * thousand spans cost the writer one batch and not the whole history.
+     *
+     * A consumer sees the same spans either way; what the bound buys is a
+     * writer whose memory does not follow the length of the run.
+     */
+    @Test
+    fun `the export travels in bounded batches and not the whole history in one document`() {
+        val trace = TelemetryTrace(
+            runId = "run-1",
+            traceId = TelemetryTrace.traceIdOf("run-1"),
+            signals = (0 until 257).flatMap { index ->
+                val spanId = index.toString(16).padStart(16, '0')
+                listOf(
+                    TelemetrySignal.SpanStarted("pipelinek.step", spanId, null, epoch + index, emptyList()),
+                    TelemetrySignal.SpanEnded("pipelinek.step", spanId, epoch + index + 1, "success"),
+                )
+            },
+        )
+
+        val documents = otlpDocuments(trace)
+
+        assertEquals(
+            3,
+            documents.size,
+            "257 spans no caben en un documento: viajan en lotes acotados —uno de trazas, otro de " +
+                "trazas y uno de métricas— y el escritor no sostiene más de un lote a la vez",
+        )
+        assertEquals(
+            256,
+            spansIn(documents[0]).size,
+            "el primer lote lleva el máximo de spans que un documento transporta",
+        )
+        assertEquals(
+            1,
+            spansIn(documents[1]).size,
+            "el resto de los spans viaja en el lote que cierra la exportación",
+        )
+    }
+
+    /**
+     * A repeated opening is not a new fact. The journal is append-only and
+     * ordered, so the FIRST statement about a span is its start; a second
+     * opening of the same id is noise, and measuring the span against it
+     * would publish a duration the journal never stated.
+     */
+    @Test
+    fun `a span that opens twice is measured against the opening it was first given`() {
+        val trace = TelemetryTrace(
+            runId = "run-1",
+            traceId = TelemetryTrace.traceIdOf("run-1"),
+            signals = listOf(
+                TelemetrySignal.SpanStarted("pipelinek.run", "0123456789abcdef", null, 100L, emptyList()),
+                TelemetrySignal.SpanStarted("pipelinek.run", "0123456789abcdef", null, 200L, emptyList()),
+                TelemetrySignal.SpanEnded("pipelinek.run", "0123456789abcdef", 300L, "success"),
+            ),
+        )
+
+        val span = spansIn(otlpDocuments(trace)[0]).single()
+
+        assertEquals(
+            "100000000",
+            span["startTimeUnixNano"]!!.jsonPrimitive.content,
+            "una apertura repetida no es un hecho nuevo: el span se mide contra la apertura que " +
+                "recibió la primera vez",
+        )
     }
 
     @Test
@@ -541,4 +699,48 @@ class RunTelemetryTest {
         assertTrue(parsed is InspectParseResult.Parsed)
         assertEquals(true, (parsed as InspectParseResult.Parsed).value.otlp)
     }
+
+    /**
+     * The export as the CLI writes it: two standard OTLP documents, one per
+     * line. The reader here is the one that already reads the product's
+     * other line-delimited output, so the export keeps the shape a consumer
+     * can tail.
+     */
+    private fun otlpDocuments(trace: TelemetryTrace): List<JsonObject> {
+        val out = ByteArrayOutputStream()
+        RunTelemetryOtlp.writeSpans(trace, out)
+        RunTelemetryOtlp.writeMetrics(trace, out)
+        return out.toString(StandardCharsets.UTF_8)
+            .trim()
+            .lines()
+            .map { Json.parseToJsonElement(it).jsonObject }
+    }
+
+    /** Los spans que un documento de trazas lleva, en el orden en que viajan. */
+    private fun spansIn(document: JsonObject): List<JsonObject> =
+        document["resourceSpans"]!!.jsonArray
+            .flatMap { it.jsonObject["scopeSpans"]!!.jsonArray }
+            .flatMap { it.jsonObject["spans"]!!.jsonArray }
+            .map { it.jsonObject }
+
+    /**
+     * A finished run, at a real wall-clock moment. The moment matters: the
+     * format omits a timestamp that is exactly zero, so a run that "starts
+     * at zero" would be a run whose start the document does not carry — an
+     * artifact of the fixture, not of the export.
+     */
+    private fun completedRunTrace(): TelemetryTrace = RunTelemetryProjection.fromEvents(
+        "run-1",
+        listOf(
+            runStart(at = epoch),
+            stageStart(at = epoch + 120, index = 0),
+            stepStart(at = epoch + 130, stage = 0, step = 0),
+            stepFinish(at = epoch + 230, stage = 0, step = 0),
+            stageFinish(at = epoch + 240, index = 0),
+            runFinish("success", at = epoch + 250),
+        ),
+    )
+
+    /** The hexadecimal the format prints an identifier as. */
+    private fun ByteArray.toHex(): String = joinToString("") { it.toInt().and(0xFF).toString(16).padStart(2, '0') }
 }

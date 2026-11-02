@@ -2,6 +2,7 @@
 //@ expect-stdout TELEMETRY_BRANCHES_HAVE_A_SPAN_EACH
 //@ expect-stdout TELEMETRY_OTLP_CARRIES_THE_TRACE
 //@ expect-stdout TELEMETRY_OTLP_CARRIES_THE_METRICS
+//@ expect-stdout TELEMETRY_OTLP_IS_TWO_STANDARD_DOCUMENTS
 //@ expect-stdout TELEMETRY_OTLP_ALONE_IS_REFUSED
 
 // The telemetry export, at the boundary a consumer actually reaches it.
@@ -11,9 +12,10 @@
 // A consumer that asks the product for a run's telemetry gets an export it
 // can USE: every line names the trace it belongs to, the branches of a
 // parallel stage are distinguishable from one another, the OpenTelemetry
-// rendering carries that same trace together with the run's metrics, and
-// the OpenTelemetry shape asked for on its own is REFUSED instead of
-// rendered with no run behind it.
+// rendering carries that same trace together with the run's metrics in the
+// TWO standard documents a collector reads, says WHICH producer published
+// them, and the OpenTelemetry shape asked for on its own is REFUSED instead
+// of rendered with no run behind it.
 //
 // The unit rows guard the projection and the parser. What they cannot reach
 // is the seam between them: a real run, a real event store, the real binary
@@ -132,10 +134,16 @@ pipeline {
                 """.trimIndent(),
             )
 
-            // The same export, rendered in the OpenTelemetry shape: one
-            // document, carrying the trace of the run it describes and the
-            // metrics a collector reads. It is the SAME export, not another
-            // one -- the policy ran once and only the shape changed.
+            // The same export, rendered in the OpenTelemetry shape: two
+            // standard documents, one carrying the trace of the run it
+            // describes and one carrying the metrics a collector reads. It
+            // is the SAME export, not another one -- the policy ran once
+            // and only the shape changed.
+            //
+            // TWO documents, because a collector reads spans in a trace
+            // request and metrics in a metrics request, and a document
+            // carrying both is a document no collector accepts. One request
+            // per line, so the export stays a stream a consumer can tail.
             sh(
                 """
                 run_id="${'$'}(cat run-id.txt 2>/dev/null || true)"
@@ -158,6 +166,23 @@ pipeline {
                     else
                         echo "the OTLP document carries no metric" >&2
                         echo LEG_telemetry_otlp_carries_the_metrics
+                    fi
+                    documents="${'$'}(grep -c . otlp.json || true)"
+                    spans_line="${'$'}(sed -n '1p' otlp.json)"
+                    metrics_line="${'$'}(sed -n '2p' otlp.json)"
+                    standard=1
+                    if [ "${'$'}documents" != "2" ]; then standard=0; fi
+                    if ! printf '%s' "${'$'}spans_line" | grep -q "resourceSpans"; then standard=0; fi
+                    if printf '%s' "${'$'}spans_line" | grep -q "resourceMetrics"; then standard=0; fi
+                    if ! printf '%s' "${'$'}metrics_line" | grep -q "resourceMetrics"; then standard=0; fi
+                    if printf '%s' "${'$'}metrics_line" | grep -q "resourceSpans"; then standard=0; fi
+                    if ! printf '%s' "${'$'}spans_line" | grep -q "\"key\":\"telemetry.source\",\"value\":{\"stringValue\":\"historical\"}"; then standard=0; fi
+                    if ! printf '%s' "${'$'}metrics_line" | grep -q "\"key\":\"telemetry.source\",\"value\":{\"stringValue\":\"historical\"}"; then standard=0; fi
+                    if [ "${'$'}standard" = "1" ]; then
+                        echo TELEMETRY_OTLP_IS_TWO_STANDARD_DOCUMENTS
+                    else
+                        echo "the OTLP export is ${'$'}documents documents, and not two standard ones" >&2
+                        echo LEG_telemetry_otlp_is_two_standard_documents
                     fi
                 fi
                 """.trimIndent(),

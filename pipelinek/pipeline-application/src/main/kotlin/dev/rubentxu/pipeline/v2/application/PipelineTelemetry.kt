@@ -367,6 +367,12 @@ internal fun safeTelemetryResourceAttributes(
     deploymentEnvironment
         ?.takeIf(SAFE_RESOURCE_VALUE::matches)
         ?.let { put("deployment.environment.name", it) }
+    // The producer's name. This product publishes the same telemetry twice
+    // over — once while the run happens, once read back from the journal
+    // afterwards — and a backend that receives both can only tell them apart
+    // if the document says which one it is. The label is a fact about the
+    // PRODUCER, so it belongs to the resource and not to the spans.
+    put(TelemetrySource.KEY, TelemetrySource.LIVE)
 }
 
 /**

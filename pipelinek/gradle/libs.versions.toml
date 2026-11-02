@@ -3,6 +3,16 @@ kotlin = "2.4.10"
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.11.0"
 opentelemetry = "1.67.0"
+# The OFFICIAL protobuf-generated OTLP model. It is NOT part of the OpenTelemetry
+# BOM and NOT part of any published artifact of this product: it exists so the
+# TESTS can decode, with an official decoder, what the historical export
+# writes. The version is pinned here because nothing else manages it.
+opentelemetryProto = "1.11.1-alpha"
+# The protobuf runtime that model is generated against. The official OTLP model
+# is a FILE FORMAT plus an ENGINE: this project does not own either, and
+# reimplementing a protobuf decoder to check our own output would be a second
+# understanding of the format rather than a check of it.
+protobufJava = "4.36.2"
 junit = "5.11.4"
 junitLauncher = "1.11.4"
 cyclonedx = "1.8.2"
@@ -32,7 +42,19 @@ opentelemetry-api = { module = "io.opentelemetry:opentelemetry-api" }
 opentelemetry-sdk = { module = "io.opentelemetry:opentelemetry-sdk" }
 opentelemetry-sdk-autoconfigure = { module = "io.opentelemetry:opentelemetry-sdk-extension-autoconfigure" }
 opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp" }
+# The marshalers that WRITE the OTLP wire format. They arrive with the OTLP
+# exporter above, so this line declares what the product already uses instead of
+# adding a byte to the distribution: the historical export writes the same
+# format with the same encoder the live exporter uses, instead of a second
+# hand-written encoder of its own.
+opentelemetry-exporter-otlp-common = { module = "io.opentelemetry:opentelemetry-exporter-otlp-common" }
 opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing" }
+# FOR THE TESTS ALONE. The official protobuf-generated OTLP model, and the protobuf
+# runtime it is generated against: together they are the official decoder that
+# reads back what the historical export writes. Neither ships in the
+# distribution, and neither is reachable from any published artifact.
+opentelemetry-proto = { module = "io.opentelemetry.proto:opentelemetry-proto", version.ref = "opentelemetryProto" }
+protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobufJava" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitLauncher" }
 kotlin-scripting-jvm-host = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm-host", version.ref = "kotlin" }

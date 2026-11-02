@@ -145,6 +145,14 @@ dependencies {
     implementation(libs.opentelemetry.sdk)
     implementation(libs.opentelemetry.sdk.autoconfigure)
     implementation(libs.opentelemetry.exporter.otlp)
+    // The OFFICIAL OTLP marshalers, declared explicitly because the historical
+    // export writes the wire format with them. They arrive with the OTLP
+    // exporter above, so this line adds NO byte to the distribution: what it
+    // does is make the dependency honest — the product writes OTLP with the
+    // upstream encoder instead of a second, hand-written encoder of its own,
+    // which is the only way two producers of the same format stay the same
+    // format.
+    implementation(libs.opentelemetry.exporter.otlp.common)
 
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
@@ -254,6 +262,20 @@ dependencies {
     // reason the dimension and cardinality guarantees can be asserted against something
     // other than this project's own arithmetic.
     testImplementation(libs.opentelemetry.sdk.testing)
+    // The OFFICIAL OTLP model and the protobuf runtime it is generated
+    // against, so the tests can read back what the historical export writes
+    // with a decoder nobody in this project wrote. Both are for the tests
+    // alone: neither is on the runtime classpath, neither reaches the
+    // distribution, and neither is reachable from any published artifact.
+    //
+    // WHY THIS IS A DEPENDENCY AND NOT CODE HERE: the OTLP protobuf schema is
+    // a FILE FORMAT and protobuf-java is the ENGINE that reads it. This
+    // project does not own either, and a hand-written decoder to check our own
+    // output would be a second understanding of the format rather than a check
+    // of it — the classic way a product ends up shipping a format only it
+    // can read.
+    testImplementation(libs.opentelemetry.proto)
+    testImplementation(libs.protobuf.java)
 }
 
 tasks.test {

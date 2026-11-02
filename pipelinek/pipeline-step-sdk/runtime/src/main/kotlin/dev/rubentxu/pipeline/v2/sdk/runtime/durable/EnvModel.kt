@@ -274,6 +274,43 @@ fun Map<String, String>.applyDenyList(allowExtra: Set<String>): Map<String, Stri
 }
 
 /**
+ * The variables whose VALUE is credential material the controller owns.
+ *
+ * A variable belongs here when reading it grants access to something the child was never given
+ * permission for. Today that is the passphrase that opens the credential store: the controller
+ * resolved it to open the store, and a child that inherits it can decrypt every secret in that
+ * store -- which is strictly more authority than any single binding grants, and more than the
+ * pipeline asked for.
+ *
+ * A LOCATOR is not credential material and does not belong here: [PIPELINE_CREDENTIALS_STORE]
+ * says WHERE the store is, and without the passphrase it says nothing anybody can use. A POLICY
+ * knob does not belong here either: [PIPELINE_SANDBOX_ALLOW_EXTRA] and
+ * [PIPELINE_SANDBOX_PATH_KEEP] are read by the controller, not by the child.
+ *
+ * There is no escape hatch for this list, and there cannot be one. The deny-list above has one
+ * ([applyDenyList]'s `allowExtra`) because a deny-listed variable is a vector for INJECTION, which
+ * an operator may reasonably want in a controlled run. A variable in this list is the
+ * AUTHORIZATION itself, and an authorization a step can ask the controller to hand over is not an
+ * authorization.
+ */
+internal val CONTROLLER_SECRET_VARIABLES: Set<String> = setOf(
+    "PIPELINE_STORE_PASSPHRASE",
+)
+
+/**
+ * Removes the controller's own credential material from an INHERITED environment.
+ *
+ * Applied to the environment the launcher inherited, never to the variables the caller declared: a
+ * credential the pipeline asked for is the channel that delivers it, and a filter that touched
+ * that channel would deliver nothing at all. The difference between the two is the whole point --
+ * what is removed here is the INHERITANCE, not the request.
+ *
+ * @return A new map without the controller's credential material. The receiver is not modified.
+ */
+internal fun Map<String, String>.withoutControllerSecrets(): Map<String, String> =
+    filterKeys { it !in CONTROLLER_SECRET_VARIABLES }
+
+/**
  * Default PATH keep-set: prefixes that survive PATH normalisation.
  * Add entries via [PIPELINE_SANDBOX_PATH_KEEP] env var / sysprop.
 */

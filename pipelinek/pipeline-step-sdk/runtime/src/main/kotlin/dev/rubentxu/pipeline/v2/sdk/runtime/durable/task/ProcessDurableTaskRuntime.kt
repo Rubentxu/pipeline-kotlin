@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionResult
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskTerminalDecision
 import dev.rubentxu.pipeline.v2.domain.durable.decideTaskTerminal
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.CONTROLLER_SECRET_VARIABLES
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -115,6 +116,12 @@ class ProcessDurableTaskRuntime(
         val workDir = request.workspaceRoot?.let { Path.of(it) } ?: controlDir.toAbsolutePath()
         builder.directory(workDir.toFile())
         builder.redirectErrorStream(false)
+        // The child's environment starts as the controller's own. The controller's credential
+        // material is removed before the caller's variables are applied: a credential the
+        // pipeline DECLARES still reaches the child (it is applied after this removal, and
+        // therefore wins), but the passphrase the controller resolved for its own store does
+        // not cross by inheritance.
+        CONTROLLER_SECRET_VARIABLES.forEach { builder.environment().remove(it) }
         request.env.forEach { (key, handle) -> builder.environment()[key] = handle.materialize() }
 
         val process = builder.start()

@@ -159,7 +159,16 @@ internal class ShellLaunchPreparation(
         sandbox: SandboxConfig,
         userEnv: Map<String, SecretHandle>,
     ): Map<String, String> {
-        val child = LinkedHashMap(ambient)
+        // The controller's own credential material does not cross into the child by INHERITANCE.
+        // The controller resolved the passphrase to open the credential store; a step that
+        // inherited it could decrypt every secret in that store, which is more authority than
+        // the pipeline asked for and more than any single binding grants.
+        //
+        // The filter runs HERE, before the sentinels and before the caller's variables are
+        // applied, so that a credential the pipeline DECLARES still reaches the child: what is
+        // removed is the inheritance, not the request. A declared variable is applied later and
+        // therefore wins over anything inherited.
+        val child = LinkedHashMap(ambient.withoutControllerSecrets())
 
         // The sentinel is inherited by the wrapper and by the heartbeat, and it is what protects
         // the wrapper's own machinery from the cookie-scan kill. The real cookie is written by

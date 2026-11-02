@@ -175,7 +175,21 @@ pipeline {
 
                 # 6. Removing what was never there says so, instead of
                 #    reporting a removal that did not happen.
-                out=$('${product}' credentials remove no-such-credential 2>&1); code=${'$'}?
+                #
+                #    The door is asked with an EXPLICIT key over a store this
+                #    scenario owns. The controller's own key does not travel
+                #    into a step any more -- a step inherits the environment
+                #    minus the controller's credential material -- so a case
+                #    that needs the door open asks for the key it needs
+                #    instead of borrowing one it no longer inherits. What is
+                #    under test is the ANSWER ("there is no credential by that
+                #    name"), not where the key came from.
+                mkdir -p own-store
+                own="${'$'}PWD/own-store/creds.bin"
+                printf 'own-fixture-secret' \
+                    | PIPELINE_CREDENTIALS_STORE="${'$'}own" PIPELINE_STORE_PASSPHRASE=own-fixture-key \
+                        '${product}' credentials add --kind secret-text --from-stdin own-credential >/dev/null 2>&1
+                out=$(PIPELINE_CREDENTIALS_STORE="${'$'}own" PIPELINE_STORE_PASSPHRASE=own-fixture-key '${product}' credentials remove no-such-credential 2>&1); code=${'$'}?
                 if [ "${'$'}code" = "1" ] && echo "${'$'}out" | grep -q 'No credential named'; then
                     echo MISSING_CREDENTIAL_IS_NAMED
                 else

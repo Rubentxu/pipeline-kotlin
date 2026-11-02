@@ -17,6 +17,13 @@ import java.nio.file.Path
  * only the sanctioned prefixes. A caller-supplied path cannot smuggle an entry past that filter,
  * because the filter is applied again after the caller's variables are merged.
  *
+ * The composition also decides what the controller's own credential material does: it does not
+ * cross into the child by inheritance, whatever the profile is, while a credential the pipeline
+ * declares on purpose still does reach it. The passphrase that opens the credential store is the
+ * controller's, not the pipeline's — a step that inherited it would hold the key to every secret
+ * the store holds, which is more than the pipeline asked for. The location of the store is not
+ * credential material and does cross: on its own it grants nothing.
+ *
  * **The observable capacity it serves.** A durable `sh` step runs in an environment the operator
  * chose: the variables that can hijack a child process are gone, the path is the one that was
  * sanctioned, and the operation's identity is readable from the child's own environment when
@@ -52,6 +59,10 @@ class ShellLaunchPreparationTest {
      * The environment the launcher inherits, in miniature. The path carries one entry outside the
      * keep-set (`/opt/rogue/bin`), so a filter that does nothing and a filter that drops too much
      * are distinguishable.
+     *
+     * It also carries what a controller that HAS a credential store carries: the passphrase that
+     * opens it (credential material) and the location of the store (a locator). The two are not
+     * the same kind of thing, and the composition treats them differently on purpose.
      */
     private val ambient = mapOf(
         "PATH" to "/usr/bin:/bin:/opt/rogue/bin",
@@ -59,6 +70,8 @@ class ShellLaunchPreparationTest {
         "LD_PRELOAD" to "/opt/rogue/lib.so",
         "BASH_FUNC_helper%%" to "() { :; }",
         "HOME" to "/home/pipeline",
+        "PIPELINE_STORE_PASSPHRASE" to "controller-store-passphrase",
+        "PIPELINE_CREDENTIALS_STORE" to "/home/pipeline/.pipeline/credentials.bin",
     )
 
     private fun env(vararg pairs: Pair<String, String>): Map<String, SecretHandle> =
@@ -234,5 +247,70 @@ class ShellLaunchPreparationTest {
         // handles into a map of its own, so a later reader of the caller's map still finds the
         // caller's values and not the composed ones.
         assertEquals(before, callerEnv.mapValues { it.value.materialize() })
+    }
+
+    @Test
+    fun `the controller's store passphrase does not reach the child when there is no profile`() {
+        val child = preparation().composeEnvironment(
+            ambient = ambient,
+            sandbox = SandboxConfig.NONE,
+            userEnv = env("PATH" to "/usr/bin"),
+        )
+
+        // The passphrase opens the store that holds every secret. A step that inherited it could
+        // decrypt all of them, which is more authority than the pipeline asked for. No profile is
+        // the DEFAULT profile, so this is the common case, not an exotic one.
+        assertFalse(
+            child.containsKey("PIPELINE_STORE_PASSPHRASE"),
+            "the controller's store passphrase reached the child",
+        )
+    }
+
+    @Test
+    fun `the controller's store passphrase does not reach the child under the local profile`() {
+        val child = preparation().composeEnvironment(
+            ambient = ambient,
+            sandbox = SandboxConfig.LOCAL,
+            userEnv = env("PATH" to "/usr/bin"),
+        )
+
+        // The local profile is not a shield here: its deny-list is about INJECTION vectors
+        // (LD_PRELOAD, BASH_ENV, ...), and the passphrase is not one of them. The credential
+        // material is removed whatever the profile is.
+        assertFalse(
+            child.containsKey("PIPELINE_STORE_PASSPHRASE"),
+            "the controller's store passphrase reached the child",
+        )
+    }
+
+    @Test
+    fun `a store passphrase the caller declares reaches the child`() {
+        val child = preparation().composeEnvironment(
+            ambient = ambient,
+            sandbox = SandboxConfig.NONE,
+            userEnv = env(
+                "PATH" to "/usr/bin",
+                "PIPELINE_STORE_PASSPHRASE" to "declared-by-the-pipeline",
+            ),
+        )
+
+        // What is removed is the INHERITANCE, not the request. A credential the pipeline declares
+        // on purpose is the channel that delivers it, and the declared value is the one that
+        // counts -- not the one the controller happened to hold.
+        assertEquals("declared-by-the-pipeline", child["PIPELINE_STORE_PASSPHRASE"])
+    }
+
+    @Test
+    fun `the location of the store reaches the child because it is not a credential`() {
+        val child = preparation().composeEnvironment(
+            ambient = ambient,
+            sandbox = SandboxConfig.NONE,
+            userEnv = env("PATH" to "/usr/bin"),
+        )
+
+        // A locator is not credential material: it says WHERE the store is, and without the
+        // passphrase it says nothing anybody can use. Filtering it would break the flows that
+        // point the product at a store without opening it.
+        assertEquals("/home/pipeline/.pipeline/credentials.bin", child["PIPELINE_CREDENTIALS_STORE"])
     }
 }

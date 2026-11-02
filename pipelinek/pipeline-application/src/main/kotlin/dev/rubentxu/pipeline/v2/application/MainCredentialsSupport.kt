@@ -68,6 +68,15 @@ internal fun composeCredentialSeam(
 
     val secretStore: SecretStore = try {
         val passphraseChars = PassphraseResolver.resolve()
+        // The passphrase is credential material: it opens the store that holds every secret.
+        // Registering it means that IF it ever reaches an output, a log or an error message, the
+        // redactor masks it instead of printing it in clear. The registry keeps its own copy, so
+        // this does not disturb the CharArray the store is about to take ownership of.
+        //
+        // A passphrase shorter than the registry's maskable floor is not registered. That is the
+        // registry's deliberate trade-off (a short literal collides with ordinary text), and it
+        // means a very short passphrase is not covered by redaction.
+        redactionRegistry?.addSecretValue(String(passphraseChars))
         // Do NOT wipe passphraseChars here — LocalSecretStore stores the
         // same CharArray reference and would lose its own copy. The store
         // zeros the passphrase in its own close().

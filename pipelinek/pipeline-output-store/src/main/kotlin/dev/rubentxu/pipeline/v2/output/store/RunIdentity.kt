@@ -13,7 +13,7 @@ import dev.rubentxu.pipeline.v2.domain.RunId
  *
  * ## Why the identity is refused instead of folded
  *
- * Folding every character outside `[A-Za-z0-9._-]` onto `_` is irreversible,
+ * Folding every character outside `[a-z0-9._-]` onto `_` is irreversible,
  * and it makes `a/b` and `a_b` the same directory: two different runs, one
  * directory, and the frame index of one answering with the frames of the
  * other. A collision that is silent has to be prevented where the name is
@@ -30,7 +30,10 @@ import dev.rubentxu.pipeline.v2.domain.RunId
  * ## What it refuses
  *
  * An identity that cannot name a directory: one holding a path separator, or
- * a character outside the durable alphabet. Refusing it is also what keeps the
+ * a character outside the durable alphabet. The alphabet — and the reason it
+ * admits ASCII lowercase only, so that a name cannot depend on the
+ * filesystem's case distinction — belongs to [RunId], and this asks it instead
+ * of keeping a second copy. Refusing an identity is also what keeps the
  * artifact root the boundary it is — a name is never assembled out of an
  * identity the operator supplied.
  */

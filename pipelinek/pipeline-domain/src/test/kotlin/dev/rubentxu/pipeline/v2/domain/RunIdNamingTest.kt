@@ -23,6 +23,10 @@ import org.junit.jupiter.api.Test
  * identity either can name a location and its key is the identity itself, or it
  * cannot and it has NO key at all.
  *
+ * The guarantee holds across filesystems too: a name the alphabet admits is the
+ * same name on every volume, including the ones that fold case, so two
+ * identities that differ only in case cannot both carry one.
+ *
  * ## Why the rule refuses instead of encoding
  *
  * An escaped key would be injective too, but it would leave the product with two
@@ -50,6 +54,15 @@ class RunIdNamingTest {
         "run.42",
     )
 
+    /**
+     * The identities with no name.
+     *
+     * The uppercase entries are there because a durable name must not depend on
+     * the filesystem's case distinction: on a volume that folds case — APFS by
+     * default, exFAT — the same identity in upper case and in lower case are ONE
+     * location, and the durable
+     * name IS the identity, so at most one of them may be nameable.
+     */
     private val notNameable = listOf(
         "a/b",
         "a b",
@@ -57,6 +70,8 @@ class RunIdNamingTest {
         "a:b",
         "",
         "a\\b",
+        "RUN-42",
+        "Run",
     )
 
     @Test
@@ -93,5 +108,16 @@ class RunIdNamingTest {
         // name at all, so the collision cannot happen.
         assertNull(RunId.fileKey("a/b"), "'a/b' must have no key")
         assertEquals("a_b", RunId.fileKey("a_b"), "'a_b' must keep its own key")
+    }
+
+    @Test
+    fun `dos identidades que solo difieren en caja no pueden nombrar ambas`() {
+        // The pair that a case-insensitive volume confuses: 'run-42' and
+        // in lower case and in upper case are ONE directory there. The durable
+        // name IS the identity,
+        // so at most one of them may carry a name; the other is refused at the
+        // border instead of landing on somebody else's location.
+        assertEquals("run-42", RunId.fileKey("run-42"), "'run-42' must keep its own name")
+        assertNull(RunId.fileKey("RUN-42"), "'RUN-42' must have no name: it would name the same location")
     }
 }

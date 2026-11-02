@@ -35,12 +35,22 @@ value class RunId(val value: String) {
         /**
          * The characters an identity may use to name a durable location.
          *
-         * The alphabet is the product's own: a definition id is a hex digest and
-         * a generated run id is a lowercase UUID, so every identity the product
-         * creates already lives inside it. What it admits is exactly what a
-         * path segment can carry without being rewritten.
+         * The alphabet is the product's own: a generated run id is a lowercase
+         * UUID, so every identity the product creates already lives inside it.
+         * What it admits is exactly what a path segment can carry without being
+         * rewritten.
+         *
+         * It admits ASCII lowercase only, because a durable name must not
+         * depend on the filesystem's case distinction. A name carrying an
+         * uppercase letter names the SAME location as its lowercase twin on a
+         * volume that folds case — APFS by default, exFAT — and the durable
+         * name IS the identity: two identities differing only in case would
+         * then be one location, and the reader of one would be handed the
+         * facts of the other. ASCII lowercase is left unchanged by the case
+         * folding of every filesystem and by every Unicode normalisation, so
+         * a name this alphabet admits is the same name everywhere.
          */
-        private val NAMEABLE = Regex("""[A-Za-z0-9._-]+""")
+        private val NAMEABLE = Regex("""[a-z0-9._-]+""")
 
         /**
          * Whether [runId] can name a durable location.
@@ -56,11 +66,12 @@ value class RunId(val value: String) {
          * name one.
          *
          * The key IS the identity, and that is the whole point. A key that were a
-         * transformation of it — folded, escaped or truncated — could give two
-         * different identities the same key, and then two runs would share one
-         * lease: one of them would be refused as "already owned" and the other
-         * would take the lease over, advancing the fencing token and fencing
-         * out a publisher that had done nothing wrong.
+         * transformation of it — folded by case or by substitution, escaped or
+         * truncated — could give two different identities the same key, and then
+         * two runs would share one lease: one of them would be refused as
+         * "already owned" and the other would take the lease over, advancing
+         * the fencing token and fencing out a publisher that had done nothing
+         * wrong.
          *
          * So an identity that cannot name a location has NO key: it is refused
          * where it enters the durable plane, rather than folded onto somebody

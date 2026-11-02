@@ -125,6 +125,7 @@ class StashOperationsAdapter(
     }
 
     override fun stash(input: StashInput): StashResult {
+        stashRefusal(input.name, "stash")?.let { return it }
         val workspaceRoot = sourceRoot()
 
         // paths confinement for stash.
@@ -262,6 +263,7 @@ class StashOperationsAdapter(
     }
 
     override fun unstash(input: UnstashInput): StashResult {
+        stashRefusal(input.name, "unstash")?.let { return it }
         val workspaceRoot = sourceRoot()
 
         val stashRoot = stashRoot(runIdString, input.name)
@@ -399,6 +401,20 @@ class StashOperationsAdapter(
     private fun stashRoot(runIdString: String, name: String): Path {
         val stashesRoot = controlDirRoot.resolve("stashes").resolve(runIdString).resolve(name)
         return stashesRoot
+    }
+
+    /**
+     * The typed refusal when this run identity cannot name its stash directory.
+     *
+     * The stash directory is named after the run, so the identity has to be able
+     * to name it. An identity that cannot is refused here, at the border of the
+     * operation and with the reason stated, instead of being folded onto
+     * another run's directory.
+     */
+    private fun stashRefusal(name: String, operation: String): StashResult? {
+        val reason = unnameableRunIdReason(runIdString, operation) ?: return null
+        eventSink.append(stashFailedEvent(name, operation, reason))
+        return StashFailed(failureKind = FailureKind.USER, message = reason)
     }
 
     private fun stashFailedEvent(name: String, op: String, reason: String): StashFailedEvent =

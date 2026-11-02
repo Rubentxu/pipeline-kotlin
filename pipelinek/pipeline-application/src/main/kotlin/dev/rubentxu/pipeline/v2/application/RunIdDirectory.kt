@@ -28,6 +28,12 @@ sealed interface StoredRunId {
  * file is robust to hand-fix and grep.
  * Legacy records (one line, runId only) are accepted; their
  * correlationId is `null`.
+ *
+ * ## The name of the record
+ * The file that holds the record of a definition is named after the definition
+ * itself. So the name may only carry what survives every filesystem's folding:
+ * an identity that cannot carry such a name is refused where the name is
+ * decided, not folded onto a neighbour's record.
 */
 class RunIdDirectory(private val root: Path) {
 
@@ -35,8 +41,8 @@ class RunIdDirectory(private val root: Path) {
      * Records [runId] as the latest invocation of [definitionId],
      * replacing any previous record. Optionally records the
      * [correlationId] supplied by the external invoker.
-     * @throws IllegalArgumentException if the definition id contains
-     *         characters unsafe for a file name.
+     * @throws IllegalArgumentException if the definition id cannot name the
+     *         durable record — see [fileNameFor] for what a name may carry.
      * @throws java.io.UncheckedIOException if the directory or file cannot
      *         be written.
 */
@@ -54,8 +60,10 @@ class RunIdDirectory(private val root: Path) {
         // concurrent callers share the same definition (each writes to the same temp, then races
         // to move). A monotonic counter plus the thread id makes collisions impossible without
         // needing fs-level locks.
-        Files.createDirectories(root)
+        // The name is decided BEFORE the directory is created: an identity that cannot
+        // name the record leaves no durable location behind, not even an empty one.
         val target = root.resolve(fileNameFor(definitionId))
+        Files.createDirectories(root)
         val temp = Files.createTempFile(root, ".${target.fileName}.", ".tmp")
         try {
             val payload = buildString {
@@ -109,16 +117,41 @@ class RunIdDirectory(private val root: Path) {
         )
     }
 
+    /**
+     * The durable name of the record of [definitionId]: the identity itself, or
+     * nothing.
+     *
+     * The record of a definition lives in a file whose name IS the definition
+     * identity, exactly as the lease of a run lives in a file whose name is the
+     * run identity. A name that could depend on the filesystem's case
+     * distinction would therefore let two definitions share one record, and
+     * `--resume` would read the record of the other one without any sign that
+     * they were not the definition it asked for.
+     *
+     * So the name may only carry what survives every filesystem's folding: the
+     * ASCII lowercase, the digits, and the three characters that carry no
+     * meaning of their own inside a path segment. An identity outside that
+     * alphabet is refused here, at the border, rather than folded onto a
+     * neighbour's record.
+     */
     private fun fileNameFor(definitionId: DefinitionId): String {
         val value = definitionId.value
-        require(value.matches(SAFE_FILENAME)) {
-            "DefinitionId value contains characters unsafe for the run-id directory file name"
+        require(value.matches(DURABLE_NAME)) {
+            "DefinitionId value '$value' cannot name the durable last-run record: " +
+                "a durable name is ASCII lowercase and carries no path separator"
         }
         return value
     }
 
     private companion object {
-        /** Definition ids are hex hashes or simple identifiers; keep file names path-safe. */
-        val SAFE_FILENAME = Regex("""[A-Za-z0-9._-]+""")
+        /**
+         * The characters a durable name may carry.
+         *
+         * ASCII lowercase only, for the reason [fileNameFor] states: a name
+         * carrying an uppercase letter names the SAME location as its lowercase
+         * twin on a volume that folds case — APFS by default, exFAT — and the
+         * durable name IS the identity here.
+         */
+        val DURABLE_NAME = Regex("""[a-z0-9._-]+""")
     }
 }

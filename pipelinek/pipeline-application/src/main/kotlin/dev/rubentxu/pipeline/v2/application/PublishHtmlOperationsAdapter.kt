@@ -71,6 +71,7 @@ class PublishHtmlOperationsAdapter(
     }
 
     override fun publish(input: PublishHtmlInput): PublishHtmlResult {
+        publishRefusal(input)?.let { return it }
         // KeepAll has NO v1 interpreter (the adapter
         // always overwrites the run archive; the flag was kept as a
         // "hint" nobody consumed). A declared-but-dropped policy is a silent
@@ -256,6 +257,20 @@ class PublishHtmlOperationsAdapter(
     private fun reportsRoot(runIdString: String, sanitizedName: String): Path {
         val reportsRoot = controlDirRoot.resolve("reports").resolve(runIdString).resolve(sanitizedName)
         return reportsRoot
+    }
+
+    /**
+     * The typed refusal when this run identity cannot name its reports root.
+     *
+     * The reports root is named after the run, so the identity has to be able to
+     * name it. An identity that cannot is refused here, at the border of the
+     * operation and with the reason stated, instead of being folded onto
+     * another run's reports directory.
+     */
+    private fun publishRefusal(input: PublishHtmlInput): PublishHtmlResult? {
+        val reason = unnameableRunIdReason(runIdString, "publish") ?: return null
+        eventSink.append(htmlReportFailedEvent(input, reason, FailureKind.USER))
+        return PublishHtmlFailed(FailureKind.USER, reason)
     }
 
     private fun htmlReportFailedEvent(

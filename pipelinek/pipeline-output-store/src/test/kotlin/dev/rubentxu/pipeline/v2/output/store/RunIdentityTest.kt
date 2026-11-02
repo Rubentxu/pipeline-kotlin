@@ -23,7 +23,9 @@ import org.junit.jupiter.api.Test
  *
  *  1. **The name is the identity.** A run's directory is named after the run, verbatim. An
  *     identity outside the durable alphabet is refused instead of being folded into a name that
- *     belongs to another run.
+ *     belongs to another run. The alphabet itself — and why it admits ASCII lowercase only, so
+ *     that a name cannot depend on the filesystem's case distinction — belongs to [RunId], and
+ *     this plane asks it rather than keeping a copy of the rule.
  *  2. **There is ONE owner of the alphabet.** The rule is asked of the domain's [RunId], which is
  *     the same authority the durable lease asks. An artifact plane that accepted a run the lease
  *     refuses — or the other way round — would have two answers to "what is a run identity", and
@@ -63,7 +65,6 @@ class RunIdentityTest {
         assertEquals("run-7", runDirectoryName("run-7"))
         assertEquals("a_b", runDirectoryName("a_b"))
         assertEquals("9f1c2e5a-0b3d-4f6a-8c1e-2d4b6f8a0c12", runDirectoryName("9f1c2e5a-0b3d-4f6a-8c1e-2d4b6f8a0c12"))
-        assertEquals("A.B", runDirectoryName("A.B"))
     }
 
     // --- the refusal: an identity that cannot name a directory is refused ------------------
@@ -182,13 +183,19 @@ class RunIdentityTest {
         val NAMEABLE = listOf(
             "run-7",
             "a_b",
-            "A.B",
             "0",
             "9f1c2e5a-0b3d-4f6a-8c1e-2d4b6f8a0c12",
             "x".repeat(64),
         )
 
-        /** Identities outside it: a separator, a space, a character the alphabet does not carry. */
+        /**
+         * Identities outside it: a separator, a space, a character the alphabet does not carry,
+         * and an uppercase one.
+         *
+         * The uppercase case is outside the alphabet because a durable name must not depend on
+         * the filesystem's case distinction: on a volume that folds case, `A.B` and `a.b` are
+         * ONE directory, and the name IS the identity here.
+         */
         val NOT_NAMEABLE = listOf(
             "a/b",
             "a\\b",
@@ -197,6 +204,7 @@ class RunIdentityTest {
             "a/b/c",
             "../escape",
             "",
+            "A.B",
         )
     }
 }

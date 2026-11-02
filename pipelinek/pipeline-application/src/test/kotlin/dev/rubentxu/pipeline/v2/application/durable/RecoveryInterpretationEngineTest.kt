@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.RecordingLiveSpanObserver
+import dev.rubentxu.pipeline.v2.application.LiveSpanLedger
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
@@ -80,7 +80,7 @@ class RecoveryInterpretationEngineTest {
     @Test
     @DisplayName("a reused effect leaves no span")
     fun aReusedEffectLeavesNoSpan() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
 
         val interpretation = runBlocking {
             engine(observer).interpret(
@@ -110,7 +110,7 @@ class RecoveryInterpretationEngineTest {
     @Test
     @DisplayName("a recovered effect opens a span of its own")
     fun aRecoveredEffectOpensASpanOfItsOwn() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
 
         val interpretation = runBlocking {
             engine(observer).interpret(
@@ -145,7 +145,7 @@ class RecoveryInterpretationEngineTest {
     @Test
     @DisplayName("an unobservable recovery leaves no span")
     fun anUnobservableRecoveryLeavesNoSpan() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
 
         val interpretation = runBlocking {
             engine(observer).interpret(
@@ -168,7 +168,7 @@ class RecoveryInterpretationEngineTest {
     // --- the fixtures ------------------------------------------------------
 
     /** The engine, composed over the journal it settles into and the observer it reports to. */
-    private fun engine(observer: RecordingLiveSpanObserver): RecoveryInterpretationEngine =
+    private fun engine(observer: LiveSpanLedger): RecoveryInterpretationEngine =
         RecoveryInterpretationEngine(
             eventSink = NullEventSink,
             records = DurableInvocationRecord(InMemoryOperationJournal(FixedClock)),

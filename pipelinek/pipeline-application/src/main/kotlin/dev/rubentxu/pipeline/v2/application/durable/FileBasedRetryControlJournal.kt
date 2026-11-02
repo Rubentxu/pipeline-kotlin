@@ -54,7 +54,7 @@ import java.nio.file.StandardCopyOption
 class FileBasedRetryControlJournal(
     private val controlDirRoot: Path,
     private val childRowReader: ChildRowReader = NullChildRowReader,
-) {
+) : RetryControlJournal {
     private val retryControlDir: Path = controlDirRoot.resolve("retry-control")
 
     init {
@@ -91,7 +91,7 @@ class FileBasedRetryControlJournal(
      * The dispatch loop MUST call this BEFORE launching any
      * child effect for the attempt.
 */
-    fun beginAttempt(
+    override fun beginAttempt(
         controlOpId: String,
         attempt: Int,
         fingerprint: Fingerprint,
@@ -133,7 +133,7 @@ class FileBasedRetryControlJournal(
      * [RetryControlJournalDivergenceException] if the persisted fingerprint
      * differs from [fingerprint]. The control row is rewritten atomically.
 */
-    fun updateStatus(
+    override fun updateStatus(
         controlOpId: String,
         attempt: Int,
         status: OperationStatus,
@@ -167,7 +167,7 @@ class FileBasedRetryControlJournal(
      *  - [RetryControlState.preControlChildren] from [ChildRowReader.preControlRowsForControl]
      * When the bound reader exposes children
 */
-    fun readState(
+    override fun readState(
         controlOpId: String,
         runId: String,
         stageIndex: Int,

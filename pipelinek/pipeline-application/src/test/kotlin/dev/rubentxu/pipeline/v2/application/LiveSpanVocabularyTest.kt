@@ -51,7 +51,7 @@ import java.io.PrintStream
  *
  * ## Why this instrument
  *
- * The instrument is a FAKE observer ([RecordingLiveSpanObserver]) behind the
+ * The instrument is a FAKE observer ([LiveSpanLedger]) behind the
  * product's own port. That is the cheapest instrument that can fail: it needs
  * no collector, no SDK, no network and no clock, and it can assert the thing
  * that matters most — that nothing was opened at all. Asserting on the SDK's
@@ -79,7 +79,7 @@ class LiveSpanVocabularyTest {
     @DisplayName("a disabled observer is never reached")
     fun aDisabledObserverIsNeverReached() {
         var reached = 0
-        val observer = RecordingLiveSpanObserver(enabled = false, onStart = { _, _ -> reached++ })
+        val observer = LiveSpanLedger(enabled = false, onStart = { _, _ -> reached++ })
 
         val handle = LiveSpans.open(
             telemetry = observer,
@@ -105,7 +105,7 @@ class LiveSpanVocabularyTest {
     @Test
     @DisplayName("only the allowlisted attributes reach the observer")
     fun onlyTheAllowlistedAttributesReachTheObserver() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
 
         LiveSpans.open(
             telemetry = observer,
@@ -141,7 +141,7 @@ class LiveSpanVocabularyTest {
     @Test
     @DisplayName("an observer that fails to open a span produces no span and no failure")
     fun anObserverThatFailsToOpenASpanProducesNoSpanAndNoFailure() {
-        val observer = RecordingLiveSpanObserver(
+        val observer = LiveSpanLedger(
             onStart = { _, _ -> throw IllegalStateException("the collector is unreachable") },
         )
 
@@ -161,7 +161,7 @@ class LiveSpanVocabularyTest {
     @Test
     @DisplayName("a span that fails to end does not fail the caller")
     fun aSpanThatFailsToEndDoesNotFailTheCaller() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
         val handle = LiveSpans.open(telemetry = observer, name = LiveSpanNames.RUN, parent = LiveSpanParent.Root)
         assertNotNull(handle, "an enabled observer opens a span")
         observer.opened.single().failOnEnd = true
@@ -182,7 +182,7 @@ class LiveSpanVocabularyTest {
     @Test
     @DisplayName("the first ending wins")
     fun theFirstEndingWins() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
         val handle = LiveSpans.open(telemetry = observer, name = LiveSpanNames.STEP_DISPATCH, parent = LiveSpanParent.Root)
         assertNotNull(handle, "an enabled observer opens a span")
 
@@ -205,7 +205,7 @@ class LiveSpanVocabularyTest {
     @Test
     @DisplayName("a discarded span is never ended")
     fun aDiscardedSpanIsNeverEnded() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
         val handle = LiveSpans.open(telemetry = observer, name = LiveSpanNames.STEP_DISPATCH, parent = LiveSpanParent.Root)
         assertNotNull(handle, "an enabled observer opens a span")
 
@@ -232,7 +232,7 @@ class LiveSpanVocabularyTest {
     @Test
     @DisplayName("a refused admission is a rejection and not a completed execution")
     fun aRefusedAdmissionIsARejectionAndNotACompletedExecution() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
 
         val admission = captureStandardError {
             admitThenCompose(

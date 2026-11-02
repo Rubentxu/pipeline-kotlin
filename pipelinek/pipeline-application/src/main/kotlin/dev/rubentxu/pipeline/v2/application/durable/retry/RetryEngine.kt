@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
 import dev.rubentxu.pipeline.v2.application.LiveSpans
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
-import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
+import dev.rubentxu.pipeline.v2.application.durable.RetryControlJournal
 import dev.rubentxu.pipeline.v2.application.liveStatusOfStepOutcome
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.FailureKind
@@ -57,7 +57,7 @@ import java.util.UUID
  * [RetryReconciler]. The engine mutates ONLY through `journal.beginAttempt`
  * and `journal.updateStatus`, and only after a plan emits a mutation
  * Decision. The single-writer law is preserved: this engine is
- * the only place that mutates [FileBasedRetryControlJournal] for the retry
+ * the only place that mutates [RetryControlJournal] for the retry
  * aggregate.
  * ## Body invocation law
  * The engine invokes the body through `bodyInvoker.invoke(bodyRef,
@@ -73,7 +73,7 @@ import java.util.UUID
  * Re-entry is exactly ONE across the application
 */
 internal class RetryEngine(
-    private val journal: FileBasedRetryControlJournal,
+    private val journal: RetryControlJournal,
     private val eventSink: EventSink,
     private val bodyInvoker: BodyInvoker,
     private val identity: RetryControlIdentity,

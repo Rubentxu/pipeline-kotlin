@@ -21,7 +21,7 @@
     <ID>LongMethod:Main.kt:fun main</ID>
     <ID>LongMethod:PluginAdmissionGate.kt:PluginAdmissionGate$fun admitThenLoad: PluginAdmissionResult</ID>
     <ID>LongMethod:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$override fun publish: PublishHtmlResult</ID>
-    <ID>LongMethod:StepDispatchEngine.kt:StepDispatchEngine$suspend fun dispatch: Dispatched</ID>
+    <ID>LongMethod:StepDispatchEngine.kt:StepDispatchEngine$private suspend fun dispatchStep: DispatchedStep</ID>
     <ID>LongMethod:WaitUntilEngine.kt:WaitUntilEngine$suspend fun execute: StepOutcome</ID>
     <ID>LongParameterList:BodyExecutionEngine.kt:BodyExecutionEngine$@Suppress("LongMethod", "CyclomaticComplexMethod") suspend fun executeScope3b: StepOutcome</ID>
     <ID>LongParameterList:BodyExecutionEngine.kt:BodyExecutionEngine$suspend fun executeWaitUntilInline: StepOutcome</ID>

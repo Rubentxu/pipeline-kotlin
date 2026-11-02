@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable.retry
 
-import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
+import dev.rubentxu.pipeline.v2.application.durable.RetryControlJournal
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.RetryControlIdentity
@@ -38,7 +38,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciler
  * Attempts are compared against this value by the Reconciler
 */
 class RetryReconciliationDriver(
-    private val journal: FileBasedRetryControlJournal,
+    private val journal: RetryControlJournal,
     private val identity: RetryControlIdentity,
     private val controlOpId: String,
     private val parentBodyPath: List<BlockSegment>,

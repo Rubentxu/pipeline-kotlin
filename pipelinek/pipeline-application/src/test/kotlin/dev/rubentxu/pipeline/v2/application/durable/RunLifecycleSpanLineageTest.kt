@@ -1,12 +1,10 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
-import dev.rubentxu.pipeline.v2.application.LiveSpanHandle
+import dev.rubentxu.pipeline.v2.application.LiveSpanLedger
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpans
-import dev.rubentxu.pipeline.v2.application.RecordedLiveSpan
-import dev.rubentxu.pipeline.v2.application.RecordingLiveSpanObserver
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.Digest
@@ -14,7 +12,6 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.SourceDescriptor
 import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
 import dev.rubentxu.pipeline.v2.events.NullEventSink
-import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -57,7 +54,7 @@ import java.util.concurrent.Executors
  *
  * ## Why this instrument
  *
- * The fake observer ([RecordingLiveSpanObserver]) is the right one here: the
+ * The fake observer ([LiveSpanLedger]) is the right one here: the
  * question is not what a collector receives but WHICH span the engine named as
  * the parent, and the fake records exactly that. The passage from the
  * product's decision to the collector's inbox is covered elsewhere, by the
@@ -80,7 +77,7 @@ class RunLifecycleSpanLineageTest {
     @Test
     @DisplayName("a stage hangs under the run that owns it")
     fun aStageHangsUnderTheRunThatOwnsIt() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
         val engine = RunLifecycleEngine(NullEventSink, observer)
 
         val runSpan = openRunSpan(observer, "run-1")
@@ -88,7 +85,7 @@ class RunLifecycleSpanLineageTest {
         engine.stageStarted(RunId("run-1"), 0, "build")
 
         val stage = observer.spanNamed(LiveSpanNames.STAGE, "run-1")
-        assertSame(observer.spanNamed(LiveSpanNames.RUN, "run-1"), observer.recordedParentOf(stage))
+        assertSame(observer.spanNamed(LiveSpanNames.RUN, "run-1"), observer.parentOf(stage))
     }
 
     /**
@@ -101,7 +98,7 @@ class RunLifecycleSpanLineageTest {
     @Test
     @DisplayName("the work of a stage hangs under the stage")
     fun theWorkOfAStageHangsUnderTheStage() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
         val engine = RunLifecycleEngine(NullEventSink, observer)
 
         val runSpan = openRunSpan(observer, "run-1")
@@ -129,7 +126,7 @@ class RunLifecycleSpanLineageTest {
     @Test
     @DisplayName("a stage that opened no span falls back to the run")
     fun aStageThatOpenedNoSpanFallsBackToTheRun() {
-        val observer = RecordingLiveSpanObserver(
+        val observer = LiveSpanLedger(
             onStart = { name, _ -> if (name == LiveSpanNames.STAGE) error("the collector is unreachable") },
         )
         val engine = RunLifecycleEngine(NullEventSink, observer)
@@ -160,7 +157,7 @@ class RunLifecycleSpanLineageTest {
     @Test
     @DisplayName("two runs interleaved on one thread keep two trees")
     fun twoRunsInterleavedOnOneThreadKeepTwoTrees() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
         val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
         try {
             runBlocking { interleaveTwoRuns(observer, dispatcher) }
@@ -189,7 +186,7 @@ class RunLifecycleSpanLineageTest {
     @Test
     @DisplayName("two runs interleaved on many threads keep two trees")
     fun twoRunsInterleavedOnManyThreadsKeepTwoTrees() {
-        val observer = RecordingLiveSpanObserver()
+        val observer = LiveSpanLedger()
         val dispatcher = Executors.newFixedThreadPool(4).asCoroutineDispatcher()
         try {
             runBlocking { interleaveTwoRuns(observer, dispatcher) }
@@ -208,7 +205,7 @@ class RunLifecycleSpanLineageTest {
      * on an arrangement in which the two runs never overlapped at all.
      */
     private suspend fun CoroutineScope.interleaveTwoRuns(
-        observer: RecordingLiveSpanObserver,
+        observer: LiveSpanLedger,
         dispatcher: CoroutineDispatcher,
     ) {
         val compiled = pipeline()
@@ -245,44 +242,21 @@ class RunLifecycleSpanLineageTest {
      * indistinguishable in shape, and the only thing that tells their spans
      * apart is the durable identity they carry.
      */
-    private fun assertDisjointTrees(observer: RecordingLiveSpanObserver) {
+    private fun assertDisjointTrees(observer: LiveSpanLedger) {
         val firstStage = observer.spanNamed(LiveSpanNames.STAGE, "run-a")
         val secondStage = observer.spanNamed(LiveSpanNames.STAGE, "run-b")
 
-        assertSame(observer.spanNamed(LiveSpanNames.RUN, "run-a"), observer.recordedParentOf(firstStage))
-        assertSame(observer.spanNamed(LiveSpanNames.RUN, "run-b"), observer.recordedParentOf(secondStage))
+        assertSame(observer.spanNamed(LiveSpanNames.RUN, "run-a"), observer.parentOf(firstStage))
+        assertSame(observer.spanNamed(LiveSpanNames.RUN, "run-b"), observer.parentOf(secondStage))
     }
 
     /** Opens the span of a run, under nothing: a run is the outside of itself. */
-    private fun openRunSpan(observer: RecordingLiveSpanObserver, runId: String) = LiveSpans.open(
+    private fun openRunSpan(observer: LiveSpanLedger, runId: String) = LiveSpans.open(
         telemetry = observer,
         name = LiveSpanNames.RUN,
         parent = LiveSpanParent.Root,
         attributes = listOf(LiveSpanAttributes.runId(runId)),
     )
-
-    /**
-     * The one span the observer recorded with this name for this run.
-     *
-     * A run identity is the only thing that tells the two runs' spans apart,
-     * so it is what the lookup uses.
-     */
-    private fun RecordingLiveSpanObserver.spanNamed(name: String, runId: String): RecordedLiveSpan =
-        opened.single { it.name == name && it.runId() == runId }
-
-    /**
-     * The recorded span that caused the work opened under [handle].
-     *
-     * The handle is what the boundary holds; the recorded span is what the
-     * observer saw, and the two are the same object here because the fake
-     * hands its own span back.
-     */
-    private fun RecordingLiveSpanObserver.parentOf(handle: LiveSpanHandle): RecordedLiveSpan? =
-        (handle.span as? RecordedLiveSpan)?.let { recordedParentOf(it) }
-
-    /** The durable run identity the span carries, when it carries one. */
-    private fun RecordedLiveSpan.runId(): String? =
-        (attributes.firstOrNull { it.key == LiveSpanAttributes.RUN_ID } as? TelemetryAttribute.Text)?.value
 
     /** The compiled pipeline the run is about; its content does not matter here. */
     private fun pipeline(): CompiledPipeline = CompiledPipeline(

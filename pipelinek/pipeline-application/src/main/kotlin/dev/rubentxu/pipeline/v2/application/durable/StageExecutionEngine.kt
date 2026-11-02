@@ -30,7 +30,7 @@ import java.util.UUID
  * planner rather than a handler. Keeping that here stops it leaking into the run.
 */
 internal class StageExecutionEngine(
-    private val stepDispatch: StepDispatchEngine,
+    private val stepDispatch: StepDispatcher,
     private val runLifecycle: RunLifecycleEngine,
     private val eventSink: EventSink,
 ) {
@@ -164,12 +164,20 @@ internal class StageExecutionEngine(
         var stageUnstable = false
         for (stepIndex in steps.indices) {
             val dispatched = stepDispatch.dispatch(
-                steps[stepIndex], runId, stage.name, stageIndex, stepIndex, stageShOptions, emptyList(),
-                SpanScope(context, stageParent),
+                StepDispatchRequest(
+                    step = steps[stepIndex],
+                    runId = runId,
+                    stageName = stage.name,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    shOptions = stageShOptions,
+                    bodyPath = emptyList(),
+                    spanScope = SpanScope(context, stageParent),
+                ),
             )
             context = dispatched.context
             // The stage fold needs the OUTCOME, so it projects it explicitly and leaves the
-            // carrier alone. See StepDispatchEngine.Dispatched for why no `outcome` shortcut exists.
+            // carrier alone. See DispatchedStep for why no `outcome` shortcut exists.
             when (val continuation = runLifecycle.decideStageContinuation(dispatched.result.outcome)) {
                 CanonicalContinuation.Continue -> Unit
                 CanonicalContinuation.ContinueUnstable -> {
@@ -446,14 +454,16 @@ internal class StageExecutionEngine(
             for ((index, node) in nodes.withIndex()) {
                 val bodyPath = listOf(BlockSegment("post:${condition.name}:$index"))
                 val dispatchedStep = stepDispatch.dispatch(
-                    step = node,
-                    runId = runId,
-                    stageName = stage.name,
-                    stageIndex = stageIndex,
-                    stepIndex = POST_BASE_STEP_INDEX + dispatched,
-                    stageShOptions = stageShOptions,
-                    bodyPath = bodyPath,
-                    spanScope = stageScope,
+                    StepDispatchRequest(
+                        step = node,
+                        runId = runId,
+                        stageName = stage.name,
+                        stageIndex = stageIndex,
+                        stepIndex = POST_BASE_STEP_INDEX + dispatched,
+                        shOptions = stageShOptions,
+                        bodyPath = bodyPath,
+                        spanScope = stageScope,
+                    ),
                 )
                 dispatched++
                 if (dispatchedStep.result.outcome !is StepOutcome.Success) {

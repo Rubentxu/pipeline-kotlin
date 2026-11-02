@@ -98,7 +98,7 @@ internal class StepDispatchEngine(
     // has to show, and the engine is the ONE place that knows whether the
     // step's effect ran, was refused, or was skipped by a replay.
     private val telemetry: PipelineTelemetry,
-) {
+) : StepDispatcher {
 
     /**
      * the single re-entry reference a body child walks the canonical spine through. Built
@@ -119,19 +119,15 @@ internal class StepDispatchEngine(
     }
 
     /**
-     * a dispatched Step's ATOMIC RESULT together with the context it left behind.
+     * The ONE public entry point of the spine.
      *
-     * This composes the carrier rather than replicating its fields. It used to hold a bare
-     * `StepOutcome`, which meant the `encodedOutput` a recovered invocation had just recovered was
-     * discarded here — the R14 narrowing, at the last boundary before the consumer. Holding
-     * `CommonExecutionResult` keeps both channels available to every consumer, and the ones that
-     * only need the outcome now say so explicitly with `.result.outcome`.
-     *
-     * A convenience `outcome` accessor is deliberately NOT added: while the projections are being
-     * made visible, every consumer naming the field it reads is the evidence that no projection is
-     * happening by accident.
+     * The request carries the coordinates of the dispatch, and this method is
+     * the only way a consumer reaches the engine. Everything else in this
+     * class is the machinery that serves it, and the machinery is private on
+     * purpose: a consumer that could call the pieces could also call them
+     * out of order, and the ORDER is what this engine owns.
      */
-    data class Dispatched(val result: CommonExecutionResult, val context: ExecutionContext)
+    override suspend fun dispatch(request: StepDispatchRequest): DispatchedStep = dispatchStep(request)
 
     /**
      * SAGA: a slot the handler asked for and the engine cannot honour.
@@ -142,16 +138,15 @@ internal class StepDispatchEngine(
      * re-entry reference the dispatcher walks the child through — so the slot's child travels
      * the same spine as every other body child instead of opening a second path into it.
      */
-    suspend fun dispatch(
-        step: StepNode,
-        runId: RunId,
-        stageName: String,
-        stageIndex: Int,
-        stepIndex: Int,
-        stageShOptions: ShOptions,
-        bodyPath: List<BlockSegment> = emptyList(),
-        spanScope: SpanScope = SpanScope.EMPTY,
-    ): Dispatched {
+    private suspend fun dispatchStep(request: StepDispatchRequest): DispatchedStep {
+        val step = request.step
+        val runId = request.runId
+        val stageName = request.stageName
+        val stageIndex = request.stageIndex
+        val stepIndex = request.stepIndex
+        val stageShOptions = request.shOptions
+        val bodyPath = request.bodyPath
+        val spanScope = request.spanScope
         // The dispatch span: the boundary between the decision to run a step
         // and its result. It is opened here, at the ONE place every step
         // reaches, so there is no second spelling of the same boundary.
@@ -177,12 +172,12 @@ internal class StepDispatchEngine(
         var spanStatus: LiveSpanStatus? = null
         var spanSkipped: Boolean = false
 
-        fun terminal(dispatched: Dispatched): Dispatched {
+        fun terminal(dispatched: DispatchedStep): DispatchedStep {
             spanStatus = liveStatusOfStepOutcome(dispatched.result.outcome)
             return dispatched
         }
 
-        fun refuse(dispatched: Dispatched): Dispatched {
+        fun refuse(dispatched: DispatchedStep): DispatchedStep {
             spanStatus = LiveSpanStatus.Rejected
             return dispatched
         }
@@ -259,7 +254,7 @@ internal class StepDispatchEngine(
                         )
                         // R14: a body-only dispatch has no typed value of its own, so the carrier is
                         // built explicitly with a null encoded output rather than narrowed from one.
-                        return terminal(Dispatched(CommonExecutionResult(outcome = body), innerScope.ambient))
+                        return terminal(DispatchedStep(CommonExecutionResult(outcome = body), innerScope.ambient))
                     }
                     null
                 }
@@ -420,7 +415,7 @@ internal class StepDispatchEngine(
                             outcome = interpretation.result.outcome,
                         ),
                     )
-                    return terminal(Dispatched(interpretation.result, innerScope.ambient))
+                    return terminal(DispatchedStep(interpretation.result, innerScope.ambient))
                 }
                 is RecoveryInterpretationEngine.RecoveryInterpretation.Reused -> {
                     // The effect was SKIPPED by the replay: it happened in an
@@ -429,7 +424,7 @@ internal class StepDispatchEngine(
                     // span behind — a trace must never claim an execution that
                     // did not happen here. The span is discarded, not ended.
                     spanSkipped = true
-                    return Dispatched(interpretation.result, innerScope.ambient)
+                    return DispatchedStep(interpretation.result, innerScope.ambient)
                 }
                 RecoveryInterpretationEngine.RecoveryInterpretation.ProceedToExecution -> Unit
             }
@@ -502,7 +497,7 @@ internal class StepDispatchEngine(
             // R14: `executeAndJournal` already returns the atomic carrier, so this is a COMPOSITION.
             // It used to be `Dispatched(execution.outcome, ...)`, which is the narrowing this whole
             // slice exists to remove: a recovered or a fresh encoded value died at this line.
-            return terminal(Dispatched(execution, innerScope.ambient))
+            return terminal(DispatchedStep(execution, innerScope.ambient))
         } finally {
             // The span is closed HERE and only here, so a dispatch that threw
             // still ends its span instead of leaking an open one. A span that
@@ -534,7 +529,7 @@ internal class StepDispatchEngine(
         input: OperationInput,
         message: String,
         context: ExecutionContext,
-    ): Dispatched = Dispatched(
+    ): DispatchedStep = DispatchedStep(
         CommonExecutionResult(
             outcome = invocationResolver.rejectSchema(operationId, input, message),
         ),
@@ -589,15 +584,17 @@ internal class StepDispatchEngine(
         childShOptions: ShOptions,
         bodyPath: List<BlockSegment>,
         spanScope: SpanScope,
-    ): StepOutcome = dispatch(
-        child,
-        runId,
-        stageName,
-        stageIndex,
-        stepIndex,
-        childShOptions,
-        bodyPath,
-        spanScope,
+    ): StepOutcome = dispatchStep(
+        StepDispatchRequest(
+            step = child,
+            runId = runId,
+            stageName = stageName,
+            stageIndex = stageIndex,
+            stepIndex = stepIndex,
+            shOptions = childShOptions,
+            bodyPath = bodyPath,
+            spanScope = spanScope,
+        ),
     ).result.outcome
 
 }

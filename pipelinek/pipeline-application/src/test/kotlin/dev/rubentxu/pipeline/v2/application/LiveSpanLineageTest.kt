@@ -2,12 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.trace.SpanId
-import io.opentelemetry.sdk.OpenTelemetrySdk
-import io.opentelemetry.sdk.common.CompletableResultCode
-import io.opentelemetry.sdk.trace.SdkTracerProvider
-import io.opentelemetry.sdk.trace.data.SpanData
-import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor
-import io.opentelemetry.sdk.trace.export.SpanExporter
+import io.opentelemetry.api.trace.StatusCode
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -53,7 +48,7 @@ import java.io.PrintStream
  * list. That is still cheap — an in-process exporter, no network, no collector,
  * no clock of its own — but it is the ONLY instrument that can fail when the
  * adapter drops the parent on the way to the wire. The fake observer
- * ([RecordingLiveSpanObserver]) stays the instrument for the boundaries that
+ * ([LiveSpanLedger]) stays the instrument for the boundaries that
  * open spans, because there the question is WHICH span was opened and not
  * what the collector received.
  *
@@ -80,7 +75,7 @@ class LiveSpanLineageTest {
     @Test
     @DisplayName("a child span is exported under the span that caused it")
     fun aChildSpanIsExportedUnderTheSpanThatCausedIt() {
-        val exporter = RecordingSpanExporter()
+        val exporter = LiveSpanExporter()
         val telemetry = telemetryWith(exporter)
 
         val run = requireNotNull(
@@ -120,7 +115,7 @@ class LiveSpanLineageTest {
     @Test
     @DisplayName("a span with no parent is exported as a root")
     fun aSpanWithNoParentIsExportedAsARoot() {
-        val exporter = RecordingSpanExporter()
+        val exporter = LiveSpanExporter()
         val telemetry = telemetryWith(exporter)
 
         val run = requireNotNull(
@@ -153,7 +148,7 @@ class LiveSpanLineageTest {
     @Test
     @DisplayName("the operator's trace context parents the outermost span")
     fun theOperatorsTraceContextParentsTheOutermostSpan() {
-        val exporter = RecordingSpanExporter()
+        val exporter = LiveSpanExporter()
         val telemetry = telemetryAttachedTo(exporter, TRACE_PARENT)
 
         val run = requireNotNull(
@@ -183,7 +178,7 @@ class LiveSpanLineageTest {
     @Test
     @DisplayName("the operator's trace context never travels as an attribute")
     fun theOperatorsTraceContextNeverTravelsAsAnAttribute() {
-        val exporter = RecordingSpanExporter()
+        val exporter = LiveSpanExporter()
         val telemetry = telemetryAttachedTo(exporter, TRACE_PARENT)
 
         val run = requireNotNull(
@@ -217,7 +212,7 @@ class LiveSpanLineageTest {
     @Test
     @DisplayName("a discarded span never reaches the exporter")
     fun aDiscardedSpanNeverReachesTheExporter() {
-        val exporter = RecordingSpanExporter()
+        val exporter = LiveSpanExporter()
         val telemetry = telemetryWith(exporter)
 
         val run = requireNotNull(
@@ -247,8 +242,8 @@ class LiveSpanLineageTest {
     @Test
     @DisplayName("two attempts of one run are two spans tied by the run identity")
     fun twoAttemptsOfOneRunAreTwoSpansTiedByTheRunIdentity() {
-        val first = RecordingSpanExporter()
-        val second = RecordingSpanExporter()
+        val first = LiveSpanExporter()
+        val second = LiveSpanExporter()
 
         val firstRun = requireNotNull(
             LiveSpans.open(
@@ -363,7 +358,7 @@ class LiveSpanLineageTest {
             ),
             sdkFactory = { parent ->
                 PipelineTelemetryFactory.sdkPipelineTelemetry(
-                    sdkWith(RecordingSpanExporter()),
+                    sdkWith(LiveSpanExporter()),
                     sessionParent = parent,
                 )
             },
@@ -392,7 +387,7 @@ class LiveSpanLineageTest {
     @Test
     @DisplayName("a trace context grants no authorization")
     fun aTraceContextGrantsNoAuthorization() {
-        val exporter = RecordingSpanExporter()
+        val exporter = LiveSpanExporter()
         val telemetry = telemetryAttachedTo(exporter, TRACE_PARENT)
 
         val admission = withCapturedStandardError {
@@ -417,44 +412,45 @@ class LiveSpanLineageTest {
     }
 
     /**
-     * A telemetry that exports into a list.
+     * A refused admission is exported AS A REFUSAL.
      *
-     * The exporter is the seam: everything above it is the product, and
-     * everything below it is the wire. Replacing it with a list keeps the
-     * rows honest about what a collector would have received, at the price of
-     * a network and a collector this product does not have.
+     * The product distinguishes an execution that ran and did not succeed from
+     * an execution that was refused before it ran, and the collector has to
+     * see the same distinction: a refusal carries the failure class
+     * "rejected" and an error status, so a dashboard counting failures does
+     * not count a refusal as a run that broke.
      */
-    private fun telemetryWith(exporter: RecordingSpanExporter): PipelineTelemetry =
-        PipelineTelemetryFactory.sdkPipelineTelemetry(sdkWith(exporter))
+    @Test
+    @DisplayName("a refused admission is exported as a rejection and not as a success")
+    fun aRefusedAdmissionIsExportedAsARejectionAndNotAsASuccess() {
+        val exporter = LiveSpanExporter()
+        val telemetry = telemetryWith(exporter)
 
-    /**
-     * A telemetry whose outermost spans hang under the operator's context.
-     *
-     * The factory is the only place that reads the context, so the row goes
-     * through it rather than handing the adapter a parent by hand: a parent
-     * handed by hand would not prove that the operator's channel works.
-     */
-    private fun telemetryAttachedTo(exporter: RecordingSpanExporter, traceParent: String): PipelineTelemetry {
-        val sdk = sdkWith(exporter)
-        return PipelineTelemetryFactory.create(
-            environment = mapOf(
-                PipelineTelemetryFactory.OTEL_ENABLED_ENV to "true",
-                PipelineTelemetryFactory.OTEL_TRACEPARENT_ENV to traceParent,
-            ),
-            sdkFactory = { parent -> PipelineTelemetryFactory.sdkPipelineTelemetry(sdk, sessionParent = parent) },
-            warning = { },
+        val admission = withCapturedStandardError {
+            admitThenCompose(
+                pluginJars = listOf("/nonexistent/pipelinek-live-span-lineage-test/plugin.jar"),
+                trust = null,
+                journal = null,
+                telemetry = telemetry,
+            )
+        }
+
+        assertTrue(
+            admission is PluginAdmission.Refused,
+            "an artifact whose bytes cannot be read is refused",
+        )
+        val exported = exporter.exported.single { it.name == LiveSpanNames.ADMISSION }
+        assertEquals(
+            "rejected",
+            exported.attributes.get(AttributeKey.stringKey(LiveSpanAttributes.FAILURE_CLASS)),
+            "the exported span says the admission was rejected",
+        )
+        assertEquals(
+            StatusCode.ERROR,
+            exported.status.statusCode,
+            "the exported span carries an error status, so the refusal is not read as a success",
         )
     }
-
-    /** An SDK whose only processor forwards finished spans to [exporter]. */
-    private fun sdkWith(exporter: RecordingSpanExporter): OpenTelemetrySdk =
-        OpenTelemetrySdk.builder()
-            .setTracerProvider(
-                SdkTracerProvider.builder()
-                    .addSpanProcessor(SimpleSpanProcessor.create(exporter))
-                    .build(),
-            )
-            .build()
 
     /**
      * Runs [block] with the standard error stream captured.
@@ -473,20 +469,6 @@ class LiveSpanLineageTest {
         } finally {
             System.setErr(original)
         }
-    }
-
-    /** The spans the SDK would have sent to a collector. */
-    private class RecordingSpanExporter : SpanExporter {
-        val exported: MutableList<SpanData> = mutableListOf()
-
-        override fun export(spans: Collection<SpanData>): CompletableResultCode {
-            exported += spans
-            return CompletableResultCode.ofSuccess()
-        }
-
-        override fun flush(): CompletableResultCode = CompletableResultCode.ofSuccess()
-
-        override fun shutdown(): CompletableResultCode = CompletableResultCode.ofSuccess()
     }
 }
 

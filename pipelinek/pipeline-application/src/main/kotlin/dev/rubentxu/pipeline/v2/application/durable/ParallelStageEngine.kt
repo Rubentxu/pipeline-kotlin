@@ -41,11 +41,11 @@ import java.util.UUID
  * The split is also the honest one for testing. [aggregateAction] is PURE — no journal, no
  * clock, no coroutine — so the whole parallel law (fail-closed on divergence, no duplicate row
  * on reuse, RUNNING written before any branch launches) is decidable without running a pipeline.
- * One direction only: this engine dispatches branch steps through [StepDispatchEngine], which
+ * One direction only: this engine dispatches branch steps through [StepDispatcher], which
  * knows nothing about parallel aggregates. There is no cycle and no second dispatch spine.
 */
 internal class ParallelStageEngine(
-    private val stepDispatch: StepDispatchEngine,
+    private val stepDispatch: StepDispatcher,
     private val journal: OperationJournal,
     private val eventSink: EventSink,
     private val clock: Clock,
@@ -471,17 +471,19 @@ internal class ParallelStageEngine(
                 BlockSegment(stepIndex, step.pluginStepId),
             )
             val dispatchedBranch = stepDispatch.dispatch(
-                step,
-                runId,
-                branch.name,
-                stageIndex,
-                stepIndex,
-                branchShOptions,
-                bodyPath,
-                branchScope,
+                StepDispatchRequest(
+                    step = step,
+                    runId = runId,
+                    stageName = branch.name,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    shOptions = branchShOptions,
+                    bodyPath = bodyPath,
+                    spanScope = branchScope,
+                ),
             )
             // A parallel branch only needs to KNOW the outcome, so it projects it here. The
-            // carrier is not destroyed to make that possible — `Dispatched` still holds the encoded
+            // carrier is not destroyed to make that possible — `DispatchedStep` still holds the encoded
             // value, and the branch aggregate is free to read it if it ever needs to.
             val stepOutcome = dispatchedBranch.result.outcome
             when (stepOutcome) {

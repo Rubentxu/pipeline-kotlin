@@ -89,18 +89,26 @@ class UppercaseContributor : StepDefinitionContributor {
     override val id: String = "example.uppercase"
 
     /**
-     * THREE Steps, and each one is a different claim.
+     * FIVE Steps, and each one is a different claim.
      *  - `uppercase` demands nothing at all and still runs;
      *  - `uppercaseObserved` demands exactly one host seam and gets only that seam;
+     *  - `uppercaseMeasured` asks the RUNTIME to observe the work, through a different seam;
      *  - `uppercase.cased` demands a seam THIS plugin supplies, which closes the loop where the
      *    artifact hands the host a value and the host hands it back.
      * See [UppercaseObservedStepDefinition] and [UppercaseCasedStepDefinition] for why none of
      * the three could have been folded into another.
+     *
+     * The list here and the manifest's list are the SAME fact, and the host compares them: a
+     * step the manifest declares and this contributor does not provide is refused at admission
+     * ("declared Steps with no implementation"), and a step provided and not declared is refused
+     * too. Adding a Step therefore means adding it in BOTH places, and the refusal is what makes
+     * the two places impossible to forget one of.
 */
     override fun definitions(): Iterable<StepDefinition<*, *>> =
         listOf(
             UppercaseStepDefinition,
             UppercaseObservedStepDefinition,
+            UppercaseMeasuredStepDefinition,
             UppercaseCasedStepDefinition,
             UppercaseAnnouncedCasedStepDefinition,
         )

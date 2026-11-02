@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.runtime.telemetry.NoopStepObservability
+import dev.rubentxu.pipeline.v2.runtime.telemetry.StepObservability
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.trace.SpanBuilder
@@ -60,6 +62,17 @@ internal interface PipelineTelemetry : AutoCloseable {
      * the port answers before anything is built.
      */
     val metrics: PipelineMetrics get() = NoopPipelineMetrics
+
+    /**
+     * The seam a step observes itself through.
+     *
+     * The parent is the span of the step the seam is handed to, decided by
+     * the engine before the handler ran. The default observes nothing: a
+     * runtime that does not trace has nothing to hand down, and a step that
+     * asked for observation still gets a seam — one that observes nothing —
+     * so the step has a single code path.
+     */
+    fun stepObservability(parent: LiveSpanParent): StepObservability = NoopStepObservability
 }
 
 /**
@@ -207,9 +220,14 @@ internal object PipelineTelemetryFactory {
     ) : PipelineTelemetry {
         private val tracer = sdk.getTracer(TRACER_SCOPE)
 
+        private val meter = sdk.getMeter(METRIC_SCOPE)
+
         override val enabled: Boolean = true
 
-        override val metrics: PipelineMetrics = SdkPipelineMetrics(sdk.getMeter(METRIC_SCOPE))
+        override val metrics: PipelineMetrics = SdkPipelineMetrics(meter)
+
+        override fun stepObservability(parent: LiveSpanParent): StepObservability =
+            SdkStepObservability(telemetry = this, meter = meter, parent = parent)
 
         override fun startSpan(
             name: String,

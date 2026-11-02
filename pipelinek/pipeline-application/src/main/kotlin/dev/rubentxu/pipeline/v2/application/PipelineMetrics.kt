@@ -75,6 +75,16 @@ internal enum class MetricBoundary(val operationKind: String) {
 
     /** The export of the telemetry itself. */
     TelemetryExport("telemetry.export"),
+
+    /**
+     * One observation a plugin made of its own work.
+     *
+     * It is a boundary of the same kind as the others: something that happened
+     * once, that took a time, and that ended in a class. The plugin's own name
+     * is NOT a dimension — it is the instrument's name — so the dimension this
+     * boundary contributes keeps its place in the product's own bounded set.
+     */
+    PluginExecute("plugin.execute"),
 }
 
 /**

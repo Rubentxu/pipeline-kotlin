@@ -95,6 +95,11 @@ dependencies {
     // A plugin that had to bundle the Event Plane would be able to run a SECOND registry beside
     // the host's, which is exactly the two-authorities split this seam exists to prevent.
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-events")
+    // The runtime's observation seam. Carrying it as `compileOnly` is the point: the plugin
+    // names a capability key and a small interface, and never a tracing library. A plugin that
+    // carried the library would inherit its versions and its exporter configuration, and every
+    // plugin that wanted a span would own a copy of the collector's configuration as well.
+    compileOnly("dev.rubentxu.pipeline.v2:pipeline-runtime-api")
     compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
 

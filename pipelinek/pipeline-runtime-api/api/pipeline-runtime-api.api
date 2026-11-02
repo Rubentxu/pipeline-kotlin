@@ -1828,11 +1828,64 @@ public final class dev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext {
 public final class dev/rubentxu/pipeline/v2/runtime/telemetry/LiveTraceContext$Companion {
 }
 
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/NoopStepObservability : dev/rubentxu/pipeline/v2/runtime/telemetry/StepObservability {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/telemetry/NoopStepObservability;
+	public fun count (Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationName;Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationStatus;)V
+	public fun getEnabled ()Z
+	public fun openSpan (Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationName;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/StepSpan;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/NoopStepSpan : dev/rubentxu/pipeline/v2/runtime/telemetry/StepSpan {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/telemetry/NoopStepSpan;
+	public fun discard ()V
+	public fun end (Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationStatus;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/ObservationName {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationName$Companion;
+	public static final field MAX_LENGTH I
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/ObservationName$Companion {
+	public final fun of (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationName;
+	public final fun ofOrNull (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationName;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/ObservationStatus : java/lang/Enum {
+	public static final field Failed Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationStatus;
+	public static final field Succeeded Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationStatus;
+	public static final field Unavailable Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationStatus;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationStatus;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationStatus;
+}
+
 public final class dev/rubentxu/pipeline/v2/runtime/telemetry/RunTelemetryKt {
 	public static final field DIMENSION_OVERFLOW Ljava/lang/String;
 	public static final field TELEMETRY_SCHEMA Ljava/lang/String;
 	public static final fun redactAndLimit (Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetrySignal;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryPolicy;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetrySignal;
 	public static final fun redactAndLimit (Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTrace;Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryPolicy;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryTrace;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/telemetry/StepObservability {
+	public abstract fun count (Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationName;Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationStatus;)V
+	public abstract fun getEnabled ()Z
+	public abstract fun openSpan (Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationName;)Ldev/rubentxu/pipeline/v2/runtime/telemetry/StepSpan;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/telemetry/StepObservabilityKt {
+	public static final fun getSTEP_OBSERVABILITY_CAPABILITY ()Ljava/lang/String;
+	public static final fun inSpan (Ldev/rubentxu/pipeline/v2/runtime/telemetry/StepObservability;Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationName;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/telemetry/StepSpan {
+	public abstract fun discard ()V
+	public abstract fun end (Ldev/rubentxu/pipeline/v2/runtime/telemetry/ObservationStatus;)V
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/runtime/telemetry/TelemetryAttribute {

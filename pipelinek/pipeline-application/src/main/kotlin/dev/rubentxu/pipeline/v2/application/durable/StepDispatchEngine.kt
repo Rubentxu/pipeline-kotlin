@@ -458,6 +458,11 @@ internal class StepDispatchEngine(
                 bodyContinuation = bodyContinuation,
                 bodySlotInvoker = bodySlotInvoker,
                 bodies = bodies,
+                // The observability seam for THIS dispatch, already hanging
+                // under the step's own span. A plugin that declares the
+                // capability sees an observation inside the step that ran it,
+                // never one floating beside the run.
+                stepObservability = telemetry.stepObservability(innerScope.parent),
             )
 
             // +: strategy preparation runs ONLY on actual execution and NEVER

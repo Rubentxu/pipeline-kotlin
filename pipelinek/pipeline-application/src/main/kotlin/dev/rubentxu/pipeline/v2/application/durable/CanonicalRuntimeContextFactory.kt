@@ -80,6 +80,7 @@ internal class CanonicalRuntimeContextFactory(
         bodyContinuation: dev.rubentxu.pipeline.v2.domain.step.BodyContinuation?,
         bodySlotInvoker: BodySlotInvoker?,
         bodies: SagaBodyResolver?,
+        stepObservability: dev.rubentxu.pipeline.v2.runtime.telemetry.StepObservability? = null,
     ): CanonicalRuntimeContext {
         val ownerPluginId = pluginIdOf(step)
         return CanonicalRuntimeContext(
@@ -105,6 +106,15 @@ internal class CanonicalRuntimeContextFactory(
             secretPatternRegistry = secretPatternRegistry,
             workspaceBase = workspaceBase,
             pluginEventEmitter = pluginEventEmitter(eventRegistry, eventSink, clock),
+            // The observability seam, bound to THIS dispatch so the
+            // observation a plugin opens hangs under the step's own span.
+            // A run that asked for no telemetry is not the null case: the
+            // engine binds the seam that observes nothing, so the Step that
+            // declares the capability is admitted and runs. A null seam says
+            // this context was composed without the engine's binding, and the
+            // capability then stays unexposed and the Step is refused at
+            // admission.
+            stepObservability = stepObservability,
             // SAGA: the intent port for THIS invocation. Built here, where the forward
             // operation's identity is known, so the compensation an obligation names is the
             // compensation OF that operation and not of some other step in the same run.

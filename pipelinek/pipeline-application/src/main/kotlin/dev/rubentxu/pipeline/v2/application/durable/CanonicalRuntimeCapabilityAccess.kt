@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.PLATFORM_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.events.registry.PLUGIN_EVENT_EMISSION_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.telemetry.STEP_OBSERVABILITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.PlatformIdentity
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.EXECUTION_BUDGET_CAPABILITY
@@ -651,6 +652,25 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
             builder[PLUGIN_EVENT_EMISSION_CAPABILITY] = CapabilitySlot.of(
                     PluginEventEmissionAdapter(emitter, context.runId)
             )
+        }
+
+        // The observability seam, bound whenever the engine bound a seam for
+        // this dispatch. A run that asked for no telemetry is NOT that case:
+        // the engine binds the seam that observes nothing, so a Step that
+        // declares the capability is admitted and runs, and the run simply
+        // publishes nothing. A null seam therefore says something else — that
+        // this context was composed WITHOUT the engine's binding — and then the
+        // capability stays unexposed and the Step is refused at admission by
+        // the ordinary fail-closed path, never handed a seam that silently
+        // drops its observations.
+        //
+        // The value handed over is the seam itself, not an adapter around it:
+        // the seam is already typed by the published contract and already
+        // carries the step's own span as its parent. Wrapping it would buy a
+        // second spelling of the same fact and hide the parent from the
+        // plugin's own view.
+        context.stepObservability?.let { observability ->
+            builder[STEP_OBSERVABILITY_CAPABILITY] = CapabilitySlot.of(observability)
         }
     }
 

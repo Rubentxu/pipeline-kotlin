@@ -10,6 +10,12 @@ import dev.rubentxu.pipeline.v2.domain.step.CapabilityRefusedException
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.NullEventSink
+import dev.rubentxu.pipeline.v2.runtime.telemetry.NoopStepSpan
+import dev.rubentxu.pipeline.v2.runtime.telemetry.ObservationName
+import dev.rubentxu.pipeline.v2.runtime.telemetry.ObservationStatus
+import dev.rubentxu.pipeline.v2.runtime.telemetry.STEP_OBSERVABILITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.telemetry.StepObservability
+import dev.rubentxu.pipeline.v2.runtime.telemetry.StepSpan
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -58,12 +64,22 @@ import kotlin.reflect.KClass
  * a capability that is present is delivered with its declared type
  * a capability that is absent is refused with the named absence
  * a capability of another shape is refused with the named incompatibility
+ * a seam the context carries is delivered as the very instance it carries
+ * a seam the context does not carry is refused, never invented
  * ```
  *
  * The focal mutation removes ONE capability from the provision. It turns the first row red and
  * leaves the other two green, because the second row reads a capability the provision never had
  * and the third row reads a DIFFERENT one that is still there. A mutation that reddened every row
  * would be proving the fixture, not the guard.
+ *
+ * The last two rows are the observability seam, and they are one decision seen from both sides:
+ * the bridge hands over what the context carries and nothing else. The mutation that reddens the
+ * fourth row DROPS the binding: the fourth row goes red and the fifth stays green, because the
+ * fifth row already reads a context that carries nothing. The mutation that reddens the fifth row
+ * INVENTS a seam when the context carries none: the fifth row goes red, and the fourth row goes
+ * red with it — that row then receives a seam the context never carried — and the KDoc says so
+ * rather than pretending the two failures are independent.
  *
  * ## What this instrument cannot see
  *
@@ -78,7 +94,7 @@ class CanonicalCapabilityAccessTest {
         val delivered = access().get(EVENT_SINK_CAPABILITY, EventSink::class)
 
         assertSame(
-            context.eventSink,
+            context().eventSink,
             delivered,
             "the delivered value must be the very instance the runtime context carries",
         )
@@ -123,6 +139,36 @@ class CanonicalCapabilityAccessTest {
         )
     }
 
+    @Test
+    @DisplayName("the observability seam the context carries is delivered as that very instance")
+    fun theObservabilitySeamTheContextCarriesIsDeliveredAsThatVeryInstance() {
+        val seam = CarriedSeam()
+
+        val delivered = access(context(seam)).get(STEP_OBSERVABILITY_CAPABILITY, StepObservability::class)
+
+        assertSame(
+            seam,
+            delivered,
+            "the seam handed over must be the very instance the runtime context carries",
+        )
+    }
+
+    @Test
+    @DisplayName("a context that carries no observability seam is refused one, never given an invented one")
+    fun aContextThatCarriesNoObservabilitySeamIsRefusedOneNeverGivenAnInventedOne() {
+        val refusal = refusalFor(
+            key = STEP_OBSERVABILITY_CAPABILITY,
+            type = StepObservability::class,
+            holding = context(),
+        )
+
+        assertInstanceOf(
+            CapabilityRefusal.Absent::class.java,
+            refusal,
+            "a context that carries no seam exposes no seam: the bridge hands over what it has",
+        )
+    }
+
     // --- the fixtures ------------------------------------------------------
 
     /**
@@ -131,9 +177,13 @@ class CanonicalCapabilityAccessTest {
      * The exception is the transport and the refusal is the fact: a caller switches on the
      * refusal, never on the message.
      */
-    private fun <T : Any> refusalFor(key: StepCapability, type: KClass<T>): CapabilityRefusal {
+    private fun <T : Any> refusalFor(
+        key: StepCapability,
+        type: KClass<T>,
+        holding: CanonicalRuntimeContext = context(),
+    ): CapabilityRefusal {
         val thrown = assertThrows<CapabilityRefusedException> {
-            access().get(key, type)
+            access(holding).get(key, type)
         }
         return thrown.refusal
     }
@@ -143,25 +193,47 @@ class CanonicalCapabilityAccessTest {
      * production holder with no collaborators bound, over a runtime context that carries no
      * milestone store, no artifact index and no plugin contributor.
      */
-    private fun access(): CanonicalRuntimeCapabilityAccess =
-        CanonicalCapabilityBindings().access(context)
+    private fun access(holding: CanonicalRuntimeContext = context()): CanonicalRuntimeCapabilityAccess =
+        CanonicalCapabilityBindings().access(holding)
 
-    /** The runtime context, pointing at paths that do not exist and discarding every event. */
-    private val context: CanonicalRuntimeContext = CanonicalRuntimeContext(
-        opId = OpId(RUN_ID, 0, 0),
-        runId = RUN_ID,
-        stageName = "stage-0",
-        stageIndex = 0,
-        stepIndex = 0,
-        shOptions = ShOptions(
-            workspaceRoot = Path.of("/nonexistent-workspace"),
-            captureStdout = false,
-            timeoutMs = null,
-            env = emptyMap(),
-        ),
-        controlDirRoot = Path.of("/nonexistent-control-root"),
-        eventSink = NullEventSink,
-    )
+    /**
+     * The runtime context, pointing at paths that do not exist and discarding every event.
+     *
+     * The seam is a parameter because whether the context carries one is a fact about how the
+     * context was composed, and the rows above need both answers.
+     */
+    private fun context(stepObservability: StepObservability? = null): CanonicalRuntimeContext =
+        CanonicalRuntimeContext(
+            opId = OpId(RUN_ID, 0, 0),
+            runId = RUN_ID,
+            stageName = "stage-0",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions(
+                workspaceRoot = Path.of("/nonexistent-workspace"),
+                captureStdout = false,
+                timeoutMs = null,
+                env = emptyMap(),
+            ),
+            controlDirRoot = Path.of("/nonexistent-control-root"),
+            eventSink = NullEventSink,
+            stepObservability = stepObservability,
+        )
+
+    /**
+     * A seam of the right shape that is NOT the product's own noop.
+     *
+     * The row this serves is about IDENTITY: the bridge must hand over the instance the
+     * context carries. A fixture that reused the product's noop would be satisfied by ANY
+     * seam of that type, and would say nothing about WHICH one was handed over.
+     */
+    private class CarriedSeam : StepObservability {
+        override val enabled: Boolean = true
+
+        override fun openSpan(name: ObservationName): StepSpan = NoopStepSpan
+
+        override fun count(name: ObservationName, status: ObservationStatus) = Unit
+    }
 
     private companion object {
         const val RUN_ID = "run-1"

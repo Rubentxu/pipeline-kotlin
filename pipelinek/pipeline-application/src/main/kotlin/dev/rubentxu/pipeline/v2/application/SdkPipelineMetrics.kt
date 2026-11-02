@@ -119,7 +119,7 @@ private class SdkMetricMeasurement(
  * arrived here, so this function only changes the SHAPE and never the
  * content: it cannot add a key and it cannot add a value.
  */
-private fun attributesOf(dimensions: Map<String, String>): Attributes {
+internal fun attributesOf(dimensions: Map<String, String>): Attributes {
     val builder = Attributes.builder()
     dimensions.forEach { (key, value) -> builder.put(AttributeKey.stringKey(key), value) }
     return builder.build()

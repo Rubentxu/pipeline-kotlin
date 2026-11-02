@@ -67,6 +67,23 @@ data class CanonicalRuntimeContext(
     // so the capability stays unexposed and a Step that declares it is refused at admission
     // instead of reaching a handler with a null seam.
     val pluginEventEmitter: dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter? = null,
+    // The seam a plugin observes ITS OWN work through, bound to THIS
+    // invocation.
+    //
+    // It is built per dispatch, not per run, because it carries the parent:
+    // the observation a plugin opens has to hang under the span of the step
+    // the plugin was admitted for, and that span exists only for the
+    // dispatch in flight. A per-run seam would have no parent to name, and a
+    // plugin's observation would float beside the run instead of inside it.
+    //
+    // Null only for a context composed WITHOUT the engine's binding — every
+    // pre-existing construction site — so the capability stays unexposed and a
+    // Step that declares it is refused at admission instead of reaching a
+    // handler with a seam that cannot keep its promise. A run that asked for
+    // no telemetry is not one of those cases: the engine binds the seam that
+    // observes nothing, so a Step that declares the capability is admitted
+    // and runs, and the run publishes nothing.
+    val stepObservability: dev.rubentxu.pipeline.v2.runtime.telemetry.StepObservability? = null,
     // The compensation intent port, bound to THIS invocation.
     //
     // It is built per dispatch, not per run, because it carries the forward operation's

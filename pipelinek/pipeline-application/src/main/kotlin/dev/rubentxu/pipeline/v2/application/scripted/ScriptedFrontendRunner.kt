@@ -154,6 +154,11 @@ internal object ScriptedFrontendRunner {
                     controlDirRoot = controlDirRoot,
                     eventSink = eventSink,
                     outputWakeups = outputWakeups,
+                    // The observability seam, under the same parent the
+                    // scripted step's own execution hangs under. Null when the
+                    // run asked for no telemetry, and the capability then
+                    // stays unexposed and the Step is refused at admission.
+                    stepObservability = telemetry.stepObservability(spanParent),
                 )
             },
         )

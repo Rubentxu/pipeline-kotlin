@@ -422,6 +422,21 @@ tasks.register<JavaExec>("sdkZip") {
         distDir.map { it.file("pipelinek-bom-${project.version}.json") },
     )
     inputs.property("productVersion", project.version.toString())
+    // The SDK repository this task packages is its INPUT, and it was not
+    // declared as one. The consequence was measured, not predicted: a change to
+    // a published contract rewrote the jar in `build/sdk-repo/` and left the
+    // ZIP untouched, because the only declared input was the version, which
+    // had not moved. The task reported UP-TO-DATE while carrying the PREVIOUS
+    // contract's bytes, and every external consumer -- which resolves from the
+    // unpacked ZIP, not from the repo -- compiled against the old artifact.
+    // The build was green and the published SDK was wrong.
+    //
+    // A directory is declared rather than the individual jars because the
+    // builder's selection rule is "every file whose FOLDER is named
+    // `<version>/`" (see SdkZipBuilder.selectVersionedEntries): naming a file
+    // here would reproduce the same class of defect one level down, where the
+    // ZIP tracks a list of files and the list is not what it packages.
+    inputs.dir(sdkRepo)
 
     // The list of `group:artifact` pairs the BOM pins. Mirrors
     // `publishedContractModules` in the root build (the five SDK

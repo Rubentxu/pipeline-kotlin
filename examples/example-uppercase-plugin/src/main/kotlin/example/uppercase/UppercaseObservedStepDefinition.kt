@@ -12,7 +12,7 @@ import dev.rubentxu.pipeline.v2.events.registry.PLUGIN_EVENT_EMISSION_CAPABILITY
 import dev.rubentxu.pipeline.v2.events.registry.PluginEventEmission
 
 /**
- * The plugin's SECOND Step, and the reason there are two.
+ * The plugin's SECOND Step, and the reason there is more than one.
  * `uppercase` demands nothing from the host: it is the reference proof that an external Step runs
  * with zero capabilities and zero core changes, and the certification suite asserts exactly that.
  * The first attempt at added the event emission to `uppercase` itself, and that suite caught
@@ -20,11 +20,16 @@ import dev.rubentxu.pipeline.v2.events.registry.PluginEventEmission
  * change. The assertion was right and the change was wrong: a reference that has quietly acquired
  * a dependency is no longer the reference.
  * So the observation is a separate Step that asks for ONE thing and gets it. This plugin therefore
- * demonstrates both shapes at once, which is more useful than either alone:
- *   - `uppercase`     — asks for nothing, runs anyway
- *   - `uppercaseObserved` — asks for exactly one public seam, gets only that seam
+ * demonstrates several shapes at once, which is more useful than any one alone:
+ *   - `uppercase`          — asks for nothing, runs anyway
+ *   - `uppercaseObserved`  — asks for exactly one public seam, gets only that seam
+ *   - `uppercaseMeasured`  — asks the runtime to watch it, through a different seam
  * It is a `warnError`-shaped idea in miniature: do the work, and also record your own observation of
  * it. That is what a plugin actually wants from an open Event Plane.
+ *
+ * The two observed Steps ask DIFFERENT owners to observe the same work: this one publishes an
+ * event through the Event Plane, which belongs to the run, and `uppercaseMeasured` asks the
+ * runtime for a tracing observation, which belongs to whoever reads traces.
 */
 object UppercaseObservedStepDefinition : StepDefinition<UppercaseInput, UppercaseOutput> {
     val KEY = PluginStepId("example.uppercase.observed")

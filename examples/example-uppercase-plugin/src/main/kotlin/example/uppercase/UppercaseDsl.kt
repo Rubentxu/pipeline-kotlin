@@ -50,3 +50,28 @@ fun StageScope.uppercaseObserved(text: String) {
         encodedInput = UppercaseCodec.encode(UppercaseInput(text)),
     )
 }
+
+/**
+ * Same work, watched by the runtime instead of described by the plugin.
+ * Separate rather than a flag on either of the other two, because the two owners of an
+ * observation are different: `uppercaseObserved` PUBLISHES an event about the work through the
+ * Event Plane, and this one ASKS the runtime to observe it through the tracing seam. A flag
+ * would have made one of the two shapes conditional, and a conditional seam is a shape the
+ * nobody exercises.
+ * ```kotlin
+ * import example.uppercase.uppercaseMeasured
+ * pipeline {
+ *     stages {
+ *         stage("External") {
+ *             uppercaseMeasured("hello")
+ *         }
+ *     }
+ * }
+ * ```
+*/
+fun StageScope.uppercaseMeasured(text: String) {
+    registryStep(
+        stepKey = UppercaseMeasuredStepDefinition.KEY,
+        encodedInput = UppercaseCodec.encode(UppercaseInput(text)),
+    )
+}

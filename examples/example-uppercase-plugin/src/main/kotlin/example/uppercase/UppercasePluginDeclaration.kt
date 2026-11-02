@@ -19,6 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import dev.rubentxu.pipeline.v2.events.registry.PLUGIN_EVENT_EMISSION_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.telemetry.STEP_OBSERVABILITY_CAPABILITY
 
 /**
  * The external plugin's DECLARATION, in one place.
@@ -67,17 +68,28 @@ object UppercasePluginDeclaration {
     }
 
     /**
-     * What the Steps collectively demand, and it is written as the union of the three contracts
-     * rather than as a hand-kept list.
+     * What the Steps collectively demand, and it is DERIVED from the contracts rather than
+     * written as a hand-kept list.
      * That is the whole reason the validator can be a cross-check instead of a comparison against
      * prose: `uppercase` demands nothing, `uppercaseObserved` demands the host's event-emission
-     * seam, and `uppercase.cased` demands the table this JAR supplies. Note the second one is a
-     * seam the plugin does NOT supply and is not expected to — a manifest's capability set states
-     * what the plugin NEEDS, not what it hands over. `http` declares `BASIC_CREDENTIALS` for the
-     * same reason, and a model that conflated the two would refuse it.
+     * seam, `uppercaseMeasured` demands the host's observation seam, and `uppercase.cased` demands
+     * the table this JAR supplies. Note the second and third are seams the plugin does NOT supply
+     * and is not expected to — a manifest's capability set states what the plugin NEEDS, not what
+     * it hands over. `http` declares `BASIC_CREDENTIALS` for the same reason, and a model that
+     * conflated the two would refuse it.
+     *
+     * DERIVED rather than written out, because a written list is a second place to forget: a
+     * Step that grew a new requirement would leave the list behind, and the refusal would name
+     * the plugin instead of the Step that changed.
 */
     private val DECLARED_CAPABILITIES: Set<StepCapability> =
-        setOf(PLUGIN_EVENT_EMISSION_CAPABILITY, EXAMPLE_CASE_TABLE_CAPABILITY)
+        listOf(
+            UppercaseStepDefinition,
+            UppercaseObservedStepDefinition,
+            UppercaseMeasuredStepDefinition,
+            UppercaseCasedStepDefinition,
+            UppercaseAnnouncedCasedStepDefinition,
+        ).flatMapTo(linkedSetOf()) { it.contract.requiredCapabilities }
 
     private fun parseSemVer(raw: String): SemVer {
         val parts = raw.split("-")[0].split(".")
@@ -147,6 +159,10 @@ object UppercasePluginDeclaration {
                     PluginStepContribution(
                         UppercaseObservedStepDefinition.KEY,
                         setOf(PLUGIN_EVENT_EMISSION_CAPABILITY),
+                    ),
+                    PluginStepContribution(
+                        UppercaseMeasuredStepDefinition.KEY,
+                        setOf(STEP_OBSERVABILITY_CAPABILITY),
                     ),
                     PluginStepContribution(
                         UppercaseCasedStepDefinition.KEY,

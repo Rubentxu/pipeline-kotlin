@@ -14,12 +14,59 @@ value class DefinitionId(val value: String) {
     }
 }
 
-/** Identity of one invocation of a pipeline definition. */
+/**
+ * Identity of one invocation of a pipeline definition.
+ *
+ * A run identity is also a NAME in the durable plane: the lease that grants its
+ * publishing authority, the directory that holds its artefacts. So the
+ * identity owns the rule that decides whether it can carry that name, and the
+ * stores that persist it ask the identity instead of keeping a copy of the
+ * rule.
+ */
 @JvmInline
 @Serializable
 value class RunId(val value: String) {
     init {
         require(value.isNotBlank()) { "RunId value must not be blank" }
+    }
+
+    companion object {
+
+        /**
+         * The characters an identity may use to name a durable location.
+         *
+         * The alphabet is the product's own: a definition id is a hex digest and
+         * a generated run id is a lowercase UUID, so every identity the product
+         * creates already lives inside it. What it admits is exactly what a
+         * path segment can carry without being rewritten.
+         */
+        private val NAMEABLE = Regex("""[A-Za-z0-9._-]+""")
+
+        /**
+         * Whether [runId] can name a durable location.
+         *
+         * The question belongs to the identity and not to the store that happens
+         * to persist it: a store that answers it with its own copy of the
+         * alphabet is a second authority, and two authorities disagree.
+         */
+        fun isNameable(runId: String): Boolean = NAMEABLE.matches(runId)
+
+        /**
+         * The key [runId] takes in the durable plane, or `null` when it cannot
+         * name one.
+         *
+         * The key IS the identity, and that is the whole point. A key that were a
+         * transformation of it — folded, escaped or truncated — could give two
+         * different identities the same key, and then two runs would share one
+         * lease: one of them would be refused as "already owned" and the other
+         * would take the lease over, advancing the fencing token and fencing
+         * out a publisher that had done nothing wrong.
+         *
+         * So an identity that cannot name a location has NO key: it is refused
+         * where it enters the durable plane, rather than folded onto somebody
+         * else's.
+         */
+        fun fileKey(runId: String): String? = runId.takeIf { isNameable(it) }
     }
 }
 

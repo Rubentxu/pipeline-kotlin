@@ -94,12 +94,20 @@ class LeaseAcquisitionCleanupTest {
 
     @Test
     fun `a verdict that grants no ownership gives the lock back`() {
-        val files = FakeLeaseFileSystem()
+        // The record on disk belongs to ANOTHER run. The acquisition must not
+        // answer it, and the lock it took on the way must go back: a refusal
+        // that kept the lock would leave a run nobody can acquire again.
+        val files = FakeLeaseFileSystem().apply {
+            seed(LeaseRecord("other-run", OWNER, FencingToken.FIRST, ownerAlive = true))
+        }
         val store = FileBackedRunExecutionLeaseStore(LEASE_DIR, files)
 
-        val verdict = store.acquire(request(runId = "  "))
+        val verdict = store.acquire(request(runId = "run-1"))
 
-        assertTrue(verdict is LeaseAcquisition.Unverifiable, "a blank run id must not be a lease")
+        assertTrue(
+            verdict is LeaseAcquisition.Unverifiable,
+            "a record of another run must not be a lease, but the verdict was $verdict",
+        )
         assertEquals(1, files.locksGivenBack, "the lock must be given back")
         assertFalse(files.lockHeld, "the kernel must not still see this process as the holder")
         assertFalse(store.isHolding, "the store must not claim a lease it never took")
@@ -154,107 +162,6 @@ class LeaseAcquisitionCleanupTest {
 
     private fun request(runId: String = "run-1"): LeaseRequest =
         LeaseRequest(runId = runId, ownerId = OWNER)
-
-    /**
-     * The machine, with the one property that matters for this guarantee: the
-     * kernel's lock table holds ONE lock, so a second acquisition while the
-     * first is alive is refused exactly as the operating system refuses it.
-     */
-    private class FakeLeaseFileSystem : LeaseFileSystem {
-
-        var failOnLock = false
-        var failOnRead = false
-        var failOnWrite = false
-
-        /** Whether the kernel considers the lock taken. */
-        var lockHeld = false
-
-        var record: LeaseRecord? = null
-            private set
-        var writeCount = 0
-            private set
-        var locksGivenBack = 0
-            private set
-        var channelsClosed = 0
-            private set
-
-        /** The lock was given back. */
-        fun noteLockGivenBack() {
-            locksGivenBack++
-        }
-
-        /** The channel was closed. */
-        fun noteChannelClosed() {
-            channelsClosed++
-        }
-
-        override fun ensureDirectory(leaseDir: Path) = Unit
-
-        override fun openLockFile(lockFile: Path): LeaseChannel = newChannel()
-
-        override fun probeLock(lockFile: Path): LeaseLock? {
-            if (lockHeld) return null
-            lockHeld = true
-            return FakeLeaseLock(newChannel(), this)
-        }
-
-        fun newChannel(): FakeLeaseChannel = FakeLeaseChannel(this)
-
-        override fun fileExists(path: Path): Boolean = false
-
-        override fun readRecord(recordFile: Path): LeaseRecord? {
-            if (failOnRead) throw IOException("the ownership record could not be read")
-            return record
-        }
-
-        override fun writeRecord(recordFile: Path, record: LeaseRecord) {
-            if (failOnWrite) throw IOException("the ownership record could not be written")
-            this.record = record
-            writeCount++
-        }
-    }
-
-    /**
-     * The channel the machine hands over. It knows how to lock itself, and it
-     * knows that closing it releases the lock: that is what the operating
-     * system does, and the guarantee under test depends on it.
-     */
-    private class FakeLeaseChannel(private val system: FakeLeaseFileSystem) : LeaseChannel {
-
-        var closed = false
-            private set
-
-        override fun tryLock(): LeaseLock? {
-            if (system.failOnLock) throw IOException("the lock could not be taken")
-            if (system.lockHeld) return null
-            system.lockHeld = true
-            return FakeLeaseLock(this, system)
-        }
-
-        override fun close() {
-            if (closed) return
-            closed = true
-            system.noteChannelClosed()
-            system.lockHeld = false
-        }
-    }
-
-    /** The lock, and the channel it lives on, given back together and only once. */
-    private class FakeLeaseLock(
-        private val channel: FakeLeaseChannel,
-        private val system: FakeLeaseFileSystem,
-    ) : LeaseLock {
-
-        var givenBack = false
-            private set
-
-        override fun close() {
-            if (givenBack) return
-            givenBack = true
-            system.noteLockGivenBack()
-            channel.close()
-        }
-    }
 
     private companion object {
         val LEASE_DIR: Path = Path.of("leases")

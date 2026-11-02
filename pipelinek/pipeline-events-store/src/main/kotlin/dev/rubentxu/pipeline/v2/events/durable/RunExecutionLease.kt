@@ -210,15 +210,30 @@ object RunExecutionLease {
      * Ordering of the cases is the policy, and each rule is a distinct
      * property:
      *  1. blank run id -> Unverifiable (cannot key a lease on nothing)
-     *  2. live different owner -> AlreadyOwned (the core law)
-     *  3. same owner -> Reentered (idempotent, no token advance)
-     *  4. unowned / dead previous owner -> Acquired or TakenOver, advancing
+     *  2. a record that belongs to ANOTHER run -> Unverifiable (ownership
+     *     never moves across identities)
+     *  3. live different owner -> AlreadyOwned (the core law)
+     *  4. same owner -> Reentered (idempotent, no token advance)
+     *  5. unowned / dead previous owner -> Acquired or TakenOver, advancing
      *     the token so the predecessor becomes detectable
 */
     fun acquire(current: LeaseRecord?, request: LeaseRequest): LeaseAcquisition {
         if (request.runId.isBlank()) {
             return LeaseAcquisition.Unverifiable(
                 "a lease cannot be keyed on a blank run id",
+            )
+        }
+
+        if (current != null && current.runId != request.runId) {
+            // The observed record describes ANOTHER run. It is not evidence
+            // about this one, and treating it as such is how one run takes the
+            // lease of another: the token advances, the record is rewritten with
+            // the wrong identity, and a publisher that did nothing wrong is
+            // fenced out. Ownership does not travel between identities, so the
+            // request is refused rather than answered.
+            return LeaseAcquisition.Unverifiable(
+                "the lease record belongs to run '${current.runId}', " +
+                    "not to run '${request.runId}'",
             )
         }
 

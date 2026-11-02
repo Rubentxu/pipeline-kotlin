@@ -1504,6 +1504,8 @@ public final synthetic class dev/rubentxu/pipeline/v2/domain/RunId$$serializer :
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/RunId$Companion {
+	public final fun fileKey (Ljava/lang/String;)Ljava/lang/String;
+	public final fun isNameable (Ljava/lang/String;)Z
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

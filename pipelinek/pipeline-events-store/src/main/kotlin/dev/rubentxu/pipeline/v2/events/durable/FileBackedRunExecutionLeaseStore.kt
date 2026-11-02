@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.RunId
 import java.nio.file.Path
 
 /**
@@ -25,6 +26,17 @@ import java.nio.file.Path
  * stop two processes both believing they hold token N.
  * This class gathers facts and holds resources. Every *decision* is made by
  * [RunExecutionLease], which stays pure and is what the tests pin.
+ *
+ * ## How the lease is named
+ *
+ * The lock file and the ownership record of a run are named after the run
+ * itself, and the name IS the identity, verbatim: `lease-<runId>.lock` and
+ * `lease-<runId>.record`. The run decides whether it can carry that name
+ * ([RunId.fileKey]). A name that were a transformation of the identity — a
+ * folded or escaped form — could give two runs the same file, and then one run
+ * would take the lease of the other, advance the fencing token and fence out
+ * a publisher that had done nothing wrong. An identity that cannot be named is
+ * refused before a path is built and before the machine is touched.
  *
  * ## The window, and why it has exactly one exit
  *
@@ -59,7 +71,14 @@ class FileBackedRunExecutionLeaseStore(
      * the operating system gives back together.
      */
     private var held: LeaseLock? = null
-    private var heldRunId: String? = null
+
+    /**
+     * The durable record of the run this store owns. The PATH, not the run id:
+     * the path is what the release has to write back, and re-deriving it from
+     * the run id would repeat the derivation that named the lease in the first
+     * place.
+     */
+    private var heldRecordFile: Path? = null
 
     /** True when this store currently holds the OS lock for a run. */
     val isHolding: Boolean get() = held != null
@@ -71,9 +90,22 @@ class FileBackedRunExecutionLeaseStore(
      * caller must surface it as a typed rejection.
     */
     override fun acquire(request: LeaseRequest): LeaseAcquisition {
+        // The identity must name its own lease. A key DERIVED from it — folded,
+        // escaped or truncated — can give two identities the same key, and then
+        // two runs share one lease: one of them is refused as "already owned"
+        // and the other takes the lease over, advancing the fencing token and
+        // fencing out a publisher that did nothing wrong. So the key IS the
+        // identity, and an identity that cannot name a location has no key at
+        // all: it is refused here, before a path is built and before the
+        // machine is touched.
+        val key = RunId.fileKey(request.runId)
+            ?: return LeaseAcquisition.Unverifiable(
+                "run id '${request.runId}' cannot name a durable location",
+            )
+
         files.ensureDirectory(leaseDir)
-        val lockFile = leaseDir.resolve(lockFileName(request.runId))
-        val recordFile = leaseDir.resolve(recordFileName(request.runId))
+        val lockFile = leaseDir.resolve(lockFileName(key))
+        val recordFile = leaseDir.resolve(recordFileName(key))
 
         // What this call took and did not hand over. The `finally` below is the
         // single exit of the window: while `committed` is false, whatever was
@@ -130,7 +162,7 @@ class FileBackedRunExecutionLeaseStore(
                 else -> null
             }
             if (granted != null) {
-                commitOwnership(taken, request.runId, recordFile, granted)
+                commitOwnership(taken, recordFile, granted)
                 committed = true
             }
             return decision
@@ -155,7 +187,6 @@ class FileBackedRunExecutionLeaseStore(
     */
     private fun commitOwnership(
         lock: LeaseLock,
-        runId: String,
         recordFile: Path,
         record: LeaseRecord,
     ) {
@@ -165,7 +196,7 @@ class FileBackedRunExecutionLeaseStore(
         // that claims authority without holding it, which nobody can recover.
         files.writeRecord(recordFile, record)
         this.held = lock
-        this.heldRunId = runId
+        this.heldRecordFile = recordFile
     }
 
     /**
@@ -178,19 +209,19 @@ class FileBackedRunExecutionLeaseStore(
      * write must not keep the run locked for everybody.
     */
     override fun release(ownerId: RunOwnerId) {
-        val runId = heldRunId
+        val recordFile = heldRecordFile
         val lock = held
-        if (runId == null || lock == null) return
+        if (recordFile == null || lock == null) return
 
         try {
-            val current = files.readRecord(recordFile(runId))
+            val current = files.readRecord(recordFile)
             if (current != null) {
-                files.writeRecord(recordFile(runId), RunExecutionLease.release(current, ownerId))
+                files.writeRecord(recordFile, RunExecutionLease.release(current, ownerId))
             }
         } finally {
             runCatching { lock.close() }
             this.held = null
-            this.heldRunId = null
+            this.heldRecordFile = null
         }
     }
 
@@ -216,14 +247,18 @@ class FileBackedRunExecutionLeaseStore(
      * cleaned up).
     */
     override fun isKnown(runId: String): Boolean =
-        files.fileExists(recordFile(runId))
+        recordFileFor(runId)?.let { files.fileExists(it) } ?: false
 
     /**
      * Whether [held] is still the authoritative token for [runId]. This is the
      * fencing check a publisher calls immediately before writing.
     */
     fun authorise(runId: String, held: FencingToken): PublishAuthority {
-        val observed = files.readRecord(recordFile(runId))
+        val recordFile = recordFileFor(runId)
+            ?: return PublishAuthority.Unverifiable(
+                "run id '$runId' cannot name a durable location",
+            )
+        val observed = files.readRecord(recordFile)
             ?: return PublishAuthority.Unverifiable("no lease record for run $runId")
         return RunExecutionLease.authorisePublish(observed, held)
     }
@@ -242,7 +277,7 @@ class FileBackedRunExecutionLeaseStore(
      *   issued for [runId].
     */
     override fun observe(runId: String): LeaseRecord? =
-        files.readRecord(recordFile(runId))
+        recordFileFor(runId)?.let { files.readRecord(it) }
 
     /**
      * Whether a LIVE process holds this run's lease right now.
@@ -272,7 +307,12 @@ class FileBackedRunExecutionLeaseStore(
      * same distinction [acquire] draws.
      */
     override fun liveness(runId: String): LeaseLiveness {
-        val lockFile = leaseDir.resolve(lockFileName(runId))
+        val key = RunId.fileKey(runId)
+            ?: return LeaseLiveness.Unverifiable(
+                "run id '$runId' cannot name a durable location",
+            )
+        val lockFile = leaseDir.resolve(lockFileName(key))
+        val recordFile = leaseDir.resolve(recordFileName(key))
         if (!files.fileExists(lockFile)) {
             // No lock file: no lock was ever taken, so nobody holds it. The
             // probe must not create the file to find this out.
@@ -282,7 +322,7 @@ class FileBackedRunExecutionLeaseStore(
             val lock = files.probeLock(lockFile)
             if (lock == null) {
                 LeaseLiveness.Held(
-                    files.readRecord(recordFile(runId))?.ownerId ?: UNKNOWN_OWNER,
+                    files.readRecord(recordFile)?.ownerId ?: UNKNOWN_OWNER,
                 )
             } else {
                 runCatching { lock.close() }
@@ -297,15 +337,24 @@ class FileBackedRunExecutionLeaseStore(
         val lock = held
         if (lock != null) runCatching { lock.close() }
         held = null
-        heldRunId = null
+        heldRecordFile = null
     }
 
     // ------------------------------------------------------------ persistence
 
-    private fun recordFile(runId: String): Path = leaseDir.resolve(recordFileName(runId))
+    /**
+     * The durable record of [runId], or `null` when the identity cannot name
+     * one. `null` is the honest answer and not a failure: an identity that
+     * cannot be named has never had a record, because the store refuses to
+     * create one.
+     */
+    private fun recordFileFor(runId: String): Path? =
+        RunId.fileKey(runId)?.let { leaseDir.resolve(recordFileName(it)) }
 
-    private fun lockFileName(runId: String): String =
-        "lease-" + runId.replace(Regex("[^A-Za-z0-9._-]"), "_") + ".lock"
+    /**
+     * The name of the lock file of a run. The KEY is the identity, verbatim.
+     */
+    private fun lockFileName(key: String): String = "lease-$key.lock"
 
     /**
      * The record lives in a SEPARATE file from the lock, and that separation is
@@ -320,8 +369,7 @@ class FileBackedRunExecutionLeaseStore(
      * The lock file is created once and never written, so there is no window
      * in which its contents could disagree with the kernel's lock table.
     */
-    private fun recordFileName(runId: String): String =
-        "lease-" + runId.replace(Regex("[^A-Za-z0-9._-]"), "_") + ".record"
+    private fun recordFileName(key: String): String = "lease-$key.record"
 
     private companion object {
         val UNKNOWN_OWNER: RunOwnerId = RunOwnerId.of("unknown-owner")!!

@@ -60,6 +60,19 @@ class RunExecutionLeaseTest {
     }
 
     @Test
+    fun `a record that belongs to another run is never taken over`() {
+        val current = LeaseRecord("other-run", ownerA, FencingToken.of(7), ownerAlive = false)
+
+        val decision = RunExecutionLease.acquire(current, LeaseRequest(runId, ownerB))
+
+        // Ownership does not travel between identities. The observed record is
+        // not evidence about this run, and answering from it would advance the
+        // token of a lease that belongs to somebody else and fence its real
+        // publisher out.
+        assertTrue(decision is LeaseAcquisition.Unverifiable, "got ${decision.render()}")
+    }
+
+    @Test
     fun `the live owner re-entering does not advance the token`() {
         val current = liveLease(ownerA, FencingToken.of(7))
 

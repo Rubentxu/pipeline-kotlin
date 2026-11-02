@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.RunId
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -64,12 +65,16 @@ class WorkspaceResolver(
      * @return The artefacts directory: `<controlDirRoot>/artefacts/<runId>/<stageName>/`
 */
     fun resolveArchiveDir(runId: String, stageName: String): Path {
-        // Fix: validate runId as a path-safe segment (same character set as RunIdDirectory)
-        // AND verify the resolved path stays under `<controlDirRoot>/artefacts/` after lexical
-        // normalisation. Defends against traversal (`../`) and symlink-resolved-name against symlinks
-        // for the segment itself; symlink defence for the resolved artefacts dir is the caller's
-        // responsibility at write time, since a symlink-to-component cannot be detected lexically.
-        require(runId.matches(RUN_ID_SEGMENT)) {
+        // The run decides whether it can be a name: `RunId` owns the alphabet of
+        // an identity that can name a durable location, and asking it is what
+        // keeps this resolver and the lease store from disagreeing about what a
+        // safe run id looks like. The resolved path is ALSO verified to stay
+        // under `<controlDirRoot>/artefacts/` after lexical normalisation, which
+        // defends against traversal and against a symlink-resolved name;
+        // symlink defence for the resolved artefacts dir is the caller's
+        // responsibility at write time, since a symlink-to-component cannot be
+        // detected lexically.
+        require(RunId.isNameable(runId)) {
             "resolveArchiveDir: runId '$runId' is not a path-safe segment"
         }
         val safeName = stageName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
@@ -132,11 +137,5 @@ class WorkspaceResolver(
         // No-op: workspaces are retained on failure by default
         // Retention happens automatically because cleanupAfterComplete
         // is only called on SUCCESS outcomes
-    }
-
-    private companion object {
-        // Same character set as RunIdDirectory.fileNameFor — kept consistent so the two cannot
-        // disagree on what a "safe" run id looks like.
-        val RUN_ID_SEGMENT = Regex("""[A-Za-z0-9._-]+""")
     }
 }

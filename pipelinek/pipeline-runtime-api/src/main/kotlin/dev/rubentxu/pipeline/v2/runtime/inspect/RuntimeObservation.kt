@@ -132,6 +132,24 @@ sealed interface TailState {
  * Closed ADT: every mapping the design names is here, plus `Other` for the
  * schema-extension safety valve (a journaled terminal that does not map to the
  * canonical outcomes is surfaced verbatim rather than collapsed to `Failed`).
+ *
+ * ## The vocabulary of what was OBSERVED, and where each word is pronounced
+ *
+ * This type owns the vocabulary of the terminal state a runtime OBSERVED: the
+ * six forms [Succeeded], [Failed], [Unstable], [Aborted], [Cancelled] and
+ * [Other]. It is not persisted, and it is not a synonym of the run's RESULT
+ * (`RunOutcome` in the domain): it has a `Cancelled` that the result does not
+ * have, and it calls `Succeeded` what the result calls success. The two answer
+ * different questions — what the run ENDED as, and what was SEEN — so a reader
+ * that swaps them reads a cancelled run as a failed one.
+ *
+ * - **To the operator**: `MainRunsCli` renders it as succeeded, failed,
+ *   unstable, aborted, cancelled, or the raw word when there is no other.
+ * - **Only inside**: the recovery journal writes the same words beside the
+ *   operation's state.
+ *
+ * The run's RESULT crosses the wire as a word and is recovered by
+ * `RunOutcome.parse`; this projection is what the runtime saw of it.
 */
 sealed interface TerminalObservation {
     data class Succeeded(val terminalAtMs: Long) : TerminalObservation

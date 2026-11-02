@@ -355,12 +355,12 @@ class RuntimeIntrospectionPortStoreAdapter(
      */
     private fun terminalObservationOf(finished: RunFinished): TerminalObservation {
         val terminalAtMs: Long = finished.occurredAt.toEpochMilli()
-        return when (finished.outcome) {
-            RunOutcome.SUCCESS_TOKEN -> TerminalObservation.Succeeded(terminalAtMs)
-            RunOutcome.UNSTABLE_TOKEN -> TerminalObservation.Unstable(terminalAtMs)
-            RunOutcome.FAILURE_TOKEN -> TerminalObservation.Failed(RunOutcome.FAILURE_TOKEN, terminalAtMs)
-            RunOutcome.ABORTED_TOKEN -> TerminalObservation.Aborted(terminalAtMs)
-            else -> TerminalObservation.Other(finished.outcome, terminalAtMs)
+        return when (RunOutcome.parse(finished.outcome)) {
+            RunOutcome.Success -> TerminalObservation.Succeeded(terminalAtMs)
+            RunOutcome.Unstable -> TerminalObservation.Unstable(terminalAtMs)
+            is RunOutcome.Failure -> TerminalObservation.Failed(RunOutcome.FAILURE_TOKEN, terminalAtMs)
+            RunOutcome.Aborted -> TerminalObservation.Aborted(terminalAtMs)
+            null -> TerminalObservation.Other(finished.outcome, terminalAtMs)
         }
     }
 

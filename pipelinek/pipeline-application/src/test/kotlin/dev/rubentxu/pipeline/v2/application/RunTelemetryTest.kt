@@ -152,6 +152,44 @@ class RunTelemetryTest {
         assertEquals("failure", outcome.dimensions["status"])
     }
 
+    /**
+     * The class a run's outcome is counted under.
+     *
+     * The words are the domain's, and each one keeps the class it has always
+     * been counted under, so a dashboard does not move under the operator's
+     * feet while the result is being typed.
+     */
+    @Test
+    fun `every word the product writes is counted under the class it always had`() {
+        assertEquals("success", outcomeClassOf("success"))
+        assertEquals("unstable", outcomeClassOf("unstable"))
+        assertEquals("failure", outcomeClassOf("failure"))
+        assertEquals("failure", outcomeClassOf("aborted"))
+    }
+
+    /**
+     * A word this build does not know is not a failure.
+     *
+     * The counter answers "how many runs failed", so a word it cannot read is
+     * not a failure it observed: a vocabulary that grew is not a failure.
+     * Such a word is counted in its own class, and the run does not land in
+     * the failed bucket with nobody looking.
+     */
+    @Test
+    fun `a word the product does not write is not counted as a failure`() {
+        assertEquals("unknown", outcomeClassOf("degraded"))
+        assertEquals("unknown", outcomeClassOf("SUCCESS"))
+    }
+
+    /** The class the counter counts a run under, given the word its outcome carries. */
+    private fun outcomeClassOf(outcome: String): String? =
+        RunTelemetryProjection
+            .fromEvents("run-1", listOf(runStart(at = 0), runFinish(outcome, at = 250)))
+            .signals
+            .filterIsInstance<TelemetrySignal.Counter>()
+            .first { it.name.endsWith("run_outcome_total") }
+            .dimensions["status"]
+
     @Test
     fun `the exported lines carry the schema, the run id and no run payload`() {
         val trace = RunTelemetryProjection.fromEvents(

@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.attribution.OpenStepIdentity
 import dev.rubentxu.pipeline.v2.application.attribution.StepAttribution
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
@@ -313,10 +314,25 @@ object RunTelemetryProjection {
     private fun compileOutcome(event: CompilationFinished): String =
         if (event.diagnostics.any { it.severity.name == "ERROR" }) "failure" else "success"
 
-    private fun outcomeClass(outcome: String): String = when (outcome) {
-        "success" -> "success"
-        "unstable" -> "unstable"
-        else -> "failure"
+    /**
+     * The class a run's outcome is counted under.
+     *
+     * The words are the domain's, and the class each one has always been counted
+     * under does not move: success is success, unstable is unstable, and a
+     * failure and an aborted run are both counted as a failure — the word the
+     * operator already reads for a run that did not finish well.
+     *
+     * A word this build does not know is counted as `unknown`, in its own class
+     * and not among the failures. The counter answers "how many runs failed",
+     * and a word it cannot read is not a failure it observed: counting it as
+     * one puts a run in the wrong bucket with nobody looking.
+     */
+    private fun outcomeClass(outcome: String): String = when (RunOutcome.parse(outcome)) {
+        RunOutcome.Success -> "success"
+        RunOutcome.Unstable -> "unstable"
+        is RunOutcome.Failure -> "failure"
+        RunOutcome.Aborted -> "failure"
+        null -> "unknown"
     }
 }
 

@@ -18,6 +18,32 @@ package dev.rubentxu.pipeline.v2.domain
  *   terminal state. Set explicitly by the orchestrator, never derived by
  *   [RunOutcomeReducer].
  *
+ * ## The vocabulary of a RESULT, and where each word is pronounced
+ *
+ * This type owns the vocabulary of a run's RESULT: the four words
+ * [SUCCESS_TOKEN], [UNSTABLE_TOKEN], [FAILURE_TOKEN] and [ABORTED_TOKEN], and
+ * no other. The Event Plane carries the result as a `String`, so a word
+ * crosses the wire and the case is recovered from it by [parse] — the single
+ * boundary where a written word becomes the typed result.
+ *
+ * - **To the operator**: `MainSagaInspectCli` pronounces success, unstable,
+ *   aborted and "failure (kind) — message"; the inspection transcript
+ *   pronounces success, unstable and failure.
+ * - **Only inside**: the telemetry projection counts a run under the class its
+ *   word names, and the runtime projects the result onto the terminal state it
+ *   observed.
+ *
+ * ## The other vocabulary, which is not this one
+ *
+ * The terminal state a runtime OBSERVES is a different closed set, owned by
+ * `TerminalObservation` in the runtime API: it has a `cancelled` that this
+ * vocabulary does not have, and it calls `succeeded` what this one calls
+ * `success`. The two answer different questions — what the run ENDED as, and
+ * what was SEEN — and a reader that swaps them reads a cancelled run as a
+ * failed one. `LegacyOutcomeMapper` is a third, older boundary: it accepts the
+ * historical spellings for data written by a build that no longer runs, and it
+ * is not a second way to read a current run.
+ *
  * @see StepOutcome
  * @see PipelineFailure
  * @see RunOutcomeReducer
@@ -67,13 +93,45 @@ sealed interface RunOutcome {
         const val ABORTED_TOKEN: String = "aborted"
 
         /**
-         * Every word this build reads, for a diagnostic on a word it does not.
+         * The failure a bare [FAILURE_TOKEN] carries.
+         *
+         * The word names that the run failed; it does not say how. The failure detail
+         * lives in the run's own failure fact, and this carrier says exactly that
+         * instead of inventing a kind the word never carried.
+         */
+        private val UNATTRIBUTED_FAILURE: PipelineFailure = PipelineFailure(
+            kind = FailureKind.UNKNOWN,
+            message = "the run outcome word 'failure' names the outcome but not the cause; " +
+                "the failure detail is in the run's own failure fact",
+        )
+
+        /**
+         * Every word this build reads, and the case it names.
          *
          * Derived from the constants rather than written out again, for the reason
          * [dev.rubentxu.pipeline.v2.domain.FailureKind.supportedTokens] gives: a second list of
          * one vocabulary is a second authority, and the two drift the first time someone adds
          * a constant.
          */
-        val supportedTokens: Set<String> = setOf(SUCCESS_TOKEN, UNSTABLE_TOKEN, FAILURE_TOKEN, ABORTED_TOKEN)
+        private val BY_TOKEN: Map<String, RunOutcome> = mapOf(
+            SUCCESS_TOKEN to Success,
+            UNSTABLE_TOKEN to Unstable,
+            FAILURE_TOKEN to Failure(UNATTRIBUTED_FAILURE),
+            ABORTED_TOKEN to Aborted,
+        )
+
+        /** Every word this build reads, for a diagnostic on a word it does not. */
+        val supportedTokens: Set<String> = BY_TOKEN.keys
+
+        /**
+         * The single boundary where a declared word becomes the typed result.
+         *
+         * The Event Plane carries the result as a `String`, so the word crosses the wire
+         * and the case is recovered from it here. Returns **null** outside the
+         * vocabulary, and deliberately does NOT fall back to a default: a word this build
+         * cannot read is not a failed run, it is a word it cannot read, and a reader that
+         * turns the second into the first asserts a failure that was never observed.
+         */
+        fun parse(token: String): RunOutcome? = BY_TOKEN[token]
     }
 }

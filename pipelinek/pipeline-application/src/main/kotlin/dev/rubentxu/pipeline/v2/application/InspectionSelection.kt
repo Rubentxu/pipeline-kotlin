@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.OpId
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.StageFinished
@@ -106,11 +107,16 @@ internal object InspectionSelection {
             ?: (event as? StepFinished)?.stepIndex?.toLong()
             ?: (event as? StepFailed)?.stepIndex?.toLong()
         val outcome: String = when (event) {
-            is RunFinished -> when (event.outcome) {
-                "success" -> "success"
-                "unstable" -> "unstable"
-                "failure", "aborted" -> "failure"
-                else -> event.outcome
+            // The result word is the domain's, and the column speaks the words the operator
+            // already reads: success, unstable and failure. A word the domain does not know is
+            // shown as it was written, because this column reports what the run carries and
+            // guessing would report something else.
+            is RunFinished -> when (RunOutcome.parse(event.outcome)) {
+                RunOutcome.Success -> "success"
+                RunOutcome.Unstable -> "unstable"
+                is RunOutcome.Failure -> "failure"
+                RunOutcome.Aborted -> "failure"
+                null -> event.outcome
             }
             is StepFailed -> "failure"
             // A step's terminal event carries the step's verdict, so this row can say it. It used to

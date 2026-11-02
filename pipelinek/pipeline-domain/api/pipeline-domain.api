@@ -1536,6 +1536,7 @@ public final class dev/rubentxu/pipeline/v2/domain/RunOutcome$Companion {
 	public static final field SUCCESS_TOKEN Ljava/lang/String;
 	public static final field UNSTABLE_TOKEN Ljava/lang/String;
 	public final fun getSupportedTokens ()Ljava/util/Set;
+	public final fun parse (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/RunOutcome;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/RunOutcome$DefaultImpls {

@@ -127,9 +127,36 @@ enum class OperationStatus {
     /**
      * Returns true if this status is terminal (final).
      * Terminal states cannot transition to any other state.
+     *
+     * The answer is a `when` over every case and not a membership test in a
+     * set: a set is a second copy of the vocabulary, and a case added to this
+     * enum would join it silently. The `when` makes the compiler name the
+     * place that has to decide what the new case means.
      */
     val isTerminal: Boolean
-        get() = this in terminalStates
+        get() = when (this) {
+            PENDING, RUNNING -> false
+            SUCCEEDED, FAILED, UNSTABLE, ABORTED, DIVERGENT, LOST, FAILED_TIMEOUT -> true
+        }
+
+    /**
+     * Returns true if this status means the operation's work did not succeed.
+     *
+     * LOST belongs here, and it is the important one: a lost operation's
+     * outcome is UNKNOWN, and unknown never means success.
+     *
+     * UNSTABLE does not belong here. The work RAN and declared itself
+     * unstable, which is a different fact from "it failed"; collapsing the
+     * two is the behaviour change this enum's own documentation refuses.
+     *
+     * ABORTED is not here either: an aborted operation was stopped on
+     * purpose, and the run it belongs to is cancelled rather than failed.
+     */
+    val isFailure: Boolean
+        get() = when (this) {
+            FAILED, FAILED_TIMEOUT, DIVERGENT, LOST -> true
+            PENDING, RUNNING, SUCCEEDED, UNSTABLE, ABORTED -> false
+        }
 
     /**
      * Returns true if this status indicates an operation that ran to completion
@@ -152,11 +179,12 @@ enum class OperationStatus {
      * attempt completed and a subsequent attempt is needed.
      */
     val isPollFailure: Boolean
-        get() = this == FAILED || this == FAILED_TIMEOUT || this == ABORTED || this == DIVERGENT || this == LOST
+        get() = when (this) {
+            FAILED, FAILED_TIMEOUT, ABORTED, DIVERGENT, LOST -> true
+            PENDING, RUNNING, SUCCEEDED, UNSTABLE -> false
+        }
 
     companion object {
-        private val terminalStates = setOf(SUCCEEDED, FAILED, UNSTABLE, ABORTED, DIVERGENT, LOST, FAILED_TIMEOUT)
-
         /**
          * Enforces the closed state machine transition rules.
          *
@@ -168,9 +196,9 @@ enum class OperationStatus {
         fun transition(from: OperationStatus, to: OperationStatus): kotlin.Result<Unit> {
             return when {
                 from == to -> kotlin.Result.success(Unit)
-                from in terminalStates -> kotlin.Result.failure(IllegalStateException("Cannot transition from terminal state $from"))
+                from.isTerminal -> kotlin.Result.failure(IllegalStateException("Cannot transition from terminal state $from"))
                 from == PENDING && to == RUNNING -> kotlin.Result.success(Unit)
-                from == RUNNING && to in terminalStates -> kotlin.Result.success(Unit)
+                from == RUNNING && to.isTerminal -> kotlin.Result.success(Unit)
                 else -> kotlin.Result.failure(IllegalStateException("Invalid transition from $from to $to"))
             }
         }

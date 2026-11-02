@@ -27,7 +27,6 @@ import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.runtime.control.CancelReceipt
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
-import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -318,7 +317,7 @@ class RuntimeRecoverPortStoreAdapter(
                 RuntimeRecoverDecision.OperationSnapshot(
                     opId = op.id,
                     attempt = op.attempt,
-                    outcome = outcomeOf(op.status),
+                    outcome = operationOutcomeOf(op.status),
                     replayPolicy = op.replayPolicy.name,
                     effects = emptyList(),
                 )
@@ -426,7 +425,7 @@ class RuntimeRecoverPortStoreAdapter(
         // a) Append one terminal journal row (idempotent via the
         //    journal's ON CONFLICT path).
         val now = clock.now().toEpochMilli()
-        val outcomeName = outcomeNameOf(receipt.terminal)
+        val outcomeName = recoveredOutcomeNameOf(receipt.terminal)
         val opId = "recovered-$outcomeName-$runId"
         val input = OperationInput(
             stepId = "recover",
@@ -616,7 +615,7 @@ class RuntimeRecoverPortStoreAdapter(
         // The moment the run's verdict became final: the operation that carries
         // it, and for a successful run the operation that ended last.
         val decisive = when (outcome) {
-            "failed" -> ops.first { it.status.isFailureOfTheRun() }
+            "failed" -> ops.first { it.status.isFailure }
             "aborted" -> aborted.first()
             "unstable" -> ops.first { it.status == OperationStatus.UNSTABLE }
             else -> ops.maxBy { endedAtOf(it) }
@@ -661,18 +660,6 @@ class RuntimeRecoverPortStoreAdapter(
     }
 
     /**
-     * The statuses that are a FAILURE of the run's work.
-     *
-     * LOST belongs here, and it is the important one: a lost operation's
-     * outcome is UNKNOWN, and unknown never means success.
-     */
-    private fun OperationStatus.isFailureOfTheRun(): Boolean =
-        this == OperationStatus.FAILED ||
-            this == OperationStatus.FAILED_TIMEOUT ||
-            this == OperationStatus.DIVERGENT ||
-            this == OperationStatus.LOST
-
-    /**
      * When an operation reached its terminal state, in epoch millis.
      *
      * A journal that cannot say is a journal that says zero: the run's
@@ -684,48 +671,6 @@ class RuntimeRecoverPortStoreAdapter(
     } catch (_: Exception) {
         0L
     }
-
-    private fun outcomeOf(status: OperationStatus): RuntimeRecoverDecision.OperationOutcome =
-        when (status) {
-            OperationStatus.SUCCEEDED -> RuntimeRecoverDecision.OperationOutcome.Succeeded
-            OperationStatus.FAILED,
-            OperationStatus.FAILED_TIMEOUT,
-            OperationStatus.DIVERGENT -> RuntimeRecoverDecision.OperationOutcome.Failed
-            OperationStatus.UNSTABLE -> RuntimeRecoverDecision.OperationOutcome.Unstable
-            OperationStatus.ABORTED -> RuntimeRecoverDecision.OperationOutcome.Aborted
-            OperationStatus.LOST -> RuntimeRecoverDecision.OperationOutcome.Other("lost")
-            OperationStatus.RUNNING -> RuntimeRecoverDecision.OperationOutcome.Running
-            OperationStatus.PENDING -> RuntimeRecoverDecision.OperationOutcome.Other("pending")
-        }
-
-    private fun outcomeNameOf(terminal: TerminalObservation): String =
-        when (terminal) {
-            is TerminalObservation.Succeeded -> "succeeded"
-            is TerminalObservation.Failed -> terminal.failureKind
-            is TerminalObservation.Unstable -> "unstable"
-            is TerminalObservation.Aborted -> "aborted"
-            is TerminalObservation.Cancelled -> "cancelled"
-            is TerminalObservation.Other -> terminal.rawOutcome
-        }
-
-    private fun terminalAtMsOf(terminal: TerminalObservation): Long = when (terminal) {
-        is TerminalObservation.Succeeded -> terminal.terminalAtMs
-        is TerminalObservation.Failed -> terminal.terminalAtMs
-        is TerminalObservation.Unstable -> terminal.terminalAtMs
-        is TerminalObservation.Aborted -> terminal.terminalAtMs
-        is TerminalObservation.Cancelled -> terminal.terminalAtMs
-        is TerminalObservation.Other -> terminal.terminalAtMs
-    }
-
-    private fun recoveredStatusOf(terminal: TerminalObservation): OperationStatus =
-        when (terminal) {
-            is TerminalObservation.Succeeded -> OperationStatus.SUCCEEDED
-            is TerminalObservation.Failed -> OperationStatus.FAILED
-            is TerminalObservation.Unstable -> OperationStatus.UNSTABLE
-            is TerminalObservation.Aborted -> OperationStatus.ABORTED
-            is TerminalObservation.Cancelled -> OperationStatus.ABORTED
-            is TerminalObservation.Other -> OperationStatus.FAILED
-        }
 
     private fun Throwable.shortDiagnostic(): String {
         val cls = this::class.simpleName ?: this.javaClass.name

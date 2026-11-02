@@ -157,6 +157,49 @@ sealed interface StepState {
     data class Failed(val failureKind: String) : StepState
     data object Cancelled : StepState
     data object Skipped : StepState
+
+    /**
+     * The work ran and declared itself unstable.
+     *
+     * It is a case of its own because [OperationStatus.UNSTABLE] is one: the
+     * durable vocabulary refuses to collapse it into a failure, and a step
+     * that reports a degraded run as a failed one would say the opposite of
+     * what the run said.
+     */
+    data object Unstable : StepState
+
+    companion object {
+        /**
+         * The projection of one durable operation status onto a step state.
+         *
+         * This is where the two vocabularies meet, so it is the only place
+         * that says what a durable status MEANS at the step level. The `when`
+         * covers every case of [OperationStatus] on purpose: a status added
+         * to the durable vocabulary has to be given a meaning here, and the
+         * compiler is what says so — not a consumer that reads a name it does
+         * not know and guesses.
+         *
+         * The three cases that are not obvious:
+         *
+         * - [OperationStatus.LOST] reads as [Failed]. The outcome of a lost
+         *   operation is unknown, and unknown never means success.
+         * - [OperationStatus.UNSTABLE] reads as [Unstable], because the work
+         *   ran and asked for attention, which is not a failure.
+         * - [OperationStatus.ABORTED] reads as [Cancelled], because the
+         *   operation was stopped on purpose rather than failing.
+         */
+        fun of(status: OperationStatus): StepState = when (status) {
+            OperationStatus.PENDING -> Pending
+            OperationStatus.RUNNING -> Running
+            OperationStatus.SUCCEEDED -> Succeeded
+            OperationStatus.FAILED -> Failed(status.name)
+            OperationStatus.FAILED_TIMEOUT -> Failed(status.name)
+            OperationStatus.DIVERGENT -> Failed(status.name)
+            OperationStatus.LOST -> Failed(status.name)
+            OperationStatus.UNSTABLE -> Unstable
+            OperationStatus.ABORTED -> Cancelled
+        }
+    }
 }
 
 /**

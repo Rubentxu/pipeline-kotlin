@@ -209,6 +209,59 @@ class RuntimeIntrospectionPortStoreAdapterTest {
     }
 
     /**
+     * An operation whose worker died is a step that failed, not a step that
+     * never started.
+     *
+     * The step state used to be reduced by comparing the durable status as a
+     * STRING, and the comparison did not know the LOST case: the worker died
+     * mid-flight, the outcome is unknown, and the step was reported as
+     * [StepState.Pending] — a step that never began. Unknown never means
+     * success, so the step reads as failed.
+     */
+    @Test
+    fun `una operacion LOST se informa como paso fallido`() {
+        val adapter = adapter(
+            journalRows = listOf(operation(status = OperationStatus.LOST)),
+            laneEvents = emptyList(),
+        )
+
+        val state = stepStateOf(adapter)
+
+        assertEquals(
+            StepState.Failed(OperationStatus.LOST.name),
+            state,
+            "a lost operation's outcome is unknown, and a step whose outcome is unknown " +
+                "is a failed step, not a step that never started",
+        )
+    }
+
+    /**
+     * An operation that ran and declared itself unstable is a step that is
+     * unstable, not a step that never started.
+     *
+     * UNSTABLE is a case of its own in the durable vocabulary, and the domain
+     * refuses to collapse it into a failure: the work ran and asked for
+     * attention. Reporting it as a failure would say the opposite of what the
+     * run said, and reporting it as pending would say the step never began.
+     */
+    @Test
+    fun `una operacion UNSTABLE se informa como paso inestable`() {
+        val adapter = adapter(
+            journalRows = listOf(operation(status = OperationStatus.UNSTABLE)),
+            laneEvents = emptyList(),
+        )
+
+        val state = stepStateOf(adapter)
+
+        assertEquals(
+            StepState.Unstable,
+            state,
+            "the work ran and asked for attention: that is an unstable step, " +
+                "neither a failed one nor one that never started",
+        )
+    }
+
+    /**
      * The plane is read-only by construction: reading a run's state writes
      * nothing.
      *
@@ -276,6 +329,18 @@ class RuntimeIntrospectionPortStoreAdapterTest {
         status = status,
         attempt = 1,
     )
+
+    /**
+     * The state of the one synthetic step the structure view carries.
+     */
+    private fun stepStateOf(adapter: RuntimeIntrospectionPortStoreAdapter): StepState {
+        val result = assertInstanceOf(
+            RunStructureResult.Structure::class.java,
+            adapter.runStructure(runId, StructureRunOptions(pageSize = 10)),
+        )
+        val stages = assertInstanceOf(RunStructure.Stages::class.java, result.structure)
+        return stages.stages.single().steps.single().state
+    }
 
     private fun bookend(outcome: String, at: Instant): RunFinished = RunFinished(
         eventId = "evt-run-finished",

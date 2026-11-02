@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
 import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
+import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
@@ -603,16 +604,34 @@ class RuntimeIntrospectionPortStoreAdapter(
         null
     }
 
+    /**
+     * The state of a step, reduced from the states of its operations.
+     *
+     * The reduction reads the durable status as the enum it is, never as the
+     * name it is spelled with: a comparison against `"LOST"` or `"UNSTABLE"`
+     * is a second copy of the vocabulary, and the copy did not know about
+     * those two cases. A lost operation and an unstable one were therefore
+     * reported as [StepState.Pending] — a step that never started, for two
+     * operations that had started and ended.
+     *
+     * The order of the rules is the order of how much a case says:
+     *
+     * 1. a failure ends the step, whatever else is still in flight;
+     * 2. work in flight is not a verdict yet;
+     * 3. a step whose operations all succeeded succeeded;
+     * 4. an operation stopped on purpose cancels the step;
+     * 5. an operation that has not started yet means the step is not there;
+     * 6. what is left ran and asked for attention.
+     */
     private fun stateOf(ops: List<DurableOperation>): StepState {
         if (ops.isEmpty()) return StepState.Pending
-        val anyFailed = ops.firstOrNull {
-            it.status.name == "FAILED" || it.status.name == "FAILED_TIMEOUT" || it.status.name == "DIVERGENT"
-        }
-        if (anyFailed != null) return StepState.Failed(anyFailed.status.name)
-        if (ops.any { it.status.name == "RUNNING" }) return StepState.Running
-        if (ops.all { it.status.name == "SUCCEEDED" }) return StepState.Succeeded
-        if (ops.any { it.status.name == "ABORTED" }) return StepState.Cancelled
-        if (ops.any { it.status.name == "PENDING" }) return StepState.Pending
+        val failure = ops.firstOrNull { it.status.isFailure }
+        if (failure != null) return StepState.of(failure.status)
+        if (ops.any { it.status == OperationStatus.RUNNING }) return StepState.Running
+        if (ops.all { it.status == OperationStatus.SUCCEEDED }) return StepState.Succeeded
+        if (ops.any { it.status == OperationStatus.ABORTED }) return StepState.Cancelled
+        if (ops.any { it.status == OperationStatus.PENDING }) return StepState.Pending
+        if (ops.any { it.status == OperationStatus.UNSTABLE }) return StepState.Unstable
         return StepState.Pending
     }
 

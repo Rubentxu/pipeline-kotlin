@@ -794,6 +794,7 @@ public final class dev/rubentxu/pipeline/v2/runtime/inspect/StageSummary {
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState$Companion;
 }
 
 public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Cancelled : dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
@@ -801,6 +802,10 @@ public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Cancelled 
 	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Companion {
+	public final fun of (Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;)Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState;
 }
 
 public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Failed : dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
@@ -837,6 +842,13 @@ public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Skipped : 
 
 public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Succeeded : dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState$Succeeded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Unstable : dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState$Unstable;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;

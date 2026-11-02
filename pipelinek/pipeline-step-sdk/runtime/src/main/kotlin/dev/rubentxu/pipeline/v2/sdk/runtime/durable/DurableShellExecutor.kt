@@ -457,7 +457,7 @@ class DurableShellExecutor {
             // The poll reads the wrapper's state from the two facts the launch holds: the cookie
             // it publishes and the child this launch started. The child is the wrapper itself, so
             // its death and its exit code are the wrapper's own.
-            val polled = ShellResultPoll(controlDir, pollIntervalMs).await(ceilingNanos, shell) {
+            val polled = shellResultPoll(controlDir, pollIntervalMs, shell).await(ceilingNanos) {
                 watchdog.timedOut()
             }
 

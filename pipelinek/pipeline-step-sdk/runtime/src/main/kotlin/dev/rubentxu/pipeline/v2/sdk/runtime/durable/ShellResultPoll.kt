@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
-import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -43,7 +42,11 @@ import java.nio.file.Path
  * From the two facts the launch holds, and from nothing else: the cookie the wrapper publishes,
  * and the child the launcher started — its handle for the liveness, and its reader for the code
  * it left with. The reading is [ShellAvailability]'s rule, and the wait never infers the
- * wrapper's state from the absence of a file.
+ * wrapper's state from the absence of a file. [ShellProtocolReading] is where those two facts
+ * are read, and it is also where the ORDER of the two readings is written down: the wrapper
+ * publishes its result BEFORE it ends, so a result that is read before the state can miss a
+ * publication that the wrapper had already made, and a completed execution would be reported as
+ * a loss.
  *
  * ## Why an execution with no deadline has no ceiling
  *
@@ -54,21 +57,15 @@ import java.nio.file.Path
  * protocol says it ends.
  */
 internal class ShellResultPoll(
-    controlDir: Path,
+    private val reading: ShellProtocolReading,
     private val pollIntervalMs: Long,
 ) {
-
-    /** The names of the protocol. The result and the cookie are two of them. */
-    private val protocol = ShellProtocolLayout(controlDir)
 
     /**
      * Waits for the execution's result.
      *
      * @param ceilingNanos the instant the wait gives up, on the MONOTONIC clock, or null when the
      *   execution has no deadline and therefore no ceiling.
-     * @param launch the launch that started the wrapper. The poll cannot do without it: the
-     *   wrapper's liveness and the code it left with are two of the facts it reads, and a wait
-     *   that cannot see the wrapper cannot say that the wrapper ended.
      * @param expired the authority on "this execution expired", asked once per iteration: the
      *   poll must not keep waiting on an execution that already expired, and the authority is the
      *   only thing that can say so.
@@ -76,13 +73,17 @@ internal class ShellResultPoll(
      */
     fun await(
         ceilingNanos: Long?,
-        launch: LaunchedShell,
         expired: () -> Boolean,
     ): ShellPollOutcome {
         while (true) {
+            // The state BEFORE the result, and never the other way round: the wrapper publishes
+            // its result before it ends, so a result read after the state is a result that
+            // exists, and a result read before it can miss one the wrapper had already made.
+            val availability = reading.state()
+            val result = reading.result()
             val outcome = shellPollOutcome(
-                result = readResult(),
-                availability = availability(launch),
+                result = result,
+                availability = availability,
                 expired = expired(),
                 ceilingReached = ceilingNanos != null && System.nanoTime() >= ceilingNanos,
             )
@@ -92,45 +93,24 @@ internal class ShellResultPoll(
             Thread.sleep(pollIntervalMs)
         }
     }
-
-    /**
-     * The wrapper's state, read from the two facts the launch holds.
-     *
-     * The cookie says the wrapper published itself, and the launch says whether the wrapper is
-     * still there and what code it left with. Both are read, and neither is inferred from the
-     * absence of the other.
-     */
-    private fun availability(launch: LaunchedShell): ShellAvailability {
-        val identityPublished = Files.exists(protocol.cookieFile)
-        val running = launch.handle.isAlive
-        val exitCode = if (running) null else launch.exitCode.read()
-        return shellAvailability(identityPublished, !running, exitCode)
-    }
-
-    /**
-     * What the control directory's result file holds.
-     *
-     * A result that exists and does not hold an exit code is ONE fact, not two: whether it is
-     * unreadable or malformed, the protocol's promise about that file is broken, and the outcome
-     * cannot be established. This is the same rule [StepReconcilerL1] applies when a LATER
-     * process reads the directory a dead worker left behind, and the two must agree: the
-     * executor's verdict and the reconciler's verdict are read by different processes and a
-     * disagreement between them makes the run unreadable.
-     */
-    private fun readResult(): ShellResultRead {
-        val resultFile = protocol.resultFile
-        if (!Files.exists(resultFile)) {
-            return ShellResultRead.Absent
-        }
-        val text = try {
-            Files.readString(resultFile).trim()
-        } catch (_: Exception) {
-            return ShellResultRead.NotAnExitCode
-        }
-        val code = text.toIntOrNull() ?: return ShellResultRead.NotAnExitCode
-        return ShellResultRead.Code(code)
-    }
 }
+
+/**
+ * The wait over one durable shell's result, reading the control directory and the launch.
+ *
+ * @param controlDir the control directory of the operation.
+ * @param pollIntervalMs how long the wait rests between two readings.
+ * @param launch the launch that started the wrapper: the wrapper's liveness and the code it left
+ *   with are two of the facts the wait reads.
+ */
+internal fun shellResultPoll(
+    controlDir: Path,
+    pollIntervalMs: Long,
+    launch: LaunchedShell,
+): ShellResultPoll = ShellResultPoll(
+    reading = LaunchedShellProtocolReading(ShellProtocolLayout(controlDir), launch),
+    pollIntervalMs = pollIntervalMs,
+)
 
 /**
  * What the control directory's result file holds.

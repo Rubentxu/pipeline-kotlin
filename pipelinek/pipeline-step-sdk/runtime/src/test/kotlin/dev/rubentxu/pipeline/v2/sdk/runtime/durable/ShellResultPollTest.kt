@@ -34,6 +34,8 @@ import org.junit.jupiter.api.Test
  * publishes the result before it removes the cookie, and that the reconciler reads the same
  * control directory: those are observed where they happen, not here. What is checked here is the
  * verdict those facts feed, which is the part that can be wrong while every observation succeeds.
+ * The ORDER in which the wait gathers those facts is a guarantee of its own, and it is checked
+ * in [ShellResultPollOrderTest].
  */
 class ShellResultPollTest {
 

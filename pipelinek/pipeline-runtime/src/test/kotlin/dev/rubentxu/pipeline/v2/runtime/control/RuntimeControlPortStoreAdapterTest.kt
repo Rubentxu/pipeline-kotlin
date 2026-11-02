@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.runtime.control
 
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventRecordRead
@@ -367,11 +368,11 @@ class RuntimeControlPortStoreAdapterTest {
             releases += ownerId
         }
 
-        override fun isKnown(runId: String): Boolean = true
+        override fun isKnown(runId: RunId): Boolean = true
 
-        override fun observe(runId: String): LeaseRecord? = null
+        override fun observe(runId: RunId): LeaseRecord? = null
 
-        override fun liveness(runId: String): LeaseLiveness = LeaseLiveness.Free
+        override fun liveness(runId: RunId): LeaseLiveness = LeaseLiveness.Free
     }
 
     /**

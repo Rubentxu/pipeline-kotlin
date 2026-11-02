@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.RunId
+
 /**
  * Run ownership as a first-class domain concept.
  * ## Why this exists when `UNIQUE(run_id, sequence)` already exists
@@ -80,7 +82,15 @@ value class FencingToken private constructor(val value: Long) {
 
 /** The durable, observable state of a run's ownership. */
 data class LeaseRecord(
-    val runId: String,
+    /**
+     * The run this record is about.
+     *
+     * The identity is TYPED, not a string, because the lease is keyed on the
+     * identity itself: the record and the request that answers it must be
+     * about the SAME run, and a typed identity is what makes that comparison a
+     * fact about identities instead of a comparison of text.
+     */
+    val runId: RunId,
     /** The current owner, or `null` when the run is unowned. */
     val ownerId: RunOwnerId?,
     /** The last token issued. `FencingToken.UNISSUED` when never owned. */
@@ -93,9 +103,15 @@ data class LeaseRecord(
     val ownerAlive: Boolean? = null,
 )
 
-/** A request to become the publishing authority for a run. */
+/**
+ * A request to become the publishing authority for a run.
+ *
+ * The identity is typed, so a request cannot carry a blank run id: the
+ * identity decides whether it names a run at all, and a request that names
+ * none is not a request about a run.
+ */
 data class LeaseRequest(
-    val runId: String,
+    val runId: RunId,
     val ownerId: RunOwnerId,
 )
 
@@ -159,7 +175,7 @@ sealed interface LeaseAcquisition {
         is Acquired -> "lease ACQUIRED by ${record.ownerId} at token $fencingToken"
         is Reentered -> "lease REENTERED by ${record.ownerId} at token $fencingToken"
         is AlreadyOwned ->
-            "lease DENIED: run ${record.runId} is owned by $heldBy at token $fencingToken"
+            "lease DENIED: run ${record.runId.value} is owned by $heldBy at token $fencingToken"
         is TakenOver ->
             "lease TAKEN OVER by ${record.ownerId} at token $fencingToken " +
                 "(previous: ${previousOwner ?: "none"})"
@@ -209,21 +225,19 @@ object RunExecutionLease {
      * Decide whether [request] may become the publishing authority.
      * Ordering of the cases is the policy, and each rule is a distinct
      * property:
-     *  1. blank run id -> Unverifiable (cannot key a lease on nothing)
-     *  2. a record that belongs to ANOTHER run -> Unverifiable (ownership
+     *  1. a record that belongs to ANOTHER run -> Unverifiable (ownership
      *     never moves across identities)
-     *  3. live different owner -> AlreadyOwned (the core law)
-     *  4. same owner -> Reentered (idempotent, no token advance)
-     *  5. unowned / dead previous owner -> Acquired or TakenOver, advancing
+     *  2. live different owner -> AlreadyOwned (the core law)
+     *  3. same owner -> Reentered (idempotent, no token advance)
+     *  4. unowned / dead previous owner -> Acquired or TakenOver, advancing
      *     the token so the predecessor becomes detectable
+     *
+     * A request that names NO run cannot arrive here: the identity is typed,
+     * so the blank case is a property of the type rather than a branch that
+     * this decider has to defend. That is the whole point of typing it — the
+     * rule cannot be forgotten here because it is not written here.
 */
     fun acquire(current: LeaseRecord?, request: LeaseRequest): LeaseAcquisition {
-        if (request.runId.isBlank()) {
-            return LeaseAcquisition.Unverifiable(
-                "a lease cannot be keyed on a blank run id",
-            )
-        }
-
         if (current != null && current.runId != request.runId) {
             // The observed record describes ANOTHER run. It is not evidence
             // about this one, and treating it as such is how one run takes the
@@ -232,8 +246,8 @@ object RunExecutionLease {
             // fenced out. Ownership does not travel between identities, so the
             // request is refused rather than answered.
             return LeaseAcquisition.Unverifiable(
-                "the lease record belongs to run '${current.runId}', " +
-                    "not to run '${request.runId}'",
+                "the lease record belongs to run '${current.runId.value}', " +
+                    "not to run '${request.runId.value}'",
             )
         }
 

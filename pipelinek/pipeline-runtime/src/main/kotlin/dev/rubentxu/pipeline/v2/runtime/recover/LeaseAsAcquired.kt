@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.runtime.recover
 
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.events.durable.FencingToken
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRecord
 import dev.rubentxu.pipeline.v2.events.durable.RunLeaseObservationPort
@@ -58,12 +59,12 @@ class LeaseAsAcquired(
      * to the lease. A run that never had a lease is still known to it, because
      * the recovery just gave it one.
      */
-    override fun isKnown(runId: String): Boolean = true
+    override fun isKnown(runId: RunId): Boolean = true
 
     /**
      * The record the acquisition would have left behind.
      */
-    override fun observe(runId: String): LeaseRecord? {
+    override fun observe(runId: RunId): LeaseRecord? {
         val previous = lease.observe(runId)
             ?: return LeaseRecord(
                 runId = runId,

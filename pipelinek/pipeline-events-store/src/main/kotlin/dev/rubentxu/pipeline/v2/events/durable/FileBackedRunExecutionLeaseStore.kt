@@ -98,9 +98,9 @@ class FileBackedRunExecutionLeaseStore(
         // identity, and an identity that cannot name a location has no key at
         // all: it is refused here, before a path is built and before the
         // machine is touched.
-        val key = RunId.fileKey(request.runId)
+        val key = RunId.fileKey(request.runId.value)
             ?: return LeaseAcquisition.Unverifiable(
-                "run id '${request.runId}' cannot name a durable location",
+                RunId.unnameableReason(request.runId.value),
             )
 
         files.ensureDirectory(leaseDir)
@@ -246,20 +246,20 @@ class FileBackedRunExecutionLeaseStore(
      * acquired, or acquired on a previous lease-dir that has since been
      * cleaned up).
     */
-    override fun isKnown(runId: String): Boolean =
+    override fun isKnown(runId: RunId): Boolean =
         recordFileFor(runId)?.let { files.fileExists(it) } ?: false
 
     /**
      * Whether [held] is still the authoritative token for [runId]. This is the
      * fencing check a publisher calls immediately before writing.
     */
-    fun authorise(runId: String, held: FencingToken): PublishAuthority {
+    fun authorise(runId: RunId, held: FencingToken): PublishAuthority {
         val recordFile = recordFileFor(runId)
             ?: return PublishAuthority.Unverifiable(
-                "run id '$runId' cannot name a durable location",
+                RunId.unnameableReason(runId.value),
             )
         val observed = files.readRecord(recordFile)
-            ?: return PublishAuthority.Unverifiable("no lease record for run $runId")
+            ?: return PublishAuthority.Unverifiable("no lease record for run ${runId.value}")
         return RunExecutionLease.authorisePublish(observed, held)
     }
 
@@ -276,7 +276,7 @@ class FileBackedRunExecutionLeaseStore(
      * @return The current `LeaseRecord`, or `null` when no lease has ever been
      *   issued for [runId].
     */
-    override fun observe(runId: String): LeaseRecord? =
+    override fun observe(runId: RunId): LeaseRecord? =
         recordFileFor(runId)?.let { files.readRecord(it) }
 
     /**
@@ -306,10 +306,10 @@ class FileBackedRunExecutionLeaseStore(
      * which is a real ownership conflict and not an infrastructure failure — the
      * same distinction [acquire] draws.
      */
-    override fun liveness(runId: String): LeaseLiveness {
-        val key = RunId.fileKey(runId)
+    override fun liveness(runId: RunId): LeaseLiveness {
+        val key = RunId.fileKey(runId.value)
             ?: return LeaseLiveness.Unverifiable(
-                "run id '$runId' cannot name a durable location",
+                RunId.unnameableReason(runId.value),
             )
         val lockFile = leaseDir.resolve(lockFileName(key))
         val recordFile = leaseDir.resolve(recordFileName(key))
@@ -348,8 +348,8 @@ class FileBackedRunExecutionLeaseStore(
      * cannot be named has never had a record, because the store refuses to
      * create one.
      */
-    private fun recordFileFor(runId: String): Path? =
-        RunId.fileKey(runId)?.let { leaseDir.resolve(recordFileName(it)) }
+    private fun recordFileFor(runId: RunId): Path? =
+        RunId.fileKey(runId.value)?.let { leaseDir.resolve(recordFileName(it)) }
 
     /**
      * The name of the lock file of a run. The KEY is the identity, verbatim.

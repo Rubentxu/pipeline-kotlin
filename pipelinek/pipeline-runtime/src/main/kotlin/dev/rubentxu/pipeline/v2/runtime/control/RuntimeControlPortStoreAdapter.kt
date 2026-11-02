@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.runtime.control
 
 import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
@@ -133,16 +134,33 @@ class RuntimeControlPortStoreAdapter(
                 CancelRefusal.JournalUnavailable(failure.shortDiagnostic()),
             )
         }
-        val runKnown = lease.isKnown(runId) || journalRows.isNotEmpty() || terminal is TerminalRead.Read
+        // The run's identity, asked of the identity itself. A value that names
+        // no run cannot be known to the lease, so it does not make the run
+        // known — but the journal can still know it, and the two are separate
+        // questions.
+        val identity: RunId? = RunId.of(runId)
+        val runKnown = (identity != null && lease.isKnown(identity)) ||
+            journalRows.isNotEmpty() ||
+            terminal is TerminalRead.Read
         if (!runKnown) {
             return CancelOutcome.Refused(CancelRefusal.UnknownRun(runId))
+        }
+
+        if (identity == null) {
+            // The run IS known to the journal, and its name names nothing, so
+            // there is no lease to take and no run to close. The refusal is the
+            // one the store gives for a run id that cannot name a durable
+            // location, said by the identity that owns the rule.
+            return CancelOutcome.Refused(
+                CancelRefusal.JournalUnavailable(RunId.unnameableReason(runId)),
+            )
         }
 
         // 2. Take the run's lease. This is the exclusivity step, and the lock
         //    behind it is the only authority on "is a live process publishing
         //    this run".
         val acquisition = try {
-            lease.acquire(LeaseRequest(runId, ownerId))
+            lease.acquire(LeaseRequest(identity, ownerId))
         } catch (failure: Exception) {
             return CancelOutcome.Refused(
                 CancelRefusal.JournalUnavailable(failure.shortDiagnostic()),

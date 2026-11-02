@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.RunId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -98,7 +99,7 @@ class LeaseAcquisitionCleanupTest {
         // answer it, and the lock it took on the way must go back: a refusal
         // that kept the lock would leave a run nobody can acquire again.
         val files = FakeLeaseFileSystem().apply {
-            seed(LeaseRecord("other-run", OWNER, FencingToken.FIRST, ownerAlive = true))
+            seed(LeaseRecord(RunId("other-run"), OWNER, FencingToken.FIRST, ownerAlive = true))
         }
         val store = FileBackedRunExecutionLeaseStore(LEASE_DIR, files)
 
@@ -161,7 +162,7 @@ class LeaseAcquisitionCleanupTest {
     }
 
     private fun request(runId: String = "run-1"): LeaseRequest =
-        LeaseRequest(runId = runId, ownerId = OWNER)
+        LeaseRequest(runId = RunId(runId), ownerId = OWNER)
 
     private companion object {
         val LEASE_DIR: Path = Path.of("leases")

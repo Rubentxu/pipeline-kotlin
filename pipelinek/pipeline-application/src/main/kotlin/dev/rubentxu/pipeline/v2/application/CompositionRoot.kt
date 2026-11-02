@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJou
 import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import kotlinx.coroutines.runBlocking
 import dev.rubentxu.pipeline.v2.events.durable.EventRecordReadPortStoreAdapter
@@ -198,7 +199,10 @@ internal fun composeRuntimeControlPort(
     val events = RedactingEventSink(eventStore, SecretPatternRegistry())
     val eventReader = EventRecordReadPortStoreAdapter(
         store = eventStore,
-        runExists = { runId -> lease.isKnown(runId) || eventStore.hasRun(runId) },
+        runExists = { runId ->
+            val identity = RunId.of(runId)
+            (identity != null && lease.isKnown(identity)) || eventStore.hasRun(runId)
+        },
         tailSequence = { runId -> eventStore.tailSequence(runId) },
     )
     val owner = RunOwnerId.of(
@@ -256,7 +260,10 @@ internal fun composeRuntimeIntrospectionPort(
     val output = OutputPlaneProvider.storeForReading(controlRoot)
     val eventReader = EventRecordReadPortStoreAdapter(
         store = eventStore,
-        runExists = { runId -> lease.isKnown(runId) || eventStore.hasRun(runId) },
+        runExists = { runId ->
+            val identity = RunId.of(runId)
+            (identity != null && lease.isKnown(identity)) || eventStore.hasRun(runId)
+        },
         tailSequence = { runId -> eventStore.tailSequence(runId) },
     )
     return RuntimeIntrospectionPortStoreAdapter(
@@ -342,7 +349,10 @@ internal fun composeRuntimeRecoverPort(
     )
     val eventReader = EventRecordReadPortStoreAdapter(
         store = eventStore,
-        runExists = { runId -> leaseView.isKnown(runId) || eventStore.hasRun(runId) },
+        runExists = { runId ->
+            val identity = RunId.of(runId)
+            (identity != null && leaseView.isKnown(identity)) || eventStore.hasRun(runId)
+        },
         tailSequence = { runId -> eventStore.tailSequence(runId) },
     )
     val introspect = RuntimeIntrospectionPortStoreAdapter(

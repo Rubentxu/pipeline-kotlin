@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.RunId
 import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.channels.FileLock
@@ -108,6 +109,57 @@ interface LeaseLock : AutoCloseable {
 }
 
 /**
+ * The bytes of an ownership record, as a pure function of the record.
+ *
+ * ## Why the format is not inside the file adapter
+ * The record is a flat `key=value` text: it is written while the OS lock is held, read by an
+ * operator with `cat`, and must survive a `SIGKILL` mid-run. A JSON or binary format would buy
+ * nothing here and cost inspectability.
+ *
+ * But a format that can only be observed through a file is a format nobody can pin: proving the
+ * bytes would mean writing them to a disk, and a test that proves the disk works proves nothing
+ * about the format. So the format is a pure function here, and the file adapter only moves its
+ * result. That is what lets a test hold the exact bytes of a record without a filesystem, a
+ * process or a clock.
+ *
+ * The record carries the run identity VERBATIM. The identity is the name of the lease, so a
+ * transformed spelling here would give two runs the same record.
+ */
+internal object LeaseRecordFormat {
+
+    /** The exact text [record] is written as. */
+    fun encode(record: LeaseRecord): String = buildString {
+        appendLine("run_id=${record.runId.value}")
+        appendLine("owner_id=${record.ownerId?.value.orEmpty()}")
+        appendLine("fencing_token=${record.fencingToken.value}")
+        appendLine("owner_alive=${record.ownerAlive ?: ""}")
+    }
+
+    /**
+     * The record [lines] carry, or `null` when they carry none.
+     *
+     * A record whose run identity is missing or blank is not a record: it names no run, and a
+     * reader that answered with one would hand out a lease about nobody's run.
+     */
+    fun decode(lines: List<String>): LeaseRecord? {
+        val fields = lines.mapNotNull { line ->
+            val idx = line.indexOf('=')
+            if (idx <= 0) null else line.substring(0, idx) to line.substring(idx + 1)
+        }.toMap()
+        val runId = RunId.of(fields["run_id"].orEmpty()) ?: return null
+        val owner = fields["owner_id"]?.takeIf { it.isNotBlank() }?.let { RunOwnerId.of(it) }
+        val token = fields["fencing_token"]?.toLongOrNull()?.let { FencingToken.of(it) }
+            ?: FencingToken.UNISSUED
+        val alive: Boolean? = when (fields["owner_alive"]?.trim()) {
+            "true" -> true
+            "false" -> false
+            else -> null
+        }
+        return LeaseRecord(runId, owner, token, alive)
+    }
+}
+
+/**
  * The real machine: an OS file lock, and the flat text record that outlives it.
  *
  * The record format is deliberately a flat `key=value` text file: it is written while the OS lock
@@ -145,30 +197,11 @@ class FileLeaseFileSystem : LeaseFileSystem {
 
     override fun readRecord(recordFile: Path): LeaseRecord? {
         if (!Files.isRegularFile(recordFile)) return null
-        val fields = Files.readAllLines(recordFile)
-            .mapNotNull { line ->
-                val idx = line.indexOf('=')
-                if (idx <= 0) null else line.substring(0, idx) to line.substring(idx + 1)
-            }.toMap()
-        val runId = fields["run_id"]?.takeIf { it.isNotBlank() } ?: return null
-        val owner = fields["owner_id"]?.takeIf { it.isNotBlank() }?.let { RunOwnerId.of(it) }
-        val token = fields["fencing_token"]?.toLongOrNull()?.let { FencingToken.of(it) }
-            ?: FencingToken.UNISSUED
-        val alive: Boolean? = when (fields["owner_alive"]?.trim()) {
-            "true" -> true
-            "false" -> false
-            else -> null
-        }
-        return LeaseRecord(runId, owner, token, alive)
+        return LeaseRecordFormat.decode(Files.readAllLines(recordFile))
     }
 
     override fun writeRecord(recordFile: Path, record: LeaseRecord) {
-        val body = buildString {
-            appendLine("run_id=${record.runId}")
-            appendLine("owner_id=${record.ownerId?.value.orEmpty()}")
-            appendLine("fencing_token=${record.fencingToken.value}")
-            appendLine("owner_alive=${record.ownerAlive ?: ""}")
-        }
+        val body = LeaseRecordFormat.encode(record)
         // Write-and-rename so a crash mid-write cannot leave a half record
         // that parses as a valid but wrong ownership claim.
         val tmp = recordFile.resolveSibling(recordFile.fileName.toString() + ".tmp")

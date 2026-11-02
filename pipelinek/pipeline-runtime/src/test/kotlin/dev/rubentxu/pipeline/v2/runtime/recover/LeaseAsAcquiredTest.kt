@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.runtime.recover
 
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.events.durable.FencingToken
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRecord
 import dev.rubentxu.pipeline.v2.events.durable.RunLeaseObservationPort
@@ -33,10 +34,10 @@ class LeaseAsAcquiredTest {
     fun `un run sin lease recibe el primer token`() {
         val view = LeaseAsAcquired(RecordedLease(null), us)
 
-        val record = view.observe("run-1")
+        val record = view.observe(RunId("run-1"))
 
         assertEquals(
-            LeaseRecord("run-1", us, FencingToken.FIRST, ownerAlive = true),
+            LeaseRecord(RunId("run-1"), us, FencingToken.FIRST, ownerAlive = true),
             record,
             "the acquisition issues the FIRST token to a fresh owner, so the view must present " +
                 "exactly that record",
@@ -54,14 +55,14 @@ class LeaseAsAcquiredTest {
     fun `un run de otro se toma con el token avanzado`() {
         val other = RunOwnerId.of("dead-writer")!!
         val view = LeaseAsAcquired(
-            RecordedLease(LeaseRecord("run-1", other, FencingToken.of(7L), ownerAlive = true)),
+            RecordedLease(LeaseRecord(RunId("run-1"), other, FencingToken.of(7L), ownerAlive = true)),
             us,
         )
 
-        val record = view.observe("run-1")
+        val record = view.observe(RunId("run-1"))
 
         assertEquals(
-            LeaseRecord("run-1", us, FencingToken.of(8L), ownerAlive = true),
+            LeaseRecord(RunId("run-1"), us, FencingToken.of(8L), ownerAlive = true),
             record,
             "the lock was free, so the previous owner is gone and the acquisition advances the " +
                 "token; a view that kept the old token would let a stale owner look current",
@@ -77,14 +78,14 @@ class LeaseAsAcquiredTest {
     @Test
     fun `un reingreso conserva el token`() {
         val view = LeaseAsAcquired(
-            RecordedLease(LeaseRecord("run-1", us, FencingToken.of(7L), ownerAlive = false)),
+            RecordedLease(LeaseRecord(RunId("run-1"), us, FencingToken.of(7L), ownerAlive = false)),
             us,
         )
 
-        val record = view.observe("run-1")
+        val record = view.observe(RunId("run-1"))
 
         assertEquals(
-            LeaseRecord("run-1", us, FencingToken.of(7L), ownerAlive = true),
+            LeaseRecord(RunId("run-1"), us, FencingToken.of(7L), ownerAlive = true),
             record,
             "re-entering a run you already own must not advance the token; the owner is alive " +
                 "because it is the process holding the lock",
@@ -99,7 +100,7 @@ class LeaseAsAcquiredTest {
         val view = LeaseAsAcquired(RecordedLease(null), us)
 
         assertTrue(
-            view.isKnown("run-1"),
+            view.isKnown(RunId("run-1")),
             "the acquisition writes a record for EVERY run it touches, so a run with no prior " +
                 "lease is known to it afterwards",
         )
@@ -109,8 +110,8 @@ class LeaseAsAcquiredTest {
      * A lease with one fixed record.
      */
     private class RecordedLease(private val record: LeaseRecord?) : RunLeaseObservationPort {
-        override fun isKnown(runId: String): Boolean = record != null
+        override fun isKnown(runId: RunId): Boolean = record != null
 
-        override fun observe(runId: String): LeaseRecord? = record
+        override fun observe(runId: RunId): LeaseRecord? = record
     }
 }

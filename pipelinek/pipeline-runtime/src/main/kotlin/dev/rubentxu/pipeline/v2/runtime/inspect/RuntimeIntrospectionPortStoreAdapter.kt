@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
 
 import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.events.RunFinished
@@ -61,54 +62,30 @@ class RuntimeIntrospectionPortStoreAdapter(
 
     // The inspect body composes (lease-or-event-plane) knownness, tail
     // Openness, and frame-index declaration; the orchestration order is the
-    // contract. Splitting helpers would re-derive the sequencing invariants inside
-    // each one. The body's length is intentional.
+    // contract. The two DECISIONS it takes — what an unknown run is answered
+    // with, and what the lease's authority says — live in helpers, because a
+    // decision has no order of its own; the ORDER of the reads stays here.
+    // The body's length is intentional.
     @Suppress("LongMethod")
     override fun inspect(runId: String): RuntimeIntrospectionResult {
         return try {
             // A run is "known" if the lease has ever recorded a
             // record for it OR the event plane has an envelope for it. Unknown
             // (Empty-refusal) is the distinguished case where neither holds.
-            val knownViaLease = lease.isKnown(runId)
-            val observedLease = lease.observe(runId)
+            //
+            // The identity is asked of the identity itself: a value that names
+            // no run cannot be known to the lease, and a lease asked about it
+            // has nothing to answer.
+            val identity: RunId? = RunId.of(runId)
+            val knownViaLease = identity != null && lease.isKnown(identity)
+            val observedLease = identity?.let { lease.observe(it) }
             val runKnown = knownViaLease || observedLease != null
 
             if (!runKnown) {
                 // Distinguish empty-but-known from unknown. If the EventReadPort
                 // also can't find any envelope and the journal is empty, the run
                 // is genuinely unknown. Otherwise we serve LiveButEmpty.
-                val journalOps = try {
-                    journal.listForRun(runId)
-                } catch (e: Exception) {
-                    return RuntimeIntrospectionResult.Refused(
-                        IntrospectionRefusal.StorageError(e.shortDiagnostic()),
-                    )
-                }
-                if (journalOps.isEmpty()) {
-                    val evRead = eventReads.readRecords(
-                        runId = runId,
-                        after = null,
-                        query = dev.rubentxu.pipeline.v2.events.identity.EventQuery.All,
-                        limit = 1,
-                    )
-                    if (evRead is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult.Refused) {
-                        // Through the shared mapping, so a StorageError is reported as a
-                        // storage error. This branch used to re-label every refusal as
-                        // UnknownRun, which is the fail-CLOSED direction and therefore
-                        // safer than its counterpart — but it is still a wrong answer to
-                        // a question the caller asked, and it made the same read mean two
-                        // different things within one file.
-                        return RuntimeIntrospectionResult.Refused(
-                            asIntrospectionRefusal(evRead.refusal, runId),
-                        )
-                    }
-                    return RuntimeIntrospectionResult.Observation(
-                        RuntimeObservation.LiveButEmpty(
-                            attempt = AttemptId(1),
-                            reason = "no lease record, no journal rows, no event envelopes",
-                        ),
-                    )
-                }
+                answerUnknownRun(runId)?.let { return it }
             }
 
             // From here on, the run is known.
@@ -202,32 +179,13 @@ class RuntimeIntrospectionPortStoreAdapter(
 
             // Lease authority. Consult the pure decider with a synthetic request —
             // we do NOT mutate the lease, we just ask what it WOULD do.
-            val syntheticOwner: dev.rubentxu.pipeline.v2.events.durable.RunOwnerId =
-                dev.rubentxu.pipeline.v2.events.durable.RunOwnerId.of(syntheticObserverId)
-                    ?: error("invalid syntheticObserverId $syntheticObserverId")
-            val syntheticRequest = dev.rubentxu.pipeline.v2.events.durable.LeaseRequest(
-                runId = runId,
-                ownerId = syntheticOwner,
-            )
-            val decision = RunExecutionLease.acquire(observedLease, syntheticRequest)
-            when (decision) {
-                is dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition.AlreadyOwned -> {
-                    return RuntimeIntrospectionResult.Refused(
-                        IntrospectionRefusal.LeaseHeldByAnother(
-                            heldBy = decision.heldBy.value,
-                            fencingToken = decision.fencingToken.value,
-                        ),
-                    )
-                }
-                is dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition.Unverifiable -> {
-                    return RuntimeIntrospectionResult.Refused(
-                        IntrospectionRefusal.StorageError(decision.reason),
-                    )
-                }
-                else -> {
-                    // Acquired / Reentered / TakenOver → we conceptually observe
-                    // the run as running under `observedLease`. fall through.
-                }
+            //
+            // A value that names no run cannot carry a request, and there is
+            // nothing to ask about: with no observed record the decider would
+            // answer "acquired" — the answer for a run nobody owns — so the
+            // question is skipped rather than answered wrongly.
+            leaseAuthorityRefusal(identity, observedLease)?.let {
+                return RuntimeIntrospectionResult.Refused(it)
             }
 
             val leaseHolder = observedLease?.ownerId?.let { ownerId ->
@@ -263,6 +221,86 @@ class RuntimeIntrospectionPortStoreAdapter(
             RuntimeIntrospectionResult.Refused(
                 IntrospectionRefusal.StorageError(e.shortDiagnostic()),
             )
+        }
+    }
+
+    /**
+     * What an UNKNOWN run is answered with, or `null` when the run is not unknown.
+     *
+     * A run the lease has never heard of and the journal has no rows for is
+     * unknown; the event plane is asked last, because it is the only authority
+     * that can still say "I know it". A read that fails is answered as a
+     * failure, never as a claim that the run does not exist.
+     */
+    private fun answerUnknownRun(runId: String): RuntimeIntrospectionResult? {
+        val journalOps = try {
+            journal.listForRun(runId)
+        } catch (e: Exception) {
+            return RuntimeIntrospectionResult.Refused(
+                IntrospectionRefusal.StorageError(e.shortDiagnostic()),
+            )
+        }
+        if (journalOps.isNotEmpty()) return null
+        val evRead = eventReads.readRecords(
+            runId = runId,
+            after = null,
+            query = dev.rubentxu.pipeline.v2.events.identity.EventQuery.All,
+            limit = 1,
+        )
+        if (evRead is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult.Refused) {
+            // Through the shared mapping, so a StorageError is reported as a
+            // storage error. This branch used to re-label every refusal as
+            // UnknownRun, which is the fail-CLOSED direction and therefore
+            // safer than its counterpart — but it is still a wrong answer to
+            // a question the caller asked, and it made the same read mean two
+            // different things within one file.
+            return RuntimeIntrospectionResult.Refused(
+                asIntrospectionRefusal(evRead.refusal, runId),
+            )
+        }
+        return RuntimeIntrospectionResult.Observation(
+            RuntimeObservation.LiveButEmpty(
+                attempt = AttemptId(1),
+                reason = "no lease record, no journal rows, no event envelopes",
+            ),
+        )
+    }
+
+    /**
+     * The refusal the lease's authority gives about [identity], or `null` when
+     * it gives none.
+     *
+     * The question is asked of the PURE decider with a synthetic request: the
+     * adapter does not mutate the lease, it asks what it WOULD do. A value
+     * that names no run cannot carry a request, and there is nothing to ask
+     * about: with no observed record the decider would answer "acquired" — the
+     * answer for a run nobody owns — so the question is skipped rather than
+     * answered wrongly.
+     */
+    private fun leaseAuthorityRefusal(
+        identity: RunId?,
+        observedLease: dev.rubentxu.pipeline.v2.events.durable.LeaseRecord?,
+    ): IntrospectionRefusal? {
+        if (identity == null) return null
+        val syntheticOwner: dev.rubentxu.pipeline.v2.events.durable.RunOwnerId =
+            dev.rubentxu.pipeline.v2.events.durable.RunOwnerId.of(syntheticObserverId)
+                ?: error("invalid syntheticObserverId $syntheticObserverId")
+        val syntheticRequest = dev.rubentxu.pipeline.v2.events.durable.LeaseRequest(
+            runId = identity,
+            ownerId = syntheticOwner,
+        )
+        val decision = RunExecutionLease.acquire(observedLease, syntheticRequest)
+        return when (decision) {
+            is dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition.AlreadyOwned ->
+                IntrospectionRefusal.LeaseHeldByAnother(
+                    heldBy = decision.heldBy.value,
+                    fencingToken = decision.fencingToken.value,
+                )
+            is dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition.Unverifiable ->
+                IntrospectionRefusal.StorageError(decision.reason)
+            // Acquired / Reentered / TakenOver → we conceptually observe
+            // the run as running under `observedLease`. fall through.
+            else -> null
         }
     }
 

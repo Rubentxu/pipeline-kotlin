@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.events.durable.FencingToken
 import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
 import dev.rubentxu.pipeline.v2.events.durable.LeaseLiveness
@@ -72,11 +73,11 @@ class DurableLeaseOwnershipTest {
             releasedOwner = ownerId
         }
 
-        override fun liveness(runId: String): LeaseLiveness = LeaseLiveness.Free
+        override fun liveness(runId: RunId): LeaseLiveness = LeaseLiveness.Free
 
-        override fun isKnown(runId: String): Boolean = false
+        override fun isKnown(runId: RunId): Boolean = false
 
-        override fun observe(runId: String): LeaseRecord? = null
+        override fun observe(runId: RunId): LeaseRecord? = null
 
         override fun close() {
             events += "close"
@@ -121,7 +122,7 @@ class DurableLeaseOwnershipTest {
         val holder = RunOwnerId.of("another-process")!!
         val store = FakeLeaseStore {
             LeaseAcquisition.AlreadyOwned(
-                record = LeaseRecord("run-1", holder, FencingToken.of(3L), ownerAlive = true),
+                record = LeaseRecord(RunId("run-1"), holder, FencingToken.of(3L), ownerAlive = true),
                 heldBy = holder,
                 fencingToken = FencingToken.of(3L),
             )
@@ -155,7 +156,7 @@ class DurableLeaseOwnershipTest {
         val scope = ResourceScope()
         val store = FakeLeaseStore {
             LeaseAcquisition.Acquired(
-                record = LeaseRecord("run-1", owner, FencingToken.of(7L)),
+                record = LeaseRecord(RunId("run-1"), owner, FencingToken.of(7L)),
                 fencingToken = FencingToken.of(7L),
             )
         }

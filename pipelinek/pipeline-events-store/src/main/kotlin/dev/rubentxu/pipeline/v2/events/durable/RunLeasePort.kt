@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.RunId
+
 /**
  * The whole lease: the read-only facts AND the exclusivity.
  *
@@ -48,7 +50,7 @@ interface RunLeasePort : RunLeaseObservationPort {
      * about the present, exactly like the lock [acquire] consults, and the
      * difference is that nothing was taken.
      */
-    fun liveness(runId: String): LeaseLiveness
+    fun liveness(runId: RunId): LeaseLiveness
 
     /**
      * Give the lease back: release the lock and mark the owner as gone.

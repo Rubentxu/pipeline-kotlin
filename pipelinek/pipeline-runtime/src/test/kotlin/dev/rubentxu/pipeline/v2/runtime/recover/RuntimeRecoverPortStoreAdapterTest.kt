@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.runtime.recover
 
 import dev.rubentxu.pipeline.v2.domain.AttemptId
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
@@ -264,7 +265,7 @@ class RuntimeRecoverPortStoreAdapterTest {
         fixture.adapter.recover(runId, RecoverOptions.Default)
 
         assertEquals(
-            listOf(runId),
+            listOf(RunId(runId)),
             lease.acquisitions.map { it.runId },
             "the recover took the run's lease",
         )
@@ -777,12 +778,12 @@ class RuntimeRecoverPortStoreAdapterTest {
             releases += ownerId
         }
 
-        override fun isKnown(runId: String): Boolean = true
+        override fun isKnown(runId: RunId): Boolean = true
 
-        override fun observe(runId: String): LeaseRecord? = null
+        override fun observe(runId: RunId): LeaseRecord? = null
 
         /** Nobody holds it: the lock is free. */
-        override fun liveness(runId: String): LeaseLiveness = LeaseLiveness.Free
+        override fun liveness(runId: RunId): LeaseLiveness = LeaseLiveness.Free
     }
 
     /**
@@ -804,12 +805,12 @@ class RuntimeRecoverPortStoreAdapterTest {
 
         override fun release(ownerId: RunOwnerId) = Unit
 
-        override fun isKnown(runId: String): Boolean = true
+        override fun isKnown(runId: RunId): Boolean = true
 
-        override fun observe(runId: String): LeaseRecord? = null
+        override fun observe(runId: RunId): LeaseRecord? = null
 
         /** The lock is held: this process would not be told to touch the run. */
-        override fun liveness(runId: String): LeaseLiveness = LeaseLiveness.Held(holder)
+        override fun liveness(runId: RunId): LeaseLiveness = LeaseLiveness.Held(holder)
     }
 
     /**

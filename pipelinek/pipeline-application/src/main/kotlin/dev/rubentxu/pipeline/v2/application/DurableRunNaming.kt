@@ -17,4 +17,4 @@ import dev.rubentxu.pipeline.v2.domain.RunId
  */
 internal fun unnameableRunIdReason(runId: String, operation: String): String? =
     if (RunId.isNameable(runId)) null
-    else "run id '$runId' cannot name a durable location; refusing to $operation"
+    else "${RunId.unnameableReason(runId)}; refusing to $operation"

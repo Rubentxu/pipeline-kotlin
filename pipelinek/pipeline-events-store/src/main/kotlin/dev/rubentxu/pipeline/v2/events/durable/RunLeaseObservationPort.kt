@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.RunId
+
 /**
  * The READ-ONLY half of the run lease: the two facts a reader needs and
  * nothing else.
@@ -38,7 +40,7 @@ interface RunLeaseObservationPort {
      * by a writer that died. It says nothing about whether that writer is
      * still alive.
      */
-    fun isKnown(runId: String): Boolean
+    fun isKnown(runId: RunId): Boolean
 
     /**
      * The current lease record for [runId], or `null` when no lease has ever
@@ -47,5 +49,5 @@ interface RunLeaseObservationPort {
      * Read-only: it does not take the lock, does not advance the fencing
      * token and does not mutate anything.
      */
-    fun observe(runId: String): LeaseRecord?
+    fun observe(runId: RunId): LeaseRecord?
 }

@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.RunOutcomeReducer
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
@@ -130,12 +131,22 @@ class RuntimeRecoverPortStoreAdapter(
         val owner: RunOwnerId = RunOwnerId.of(syntheticObserverId)
             ?: error("invalid syntheticObserverId $syntheticObserverId")
 
+        // The run's identity, asked of the identity itself. A value that names
+        // no run cannot be recovered: there is nothing to take a lease on, and
+        // the refusal is the same one the store would have given for a run id
+        // that cannot name a durable location — the run id names nothing to
+        // name.
+        val identity: RunId = RunId.of(runId)
+            ?: return RecoverOutcome.FailClosed(
+                RecoverRefusal.StorageError(RunId.unnameableReason(runId)),
+            )
+
         // A dry run computes the decision and writes NOTHING — and the lease
         // is not an exception to that. Taking it IS a write: it locks the run
         // and stamps a durable ownership record. A dry run that held the lease
         // would also make a live writer look busy for as long as it lasted.
         if (options.dryRun) {
-            return decideWithoutWriting(runId)
+            return decideWithoutWriting(runId, identity)
         }
 
         // 1. TAKE the run's lease. The lock behind it is the only authority on
@@ -152,7 +163,7 @@ class RuntimeRecoverPortStoreAdapter(
         //    so a recover that refused and a recover that committed both leave
         //    the run closable.
         val acquisition = try {
-            lease.acquire(LeaseRequest(runId = runId, ownerId = owner))
+            lease.acquire(LeaseRequest(runId = identity, ownerId = owner))
         } catch (e: Exception) {
             return RecoverOutcome.FailClosed(
                 RecoverRefusal.StorageError(e.shortDiagnostic()),
@@ -222,8 +233,8 @@ class RuntimeRecoverPortStoreAdapter(
      * presents the record the acquisition WOULD have left — so both decide on
      * the same facts, and neither has to guess what the other would have seen.
      */
-    private fun decideWithoutWriting(runId: String): RecoverOutcome {
-        when (val liveness = lease.liveness(runId)) {
+    private fun decideWithoutWriting(runId: String, identity: RunId): RecoverOutcome {
+        when (val liveness = lease.liveness(identity)) {
             is LeaseLiveness.Held -> return RecoverOutcome.FailClosed(
                 RecoverRefusal.LeaseHeldByAnother(
                     "run $runId is held by ${liveness.heldBy.value}",

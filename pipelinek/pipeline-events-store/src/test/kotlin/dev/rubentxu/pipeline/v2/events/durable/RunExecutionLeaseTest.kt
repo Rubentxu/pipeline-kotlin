@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.RunId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
@@ -27,7 +28,7 @@ import org.junit.jupiter.api.Test
  */
 class RunExecutionLeaseTest {
 
-    private val runId = "run-42"
+    private val runId: RunId = RunId("run-42")
     private val ownerA = RunOwnerId.of("worker-a")!!
     private val ownerB = RunOwnerId.of("worker-b")!!
 
@@ -50,18 +51,8 @@ class RunExecutionLeaseTest {
     }
 
     @Test
-    fun `a blank run id is unverifiable, never acquired`() {
-        val decision = RunExecutionLease.acquire(null, LeaseRequest("   ", ownerA))
-
-        // The specific claim: an empty key must not become a lease. Acquiring it
-        // would put every unkeyed writer in the same bucket, which is precisely
-        // the contention this type exists to prevent.
-        assertTrue(decision is LeaseAcquisition.Unverifiable, "got ${decision.render()}")
-    }
-
-    @Test
     fun `a record that belongs to another run is never taken over`() {
-        val current = LeaseRecord("other-run", ownerA, FencingToken.of(7), ownerAlive = false)
+        val current = LeaseRecord(RunId("other-run"), ownerA, FencingToken.of(7), ownerAlive = false)
 
         val decision = RunExecutionLease.acquire(current, LeaseRequest(runId, ownerB))
 

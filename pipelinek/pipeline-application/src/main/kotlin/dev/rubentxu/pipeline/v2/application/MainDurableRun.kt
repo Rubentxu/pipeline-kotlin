@@ -614,7 +614,18 @@ internal fun <S> acquireDurableLease(
         runCatching { leaseStore.release(runOwner) }
         leaseStore.close()
     }
-    val lease = leaseStore.acquire(LeaseRequest(runId, runOwner))
+    // The run's identity, asked of the identity itself. A value that names no
+    // run cannot be owned, and the refusal is the same one the store gives for
+    // a run id that cannot name a durable location: there is nothing to own.
+    val identity: RunId = RunId.of(runId)
+        ?: run {
+            System.err.println(
+                "Error: cannot establish ownership of run $runId: " +
+                    RunId.unnameableReason(runId),
+            )
+            throw CommandRefused(exitCode = 2)
+        }
+    val lease = leaseStore.acquire(LeaseRequest(identity, runOwner))
     // SAGA / durable run: the fencing token of the lease THIS process holds. It is the epoch the
     // durable Saga store uses to refuse a write from a writer that lost the run to a
     // takeover, so it has to travel from the acquisition to the store.

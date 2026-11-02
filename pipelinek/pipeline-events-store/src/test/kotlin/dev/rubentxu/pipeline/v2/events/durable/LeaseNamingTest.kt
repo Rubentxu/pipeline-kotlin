@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.RunId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -108,10 +109,10 @@ class LeaseNamingTest {
         val files = FakeLeaseFileSystem()
         val store = FileBackedRunExecutionLeaseStore(LEASE_DIR, files)
 
-        assertNull(store.observe("a/b"), "an unnameable run has no record")
-        assertFalse(store.isKnown("a/b"), "an unnameable run is not known")
+        assertNull(store.observe(RunId("a/b")), "an unnameable run has no record")
+        assertFalse(store.isKnown(RunId("a/b")), "an unnameable run is not known")
         assertTrue(
-            store.liveness("a/b") is LeaseLiveness.Unverifiable,
+            store.liveness(RunId("a/b")) is LeaseLiveness.Unverifiable,
             "the liveness of an unnameable run cannot be established",
         )
         assertEquals(
@@ -122,7 +123,7 @@ class LeaseNamingTest {
     }
 
     private fun request(runId: String): LeaseRequest =
-        LeaseRequest(runId = runId, ownerId = OWNER)
+        LeaseRequest(runId = RunId(runId), ownerId = OWNER)
 
     private companion object {
         val LEASE_DIR: Path = Path.of("leases")

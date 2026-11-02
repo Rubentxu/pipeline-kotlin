@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.runtime.inspect
 
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
@@ -13,6 +14,7 @@ import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRecord
 import dev.rubentxu.pipeline.v2.events.durable.RunLeaseObservationPort
+import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import dev.rubentxu.pipeline.v2.events.identity.EventQuery
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
@@ -26,6 +28,7 @@ import dev.rubentxu.pipeline.v2.output.OutputTailState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Instant
 
@@ -262,6 +265,63 @@ class RuntimeIntrospectionPortStoreAdapterTest {
     }
 
     /**
+     * A run whose lease is held by another live process is refused with that
+     * fact, and the plane does not take the lease over.
+     *
+     * The plane asks the pure decider what it WOULD do; a live owner in the way
+     * is the answer "somebody else holds it". The refusal names the holder and
+     * the token, so an operator sees who carries the authority — and the plane
+     * reports it instead of acting on it.
+     */
+    @Test
+    fun `una lease viva de otro dueno se responde con quien la tiene`() {
+        val adapter = adapter(
+            journalRows = emptyList(),
+            laneEvents = emptyList(),
+            lease = HeldLease,
+        )
+
+        val result = adapter.inspect(runId)
+
+        val refused = assertInstanceOf(RuntimeIntrospectionResult.Refused::class.java, result)
+        val held = assertInstanceOf(IntrospectionRefusal.LeaseHeldByAnother::class.java, refused.refusal)
+        assertEquals("another-process", held.heldBy)
+        assertEquals(7L, held.fencingToken)
+    }
+
+    /**
+     * A run nobody knows is answered as EMPTY, not as a failure and not as a
+     * fact about a run that does not exist.
+     *
+     * The plane distinguishes "the run is in flight and the substrate has
+     * nothing yet" from "the substrate could not be read". Reporting the first
+     * as a refusal would send an operator chasing a store failure that never
+     * happened; reporting it as a terminal fact would invent a run's end.
+     *
+     * The reason names WHICH emptiness it is: no lease record at all is a run
+     * nobody has heard of, which is a different fact from a run that exists and
+     * has written nothing yet.
+     */
+    @Test
+    fun `un run que nadie conoce se responde vacio y no como fallo`() {
+        val adapter = adapter(
+            journalRows = emptyList(),
+            laneEvents = emptyList(),
+            lease = UnknownLease,
+        )
+
+        val result = adapter.inspect(runId)
+
+        val observation = assertInstanceOf(RuntimeIntrospectionResult.Observation::class.java, result)
+        val empty = assertInstanceOf(RuntimeObservation.LiveButEmpty::class.java, observation.observation)
+        assertTrue(
+            empty.reason.contains("no lease record"),
+            "a run nobody knows is not the same emptiness as a known run that has " +
+                "written nothing yet, and the reason says which one this is: ${empty.reason}",
+        )
+    }
+
+    /**
      * The plane is read-only by construction: reading a run's state writes
      * nothing.
      *
@@ -304,6 +364,7 @@ class RuntimeIntrospectionPortStoreAdapterTest {
         journal: InMemoryOperationJournal = InMemoryOperationJournal(clock),
         cursors: InMemoryReplayCursorStore = InMemoryReplayCursorStore(clock),
         frames: CountingFrameIndex = CountingFrameIndex(),
+        lease: RunLeaseObservationPort = KnownLease,
     ): RuntimeIntrospectionPortStoreAdapter {
         journalRows.forEach { journal.append(it, deadlineMs = null) }
         return RuntimeIntrospectionPortStoreAdapter(
@@ -312,7 +373,7 @@ class RuntimeIntrospectionPortStoreAdapterTest {
             frames = frames,
             journal = journal,
             cursors = cursors,
-            lease = KnownLease,
+            lease = lease,
         )
     }
 
@@ -385,8 +446,29 @@ class RuntimeIntrospectionPortStoreAdapterTest {
      * A run the lease has heard of, held by nobody.
      */
     private object KnownLease : RunLeaseObservationPort {
-        override fun isKnown(runId: String): Boolean = true
-        override fun observe(runId: String): LeaseRecord? = null
+        override fun isKnown(runId: RunId): Boolean = true
+        override fun observe(runId: RunId): LeaseRecord? = null
+    }
+
+    /**
+     * A run the lease has heard of, held by another process that is still live.
+     */
+    private object HeldLease : RunLeaseObservationPort {
+        override fun isKnown(runId: RunId): Boolean = true
+        override fun observe(runId: RunId): LeaseRecord = LeaseRecord(
+            runId = runId,
+            ownerId = RunOwnerId.of("another-process"),
+            fencingToken = dev.rubentxu.pipeline.v2.events.durable.FencingToken.of(7L),
+            ownerAlive = true,
+        )
+    }
+
+    /**
+     * A run the lease has never heard of.
+     */
+    private object UnknownLease : RunLeaseObservationPort {
+        override fun isKnown(runId: RunId): Boolean = false
+        override fun observe(runId: RunId): LeaseRecord? = null
     }
 
     /**

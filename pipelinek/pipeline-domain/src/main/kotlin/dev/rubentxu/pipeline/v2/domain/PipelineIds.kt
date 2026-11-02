@@ -33,6 +33,21 @@ value class RunId(val value: String) {
     companion object {
 
         /**
+         * The identity [raw] names, or `null` when it names none.
+         *
+         * A blank value is not an identity: it names no run and no durable
+         * location, and the product refuses it wherever it enters. This factory
+         * is the ONE place that answers the question, so a border asks the
+         * identity instead of keeping its own copy of the rule — the same shape
+         * the durable plane's owner id has.
+         *
+         * The value is kept VERBATIM: no trimming, no folding, no escaping. A
+         * transformation here would be a second spelling of the identity, and
+         * the durable name IS the identity.
+         */
+        fun of(raw: String): RunId? = if (raw.isBlank()) null else RunId(raw)
+
+        /**
          * The characters an identity may use to name a durable location.
          *
          * The alphabet is the product's own: a generated run id is a lowercase
@@ -78,6 +93,25 @@ value class RunId(val value: String) {
          * else's.
          */
         fun fileKey(runId: String): String? = runId.takeIf { isNameable(it) }
+
+        /**
+         * Why [raw] cannot name a durable location.
+         *
+         * The identity owns the rule AND the sentence that states it. A store
+         * that phrases the rule with its own copy of the words is a second
+         * authority, and two authorities drift into saying different things
+         * about the same refusal — one of them saying it about a run id that
+         * the other one accepted.
+         *
+         * Ask this only about a value that cannot: whether it can is
+         * [isNameable]'s answer, and a caller that already knows the answer
+         * does not need the question asked twice.
+         *
+         * A blank value is answered by the same sentence: it is not a run
+         * that lost its name, it never had one.
+         */
+        fun unnameableReason(raw: String): String =
+            "run id '$raw' cannot name a durable location"
     }
 }
 

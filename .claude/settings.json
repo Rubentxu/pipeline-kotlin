@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(node_modules/**)",
+      "Read(build/**)",
+      "Read(target/**)",
+      "Read(out/**)",
+      "Read(.gradle/**)",
+      "Read(.gradle-cache/**)",
+      "Read(coverage/**)",
+      "Read(**/coverage/**)",
+      "Read(.idea/**)"
+    ]
+  }
+}

@@ -146,3 +146,5 @@ goal-compass.json
 # in Backlog.md, and a second copy of them in Git is the drift this
 # repository keeps paying for.
 /backlog-import-auditoria-2026-11.sh
+
+.codegraph/

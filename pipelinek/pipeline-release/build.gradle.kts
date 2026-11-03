@@ -527,12 +527,14 @@ tasks.register("releaseGate") {
         ":pipeline-application:distZip",
         ":pipeline-application:cyclonedxBom",
         "candidateAdmission",
-        // The three external example plugin JARs must be rebuilt before a candidate is
+        // The external example plugin JARs must be rebuilt before a candidate is
         // admitted, so the gate is not run against stale bytes: a candidate is only as honest
-        // as the plugin JARs it ships. These are paid for ONCE per release gate run.
-        ":buildExamplePlugin",
-        ":buildExternalDirectivePlugin",
-        ":buildExampleBlockPlugin",
+        // as the plugin JARs it ships. These are paid for ONCE per release gate run, in ONE
+        // build that produces the four JARs concurrently (see `:buildExamplePlugins`).
+        // This list used to name three of the four builds; the fourth (the Saga
+        // consumer) was already shipped by the distribution, so requiring the whole
+        // set now asks for nothing the gate did not already package.
+        ":buildExamplePlugins",
     )
 
     // Previously this doFirst

@@ -642,14 +642,62 @@ val unpackPublishedSdk by tasks.registering(Sync::class) {
     into(publishedSdkRepoDir)
 }
 
-val buildExamplePlugin by tasks.registering(Exec::class) {
+// The FOUR external example plugins are built by ONE task, and the four
+// STANDALONE builds they live in are built CONCURRENTLY.
+//
+// What this used to be: four `Exec` tasks, one per plugin, each forking its
+// own `gradlew -p <pluginDir>` against the published SDK. Four tasks of the
+// SAME project never run in parallel, so those four nested builds ran one
+// after another — four client starts, four daemon negotiations, and no
+// concurrency between them.
+//
+// What it is now: one `Exec` task that forks ONE Gradle invocation over the
+// composite in `examples/example-plugins`. That composite INCLUDES the four
+// standalone plugin builds — they are still the ROOT of their own build, which
+// is what the open-world claim they certify depends on — and asks for their
+// `jar` task. Included builds of a composite are independent projects of ONE
+// build, so Gradle builds them CONCURRENTLY.
+//
+// MEASURED on this tree (2026-11-03), six trials each, alternating so that a
+// drifting machine cannot favour one variant, every trial from scratch (the
+// plugins' build directories deleted before it):
+//
+//   four nested builds in series: 40,7 / 13,1 / 12,6 / 12,0 / 11,9 / 11,4 s
+//   one composite invocation:    10,3 /  8,2 /  6,4 /  6,4 /  6,6 /  6,1 s
+//
+// The first trial of each sequence pays for starting the Gradle daemon, so the
+// STEADY STATE is the last five of each: in series, 11,4 s to 13,1 s (median
+// 11,9 s); in composite, 6,1 s to 8,2 s (median 6,4 s). The composite saves
+// about 5,6 s — roughly 47% — on the work it replaces, and it produces the same
+// four JARs, byte for byte.
+//
+// WHEN that cost is paid is stated rather than assumed. The published SDK is
+// this task's INPUT, and the published SDK is REPRODUCIBLE: `gradlew clean`
+// followed by a rebuild produces a byte-identical repository, so this task
+// stays UP-TO-DATE and the nested build does not run at all (measured: the four
+// former tasks reported UP-TO-DATE after a clean, in 3,3 s of configuration).
+// The cost above is paid when the published SDK CONTENT changes, or when a
+// plugin source changes: exactly the moments when a developer is changing the
+// contracts these plugins compile against.
+val buildExamplePlugins by tasks.registering(Exec::class) {
     group = "build"
-    description = "Builds the independent external example plugin against this revision's SDK."
+    description = "Builds the four independent external example plugins against this revision's SDK, concurrently."
     dependsOn(unpackPublishedSdk)
 
-    val pluginDir = file("../examples/example-uppercase-plugin")
-    inputs.dir(pluginDir.resolve("src"))
-    inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
+    val compositeDir = file("../examples/example-plugins")
+    val pluginDirs = listOf(
+        file("../examples/example-uppercase-plugin"),
+        file("../examples/example-directive-plugin"),
+        file("../examples/example-block-plugin"),
+        file("../examples/example-saga-plugin"),
+    )
+    pluginDirs.forEach { pluginDir ->
+        inputs.dir(pluginDir.resolve("src"))
+        inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
+    }
+    // The composite's own files are inputs too: the aggregation IS part of the
+    // build that produces the JARs, and editing it has to re-run that build.
+    inputs.files(compositeDir.resolve("settings.gradle.kts"), compositeDir.resolve("build.gradle.kts"))
     // The published SDK is this build's INPUT, and it is declared as one.
     //
     // The plugin's output depends on the SDK it compiles against, not on the
@@ -666,157 +714,100 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
     // it remembers changed would keep the plugin it compiled against the
     // previous SDK, and the resolution would never happen again.
     inputs.dir(publishedSdkRepoDir)
-    // Declare rootProject.version as an explicit input. See
-    // buildExampleBlockPlugin for the full story (apiRange goes stale when
-    // the host version bumps but the SDK jar content does not).
+    // Declare rootProject.version as an explicit input. The example plugins'
+    // Gradle property `-PsdkVersion=` is derived from this value at
+    // commandLine time, but Gradle's default fingerprint for an Exec task does
+    // NOT see the version string when only the SDK jar content is declared as
+    // an input. A bump from 0.59.0 to 0.60.0 with no source change previously
+    // left the example plugin's apiRange at [0.59.0, 0.60.0), which the
+    // shipped installDist then refused as IncompatibleApiRange. Without this
+    // property declared, every `pipelinek run` against that installDist
+    // exited 2 BEFORE the run body compiled.
     inputs.property("rootProject.version", rootProject.version.toString())
-    outputs.file(pluginDir.resolve("build/libs/example-uppercase-plugin-0.1.0.jar"))
+    // Each plugin's JAR is an output of this task.
+    //
+    // Gradle does NOT fail a task whose declared output was never produced. MEASURED
+    // on this tree (2026-11-03): a composite that included three of the four builds
+    // left the whole build SUCCESSFUL with the fourth JAR absent. So the check
+    // below is not a redundancy — it is the only thing that stands between a
+    // composite that quietly builds three plugins and a distribution that ships
+    // three plugins and calls it four.
+    val pluginJars = pluginDirs.map { pluginDir -> pluginDir.resolve("build/libs/${pluginDir.name}-0.1.0.jar") }
+    outputs.files(pluginJars)
 
     workingDir = rootDir
     commandLine(
         rootDir.resolve("gradlew").absolutePath,
-        "-p", pluginDir.absolutePath,
+        "-p", compositeDir.absolutePath,
         "--console=plain",
         "-PsdkRepo=" + publishedSdkRepoDir.get().asFile.absolutePath,
         // Pass the SDK version the external plugin must resolve. Without this the
         // plugin's default sdkVersion is 0.1.0-SNAPSHOT, which is not in the local
-        // sdk-repo (it carries the root project version 0.39.0). The --rerun-tasks
+        // sdk-repo (it carries the root project version). The --rerun-tasks
         // failure mode observed was caused by this omission: the example
         // build re-resolved the SDK from scratch, hit the default version, and could
-        // not find the module.
+        // not find the module. The property reaches the four included builds
+        // because Gradle propagates command-line project properties to every
+        // build of a composite.
         "-PsdkVersion=" + rootProject.version.toString(),
-        "jar",
+        "buildExamplePlugins",
     )
+
+    doLast {
+        val missing = pluginJars.filterNot { it.isFile }
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "buildExamplePlugins: the composite did not produce " +
+                    "${missing.joinToString(", ") { it.name }}. The composite in " +
+                    "${compositeDir.absolutePath} must include every example plugin build; " +
+                    "a build that reports success while shipping a missing plugin is not " +
+                    "a build.",
+            )
+        }
+    }
 }
 
-// The external plugin is now the SUBJECT of a test:pipeline-application, and a test
-// whose subject is optional is a test that passes by omission. `the artifact really carries a
-// manifest and all four ServiceLoader descriptors` would report the absence of every family as a
-// clean sheet rather than as a missing build.
-// The cost is real and is stated rather than discovered later: every `check` now publishes to
-// sdk-repo and forks a second Gradle against the working tree, which is exactly what the three
-// external builds below were kept out of `check` to avoid. It is paid here because the other
-// tasks produce artifacts nothing under `check` inspects, while this one produces the artifact
-// that decides whether the plugin contract is real.
-// FAST LANE : the subject test now lives in `:pipeline-application`'s
-// `pluginContractTest` lane, which declares the three JARs as a buildable file collection
-// over the tasks that produce them. THIS WIRING IS NOW REDUNDANT AND DELETED, and that is
-// the whole point of the change. It used to read
-// `tasks.named("test") { dependsOn(buildExamplePlugin) }`: the INNER LOOP paid for external
-// certification — republishing the SDK to sdk-repo and forking a second
-// Gradle — on every run after a `pipeline-domain` edit, which is the most common edit there
-// is. That contradicted the fast-lane contract `pipeline-application/build.gradle.kts`
-// documents 600 lines away, and the two files could each be read in isolation without the
-// contradiction being visible. `:pipeline-application`'s `tasks.test` now carries a `doFirst`
-// invariant that fails the build if an external plugin build reappears in the RESOLVED
-// fast-lane graph, so this cannot be re-introduced from a second file.
-// The `withPlugin` hook this block used is gone with it. The BCV block below hooks the
-// same way for the same reason (the root script is evaluated before the Kotlin JVM plugin
-// creates the subproject's tasks).
+// The external plugin builds are kept OUT of `check` and out of `:test`, and
+// this is the note that says why.
+//
+// The subject of the plugin certification used to be a test in
+// `:pipeline-application`, and a test whose subject is optional is a test that
+// passes by omission: `the artifact really carries a manifest and all four
+// ServiceLoader descriptors` reported the absence of every family as a clean
+// sheet rather than as a missing build. The `pluginContractTest` lane that
+// carried that certification was REMOVED (see "TEST LANES REMOVED" in
+// `pipeline-application/build.gradle.kts`), together with the `doFirst`
+// invariant that refused to let `:test` depend on the external plugin builds:
+// its subject was a lane split that no longer exists.
+//
+// What survives is the constraint this build still honours: the external plugin
+// builds do not re-enter the RESOLVED `check`/`test` graph. The FAST LANE
+// contract in `pipeline-application/build.gradle.kts` says the same thing from
+// the other side, and the two files can be read in isolation without the
+// contradiction being visible — which is why the constraint is stated in both.
+//
+// The `withPlugin` hook this block used is gone with it. The BCV block below
+// hooks the same way for the same reason (the root script is evaluated before
+// the Kotlin JVM plugin creates the subproject's tasks).
 
-// The Saga consumer's analogue. It is the external proof that the Saga
-// contract is reachable from OUTSIDE the build, through the published
-// capabilities, with the engine owning the state: the scenarios drive a
-// compensation loop with a plugin that knows nothing of the runtime's
-// internals.
-val buildExampleSagaPlugin by tasks.registering(Exec::class) {
-    group = "build"
-    description = "Builds the independent external Saga consumer against this revision's SDK."
-    dependsOn(unpackPublishedSdk)
-
-    val pluginDir = file("../examples/example-saga-plugin")
-    inputs.dir(pluginDir.resolve("src"))
-    inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
-    // The published SDK is this build's input, and it is declared as one: a
-    // change to what the product publishes has to run this build again, or the
-    // consumer would keep the plugin it compiled against the previous SDK and
-    // the resolution would never happen again.
-    inputs.dir(publishedSdkRepoDir)
-    inputs.property("rootProject.version", rootProject.version.toString())
-    outputs.file(pluginDir.resolve("build/libs/example-saga-plugin-0.1.0.jar"))
-
-    workingDir = rootDir
-    commandLine(
-        rootDir.resolve("gradlew").absolutePath,
-        "-p", pluginDir.absolutePath,
-        "--console=plain",
-        "-PsdkRepo=" + publishedSdkRepoDir.get().asFile.absolutePath,
-        "-PsdkVersion=" + rootProject.version.toString(),
-        "jar",
-    )
-}
-
-// The directive analogue of buildExamplePlugin. The external directive
-// plugin proves the directive kernel is open by key from outside the build.
-val buildExternalDirectivePlugin by tasks.registering(Exec::class) {
-    group = "build"
-    description = "Builds the independent external directive plugin against this revision's SDK."
-    dependsOn(unpackPublishedSdk)
-
-    val pluginDir = file("../examples/example-directive-plugin")
-    inputs.dir(pluginDir.resolve("src"))
-    inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
-    // The published SDK is this build's input, and it is declared as one: a
-    // change to what the product publishes has to run this build again, or the
-    // consumer would keep the plugin it compiled against the previous SDK and
-    // the resolution would never happen again.
-    inputs.dir(publishedSdkRepoDir)
-    // Declare rootProject.version as an explicit input. See
-    // buildExampleBlockPlugin for the full story.
-    inputs.property("rootProject.version", rootProject.version.toString())
-    outputs.file(pluginDir.resolve("build/libs/example-directive-plugin-0.1.0.jar"))
-
-    workingDir = rootDir
-    commandLine(
-        rootDir.resolve("gradlew").absolutePath,
-        "-p", pluginDir.absolutePath,
-        "--console=plain",
-        "-PsdkRepo=" + publishedSdkRepoDir.get().asFile.absolutePath,
-        "-PsdkVersion=" + rootProject.version.toString(),
-        "jar",
-    )
-}
-
-// The BODY-bearing analogue. This plugin is the proof that the
-// Corrected claim holds from outside the build: its handler drives its own body
-// through the bound continuation, compiled against the public SDK only. It is built as an
-// INDEPENDENT Gradle project on purpose — if it needed anything from pipeline-application,
-// the open-world claim this WU certifies would be false.
-val buildExampleBlockPlugin by tasks.registering(Exec::class) {
-    group = "build"
-    description = "Builds the independent external body plugin against this revision's SDK."
-    dependsOn(unpackPublishedSdk)
-
-    val pluginDir = file("../examples/example-block-plugin")
-    inputs.dir(pluginDir.resolve("src"))
-    inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
-    // The published SDK is this build's input, and it is declared as one: a
-    // change to what the product publishes has to run this build again, or the
-    // consumer would keep the plugin it compiled against the previous SDK and
-    // the resolution would never happen again.
-    inputs.dir(publishedSdkRepoDir)
-    // Declare rootProject.version as an explicit input. The
-    // example plugin's Gradle property `-PsdkVersion=` is derived from this
-    // value at commandLine time, but Gradle's default fingerprint for an
-    // Exec task does NOT see the version string when only the SDK jar content
-    // is declared as an input. A bump from 0.59.0 to 0.60.0 with no source
-    // change previously left the example plugin's apiRange at [0.59.0, 0.60.0),
-    // which the shipped installDist then refused as IncompatibleApiRange.
-    // Without this property declared, every `pipelinek run` against that
-    // installDist exited 2 BEFORE the run body compiled.
-    inputs.property("rootProject.version", rootProject.version.toString())
-    outputs.file(pluginDir.resolve("build/libs/example-block-plugin-0.1.0.jar"))
-
-    workingDir = rootDir
-    commandLine(
-        rootDir.resolve("gradlew").absolutePath,
-        "-p", pluginDir.absolutePath,
-        "--console=plain",
-        "-PsdkRepo=" + publishedSdkRepoDir.get().asFile.absolutePath,
-        "-PsdkVersion=" + rootProject.version.toString(),
-        "jar",
-    )
-}
+// WHY THERE ARE FOUR PLUGINS. Each one is a DIFFERENT proof, and each one is
+// built as an INDEPENDENT Gradle project on purpose: a plugin that needed
+// anything from pipeline-application would make the open-world claim it
+// certifies false.
+//
+//   * uppercase — the plugin contract is reachable at all from outside.
+//   * directive — the directive kernel is open by key from outside the build.
+//   * block     — the handler drives its own body through the bound
+//                  continuation, compiled against the public SDK only; the
+//                  Corrected claim holds from outside the build.
+//   * saga      — the Saga contract is reachable from OUTSIDE the build,
+//                  through the published capabilities, with the engine owning
+//                  the state: the scenarios drive a compensation loop with a
+//                  plugin that knows nothing of the runtime's internals.
+//
+// Their BUILD is one task (above) and their PROOF is four different claims.
+// The composite changes WHEN they are built, not WHAT they are: the four JARs
+// stay four JARs, and the distribution still ships four plugins.
 
 // Stage the four external example
 // plugin JARs into the application distribution so the releaseGate (and
@@ -835,7 +826,7 @@ val stageExternalExamples by tasks.registering {
         "plugins (block, directive, uppercase, saga) into pipeline-application/lib/ so " +
         "the distribution ZIP carries them as bundled plugins."
 
-    dependsOn(buildExamplePlugin, buildExternalDirectivePlugin, buildExampleBlockPlugin, buildExampleSagaPlugin)
+    dependsOn(buildExamplePlugins)
 
     val appLibDir = file("pipeline-application/build/install/pipelinek/lib")
     val targets = listOf(
@@ -888,10 +879,7 @@ project(":pipeline-application").pluginManager.withPlugin("org.jetbrains.kotlin.
         "example-saga-plugin-0.1.0.jar",
     )
     val externalBuildTasks = listOf(
-        "buildExamplePlugin",
-        "buildExternalDirectivePlugin",
-        "buildExampleBlockPlugin",
-        "buildExampleSagaPlugin",
+        "buildExamplePlugins",
     )
     appProject.tasks.matching {
         it.name == "distZip" || it.name == "installDist" || it.name == "startScripts"

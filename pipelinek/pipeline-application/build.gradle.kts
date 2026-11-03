@@ -209,24 +209,15 @@ dependencies {
     implementation(libs.sqlite.jdbc)
     implementation(libs.kotlinx.coroutines.core)
 
-    // The three external example
+    // The four external example
     // plugins are mandatory in the release gate. Wiring them as
     // `runtimeOnly` files puts their JARs on the runtime classpath of
     // the application, which `installDist` then stages into `lib/`
     // (and the `distZip` packages alongside the four official
     // :pipeline-step-sdk plugins). The external JARs are produced by
-    // :buildExamplePlugin, :buildExternalDirectivePlugin, and
-    // :buildExampleBlockPlugin in the root build, all of which depend
-    // on `publishSdkForExternalPlugin` so the JARs exist before the
-    // `runtimeOnly` files puts their JARs on the runtime classpath of
-    // the application, which `installDist` then stages into `lib/`
-    // (and the `distZip` packages alongside the four official
-    // :pipeline-step-sdk plugins). The external JARs are produced by
-    // :buildExamplePlugin, :buildExternalDirectivePlugin, and
-    // :buildExampleBlockPlugin in the root build, all of which depend
-    // on `publishSdkForExternalPlugin` so the JARs exist before the
-    // application graph is wired.
-    // The `pluginContractTest` source set that used to reach these same three JAR files is
+    // `:buildExamplePlugins` in the root build, which builds the four
+    // standalone plugin builds concurrently in ONE invocation.
+    // The `pluginContractTest` source set that used to reach these same four JAR files is
     // gone (see TEST LANES REMOVED below), so this `runtimeOnly` line is now the ONLY
     // declaration of them. That is the right shape: they are PRODUCT plugins of the shipped
     // distribution, and the certification that consumed them was QA scaffolding.

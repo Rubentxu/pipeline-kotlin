@@ -62,7 +62,6 @@ class WaitUntilInlinePollEventTest {
         val engine = BodyExecutionEngine(
             eventSink = sink,
             clock = FixedClock,
-            bodyInvokerAdapter = CanonicalBodyInvokerAdapter(),
             telemetry = NoopPipelineTelemetry,
         )
 

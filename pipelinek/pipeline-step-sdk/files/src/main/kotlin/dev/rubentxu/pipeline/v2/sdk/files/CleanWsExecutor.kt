@@ -60,11 +60,10 @@ class CleanWsExecutor(
      * Executes a [StepSpec.CleanWs] step.
      * @param stageName The stage name
      * @param stageIndex The stage index
-     * @param stepIndex The step index (unused — event emission deferred to dispatcher)
      * @param spec The cleanWs step specification
      * @return [CleanWsResult]
 */
-    fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.CleanWs): CleanWsResult {
+    fun execute(stageName: String, stageIndex: Int, spec: StepSpec.CleanWs): CleanWsResult {
         val workspace = workspaceResolver(stageName, stageIndex)
         val v2ArtifactsRoot = workspace.resolve(".v2").resolve("artifacts")
 

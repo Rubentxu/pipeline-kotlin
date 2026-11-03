@@ -58,7 +58,6 @@ class ShOperationsAdapter(
             command = command,
             opId = this.opId,
             runId = runIdString,
-            stageIndex = 0,
             stepIndex = stepIndex,
             shOptions = shOptions,
             controlDirRoot = controlDirRoot,

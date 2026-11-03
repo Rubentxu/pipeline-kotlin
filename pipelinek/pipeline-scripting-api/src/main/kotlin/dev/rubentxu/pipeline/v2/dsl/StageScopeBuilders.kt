@@ -30,10 +30,9 @@ internal class CarrierRegistry {
      * wraps `GitScm`), so two carriers built by two calls with the same
      * arguments are EQUAL. A map keyed by equality therefore holds ONE entry
      * for two distinct carriers: consuming one removes that entry, and the
-     * other carrier -- discarded -- is never refused. OBSERVED before this
-     * fix: two `scmGit` calls with the same URL, of which only one was
-     * consumed, produced an ADMITTED stage. The author asked for two
-     * checkouts, got one, and the gate reported that nothing was pending.
+     * other carrier -- discarded -- is never refused. Two `scmGit` calls with
+     * the same URL, of which only one is consumed, is exactly that case, and
+     * the author would get one checkout where they asked for two.
      *
      * WHY A WRAPPER AND NOT `IdentityHashMap`: the obligations are read back
      * in the diagnostic, and that diagnostic has to be REPRODUCIBLE. An
@@ -77,8 +76,7 @@ internal class CarrierRegistry {
  * Shared mutable state for the stage DSL builders.
  * `[MustUseReturnValues]` is applied at
  * CLASS level, not per function, because Kotlin 2.4 restricts the annotation to
- * targets `file` and `class` (OBSERVED: compiling it on a member function fails
- * with "not applicable to target 'member function'").
+ * targets `file` and `class`.
  * Class level is also the semantically right granularity here: it covers every
  * pure builder declared on this scope, so a future `PURE_BUILDER` added to this
  * class inherits the gate without anyone having to remember to annotate it. The
@@ -97,8 +95,8 @@ internal class CarrierRegistry {
  * all-or-nothing per compilation, so it stays silent for them.
  * The real, enforced gate is the admission-time carrier registry below, which
  * classifies each carrier individually and therefore CANNOT be over-applied.
- * The annotation is retained as a free first line of defence that starts
- * biting the day the scripting host honours `-Xreturn-value-checker=check`.
+ * The annotation is the compile-time first line, and it bites on the paths where
+ * the checker is enabled.
 */
 @MustUseReturnValues
 open class StageScopeCore(
@@ -112,17 +110,13 @@ open class StageScopeCore(
     // ------------------------------------------------------------------
     // WHY THIS EXISTS NEXT TO `@MustUseReturnValues`
     // ================================================
-    // The annotation is the FIRST line of defence and it is not sufficient
-    // on its own. OBSERVED: `compilerOptions`/`-Xreturn-value-checker=check`
-    // is referenced by exactly one class in the Kotlin 2.4.10 distribution,
-    // `org.jetbrains.kotlin.scripting.definitions.ScriptDefinition` in
-    // `kotlin-scripting-compiler-impl-embeddable`, and by nothing in
-    // `kotlin-scripting-jvm` or `kotlin-scripting-jvm-host`. The scripting
-    // host in use therefore never applies the flag: a discarded
-    // `@MustUseReturnValues` result still compiles and the run still
-    // succeeds with an empty stage. The annotation is kept because it
-    // costs nothing and starts working the day the host does; this
-    // registry is what makes the gate REAL today.
+    // The annotation is the FIRST line of defence and it is not sufficient on
+    // its own, because its reach depends on HOW the script is compiled. The
+    // flag `-Xreturn-value-checker=check` is read by `ScriptDefinition`, which
+    // only `evalWithTemplate` constructs: a host handed a pre-built
+    // `ScriptCompilationConfiguration` bypasses that read, and there a
+    // discarded `@MustUseReturnValues` result compiles silently. This registry
+    // does not depend on the compiler at all, so it holds on every path.
     // The rule is expressed as DATA, not as a per-builder name check:
     // a PURE_BUILDER registers the carrier it hands out, and a consumer
     // marks that exact carrier as consumed. Anything registered and never
@@ -130,25 +124,17 @@ open class StageScopeCore(
     // change here, and no builder is named in this file.
     // THE REGISTRY BELONGS TO THE STAGE, NOT TO THE SCOPE.
     // ======================================================
-    // OBSERVED: the registry used to be a field PER SCOPE INSTANCE while the
-    // only admission point is the STAGE (`StagesScope.stage(..)` calls
-    // `rejectUnconsumedCarriers()` on the root scope). Two wrong outcomes
-    // followed, and both were observable:
-    //
-    //  - a carrier produced INSIDE a nested block (`retry`, `dir`,
-    //    `withCredentials`, `slot`, `catchError`, ...) was registered in a map
-    //    nobody ever read: the stage closed, the pipeline ran, and the
-    //    checkout the author asked for never happened;
-    //  - a carrier produced in the stage and CONSUMED inside a nested block
-    //    was marked in the NESTED registry, so the stage still believed it
-    //    was unconsumed and refused a pipeline that had used the carrier
-    //    exactly as it was meant to be used.
-    //
-    // A nested scope is a lexical block of the same stage, not a stage of its
-    // own: it shares the carrier registry BY REFERENCE, so the stage-level
-    // verdict sees every carrier the stage produced and every consumption the
-    // stage performed. `internal` keeps this off the published ABI: the
-    // registry is an implementation detail of the admission gate.
+    // The only admission point is the STAGE (`StagesScope.stage(..)` calls
+    // `rejectUnconsumedCarriers()` on the root scope), so the registry is the
+    // stage's. A nested scope is a lexical block of the same stage, not a
+    // stage of its own: it shares the carrier registry BY REFERENCE, so the
+    // stage-level verdict sees every carrier the stage produced and every
+    // consumption the stage performed. A carrier produced inside a nested
+    // block (`retry`, `dir`, `withCredentials`, `slot`, `catchError`, ...) is
+    // therefore refused when the stage never consumes it, and a consumption
+    // performed inside a nested block counts for the stage.
+    // `internal` keeps this off the published ABI: the registry is an
+    // implementation detail of the admission gate.
     internal var carrierRegistry: CarrierRegistry = CarrierRegistry()
 
     /**
@@ -181,21 +167,12 @@ open class StageScopeCore(
         // `kotlin.error` EXPLICITO, NOT the bare `error(..)`:
         // this class declares a MEMBER `error(message, failureKind)` that
         // APPENDS a `StepSpec.Error` to the stage, and a member shadows the
-        // top-level `kotlin.error` inside the class body. OBSERVED before the
-        // fix: the bare call resolved to the member, so the gate never
-        // refused anything — it appended a step, the pipeline was built, and
-        // the discard surfaced as a RUNTIME step failure instead of a
-        // pipeline that was never built. A gate that reports its verdict as a
-        // step is not a gate.
+        // top-level `kotlin.error` inside the class body. The bare call would
+        // therefore append a step instead of refusing the pipeline, and a
+        // gate that reports its verdict as a step is not a gate.
         kotlin.error("Pure builder consumption gate: $detail")
     }
 
-    /**
-     * A nested scope is a lexical block of the SAME stage, so it shares the
-     * stage's carrier registry by reference: a carrier produced inside it is
-     * seen by the stage-level admission, and a consumption performed inside it
-     * is seen too.
-    */
     protected fun nestedScope(): StageScope =
         StageScope(stageName, runtimeConfig).also { it.carrierRegistry = carrierRegistry }
 
@@ -222,11 +199,11 @@ open class StageScopeCore(
     }
 
     /**
-     * The STABLE historical spelling, kept as a validated adapter.
-     * `error` is STABLE, so `error("boom", "USER")` keeps
-     * compiling. What it no longer does is ACCEPT anything: the token is validated here, at
-     * script-construction time, and an unrecognised one refuses the pipeline before a run
-     * exists. See [LegacyResultVocabulary].
+     * The published spelling of `error` that takes the failure kind as a
+     * string token, kept as a validated adapter: `error("boom", "USER")` keeps
+     * compiling. The token is validated here, at script-construction time, and
+     * an unrecognised one refuses the pipeline before a run exists. See
+     * [LegacyResultVocabulary].
      * `failureKind` has no default so that `error("boom")` is not ambiguous between the two
      * overloads; the bare call resolves to the typed one.
 */
@@ -259,16 +236,13 @@ open class StageScopeCore(
      * [CheckoutSpec] and emits nothing.
      * `git(..)` is defined as `checkout(scmGit(..).scm)`, so this builder MUST NOT emit
      * the step itself: emitting here as well would make one checkout produce TWO
-     * `Checkout` steps. A side effect here is invisible to the `non-canonical plugins`
-     * bridge gate because every emitted step is canonical, which is how a duplicate
-     * survives an audit that records the surface as gated.
+     * `Checkout` steps.
      * Purity constrains EFFECTS, not the
      * fate of the carrier. `[MustUseReturnValues]` makes discarding the
      * `[CheckoutSpec]` a compile error inside `.pipeline.kts` (the scripting host
      * enables `-Xreturn-value-checker=check`), because a statement-position
-     * `scmGit(..)` that compiles and produces a `success` run with an empty stage
-     * and zero checkouts would give the author a checkout they silently did not
-     * get. The annotation does not change purity: this still returns a value and
+     * `scmGit(..)` that compiles would give the author a checkout they silently
+     * did not get. The annotation does not change purity: this still returns a value and
      * still emits no step and no event.
 */
     fun scmGit(

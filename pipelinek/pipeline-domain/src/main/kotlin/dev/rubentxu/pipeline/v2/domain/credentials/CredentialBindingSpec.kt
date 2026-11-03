@@ -6,10 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 /**
  * Sealed specification describing HOW a [Credential] is bound to environment
  * variables for a `withCredentials` step.
- * This is the typed binding model. It replaces the flat DSL
- * `StepSpec.CredentialsBinding` (which is a single data class with 7 nullable
- * fields) and the four-way duplicate in `:pipeline-binding-factory` /
- * `:pipeline-credentials-api` / `:pipeline-credentials-executor`.
+ * This is the typed binding model.
  * ## Why a sealed hierarchy
  * The kind is a static type, not a runtime tag. Each subtype carries only the
  * fields that ARE valid for that binding — so a `StringBinding` cannot mention
@@ -22,8 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
  *  - [CredentialProjection][dev.rubentxu.pipeline.v2.domain.credentials.CredentialProjection]
  *    (which consumes the spec) can sit in domain.
  *  - `:pipeline-credentials-executor` can depend on the domain type instead of
- *    the DSL type (inverts the prior direction).
- *  - `:pipeline-binding-factory` becomes redundant (delete it).
+ *    the DSL type.
  * @see Credential for the corresponding sealed hierarchy of typed credentials.
 */
 sealed interface CredentialBindingSpec {
@@ -146,9 +142,7 @@ val CredentialBindingSpec.boundPurpose: BoundPurpose
     }
 
 /**
- * Ergonomic factory methods that mirror the legacy
- * `:pipeline-binding-factory/CredentialsBindingFactory` shape but produce
- * `:pipeline-domain` sealed types.
+ * Ergonomic factory methods that produce `:pipeline-domain` sealed types.
  * Field ordering follows Jenkins-verbatim conventions (keystoreVariable first on
  * certificate, etc.) but the *factory* signature keeps credentialsId-first where
  * the Jenkins shape allows it, for ergonomic DSL/script calls.

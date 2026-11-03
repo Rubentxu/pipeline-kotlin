@@ -43,7 +43,6 @@ class DirExecutor(
      * The controller JVM working directory is never mutated.
      * @param stageName The current stage name
      * @param stageIndex The current stage index
-     * @param stepIndex The step index for this dir step
      * @param step The dir step spec
      * @param action Action to execute while in the directory
      * @return [DirResult] with path tracking information
@@ -52,7 +51,6 @@ class DirExecutor(
     fun execute(
         stageName: String,
         stageIndex: Int,
-        stepIndex: Int,
         step: StepSpec.Dir,
         action: () -> String,
     ): DirResult {

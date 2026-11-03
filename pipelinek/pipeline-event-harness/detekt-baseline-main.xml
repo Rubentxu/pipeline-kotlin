@@ -3,8 +3,6 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>UnnecessaryFilter:EventHarness.kt:EventHarness$filter { it.kind == "RunFinished" }</ID>
-    <ID>UnusedPrivateProperty:ProtocolGrammar.kt:ProtocolGrammar$private const val CONTEXT = 4 // bounded window around the violating event</ID>
-    <ID>UnusedVariable:EventHarness.kt:EventHarness$val r = verify(history, contract, scope)</ID>
     <ID>UseOrEmpty:YamlEventContractCodec.kt:YamlEventContractCodec$b["where"] as? Map&lt;String, Any&gt; ?: emptyMap()</ID>
   </CurrentIssues>
 </SmellBaseline>

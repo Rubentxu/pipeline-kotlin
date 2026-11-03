@@ -173,15 +173,6 @@ class LocalSecretStore(
         private const val KIND_USERNAME_COLON_PASSWORD: Short = 7
 
         /**
-         * Payload marker of a part that links to another credential. The
-         * referenced id follows the marker, without a length prefix of its own.
-*/
-        private const val LINKED_REF_MARKER: Int = -1
-
-        /** Payload marker of a part that is declared but has no value. */
-        private const val ABSENT_MARKER: Int = 0
-
-        /**
          * Maps a Credential simple name to a kind ID.
 */
         fun kindIdFor(credential: Credential): Short = when (credential) {
@@ -736,7 +727,7 @@ class LocalSecretStore(
             }
             // Extract the "value" part from SecretText using canonical format
             val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
-            val partCount = buf.get().toInt()
+            buf.get().toInt() // partCount
             val nameLen = buf.get().toInt()
             if (nameLen > buf.remaining()) {
                 throw SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
@@ -778,7 +769,7 @@ class LocalSecretStore(
 */
     private fun extractLinkedRefFromSshPrivateKey(plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
         val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
-        val partCount = buf.get().toInt()
+        buf.get().toInt() // partCount
         // Skip username part
         run {
             val nameLen = buf.get().toInt() and 0xFF
@@ -819,7 +810,7 @@ class LocalSecretStore(
 */
     private fun extractLinkedRefFromCertificate(plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
         val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
-        val partCount = buf.get().toInt()
+        buf.get().toInt() // partCount
         // Skip keystore part
         run {
             val nameLen = buf.get().toInt() and 0xFF

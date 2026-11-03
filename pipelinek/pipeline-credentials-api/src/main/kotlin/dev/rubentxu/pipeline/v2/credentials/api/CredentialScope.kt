@@ -31,7 +31,8 @@ import java.util.UUID
  * Wipe failures propagate via `addSuppressed` and do NOT prevent step completion.
  * The first exception is rethrown; subsequent exceptions are suppressed.
  * @param store The credential store (e.g., [LocalSecretStore])
- * @param bindings The credential bindings active in this scope
+ * @param bindings The credential bindings active in this scope. The scope resolves
+ *   each of them on demand through [env]; the list states which ones are active.
  * @param eventSink The event sink for audit events
  * @param clock Clock for event timestamps
  * @param runId The run identifier for audit events

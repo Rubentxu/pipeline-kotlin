@@ -42,7 +42,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * of being told they have no credentials.
 */
 class BasicCredentialsCapabilityContributor(
-    private val provider: CredentialProvider?,
+    provider: CredentialProvider?,
 ) : RuntimeCapabilityContributor {
 
     private val source: BasicCredentialSource = provider?.let { ProviderBackedSource(it) }

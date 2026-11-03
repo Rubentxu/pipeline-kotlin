@@ -102,33 +102,6 @@ internal object EnvVarNameExtractor {
     }
 
     /**
-     * Finds the index of the opening `{` that starts the lambda block inside withCredentials.
-     * The binding call list ends just before this brace.
-*/
-    private fun findOpeningBrace(text: String, from: Int, before: Int): Int {
-        var depth = 0
-        var inString = false
-        var stringChar: Char = 0.toChar()
-        var i = from
-        while (i < before) {
-            val c = text[i]
-            if (!inString) {
-                when (c) {
-                    '(' -> depth++
-                    ')' -> depth--
-                    '{' -> if (depth == 0) return i
-                }
-            } else {
-                if (c == stringChar && (c != '\\' || i > 0 && text[i - 1] != '\\')) {
-                    inString = false
-                }
-            }
-            i++
-        }
-        return -1
-    }
-
-    /**
      * Finds the matching `)` for the `(` at [openParen], respecting nested `()` and strings.
 */
     private fun findMatchingParen(text: String, openParen: Int): Int {

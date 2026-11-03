@@ -719,4 +719,3 @@ private val EventLane.storeOrNull: SqliteEventStore?
         EventLane.NotNamed -> null
     }
 
-private fun ObservationParseResult.Parsed.controlRootOrNull(): String? = this.controlRoot

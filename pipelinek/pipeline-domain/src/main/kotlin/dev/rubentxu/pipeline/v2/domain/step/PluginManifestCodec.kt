@@ -512,7 +512,7 @@ private class JsonCursor(private val source: String) {
                 '"' -> return sb.toString()
                 '\\' -> {
                     if (pos >= source.length) return null
-                    when (val esc = source[pos++]) {
+                    when (source[pos++]) {
                         '"' -> sb.append('"')
                         '\\' -> sb.append('\\')
                         '/' -> sb.append('/')

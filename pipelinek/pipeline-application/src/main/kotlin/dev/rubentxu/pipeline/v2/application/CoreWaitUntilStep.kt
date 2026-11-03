@@ -157,8 +157,6 @@ object CoreWaitUntilStep {
 
     val KEY: PluginStepId = PluginStepId("core.waitUntil")
 
-    private const val DEADLINE_MS = Long.MAX_VALUE
-
     /** The wire kind of a wait that ENDED. Frozen: an older journal carries it. */
     private const val COMPLETED_OUTPUT_KIND = "waitUntil"
 

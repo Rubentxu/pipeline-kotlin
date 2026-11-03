@@ -109,12 +109,10 @@ class WorkspaceOperationsAdapter(
         Files.createDirectories(base)
         val executor = FileWriteExecutor(
             workspaceResolver = { _, _ -> base },
-            eventSink = eventSink,
         )
         val result = executor.execute(
             stageName,
             stageIndex,
-            0,
             StepSpec.WriteFile(file = file, text = text, encoding = encoding),
         )
         // Single-emitter: the adapter is the ONLY FileWritten emitter (
@@ -140,7 +138,7 @@ class WorkspaceOperationsAdapter(
         val base = effectiveWorkspaceRoot(controlDirRoot)
         val result = FileReadExecutor(
             workspaceResolver = { _, _ -> base },
-        ).execute(stageName, stageIndex, 0, StepSpec.ReadFile(file = file, encoding = encoding))
+        ).execute(stageName, stageIndex, StepSpec.ReadFile(file = file, encoding = encoding))
         // Single-emitter: the adapter is the ONLY FileRead emitter. Payload is
         // Restricted to path + sha256 + size — never content
         eventSink.append(
@@ -161,7 +159,7 @@ class WorkspaceOperationsAdapter(
         val base = effectiveWorkspaceRoot(controlDirRoot)
         val result = FileExistsExecutor(
             workspaceResolver = { _, _ -> base },
-        ).execute(stageName, stageIndex, 0, StepSpec.FileExists(file = file))
+        ).execute(stageName, stageIndex, StepSpec.FileExists(file = file))
         eventSink.append(
             FileExistsChecked(
                 eventId = UUID.randomUUID().toString(),

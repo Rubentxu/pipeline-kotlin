@@ -45,8 +45,8 @@ class GitCredentialsApplier(
     // through the canonical CredentialLinkedSecretResolver port. May still be
     // null if neither was supplied; resolveSecret/resolveAndEncode throw
     // IllegalStateException with the missing id context in that case.
-    private val effectiveResolver: CredentialLinkedSecretResolver? = linkedSecretResolver
-        ?: secretStore?.let { SecretStoreLinkedSecretResolver(it) }
+    private val effectiveResolver: CredentialLinkedSecretResolver? = this.linkedSecretResolver
+        ?: this.secretStore?.let { SecretStoreLinkedSecretResolver(it) }
 
     private val gitCredentialsFile: Path = tempDir.resolve(".git-credentials")
     private val sshKeyFile: Path = tempDir.resolve(".git-ssh-key")
@@ -296,7 +296,6 @@ class GitCredentialsApplier(
         val dollar1 = "\$1"
         val hostVar = "\$host"
         val lineVar = "\$line"
-        val secretVar = "\$secret"
         return """
             |#!/bin/bash
             |# GIT credential helper using answer-file pattern
@@ -336,7 +335,6 @@ class GitCredentialsApplier(
         val answerFileRef = "\$ANSWER_FILE"
         val promptVar = "\$prompt"
         val lineVar = "\$line"
-        val secretVar = "\$secret"
         return """
             |#!/bin/bash
             |# GIT_ASKPASS script using answer-file pattern

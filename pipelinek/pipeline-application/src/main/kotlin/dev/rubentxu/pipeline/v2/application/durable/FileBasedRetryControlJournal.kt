@@ -52,7 +52,7 @@ import java.nio.file.StandardCopyOption
  * contract drift.
 */
 class FileBasedRetryControlJournal(
-    private val controlDirRoot: Path,
+    controlDirRoot: Path,
     private val childRowReader: ChildRowReader = NullChildRowReader,
 ) : RetryControlJournal {
     private val retryControlDir: Path = controlDirRoot.resolve("retry-control")

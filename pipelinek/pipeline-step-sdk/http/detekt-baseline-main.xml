@@ -4,8 +4,6 @@
   <CurrentIssues>
     <ID>ForbiddenVoid:JdkHttpTransport.kt:JdkHttpTransport$Void</ID>
     <ID>LongParameterList:HttpDsl.kt:fun StageScope.httpRequest</ID>
-    <ID>UnusedPrivateFunction:HttpCodecs.kt:private fun JsonObject.objectField: JsonObject?</ID>
-    <ID>UnusedVariable:HttpCodecs.kt:val raw = stringOrNull(name)</ID>
     <ID>UseCheckOrError:EgressAdmission.kt:throw IllegalStateException( "a permitted admission has no failure to report", )</ID>
     <ID>UseOrEmpty:HttpCodecs.kt:(this as? JsonPrimitive)?.content ?: ""</ID>
     <ID>UseOrEmpty:HttpCodecs.kt:HttpRequestCodec$headerObj.stringField("value") ?: ""</ID>

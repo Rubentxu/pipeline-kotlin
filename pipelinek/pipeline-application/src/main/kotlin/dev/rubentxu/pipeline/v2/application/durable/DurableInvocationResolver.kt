@@ -7,7 +7,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin
 import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
-import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
@@ -124,7 +123,7 @@ internal class DurableInvocationResolver(
         journaled: DurableOperation?,
         operationId: String,
     ): InvocationReconciliation {
-        deterministicGate(currentOperation, journaled, operationId, metadata.effects, metadata.replayPolicy)?.let { return it }
+        deterministicGate(currentOperation, journaled, operationId)?.let { return it }
         if (recoveryRequirement(metadata.recoveryPolicy, journaled) == RecoveryRequirement.Required) {
             when (val observation = runningSubprocessRecovery.observe(operationId)) {
                 is RunningSubprocessObservation.Observed ->
@@ -194,8 +193,6 @@ internal class DurableInvocationResolver(
         currentOperation: RerunOperation,
         journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
         operationId: String,
-        effects: Set<Effect>,
-        replayPolicy: ReplayPolicy,
     ): InvocationReconciliation? {
         if (divergenceDetector.check(currentOperation, journaled).isFailure) {
             return InvocationReconciliation.Diverged(operationId)

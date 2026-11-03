@@ -18,8 +18,6 @@ import dev.rubentxu.pipeline.v2.harness.model.ViolationRule
 */
 object ProtocolGrammar {
 
-    private const val CONTEXT = 4 // bounded window around the violating event
-
     fun check(history: List<TypedEvent>): List<EventViolation> {
         val violations = mutableListOf<EventViolation>()
         lifecyclePairs(history, "RunStarted", "RunFinished") { started, finished, _ ->
@@ -256,7 +254,7 @@ object ProtocolGrammar {
         missing = startKind,
     )
 
-    /** Bounded context: the violating event +- CONTEXT neighbours, capped. */
+    /** Bounded context: the violating event +- 2 neighbours, capped. */
     internal fun boundedWindow(history: List<TypedEvent>, sequence: Long): List<TraceEntry> {
         val idx = history.indexOfFirst { it.sequence == sequence }
         if (idx < 0) return listOf(TraceEntry(sequence, "?", ""))

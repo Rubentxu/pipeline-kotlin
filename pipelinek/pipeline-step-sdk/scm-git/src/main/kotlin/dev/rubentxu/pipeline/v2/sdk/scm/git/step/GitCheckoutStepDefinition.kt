@@ -57,7 +57,7 @@ val SCM_GIT_OPERATIONS_CAPABILITY: StepCapability = StepCapability("scm-git.oper
  * (the default) it is resolved against the typed workspace root.
 */
 class GitCheckoutStepDefinition(
-    private val executorFactory: (workspaceRoot: Path, transcript: GitTranscript?) -> GitCheckoutExecutor =
+    executorFactory: (workspaceRoot: Path, transcript: GitTranscript?) -> GitCheckoutExecutor =
         { workspaceRoot, transcript ->
             GitCheckoutExecutor(
                 poll = GitPollExecutor(),
@@ -188,15 +188,15 @@ class GitCheckoutStepDefinition(
                 relativeTargetDir = input.relativeTargetDir,
             ),
         )
-        val sink: EventSink = eventSink ?: NullEventSink
+        val sink: EventSink = this.eventSink ?: NullEventSink
         val resolved = executor.execute(
             GitCheckoutRequest(
                 spec = spec,
                 runId = ctx.runId.value,
                 workspaceRoot = workspaceRoot,
                 eventSink = sink,
-                clock = clock,
-                secretStore = secretStore,
+                clock = this.clock,
+                secretStore = this.secretStore,
                 stepIndex = ctx.stepIndex,
                 previousRemoteSha = null,
             ),

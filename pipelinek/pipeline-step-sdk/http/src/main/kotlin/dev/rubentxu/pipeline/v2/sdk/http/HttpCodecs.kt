@@ -490,7 +490,7 @@ private fun JsonObject.intField(name: String): Int? = stringOrNull(name)?.trim()
 
 private fun JsonObject.longField(name: String): Long? = stringOrNull(name)?.trim()?.toLongOrNull()
 
-private fun JsonObject.booleanField(name: String): Boolean? = when (val raw = stringOrNull(name)) {
+private fun JsonObject.booleanField(name: String): Boolean? = when (stringOrNull(name)) {
     "true" -> true
     "false" -> false
     else -> null
@@ -504,9 +504,6 @@ private fun JsonObject.booleanField(name: String): Boolean? = when (val raw = st
 */
 private fun JsonObject.stringOrNull(name: String): String? =
     get(name)?.takeIf { it is JsonPrimitive }?.primitiveText()
-
-private fun JsonObject.objectField(name: String): JsonObject? =
-    get(name) as? JsonObject
 
 private fun kotlinx.serialization.json.JsonElement.primitiveText(): String =
     (this as? JsonPrimitive)?.content ?: ""

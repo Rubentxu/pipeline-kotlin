@@ -117,7 +117,7 @@ class RedactorState internal constructor(
  *                  per `read()` call. Default 8192.
 */
 class StreamingRedactor(
-    private val registry: SecretPatternRegistry,
+    registry: SecretPatternRegistry,
     private val chunkSize: Int = 8192,
 ) {
 

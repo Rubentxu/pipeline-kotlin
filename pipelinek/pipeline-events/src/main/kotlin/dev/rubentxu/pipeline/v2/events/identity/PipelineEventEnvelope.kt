@@ -70,8 +70,6 @@ class UnsupportedEnvelopeVersionException(val found: Int) :
 */
 object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
 
-    private val refSerializer = ResourceRefSerializer
-
     @Serializable
     private data class Wire(
         val version: Int,

@@ -140,7 +140,7 @@ internal object EventJsonFields {
         while (i < raw.length) {
             val c = raw[i]
             if (c == '\\' && i + 1 < raw.length) {
-                when (val next = raw[i + 1]) {
+                when (raw[i + 1]) {
                     '\\' -> { sb.append('\\'); i += 2 }
                     '"' -> { sb.append('"'); i += 2 }
                     'n' -> { sb.append('\n'); i += 2 }

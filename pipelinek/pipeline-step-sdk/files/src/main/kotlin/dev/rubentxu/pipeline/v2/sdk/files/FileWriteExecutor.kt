@@ -3,8 +3,6 @@ package dev.rubentxu.pipeline.v2.sdk.files
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.workspace.PathResolution
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
-import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.NullEventSink
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -42,23 +40,20 @@ data class FileWriteResult(
  * - Event emission is handled by the dispatcher which has access to DomainEvent types.
  *   The [FileWriteResult] carries all data needed for event creation.
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
- * @param eventSink Event sink (passed for future event emission by dispatcher)
 */
 class FileWriteExecutor(
     private val workspaceResolver: (stageName: String, stageIndex: Int) -> Path,
-    @Suppress("UNUSED_PARAMETER") private val eventSink: EventSink = NullEventSink,
 ) {
 
     /**
      * Executes a [StepSpec.WriteFile] step.
      * @param stageName The stage name (used as workspace identifier)
      * @param stageIndex The stage index (passed to workspace resolver)
-     * @param stepIndex The step index (unused — event emission deferred to dispatcher)
      * @param spec The writeFile step specification
      * @return [FileWriteResult] on success
      * @throws IllegalArgumentException if path escapes workspace or targets .v2 directory
 */
-    fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.WriteFile): FileWriteResult {
+    fun execute(stageName: String, stageIndex: Int, spec: StepSpec.WriteFile): FileWriteResult {
         val workspace = workspaceResolver(stageName, stageIndex)
         // Two paths, deliberately not one. `declaredPath` is what the caller wrote and is what
         // FileWriteResult.path reports, because that field is an observable, serialized output.

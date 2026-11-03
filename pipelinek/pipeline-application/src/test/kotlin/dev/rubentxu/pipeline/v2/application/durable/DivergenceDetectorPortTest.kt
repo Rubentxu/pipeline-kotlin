@@ -17,7 +17,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
-import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.directive.GateContext
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
@@ -107,7 +106,7 @@ class DivergenceDetectorPortTest {
         val current = operation()
 
         val diverged = resolver(AlwaysDivergentDetector())
-            .deterministicGate(current, current, "op-1", emptySet(), ReplayPolicy.RERUN)
+            .deterministicGate(current, current, "op-1")
         assertInstanceOf(
             InvocationReconciliation.Diverged::class.java,
             diverged,
@@ -115,7 +114,7 @@ class DivergenceDetectorPortTest {
         )
 
         val permitted = resolver(PermissiveDetector())
-            .deterministicGate(current, current, "op-1", emptySet(), ReplayPolicy.RERUN)
+            .deterministicGate(current, current, "op-1")
         assertNull(permitted, "a detector that reports no divergence must leave the gate open")
     }
 

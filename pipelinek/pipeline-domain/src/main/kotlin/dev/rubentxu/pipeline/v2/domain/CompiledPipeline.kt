@@ -41,27 +41,27 @@ data class EnvironmentSpec(val values: Map<String, String>) {
 }
 
 /**
- * DEPRECATED. Superseded by [StageOption]; nothing constructs this.
- * Retained rather than deleted, for one reason: it is PUBLISHED API. It is a
- * public class in `dev.rubentxu.pipeline.v2.domain`, so removing it outright
- * breaks every external plugin author who named it, and
- * `:pipeline-domain:apiCheck` (binary-compatibility validator) is right to
- * refuse. This is the same rule already applied to the deprecated
- * Supersede, do not silently break.
- * Why it is wrong, stated so the deprecation is informative rather than a
- * bare marker: a `name: String` / `value: String?` pair cannot express WHICH
- * options exist, so an option that no interpreter reads is indistinguishable
- * from one that is. It compiles, serializes, and does nothing — the silent drop
- * the contract names as a defect class.
- * @see StageOption for the carrier that replaced it.
- * NOTHING ENFORCES THAT IT STAYS UNUSED, and the reason is a rule rather than an
- * oversight: the fitness that could enforce it is a SOURCE-TEXT FITNESS -- it
- * greps the tree -- which AGENTS.md bans inside unit tests, so it cannot be
- * written at all. What holds the line today is only the deprecation itself:
- * a construction site would have to name a deprecated type on purpose. The
- * residual risk is real and small -- a migration that reintroduces the name/value
- * pair would reintroduce the silent drop -- and it is recorded here rather than
- * closed.
+ * A name/value option carrier. DEPRECATED: use [StageOption].
+ *
+ * Why it is wrong, stated so the deprecation is informative rather than a bare
+ * marker: a `name: String` / `value: String?` pair cannot express WHICH options
+ * exist, so an option that no interpreter reads is indistinguishable from one that
+ * is. It compiles, serializes, and does nothing — the silent drop the contract
+ * names as a defect class.
+ *
+ * It stays because it is PUBLISHED API: it is a public class in
+ * `dev.rubentxu.pipeline.v2.domain`, so removing it outright breaks every
+ * external plugin author who named it, and the binary-compatibility validator
+ * is right to refuse.
+ *
+ * Nothing enforces that it stays unused, and that is a gap rather than an
+ * oversight: what would enforce it is a source-text fitness, and a fitness that
+ * greps the tree does not belong inside a unit test. What holds the line today is
+ * only the deprecation itself: a construction site would have to name a
+ * deprecated type on purpose. The residual risk is real and small, and it is
+ * stated here rather than closed.
+ *
+ * @see StageOption for the carrier to use instead.
 */
 @Deprecated(
     message = "OptionSpec is a name/value bag with no type-level statement of which options " +
@@ -77,13 +77,12 @@ data class OptionSpec(val name: String, val value: String? = null) {
 
 /**
  * A stage option, as a CLOSED set of cases rather than a name/value bag.
- * This replaces `OptionSpec(name: String, value: String?)`, which forced a
- * stringly-typed hole through the whole path: the DSL held a typed `Long`,
- * the compiler flattened it to `OptionSpec("timeout", it.toString())`, and the
- * interpreter recovered it with `options.filter { it.name == "timeout" }`
- * followed by `toLongOrNull`. A name a typo away from silence, a payload that
- * could not survive the trip, and three exception escapes for what are ordinary
- * author mistakes.
+ *
+ * A name/value pair forces a stringly-typed hole through the whole path: a
+ * typed value has to be flattened to a string and recovered from it, a name a
+ * typo away from silence, and the recovery needs a parse that can fail for what
+ * are ordinary author mistakes. Here the KIND is the type, so an option that no
+ * interpreter reads cannot be written down in the first place.
  * ## Why only one case
  * The rule that decides it: *"Every option must map to a real
  * policy/interpreter or be rejected."* Only `Timeout` has one
@@ -91,27 +90,20 @@ data class OptionSpec(val name: String, val value: String? = null) {
  * offers `retry` and `timestamps`, but those are BODY decorators
  * (`StepSpec.RetryBlock`, `StepSpec.Timestamps`) with their own interpreters, not
  * stage options, so this ADT carries no case for them. A case for an option that
- * has no interpreter would re-create the defect the previous shape had — a
- * declared option with no interpreter — inside a more respectable-looking type.
- * The ADT grows a case on the day an interpreter exists, not on the day a design
- * note lists it.
- * ## Proof that the sealed-ness is load-bearing
- * Mutation M-s3-3 added `data object Timestamps : StageOption` — a declared case
- * with no interpreter, precisely the violation. It did not compile:
- * ```
- * e: CanonicalStructuralDecisions.kt:292:12 'when' expression must be exhaustive.
- *    Add the 'Timestamps' branch or an 'else' branch.
- * ```
- * So the rule is enforced by the build, not by discipline. An uninterpreted
- * option cannot be added without the interpreter being forced to name it, and
- * the interpreter has no `else` to absorb it.
+ * has no interpreter would BE the defect the rule forbids — a declared option
+ * with no interpreter — inside a more respectable-looking type. The ADT grows a
+ * case on the day an interpreter exists, not on the day a design note lists it.
+ * ## Why the sealed-ness is load-bearing
+ * The interpreter reads options through a closed `when` over this interface,
+ * with no `else` to absorb an unknown case. So the rule is enforced by the
+ * build, not by discipline: an option cannot be added without the interpreter
+ * being forced to name it, and the compiler names the branch that is missing.
  * ## Why the invariant lives in the constructor
  * `Timeout` rejects a non-positive duration at construction, so an invalid
  * deadline is unrepresentable rather than representable-and-rejected later.
- * That deletes the interpreter's whole failure surface: it no longer needs a
- * "multiple timeout options" check, a parse, a positivity check or an overflow
- * guard, so a closed `when` over this interface is total by construction
- * rather than by an `else` that hides an unhandled case.
+ * The interpreter therefore needs no "multiple timeout options" check, no parse,
+ * no positivity check and no overflow guard: a closed `when` over this interface
+ * is total by construction rather than by an `else` that hides an unhandled case.
 */
 @Serializable
 sealed interface StageOption {
@@ -318,10 +310,10 @@ sealed interface StepNode {
     /**
      * The name this step is ADDRESSED by inside the body that owns it: HOW it is called.
      *
-     * It is `null` when nobody named it, and then the step is addressed by its [pluginStepId] —
-     * the behaviour that predates named bodies. It is not `null` when the plugin that wrote the
-     * body gave the step a name of its own, and then THAT is the address, and two steps of the
-     * same [pluginStepId] can live in the same body without colliding.
+     * It is `null` when nobody named it, and then the step is addressed by its [pluginStepId].
+     * It is not `null` when the plugin that wrote the body gave the step a name of its own,
+     * and then THAT is the address, and two steps of the same [pluginStepId] can live in the
+     * same body without colliding.
      *
      * The difference matters because the two answer different questions: [pluginStepId] says what
      * to run, [slot] says which of the plugin's own bodies this is. A plugin that chains actions
@@ -332,8 +324,7 @@ sealed interface StepNode {
     /**
      * The address this step is called by inside the body that owns it.
      *
-     * It is the name the plugin gave it, or its kind when nobody named it — one rule, and the
-     * behaviour that predates named bodies survives it untouched.
+     * It is the name the plugin gave it, or its kind when nobody named it — one rule.
      */
     val address: PluginStepId get() = slot ?: pluginStepId
 }
@@ -364,9 +355,7 @@ data class VersionedStepPayload(val schemaVersion: String, val encoded: String) 
 
 /**
  * Typed overlay for body execution scope tracking.
- * Replaces the untyped `ScopeFrame` marker stack in CanonicalDurableRunCoordinator
- * with a sealed family of typed overlays. Each variant carries only the minimal
- * metadata needed for scope restoration.
+ * Each variant carries only the minimal metadata needed for scope restoration.
 */
 @kotlinx.serialization.Polymorphic
 @Serializable
@@ -386,19 +375,17 @@ sealed interface ContextOverlay {
     @Serializable
     data class CancellationScope(val scopeId: String) : ContextOverlay
 
-    // Legacy catch-error overlay for migration compatibility.
+    // Catch-error overlay.
     //
-    // ## RETIRED — published, no producer, no consumer
-    // It carried stageResult + message so the coordinator's catchError fold-walk could
-    // publish the CatchErrorTriggered domain event at the point of the real failure. The
-    // scope's own fold owns that decision now, from inside the scope, so nothing pushes
+    // It has no producer and no consumer in the current runtime: the scope's own fold
+    // owns the CatchErrorTriggered decision, from inside the scope, so nothing pushes
     // this frame and nothing reads it.
     //
-    // It stays because it is PUBLISHED ABI and because it is part of the wire format a
-    // pipeline compiled by an older version carries: a decoder must still be able to read
-    // it. Both results are typed, and both keep travelling as BARE JSON STRINGS. The
-    // explicit serializer is load-bearing — kotlinx would otherwise emit `{"type":"UNSTABLE"}`
-    // and change the compiled-pipeline format this overlay has always had.
+    // It stays because it is PUBLISHED ABI and because it is part of the wire format: a
+    // decoder must accept an overlay even when nothing produces it. Both results are
+    // typed, and both keep travelling as BARE JSON STRINGS. The explicit serializer is
+    // load-bearing — kotlinx would otherwise emit `{"type":"UNSTABLE"}` and change the
+    // compiled-pipeline format this overlay has always had.
     @Serializable
     data class CatchErrorOverlay(
         @Serializable(with = CatchErrorBuildResult.Serializer::class)

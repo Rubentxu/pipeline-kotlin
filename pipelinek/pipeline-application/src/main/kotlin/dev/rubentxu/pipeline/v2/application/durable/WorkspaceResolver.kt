@@ -131,9 +131,8 @@ class WorkspaceResolver(
      * This is a no-op because workspace directories are already retained on failure
      * by default (no deletion occurs on non-success outcomes).
      * This method exists for API symmetry and explicit documentation.
-     * @param path The workspace path to retain.
 */
-    fun retainOnFailure(path: Path) {
+    fun retainOnFailure() {
         // No-op: workspaces are retained on failure by default
         // Retention happens automatically because cleanupAfterComplete
         // is only called on SUCCESS outcomes

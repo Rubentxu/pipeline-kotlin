@@ -64,7 +64,6 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaLifecycle
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.scm.git.SCM_GIT_TRANSCRIPT_CAPABILITY
-import java.nio.file.Path
 
 /**
  * explicit, small capability bridge from a [CanonicalRuntimeContext] to a
@@ -461,10 +460,9 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
         context: CanonicalRuntimeContext,
         builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
-        val root = context.controlDirRoot
         // DeleteDir operations for core.deleteDir.
-        // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex],
-        // [controlDirRoot], and [EventSink] — exactly the inputs needed to resolve the
+        // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex]
+        // and [EventSink] — exactly the inputs needed to resolve the
         // workspace, execute deletion, and emit the canonical `DirDeleted` event.
         // The control directory root always exists, so the capability is always
         // registered.
@@ -474,10 +472,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
                 name = context.stageName,
                 index = context.stageIndex,
             ),
-            stepIndex = context.stepIndex,
-            controlDirRoot = root,
             eventSink = context.eventSink,
-            workspaceBase = context.workspaceBase,
             // The typed lease decides whether a
             // user-owned root may be destroyed, replacing the VCS-marker
             // heuristic that retires.
@@ -485,8 +480,8 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
         )
         builder[DELETE_DIR_OPERATIONS_CAPABILITY] = CapabilitySlot.of(deleteOps)
         // CleanWs operations for core.cleanWs (registry candidate).
-        // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex],
-        // [controlDirRoot], and [EventSink] — exactly the inputs needed to resolve the
+        // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex]
+        // and [EventSink] — exactly the inputs needed to resolve the
         // workspace, execute the cleanup via the existing CleanWsExecutor SDK substrate,
         // and emit the canonical `WsCleaned` event (single emission authority).
         // The control directory root always exists, so the capability is always
@@ -497,10 +492,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
                 name = context.stageName,
                 index = context.stageIndex,
             ),
-            stepIndex = context.stepIndex,
-            controlDirRoot = root,
             eventSink = context.eventSink,
-            workspaceBase = context.workspaceBase,
             // The typed lease decides whether a
             // user-owned root may be destroyed, replacing the VCS-marker
             // heuristic that retires.
@@ -687,8 +679,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
     ): ExecutionLocation = ShOptionsExecutionLocationAdapter.from(
         workspaceRoot = context.shOptions.workspaceRoot,
         scopedWorkingDirectory = context.shOptions.workingDirectory,
-        fallbackRoot = context.shOptions.workspaceRoot
-            ?: Path.of("").toAbsolutePath().normalize(),
+        fallbackRoot = context.shOptions.workspaceRoot,
         //: ownership decided at the CLI boundary and carried
         // on the transport. Without this the bridge re-derived `Managed` for every
         // Run and the guard on a user-owned root never fired

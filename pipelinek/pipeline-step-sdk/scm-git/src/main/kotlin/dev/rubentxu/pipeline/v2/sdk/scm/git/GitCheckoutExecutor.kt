@@ -218,7 +218,6 @@ open class GitCheckoutExecutor(
             executeInternal(req, spec, workspace, gitDir, startMs, req.previousRemoteSha, env)
                 .map { it.copy(credentialsFilePath = credentialsFilePath, gitConfigFilePath = gitConfigFilePath) }
         } catch (e: Exception) {
-            val durationMs = System.currentTimeMillis() - startMs
             // GitCheckoutFailed.reason must be scrubbed before emission.
             // Scrub removes registered secret patterns (canaries + real credentials).
             val rawReason = e.message?.take(256) ?: "Unknown error"
@@ -262,7 +261,6 @@ open class GitCheckoutExecutor(
         // Step 2: ls-remote to get remote SHA (with buildEnv wired into ProcessBuilder)
         val remoteShaResult = poll.execute(url, branch, credentialsApplier, transcript)
         if (remoteShaResult.isFailure) {
-            val durationMs = System.currentTimeMillis() - startMs
             val errorMsg = remoteShaResult.exceptionOrNull()?.message ?: "Unknown"
             emitEvent(req, GitCheckoutFailed(
                 eventId = newEventId(),
@@ -316,7 +314,6 @@ open class GitCheckoutExecutor(
             // SHA different - fetch and reset
             val fetchResult = gitFetch(workspace, env)
             if (fetchResult.isFailure) {
-                val durationMs = System.currentTimeMillis() - startMs
                 emitEvent(req, GitCheckoutFailed(
                     eventId = newEventId(),
                     runId = req.runId,
@@ -332,7 +329,6 @@ open class GitCheckoutExecutor(
 
             val resetResult = gitResetHard(workspace, remoteSha, env)
             if (resetResult.isFailure) {
-                val durationMs = System.currentTimeMillis() - startMs
                 emitEvent(req, GitCheckoutFailed(
                     eventId = newEventId(),
                     runId = req.runId,
@@ -370,7 +366,6 @@ open class GitCheckoutExecutor(
         Files.createDirectories(workspace)
         val cloneResult = gitClone(url, branch, workspace, env)
         if (cloneResult.isFailure) {
-            val durationMs = System.currentTimeMillis() - startMs
             emitEvent(req, GitCheckoutFailed(
                 eventId = newEventId(),
                 runId = req.runId,

@@ -166,10 +166,6 @@ object WaitUntilReconciler {
         }
 
         // All recorded attempts exhausted: schedule the next poll.
-        // Start from the initial recurrence period if no rows exist,
-        // or from the last persisted backoff if rows exist.
-        val lastBackoff = input.controlRows.maxByOrNull { it.attempt }?.currentBackoffMs
-            ?: input.initialRecurrencePeriodMs
         return ScheduleAttempt(maxPersistedAttempt + 1)
     }
 

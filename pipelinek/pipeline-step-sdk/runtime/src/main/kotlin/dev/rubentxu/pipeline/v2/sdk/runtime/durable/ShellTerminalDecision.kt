@@ -49,8 +49,7 @@ import java.nio.file.Path
  *
  * The RECONCILER builds its terminal from what the control directory holds —that is a
  * reconstruction of an execution nobody watched, and its interruption says "durable task timed
- * out", not "durable shell timed out"— so it keeps building its own. The legacy projections in
- * `DurableTaskTerminalAdapter.kt` translate the old shapes and are on their way out.
+ * out", not "durable shell timed out"— so it keeps building its own.
  */
 internal class ShellTerminalDecision(
     private val opId: String,

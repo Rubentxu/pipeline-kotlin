@@ -31,7 +31,7 @@ import java.nio.file.StandardCopyOption
  * MUST launch any predicate body effect only after [beginAttempt] has returned.
 */
 class FileBasedWaitUntilControlJournal(
-    private val controlDirRoot: Path,
+    controlDirRoot: Path,
 ) : WaitUntilControlJournal {
     private val waitUntilControlDir: Path = controlDirRoot.resolve("wait-until-control")
 

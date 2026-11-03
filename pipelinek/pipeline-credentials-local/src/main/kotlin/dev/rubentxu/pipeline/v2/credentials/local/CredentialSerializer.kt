@@ -179,7 +179,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
     val buf = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
     return when (kindId) {
         KIND_SECRET_TEXT -> {
-            val partCount = buf.get().toInt()
+            buf.get().toInt() // part count
             // name
             val nameLen = buf.get().toInt()
             buf.position(buf.position() + nameLen)
@@ -189,7 +189,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
             SecretText(id, CredentialScope.GLOBAL, valueBytes)
         }
         KIND_USERNAME_PASSWORD -> {
-            val partCount = buf.get().toInt()
+            buf.get().toInt() // part count
             // username: normal
             val userNameLen = buf.get().toInt()
             buf.position(buf.position() + userNameLen) // skip name
@@ -204,7 +204,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
             dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword(id, CredentialScope.GLOBAL, username, passBytes)
         }
         KIND_SSH_PRIVATE_KEY -> {
-            val partCount = buf.get().toInt()
+            buf.get().toInt() // part count
             // username: normal
             val userNameLen = buf.get().toInt()
             buf.position(buf.position() + userNameLen)
@@ -232,7 +232,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
             dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey(id, CredentialScope.GLOBAL, username, keyBytes, passphraseRef)
         }
         KIND_SECRET_FILE -> {
-            val partCount = buf.get().toInt()
+            buf.get().toInt() // part count
             // originalName: normal
             val origNameLen = buf.get().toInt()
             buf.position(buf.position() + origNameLen)
@@ -247,7 +247,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
             dev.rubentxu.pipeline.v2.domain.credentials.SecretFile(id, CredentialScope.GLOBAL, contentBytes, originalName.ifEmpty { null })
         }
         KIND_CERTIFICATE -> {
-            val partCount = buf.get().toInt()
+            buf.get().toInt() // part count
             // keystore: normal
             val ksNameLen = buf.get().toInt()
             buf.position(buf.position() + ksNameLen)
@@ -293,7 +293,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
             dev.rubentxu.pipeline.v2.domain.credentials.Zip(id, CredentialScope.GLOBAL, entries)
         }
         KIND_USERNAME_COLON_PASSWORD -> {
-            val partCount = buf.get().toInt()
+            buf.get().toInt() // part count
             // username: normal
             val userNameLen = buf.get().toInt()
             buf.position(buf.position() + userNameLen)

@@ -89,7 +89,6 @@ object ShExecution {
         command: ShellCommand,
         opId: OpId,
         runId: String,
-        stageIndex: Int,
         stepIndex: Int,
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path,

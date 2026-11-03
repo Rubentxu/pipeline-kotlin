@@ -588,7 +588,7 @@ internal object DomainEventJsonDecoder {
             EventKind.FileExistsChecked -> {
                 val pathStr = EventJsonFields.stringField(s, "path") ?: ""
                 val path = java.nio.file.Paths.get(pathStr)
-                val exists = EventJsonFields.boolField(s, "exists") ?: false
+                val exists = EventJsonFields.boolField(s, "exists")
                 FileExistsChecked(
                     eventId = eventId,
                     runId = runId,
@@ -931,7 +931,7 @@ internal object DomainEventJsonDecoder {
             EventKind.WaitUntilPolled -> {
                 val attempt = EventJsonFields.intField(s, "attempt") ?: 1
                 val durationMs = EventJsonFields.longField(s, "durationMs") ?: 0L
-                val conditionResult = EventJsonFields.boolField(s, "conditionResult") ?: false
+                val conditionResult = EventJsonFields.boolField(s, "conditionResult")
                 WaitUntilPolled(
                     eventId = eventId,
                     runId = runId,
@@ -980,7 +980,7 @@ internal object DomainEventJsonDecoder {
                 )
             }
             EventKind.UnixDetected -> {
-                val isUnix = EventJsonFields.boolField(s, "isUnix") ?: false
+                val isUnix = EventJsonFields.boolField(s, "isUnix")
                 val osName = EventJsonFields.stringField(s, "osName") ?: ""
                 val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
                 UnixDetected(
@@ -1021,7 +1021,7 @@ internal object DomainEventJsonDecoder {
             EventKind.LockRequested -> {
                 val resource = EventJsonFields.stringField(s, "resource") ?: ""
                 val reason = EventJsonFields.optionalStringField(s, OptionalEventField.REASON)
-                val skipIfLocked = EventJsonFields.boolField(s, "skipIfLocked") ?: false
+                val skipIfLocked = EventJsonFields.boolField(s, "skipIfLocked")
                 LockRequested(
                     eventId = eventId,
                     runId = runId,

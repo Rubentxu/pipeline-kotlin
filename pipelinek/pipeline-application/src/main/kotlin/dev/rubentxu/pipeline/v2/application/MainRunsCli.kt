@@ -12,6 +12,7 @@ import dev.rubentxu.pipeline.v2.runtime.recover.RecoverOutcome
 import dev.rubentxu.pipeline.v2.runtime.recover.RecoverRefusal
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.io.PrintStream
 
 /**
  * `pipelinek runs ...` — the operator's verbs over a run.
@@ -100,20 +101,26 @@ Exit codes:
            by a dry run, was already recovered, or is still in flight. 2 the
            recovery was refused."""
 
-    fun main(args: Array<String>): Int {
+    /**
+     * Runs the verb and writes what it answers to the streams it is given.
+     *
+     * The destination is a PARAMETER and not a global: a caller that wants to read what this
+     * verb answers hands it its own streams, and what it reads is the same bytes the CLI shows.
+     */
+    fun main(args: Array<String>, out: PrintStream, err: PrintStream): Int {
         val verb = args.firstOrNull()
         val known = RunsVerb.entries.firstOrNull { it.spelling == verb }
         if (known == null) {
-            val code = refuse(runsFamilyDoor(verb), FAMILY)
-            System.err.println(USAGE)
+            val code = refuse(runsFamilyDoor(verb), FAMILY, err = err)
+            err.println(USAGE)
             return code
         }
 
         val rest = args.drop(1).toTypedArray()
         return if (known == RunsVerb.Recover) {
-            runRecover(rest)
+            runRecover(rest, out = out, err = err)
         } else {
-            runCancel(rest)
+            runCancel(rest, out = out, err = err)
         }
     }
 
@@ -127,7 +134,10 @@ Exit codes:
      * closure would be reading a green exit code over a run they wanted
      * untouched, and there is no way to undo that.
      */
-    private fun runCancel(rest: Array<String>): Int {
+    private fun runCancel(rest: Array<String>,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int {
         // The scan is the only place that knows which options carry a value, so it is the only
         // place that can tell the run id from an option's value. The verb reads the run id from
         // the parsed options instead of from `args[0]`, and the request is therefore the same
@@ -135,8 +145,8 @@ Exit codes:
         val options = when (val parsed = parseCancelArguments(rest)) {
             is OptionParse.Parsed -> parsed.value
             is OptionParse.Rejected -> {
-                val code = refuse(parsed.error, "runs cancel")
-                System.err.println(USAGE)
+                val code = refuse(parsed.error, "runs cancel", err = err)
+                err.println(USAGE)
                 return code
             }
         }
@@ -145,18 +155,18 @@ Exit codes:
         if (runId == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("run id", "name the run to close"),
-                "runs cancel",
+                "runs cancel", err = err
             )
-            System.err.println(USAGE)
+            err.println(USAGE)
             return code
         }
 
         if (options.dbPath == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("--db <path>", "to read the run's durable state"),
-                "runs cancel",
+                "runs cancel", err = err
             )
-            System.err.println(USAGE)
+            err.println(USAGE)
             return code
         }
 
@@ -167,7 +177,7 @@ Exit codes:
             } catch (failure: IllegalArgumentException) {
                 return refuse(
                     CliError.InvalidOptionValue("--reason", failure.message ?: "must not be blank"),
-                    "runs cancel",
+                    "runs cancel", err = err
                 )
             }
         }
@@ -180,7 +190,7 @@ Exit codes:
 
         val admission = admitEventStore(options.dbPath, EventStorePurpose.Write)
         if (admission is EventStoreAdmission.Refused) {
-            System.err.println(admission.refusal.render())
+            err.println(admission.refusal.render())
             return CliExit.INVALID_ARGUMENT.code
         }
         val store = (admission as EventStoreAdmission.Admitted).store
@@ -194,13 +204,13 @@ Exit codes:
                 ).cancel(runId, reason)
             }
         } catch (failure: Exception) {
-            System.err.println("runs cancel: ${failure.shortDiagnostic()}")
+            err.println("runs cancel: ${failure.shortDiagnostic()}")
             return CliExit.INVALID_ARGUMENT.code
         }
 
         return when (outcome) {
             is CancelOutcome.Cancelled -> {
-                println(
+                out.println(
                     "cancelled run $runId at ${outcome.terminalAtMs} " +
                         "(${outcome.streamsSealed} output stream(s) sealed)",
                 )
@@ -208,12 +218,12 @@ Exit codes:
             }
 
             is CancelOutcome.AlreadyCancelled -> {
-                println("run $runId was already cancelled at ${outcome.terminalAtMs}")
+                out.println("run $runId was already cancelled at ${outcome.terminalAtMs}")
                 CliExit.SUCCESS.code
             }
 
             is CancelOutcome.Refused -> {
-                System.err.println("runs cancel: ${outcome.refusal.render(runId)}")
+                err.println("runs cancel: ${outcome.refusal.render(runId)}")
                 CliExit.INVALID_ARGUMENT.code
             }
         }
@@ -248,7 +258,10 @@ Exit codes:
      * text on stdout says which one it is. Two is a refusal, and the refusal
      * is on stderr.
      */
-    private fun runRecover(rest: Array<String>): Int {
+    private fun runRecover(rest: Array<String>,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int {
         // The scan is the only place that knows which options carry a value, so it is the only
         // place that can tell the run id from an option's value. The verb reads the run id from
         // the parsed options instead of from `args[0]`, and the request is therefore the same
@@ -256,8 +269,8 @@ Exit codes:
         val options = when (val parsed = parseRecoverArguments(rest)) {
             is OptionParse.Parsed -> parsed.value
             is OptionParse.Rejected -> {
-                val code = refuse(parsed.error, "runs recover")
-                System.err.println(USAGE)
+                val code = refuse(parsed.error, "runs recover", err = err)
+                err.println(USAGE)
                 return code
             }
         }
@@ -266,18 +279,18 @@ Exit codes:
         if (runId == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("run id", "name the run to recover"),
-                "runs recover",
+                "runs recover", err = err
             )
-            System.err.println(USAGE)
+            err.println(USAGE)
             return code
         }
 
         if (options.dbPath == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("--db <path>", "to read the run's durable state"),
-                "runs recover",
+                "runs recover", err = err
             )
-            System.err.println(USAGE)
+            err.println(USAGE)
             return code
         }
 
@@ -298,7 +311,7 @@ Exit codes:
             if (options.dryRun) EventStorePurpose.Read else EventStorePurpose.Write,
         )
         if (admission is EventStoreAdmission.Refused) {
-            System.err.println(admission.refusal.render())
+            err.println(admission.refusal.render())
             return CliExit.INVALID_ARGUMENT.code
         }
         val store = (admission as EventStoreAdmission.Admitted).store
@@ -313,7 +326,7 @@ Exit codes:
                 ).recover(runId, RecoverOptions(dryRun = options.dryRun))
             }
         } catch (failure: Exception) {
-            System.err.println("runs recover: ${failure.shortDiagnostic()}")
+            err.println("runs recover: ${failure.shortDiagnostic()}")
             return CliExit.INVALID_ARGUMENT.code
         }
 
@@ -324,17 +337,17 @@ Exit codes:
                 // a lie the operator can act on — they would walk away from a
                 // run that is still broken.
                 val verb = if (options.dryRun) "would recover" else "recovered"
-                println("$verb run $runId as ${outcome.terminal.render()} at ${outcome.terminalAtMs}")
+                out.println("$verb run $runId as ${outcome.terminal.render()} at ${outcome.terminalAtMs}")
                 CliExit.SUCCESS.code
             }
 
             is RecoverOutcome.AlreadyRecovered -> {
-                println("run $runId was already recovered at ${outcome.terminalAtMs}")
+                out.println("run $runId was already recovered at ${outcome.terminalAtMs}")
                 CliExit.SUCCESS.code
             }
 
             is RecoverOutcome.ReattachPending -> {
-                println(
+                out.println(
                     "run $runId is still in flight (retry by ${outcome.deadlineMs.asInstant()}); " +
                         "nothing was recovered",
                 )
@@ -342,7 +355,7 @@ Exit codes:
             }
 
             is RecoverOutcome.FailClosed -> {
-                System.err.println("runs recover: ${outcome.reason.render(runId)}")
+                err.println("runs recover: ${outcome.reason.render(runId)}")
                 CliExit.INVALID_ARGUMENT.code
             }
         }

@@ -229,10 +229,47 @@ subprojects {
 // machine and to one worktree. rootDir is the build root; its parent is the repository.
 val repositoryRoot: String = rootDir.parentFile.absolutePath
 
+// The modules whose unit tests carry enough work to be worth a second JVM.
+//
+// The parallelism this build already has is BETWEEN the modules: `org.gradle.parallel`
+// runs the modules' test tasks side by side, so the test stage is already using the
+// machine's cores. This setting is the parallelism INSIDE one module: the test classes
+// of that module are spread over several JVMs.
+//
+// A JVM is not free. Starting one costs about a second of classloading before a
+// single test runs, so a module whose whole suite takes less than that gains nothing
+// and pays the entire cost. The list below is the modules whose measured test work is
+// above that line, and four is the number that measured fastest for each of them.
+//
+// What it buys, measured on this machine, is a run of ONE module: the application
+// module's test task goes from 6.1 s to 4.5 s, and the scripting module's from 10.1 s
+// to 9.5 s. What it does NOT buy is a faster whole stage, where every module's tests
+// run at once: that stage is already saturated by the modules running side by side,
+// and extra JVMs inside them only add startup work that competes for the same cores.
+// That is why the setting is scoped to the modules that carry volume instead of being
+// switched on everywhere.
+//
+// It is only safe because no test in this tree captures a global. The standard output
+// of the JVM is a global: two classes running side by side that both capture it steal
+// each other's bytes, and the assertion that read them reads the other's. Every verb
+// that answers something takes the streams it writes to as arguments, and the tests
+// hand it streams of their own, so the bytes a test reads are the bytes that verb
+// wrote to the stream it was given.
+val modulesWithTestVolume = setOf(
+    "pipeline-application",
+    "pipeline-credentials-local",
+    "pipeline-domain",
+    "pipeline-events-store",
+    "pipeline-scripting-kotlin24",
+)
+
 subprojects {
     // Expose the repository root to tests that must read files from the repository.
     tasks.withType<Test>().configureEach {
         systemProperty("pipeline.repoRoot", repositoryRoot)
+        if (project.name in modulesWithTestVolume) {
+            maxParallelForks = 4
+        }
     }
 }
 

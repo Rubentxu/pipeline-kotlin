@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.credentials.local
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
+import java.io.PrintStream
 import java.nio.file.Path
 
 /**
@@ -118,47 +119,58 @@ object MainCredentialsCli {
             }
     }
 
+    /**
+     * Runs the verb and writes what it says to the stream it is given.
+     *
+     * The destination is a PARAMETER and not a global: a caller that wants to read what this
+     * command says hands it its own stream, and what it reads is the same bytes the CLI shows.
+     *
+     * There is ONE stream and not two: everything this command says, the refusals included, is
+     * published on stdout, and that is the shape the refusals of [CredentialsRefusal] are
+     * rendered for. A second stream would offer a place to write to that this command does
+     * not use.
+     */
     @JvmStatic
-    fun main(args: Array<String>): Int {
+    fun main(args: Array<String>, out: PrintStream): Int {
         return when (CredentialsVerb.from(args.firstOrNull())) {
-            CredentialsVerb.ADD -> add(args.drop(1))
-            CredentialsVerb.LIST -> list(args.drop(1))
-            CredentialsVerb.REMOVE -> remove(args.drop(1))
-            CredentialsVerb.ROTATE -> rotate(args.drop(1))
+            CredentialsVerb.ADD -> add(args.drop(1), out)
+            CredentialsVerb.LIST -> list(args.drop(1), out)
+            CredentialsVerb.REMOVE -> remove(args.drop(1), out)
+            CredentialsVerb.ROTATE -> rotate(args.drop(1), out)
             null -> {
-                println(CredentialsRefusal.ofUnknownVerb(args.firstOrNull()))
+                out.println(CredentialsRefusal.ofUnknownVerb(args.firstOrNull()))
                 CredentialsOutcome.NOT_CARRIED_OUT.exitCode
             }
         }
     }
 
-    private fun add(args: List<String>): Int {
-        val parsed = parseWriteArguments(args, CredentialsVerb.ADD) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+    private fun add(args: List<String>, out: PrintStream): Int {
+        val parsed = parseWriteArguments(args, CredentialsVerb.ADD, out) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         return try {
             val store = openStore()
             // The key is checked before the operator is asked for a secret: a
             // passphrase that does not match should not cost them the typing.
             store.verifyPassphrase()
             store.add(CredentialsId.from(parsed.id), readCredential(parsed.kind, parsed.fromStdin))
-            println("Credential '${parsed.id}' stored successfully.")
+            out.println("Credential '${parsed.id}' stored successfully.")
             CredentialsOutcome.ANSWERED.exitCode
         } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.NO_PASSPHRASE.exitCode
         } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.WRONG_PASSPHRASE.exitCode
         } catch (e: LocalSecretStore.SecretStoreTamperException) {
-            println("Error: store tampered: ${e.message}")
+            out.println("Error: store tampered: ${e.message}")
             CredentialsOutcome.TAMPERED.exitCode
         } catch (e: LocalSecretStore.CredentialsStoreEmptySecretException) {
-            println("Error: empty secret not allowed")
+            out.println("Error: empty secret not allowed")
             CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         } catch (e: IllegalArgumentException) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         } catch (e: Exception) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
     }
@@ -170,67 +182,67 @@ object MainCredentialsCli {
      * that carries one is not a request of this verb, and it is refused naming
      * the token before the store is looked at.
      */
-    private fun list(args: List<String>): Int {
+    private fun list(args: List<String>, out: PrintStream): Int {
         val foreign = args.firstOrNull()
         if (foreign != null) {
-            println(CredentialsRefusal.of(CredentialsVerb.LIST, foreign))
+            out.println(CredentialsRefusal.of(CredentialsVerb.LIST, foreign))
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         // Nothing to list means nothing to unlock: a store that is not there
         // does not need a key, and asking for one would be asking for the key
         // to a door that does not exist.
         if (!storeHoldsAnything()) {
-            println("No credentials stored.")
+            out.println("No credentials stored.")
             return CredentialsOutcome.ANSWERED.exitCode
         }
         return try {
             val store = openStore()
             val ids = store.list()
             if (ids.isEmpty()) {
-                println("No credentials stored.")
+                out.println("No credentials stored.")
             } else {
-                println("Stored credentials:")
-                println("%-40s %-20s %-10s".format("ID", "KIND", "SCOPE"))
-                println("-".repeat(70))
+                out.println("Stored credentials:")
+                out.println("%-40s %-20s %-10s".format("ID", "KIND", "SCOPE"))
+                out.println("-".repeat(70))
                 for (id in ids) {
                     try {
                         val cred = store.get(id)
                         val kind = cred::class.simpleName ?: "Unknown"
                         val scope = cred.scope.name
-                        println("%-40s %-20s %-10s".format(id.value, kind, scope))
+                        out.println("%-40s %-20s %-10s".format(id.value, kind, scope))
                     } catch (e: Exception) {
-                        println("%-40s %-20s %-10s".format(id.value, "Unknown", "Unknown"))
+                        out.println("%-40s %-20s %-10s".format(id.value, "Unknown", "Unknown"))
                     }
                 }
             }
             CredentialsOutcome.ANSWERED.exitCode
         } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.NO_PASSPHRASE.exitCode
         } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.WRONG_PASSPHRASE.exitCode
         } catch (e: LocalSecretStore.SecretStoreTamperException) {
-            println("Error: store tampered: ${e.message}")
+            out.println("Error: store tampered: ${e.message}")
             CredentialsOutcome.TAMPERED.exitCode
         } catch (e: Exception) {
-            println("Error listing credentials: ${e.message}")
+            out.println("Error listing credentials: ${e.message}")
             CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
     }
 
-    private fun remove(args: List<String>): Int {
+    private fun remove(args: List<String>, out: PrintStream): Int {
         // `remove` owns NO option, so a token that looks like one is not the
         // credential id: it is refused naming it, BEFORE the store is looked
         // at. Taking it for an id would only discover the mistake at the end,
         // when a credential with that name is looked up.
         val option = args.firstOrNull { it.startsWith("--") }
         if (option != null) {
-            println(CredentialsRefusal.of(CredentialsVerb.REMOVE, option))
+            out.println(CredentialsRefusal.of(CredentialsVerb.REMOVE, option))
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         val id = args.firstOrNull() ?: run {
-            println(CredentialsRefusal.ofMissingArgument(CredentialsVerb.REMOVE))
+            out.println(CredentialsRefusal.ofMissingArgument(CredentialsVerb.REMOVE))
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         // `remove` owns ONE argument — the id — and no option. A second token
@@ -238,11 +250,11 @@ object MainCredentialsCli {
         // store is looked at.
         val extra = args.getOrNull(1)
         if (extra != null) {
-            println(CredentialsRefusal.of(CredentialsVerb.REMOVE, extra))
+            out.println(CredentialsRefusal.of(CredentialsVerb.REMOVE, extra))
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         if (!storeHoldsAnything()) {
-            println("No credentials stored.")
+            out.println("No credentials stored.")
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         return try {
@@ -251,31 +263,31 @@ object MainCredentialsCli {
             // Listing is also how the passphrase gets checked, so a key that
             // does not match is refused here, before anything is removed.
             if (credentialsId !in store.list()) {
-                println("No credential named '$id'.")
+                out.println("No credential named '$id'.")
                 return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
             }
             store.remove(credentialsId)
-            println("Credential '$id' removed.")
+            out.println("Credential '$id' removed.")
             CredentialsOutcome.ANSWERED.exitCode
         } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.NO_PASSPHRASE.exitCode
         } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.WRONG_PASSPHRASE.exitCode
         } catch (e: LocalSecretStore.SecretStoreTamperException) {
-            println("Error: store tampered: ${e.message}")
+            out.println("Error: store tampered: ${e.message}")
             CredentialsOutcome.TAMPERED.exitCode
         } catch (e: Exception) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
     }
 
-    private fun rotate(args: List<String>): Int {
-        val parsed = parseWriteArguments(args, CredentialsVerb.ROTATE) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+    private fun rotate(args: List<String>, out: PrintStream): Int {
+        val parsed = parseWriteArguments(args, CredentialsVerb.ROTATE, out) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         if (!storeHoldsAnything()) {
-            println("No credentials stored.")
+            out.println("No credentials stored.")
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         return try {
@@ -285,29 +297,29 @@ object MainCredentialsCli {
             store.verifyPassphrase()
             val credentialsId = CredentialsId.from(parsed.id)
             if (credentialsId !in store.list()) {
-                println("No credential named '${parsed.id}'.")
+                out.println("No credential named '${parsed.id}'.")
                 return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
             }
             store.rotate(credentialsId, readCredential(parsed.kind, parsed.fromStdin))
-            println("Credential '${parsed.id}' rotated successfully.")
+            out.println("Credential '${parsed.id}' rotated successfully.")
             CredentialsOutcome.ANSWERED.exitCode
         } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.NO_PASSPHRASE.exitCode
         } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.WRONG_PASSPHRASE.exitCode
         } catch (e: LocalSecretStore.SecretStoreTamperException) {
-            println("Error: store tampered: ${e.message}")
+            out.println("Error: store tampered: ${e.message}")
             CredentialsOutcome.TAMPERED.exitCode
         } catch (e: LocalSecretStore.CredentialsStoreEmptySecretException) {
-            println("Error: empty secret not allowed")
+            out.println("Error: empty secret not allowed")
             CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         } catch (e: IllegalArgumentException) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         } catch (e: Exception) {
-            println("Error: ${e.message}")
+            out.println("Error: ${e.message}")
             CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
     }
@@ -328,7 +340,11 @@ object MainCredentialsCli {
      * The verb is named because the refusal has to say which form of the
      * command the operator wrote, and the caller is the one that knows it.
 */
-    private fun parseWriteArguments(args: List<String>, verb: CredentialsVerb): WriteArguments? {
+    private fun parseWriteArguments(
+        args: List<String>,
+        verb: CredentialsVerb,
+        out: PrintStream,
+    ): WriteArguments? {
         var kind: CredentialKind? = null
         var id: String? = null
         var fromStdin = false
@@ -344,12 +360,12 @@ object MainCredentialsCli {
                         // The verb OWNS this option and the operator left its
                         // value out. That is a typo about a KNOWN option, and
                         // it is a different mistake from an unknown option.
-                        println(CredentialsRefusal.ofMissingOptionValue(verb, CredentialsOption.KIND))
+                        out.println(CredentialsRefusal.ofMissingOptionValue(verb, CredentialsOption.KIND))
                         return null
                     }
                     kind = CredentialKind.fromString(kindStr)
                     if (kind == null) {
-                        println("Error: unknown kind '$kindStr'. Valid kinds: ${CredentialKind.ALL_KINDS}")
+                        out.println("Error: unknown kind '$kindStr'. Valid kinds: ${CredentialKind.ALL_KINDS}")
                         return null
                     }
                 }
@@ -359,7 +375,7 @@ object MainCredentialsCli {
                 // is missing: the operator has to be told WHICH token to
                 // remove, or the refusal sends them to the wrong place.
                 arg.startsWith("--") -> {
-                    println(CredentialsRefusal.of(verb, arg))
+                    out.println(CredentialsRefusal.of(verb, arg))
                     return null
                 }
 
@@ -370,14 +386,14 @@ object MainCredentialsCli {
                 // is opened — so a request that is not this verb's never asks
                 // for a passphrase and never asks for a secret.
                 else -> {
-                    println(CredentialsRefusal.of(verb, arg))
+                    out.println(CredentialsRefusal.of(verb, arg))
                     return null
                 }
             }
         }
 
         val idArg = id ?: run {
-            println(CredentialsRefusal.ofMissingArgument(verb))
+            out.println(CredentialsRefusal.ofMissingArgument(verb))
             return null
         }
         return WriteArguments(kind ?: CredentialKind.SECRET_TEXT, idArg, fromStdin)

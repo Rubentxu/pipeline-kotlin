@@ -42,13 +42,14 @@ import org.junit.jupiter.api.Test
  * both worlds. These rows ask WHAT the decision is, not who calls it.
  *
  * These rows are pure: no filesystem, no clock, no process, no network. The only side effect is
- * what the CLI prints, and that is captured and read.
+ * what the CLI prints, and that is read from the stream the row itself handed to the decision,
+ * so no row mutates a global that the other rows share.
  */
 class RunExitTest {
 
     @Test
     fun `a successful run answers with the success case`() {
-        val (exit, report) = capturing { runExit(RunOutcome.Success, null) }
+        val (exit, report) = capturing { err -> runExit(RunOutcome.Success, null, err) }
 
         assertEquals("Success", exit.name, "a run that finished well is the success case")
         assertEquals(0, exit.code, "the success case carries the published code")
@@ -60,7 +61,7 @@ class RunExitTest {
 
     @Test
     fun `an unstable run answers zero because it finished`() {
-        val (exit, report) = capturing { runExit(RunOutcome.Unstable, null) }
+        val (exit, report) = capturing { err -> runExit(RunOutcome.Unstable, null, err) }
 
         assertEquals("Success", exit.name, "an unstable run is not a failure, so it is not the failure case")
         assertEquals(0, exit.code, "the run finished, so the code is the success one")
@@ -78,7 +79,7 @@ class RunExitTest {
     fun `a failed run answers with the pipeline-failed case`() {
         val failure = PipelineFailure(kind = FailureKind.USER, message = "the step refused")
 
-        val (exit, report) = capturing { runExit(RunOutcome.Failure(failure), null) }
+        val (exit, report) = capturing { err -> runExit(RunOutcome.Failure(failure), null, err) }
 
         assertEquals("PipelineFailed", exit.name, "a run that produced a failure is the failure case")
         assertEquals(1, exit.code, "the failure case carries the published code")
@@ -94,7 +95,7 @@ class RunExitTest {
 
     @Test
     fun `an aborted run answers with the pipeline-failed case`() {
-        val (exit, report) = capturing { runExit(RunOutcome.Aborted, null) }
+        val (exit, report) = capturing { err -> runExit(RunOutcome.Aborted, null, err) }
 
         assertEquals("PipelineFailed", exit.name, "a run that never reached a terminal outcome did not succeed")
         assertEquals(1, exit.code, "the failure case carries the published code")
@@ -106,8 +107,8 @@ class RunExitTest {
 
     @Test
     fun `a run with no typed outcome that finished successfully answers zero`() {
-        val (exit, report) = capturing {
-            runExit(null, runFinished(RunOutcome.SUCCESS_TOKEN))
+        val (exit, report) = capturing { err ->
+            runExit(null, runFinished(RunOutcome.SUCCESS_TOKEN), err)
         }
 
         assertEquals(0, exit.code, "the run finished successfully, so the code is the success one")
@@ -119,8 +120,8 @@ class RunExitTest {
 
     @Test
     fun `a run with no typed outcome that did not finish successfully answers one`() {
-        val (exit, report) = capturing {
-            runExit(null, runFinished(RunOutcome.FAILURE_TOKEN))
+        val (exit, report) = capturing { err ->
+            runExit(null, runFinished(RunOutcome.FAILURE_TOKEN), err)
         }
 
         assertEquals(1, exit.code, "the run did not finish successfully, so the code is the failure one")
@@ -132,7 +133,7 @@ class RunExitTest {
 
     @Test
     fun `a run with no typed outcome and no event at all answers one`() {
-        val (exit, report) = capturing { runExit(null, null) }
+        val (exit, report) = capturing { err -> runExit(null, null, err) }
 
         assertEquals(1, exit.code, "a run that said nothing succeeded did not succeed")
         assertTrue(
@@ -150,7 +151,7 @@ class RunExitTest {
             RunOutcome.Aborted,
         )
 
-        val answers = outcomes.map { outcome -> capturing { runExit(outcome, null) }.first }
+        val answers = outcomes.map { outcome -> capturing { err -> runExit(outcome, null, err) }.first }
 
         answers.forEach { exit ->
             val declared = CliExit.of(exit.code)
@@ -180,21 +181,18 @@ class RunExitTest {
     )
 
     /**
-     * Run [block] with the error stream captured, and give back what it decided and what it said.
+     * Run [block] with an error stream of its own, and give back what it decided and what it said.
      *
-     * The decision is read on stderr because that is where the outcome is summarised, and a row
-     * that asserts a decision has to be able to read what the decision said out loud without
-     * letting it into the report of the run.
+     * The stream is a PARAMETER the block receives, not a global this test replaces. A row that
+     * swapped the process-wide stream would mutate the state every other row shares, and the
+     * bytes it read would belong to whoever wrote last. The bytes here are the same ones the CLI
+     * shows, because the code under test is the code the CLI runs — only the sink differs.
      */
-    private fun <T> capturing(block: () -> T): Pair<T, String> {
-        val err = ByteArrayOutputStream()
-        val originalErr = System.err
-        try {
-            System.setErr(PrintStream(err, true, Charsets.UTF_8.name()))
-            val value = block()
-            return value to err.toString()
-        } finally {
-            System.setErr(originalErr)
-        }
+    private fun <T> capturing(block: (PrintStream) -> T): Pair<T, String> {
+        val captured = ByteArrayOutputStream()
+        val err = PrintStream(captured, true, Charsets.UTF_8.name())
+        val value = block(err)
+        err.flush()
+        return value to captured.toString(Charsets.UTF_8)
     }
 }

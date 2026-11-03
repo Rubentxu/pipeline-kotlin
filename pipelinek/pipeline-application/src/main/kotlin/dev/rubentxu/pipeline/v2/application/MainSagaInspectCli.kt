@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.events.durable.SagaInspectionReport
 import dev.rubentxu.pipeline.v2.events.durable.SagaInspectionRead
 import dev.rubentxu.pipeline.v2.events.durable.SagaInspectionRefusal
 import dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationReader
+import java.io.PrintStream
 
 /**
  * `pipelinek saga inspect <runId> --db <path>` — what a run still owes, read from the
@@ -47,9 +48,12 @@ object MainSagaInspectCli {
         "Usage: pipelinek saga inspect <runId> --db <path> [--format text|json]"
 
     /**
-     * Runs the verb and returns the exit code.
+     * Runs the verb and writes what it answers to the streams it is given.
+     *
+     * The destination is a PARAMETER and not a global: a caller that wants to read what this
+     * verb answers hands it its own streams, and what it reads is the same bytes the CLI shows.
      */
-    fun main(args: Array<String>): Int {
+    fun main(args: Array<String>, out: PrintStream, err: PrintStream): Int {
         // The parser is the only place that knows which options carry a value, so it is the
         // only place that can tell the run id from an option's value. The verb reads the run
         // id from the parsed options instead of from `args[0]`, and the request is therefore
@@ -57,8 +61,8 @@ object MainSagaInspectCli {
         val options = when (val r = CliSagaInspectParser.parse(args)) {
             is SagaInspectParseResult.Parsed -> r.value
             is SagaInspectParseResult.Rejected -> {
-                val code = refuse(r.error, "saga inspect")
-                System.err.println(USAGE)
+                val code = refuse(r.error, "saga inspect", err = err)
+                err.println(USAGE)
                 return code
             }
         }
@@ -67,24 +71,24 @@ object MainSagaInspectCli {
         if (runId == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("run id", "name the run to inspect"),
-                "saga inspect",
+                "saga inspect", err = err
             )
-            System.err.println(USAGE)
+            err.println(USAGE)
             return code
         }
 
         if (options.dbPath == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("--db <path>", "to read the durable promises"),
-                "saga inspect",
+                "saga inspect", err = err
             )
-            System.err.println(USAGE)
+            err.println(USAGE)
             return code
         }
 
         val read = SqliteSagaObligationReader(options.dbPath).read(runId)
         if (read is SagaInspectionRead.Refused) {
-            System.err.println("saga inspect: ${read.refusal.render()}")
+            err.println("saga inspect: ${read.refusal.render()}")
             return CliExit.INVALID_ARGUMENT.code
         }
         val state = read as SagaInspectionRead.Read
@@ -96,21 +100,21 @@ object MainSagaInspectCli {
         // thing.
         if (state.rows.isEmpty()) {
             if (!state.runExists) {
-                System.err.println(
+                err.println(
                     "saga inspect: no run $runId in ${options.dbPath}. " +
                         "Nothing was read, so nothing can be said about what it owes.",
                 )
                 return CliExit.INVALID_ARGUMENT.code
             }
-            println("saga inspect: run $runId armed no saga promise; there is nothing owed.")
+            out.println("saga inspect: run $runId armed no saga promise; there is nothing owed.")
             return CliExit.SUCCESS.code
         }
 
         val report = SagaInspectionProjection.read(runId, state.rows, state.events)
         if (options.format == SagaInspectFormat.JSON) {
-            println(renderJson(report))
+            out.println(renderJson(report))
         } else {
-            print(renderText(report))
+            out.print(renderText(report))
         }
         return CliExit.SUCCESS.code
     }

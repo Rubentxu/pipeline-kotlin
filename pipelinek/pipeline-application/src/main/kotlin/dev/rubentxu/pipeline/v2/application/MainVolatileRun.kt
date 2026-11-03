@@ -287,7 +287,7 @@ private fun runVolatilePipelineOwned(
             protocol = outputProtocol,
         )
     }
-    val exit = runExit(runOutcome, events.lastOrNull())
+    val exit = runExit(runOutcome, events.lastOrNull(), err = System.err)
     // The receipt is the run's own account of itself, written HERE: the observer has closed,
     // so the bytes it publishes are the bytes the plane committed. A failure to write it is
     // announced and does not change the exit the run earned.

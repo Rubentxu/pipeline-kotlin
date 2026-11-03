@@ -64,7 +64,13 @@ object MainObserveCli {
     /** Rows per event-lane read while following. A read bound, never a result size. */
     private const val EVENTS_PER_READ = 256
 
-    fun main(args: Array<String>): Int {
+    /**
+     * Runs the verb and writes what it answers to the streams it is given.
+     *
+     * The destination is a PARAMETER and not a global: a caller that wants to read what this
+     * verb answers hands it its own streams, and what it reads is the same bytes the CLI shows.
+     */
+    fun main(args: Array<String>, out: PrintStream, err: PrintStream): Int {
         // The parser is the only place that knows which options carry a value, so it is the
         // only place that can tell the run id from an option's value. The verb reads the run
         // id from the parsed query instead of from `args[0]`, and the request is therefore
@@ -76,8 +82,8 @@ object MainObserveCli {
                 // sentence. Interpolating the error printed the sealed type's
                 // constructor syntax (`UnknownOption(value=--bogus-flag)`),
                 // which is not what the operator asked to read.
-                System.err.println(result.error.refusalLines("observe").joinToString("\n"))
-                System.err.println(USAGE)
+                err.println(result.error.refusalLines("observe").joinToString("\n"))
+                err.println(USAGE)
                 return CliExit.INVALID_ARGUMENT.code
             }
         }
@@ -90,9 +96,9 @@ object MainObserveCli {
             // the first about what a missing run id is.
             val code = refuse(
                 CliError.MissingRequiredArgument("run id", "name the run to observe"),
-                "observe",
+                "observe", err = err
             )
-            System.err.println(USAGE)
+            err.println(USAGE)
             return code
         }
 
@@ -105,7 +111,7 @@ object MainObserveCli {
             null -> EventLane.NotNamed
             else -> when (val admission = admitEventStore(dbPath, EventStorePurpose.Read)) {
                 is EventStoreAdmission.Refused -> {
-                    System.err.println(admission.refusal.render())
+                    err.println(admission.refusal.render())
                     return CliExit.INVALID_ARGUMENT.code
                 }
                 is EventStoreAdmission.Admitted -> EventLane.Open(admission.store)
@@ -115,7 +121,7 @@ object MainObserveCli {
         val lanes = try {
             ComposeLanes.forRequest(parsed, eventLane)
         } catch (e: java.io.IOException) {
-            System.err.println("observe: cannot open a durable store: ${e.message}")
+            err.println("observe: cannot open a durable store: ${e.message}")
             return CliExit.INVALID_ARGUMENT.code
         }
 
@@ -125,11 +131,11 @@ object MainObserveCli {
                 runId,
                 parsed,
                 InterruptFollow { Thread.currentThread().isInterrupted },
-                System.out,
-                System.err,
+                out,
+                err,
             )
         } else {
-            replay(lanes, runId, parsed, System.out, System.err)
+            replay(lanes, runId, parsed, out, err)
         }
         lanes.close()
         return when (outcome) {
@@ -140,7 +146,7 @@ object MainObserveCli {
             // second authority on the outcome.
             is ObserveOutcome.Followed -> CliExit.SUCCESS.code
             is ObserveOutcome.Refused -> {
-                System.err.println("observe: ${outcome.reason}")
+                err.println("observe: ${outcome.reason}")
                 CliExit.INVALID_ARGUMENT.code
             }
         }

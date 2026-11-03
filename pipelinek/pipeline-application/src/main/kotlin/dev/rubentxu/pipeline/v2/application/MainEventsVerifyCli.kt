@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.harness.model.VerificationResult
 import dev.rubentxu.pipeline.v2.harness.verify.EventHarness
 import java.nio.file.Files
 import java.nio.file.Path
+import java.io.PrintStream
 
 /**
  * Minimal post-run acceptance surface
@@ -65,11 +66,17 @@ object MainEventsVerifyCli {
 
     private const val SCOPE_WHOLE: String = "whole"
 
-    fun main(args: Array<String>): Int {
+    /**
+     * Runs the verb and writes what it answers to the streams it is given.
+     *
+     * The destination is a PARAMETER and not a global: a caller that wants to read what this
+     * verb answers hands it its own streams, and what it reads is the same bytes the CLI shows.
+     */
+    fun main(args: Array<String>, out: PrintStream, err: PrintStream): Int {
         val admission = CliOptionAdmission.admit(args, EVENTS_VERIFY_REQUEST)
         val accepted = when (admission) {
             is CliAdmission.Rejected -> {
-                refuse(admission.error.refusalLines("events verify").joinToString("\n"))
+                refuse(admission.error.refusalLines("events verify").joinToString("\n"), err)
                 return CliExit.INVALID_ARGUMENT.code
             }
             is CliAdmission.Admitted -> admission
@@ -79,30 +86,30 @@ object MainEventsVerifyCli {
         val runId = accepted.values["--run"]
         val contractPath = accepted.values["--contract"]
         if (db.isNullOrBlank()) {
-            refuse("events verify: --db is required: the event store lives under it.")
+            refuse("events verify: --db is required: the event store lives under it.", err)
             return CliExit.INVALID_ARGUMENT.code
         }
         if (runId.isNullOrBlank()) {
-            refuse("events verify: --run is required: it names the run to verify.")
+            refuse("events verify: --run is required: it names the run to verify.", err)
             return CliExit.INVALID_ARGUMENT.code
         }
         if (contractPath.isNullOrBlank()) {
-            refuse("events verify: --contract is required: it names the contract to verify against.")
+            refuse("events verify: --contract is required: it names the contract to verify against.", err)
             return CliExit.INVALID_ARGUMENT.code
         }
 
         val fromSequence = readFromSequence(accepted.values["--from-sequence"])
         if (fromSequence == null) {
-            refuse("events verify: --from-sequence must be a whole number.")
+            refuse("events verify: --from-sequence must be a whole number.", err)
             return CliExit.INVALID_ARGUMENT.code
         }
         val scopeAfterLastStart = readScope(accepted.values["--scope"])
         if (scopeAfterLastStart == null) {
-            refuse("events verify: --scope must be $SCOPE_LAST_SEGMENT or $SCOPE_WHOLE.")
+            refuse("events verify: --scope must be $SCOPE_LAST_SEGMENT or $SCOPE_WHOLE.", err)
             return CliExit.INVALID_ARGUMENT.code
         }
 
-        return verify(db, runId, contractPath, fromSequence, scopeAfterLastStart)
+        return verify(db, runId, contractPath, fromSequence, scopeAfterLastStart, out, err)
     }
 
     /**
@@ -111,9 +118,9 @@ object MainEventsVerifyCli {
      * The usage is printed after every refusal because the refusal itself
      * says what was wrong, and the usage says what would have been right.
      */
-    private fun refuse(message: String) {
-        System.err.println(message)
-        System.err.println(USAGE)
+    private fun refuse(message: String, err: PrintStream) {
+        err.println(message)
+        err.println(USAGE)
     }
 
     /**
@@ -152,23 +159,25 @@ object MainEventsVerifyCli {
         contractPath: String,
         fromSequence: Long,
         scopeAfterLastStart: Boolean,
+        out: PrintStream,
+        err: PrintStream,
     ): Int {
         // The second of the two copies of this rule. Both now consult `admitEventStore`.
         val dbAdmission = admitEventStore(db, EventStorePurpose.Read)
         if (dbAdmission is EventStoreAdmission.Refused) {
-            System.err.println(dbAdmission.refusal.render())
+            err.println(dbAdmission.refusal.render())
             return CliExit.INVALID_ARGUMENT.code
         }
         val contractFile = Path.of(contractPath)
         if (!Files.exists(contractFile)) {
-            System.err.println("Error: contract not found: $contractPath")
+            err.println("Error: contract not found: $contractPath")
             return CliExit.INVALID_ARGUMENT.code
         }
 
         val contract = try {
             YamlEventContractCodec.decode(Files.readString(contractFile))
         } catch (e: Exception) {
-            System.err.println("Error: cannot decode contract: ${e.message}")
+            err.println("Error: cannot decode contract: ${e.message}")
             return CliExit.INVALID_ARGUMENT.code
         }
 
@@ -182,10 +191,10 @@ object MainEventsVerifyCli {
             }
             val report = EventHarness.report(history, contract, scope)
             val outcome = outcomeOf(report, contract)
-            println("contract: ${report.contract}")
-            println("observed-terminal-outcome: ${report.observedTerminalOutcome ?: "none"}")
-            println("acceptance: $outcome")
-            printViolations(report.result)
+            out.println("contract: ${report.contract}")
+            out.println("observed-terminal-outcome: ${report.observedTerminalOutcome ?: "none"}")
+            out.println("acceptance: $outcome")
+            printViolations(report.result, out)
             return if (outcome == "PASSED") 0 else 1
         } finally {
             store.close()
@@ -207,14 +216,14 @@ object MainEventsVerifyCli {
         }
 
     /** The counterexamples of a failed verification, one block per violation. */
-    private fun printViolations(result: VerificationResult) {
+    private fun printViolations(result: VerificationResult, out: PrintStream) {
         when (result) {
             is VerificationResult.Invalid -> result.violations.forEach { violation ->
-                println("violation: [${violation.rule}] ${violation.message}")
-                violation.missing?.let { println("  missing: $it") }
-                violation.unexpected?.let { println("  unexpected: $it") }
+                out.println("violation: [${violation.rule}] ${violation.message}")
+                violation.missing?.let { out.println("  missing: $it") }
+                violation.unexpected?.let { out.println("  unexpected: $it") }
                 violation.relevantTrace.forEach { trace ->
-                    println("  #${trace.sequence} ${trace.kind} ${trace.summary}")
+                    out.println("  #${trace.sequence} ${trace.kind} ${trace.summary}")
                 }
             }
             is VerificationResult.Valid -> Unit

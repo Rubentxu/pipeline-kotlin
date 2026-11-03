@@ -104,7 +104,7 @@ class CredentialsRefusalTest {
         // `list` owns NOTHING: not a positional argument and not an option.
         // A request that carries one is not a request of this verb, and the
         // answer it used to give was the listing, with exit code 0.
-        val result = capture { MainCredentialsCli.main(arrayOf("list", FOREIGN)) }
+        val result = capture { out -> MainCredentialsCli.main(arrayOf("list", FOREIGN), out) }
 
         assertRefusal(result, verb = "list", foreign = FOREIGN)
         // The listing is not published: the refusal replaces the answer, it
@@ -121,8 +121,7 @@ class CredentialsRefusalTest {
         val verbs = listOf("add", "remove", "rotate")
 
         for (verb in verbs) {
-            val result = capture {
-                MainCredentialsCli.main(arrayOf(verb, OWNED_ID, FOREIGN))
+            val result = capture { out -> MainCredentialsCli.main(arrayOf(verb, OWNED_ID, FOREIGN), out)
             }
 
             assertRefusal(result, verb = verb, foreign = FOREIGN)
@@ -148,8 +147,7 @@ class CredentialsRefusalTest {
         val verbs = listOf("add", "list", "remove", "rotate")
 
         for (verb in verbs) {
-            val result = capture {
-                MainCredentialsCli.main(arrayOf(verb, FOREIGN_OPTION))
+            val result = capture { out -> MainCredentialsCli.main(arrayOf(verb, FOREIGN_OPTION), out)
             }
 
             assertEquals(CredentialsOutcome.NOT_CARRIED_OUT.exitCode, result.exitCode, verb)
@@ -180,10 +178,10 @@ class CredentialsRefusalTest {
         // Two mistakes, two complaints: naming NO verb and naming the WRONG
         // one are not the same mistake, and the two say so. Before, both
         // printed a usage with the offending word nowhere in it.
-        val noVerb = capture { MainCredentialsCli.main(emptyArray()) }
+        val noVerb = capture { out -> MainCredentialsCli.main(emptyArray(), out) }
         assertSubcommandRefusal(noVerb, complaint = "missing subcommand", offending = null)
 
-        val wrongVerb = capture { MainCredentialsCli.main(arrayOf(FOREIGN_VERB)) }
+        val wrongVerb = capture { out -> MainCredentialsCli.main(arrayOf(FOREIGN_VERB), out) }
         assertSubcommandRefusal(wrongVerb, complaint = "unknown subcommand: $FOREIGN_VERB", offending = FOREIGN_VERB)
     }
 
@@ -242,21 +240,25 @@ class CredentialsRefusalTest {
         const val USAGE_PREFIX = "Usage: pipeline credentials"
     }
 
-    private data class Result(val exitCode: Int, val stdout: String, val stderr: String)
+    private data class Result(val exitCode: Int, val stdout: String)
 
-    private fun capture(block: () -> Int): Result {
-        val out = ByteArrayOutputStream()
-        val err = ByteArrayOutputStream()
-        val originalOut = System.out
-        val originalErr = System.err
-        try {
-            System.setOut(PrintStream(out, true, Charsets.UTF_8.name()))
-            System.setErr(PrintStream(err, true, Charsets.UTF_8.name()))
-            val exitCode = block()
-            return Result(exitCode, out.toString(), err.toString())
-        } finally {
-            System.setOut(originalOut)
-            System.setErr(originalErr)
-        }
+    /**
+     * Run [block] with a stream of its own, and give back what it answered and what it said.
+     *
+     * The stream is a PARAMETER the block receives, not a global this test replaces. A test that
+     * swapped the process-wide stream would mutate the state every other row shares, and two
+     * rows running at the same time would read each other's bytes. The bytes here are the ones
+     * the CLI shows, because the code under test is the code the CLI runs — only the sink differs.
+     *
+     * There is ONE stream because the command publishes everything it says, refusals included,
+     * on stdout: a second stream would be a place the command does not write to, and the rows
+     * read the refusal from the stream the operator reads it from.
+     */
+    private fun capture(block: (PrintStream) -> Int): Result {
+        val outBytes = ByteArrayOutputStream()
+        val out = PrintStream(outBytes, true, Charsets.UTF_8.name())
+        val exitCode = block(out)
+        out.flush()
+        return Result(exitCode, outBytes.toString(Charsets.UTF_8))
     }
 }

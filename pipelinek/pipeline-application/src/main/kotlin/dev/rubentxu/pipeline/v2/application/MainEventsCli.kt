@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventHistoryReader
 import dev.rubentxu.pipeline.v2.events.identity.EventInspection
 import dev.rubentxu.pipeline.v2.events.identity.EventQuery
 import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope
+import java.io.PrintStream
 
 /**
  * The events CLI now participates in the unified observability surface.
@@ -199,7 +200,13 @@ object MainEventsCli {
         return n
     }
 
-    fun main(args: Array<String>): Int {
+    /**
+     * Runs the verb and writes what it answers to the streams it is given.
+     *
+     * The destination is a PARAMETER and not a global: a caller that wants to read what this
+     * verb answers hands it its own streams, and what it reads is the same bytes the CLI shows.
+     */
+    fun main(args: Array<String>, out: PrintStream, err: PrintStream): Int {
         // Admission is [CliEventsParser.parse]. The wire prefix `Error:`
         // (the contract this verb has always used for argument refusals) is preserved here in
         // the translation, exactly as before. Refusal of the data-plane read (a different concern, the
@@ -207,11 +214,11 @@ object MainEventsCli {
         // `evt-refusals-v1:`) is downstream of this and unchanged.
         val parsed = CliEventsParser.parse(args)
         if (parsed is EventsCliParseResult.Rejected) {
-            System.err.println("Error: ${parsed.reason}")
+            err.println("Error: ${parsed.reason}")
             return CliExit.INVALID_ARGUMENT.code
         }
         val p = (parsed as EventsCliParseResult.Parsed).args
-        return runWithArgs(p)
+        return runWithArgs(p, out, err)
     }
 
     /**
@@ -219,25 +226,25 @@ object MainEventsCli {
      * the cursor, build the query, then dispatch to the follow loop, the typed projection, or
      * the envelope projection.
 */
-    private fun runWithArgs(p: EventsCliArgs): Int {
+    private fun runWithArgs(p: EventsCliArgs, out: PrintStream, err: PrintStream): Int {
         // This verb had its own copy of the admission rule, written out here and once more in
         // MainEventsVerifyCli. Three reactions to one condition had accumulated across the verbs;
         // the decision now lives in `admitEventStore` and only the exit code stays here.
         val dbAdmission = admitEventStore(p.db, EventStorePurpose.Read)
         if (dbAdmission is EventStoreAdmission.Refused) {
-            System.err.println(dbAdmission.refusal.render())
+            err.println(dbAdmission.refusal.render())
             return CliExit.INVALID_ARGUMENT.code
         }
         val cursor = p.afterCursor?.let { token ->
             EventCursor.decode(token) ?: run {
-                System.err.println("Error: invalid cursor token: $token")
+                err.println("Error: invalid cursor token: $token")
                 return CliExit.INVALID_ARGUMENT.code
             }
         }
         // The token carries its run id precisely so it cannot be read as another run's position. A
         // cursor from run A applied to run B used to be accepted and would have skipped B's rows.
         if (cursor != null && cursor.runId != p.runId) {
-            System.err.println("Error: cursor belongs to run '${cursor.runId}', not to '${p.runId}'")
+            err.println("Error: cursor belongs to run '${cursor.runId}', not to '${p.runId}'")
             return CliExit.INVALID_ARGUMENT.code
         }
         val store = (dbAdmission as EventStoreAdmission.Admitted).store
@@ -247,7 +254,7 @@ object MainEventsCli {
         // first is what lets this verb tell "there is nothing to show" from "you asked for
         // something that is not there".
         admitEventRead(store, p.runId, cursor)?.let { refusal ->
-            System.err.println(refusal.render())
+            err.println(refusal.render())
             return CliExit.INVALID_ARGUMENT.code
         }
         try {
@@ -259,7 +266,7 @@ object MainEventsCli {
                     EventQuery.BySubject(
                         decodeSubject(p.subjectCanonical)
                             ?: run {
-                                System.err.println(
+                                err.println(
                                     "Error: cannot parse subject ref: ${p.subjectCanonical}",
                                 )
                                 return CliExit.INVALID_ARGUMENT.code
@@ -276,14 +283,14 @@ object MainEventsCli {
                     run = run,
                     query = query,
                     cursor = cursor,
-                    limitPerPage = p.limit,
-                    runId = p.runId,
-                    projection = p.projection,
+                    args = p,
+                    out = out,
+                    err = err,
                 )
             }
             val outcome = when (p.projection) {
                 EventsRowProjection.Envelope -> EventPageDrain.drain(reader, run, query, cursor, p.limit)
-                EventsRowProjection.Typed -> return reportTyped(store, run, query, cursor, p.limit, p.runId)
+                EventsRowProjection.Typed -> return reportTyped(store, run, query, cursor, p.limit, p.runId, out, err)
             }
             when (outcome) {
                 is EventPageDrain.Outcome.Answered -> {
@@ -293,9 +300,10 @@ object MainEventsCli {
                         kindFilter = p.kind,
                         tailCount = p.tailCount,
                         fields = p.fieldsWhitelist,
+                        out = out,
                     )
-                    reportRefusals(p.runId, outcome.page.refusals)
-                    reportContinuation(outcome.page.nextCursor)
+                    reportRefusals(p.runId, outcome.page.refusals, err)
+                    reportContinuation(outcome.page.nextCursor, err)
                 }
 
                 is EventPageDrain.Outcome.Stalled -> {
@@ -307,10 +315,11 @@ object MainEventsCli {
                         kindFilter = p.kind,
                         tailCount = p.tailCount,
                         fields = p.fieldsWhitelist,
+                        out = out,
                     )
-                    reportRefusals(p.runId, outcome.page.refusals)
-                    reportContinuation(outcome.page.nextCursor)
-                    System.err.println(
+                    reportRefusals(p.runId, outcome.page.refusals, err)
+                    reportContinuation(outcome.page.nextCursor, err)
+                    err.println(
                         "evt-stalled-v1:${p.runId}:${outcome.page.nextCursor?.lastSequence ?: 0L}: " +
                             "the store reported more rows and the continuation did not advance; " +
                             "history past this point was NOT read",
@@ -342,6 +351,7 @@ object MainEventsCli {
         kindFilter: String?,
         tailCount: Int,
         fields: List<EventField>?,
+        out: PrintStream,
     ) {
         // 1. context window. With no --kind to anchor on, the window is the identity transform;
         // we keep `envelopes` untouched and let the caller narrow via --tail / --fields.
@@ -356,9 +366,9 @@ object MainEventsCli {
         }
         // 3. fields projection (emits header + body lines, in `EventInspection.projectFields` shape)
         if (fields != null) {
-            EventInspection.projectFields(current, fields).forEach { println(it) }
+            EventInspection.projectFields(current, fields).forEach { out.println(it) }
         } else {
-            current.forEach { println(EnvelopeCodec.encode(it)) }
+            current.forEach { out.println(EnvelopeCodec.encode(it)) }
         }
     }
 
@@ -379,9 +389,9 @@ object MainEventsCli {
         run: ResourceRef,
         query: EventQuery,
         cursor: EventCursor?,
-        limitPerPage: Int,
-        runId: String,
-        projection: EventsRowProjection,
+        args: EventsCliArgs,
+        out: PrintStream,
+        err: PrintStream,
     ): Int {
         val reader = EventHistoryReader(store)
         var currentCursor = cursor
@@ -397,17 +407,17 @@ object MainEventsCli {
         })
 
         while (!shutdown.get() && !runFinished) {
-            when (projection) {
+            when (args.projection) {
                 EventsRowProjection.Envelope -> {
-                    when (val outcome = EventPageDrain.drain(reader, run, query, currentCursor, limitPerPage)) {
+                    when (val outcome = EventPageDrain.drain(reader, run, query, currentCursor, args.limit)) {
                         is EventPageDrain.Outcome.Answered -> {
                             outcome.page.envelopes.forEach { envelope ->
-                                println(EnvelopeCodec.encode(envelope))
+                                out.println(EnvelopeCodec.encode(envelope))
                             }
-                            reportRefusals(runId, outcome.page.refusals)
+                            reportRefusals(args.runId, outcome.page.refusals, err)
                             val next = outcome.page.nextCursor
                             if (next != null) {
-                                reportContinuation(next)
+                                reportContinuation(next, err)
                                 currentCursor = next
                             } else {
                                 // The store said no more rows; nothing to follow. This is not the
@@ -424,12 +434,12 @@ object MainEventsCli {
                         }
                         is EventPageDrain.Outcome.Stalled -> {
                             outcome.page.envelopes.forEach { envelope ->
-                                println(EnvelopeCodec.encode(envelope))
+                                out.println(EnvelopeCodec.encode(envelope))
                             }
-                            reportRefusals(runId, outcome.page.refusals)
-                            reportContinuation(outcome.page.nextCursor)
-                            System.err.println(
-                                "evt-stalled-v1:$runId:${outcome.page.nextCursor?.lastSequence ?: 0L}: " +
+                            reportRefusals(args.runId, outcome.page.refusals, err)
+                            reportContinuation(outcome.page.nextCursor, err)
+                            err.println(
+                                "evt-stalled-v1:${args.runId}:${outcome.page.nextCursor?.lastSequence ?: 0L}: " +
                                     "the store reported more rows and the continuation did not advance; " +
                                     "history past this point was NOT read",
                             )
@@ -441,15 +451,15 @@ object MainEventsCli {
                     }
                 }
                 EventsRowProjection.Typed -> {
-                    when (val outcome = EventPageDrain.drainTyped(store, run, query, currentCursor, limitPerPage)) {
+                    when (val outcome = EventPageDrain.drainTyped(store, run, query, currentCursor, args.limit)) {
                         is EventPageDrain.TypedOutcome.Answered -> {
                             outcome.page.events.forEach { event ->
-                                println(JsonEventLog.encodeOne(event))
+                                out.println(JsonEventLog.encodeOne(event))
                             }
-                            reportRefusals(runId, outcome.page.refusals)
+                            reportRefusals(args.runId, outcome.page.refusals, err)
                             val next = outcome.page.nextCursor
                             if (next != null) {
-                                reportContinuation(next)
+                                reportContinuation(next, err)
                                 currentCursor = next
                             } else {
                                 runFinished = true
@@ -458,11 +468,11 @@ object MainEventsCli {
                             if (outcome.runEnded) runFinished = true
                         }
                         is EventPageDrain.TypedOutcome.Stalled -> {
-                            outcome.page.events.forEach { println(JsonEventLog.encodeOne(it)) }
-                            reportRefusals(runId, outcome.page.refusals)
-                            reportContinuation(outcome.page.nextCursor)
-                            System.err.println(
-                                "evt-stalled-v1:$runId:${outcome.page.nextCursor?.lastSequence ?: 0L}: " +
+                            outcome.page.events.forEach { out.println(JsonEventLog.encodeOne(it)) }
+                            reportRefusals(args.runId, outcome.page.refusals, err)
+                            reportContinuation(outcome.page.nextCursor, err)
+                            err.println(
+                                "evt-stalled-v1:${args.runId}:${outcome.page.nextCursor?.lastSequence ?: 0L}: " +
                                     "the store reported more rows and the continuation did not advance; " +
                                     "history past this point was NOT read",
                             )
@@ -526,14 +536,16 @@ object MainEventsCli {
         cursor: EventCursor?,
         limit: Int,
         runId: String,
+        out: PrintStream,
+        err: PrintStream,
     ): Int {
         val outcome = EventPageDrain.drainTyped(store, run, query, cursor, limit)
         val page = outcome.page
-        page.events.forEach { println(JsonEventLog.encodeOne(it)) }
-        reportRefusals(runId, page.refusals)
-        reportContinuation(page.nextCursor)
+        page.events.forEach { out.println(JsonEventLog.encodeOne(it)) }
+        reportRefusals(runId, page.refusals, err)
+        reportContinuation(page.nextCursor, err)
         if (outcome is EventPageDrain.TypedOutcome.Stalled) {
-            System.err.println(
+            err.println(
                 "evt-stalled-v1:$runId:${page.nextCursor?.lastSequence ?: 0L}: " +
                     "the store reported more rows and the continuation did not advance; " +
                     "history past this point was NOT read",
@@ -604,13 +616,17 @@ object MainEventsCli {
     }
 
     /** One line per refusal, then a count, so "were there any" is a single-token question. */
-    private fun reportRefusals(runId: String, refusals: List<EventRecordRead.Undecodable>) {
+    private fun reportRefusals(
+        runId: String,
+        refusals: List<EventRecordRead.Undecodable>,
+        err: PrintStream,
+    ) {
         if (refusals.isEmpty()) return
         refusals.forEach { refusal ->
             val kind = refusal.kind?.let { escape(it) } ?: ABSENT
-            System.err.println("evt-refusal-v1:${escape(runId)}:${refusal.sequence}:${reasonTag(refusal.reason)}:$kind")
+            err.println("evt-refusal-v1:${escape(runId)}:${refusal.sequence}:${reasonTag(refusal.reason)}:$kind")
         }
-        System.err.println("evt-refusals-v1:${escape(runId)}:${refusals.size}")
+        err.println("evt-refusals-v1:${escape(runId)}:${refusals.size}")
     }
 
     /**
@@ -618,9 +634,9 @@ object MainEventsCli {
      * interpolation here. This command both emits and accepts that token, and a hand-built copy of
      * its wire form is a second place that can disagree with the one that parses it.
 */
-    private fun reportContinuation(nextCursor: EventCursor?) {
+    private fun reportContinuation(nextCursor: EventCursor?, err: PrintStream) {
         val cursor = nextCursor ?: return
-        System.err.println(cursor.encode())
+        err.println(cursor.encode())
     }
 
     /** Exhaustive over the closed reason type: a new case must be named here, not defaulted. */

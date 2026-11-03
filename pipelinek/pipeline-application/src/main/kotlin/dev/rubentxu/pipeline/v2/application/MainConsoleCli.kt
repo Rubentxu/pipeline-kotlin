@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import java.nio.file.Path
+import java.io.PrintStream
 
 /**
  * The console reader CLI.
@@ -78,9 +79,16 @@ object MainConsoleCli {
         }
     }
 
-    fun main(args: Array<String>): Int = when (val admitted = CliConsoleParser.parse(args)) {
+    /**
+     * Runs the verb and writes what it answers to the streams it is given.
+     *
+     * The destination is a PARAMETER and not a global: a caller that wants to read what this
+     * verb answers hands it its own streams, and what it reads is the same bytes the CLI shows.
+     */
+    fun main(args: Array<String>, out: PrintStream, err: PrintStream): Int =
+        when (val admitted = CliConsoleParser.parse(args)) {
         is ConsoleCliParseResult.Rejected -> {
-            System.err.println(renderConsoleCliRefusal(admitted.refusal))
+            err.println(renderConsoleCliRefusal(admitted.refusal))
             CliExit.INVALID_ARGUMENT.code
         }
 
@@ -90,7 +98,7 @@ object MainConsoleCli {
             // The first effect in the program. Everything above is a decision about the QUESTION;
             // this is the question being put to a filesystem that may not have the answer.
             if (!java.nio.file.Files.isDirectory(root)) {
-                System.err.println(
+                err.println(
                     renderConsoleCliRefusal(ConsoleCliRefusal.ControlDirNotFound(request.controlDir)),
                 )
                 CliExit.INVALID_ARGUMENT.code
@@ -113,7 +121,7 @@ object MainConsoleCli {
                 val selection = when (val outcome = resolveSelection(request)) {
                     is SelectionOutcome.Selected -> outcome.selection
                     is SelectionOutcome.Refused -> {
-                        System.err.println(
+                        err.println(
                             renderConsoleCliRefusal(ConsoleCliRefusal.FilterNotResolvable(outcome.refusal)),
                         )
                         return CliExit.INVALID_ARGUMENT.code
@@ -121,7 +129,7 @@ object MainConsoleCli {
                 }
                 when (request) {
                     is ConsoleReadRequest.Frames ->
-                        ConsolePresentation.emitFrames(ConsoleFramePlane.readFrames(request, root), request, System.out, System.err)
+                        ConsolePresentation.emitFrames(ConsoleFramePlane.readFrames(request, root), request, out, err)
                     // `--follow`. A loop over the per-frame path; the loop
                     // is a pure interpreter of [ConsoleReadRequest.FollowFrames] and does not
                     // mutate any journal state.
@@ -133,9 +141,9 @@ object MainConsoleCli {
                         // A `--follow` carrying filters is a FILTERED follow.
                         // Under rc1 this branch shadowed the filter entirely: the operator
                         // asked for one stage, was shown the whole run, and got exit 0.
-                        ConsoleFollowLoop.runFollowFrames(request, root, System.out, System.err, selection).also { outcome ->
+                        ConsoleFollowLoop.runFollowFrames(request, root, out, err, selection).also { outcome ->
                             if (outcome is FollowExit.PollBudgetExhausted) {
-                                System.err.println(
+                                err.println(
                                     "console-follow-exhausted: ${outcome.polls} polls, " +
                                         "no terminal fact observed; last frame ordinal " +
                                         "${outcome.lastOrdinal}. The run was NOT observed to " +
@@ -147,13 +155,13 @@ object MainConsoleCli {
                         ConsolePresentation.emitFramesFiltered(
                             ConsoleFramePlane.readFramesFiltered(request, root),
                             request,
-                            System.out,
-                            System.err,
+                            out,
+                            err,
                             selection,
                         )
                     is ConsoleReadRequest.Paged,
                     is ConsoleReadRequest.Range ->
-                        ConsolePresentation.emit(execute(request, root), request, System.out, System.err)
+                        ConsolePresentation.emit(execute(request, root), request, out, err)
                 }
             }
         }

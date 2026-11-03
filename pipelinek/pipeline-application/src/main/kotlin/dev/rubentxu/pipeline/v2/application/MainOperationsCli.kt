@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import java.nio.file.Path
+import java.io.PrintStream
 
 /**
  * The operations of a run, with their complete identity.
@@ -162,13 +163,16 @@ internal object MainOperationsCli {
      * <runId> extra-arg` used to publish the operations of `<runId>` and to
      * say nothing about `extra-arg`. The verbs that own none say so too, by
      * not saying they own one.
+     *
+     * The destination is a PARAMETER and not a global: a caller that wants to read what this
+     * verb answers hands it its own streams, and what it reads is the same bytes the CLI shows.
      */
-    fun main(args: Array<String>): Int {
+    fun main(args: Array<String>, out: PrintStream, err: PrintStream): Int {
         val admission = CliOptionAdmission.admit(args, OPERATIONS_REQUEST)
         val accepted = when (admission) {
             is CliAdmission.Rejected -> {
-                System.err.println(admission.error.refusalLines("operations").joinToString("\n"))
-                System.err.println(USAGE)
+                err.println(admission.error.refusalLines("operations").joinToString("\n"))
+                err.println(USAGE)
                 return CliExit.INVALID_ARGUMENT.code
             }
             is CliAdmission.Admitted -> admission
@@ -178,18 +182,18 @@ internal object MainOperationsCli {
         val format = accepted.values["--format"] ?: "text"
 
         if (runId == null) {
-            System.err.println("operations: a run id is required.")
-            System.err.println(USAGE)
+            err.println("operations: a run id is required.")
+            err.println(USAGE)
             return CliExit.INVALID_ARGUMENT.code
         }
         if (controlRoot.isNullOrBlank()) {
-            System.err.println("operations: --control-root is required: the Output Plane lives under it.")
-            System.err.println(USAGE)
+            err.println("operations: --control-root is required: the Output Plane lives under it.")
+            err.println(USAGE)
             return CliExit.INVALID_ARGUMENT.code
         }
         if (format != "text" && format != "json") {
-            System.err.println("operations: --format must be text or json.")
-            System.err.println(USAGE)
+            err.println("operations: --format must be text or json.")
+            err.println(USAGE)
             return CliExit.INVALID_ARGUMENT.code
         }
 
@@ -199,11 +203,11 @@ internal object MainOperationsCli {
         if (format == "json") {
             val line = Json { prettyPrint = false; encodeDefaults = true }
                 .encodeToString(JsonObject.serializer(), document(runId, operations)) + "\n"
-            System.out.write(line.toByteArray(Charsets.UTF_8))
+            out.write(line.toByteArray(Charsets.UTF_8))
         } else {
-            System.out.write(text(operations).toByteArray(Charsets.UTF_8))
+            out.write(text(operations).toByteArray(Charsets.UTF_8))
         }
-        System.out.flush()
+        out.flush()
         return CliExit.SUCCESS.code
     }
 }

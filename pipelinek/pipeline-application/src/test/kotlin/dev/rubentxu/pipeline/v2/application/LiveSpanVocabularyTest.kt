@@ -234,12 +234,13 @@ class LiveSpanVocabularyTest {
     fun aRefusedAdmissionIsARejectionAndNotACompletedExecution() {
         val observer = LiveSpanLedger()
 
-        val admission = captureStandardError {
+        val admission = captureStandardError { err ->
             admitThenCompose(
                 pluginJars = listOf("/nonexistent/pipelinek-live-span-test/plugin.jar"),
                 trust = null,
                 journal = null,
                 telemetry = observer,
+                err = err,
             )
         }
 
@@ -277,21 +278,22 @@ class LiveSpanVocabularyTest {
     }
 
     /**
-     * Runs [block] with the standard error stream captured.
+     * Runs [block] with an error stream of its own, and hands that stream to the block.
      *
-     * The admission boundary tells the operator why it refused, and that message
-     * belongs to the operator — not to the test output. The row asserts on the
-     * span, and the message is captured rather than printed so the build log
-     * says what the rows say.
+     * The admission boundary tells the operator why it refused, and that message belongs to the
+     * operator — not to the test output. The row asserts on the span, and the message goes to a
+     * stream the row owns so the build log says what the rows say.
+     *
+     * The stream is a PARAMETER, not a global this test replaces: a row that swapped the
+     * process-wide stream would mutate the state every other row shares, and two rows running at
+     * the same time would read each other's bytes. The bytes are the ones the CLI shows, because
+     * the code under test is the code the CLI runs — only the sink differs.
      */
-    private fun captureStandardError(block: () -> PluginAdmission): PluginAdmission {
+    private fun captureStandardError(block: (PrintStream) -> PluginAdmission): PluginAdmission {
         val captured = ByteArrayOutputStream()
-        val original = System.err
-        return try {
-            System.setErr(PrintStream(captured, true, Charsets.UTF_8.name()))
-            block()
-        } finally {
-            System.setErr(original)
-        }
+        val err = PrintStream(captured, true, Charsets.UTF_8.name())
+        val admission = block(err)
+        err.flush()
+        return admission
     }
 }

@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import java.io.PrintStream
 
 /**
  * `pipeline sdk-info` subcommand.
@@ -31,13 +32,18 @@ object MainSdkInfoCli {
     )
 
     /**
+     * Runs the verb and writes what it answers to the streams it is given.
+     *
+     * The destination is a PARAMETER and not a global: a caller that wants to read what this
+     * verb answers hands it its own streams, and what it reads is the same bytes the CLI shows.
+     *
      * @return 0 on success (always).
-*/
-    fun main(args: Array<String>): Int {
+     */
+    fun main(args: Array<String>, out: PrintStream, err: PrintStream): Int {
         val admission = CliOptionAdmission.admit(args, NO_ARGUMENTS_REQUEST)
         when (admission) {
             is CliAdmission.Rejected -> {
-                System.err.println(admission.error.refusalLines("sdk-info").joinToString("\n"))
+                err.println(admission.error.refusalLines("sdk-info").joinToString("\n"))
                 return CliExit.INVALID_ARGUMENT.code
             }
             is CliAdmission.Admitted -> Unit
@@ -63,8 +69,8 @@ object MainSdkInfoCli {
         }
         val line = Json { prettyPrint = false; encodeDefaults = true }
             .encodeToString(JsonObject.serializer(), obj) + "\n"
-        System.out.write(line.toByteArray(Charsets.UTF_8))
-        System.out.flush()
+        out.write(line.toByteArray(Charsets.UTF_8))
+        out.flush()
         return CliExit.SUCCESS.code
     }
 

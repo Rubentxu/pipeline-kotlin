@@ -129,7 +129,7 @@ fun main(args: Array<String>) {
     // ends the process, so the decision the verb made becomes the process's
     // exit code here. Nothing after this point is reached when one of them is
     // the verb.
-    when (val outcome = handleReadOnlyVerb(args)) {
+    when (val outcome = handleReadOnlyVerb(args, System.out, System.err)) {
         is ReadOnlyVerbOutcome.Answered -> {
             System.exit(outcome.exit.code)
             return
@@ -141,7 +141,7 @@ fun main(args: Array<String>) {
     // is working on, and refuses to close one that is. It is a WRITE verb, and
     // it is the first one in this CLI: every other verb reads.
     if (args.firstOrNull() == MainRunsCli.FAMILY) {
-        val exitCode = MainRunsCli.main(args.drop(1).toTypedArray())
+        val exitCode = MainRunsCli.main(args.drop(1).toTypedArray(), System.out, System.err)
         System.exit(verbExit(exitCode).code)
         return
     }

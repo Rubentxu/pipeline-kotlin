@@ -239,7 +239,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `version refuses an option it does not own`() {
-        val result = capture { runVersionVerb(arrayOf("--db")).code }
+        val result = capture { out, err -> runVersionVerb(arrayOf("--db"), out, err).code }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("--db"), result.stderr)
@@ -247,7 +247,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `doctor refuses an option it does not own`() {
-        val result = capture { runDoctorVerb(arrayOf("--json")).code }
+        val result = capture { out, err -> runDoctorVerb(arrayOf("--json"), out, err).code }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("--json"), result.stderr)
@@ -255,7 +255,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `capabilities refuses an option it does not own`() {
-        val result = capture { MainCapabilitiesCli.main(arrayOf("--view")) }
+        val result = capture { out, err -> MainCapabilitiesCli.main(arrayOf("--view"), out, err) }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("--view"), result.stderr)
@@ -263,7 +263,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `sdk-info refuses an option it does not own`() {
-        val result = capture { MainSdkInfoCli.main(arrayOf("--db")) }
+        val result = capture { out, err -> MainSdkInfoCli.main(arrayOf("--db"), out, err) }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("--db"), result.stderr)
@@ -271,7 +271,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `operations refuses an option it does not own and publishes nothing`() {
-        val result = capture { MainOperationsCli.main(arrayOf("run-1", "--bogus-flag")) }
+        val result = capture { out, err -> MainOperationsCli.main(arrayOf("run-1", "--bogus-flag"), out, err) }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("--bogus-flag"), result.stderr)
@@ -282,7 +282,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `operations refuses a value that is another option`() {
-        val result = capture { MainOperationsCli.main(arrayOf("--control-root", "--db")) }
+        val result = capture { out, err -> MainOperationsCli.main(arrayOf("--control-root", "--db"), out, err) }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("--db"), result.stderr)
@@ -291,7 +291,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `version still answers the option it owns`() {
-        val result = capture { runVersionVerb(arrayOf("--json")).code }
+        val result = capture { out, err -> runVersionVerb(arrayOf("--json"), out, err).code }
 
         assertEquals(0, result.exitCode)
         assertTrue(result.stdout.contains("productVersion"), result.stdout)
@@ -299,7 +299,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `version refuses an argument it was not asked about`() {
-        val result = capture { runVersionVerb(arrayOf("foo")).code }
+        val result = capture { out, err -> runVersionVerb(arrayOf("foo"), out, err).code }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("foo"), result.stderr)
@@ -310,7 +310,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `doctor refuses an argument it was not asked about`() {
-        val result = capture { runDoctorVerb(arrayOf("foo")).code }
+        val result = capture { out, err -> runDoctorVerb(arrayOf("foo"), out, err).code }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("foo"), result.stderr)
@@ -321,7 +321,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `capabilities refuses an argument it was not asked about`() {
-        val result = capture { MainCapabilitiesCli.main(arrayOf("foo")) }
+        val result = capture { out, err -> MainCapabilitiesCli.main(arrayOf("foo"), out, err) }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("foo"), result.stderr)
@@ -330,7 +330,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `sdk-info refuses an argument it was not asked about`() {
-        val result = capture { MainSdkInfoCli.main(arrayOf("foo")) }
+        val result = capture { out, err -> MainSdkInfoCli.main(arrayOf("foo"), out, err) }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("foo"), result.stderr)
@@ -339,7 +339,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `operations still reads the run id it owns`() {
-        val result = capture { MainOperationsCli.main(arrayOf("run-1")) }
+        val result = capture { out, err -> MainOperationsCli.main(arrayOf("run-1"), out, err) }
 
         // The verb owns the run id, so the argument is admitted and READ: the
         // refusal is about the NEXT thing the verb needs, not about the
@@ -357,7 +357,7 @@ class CliOptionAdmissionTest {
         // and a unit test in this tree does not touch the filesystem. The
         // request is refused naming the EXTRA argument and not the first one,
         // which the verb owns.
-        val result = capture { MainOperationsCli.main(arrayOf("run-1", "run-2")) }
+        val result = capture { out, err -> MainOperationsCli.main(arrayOf("run-1", "run-2"), out, err) }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("run-2"), result.stderr)
@@ -372,7 +372,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `capabilities still answers the request that is its own`() {
-        val result = capture { MainCapabilitiesCli.main(arrayOf()) }
+        val result = capture { out, err -> MainCapabilitiesCli.main(arrayOf(), out, err) }
 
         assertEquals(0, result.exitCode)
         assertTrue(result.stdout.contains("pipelinek.capabilities/2"), result.stdout)
@@ -380,7 +380,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `sdk-info still answers the request that is its own`() {
-        val result = capture { MainSdkInfoCli.main(arrayOf()) }
+        val result = capture { out, err -> MainSdkInfoCli.main(arrayOf(), out, err) }
 
         assertEquals(0, result.exitCode)
         assertTrue(result.stdout.contains("pipelinek.sdk/1"), result.stdout)
@@ -388,19 +388,22 @@ class CliOptionAdmissionTest {
 
     private data class Result(val exitCode: Int, val stdout: String, val stderr: String)
 
-    private fun capture(block: () -> Int): Result {
-        val out = ByteArrayOutputStream()
-        val err = ByteArrayOutputStream()
-        val originalOut = System.out
-        val originalErr = System.err
-        try {
-            System.setOut(PrintStream(out, true, Charsets.UTF_8.name()))
-            System.setErr(PrintStream(err, true, Charsets.UTF_8.name()))
-            val exitCode = block()
-            return Result(exitCode, out.toString(), err.toString())
-        } finally {
-            System.setOut(originalOut)
-            System.setErr(originalErr)
-        }
+    /**
+     * Run [block] with two streams of its own, and give back what it answered and what it said.
+     *
+     * The streams are PARAMETERS the block receives, not globals this test replaces. A test that
+     * swapped the process-wide streams would mutate the state every other row shares, and two
+     * rows running at the same time would read each other's bytes. The bytes here are the ones
+     * the CLI shows, because the code under test is the code the CLI runs — only the sink differs.
+     */
+    private fun capture(block: (PrintStream, PrintStream) -> Int): Result {
+        val outBytes = ByteArrayOutputStream()
+        val errBytes = ByteArrayOutputStream()
+        val out = PrintStream(outBytes, true, Charsets.UTF_8.name())
+        val err = PrintStream(errBytes, true, Charsets.UTF_8.name())
+        val exitCode = block(out, err)
+        out.flush()
+        err.flush()
+        return Result(exitCode, outBytes.toString(Charsets.UTF_8), errBytes.toString(Charsets.UTF_8))
     }
 }

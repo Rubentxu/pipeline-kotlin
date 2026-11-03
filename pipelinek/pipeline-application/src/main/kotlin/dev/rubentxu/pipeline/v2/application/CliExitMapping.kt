@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.ObservedOutcome
 import dev.rubentxu.pipeline.v2.output.OutputChannel
+import java.io.PrintStream
 
 /**
  * Exhaustive mapping from [CliError] to [CliExit].
@@ -226,7 +227,7 @@ internal fun verbExit(code: Int): CliExit =
  * The words come from [refusalLines], so a verb that refuses a request cannot
  * invent its own sentence either.
  */
-internal fun refuse(error: CliError, verb: String): Int {
-    error.refusalLines(verb).forEach { System.err.println(it) }
+internal fun refuse(error: CliError, verb: String, err: PrintStream): Int {
+    error.refusalLines(verb).forEach { err.println(it) }
     return error.toCliExit().code
 }

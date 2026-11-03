@@ -36,6 +36,10 @@ import java.nio.file.Paths
  * it, rather than through the error's own shape — is crossed by calling the
  * verb in this process and reading its stderr.
  *
+ * The verb is handed the streams it has to write to, so the rows read what
+ * the verb said without any row touching the process-wide streams: two rows
+ * can run at the same time and neither one can see the other's bytes.
+ *
  * The four verbs that read a run are compared WITH EACH OTHER, because that
  * comparison IS the guarantee. A hand-written fragment alone was not enough,
  * and this file learned that the hard way: a first form of these rows
@@ -139,9 +143,9 @@ class CliErrorRenderingTest {
         // need no store, no fixture and no directory that exists.
         assertSameRefusal(
             "run id 'a/b' cannot name a durable directory",
-            "operations" to capture { dispatch(arrayOf("operations", "a/b", "--control-root", controlRoot)) },
-            "observe" to capture {
-                dispatch(arrayOf("observe", "a/b", "--control-root", controlRoot, "--view", "console"))
+            "operations" to capture { out, err -> dispatch(arrayOf("operations", "a/b", "--control-root", controlRoot), out, err) },
+            "observe" to capture { out, err ->
+                dispatch(arrayOf("observe", "a/b", "--control-root", controlRoot, "--view", "console"), out, err)
             },
         )
     }
@@ -152,7 +156,7 @@ class CliErrorRenderingTest {
         // turns it into words. A dispatcher that let the throw escape would answer the operator
         // with the shape of a type and a stack, which is the failure this row exists to catch: the
         // answer an operator reads is the one that looks like a defect.
-        val result = capture { dispatch(arrayOf("operations", "a/b", "--control-root", controlRoot)) }
+        val result = capture { out, err -> dispatch(arrayOf("operations", "a/b", "--control-root", controlRoot), out, err) }
 
         assertFalse(result.stderr.contains("UnnameableRunIdentity"), result.stderr)
         assertFalse(result.stderr.contains("Exception"), result.stderr)
@@ -251,7 +255,7 @@ class CliErrorRenderingTest {
 
     @Test
     fun `observe refuses an option it does not own with the shared sentence`() {
-        val result = capture { MainObserveCli.main(arrayOf("run-1", "--bogus-flag")) }
+        val result = capture { out, err -> MainObserveCli.main(arrayOf("run-1", "--bogus-flag"), out, err) }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("unknown option: --bogus-flag"), result.stderr)
@@ -260,7 +264,7 @@ class CliErrorRenderingTest {
 
     @Test
     fun `observe names the channels this build has when a channel is wrong`() {
-        val result = capture { MainObserveCli.main(arrayOf("run-1", "--channel", "bogus")) }
+        val result = capture { out, err -> MainObserveCli.main(arrayOf("run-1", "--channel", "bogus"), out, err) }
 
         assertEquals(2, result.exitCode)
         // The usage line names the channels too, but as `stdout|stderr`. The
@@ -272,10 +276,10 @@ class CliErrorRenderingTest {
     fun `an option nobody wrote is refused the same way by every verb that reads a run`() {
         assertSameRefusal(
             "unknown option: --bogus-flag",
-            "runs cancel" to capture { MainRunsCli.main(arrayOf("cancel", "run-1", "--bogus-flag")) },
-            "runs recover" to capture { MainRunsCli.main(arrayOf("recover", "run-1", "--bogus-flag")) },
-            "inspect" to capture { MainInspectCli.main(arrayOf("run-1", "--bogus-flag")) },
-            "saga inspect" to capture { MainSagaInspectCli.main(arrayOf("run-1", "--bogus-flag")) },
+            "runs cancel" to capture { out, err -> MainRunsCli.main(arrayOf("cancel", "run-1", "--bogus-flag"), out, err) },
+            "runs recover" to capture { out, err -> MainRunsCli.main(arrayOf("recover", "run-1", "--bogus-flag"), out, err) },
+            "inspect" to capture { out, err -> MainInspectCli.main(arrayOf("run-1", "--bogus-flag"), out, err) },
+            "saga inspect" to capture { out, err -> MainSagaInspectCli.main(arrayOf("run-1", "--bogus-flag"), out, err) },
         )
     }
 
@@ -283,10 +287,10 @@ class CliErrorRenderingTest {
     fun `an option without its value is refused the same way by every verb that reads a run`() {
         assertSameRefusal(
             "option --db requires a value",
-            "runs cancel" to capture { MainRunsCli.main(arrayOf("cancel", "run-1", "--db")) },
-            "runs recover" to capture { MainRunsCli.main(arrayOf("recover", "run-1", "--db")) },
-            "inspect" to capture { MainInspectCli.main(arrayOf("run-1", "--db")) },
-            "saga inspect" to capture { MainSagaInspectCli.main(arrayOf("run-1", "--db")) },
+            "runs cancel" to capture { out, err -> MainRunsCli.main(arrayOf("cancel", "run-1", "--db"), out, err) },
+            "runs recover" to capture { out, err -> MainRunsCli.main(arrayOf("recover", "run-1", "--db"), out, err) },
+            "inspect" to capture { out, err -> MainInspectCli.main(arrayOf("run-1", "--db"), out, err) },
+            "saga inspect" to capture { out, err -> MainSagaInspectCli.main(arrayOf("run-1", "--db"), out, err) },
         )
     }
 
@@ -294,10 +298,10 @@ class CliErrorRenderingTest {
     fun `a run nobody named is refused the same way by every verb that reads a run`() {
         assertSameRefusal(
             "missing required argument: run id",
-            "runs cancel" to capture { MainRunsCli.main(arrayOf("cancel")) },
-            "runs recover" to capture { MainRunsCli.main(arrayOf("recover")) },
-            "inspect" to capture { MainInspectCli.main(arrayOf()) },
-            "saga inspect" to capture { MainSagaInspectCli.main(arrayOf()) },
+            "runs cancel" to capture { out, err -> MainRunsCli.main(arrayOf("cancel"), out, err) },
+            "runs recover" to capture { out, err -> MainRunsCli.main(arrayOf("recover"), out, err) },
+            "inspect" to capture { out, err -> MainInspectCli.main(arrayOf(), out, err) },
+            "saga inspect" to capture { out, err -> MainSagaInspectCli.main(arrayOf(), out, err) },
         )
     }
 
@@ -305,42 +309,54 @@ class CliErrorRenderingTest {
     fun `a required option nobody wrote is refused the same way by every verb that reads a run`() {
         assertSameRefusal(
             "missing required argument: --db <path>",
-            "runs cancel" to capture { MainRunsCli.main(arrayOf("cancel", "run-1")) },
-            "runs recover" to capture { MainRunsCli.main(arrayOf("recover", "run-1")) },
-            "inspect" to capture { MainInspectCli.main(arrayOf("run-1")) },
-            "saga inspect" to capture { MainSagaInspectCli.main(arrayOf("run-1")) },
+            "runs cancel" to capture { out, err -> MainRunsCli.main(arrayOf("cancel", "run-1"), out, err) },
+            "runs recover" to capture { out, err -> MainRunsCli.main(arrayOf("recover", "run-1"), out, err) },
+            "inspect" to capture { out, err -> MainInspectCli.main(arrayOf("run-1"), out, err) },
+            "saga inspect" to capture { out, err -> MainSagaInspectCli.main(arrayOf("run-1"), out, err) },
         )
     }
 
     @Test
     fun `a value the verb cannot use is refused with the shared sentence`() {
-        assertRefusedWithReason("inspect", capture { MainInspectCli.main(arrayOf("run-1", "--step", "abc")) }, "invalid value for --step")
-        assertRefusedWithReason("saga inspect", capture { MainSagaInspectCli.main(arrayOf("run-1", "--format", "yaml")) }, "invalid value for --format")
+        assertRefusedWithReason(
+            "inspect",
+            capture { out, err -> MainInspectCli.main(arrayOf("run-1", "--step", "abc"), out, err) },
+            "invalid value for --step",
+        )
+        assertRefusedWithReason(
+            "saga inspect",
+            capture { out, err -> MainSagaInspectCli.main(arrayOf("run-1", "--format", "yaml"), out, err) },
+            "invalid value for --format",
+        )
     }
 
     @Test
     fun `a combination with no honest answer is refused with the shared sentence`() {
-        assertRefusedWithReason("inspect", capture { MainInspectCli.main(arrayOf("run-1", "--state", "--profile")) }, "invalid combination:")
+        assertRefusedWithReason(
+            "inspect",
+            capture { out, err -> MainInspectCli.main(arrayOf("run-1", "--state", "--profile"), out, err) },
+            "invalid combination:",
+        )
     }
 
     @Test
     fun `an option another verb owns is refused with the shared sentence`() {
         assertRefusedWithReason(
             "runs cancel",
-            capture { MainRunsCli.main(arrayOf("cancel", "run-1", "--db", "/tmp/run.db", "--dry-run")) },
+            capture { out, err -> MainRunsCli.main(arrayOf("cancel", "run-1", "--db", "/tmp/run.db", "--dry-run"), out, err) },
             "option --dry-run belongs to 'runs recover'",
         )
         assertRefusedWithReason(
             "runs recover",
-            capture { MainRunsCli.main(arrayOf("recover", "run-1", "--db", "/tmp/run.db", "--reason", "because")) },
+            capture { out, err -> MainRunsCli.main(arrayOf("recover", "run-1", "--db", "/tmp/run.db", "--reason", "because"), out, err) },
             "option --reason belongs to 'runs cancel'",
         )
     }
 
     @Test
     fun `the runs family refuses a word that names no verb with the shared sentence`() {
-        assertRefused("runs", capture { MainRunsCli.main(arrayOf()) }, "missing required argument: subcommand")
-        assertRefused("runs", capture { MainRunsCli.main(arrayOf("bogus")) }, "unknown subcommand: bogus")
+        assertRefused("runs", capture { out, err -> MainRunsCli.main(arrayOf(), out, err) }, "missing required argument: subcommand")
+        assertRefused("runs", capture { out, err -> MainRunsCli.main(arrayOf("bogus"), out, err) }, "unknown subcommand: bogus")
     }
 
     @Test
@@ -428,8 +444,8 @@ class CliErrorRenderingTest {
      * one — is what makes the comparison between the verbs a comparison of the SAME refusal
      * answered by two doors.
      */
-    private fun dispatch(args: Array<String>): Int =
-        when (val outcome = handleReadOnlyVerb(args)) {
+    private fun dispatch(args: Array<String>, out: PrintStream, err: PrintStream): Int =
+        when (val outcome = handleReadOnlyVerb(args, out, err)) {
             is ReadOnlyVerbOutcome.Answered -> outcome.exit.code
             ReadOnlyVerbOutcome.NotHandled -> fail("no verb answered ${args.toList()}")
         }
@@ -444,19 +460,22 @@ class CliErrorRenderingTest {
     private val controlRoot: String =
         Paths.get(System.getProperty("java.io.tmpdir"), "pipelinek-unnameable-run").toString()
 
-    private fun capture(block: () -> Int): Result {
-        val out = ByteArrayOutputStream()
-        val err = ByteArrayOutputStream()
-        val originalOut = System.out
-        val originalErr = System.err
-        try {
-            System.setOut(PrintStream(out, true, Charsets.UTF_8.name()))
-            System.setErr(PrintStream(err, true, Charsets.UTF_8.name()))
-            val exitCode = block()
-            return Result(exitCode, out.toString(), err.toString())
-        } finally {
-            System.setOut(originalOut)
-            System.setErr(originalErr)
-        }
+    /**
+     * Run [block] with two streams of its own, and give back what it answered and what it said.
+     *
+     * The streams are PARAMETERS the block receives, not globals this test replaces. A test that
+     * swapped the process-wide streams would mutate the state every other row shares, and two
+     * rows running at the same time would read each other's bytes. The bytes here are the ones
+     * the CLI shows, because the code under test is the code the CLI runs — only the sink differs.
+     */
+    private fun capture(block: (PrintStream, PrintStream) -> Int): Result {
+        val outBytes = ByteArrayOutputStream()
+        val errBytes = ByteArrayOutputStream()
+        val out = PrintStream(outBytes, true, Charsets.UTF_8.name())
+        val err = PrintStream(errBytes, true, Charsets.UTF_8.name())
+        val exitCode = block(out, err)
+        out.flush()
+        err.flush()
+        return Result(exitCode, outBytes.toString(Charsets.UTF_8), errBytes.toString(Charsets.UTF_8))
     }
 }

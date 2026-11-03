@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptCacheStore
 import java.nio.file.Paths
 import java.nio.file.Files
 import java.util.Locale
+import java.io.PrintStream
 
 internal fun printUsage(out: Appendable) {
     // Locale.ROOT: the usage text is a machine-readable surface, and a locale that
@@ -88,12 +89,16 @@ internal sealed interface ReadOnlyVerbOutcome {
  * answer can still not fall through into the run path: the caller stops on
  * the outcome, whatever the outcome is.
  */
-internal fun handleReadOnlyVerb(args: Array<String>): ReadOnlyVerbOutcome {
+internal fun handleReadOnlyVerb(
+    args: Array<String>,
+    out: PrintStream,
+    err: PrintStream,
+): ReadOnlyVerbOutcome {
     val verb = cliVerbFor(args)
     if (verb != null && verb.handler != null) {
         return ReadOnlyVerbOutcome.Answered(
             try {
-                verb.handler(args.drop(verb.words.size).toTypedArray())
+                verb.handler(args.drop(verb.words.size).toTypedArray(), out, err)
             } catch (refusal: UnnameableRunIdentity) {
                 // The artifact plane refuses a run identity it cannot name, and
                 // that refusal is the answer to the request. It is rendered
@@ -101,7 +106,7 @@ internal fun handleReadOnlyVerb(args: Array<String>): ReadOnlyVerbOutcome {
                 // says the same thing about the same mistake.
                 val error = CliError.RunIdCannotNameADirectory(refusal.runId)
                 val exit = error.toCliExit()
-                exit.refusalLines(verb.label).forEach { System.err.println(it) }
+                exit.refusalLines(verb.label).forEach { err.println(it) }
                 exit
             }
         )
@@ -116,8 +121,8 @@ internal fun handleReadOnlyVerb(args: Array<String>): ReadOnlyVerbOutcome {
     // process and is the only place that ends it.
     val door = cliFamilyDoor(args)
     if (door != null) {
-        System.err.println(door.error.refusalLines("pipeline").joinToString("\n"))
-        System.err.println(door.usage)
+        err.println(door.error.refusalLines("pipeline").joinToString("\n"))
+        err.println(door.usage)
         return ReadOnlyVerbOutcome.Answered(door.error.toCliExit())
     }
     return ReadOnlyVerbOutcome.NotHandled
@@ -150,11 +155,11 @@ internal fun handleReadOnlyVerb(args: Array<String>): ReadOnlyVerbOutcome {
  * error: a working-tree build has no commit to report, and the candidate
  * gate decides whether that is acceptable for what it is certifying.
  */
-internal fun runVersionVerb(args: Array<String>): CliExit {
+internal fun runVersionVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit {
     val admission = CliOptionAdmission.admit(args, VERSION_REQUEST)
     val accepted = when (admission) {
         is CliAdmission.Rejected -> {
-            System.err.println(admission.error.refusalLines("version").joinToString("\n"))
+            err.println(admission.error.refusalLines("version").joinToString("\n"))
             return admission.error.toCliExit()
         }
         is CliAdmission.Admitted -> admission
@@ -167,14 +172,14 @@ internal fun runVersionVerb(args: Array<String>): CliExit {
         }
         val versionField =
             RuntimeApiVersion.readImplementationVersion()?.let { "\"$it\"" } ?: "null"
-        println(
+        out.println(
             """{"productVersion":$versionField,"buildCommit":$commitField}""",
         )
         return CliExit.Success()
     }
     val manifestVersion = RuntimeApiVersion.readImplementationVersion()
     if (manifestVersion.isNullOrBlank()) {
-        System.err.println(
+        err.println(
             "pipeline: FATAL — the generated version resource is missing. " +
                 "Refusing to report a version derived from a hard-coded sentinel. " +
                 "Rebuild via Gradle so it is generated from project.version."
@@ -184,7 +189,7 @@ internal fun runVersionVerb(args: Array<String>): CliExit {
             hint = "rebuild via Gradle so the version is generated from project.version",
         )
     }
-    println("pipeline $manifestVersion")
+    out.println("pipeline $manifestVersion")
     return CliExit.Success()
 }
 
@@ -193,16 +198,16 @@ internal fun runVersionVerb(args: Array<String>): CliExit {
  *
  * Side-effect free. Machine-verifiable surface for external consumers.
  */
-internal fun runCapabilitiesVerb(args: Array<String>): CliExit =
-    verbExit(MainCapabilitiesCli.main(args))
+internal fun runCapabilitiesVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainCapabilitiesCli.main(args, out, err))
 
 /**
  * `sdk-info` — the SDK coordinates a plugin builds against, as one JSON line.
  *
  * Side-effect free.
  */
-internal fun runSdkInfoVerb(args: Array<String>): CliExit =
-    verbExit(MainSdkInfoCli.main(args))
+internal fun runSdkInfoVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainSdkInfoCli.main(args, out, err))
 
 /**
  * `doctor` — local-only health diagnostics.
@@ -227,11 +232,11 @@ internal fun runSdkInfoVerb(args: Array<String>): CliExit =
  * --json` used to answer 0 and print the report, so a flag the operator
  * believed in was dropped without a word.
  */
-internal fun runDoctorVerb(args: Array<String>): CliExit {
+internal fun runDoctorVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit {
     val admission = CliOptionAdmission.admit(args, NO_ARGUMENTS_REQUEST)
     when (admission) {
         is CliAdmission.Rejected -> {
-            System.err.println(admission.error.refusalLines("doctor").joinToString("\n"))
+            err.println(admission.error.refusalLines("doctor").joinToString("\n"))
             return admission.error.toCliExit()
         }
         is CliAdmission.Admitted -> Unit
@@ -259,7 +264,7 @@ internal fun runDoctorVerb(args: Array<String>): CliExit {
         InstallationHealth.workdir(cwd, writable),
         InstallationHealth.fact("script-cache", scriptCacheReading()),
     )
-    checks.forEach { println(it.render()) }
+    checks.forEach { out.println(it.render()) }
     return InstallationHealth.decision(checks)
 }
 
@@ -294,8 +299,8 @@ private fun scriptCacheReading(): String {
  *
  * Structured local history inspection.
  */
-internal fun runEventsVerb(args: Array<String>): CliExit =
-    verbExit(MainEventsCli.main(args))
+internal fun runEventsVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainEventsCli.main(args, out, err))
 
 /**
  * `events verify` — the run's events against a contract.
@@ -303,8 +308,8 @@ internal fun runEventsVerb(args: Array<String>): CliExit =
  * A verb of its own because it answers a different question from `events`:
  * not what happened, but whether what happened matches what was promised.
  */
-internal fun runEventsVerifyVerb(args: Array<String>): CliExit =
-    verbExit(MainEventsVerifyCli.main(args))
+internal fun runEventsVerifyVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainEventsVerifyCli.main(args, out, err))
 
 /**
  * `console` — the current release: read process output from the Output Plane
@@ -317,8 +322,8 @@ internal fun runEventsVerifyVerb(args: Array<String>): CliExit =
  * conflation the byte-offset rule exists to prevent, and it is exactly what
  * the deprecated EventViewProjection.CONSOLE was.
  */
-internal fun runConsoleVerb(args: Array<String>): CliExit =
-    verbExit(MainConsoleCli.main(args))
+internal fun runConsoleVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainConsoleCli.main(args, out, err))
 
 /**
  * `operations` — the run's operations, with their complete identity.
@@ -330,8 +335,8 @@ internal fun runConsoleVerb(args: Array<String>): CliExit =
  * identity as it was minted, not with a name derived from the Output Plane's
  * directory layout, which folds every separator into an underscore.
  */
-internal fun runOperationsVerb(args: Array<String>): CliExit =
-    verbExit(MainOperationsCli.main(args))
+internal fun runOperationsVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainOperationsCli.main(args, out, err))
 
 /**
  * `observe` — one public verb over both durable authorities.
@@ -342,14 +347,19 @@ internal fun runOperationsVerb(args: Array<String>): CliExit =
  * `Event.sequence` and `OutputFrame.ordinal` have no total order, so
  * `--view full` stays refused here exactly as it is in `run`.
  */
-internal fun runObserveVerb(args: Array<String>): CliExit =
-    verbExit(MainObserveCli.main(args))
+internal fun runObserveVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainObserveCli.main(args, out, err))
 
 /**
  * `credentials` — the registered credential material, redacted.
+ *
+ * ONE stream and not two, because the command publishes everything it says — refusals
+ * included — on stdout. The door of the application offers both streams to every verb; this
+ * one has a single place to write to, and the second is discarded where the verb is declared
+ * rather than pretended into use here.
  */
-internal fun runCredentialsVerb(args: Array<String>): CliExit =
-    verbExit(MainCredentialsCli.main(args))
+internal fun runCredentialsVerb(args: Array<String>, out: PrintStream): CliExit =
+    verbExit(MainCredentialsCli.main(args, out))
 
 /**
  * `inspect` — a bounded diagnostic surface.
@@ -358,8 +368,8 @@ internal fun runCredentialsVerb(args: Array<String>): CliExit =
  * `console` are for their lanes: a typed parser + a typed query + a typed
  * projection.
  */
-internal fun runInspectVerb(args: Array<String>): CliExit =
-    verbExit(MainInspectCli.main(args))
+internal fun runInspectVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainInspectCli.main(args, out, err))
 
 /**
  * `saga inspect` — what a run still owes, read from the durable promises.
@@ -368,5 +378,5 @@ internal fun runInspectVerb(args: Array<String>): CliExit =
  * a different authority: `inspect` reads what a run DID, and this one reads
  * what a run PROMISED and has not yet discharged.
  */
-internal fun runSagaInspectVerb(args: Array<String>): CliExit =
-    verbExit(MainSagaInspectCli.main(args))
+internal fun runSagaInspectVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainSagaInspectCli.main(args, out, err))

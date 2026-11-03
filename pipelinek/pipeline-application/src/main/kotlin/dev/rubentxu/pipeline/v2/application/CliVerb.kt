@@ -1,4 +1,5 @@
 package dev.rubentxu.pipeline.v2.application
+import java.io.PrintStream
 
 /**
  * A command form: the words the operator types, what the form does, and the
@@ -40,7 +41,7 @@ internal class CliVerb(
      * ends with is the one the taxonomy declares. A handler that answered with
      * a number would carry a second, hand-written copy of that answer.
      */
-    val handler: ((Array<String>) -> CliExit)? = null,
+    val handler: ((Array<String>, PrintStream, PrintStream) -> CliExit)? = null,
     /**
      * The usage the family prints when the family word is given alone.
      *
@@ -133,7 +134,10 @@ internal val CLI_VERBS: List<CliVerb> = buildList {
             MainSagaInspectCli.USAGE,
         ),
     )
-    add(CliVerb("credentials", "list registered credential material (redacted)", ::runCredentialsVerb))
+    // The credentials verb publishes everything it says — refusals included — on one
+    // stream, so the door's second stream is discarded here instead of being carried
+    // into a verb that has no place to write to.
+    add(CliVerb("credentials", "list registered credential material (redacted)", { args, out, _ -> runCredentialsVerb(args, out) }))
     add(CliVerb("doctor", "report the installation's health", ::runDoctorVerb))
     add(CliVerb("version", "print the product version (--json)", ::runVersionVerb))
     add(CliVerb("capabilities", "print the capability keys this build admits", ::runCapabilitiesVerb))

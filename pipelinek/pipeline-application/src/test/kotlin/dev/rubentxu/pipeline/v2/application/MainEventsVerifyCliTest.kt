@@ -66,9 +66,11 @@ class MainEventsVerifyCliTest {
 
     @Test
     fun `events verify refuses an option it does not own`() {
-        val result = capture {
+        val result = capture { out, err ->
             MainEventsVerifyCli.main(
                 arrayOf("--db", "/tmp/store/events.db", "--run", "run-1", "--contract", "/tmp/store/events.yaml", "--bogus"),
+                out,
+                err,
             )
         }
 
@@ -79,9 +81,11 @@ class MainEventsVerifyCliTest {
 
     @Test
     fun `events verify refuses a request it could not read before it touches the store`() {
-        val result = capture {
+        val result = capture { out, err ->
             MainEventsVerifyCli.main(
                 arrayOf("--db", "/tmp/store/events.db", "--run", "run-1", "--contract", "/tmp/store/events.yaml", "--bogus"),
+                out,
+                err,
             )
         }
 
@@ -95,8 +99,8 @@ class MainEventsVerifyCliTest {
 
     @Test
     fun `events verify refuses a value that names one of its own options`() {
-        val result = capture {
-            MainEventsVerifyCli.main(arrayOf("--db", "--run", "run-1", "--contract", "/tmp/store/events.yaml"))
+        val result = capture { out, err ->
+            MainEventsVerifyCli.main(arrayOf("--db", "--run", "run-1", "--contract", "/tmp/store/events.yaml"), out, err)
         }
 
         assertEquals(2, result.exitCode)
@@ -109,9 +113,11 @@ class MainEventsVerifyCliTest {
 
     @Test
     fun `events verify refuses a scope it cannot read`() {
-        val result = capture {
+        val result = capture { out, err ->
             MainEventsVerifyCli.main(
                 arrayOf("--db", "/tmp/store/events.db", "--run", "run-1", "--contract", "/tmp/store/events.yaml", "--scope", "bogus"),
+                out,
+                err,
             )
         }
 
@@ -123,9 +129,11 @@ class MainEventsVerifyCliTest {
 
     @Test
     fun `events verify refuses a from-sequence it cannot read`() {
-        val result = capture {
+        val result = capture { out, err ->
             MainEventsVerifyCli.main(
                 arrayOf("--db", "/tmp/store/events.db", "--run", "run-1", "--contract", "/tmp/store/events.yaml", "--from-sequence", "abc"),
+                out,
+                err,
             )
         }
 
@@ -137,9 +145,11 @@ class MainEventsVerifyCliTest {
 
     @Test
     fun `events verify refuses an argument it was not asked about`() {
-        val result = capture {
+        val result = capture { out, err ->
             MainEventsVerifyCli.main(
                 arrayOf("--db", "/tmp/store/events.db", "--run", "run-1", "--contract", "/tmp/store/events.yaml", "extra"),
+                out,
+                err,
             )
         }
 
@@ -150,10 +160,14 @@ class MainEventsVerifyCliTest {
 
     @Test
     fun `events verify says which of its options a request is missing`() {
-        val missingDb = capture { MainEventsVerifyCli.main(arrayOf("--run", "run-1", "--contract", "/tmp/store/events.yaml")) }
-        val missingRun = capture { MainEventsVerifyCli.main(arrayOf("--db", "/tmp/store/events.db", "--contract", "/tmp/store/events.yaml")) }
-        val missingContract = capture {
-            MainEventsVerifyCli.main(arrayOf("--db", "/tmp/store/events.db", "--run", "run-1"))
+        val missingDb = capture { out, err ->
+            MainEventsVerifyCli.main(arrayOf("--run", "run-1", "--contract", "/tmp/store/events.yaml"), out, err)
+        }
+        val missingRun = capture { out, err ->
+            MainEventsVerifyCli.main(arrayOf("--db", "/tmp/store/events.db", "--contract", "/tmp/store/events.yaml"), out, err)
+        }
+        val missingContract = capture { out, err ->
+            MainEventsVerifyCli.main(arrayOf("--db", "/tmp/store/events.db", "--run", "run-1"), out, err)
         }
 
         assertEquals(2, missingDb.exitCode)
@@ -171,7 +185,7 @@ class MainEventsVerifyCliTest {
 
     @Test
     fun `the usage of events verify names only the forms it accepts`() {
-        val result = capture { MainEventsVerifyCli.main(arrayOf("--bogus")) }
+        val result = capture { out, err ->  MainEventsVerifyCli.main(arrayOf("--bogus"), out, err) }
 
         val usage = result.stderr.substringAfter("Usage:")
         assertTrue(usage.contains("--from-sequence"), result.stderr)
@@ -192,19 +206,22 @@ class MainEventsVerifyCliTest {
      */
     private fun refusalOf(result: Result): String = result.stderr.substringBefore("Usage:")
 
-    private fun capture(block: () -> Int): Result {
-        val out = ByteArrayOutputStream()
-        val err = ByteArrayOutputStream()
-        val originalOut = System.out
-        val originalErr = System.err
-        try {
-            System.setOut(PrintStream(out, true, Charsets.UTF_8.name()))
-            System.setErr(PrintStream(err, true, Charsets.UTF_8.name()))
-            val exitCode = block()
-            return Result(exitCode, out.toString(), err.toString())
-        } finally {
-            System.setOut(originalOut)
-            System.setErr(originalErr)
-        }
+    /**
+     * Run [block] with two streams of its own, and give back what it answered and what it said.
+     *
+     * The streams are PARAMETERS the block receives, not globals this test replaces. A test that
+     * swapped the process-wide streams would mutate the state every other row shares, and two
+     * rows running at the same time would read each other's bytes. The bytes here are the ones
+     * the CLI shows, because the code under test is the code the CLI runs — only the sink differs.
+     */
+    private fun capture(block: (PrintStream, PrintStream) -> Int): Result {
+        val outBytes = ByteArrayOutputStream()
+        val errBytes = ByteArrayOutputStream()
+        val out = PrintStream(outBytes, true, Charsets.UTF_8.name())
+        val err = PrintStream(errBytes, true, Charsets.UTF_8.name())
+        val exitCode = block(out, err)
+        out.flush()
+        err.flush()
+        return Result(exitCode, outBytes.toString(Charsets.UTF_8), errBytes.toString(Charsets.UTF_8))
     }
 }

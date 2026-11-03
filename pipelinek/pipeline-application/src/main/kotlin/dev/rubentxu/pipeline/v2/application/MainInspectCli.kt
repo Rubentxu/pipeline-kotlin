@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.profile.summarize
 import java.nio.file.Paths
+import java.io.PrintStream
 
 /**
  * `pipelinek inspect <run>` — bounded diagnostic surface for a single run.
@@ -168,8 +169,11 @@ object MainInspectCli {
      * shared mapping. The query then drives the read — the event store for the run's events,
      * the Output Plane for the console tail each event's operation printed, and the filters
      * and the context window over the records that survive them.
+     *
+     * The destination is a PARAMETER and not a global: a caller that wants to read what this
+     * verb answers hands it its own streams, and what it reads is the same bytes the CLI shows.
     */
-    fun main(args: Array<String>): Int {
+    fun main(args: Array<String>, out: PrintStream, err: PrintStream): Int {
         // The parser is the only place that knows which options carry a value, so it is the
         // only place that can tell the run id from an option's value. The verb reads the run
         // id from the parsed query instead of from `args[0]`, and the request is therefore
@@ -177,8 +181,8 @@ object MainInspectCli {
         val compiled = when (val r = parseInspect(args)) {
             is InspectParseResult.Parsed -> r.value
             is InspectParseResult.Rejected -> {
-                val code = refuse(r.error, "inspect")
-                System.err.println(USAGE)
+                val code = refuse(r.error, "inspect", err = err)
+                err.println(USAGE)
                 return code
             }
         }
@@ -187,9 +191,9 @@ object MainInspectCli {
         if (runId == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("run id", "name the run to inspect"),
-                "inspect",
+                "inspect", err = err
             )
-            System.err.println(USAGE)
+            err.println(USAGE)
             return code
         }
 
@@ -200,25 +204,25 @@ object MainInspectCli {
                     "--db <path>",
                     "to read the durable event store",
                 ),
-                "inspect",
+                "inspect", err = err
             )
         }
         // The cost profile is a MODE, like --state, and answers a different
         // question than the record table: where did this run's time go. It
         // reads only the event plane, so it does not demand a control root.
         if (compiled.profile) {
-            return reportRunProfile(runId, compiled)
+            return reportRunProfile(runId, compiled, out = out, err = err)
         }
         // The diagnosis is a MODE too: what did this run come to, with each
         // claim tied to the record that supports it. Also event-plane only.
         if (compiled.explain) {
-            return reportRunExplain(runId, compiled)
+            return reportRunExplain(runId, compiled, out = out, err = err)
         }
         // The telemetry export is a MODE as well: the run's facts as
         // redacted, versioned signals, one JSON object per line for a
         // collector or a file. Nothing about the run changes with or without it.
         if (compiled.telemetry) {
-            return reportRunTelemetry(runId, compiled)
+            return reportRunTelemetry(runId, compiled, out = out, err = err)
         }
         if (compiled.controlRoot == null) {
             return refuse(
@@ -226,7 +230,7 @@ object MainInspectCli {
                     "--control-root <path>",
                     "to read the Output Plane",
                 ),
-                "inspect",
+                "inspect", err = err
             )
         }
 
@@ -238,7 +242,7 @@ object MainInspectCli {
         // records. The answer comes from the published introspection port,
         // whose terminal fact is the event lane's `RunFinished` bookend.
         if (compiled.state) {
-            return reportRunState(runId, compiled)
+            return reportRunState(runId, compiled, out = out, err = err)
         }
 
         // The admission is the ONE decision on whether this store may be opened. It used to
@@ -247,7 +251,7 @@ object MainInspectCli {
         // trace and exit 1 — the code this CLI reserves for a run that executed and failed.
         val dbPath = compiled.dbPath
         val controlRoot = compiled.controlRoot
-        val events = readRunEvents(runId, dbPath, wholeRunReport = false) ?: return CliExit.INVALID_ARGUMENT.code
+        val events = readRunEvents(runId, dbPath, wholeRunReport = false, err = err) ?: return CliExit.INVALID_ARGUMENT.code
 
         // Resolve each event to its operation BEFORE any Output Plane read, because the
         // tail belongs to the operation and not to the run.
@@ -260,7 +264,7 @@ object MainInspectCli {
             // operator who mistypes an opId cannot tell "no such operation" from "this step
             // printed nothing", which is the one distinction the field exists to make.
             val owned = opIds.filterNotNull().map { it.format() }.distinct()
-            System.err.println(
+            err.println(
                 "inspect: --log-tail-op ${compiled.opId} is not an operation of run $runId. " +
                     if (owned.isEmpty()) {
                         "This run declares no step operations, so it has nothing to attach a tail to."
@@ -290,7 +294,7 @@ object MainInspectCli {
             filtered
         }
 
-        InspectionPresentation.emitDocument(System.out, runId, compiled, withContext)
+        InspectionPresentation.emitDocument(out, runId, compiled, withContext)
         return CliExit.SUCCESS.code
     }
 
@@ -313,17 +317,19 @@ object MainInspectCli {
         runId: String,
         dbPath: String,
         wholeRunReport: Boolean,
-    ): List<DomainEvent>? = foldRunEvents(runId, dbPath, wholeRunReport) { it.toList() }
+        err: PrintStream,
+    ): List<DomainEvent>? = foldRunEvents(runId, dbPath, wholeRunReport, fold = { it.toList() }, err = err)
 
     private fun <T> foldRunEvents(
         runId: String,
         dbPath: String,
         wholeRunReport: Boolean,
         fold: (Sequence<DomainEvent>) -> T,
+        err: PrintStream,
     ): T? {
         return when (val read = InspectionReader.foldRunEvents(runId, dbPath, wholeRunReport, fold)) {
             is InspectionEventRead.Refused -> {
-                System.err.println(read.reason)
+                err.println(read.reason)
                 null
             }
             is InspectionEventRead.Admitted -> read.value
@@ -367,20 +373,23 @@ object MainInspectCli {
      * live evidence of this run. A refusal is a refusal, it goes to stderr,
      * and it exits 2.
      */
-    private fun reportRunState(runId: String, query: CompiledInspectionQuery): Int {
+    private fun reportRunState(runId: String, query: CompiledInspectionQuery,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int {
         val dbPath = query.dbPath
         val controlRoot = query.controlRoot
         if (dbPath == null || controlRoot == null) {
             // The caller checked both before reaching this point. Kept as a
             // refusal rather than a crash: a verb that cannot name its own
             // missing input is a verb that fails with a stack trace.
-            System.err.println("inspect: --db and --control-root are required to read the run's state")
+            err.println("inspect: --db and --control-root are required to read the run's state")
             return CliExit.INVALID_ARGUMENT.code
         }
 
         val admission = admitEventStore(dbPath, EventStorePurpose.Read)
         if (admission is EventStoreAdmission.Refused) {
-            System.err.println(admission.refusal.render())
+            err.println(admission.refusal.render())
             return CliExit.INVALID_ARGUMENT.code
         }
         val store = (admission as EventStoreAdmission.Admitted).store
@@ -394,18 +403,18 @@ object MainInspectCli {
                 ).inspect(runId)
             }
         } catch (failure: Exception) {
-            System.err.println("inspect: ${failure.shortDiagnostic()}")
+            err.println("inspect: ${failure.shortDiagnostic()}")
             return CliExit.INVALID_ARGUMENT.code
         }
 
         return when (result) {
             is RuntimeIntrospectionResult.Observation -> {
-                println(InspectionPresentation.renderRunState(result.observation))
+                out.println(InspectionPresentation.renderRunState(result.observation))
                 CliExit.SUCCESS.code
             }
 
             is RuntimeIntrospectionResult.Refused -> {
-                System.err.println(
+                err.println(
                     "inspect: ${InspectionPresentation.renderIntrospectionRefusal(result.refusal, runId)}",
                 )
                 CliExit.INVALID_ARGUMENT.code
@@ -420,23 +429,26 @@ object MainInspectCli {
      * run that failed or never finished yields a partial profile, never a
      * success-shaped silence.
      */
-    private fun reportRunProfile(runId: String, query: CompiledInspectionQuery): Int {
+    private fun reportRunProfile(runId: String, query: CompiledInspectionQuery,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int {
         val dbPath = query.dbPath
             ?: return refuse(
                 CliError.MissingRequiredArgument("--db <path>", "to profile the run"),
-                "inspect",
+                "inspect", err = err
             )
 
         // Read-only admission: a missing store is refused here and no file is
         // created, so profiling a mistyped run id cannot fabricate a database.
-        val costInput = foldRunEvents(runId, dbPath, wholeRunReport = true, RunCostProjection::project) ?: return CliExit.INVALID_ARGUMENT.code
+        val costInput = foldRunEvents(runId, dbPath, wholeRunReport = true, RunCostProjection::project, err = err) ?: return CliExit.INVALID_ARGUMENT.code
 
         val outcome = summarize(costInput)
         val lines = when (query.format) {
             MainInspectCli.InspectFormat.JSON -> RunCostReport.jsonLines(runId, outcome)
             MainInspectCli.InspectFormat.TEXT -> RunCostReport.textLines(runId, outcome)
         }
-        lines.forEach(::println)
+        lines.forEach(out::println)
         return CliExit.SUCCESS.code
     }
 
@@ -446,21 +458,24 @@ object MainInspectCli {
      * and carrying the event that grounds it. A run whose terminal event is
      * absent is explained as open; it is never explained into a success.
      */
-    private fun reportRunExplain(runId: String, query: CompiledInspectionQuery): Int {
+    private fun reportRunExplain(runId: String, query: CompiledInspectionQuery,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int {
         val dbPath = query.dbPath
             ?: return refuse(
                 CliError.MissingRequiredArgument("--db <path>", "to explain the run"),
-                "inspect",
+                "inspect", err = err
             )
 
         // Read-only admission: a missing store is refused and no file is
         // created, so explaining a mistyped run id cannot fabricate a database.
-        val diagnosis = foldRunEvents(runId, dbPath, wholeRunReport = true, RunExplainProjection::project) ?: return CliExit.INVALID_ARGUMENT.code
+        val diagnosis = foldRunEvents(runId, dbPath, wholeRunReport = true, RunExplainProjection::project, err = err) ?: return CliExit.INVALID_ARGUMENT.code
         val lines = when (query.format) {
             MainInspectCli.InspectFormat.JSON -> RunExplainReport.jsonLines(runId, diagnosis)
             MainInspectCli.InspectFormat.TEXT -> RunExplainReport.textLines(runId, diagnosis)
         }
-        lines.forEach(::println)
+        lines.forEach(out::println)
         return CliExit.SUCCESS.code
     }
 
@@ -480,24 +495,26 @@ object MainInspectCli {
      * carries both is a document no collector accepts. The export stays
      * line-delimited, so the consumer still tails it: one request per line.
      */
-    private fun reportRunTelemetry(runId: String, query: CompiledInspectionQuery): Int {
+    private fun reportRunTelemetry(runId: String, query: CompiledInspectionQuery,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int {
         val dbPath = query.dbPath
             ?: return refuse(
                 CliError.MissingRequiredArgument("--db <path>", "to export the run's telemetry"),
-                "inspect",
+                "inspect", err = err
             )
 
-        val trace = foldRunEvents(runId, dbPath, wholeRunReport = true) { events ->
+        val trace = foldRunEvents(runId, dbPath, wholeRunReport = true, fold = { events ->
             RunTelemetryProjection.fromEvents(runId, events)
-        } ?: return CliExit.INVALID_ARGUMENT.code
+        }, err = err) ?: return CliExit.INVALID_ARGUMENT.code
         if (query.otlp) {
-            val out = System.out
             RunTelemetryOtlp.writeSpans(trace, out)
             RunTelemetryOtlp.writeMetrics(trace, out)
             out.flush()
             return CliExit.SUCCESS.code
         }
-        RunTelemetryReport.forEachJsonLine(trace, ::println)
+        RunTelemetryReport.forEachJsonLine(trace) { line -> out.println(line) }
         return CliExit.SUCCESS.code
     }
 

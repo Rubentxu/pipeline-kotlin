@@ -43,13 +43,15 @@ import org.junit.jupiter.api.Test
  * stand in for the other.
  *
  * These rows are pure: no filesystem, no clock, no process, no network. The
- * only side effect is what the CLI prints, and that is captured and read.
+ * only side effect is what the CLI prints, and that is read from the streams
+ * the row itself handed to the decision, so no row mutates a global that the
+ * other rows share.
  */
 class CliExitDecisionTest {
 
     @Test
     fun `a read-only verb answers with a decision`() {
-        val (outcome, streams) = capturing { handleReadOnlyVerb(arrayOf("capabilities")) }
+        val (outcome, streams) = capturing { out, err -> handleReadOnlyVerb(arrayOf("capabilities"), out, err) }
 
         val answered = assertInstanceOf(
             ReadOnlyVerbOutcome.Answered::class.java,
@@ -65,7 +67,7 @@ class CliExitDecisionTest {
 
     @Test
     fun `a family word on its own answers with a decision`() {
-        val (outcome, streams) = capturing { handleReadOnlyVerb(arrayOf("saga")) }
+        val (outcome, streams) = capturing { out, err -> handleReadOnlyVerb(arrayOf("saga"), out, err) }
 
         val answered = assertInstanceOf(
             ReadOnlyVerbOutcome.Answered::class.java,
@@ -86,7 +88,7 @@ class CliExitDecisionTest {
 
     @Test
     fun `a word no verb answers is not answered at all`() {
-        val outcome = handleReadOnlyVerb(arrayOf("no-such-verb"))
+        val outcome = capturing { out, err -> handleReadOnlyVerb(arrayOf("no-such-verb"), out, err) }.first
 
         assertInstanceOf(
             ReadOnlyVerbOutcome.NotHandled::class.java,
@@ -168,25 +170,21 @@ class CliExitDecisionTest {
     private data class Streams(val stdout: String, val stderr: String)
 
     /**
-     * Run [block] with the console captured, and give back both.
+     * Run [block] with two streams of its own, and give back both.
      *
-     * The CLI prints its answer on stdout and its refusal on stderr, and a row
-     * that asserts a decision has to be able to read what the decision said
-     * out loud without letting it into the report of the run.
+     * The streams are PARAMETERS the block receives, not globals this test replaces. A test that
+     * swapped the process-wide streams would mutate the state every other row shares, and two
+     * rows running at the same time would read each other's bytes. The bytes here are the ones
+     * the CLI shows, because the code under test is the code the CLI runs — only the sink differs.
      */
-    private fun <T> capturing(block: () -> T): Pair<T, Streams> {
-        val out = ByteArrayOutputStream()
-        val err = ByteArrayOutputStream()
-        val originalOut = System.out
-        val originalErr = System.err
-        try {
-            System.setOut(PrintStream(out, true, Charsets.UTF_8.name()))
-            System.setErr(PrintStream(err, true, Charsets.UTF_8.name()))
-            val value = block()
-            return value to Streams(out.toString(), err.toString())
-        } finally {
-            System.setOut(originalOut)
-            System.setErr(originalErr)
-        }
+    private fun <T> capturing(block: (PrintStream, PrintStream) -> T): Pair<T, Streams> {
+        val outBytes = ByteArrayOutputStream()
+        val errBytes = ByteArrayOutputStream()
+        val out = PrintStream(outBytes, true, Charsets.UTF_8.name())
+        val err = PrintStream(errBytes, true, Charsets.UTF_8.name())
+        val value = block(out, err)
+        out.flush()
+        err.flush()
+        return value to Streams(outBytes.toString(Charsets.UTF_8), errBytes.toString(Charsets.UTF_8))
     }
 }

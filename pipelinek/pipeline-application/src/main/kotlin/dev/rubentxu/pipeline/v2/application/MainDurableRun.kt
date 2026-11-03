@@ -347,7 +347,7 @@ private fun runDurablePipelineOwned(
         runCatching { outputObserver.close() }
     }
     val (runOutcome, lastEvent) = runOutcomeAndLastEvent
-    val exit = runExit(runOutcome, lastEvent)
+    val exit = runExit(runOutcome, lastEvent, err = System.err)
     // The receipt is the run's own account of itself, written HERE: the observer has closed,
     // so the bytes it publishes are the bytes the plane committed. A failure to write it does
     // not change the exit the run earned.

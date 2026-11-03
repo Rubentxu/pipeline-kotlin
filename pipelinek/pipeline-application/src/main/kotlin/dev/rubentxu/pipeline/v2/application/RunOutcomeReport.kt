@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunFinished
+import java.io.PrintStream
 
 /**
  * The exit decision of a run, and the report that goes with it.
@@ -31,9 +32,9 @@ import dev.rubentxu.pipeline.v2.events.RunFinished
  *
  * @return the case that owns this run's exit.
  */
-internal fun runExit(runOutcome: RunOutcome?, lastEvent: DomainEvent?): CliExit =
+internal fun runExit(runOutcome: RunOutcome?, lastEvent: DomainEvent?, err: PrintStream): CliExit =
     if (runOutcome != null) {
-        reportRunOutcome(runOutcome)
+        reportRunOutcome(runOutcome, err)
     } else {
         // The LEGACY path: no typed outcome was produced, so there are only two stories —
         // "it finished successfully" and "it did not". The "unstable" arm that used to live
@@ -41,10 +42,10 @@ internal fun runExit(runOutcome: RunOutcome?, lastEvent: DomainEvent?): CliExit 
         // arm could never run and only misled whoever read it.
         val succeeded = lastEvent is RunFinished && lastEvent.outcome == RunOutcome.SUCCESS_TOKEN
         if (succeeded) {
-            System.err.println("Pipeline finished with SUCCESS")
+            err.println("Pipeline finished with SUCCESS")
             CliExit.SUCCESS
         } else {
-            System.err.println("Pipeline finished with FAILURE")
+            err.println("Pipeline finished with FAILURE")
             CliExit.PipelineFailed(message = "the run produced no typed outcome and did not finish successfully")
         }
     }
@@ -69,23 +70,23 @@ internal fun runExit(runOutcome: RunOutcome?, lastEvent: DomainEvent?): CliExit 
  *
  * @return the case that owns this outcome's exit.
  */
-internal fun reportRunOutcome(outcome: RunOutcome): CliExit = when (outcome) {
+internal fun reportRunOutcome(outcome: RunOutcome, err: PrintStream): CliExit = when (outcome) {
     is RunOutcome.Success -> {
-        System.err.println("Pipeline finished with SUCCESS")
+        err.println("Pipeline finished with SUCCESS")
         CliExit.SUCCESS
     }
     is RunOutcome.Unstable -> {
-        System.err.println("Pipeline finished with UNSTABLE")
+        err.println("Pipeline finished with UNSTABLE")
         CliExit.Success(message = "the pipeline finished with an unstable verdict")
     }
     is RunOutcome.Failure -> {
-        System.err.println("Pipeline finished with FAILURE")
-        reportRunFailure(outcome.failure)
+        err.println("Pipeline finished with FAILURE")
+        reportRunFailure(outcome.failure, err)
         CliExit.PipelineFailed(message = outcome.failure.message)
     }
     is RunOutcome.Aborted -> {
-        System.err.println("Pipeline finished with FAILURE")
-        System.err.println("  cause [ABORTED]: the run was cancelled or interrupted before a terminal outcome")
+        err.println("Pipeline finished with FAILURE")
+        err.println("  cause [ABORTED]: the run was cancelled or interrupted before a terminal outcome")
         CliExit.PipelineFailed(message = "the run was cancelled or interrupted before a terminal outcome")
     }
 }
@@ -108,7 +109,7 @@ internal fun reportRunOutcome(outcome: RunOutcome): CliExit = when (outcome) {
  * and where every other operator-facing diagnostic goes. A message that is emitted nowhere is a
  * message that does not exist.
  */
-internal fun reportRunFailure(failure: PipelineFailure) {
-    System.err.println("  cause [${failure.kind}]: ${failure.message}")
-    failure.cause?.let { System.err.println("  origin: $it") }
+internal fun reportRunFailure(failure: PipelineFailure, err: PrintStream) {
+    err.println("  cause [${failure.kind}]: ${failure.message}")
+    failure.cause?.let { err.println("  origin: $it") }
 }

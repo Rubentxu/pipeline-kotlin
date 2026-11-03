@@ -75,7 +75,7 @@ class RunIdPositionTest {
 
     @Test
     fun `inspect reads the run id it was given after an option`() {
-        val result = capture { MainInspectCli.main(arrayOf("--db", "/tmp/a-store.db", "run-1")) }
+        val result = capture { out, err ->  MainInspectCli.main(arrayOf("--db", "/tmp/a-store.db", "run-1"), out, err) }
 
         // The run id was written and it was read: the refusal is about the
         // NEXT thing this verb needs, which is the Output Plane.
@@ -92,7 +92,7 @@ class RunIdPositionTest {
 
     @Test
     fun `observe reads the run id it was given after an option`() {
-        val result = capture { MainObserveCli.main(arrayOf("--view", "console", "run-1")) }
+        val result = capture { out, err ->  MainObserveCli.main(arrayOf("--view", "console", "run-1"), out, err) }
 
         assertEquals(2, result.exitCode)
         // The plane is what this verb asks for next. Its own wording, and not
@@ -107,8 +107,8 @@ class RunIdPositionTest {
 
     @Test
     fun `runs cancel reads the run id it was given after an option`() {
-        val result = capture {
-            MainRunsCli.main(arrayOf("cancel", "--reason", "because", "run-1"))
+        val result = capture { out, err -> 
+            MainRunsCli.main(arrayOf("cancel", "--reason", "because", "run-1"), out, err)
         }
 
         assertEquals(2, result.exitCode)
@@ -120,7 +120,7 @@ class RunIdPositionTest {
 
     @Test
     fun `runs recover reads the run id it was given after an option`() {
-        val result = capture { MainRunsCli.main(arrayOf("recover", "--dry-run", "run-1")) }
+        val result = capture { out, err ->  MainRunsCli.main(arrayOf("recover", "--dry-run", "run-1"), out, err) }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("missing required argument: --db"), result.stderr)
@@ -131,7 +131,7 @@ class RunIdPositionTest {
 
     @Test
     fun `saga inspect reads the run id it was given after an option`() {
-        val result = capture { MainSagaInspectCli.main(arrayOf("--format", "json", "run-1")) }
+        val result = capture { out, err ->  MainSagaInspectCli.main(arrayOf("--format", "json", "run-1"), out, err) }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("missing required argument: --db"), result.stderr)
@@ -154,13 +154,13 @@ class RunIdPositionTest {
         )
 
         for ((verb, args) in requests) {
-            val result = capture {
+            val result = capture { out, err -> 
                 when (verb) {
-                    "inspect" -> MainInspectCli.main(args)
-                    "observe" -> MainObserveCli.main(args)
-                    "runs cancel" -> MainRunsCli.main(args)
-                    "runs recover" -> MainRunsCli.main(args)
-                    else -> MainSagaInspectCli.main(args)
+                    "inspect" -> MainInspectCli.main(args, out, err)
+                    "observe" -> MainObserveCli.main(args, out, err)
+                    "runs cancel" -> MainRunsCli.main(args, out, err)
+                    "runs recover" -> MainRunsCli.main(args, out, err)
+                    else -> MainSagaInspectCli.main(args, out, err)
                 }
             }
 
@@ -176,19 +176,22 @@ class RunIdPositionTest {
 
     private data class Result(val exitCode: Int, val stdout: String, val stderr: String)
 
-    private fun capture(block: () -> Int): Result {
-        val out = ByteArrayOutputStream()
-        val err = ByteArrayOutputStream()
-        val originalOut = System.out
-        val originalErr = System.err
-        try {
-            System.setOut(PrintStream(out, true, Charsets.UTF_8.name()))
-            System.setErr(PrintStream(err, true, Charsets.UTF_8.name()))
-            val exitCode = block()
-            return Result(exitCode, out.toString(), err.toString())
-        } finally {
-            System.setOut(originalOut)
-            System.setErr(originalErr)
-        }
+    /**
+     * Run [block] with two streams of its own, and give back what it answered and what it said.
+     *
+     * The streams are PARAMETERS the block receives, not globals this test replaces. A test that
+     * swapped the process-wide streams would mutate the state every other row shares, and two
+     * rows running at the same time would read each other's bytes. The bytes here are the ones
+     * the CLI shows, because the code under test is the code the CLI runs — only the sink differs.
+     */
+    private fun capture(block: (PrintStream, PrintStream) -> Int): Result {
+        val outBytes = ByteArrayOutputStream()
+        val errBytes = ByteArrayOutputStream()
+        val out = PrintStream(outBytes, true, Charsets.UTF_8.name())
+        val err = PrintStream(errBytes, true, Charsets.UTF_8.name())
+        val exitCode = block(out, err)
+        out.flush()
+        err.flush()
+        return Result(exitCode, outBytes.toString(Charsets.UTF_8), errBytes.toString(Charsets.UTF_8))
     }
 }

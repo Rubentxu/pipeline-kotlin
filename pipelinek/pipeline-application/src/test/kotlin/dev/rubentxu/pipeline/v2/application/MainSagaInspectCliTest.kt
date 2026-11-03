@@ -63,20 +63,23 @@ class MainSagaInspectCliTest {
 
     private data class Result(val exitCode: Int, val stdout: String, val stderr: String)
 
+    /**
+     * Run the verb with the arguments it is given, and give back what it answered and what it said.
+     *
+     * The streams are PARAMETERS the verb is handed, not globals this test replaces. A test that
+     * swapped the process-wide streams would mutate the state every other row shares, and two
+     * rows running at the same time would read each other's bytes. The bytes here are the ones
+     * the CLI shows, because the code under test is the code the CLI runs — only the sink differs.
+     */
     private fun run(vararg args: String): Result {
-        val out = ByteArrayOutputStream()
-        val err = ByteArrayOutputStream()
-        val originalOut = System.out
-        val originalErr = System.err
-        try {
-            System.setOut(PrintStream(out, true, Charsets.UTF_8.name()))
-            System.setErr(PrintStream(err, true, Charsets.UTF_8.name()))
-            val argv = Array(args.size) { args[it] }
-            val exitCode = MainSagaInspectCli.main(argv)
-            return Result(exitCode, out.toString(), err.toString())
-        } finally {
-            System.setOut(originalOut)
-            System.setErr(originalErr)
-        }
+        val outBytes = ByteArrayOutputStream()
+        val errBytes = ByteArrayOutputStream()
+        val out = PrintStream(outBytes, true, Charsets.UTF_8.name())
+        val err = PrintStream(errBytes, true, Charsets.UTF_8.name())
+        val argv = Array(args.size) { args[it] }
+        val exitCode = MainSagaInspectCli.main(argv, out, err)
+        out.flush()
+        err.flush()
+        return Result(exitCode, outBytes.toString(Charsets.UTF_8), errBytes.toString(Charsets.UTF_8))
     }
 }

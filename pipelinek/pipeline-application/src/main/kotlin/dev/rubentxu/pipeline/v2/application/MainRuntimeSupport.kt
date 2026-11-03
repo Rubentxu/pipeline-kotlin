@@ -12,6 +12,7 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.io.PrintStream
 
 /**
  * Validates and creates the control root directory.
@@ -237,6 +238,7 @@ internal fun admitThenCompose(
     trust: PluginTrustSource? = null,
     journal: AdmissionControlJournal? = null,
     telemetry: PipelineTelemetry,
+    err: PrintStream = System.err,
 ): PluginAdmission {
     val span = LiveSpans.open(
         telemetry = telemetry,
@@ -253,7 +255,7 @@ internal fun admitThenCompose(
                 outcome.admitted.forEach { artifact ->
                     val approval = artifact.trust
                     if (approval != null) {
-                        System.err.println(
+                        err.println(
                             "Plugin ${artifact.plugin.pluginId} admitted under the operator's trust " +
                                 "policy: bytes ${approval.digest.value}, publisher ${approval.publisher}, " +
                                 "key ${approval.keyId}",
@@ -261,7 +263,7 @@ internal fun admitThenCompose(
                     }
                 }
                 if (outcome.admitted.isNotEmpty()) {
-                    composition.reportTo { line -> System.err.println(line) }
+                    composition.reportTo { line -> err.println(line) }
                 }
             }
             PluginAdmission.Admitted(outcome.composition)
@@ -270,14 +272,14 @@ internal fun admitThenCompose(
         is CompositionOutcome.Refused -> {
             val reason = outcome.rejection.toString()
             val detail = outcome.detail?.let { " — $it" }.orEmpty()
-            System.err.println("Plugin admission refused for ${outcome.artifact}: $reason$detail")
+            err.println("Plugin admission refused for ${outcome.artifact}: $reason$detail")
             PluginAdmission.Refused(CliExit.INVALID_ARGUMENT)
         }
 
         is CompositionOutcome.UnattributedProvider -> {
             // No artifact can be named for this one: the provider does not say which artifact
             // provides it. The provider's own name is the only thing the operator can act on.
-            System.err.println(
+            err.println(
                 "Plugin admission refused: provider ${outcome.providerClass} could not be " +
                     "attributed to an artifact (${outcome.reason})",
             )
@@ -285,7 +287,7 @@ internal fun admitThenCompose(
         }
 
         is CompositionOutcome.RuntimeVersionUnavailable -> {
-            System.err.println("FATAL — ${outcome.detail}")
+            err.println("FATAL — ${outcome.detail}")
             PluginAdmission.Refused(CliExit.INCOMPATIBLE_VERSION)
         }
     }

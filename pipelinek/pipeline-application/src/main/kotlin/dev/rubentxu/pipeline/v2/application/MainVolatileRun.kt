@@ -288,6 +288,10 @@ private fun runVolatilePipelineOwned(
         )
     }
     val exit = runExit(runOutcome, events.lastOrNull())
+    // The receipt is the run's own account of itself, written HERE: the observer has closed,
+    // so the bytes it publishes are the bytes the plane committed. A failure to write it is
+    // announced and does not change the exit the run earned.
+    RunReceipt.publishWhenRequested(config.receiptPath, controlDirRoot, runId, events, exit.code)
     // P6: the Saga verdict travels in BOTH worlds. A Saga can now run without
     // `--db` —the volatile store is bound exactly like the durable one—, so the
     // run has to SAY what happened to it, exactly as the durable path says. A

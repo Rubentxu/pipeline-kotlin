@@ -113,6 +113,15 @@ internal object CliExecutionParser {
             return CliParseResult.Rejected(CliError.InvertWithoutGrep)
         }
 
+        // `--receipt` is the account a run keeps of itself: it names a file the RUN writes.
+        // `validate` compiles a script and publishes nothing, so accepting the option there
+        // would promise a file that never appears. Refused by naming the verb that owns it.
+        if (state.receiptPath != null && command == CliCommand.VALIDATE) {
+            return CliParseResult.Rejected(
+                CliError.OptionBelongsToVerb("--receipt", "run", RECEIPT_BELONGS_TO_RUN),
+            )
+        }
+
         val assembledQuery = buildObservationQuery(
             grepSelectors = state.grepSelectors,
             grepInvert = state.grepInvert,
@@ -144,6 +153,7 @@ internal object CliExecutionParser {
                 pluginJars = state.pluginJars.toList(),
                 pluginTrust = state.pluginTrust,
                 correlationId = state.correlationId,
+                receiptPath = state.receiptPath,
                 view = state.view,
                 format = state.format,
                 outputProtocolTokens = state.outputProtocolTokens,
@@ -151,4 +161,8 @@ internal object CliExecutionParser {
             ),
         )
     }
+
+    /** Why `--receipt` is refused by the verb that never runs anything. */
+    private const val RECEIPT_BELONGS_TO_RUN =
+        "'validate' compiles a script and publishes nothing, so it has no receipt to write."
 }

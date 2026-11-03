@@ -291,6 +291,43 @@ product_launch_census() {
     product_launch_verbs="${product_launch_verbs% }"
 }
 
+# The run receipts the cycle read, and the ones it did not find.
+#
+# A run writes its receipt at the END of the run, so a run that was killed
+# leaves none, and the launcher goes back to what the product publishes. That
+# fallback is the honest answer and not a defect, but a suite that quietly
+# reads the product again is a suite that quietly costs more than it says, so
+# the count of the receipts that were MISSING is published next to the count of
+# the ones that were read.
+#
+# A receipt that was there and could not be read is a third fact: the run
+# wrote something the launcher could not use, and that is neither a receipt
+# read nor a receipt absent.
+#
+# The counts travel in a FILE, like the launches do: a scenario runs in a
+# background subshell, and a count kept in a variable dies with the subshell
+# that made it. A receipt is decoded ONCE -- the first decoder leaves the state
+# in a file next to it -- so the file holds one row per receipt and the report
+# counts the rows, not the calls.
+run_receipts_file="$cycle_root/run-receipts.log"
+: > "$run_receipts_file"
+
+note_run_receipt() {
+    printf '%s\n' "${1:-unknown}" >> "$run_receipts_file" || true
+}
+
+receipts_read=0
+receipts_absent=0
+receipts_unreadable=0
+
+run_receipt_census() {
+    local rows
+    rows="$(cat "$run_receipts_file" 2>/dev/null || true)"
+    receipts_read="$(printf '%s\n' "$rows" | awk '$0 == "read" { c++ } END { print c + 0 }')"
+    receipts_absent="$(printf '%s\n' "$rows" | awk '$0 == "absent" { c++ } END { print c + 0 }')"
+    receipts_unreadable="$(printf '%s\n' "$rows" | awk '$0 == "unreadable" { c++ } END { print c + 0 }')"
+}
+
 # The passphrase of the machine's credential store. It is declared HERE, empty,
 # because the receipt's leak guard reads it and the guard runs from the exit
 # trap: a run that dies before the store was seeded has no secret to leak, and
@@ -367,10 +404,14 @@ write_receipt() {
     # publishes the launches of the cycle it describes, and the report at the
     # end of the cycle publishes the same census: two readers, one number.
     product_launch_census
+    run_receipt_census
     if ! PIPELINEK_RECEIPT_ROWS="$receipt_rows_file" \
         PIPELINEK_RECEIPT_OUT="$receipt_path" \
         PIPELINEK_RECEIPT_LAUNCH_TOTAL="$product_launch_total" \
         PIPELINEK_RECEIPT_LAUNCH_VERBS="$product_launch_verbs" \
+        PIPELINEK_RECEIPT_RUNS_READ="$receipts_read" \
+        PIPELINEK_RECEIPT_RUNS_ABSENT="$receipts_absent" \
+        PIPELINEK_RECEIPT_RUNS_UNREADABLE="$receipts_unreadable" \
         PIPELINEK_RECEIPT_SHA="${PIPELINEK_E2E_SHA:-}" \
         PIPELINEK_RECEIPT_HEAD="${PIPELINEK_E2E_HEAD:-}" \
         PIPELINEK_RECEIPT_IDENTITY="${PIPELINEK_E2E_IDENTITY:-unknown}" \
@@ -567,6 +608,20 @@ document = {
     "productLaunches": {
         "total": number("PIPELINEK_RECEIPT_LAUNCH_TOTAL"),
         "byVerb": launch_by_verb(),
+    },
+    # The receipts the runs wrote about themselves, and how many of them the
+    # launcher could use.
+    #
+    # A receipt is read INSTEAD of asking the product again, so the count of
+    # the receipts that were read is a count of the launches the suite did NOT
+    # pay for. The ones that were absent are the runs that died before they
+    # wrote one, and the launcher went back to the product for those: they are
+    # published because a suite that quietly reads the product again is a
+    # suite that quietly costs more than it says.
+    "runReceipts": {
+        "read": number("PIPELINEK_RECEIPT_RUNS_READ"),
+        "absent": number("PIPELINEK_RECEIPT_RUNS_ABSENT"),
+        "unreadable": number("PIPELINEK_RECEIPT_RUNS_UNREADABLE"),
     },
     "cache": {
         "written": number("PIPELINEK_RECEIPT_CACHE_WRITTEN"),
@@ -2061,15 +2116,150 @@ plane_holds_streams() {
     return 1
 }
 
+# The receipt a run wrote about itself, decoded once into what the launcher
+# reads.
+#
+# The receipt is the run's OWN account of itself: the conclusion it reached and
+# the bytes of every operation it committed. It is read as a DOCUMENT, because
+# the keys inside it belong to the writer: a reader that guessed where they
+# were would be a second authority about the shape of the writer's output.
+#
+# It is decoded ONCE per receipt, into a directory of its own beside it: the
+# conclusion as one line, the operations as one line each, and the bytes of
+# each operation as a file of its own. Three states, and they are three
+# different facts:
+#
+#   0  the receipt was read, and it is decoded
+#   2  there is no receipt: the run was killed, or died, before it wrote one
+#   3  the receipt is there and could not be read
+#
+# The last two are the fallback's business, not this function's: the caller
+# asks the product when the receipt cannot answer, and the counts published at
+# the end of the cycle say how often that happened.
+
+decode_run_receipt() {
+    local receipt="$1"
+    local target="$2"
+    if [[ -z "$receipt" ]]; then
+        return 1
+    fi
+    # The state of this receipt, in a file next to it: the receipt is decoded
+    # ONCE, and the readers that run inside a command substitution find it
+    # already decoded instead of decoding it again and counting it twice.
+    local state_file="${receipt}.state"
+    local state=1
+    local decoded=0
+    if [[ -f "$state_file" ]]; then
+        state="$(cat "$state_file" 2>/dev/null || printf '1')"
+        case "$state" in
+            0|2|3) decoded=1 ;;
+            *) state=1 ;;
+        esac
+    fi
+    if [[ "$decoded" == "1" ]]; then
+        if [[ "$state" == "0" ]]; then
+            return 0
+        fi
+        return 1
+    fi
+    if [[ ! -f "$receipt" ]]; then
+        state=2
+    elif python3 - "$receipt" "$target" 2>"${receipt}.decode-error.txt" <<'PY'
+import base64
+import binascii
+import json
+import os
+import sys
+
+receipt_path = sys.argv[1]
+target = sys.argv[2]
+
+
+def decode_bytes(payload):
+    """The bytes of one operation, as they were committed."""
+    stripped = "".join(payload.split())
+    padded = stripped + "=" * (-len(stripped) % 4)
+    try:
+        return base64.b64decode(padded, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("the receipt carries bytes that are not base64: " + str(error))
+
+
+with open(receipt_path, "rb") as handle:
+    document = json.loads(handle.read().decode("utf-8"))
+
+if not isinstance(document, dict):
+    raise ValueError("the receipt is not a document")
+if document.get("schema") != "pipelinek.run-receipt/1":
+    raise ValueError("the receipt carries the schema " + repr(document.get("schema")))
+
+verdict = document.get("verdict")
+if not isinstance(verdict, dict):
+    verdict = {}
+outcome = verdict.get("outcome")
+outcome = outcome if isinstance(outcome, str) else ""
+steps = verdict.get("steps")
+steps = steps if isinstance(steps, int) and not isinstance(steps, bool) else 0
+cache = verdict.get("cacheKey")
+cache = cache if isinstance(cache, str) else ""
+
+operations = document.get("operations")
+if not isinstance(operations, list):
+    operations = []
+
+os.makedirs(os.path.join(target, "bytes"), exist_ok=True)
+
+with open(os.path.join(target, "verdict"), "w", encoding="utf-8") as handle:
+    handle.write("outcome=" + outcome + " steps=" + str(steps) + " cache=" + cache + "\n")
+
+# The operations keep the order the receipt published them in, and the bytes
+# of each one are a file named after that position: the name is a position
+# and not the identity, because an identity is not always a name a file can
+# carry.
+with open(os.path.join(target, "operations"), "w", encoding="utf-8") as handle:
+    position = 0
+    for entry in operations:
+        if not isinstance(entry, dict):
+            continue
+        identifier = entry.get("operation")
+        if not isinstance(identifier, str) or not identifier:
+            continue
+        payload = entry.get("bytes")
+        if not isinstance(payload, str):
+            payload = ""
+        with open(os.path.join(target, "bytes", str(position)), "wb") as raw:
+            raw.write(decode_bytes(payload))
+        handle.write(identifier + "\n")
+        position += 1
+PY
+    then
+        state=0
+    else
+        state=3
+    fi
+    printf '%s' "$state" > "$state_file" 2>/dev/null || true
+    case "$state" in
+        0) note_run_receipt read ;;
+        2) note_run_receipt absent ;;
+        3) note_run_receipt unreadable ;;
+    esac
+    if [[ "$state" == "0" ]]; then
+        return 0
+    fi
+    return 1
+}
+
 declared_operations() {
-    local control="$1" run_id="$2"
-    local key="$control|$run_id"
+    local control="$1" run_id="$2" receipt="${3:-}"
+    local key="$control|$run_id|$receipt"
     if [[ -n "${DECLARED_OPERATIONS[$key]+x}" ]]; then
         printf '%s\n' "${DECLARED_OPERATIONS[$key]}"
         return 0
     fi
     local listing
-    if ! listing="$(binary operations "$run_id" --control-root "$control" 2>/dev/null)"; then
+    if [[ -n "$receipt" ]] && decode_run_receipt "$receipt" "${receipt}.decoded"; then
+        listing="$(cat "${receipt}.decoded/operations")"
+    elif ! listing="$(binary operations "$run_id" --control-root "$control" 2>/dev/null)"; then
         return 1
     fi
     # An empty listing for a run that committed output is not "this run wrote
@@ -2107,8 +2297,37 @@ declared_operations() {
 # could not answer, and the launcher treats it as the failure it is: two
 # refused reads are not two runs that agree, they are two questions nobody
 # answered.
+#
+# The receipt carries those same bytes, because the run committed them and
+# knows them. When the receipt is there, the bytes come from there: they are
+# the bytes the plane holds, read by the run that wrote them, and the
+# comparison below is the comparison of the same bytes it has always made.
 world_bytes() {
-    local control="$1" run_id="$2" operation="$3" out_file="$4"
+    local control="$1" run_id="$2" operation="$3" out_file="$4" receipt="${5:-}"
+    if [[ -n "$receipt" ]] && decode_run_receipt "$receipt" "${receipt}.decoded"; then
+        local decoded="${receipt}.decoded"
+        local identifier="" found="" position=0 line
+        while IFS= read -r line; do
+            # The name that follows the run id is the operation's own name,
+            # stripped the same way the listing strips it.
+            if [[ "${line#${run_id}-}" == "$operation" ]]; then
+                # Two operations of the same run whose names are equal are
+                # ONE operation, and a reader that picked one of them would be
+                # picking for the reader.
+                if [[ -n "$identifier" ]]; then
+                    return 1
+                fi
+                identifier="$line"
+                found="$position"
+            fi
+            position=$((position + 1))
+        done <"${decoded}/operations"
+        if [[ -z "$identifier" ]]; then
+            return 1
+        fi
+        cat "${decoded}/bytes/$found" >"$out_file"
+        return $?
+    fi
     binary console --control-dir "$control" "$run_id" "${run_id}-${operation}" \
         >"$out_file" 2>/dev/null
 }
@@ -2358,11 +2577,21 @@ print(trace + "\t" + root + "\t" + parent)
 # its event lane, and the launcher reads it from there, so the verdict and the
 # exit code are two independent facts about the same run and can be compared.
 #
+# The receipt carries the same conclusion, written by the run that reached it.
+# When the receipt is there it is what is read: the run's own word about
+# itself, and not a second reading of the event lane. When it is not, the
+# event lane is read, because a run that was killed publishes no receipt and
+# its conclusion is still in the lane.
+#
 # Prints `outcome=<word> steps=<n>`, or nothing when the run left no verdict.
 # The absence is a fact the caller has to handle: it is the difference
 # between "the run failed" and "the run said nothing".
 read_run_verdict() {
-    local db="$1" run_id="$2"
+    local db="$1" run_id="$2" receipt="${3:-}"
+    if [[ -n "$receipt" ]] && decode_run_receipt "$receipt" "${receipt}.decoded"; then
+        cat "${receipt}.decoded/verdict"
+        return 0
+    fi
     local events=""
     events="$(binary events "$run_id" --db "$db" --typed 2>/dev/null)" || return 1
     # The typed events are documents, one per line, and the run's conclusion is
@@ -2433,12 +2662,23 @@ count_run() {
 # $7 1 when the execution under test WAS a run, 0 when it was a control
 #    command. A run publishes a launch receipt; a command does not, and the
 #    rule that a run that ended well published one belongs to the runs.
+# $14 the receipt the run under test wrote about itself, or empty when there
+#    is none to read.
 # Returns non-zero when an expectation did not hold, and leaves the reason
 # in $check_detail for the caller to report.
 check_execution() {
     local ex_label="$1" ex_stdout="$2" ex_stderr="$3" ex_code="$4" ex_control="$5"
     local ex_db="$6" ex_is_run="${7:-1}"
     local ex_expect_exit="$8" ex_expect_outcome="$9" ex_root="${13}"
+    local ex_receipt="${14:-}"
+    # The receipt of the run under test is decoded HERE, in this shell, and
+    # not in the readers below: a reader that runs inside a command
+    # substitution decodes in a subshell, and a subshell's count is a count
+    # nobody ever sees. Decoded here, the receipt is decoded once and the
+    # readers below find it already decoded.
+    if [[ -n "$ex_receipt" ]]; then
+        decode_run_receipt "$ex_receipt" "${ex_receipt}.decoded" || true
+    fi
     local -n ex_expect_stdout="${10}"
     local -n ex_expect_stderr="${11}"
     local -n ex_expect_transcript="${12}"
@@ -2526,7 +2766,7 @@ check_execution() {
         esac
         if [[ -n "$run_id" ]]; then
             local verdict="" run_outcome="" run_steps=0 run_cache=""
-            verdict="$(read_run_verdict "$ex_db" "$run_id" || true)"
+            verdict="$(read_run_verdict "$ex_db" "$run_id" "$ex_receipt" || true)"
             run_outcome="$(sed -n 's/.*outcome=\([a-z]*\).*/\1/p' <<<"$verdict")"
             run_steps="$(sed -n 's/.*steps=\([0-9]*\).*/\1/p' <<<"$verdict")"
             run_cache="$(sed -n 's/.*cache=\([a-z0-9-]*\).*/\1/p' <<<"$verdict")"
@@ -2621,7 +2861,7 @@ check_execution() {
         run_id="$receipt"
         : >"$transcript"
         local operations
-        if ! operations="$(declared_operations "$ex_control" "$run_id")"; then
+        if ! operations="$(declared_operations "$ex_control" "$run_id" "$ex_receipt")"; then
             printf 'FAIL %-52s the operations of the run could not be listed\n' "$ex_label"
             check_detail="the operations of the run could not be listed"
             return 1
@@ -2629,7 +2869,7 @@ check_execution() {
         local operation
         while IFS= read -r operation; do
             [[ -n "$operation" ]] || continue
-            if ! world_bytes "$ex_control" "$run_id" "$operation" "$ex_root/transcript.part"; then
+            if ! world_bytes "$ex_control" "$run_id" "$operation" "$ex_root/transcript.part" "$ex_receipt"; then
                 printf 'FAIL %-52s the committed transcript could not be read\n' "$ex_label"
                 check_detail="the committed transcript could not be read"
                 return 1
@@ -2676,10 +2916,23 @@ check_execution() {
 # expected exit code, $9 whether the durable execution WAS a run and $10
 # the scenario root -- the same hand-over the single-execution check makes,
 # so neither world is held to expectations the other one kept to itself.
+# $11 and $12 are the receipts the two runs wrote about themselves, and each
+# world is read from its OWN: the two runs are two different runs, and the
+# receipt of one says nothing about the other.
 compare_worlds() {
     local cw_durable_out="$1" cw_durable_err="$2" cw_durable_control="$3"
     local cw_volatile_out="$4" cw_volatile_err="$5" cw_volatile_control="$6"
     local cw_label="$7" cw_expect_exit="$8" cw_verdict_is_run="$9" cw_root="${10}"
+    local cw_durable_receipt="${11:-}" cw_volatile_receipt="${12:-}"
+    # The two receipts are decoded HERE, in this shell, for the same reason
+    # the single-execution check decodes its own: a reader that decodes in a
+    # subshell counts in a subshell, and the count is lost.
+    if [[ -n "$cw_durable_receipt" ]]; then
+        decode_run_receipt "$cw_durable_receipt" "${cw_durable_receipt}.decoded" || true
+    fi
+    if [[ -n "$cw_volatile_receipt" ]]; then
+        decode_run_receipt "$cw_volatile_receipt" "${cw_volatile_receipt}.decoded" || true
+    fi
 
     local durable_run volatile_run
     local durable_state=0 volatile_state=0
@@ -2743,12 +2996,12 @@ compare_worlds() {
         # named before the bytes are compared, because a byte comparison
         # cannot say WHICH operation disagreed.
         local durable_ops volatile_ops
-        if ! durable_ops="$(declared_operations "$cw_durable_control" "$durable_run")"; then
+        if ! durable_ops="$(declared_operations "$cw_durable_control" "$durable_run" "$cw_durable_receipt")"; then
             printf 'FAIL %-52s the operations of the durable path could not be listed\n' "$cw_label"
             world_detail="the operations of the durable path could not be listed"
             return 1
         fi
-        if ! volatile_ops="$(declared_operations "$cw_volatile_control" "$volatile_run")"; then
+        if ! volatile_ops="$(declared_operations "$cw_volatile_control" "$volatile_run" "$cw_volatile_receipt")"; then
             printf 'FAIL %-52s the operations of the volatile path could not be listed\n' "$cw_label"
             world_detail="the operations of the volatile path could not be listed"
             return 1
@@ -2765,14 +3018,14 @@ compare_worlds() {
         while IFS= read -r operation; do
             [[ -n "$operation" ]] || continue
             if ! world_bytes "$cw_durable_control" "$durable_run" "$operation" \
-                    "$cw_root/world.durable.bytes"; then
+                    "$cw_root/world.durable.bytes" "$cw_durable_receipt"; then
                 printf 'FAIL %-52s the bytes the durable path committed for %s could not be read\n' \
                     "$cw_label" "$operation"
                 world_detail="the bytes the durable path committed for $operation could not be read"
                 return 1
             fi
             if ! world_bytes "$cw_volatile_control" "$volatile_run" "$operation" \
-                    "$cw_root/world.volatile.bytes"; then
+                    "$cw_root/world.volatile.bytes" "$cw_volatile_receipt"; then
                 printf 'FAIL %-52s the bytes the volatile path committed for %s could not be read\n' \
                     "$cw_label" "$operation"
                 world_detail="the bytes the volatile path committed for $operation could not be read"
@@ -3004,6 +3257,7 @@ run_scenario_body() {
     local root stdout stderr code
     local vstdout vstderr vcode
     local verdict_stdout verdict_stderr verdict_is_run
+    local run_receipt volatile_receipt rerun_receipt resume_receipt verdict_receipt
     local before_snapshot after_snapshot run_volatile caller_pwd
     local -a plugin_jar_args plugin_trust_args
     # Whether a phase stopped the scenario. The phase says it by writing
@@ -3420,6 +3674,18 @@ scenario_prepare() {
     vcode=0
     verdict_stdout="$stdout"
     verdict_stderr="$stderr"
+    # The receipt each run writes about itself: the conclusion it reached and
+    # the bytes it committed, read INSTEAD of asking the product for them
+    # again. They live in this scenario's OWN root, never in a shared place,
+    # and each run gets its own: two runs of the same scenario are two runs,
+    # and the receipt of one says nothing about the other.
+    run_receipt="$root/receipt.run.json"
+    volatile_receipt="$root/receipt.volatile.json"
+    rerun_receipt="$root/receipt.rerun.json"
+    resume_receipt="$root/receipt.resume.json"
+    # The receipt of the run whose conclusion is under test. The resumed run is
+    # a DIFFERENT run, and it is the one that concluded.
+    verdict_receipt="$run_receipt"
     # Whether the execution under test WAS a run. Most of the time it is: the
     # scenario's own pipeline. But a scenario whose verdict is a CONTROL command
     # -- a cancel, a recover, a read of a refused run -- is holding a command
@@ -3514,6 +3780,7 @@ scenario_prepare() {
 scenario_execute() {
     cd "$root/cwd"
     binary run --isolated --db "$root/events.db" --control-root "$root/control" \
+        --receipt "$run_receipt" \
         ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
         >"$stdout" 2>"$stderr" || code=$?
     cd "$caller_pwd"
@@ -3551,6 +3818,7 @@ scenario_execute() {
         export PIPELINEK_E2E_CONTROL="$root/control-volatile"
         cd "$root/cwd-volatile"
         binary run --isolated --control-root "$root/control-volatile" \
+            --receipt "$volatile_receipt" \
             ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$vstdout" 2>"$vstderr" || vcode=$?
         cd "$caller_pwd"
@@ -3573,6 +3841,7 @@ scenario_execute() {
         local second=0
         cd "$root/cwd"
         binary run --isolated --db "$root/events.db" --control-root "$root/control" \
+            --receipt "$rerun_receipt" \
             ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
@@ -3616,6 +3885,7 @@ scenario_execute() {
         local second=0
         cd "$root/cwd"
         binary run --isolated --db "$root/events.db" --control-root "$root/control" \
+            --receipt "$resume_receipt" \
             ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
@@ -3626,9 +3896,11 @@ scenario_execute() {
         fi
         code="$second"
         # The verdict is the SECOND run's: the first one died before it could
-        # say anything about the outcome of the run.
+        # say anything about the outcome of the run. Its receipt is the second
+        # run's too, for the same reason.
         verdict_stdout="$root/stdout.rerun.txt"
         verdict_stderr="$root/stderr.rerun.txt"
+        verdict_receipt="$resume_receipt"
     fi
 
     if [[ "$recover" == 1 ]]; then
@@ -4425,7 +4697,8 @@ scenario_verify() {
     local world_detail=""
     if ! check_execution "$label" "$verdict_stdout" "$verdict_stderr" "$code" "$root/control" \
         "$root/events.db" "$verdict_is_run" \
-        "$expect_exit" "$expect_outcome" expect_stdout expect_stderr expect_transcript "$root"; then
+        "$expect_exit" "$expect_outcome" expect_stdout expect_stderr expect_transcript "$root" \
+        "$verdict_receipt"; then
         failed=$((failed + 1))
         failures+=("$label: $check_detail")
         phase_failed=1
@@ -4442,7 +4715,8 @@ scenario_verify() {
     if [[ "$run_volatile" == 1 ]]; then
         if ! check_execution "$label (volatile)" "$vstdout" "$vstderr" "$vcode" \
             "$root/control-volatile" "" "1" \
-            "$expect_exit" "$expect_outcome" expect_stdout expect_stderr expect_transcript "$root"; then
+            "$expect_exit" "$expect_outcome" expect_stdout expect_stderr expect_transcript "$root" \
+            "$volatile_receipt"; then
             failed=$((failed + 1))
             failures+=("$label (volatile): $check_detail")
             phase_failed=1
@@ -4454,7 +4728,8 @@ scenario_verify() {
         # did they do the SAME thing?
         if ! compare_worlds "$verdict_stdout" "$verdict_stderr" "$root/control" \
             "$vstdout" "$vstderr" "$root/control-volatile" \
-            "$label" "$expect_exit" "$verdict_is_run" "$root"; then
+            "$label" "$expect_exit" "$verdict_is_run" "$root" \
+            "$verdict_receipt" "$volatile_receipt"; then
             failed=$((failed + 1))
             failures+=("$label: $world_detail")
             phase_failed=1
@@ -4999,6 +5274,16 @@ fi
 product_launch_census
 printf 'product launches: %s launch(es) of the product (%s)\n' \
     "$product_launch_total" "${product_launch_verbs:-none}"
+
+# The receipts the runs wrote about themselves. A receipt is read instead of
+# asking the product again, so the ones that were read are the launches the
+# suite did NOT pay for; the ones that were absent are the runs that died
+# before they wrote one, and the launcher went back to the product for those.
+# The count is published, because a suite that quietly reads the product
+# again is a suite that quietly costs more than it says.
+run_receipt_census
+printf 'run receipts: %s read, %s absent, %s unreadable\n' \
+    "$receipts_read" "$receipts_absent" "$receipts_unreadable"
 
 # The stage clock, as the fact it now is. Every scenario reported, so nothing is
 # hidden by this line: the stage was simply too slow for the budget it was given.

@@ -78,6 +78,14 @@ internal class ParseState(
      */
     var correlationId: String? = null
     /**
+     * `--receipt <path>`. Where the run writes its receipt: what it concluded and what it
+     * wrote, in one document a consumer reads instead of asking the product again.
+     *
+     * Absent means the run writes nothing. The receipt is opt-in because a run that wrote one
+     * unasked would leave a file in a directory the operator never named.
+     */
+    var receiptPath: String? = null
+    /**
      * Every `--output-protocol`
      * token the operator supplied. The last one wins. Validation
      * against [dev.rubentxu.pipeline.v2.application.OutputProtocol.SUPPORTED_IDS]
@@ -240,7 +248,14 @@ private val EXECUTION_ONLY_FLAGS: List<FlagOption> =
     listOf(FlagOption.RESUME, FlagOption.RERUN, FlagOption.ISOLATED, FlagOption.ALLOW_NETWORK)
 
 private val EXECUTION_ONLY_VALUED: List<ValuedOption> =
-    listOf(ValuedOption.WORKSPACE, ValuedOption.SANDBOX_PROFILE, ValuedOption.PLUGIN_JAR)
+    listOf(
+        ValuedOption.WORKSPACE,
+        ValuedOption.SANDBOX_PROFILE,
+        ValuedOption.PLUGIN_JAR,
+        // The receipt is the run's OWN account of itself, so only a verb that runs can carry
+        // it. A reader that accepted it would be promising a file it never writes.
+        ValuedOption.RECEIPT,
+    )
 
 internal val EXECUTION_ONLY_OPTIONS: Set<String> =
     (EXECUTION_ONLY_FLAGS.map { it.token } + EXECUTION_ONLY_VALUED.map { it.token }).toSet()
@@ -303,6 +318,9 @@ private enum class ValuedOption(val token: String) {
     // values via the same [MissingOptionValue] path as every
     // other valued flag.
     CORRELATION_ID("--correlation-id"),
+    // Where the run writes its receipt: what it concluded and what it wrote, in one document.
+    // Only a run may carry it; the readers refuse it by naming the verb that owns it.
+    RECEIPT("--receipt"),
     // Opt-in versioned
     // output protocol. Repeating the flag collects the tokens;
     // Main.kt validates the last-supplied id against
@@ -397,6 +415,18 @@ private object ValuedOptions {
                 ApplyOutcome.Applied(index + 2)
             }
         }
+        // A path. Existence is NOT checked here: the path a receipt goes to is a
+        // legitimate thing to name before it exists, and the effect boundary
+        // reports it when the write fails.
+        ValuedOption.RECEIPT -> {
+            if (value.isBlank()) {
+                ApplyOutcome.Rejected(CliError.MissingOptionValue("--receipt"))
+            } else {
+                state.receiptPath = value
+                ApplyOutcome.Applied(index + 2)
+            }
+        }
+
         // Collect every supplied
         // --output-protocol token in the order the operator passed them.
         // The list is the client's priority for the negotiation. Resolution

@@ -165,7 +165,7 @@ private fun runDurablePipelineOwned(
     )
     val runId = ownership.runId
     val lease = ownership.lease
-    val source = compileDurableScript(
+    val (compilation, scripted, compiledPipeline) = compileDurableScript(
         eventStore = eventStore,
         runId = runId,
         scriptPath = scriptPath,
@@ -173,9 +173,6 @@ private fun runDurablePipelineOwned(
         pluginJars = config.pluginJars,
         telemetry = telemetry,
     )
-    val compilation = source.compilation
-    val scripted = source.scripted
-    val compiledPipeline = source.pipeline
 
     // Build orchestrator with all durable dependencies
     val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
@@ -243,6 +240,8 @@ private fun runDurablePipelineOwned(
     // threw still has to say what it left behind.
     val sagaTerminals = mutableListOf<SagaTerminal>()
     val outputObserver = startLiveOutputObserver(runId, controlDirRoot, config.format)
+    // The events of this run, kept ONLY when a receipt was asked for.
+    var receiptEvents: List<DomainEvent>? = null
     // The sqlite single-writer thread is NON-daemon: if an exception escapes, the writer keeps
     // blocking on queue.take() and the JVM hangs. The outcome is computed inside the try and
     // the close is guaranteed in the finally, on every path.
@@ -329,6 +328,8 @@ private fun runDurablePipelineOwned(
         // returns, which stops the writer and releases the persistent connection; the JVM
         // exits cleanly because DestroyJavaVM no longer waits on queue.take().
         rawEventStore.flush()
+        // Read back BEFORE the observations are published, so the receipt holds the whole journal.
+        receiptEvents = receiptEventsOf(config, eventStore, runId)
         val lastEventCaptured = publishDurableObservations(
             eventStore = eventStore,
             runId = runId,
@@ -345,9 +346,12 @@ private fun runDurablePipelineOwned(
         // a run that never reaches this block still gives them back.
         runCatching { outputObserver.close() }
     }
-    val runOutcome = runOutcomeAndLastEvent.first
-    val lastEvent = runOutcomeAndLastEvent.second
+    val (runOutcome, lastEvent) = runOutcomeAndLastEvent
     val exit = runExit(runOutcome, lastEvent)
+    // The receipt is the run's own account of itself, written HERE: the observer has closed,
+    // so the bytes it publishes are the bytes the plane committed. A failure to write it does
+    // not change the exit the run earned.
+    RunReceipt.publishWhenRequested(config.receiptPath, controlDirRoot, runId, receiptEvents.orEmpty(), exit.code)
     // SAGA: what happened to the Sagas of this run. It belongs in the verdict block, next
     // to the reason the run failed, because "the Saga settled" and "a human has to resolve
     // a pending obligation right now" are different worlds and the exit code cannot say
@@ -376,6 +380,21 @@ private data class DurableScript(
     val scripted: ScriptedFrontend,
     val pipeline: dev.rubentxu.pipeline.v2.domain.CompiledPipeline?,
 )
+
+/**
+ * The events a receipt publishes, when one was asked for.
+ *
+ * The walk happens ONLY when a receipt was asked for: the walk that publishes the
+ * observations does NOT keep the events, on purpose, because a transcript too large to hold
+ * in memory must not become a list just to be discarded. A receipt is asked for explicitly
+ * and it publishes the facts of the run rather than its narration.
+ */
+private fun receiptEventsOf(
+    config: CliFlags,
+    eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
+    runId: String,
+): List<DomainEvent>? =
+    config.receiptPath?.let { eventStore.eventsFor(runId).toList() }
 
 private fun compileDurableScript(
     eventStore: dev.rubentxu.pipeline.v2.events.EventSink,

@@ -108,6 +108,17 @@ data class CliFlags(
 */
     val correlationId: String? = null,
     /**
+     * Where the run writes its receipt: what it concluded and what it wrote, in one document.
+     *
+     * The receipt is the run's OWN account of itself, written by the run while it still holds
+     * everything it knows, so a consumer reads a file instead of launching the product again to
+     * ask the same questions.
+     *
+     * Absent means the run writes nothing: the receipt is opt-in, because a run that wrote one
+     * unasked would leave a file in a directory the operator never named.
+     */
+    val receiptPath: String? = null,
+    /**
      * Which families of observation reach the reader. Orthogonal to
      * [format]; neither changes execution.
 */

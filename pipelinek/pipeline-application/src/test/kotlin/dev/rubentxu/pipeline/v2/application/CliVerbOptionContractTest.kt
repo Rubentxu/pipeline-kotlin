@@ -82,6 +82,57 @@ class CliVerbOptionContractTest {
     }
 
     @Test
+    fun `the verb that runs admits the receipt and applies it`() {
+        val flags = CliExecutionParser.parse(arrayOf("run", "--receipt", RECEIPT, SCRIPT)).parsed()
+
+        assertEquals(RECEIPT, flags.receiptPath, "run accepted --receipt and did not apply it")
+    }
+
+    @Test
+    fun `the verb that runs refuses a receipt with no path`() {
+        val error = CliExecutionParser.parse(arrayOf("run", "--receipt")).rejected()
+
+        assertEquals(
+            CliError.MissingOptionValue("--receipt"),
+            error,
+            "run does not refuse a receipt with no path by naming the option",
+        )
+    }
+
+    @Test
+    fun `the verb that runs refuses a receipt with an empty path`() {
+        val error = CliExecutionParser.parse(arrayOf("run", "--receipt", "", SCRIPT)).rejected()
+
+        assertEquals(
+            CliError.MissingOptionValue("--receipt"),
+            error,
+            "run does not refuse a receipt with an empty path by naming the option",
+        )
+    }
+
+    @Test
+    fun `the verb that validates refuses the receipt by naming the verb that owns it`() {
+        val error = CliExecutionParser.parse(arrayOf("validate", "--receipt", RECEIPT, SCRIPT)).rejected()
+
+        assertEquals(
+            CliError.OptionBelongsToVerb("--receipt", "run", VALIDATE_PUBLISHES_NOTHING),
+            error,
+            "validate does not refuse the receipt by naming the verb that owns it",
+        )
+    }
+
+    @Test
+    fun `the verb that reads refuses the receipt by naming it`() {
+        val error = CliObservationParser.parse(arrayOf("--receipt", RECEIPT, RUN_ID)).rejected()
+
+        assertEquals(
+            CliError.OptionNotReadable("--receipt"),
+            error,
+            "observe does not refuse the receipt by naming it",
+        )
+    }
+
+    @Test
     fun `the verb that reads refuses an option that changes what a run does`() {
         val error = CliObservationParser.parse(arrayOf("--resume", RUN_ID)).rejected()
 
@@ -234,5 +285,15 @@ class CliVerbOptionContractTest {
         const val OP_ID = "op-1"
         const val CONTROL_DIR = "/tmp/pipelinek-verification-control"
         const val EVENTS_DB = "/tmp/pipelinek-verification-events.db"
+        const val RECEIPT = "/tmp/pipelinek-verification-receipt.json"
+
+        /**
+         * Why the receipt is refused by the verb that never runs anything.
+         *
+         * The expectation is a literal: a row that computed the reason from the code under
+         * test would agree with every spelling of it, including the wrong one.
+         */
+        const val VALIDATE_PUBLISHES_NOTHING =
+            "'validate' compiles a script and publishes nothing, so it has no receipt to write."
     }
 }

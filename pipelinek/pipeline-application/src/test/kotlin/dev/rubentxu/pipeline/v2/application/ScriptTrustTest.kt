@@ -144,7 +144,7 @@ class ScriptTrustTest {
             }
             candidate = candidate.parent
         }
-        throw IllegalStateException(
+        error(
             "the sources of the application module were not found from '${Paths.get("").toAbsolutePath()}'",
         )
     }

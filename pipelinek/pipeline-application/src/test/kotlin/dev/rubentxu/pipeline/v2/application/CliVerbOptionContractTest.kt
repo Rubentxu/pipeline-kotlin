@@ -144,7 +144,8 @@ class CliVerbOptionContractTest {
     }
 
     @Test
-    fun `the verb that reads refuses the receipt by naming it`() {        val error = CliObservationParser.parse(arrayOf("--receipt", RECEIPT, RUN_ID)).rejected()
+    fun `the verb that reads refuses the receipt by naming it`() {
+        val error = CliObservationParser.parse(arrayOf("--receipt", RECEIPT, RUN_ID)).rejected()
 
         assertEquals(
             CliError.OptionNotReadable("--receipt"),

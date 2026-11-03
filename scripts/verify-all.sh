@@ -360,6 +360,38 @@ if [[ "$subset" == 0 ]]; then
     gradle_cache_args=(--no-build-cache)
 fi
 
+# The CONFIGURATION CACHE is a third thing, and it is not the build cache above.
+#
+# The build cache stores the OUTPUTS of the tasks. The configuration cache
+# stores the PLAN: the task graph, and everything the build scripts computed
+# to draw it. Reusing a plan means the next build does not have to run the
+# scripts again, and that is a saving of a different kind: it is not the work
+# of the tasks, it is the work of CONFIGURING them.
+#
+# It is asked for in the warning form and not in the strict one. Measured on
+# this build (Gradle 8.14.5), the product registers a listener on
+# `Gradle.buildFinished` in its settings script -- the hook that releases the
+# lock this checkout takes while a build runs -- and Gradle reports a
+# listener registered that way as a problem for the cache. The strict form
+# would fail the build over it; the warning form lets the build run and leaves
+# the declaration of the problem in the log, and the reader below turns that
+# declaration into a sentence of the report. The gate neither hides the
+# problem nor fails because of it: the listener belongs to the product, not to
+# the gate. A problem that comes from an instrument OF THE GATE is a
+# different thing, and that one fails the run.
+#
+# The `clean` invocation does NOT ask for the cache. It has nothing to gain
+# from a plan it will not reuse -- it deletes the outputs of the build -- and
+# asking for it has a price: with the cache on, `gradle.buildFinished` does
+# not fire, so the product's lock is not released when the invocation ends
+# and the daemon keeps it until it dies. Measured: an invocation that has to
+# CONFIGURE after one that STORED an entry is refused with "Another Gradle
+# invocation is already using this checkout". The gate stops its own daemon
+# by PID at the end of the run, so the lock dies with it, and the gate asks
+# for the cache in ONE invocation per run, so no two of them can collide.
+# The clean has no reason to take the lock in the first place.
+gradle_config_cache_args=(--configuration-cache --configuration-cache-problems=warn)
+
 # Stage selection. `--stage up-to-N` is the progressive form: everything from 1
 # to N. `--stage 1,3` is the explicit form. Both are a SUBSET by definition --
 # stage 4 alone, or stage 3 without stage 1, measures nothing about the gate.
@@ -451,9 +483,31 @@ component_required_total=0
 # cache. So the count of the tasks that REALLY ran travels with the verdict
 # line, because "the gate passed in 240 s" is not the same statement when 210
 # of the 319 tasks were free.
-task_timing_lines=0
+#
+# The states are declared by Gradle in its own console and the durations are
+# measured by the clock of the build; read_timings checks the two against each
+# other. The count of tasks the gate knows about is what decides whether the
+# field was measured at all.
+task_console_lines=0
 task_executed_total=0
 task_no_work_total=0
+
+# What became of the configuration cache of the build. The declaration is
+# Gradle's own, read from the log of the invocation that asked for the cache:
+#
+#   reused     the entry stored by an earlier run was reused.
+#   stored     a new entry was stored, so nothing was reused.
+#   discarded  the entry that existed was discarded.
+#   absent     the invocation ran without saying anything about the cache.
+#   NOT_RUN    no invocation of this run asked for the cache.
+#
+# The REASON travels with the state, because "stored" on its own says nothing
+# about the next run: the sentence "Calculating task graph as ..." says WHY
+# the entry could not be reused, and that is the thing a reader has to fix.
+config_cache_state="NOT_RUN"
+config_cache_reason=""
+config_cache_problems=0
+config_cache_problem_text=""
 
 now_ms() { date +%s%3N; }
 
@@ -616,17 +670,67 @@ task_category() {
     esac
 }
 
-# Read the per-task clock the build wrote and turn it into parts. The log is
-# the only witness: a build that wrote no timing lines measured nothing, and
-# the gate has to say that rather than report a zero for it.
+# Read the per-task clock the build wrote and turn it into parts, and read the
+# state of every task from the console of the SAME build.
+#
+# TWO WITNESSES, ONE FACT EACH, and the gate reads each of them where it is the
+# owner:
+#
+#   - The console of Gradle says WHICH tasks ran and WHICH of them did no
+#     work: already up to date, served from the build cache, without source,
+#     or skipped. It is Gradle's own declaration, and the gate does not
+#     re-derive it.
+#   - The clock says HOW LONG the tasks that ran took. It is an action pair
+#     around the work of each task, so a task that did no work never runs it
+#     and the clock does not see it. That is not a gap: Gradle declared that
+#     task in its console.
+#
+# The two are CHECKED against each other: the number of tasks the console says
+# ran has to be the number of tasks the clock measured. A difference is a hole
+# in the census, and a census with a hole in it is not published as a census.
+#
+# A free task costs nothing in the census, and that is not a zero invented:
+# the cost of a task that did no work is the cost of doing no work. It is
+# still COUNTED, because it is still a task of that part of the build: a part
+# whose tasks were all up to date was SEEN, and a part that was left out of
+# the census is a part whose cost nobody knows. The COUNT of the free tasks
+# travels in the verdict line, because a reader that only sees "the gate
+# passed in 240 s" cannot tell a build that worked from a build a cache did.
 read_timings() {
     local log="$1" stage_ms="$2" label="$3"
     local lines n path ms state bucket slowest_ms=0 slowest=""
+    local console_line console_path console_state
+    local executed=0 free=0
     local -A state_counts=()
-    lines="$(grep -a '^TASK_TIMING ' "$log" || true)"
-    if [[ -z "$lines" ]]; then
-        fail "$label: the build wrote no timing lines, so its cost is unknown"
+
+    # The console of Gradle: one line per task of the build, with the state it
+    # ended in when it did no work. A line with no state is a task that ran.
+    while read -r console_line; do
+        console_path="${console_line#> Task }"
+        console_state=""
+        case "$console_path" in
+            *" UP-TO-DATE") console_state="UP-TO-DATE"; console_path="${console_path% UP-TO-DATE}" ;;
+            *" FROM-CACHE") console_state="FROM-CACHE"; console_path="${console_path% FROM-CACHE}" ;;
+            *" NO-SOURCE")  console_state="NO-SOURCE";  console_path="${console_path% NO-SOURCE}" ;;
+            *" SKIPPED")    console_state="SKIPPED";    console_path="${console_path% SKIPPED}" ;;
+        esac
+        if [[ -z "$console_state" ]]; then
+            executed=$(( executed + 1 ))
+            state_counts[EXECUTED]=$(( ${state_counts[EXECUTED]:-0} + 1 ))
+        else
+            free=$(( free + 1 ))
+            state_counts[$console_state]=$(( ${state_counts[$console_state]:-0} + 1 ))
+            # The task did no work, so it cost nothing, but it belongs to a
+            # part of the build and the census has to know that part.
+            component_add "build:$(task_category "$console_path")" 0 1 "tasks of the build"
+        fi
+    done < <(grep -a '^> Task ' "$log" || true)
+    if (( executed + free == 0 )); then
+        fail "$label: the log has no task line at all, so the tasks of this build are unknown"
     fi
+
+    # The clock: one line per task that RAN, with the duration of its work.
+    lines="$(grep -a '^TASK_TIMING ' "$log" || true)"
     n=0
     while read -r _ path ms state; do
         [[ "$ms" =~ ^[0-9]+$ ]] || continue
@@ -637,22 +741,25 @@ read_timings() {
         fi
         bucket="$(task_category "$path")"
         component_add "build:$bucket" "$ms" 1 "tasks of the build"
-        state_counts[$state]=$(( ${state_counts[$state]:-0} + 1 ))
-        task_timing_lines=$(( task_timing_lines + 1 ))
-        if [[ "$state" == "EXECUTED" ]]; then
-            task_executed_total=$(( task_executed_total + 1 ))
-        else
-            task_no_work_total=$(( task_no_work_total + 1 ))
-        fi
     done <<< "$lines"
-    if (( n == 0 )); then
-        fail "$label: the timing lines carry no readable duration"
+    if (( n != executed )); then
+        fail "$label: the console declares ${executed} task(s) that ran and the clock measured ${n}: the census has a hole in it"
     fi
     if (( slowest_ms > stage_ms )); then
         fail "$label: a task took ${slowest_ms}ms, more than the ${stage_ms}ms of the invocation that ran it"
     fi
-    printf '    %s: %d task(s) timed, the slowest %s at %dms\n' \
-        "$label" "$n" "$slowest" "$slowest_ms"
+
+    task_console_lines=$(( task_console_lines + executed + free ))
+    task_executed_total=$(( task_executed_total + executed ))
+    task_no_work_total=$(( task_no_work_total + free ))
+
+    if [[ -n "$slowest" ]]; then
+        printf '    %s: %d task(s) declared, %d ran and %d did no work; the slowest %s at %dms\n' \
+            "$label" "$(( executed + free ))" "$executed" "$free" "$slowest" "$slowest_ms"
+    else
+        printf '    %s: %d task(s) declared, %d ran and %d did no work\n' \
+            "$label" "$(( executed + free ))" "$executed" "$free"
+    fi
     # The distribution by the state each task ended in. A count of tasks that
     # ran is only half the story: the reader also has to know how many were
     # free, because the free ones are the ones a cache produced.
@@ -704,6 +811,100 @@ read_overlap() {
     done < <(grep -aE '^TASK_OVERLAP_(BUILD|TASKS|WINDOW|SUM|FACTOR|CONCURRENCY) ' "$log" || true)
     if (( builds == 0 )); then
         fail "$label: the build wrote no overlap summary, so the overlap of its tasks is unknown"
+    fi
+}
+
+# Read what Gradle declared about the configuration cache and publish it.
+#
+# The declaration is Gradle's own, and the gate does not measure the cache and
+# does not guess about it: Gradle prints the sentence in its console and this
+# reader reports what it read. The vocabulary is the one Gradle uses, measured
+# on this build (Gradle 8.14.5):
+#
+#   "Reusing configuration cache."                  the run starts with an
+#                                                   entry it will reuse.
+#   "Configuration cache entry reused."              the entry was reused.
+#   "Configuration cache entry stored."              a new entry was stored.
+#   "Configuration cache entry stored with N problems."
+#   "Configuration cache entry discarded."           the entry that existed was
+#                                                   thrown away.
+#   "Calculating task graph as ..."                 WHY it could not be reused.
+#   "N problems were found storing the configuration cache."
+#
+# A problem that Gradle attributes to an INSTRUMENT OF THE GATE fails the
+# run: the probes of the gate are the ones that have to survive the cache, and
+# one that does not is a defect in the gate and not in the product. A problem
+# that Gradle attributes to the PRODUCT is declared and is not fatal: the
+# product registers a listener on `Gradle.buildFinished` to release its build
+# lock, and Gradle reports that listener as incompatible with the cache.
+read_config_cache() {
+    local log="$1" label="$2"
+    local state="" reason="" problems=0 line own problems_text=""
+
+    if ! grep -aqE 'Reusing configuration cache\.|Configuration cache entry (reused|stored|discarded)' "$log"; then
+        # This invocation said nothing about the cache. It did not ask for one.
+        return 0
+    fi
+
+    if grep -aq 'Reusing configuration cache\.' "$log" || grep -aq 'Configuration cache entry reused\.' "$log"; then
+        state="reused"
+    elif grep -aq 'Configuration cache entry stored' "$log"; then
+        state="stored"
+    elif grep -aq 'Configuration cache entry discarded' "$log"; then
+        state="discarded"
+    else
+        state="absent"
+    fi
+
+    line="$(grep -am1 'Calculating task graph as ' "$log" 2>/dev/null || true)"
+    if [[ -n "$line" ]]; then
+        reason="${line#*Calculating task graph as }"
+    elif [[ "$state" == "discarded" ]]; then
+        reason="the entry that existed was discarded"
+    fi
+
+    line="$(grep -am1 -oE '[0-9]+ problems? (was|were) found (storing|reusing) the configuration cache' "$log" 2>/dev/null || true)"
+    if [[ -n "$line" ]]; then
+        problems="${line%% *}"
+    else
+        line="$(grep -am1 -oE 'with [0-9]+ problems?' "$log" 2>/dev/null || true)"
+        if [[ -n "$line" ]]; then
+            problems="${line#with }"
+            problems="${problems%% *}"
+        fi
+    fi
+
+    own="$(grep -a 'Initialization script' "$log" | grep -aE '(gradle-task-timing|gate-tmpdir-relocation|gradle-task-overlap)\.init\.gradle' || true)"
+    if [[ -n "$own" ]]; then
+        fail "$label: the configuration cache declared a problem in an instrument of the gate: ${own}"
+    fi
+
+    # The problems themselves, one per line. The stage log dies with the cycle
+    # of the run, so a problem that is only in the log is a problem nobody can
+    # read a week later; the report carries them.
+    problems_text="$(awk '
+        /problems? (was|were) found (storing|reusing) the configuration cache/ { grab = 1; next }
+        grab && /^- / { print; next }
+        grab && /^  / { next }
+        grab { grab = 0 }
+    ' "$log")"
+
+    # The run reuses the cache only if EVERY invocation that asked for it
+    # reused it. A run that stored an entry did not reuse one, and saying
+    # "reused" about it would be a claim the log does not support.
+    if [[ "$state" == "reused" ]]; then
+        if [[ "$config_cache_state" == "NOT_RUN" ]]; then
+            config_cache_state="reused"
+            config_cache_problems="$problems"
+            config_cache_problem_text="$problems_text"
+        fi
+        return 0
+    fi
+    if [[ "$config_cache_state" == "NOT_RUN" || "$config_cache_state" == "reused" ]]; then
+        config_cache_state="$state"
+        config_cache_reason="$reason"
+        config_cache_problems="$problems"
+        config_cache_problem_text="$problems_text"
     fi
 }
 
@@ -1904,6 +2105,7 @@ JSON
     ./pipelinek/gradlew -p pipelinek --init-script "$timing_probe" \
         --init-script "$relocation_probe" \
         "${overlap_probe_args[@]+"${overlap_probe_args[@]}"}" "${gradle_cache_args[@]}" \
+        "${gradle_config_cache_args[@]}" \
         "${gradle_build_tasks[@]}" \
         > "$log_dir/stage1.log" 2>&1 \
         || { tail -40 "$log_dir/stage1.log" >&2; fail "$gradle_invocation_label (the tail of the stage log is above)"; }
@@ -1911,6 +2113,7 @@ JSON
     gradle_invocation_wall_ms=$build_wall_ms
     gradle_invocation_holder="stage 1"
     read_timings "$log_dir/stage1.log" "$gradle_invocation_wall_ms" "$gradle_invocation_label"
+    read_config_cache "$log_dir/stage1.log" "$gradle_invocation_label"
     if (( overlap_probe_on == 1 )); then
         read_overlap "$log_dir/stage1.log" "$gradle_invocation_label"
     fi
@@ -2123,7 +2326,8 @@ else
         unit_started_ms=$(now_ms)
         ./pipelinek/gradlew -p pipelinek --init-script "$timing_probe" \
             --init-script "$relocation_probe" \
-            "${overlap_probe_args[@]+"${overlap_probe_args[@]}"}" "${gradle_cache_args[@]}" "${gradle_args[@]}" \
+            "${overlap_probe_args[@]+"${overlap_probe_args[@]}"}" "${gradle_cache_args[@]}" \
+            "${gradle_config_cache_args[@]}" "${gradle_args[@]}" \
             > "$log_dir/stage2.log" 2>&1 \
             || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (the tail of the stage log is above)"; }
         unit_wall_ms=$(( $(now_ms) - unit_started_ms ))
@@ -2131,6 +2335,7 @@ else
         gradle_invocation_holder="stage 2"
         gradle_invocation_label="stage 2"
         read_timings "$log_dir/stage2.log" "$unit_wall_ms" "stage 2"
+        read_config_cache "$log_dir/stage2.log" "stage 2"
         if (( overlap_probe_on == 1 )); then
             read_overlap "$log_dir/stage2.log" "stage 2"
         fi
@@ -2430,16 +2635,35 @@ receipt_suffix() {
 #
 #   executed   the tasks that ran their work.
 #   cached     the tasks that did none: up to date, served from the build
-#              cache, or without source. They are the ones the cache paid for.
+#              cache, without source, or skipped. They are the ones the cache
+#              paid for.
 #
-# A run that never read a timing line says NOT_RUN instead of staying silent,
+# A run that never declared a task says NOT_RUN instead of staying silent,
 # because a silent field reads like a zero.
 tasks_suffix() {
-    if (( task_timing_lines == 0 )); then
+    if (( task_console_lines == 0 )); then
         printf '  tasks=NOT_RUN'
         return 0
     fi
     printf '  tasks=executed:%s cached:%s' "$task_executed_total" "$task_no_work_total"
+}
+
+# What became of the configuration cache of the build. It travels with the
+# verdict line for the same reason the count of tasks does: a gate that asks
+# for the cache and does not say what happened with it has a silent field, and
+# a silent field reads like "everything was fine".
+#
+#   reused     the entry stored by an earlier run was reused.
+#   stored     a new entry was stored, so nothing was reused.
+#   discarded  the entry that existed was discarded.
+#   absent     the invocation ran without saying anything about the cache.
+#   NOT_RUN    no invocation of this run asked for the cache.
+config_cache_suffix() {
+    if [[ "$config_cache_state" == "NOT_RUN" ]]; then
+        printf '  config_cache=NOT_RUN'
+        return 0
+    fi
+    printf '  config_cache=%s' "$config_cache_state"
 }
 
 # What the E2E stage COST in launches of the product. It travels with the
@@ -2468,9 +2692,9 @@ jvm_suffix() {
 # unrepresentable -- one string, one `%s` -- and each field keeps saying NOT_RUN
 # rather than going quiet when its stage was skipped.
 evidence_suffixes() {
-    printf '%s%s%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
+    printf '%s%s%s%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
         "$(jvm_suffix)" "$(receipt_suffix)" "$(residue_suffix)" "$(components_suffix)" \
-        "$(tasks_suffix)"
+        "$(tasks_suffix)" "$(config_cache_suffix)"
 }
 
 stage3_started_ms=$(now_ms)
@@ -2871,6 +3095,29 @@ if [[ -n "$gradle_invocation_label" ]]; then
     echo "    the parts of the cost census that come from it are SUMS of the durations of"
     echo "    tasks that ran in parallel inside that one invocation, so they are NOT clocks"
     echo "    and must not be compared with one."
+fi
+
+# What became of the configuration cache. The gate asks for it, so the gate says
+# what Gradle declared about it: whether the entry of an earlier run was
+# reused, and, when it was not, why not. A gate that asks for a cache and does
+# not report on it has a silent field, and a silent field reads like "all was
+# well".
+if [[ "$config_cache_state" != "NOT_RUN" ]]; then
+    printf '    the configuration cache of that build:\n'
+    printf '      %-24s %s\n' "state" "$config_cache_state"
+    if [[ -n "$config_cache_reason" ]]; then
+        printf '      %-24s %s\n' "why not reused" "$config_cache_reason"
+    fi
+    if (( config_cache_problems > 0 )); then
+        printf '      %-24s %d\n' "problems" "$config_cache_problems"
+        printf '%s\n' "$config_cache_problem_text" | sed 's/^/        /'
+        echo "    a problem that is not in an instrument of the gate belongs to the"
+        echo "    product: the product releases its build lock in a listener that the"
+        echo "    configuration cache does not allow. The gate stops its own daemon by"
+        echo "    PID at the end of the run, and that daemon is the one holding the"
+        echo "    lock, so the lock dies with it. A developer who turns the cache on"
+        echo "    by hand inherits the lock until their daemon dies."
+    fi
 fi
 
 # A part the gate declared mandatory and did not measure is a hole in the

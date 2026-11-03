@@ -735,6 +735,26 @@ val buildExamplePlugins by tasks.registering(Exec::class) {
     val pluginJars = pluginDirs.map { pluginDir -> pluginDir.resolve("build/libs/${pluginDir.name}-0.1.0.jar") }
     outputs.files(pluginJars)
 
+    // The console of the NESTED build, captured instead of inherited.
+    //
+    // The nested build is a DIFFERENT build, and its task lines are not tasks
+    // of this one. Leaving them in this build's console made them look like
+    // they were, and the gate's census counts a task the console declares as
+    // one the clock has to have measured. The clock is THIS build's, so the
+    // nested lines opened a hole in the census: the console declared 285
+    // tasks that ran and the clock measured 271. A census with a hole in it is
+    // not published as a census, so the gate refused to publish one.
+    //
+    // The console is not discarded: it is this task's declared output, and a
+    // nested build that fails prints its own console before failing. The
+    // nested cost is still measured, once, as the duration of THIS task.
+    val nestedConsole = layout.buildDirectory.file("reports/example-plugins/build.log")
+    outputs.file(nestedConsole)
+    // The exit value is read here instead of letting the task fail on the
+    // spot, because a failure has to say WHAT the nested build said. Gradle's
+    // own failure message would name the exit code and nothing else.
+    isIgnoreExitValue = true
+
     workingDir = rootDir
     commandLine(
         rootDir.resolve("gradlew").absolutePath,
@@ -753,7 +773,27 @@ val buildExamplePlugins by tasks.registering(Exec::class) {
         "buildExamplePlugins",
     )
 
+    doFirst {
+        // The stream is opened HERE, while the task RUNS, and not while the
+        // build is configured: a stream is not something the configuration
+        // cache can store, and a task that carried one would make the entry
+        // unstorable. Opening it in the action keeps the task serializable.
+        val consoleFile = nestedConsole.get().asFile
+        consoleFile.parentFile.mkdirs()
+        standardOutput = consoleFile.outputStream()
+    }
+
     doLast {
+        val exitCode = executionResult.get().exitValue
+        if (exitCode != 0) {
+            val consoleFile = nestedConsole.get().asFile
+            val consoleText = if (consoleFile.isFile) consoleFile.readText() else ""
+            throw GradleException(
+                "buildExamplePlugins: the composite build of the four example plugins failed " +
+                    "with exit code $exitCode. Its console is in " +
+                    "${consoleFile.absolutePath}:" + "\n" + consoleText,
+            )
+        }
         val missing = pluginJars.filterNot { it.isFile }
         if (missing.isNotEmpty()) {
             throw GradleException(

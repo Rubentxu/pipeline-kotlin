@@ -1,6 +1,5 @@
 import dev.rubentxu.pipeline.build.PluginCompatibilityPolicy
 import dev.rubentxu.pipeline.build.ProvenanceDigest
-import java.io.ByteArrayOutputStream
 
 plugins {
     kotlin("jvm")
@@ -72,6 +71,16 @@ val computeHttpDigest = tasks.register("computeHttpDigest") {
     val publisher = httpPublisher
     val namespace = httpNamespace
     val ver = httpVersion
+    // The paths and the exclusion set are taken HERE, while the build is
+    // configured, so that the action below carries the VALUES and not the
+    // script that owns them. An action that reaches into the script it was
+    // declared in cannot be stored in the configuration cache: the cache
+    // refuses to serialize a reference to a build script, and the task then
+    // runs against a script that is not there.
+    val classesDir = httpClassesDir
+    val resourcesDir = httpResourcesDir
+    val releaseProps = httpReleaseProps
+    val excludedResourcePaths = httpExcludedResourcePaths.toList()
 
     outputs.file(httpReleaseProps)
     dependsOn("compileKotlin", "processResources")
@@ -94,10 +103,10 @@ val computeHttpDigest = tasks.register("computeHttpDigest") {
     // `tasks.register<Exec>`; keeping Exec without a commandLine fails with
     // "A problem occurred starting process 'command 'null''".
     doLast {
-        val classesDir = httpClassesDir.get().asFile
-        require(classesDir.exists()) { "classes/kotlin/main does not exist: run compileKotlin first" }
-        val resourcesDir = httpResourcesDir.get().asFile
-        val out = httpReleaseProps.get().asFile
+        val classesDirFile = classesDir.get().asFile
+               require(classesDirFile.exists()) { "classes/kotlin/main does not exist: run compileKotlin first" }
+        val resourcesDirFile = resourcesDir.get().asFile
+        val out = releaseProps.get().asFile
         out.parentFile.mkdirs()
         // This used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and
         // `sha256sum` PRINTS THE FILENAME IT WAS GIVEN, so two checkouts of identical bytes
@@ -105,10 +114,10 @@ val computeHttpDigest = tasks.register("computeHttpDigest") {
         // the relative path, so the absolute checkout path never enters the material.
         val hex = ProvenanceDigest.computeDigestHex(
             listOf(
-                ProvenanceDigest.Root("classes", classesDir.toPath()),
-                ProvenanceDigest.Root("resources", resourcesDir.toPath()),
+                ProvenanceDigest.Root("classes", classesDirFile.toPath()),
+                ProvenanceDigest.Root("resources", resourcesDirFile.toPath()),
             ),
-            httpExcludedResourcePaths.mapTo(linkedSetOf()) { "resources/$it" },
+            excludedResourcePaths.mapTo(linkedSetOf()) { "resources/$it" },
         )
         require(hex.length == 64) { "Expected 64-hex SHA-256, got '${hex.take(80)}'" }
         val digest = "sha256:$hex"
@@ -179,12 +188,21 @@ val generateHttpPluginCompatibility = tasks.register("generatePluginCompatibilit
     group = "http"
     description = "Emit the policy-derived compatibility resource for the artifact."
 
-    inputs.property("productVersion", rootProject.version.toString())
-    outputs.file(httpCompatibilityResource)
+    // The version and the destination are read HERE, while the build is
+    // configured, so that the action below carries the VALUES and not the
+    // script that owns them. An action that reaches into the script it was
+    // declared in cannot be stored in the configuration cache: the cache
+    // refuses to serialize a reference to a build script, and the task then
+    // runs against a script that is not there.
+    val productVersion = rootProject.version.toString()
+    val compatibilityResource = httpCompatibilityResource
+
+    inputs.property("productVersion", productVersion)
+    outputs.file(compatibilityResource)
 
     doLast {
-        val policy = PluginCompatibilityPolicy(rootProject.version.toString())
-        val out = httpCompatibilityResource.get().asFile
+        val policy = PluginCompatibilityPolicy(productVersion)
+        val out = compatibilityResource.get().asFile
         out.parentFile.mkdirs()
         out.writeText(policy.toJson())
         println("http: compatibility metadata emitted to $out (apiRange=${policy.apiRange()})")
@@ -209,18 +227,30 @@ val emitHttpManifest = tasks.register<JavaExec>("emitHttpManifest") {
     outputs.file(httpManifest)
 
     val out = httpManifest
-    val captured = ByteArrayOutputStream()
-    standardOutput = captured
+    // The declaration prints the manifest on its standard output, and the task has to
+    // keep those bytes. It keeps them in a FILE, not in a stream held in memory: a
+    // stream is part of the task's own state, and the configuration cache refuses to
+    // store a task that owns one ("cannot serialize object of type
+    // 'java.io.ByteArrayOutputStream'"). The file is opened when the task RUNS, so
+    // the stored task state carries no stream at all.
+    val captureFile = layout.buildDirectory.file("tmp/emitHttpManifest.out")
 
     doFirst {
         out.get().asFile.parentFile.mkdirs()
-        // The buffer lives for the whole configuration, so a second execution in the
-        // same build would APPEND to the first document and emit concatenated JSON.
-        captured.reset()
+        val capture = captureFile.get().asFile
+        capture.parentFile.mkdirs()
+        // `standardOutput` only accepts System.out or System.err while the task is
+        // being configured, so it is assigned here, when the task runs.
+        (this as JavaExec).standardOutput = capture.outputStream()
     }
 
     doLast {
-        val text = captured.toString(Charsets.UTF_8)
+        val exec = this as JavaExec
+        val stream = exec.standardOutput
+        if (stream !== System.out && stream !== System.err) {
+            (stream as? java.io.Closeable)?.close()
+        }
+        val text = captureFile.get().asFile.readText(Charsets.UTF_8)
         if (text.isBlank()) {
             throw GradleException(
                 "Manifest emission produced no output. The http plugin would ship without " +

@@ -76,45 +76,102 @@ tasks.named<Jar>("jar") {
 // Both are populated from the same `project.version`, which is the sole authority
 // `RuntimeApiVersionDriftTest` asserts the two agree, so this can never become a second authority
 // free to disagree with the manifest that `pipeline-release` certifies against.
+// The commit the bytes were made from.
+//
+// Provenance, recorded by the build that produced the bytes.
+// A product version names a release LINE, not a commit: every commit on 0.60.0 reports
+// `pipeline 0.60.0`. So a harness holding two binaries cannot separate them by asking the
+// binary, and that is not hypothetical — five corpus failures seen in the
+// field were a stale binary reporting the correct version.
+//
+// It used to be read by a Provider evaluated while the build was being CONFIGURED. With the
+// configuration cache enabled that Provider is evaluated once, while the entry is stored, and
+// its value is frozen into the entry: a later build that reuses the entry reuses the OLD
+// commit, and the binary reports a provenance that is not the tree it was built from. The
+// value is therefore read by a task of its own, whose action runs at EXECUTION time, and it
+// travels to the version resource through a marker file.
+//
+// The marker is an INPUT of the version task, not a side effect: when the commit changes, the
+// marker's content changes and the version resource is rewritten; when it does not change, the
+// version resource stays up to date and is not rewritten.
+//
+// When the commit cannot be read the build still succeeds and records nothing: a working-tree
+// or exported-source build legitimately has no provenance, and the candidate gate is where
+// refusing that belongs. Failing the whole build here would break ordinary development to
+// protect a property only certification needs.
+val resolveBuildCommit = tasks.register("resolveBuildCommit") {
+    group = "application"
+    description = "Resolve the commit the build is made from, for the version resource."
+
+    // The marker and the working directory are taken HERE, while the build is
+    // configured, so that the action below carries the VALUES and not the
+    // script that owns them. An action that reaches into the script it was
+    // declared in cannot be stored in the configuration cache: the cache
+    // refuses to serialize a reference to a build script, and the task then
+    // runs against a script that is not there.
+    val marker = layout.buildDirectory.file("tmp/build-commit.txt")
+    val gitDirectory = rootDir
+
+    outputs.file(marker)
+    // The commit lives in the working tree, and nothing the build declares as an input
+    // says that it changed. A resolver with no declared inputs is never up-to-date, but
+    // that is an implicit rule: this one says it outright, so the FIRST commit read is
+    // never mistaken for the LAST one.
+    outputs.upToDateWhen { false }
+
+    doLast {
+        val override = System.getenv("PIPELINEK_BUILD_COMMIT")
+        val resolved = if (!override.isNullOrBlank()) {
+            override.trim()
+        } else {
+            val process = runCatching {
+                ProcessBuilder("git", "rev-parse", "HEAD")
+                    .directory(gitDirectory)
+                    .redirectErrorStream(true)
+                    .start()
+            }.getOrNull()
+            if (process == null) {
+                ""
+            } else {
+                val output = process.inputStream.bufferedReader().readText().trim()
+                val finished = runCatching { process.waitFor(30, TimeUnit.SECONDS) }
+                    .getOrDefault(false)
+                if (!finished) {
+                    process.destroyForcibly()
+                    ""
+                } else if (process.exitValue() == 0 && output.matches(Regex("[0-9a-f]{40}"))) {
+                    // A 40-hex full SHA, or nothing. A truncated or non-SHA value would be a worse answer
+                    // than absence, because it would look like provenance while not being any.
+                    output
+                } else {
+                    ""
+                }
+            }
+        }
+        val out = marker.get().asFile
+        out.parentFile.mkdirs()
+        out.writeText(resolved)
+    }
+}
+
 val generateVersionResource by tasks.registering {
     val outputDir = layout.buildDirectory.dir("generated/version-resources")
     val versionValue = project.version.toString()
-    // Provenance, recorded by the build that produced the bytes.
-    // A product version names a release LINE, not a commit: every commit on 0.60.0 reports
-    // `pipeline 0.60.0`. So a harness holding two binaries cannot separate them by asking the
-    // binary, and that is not hypothetical — five corpus failures seen in the
-    // field were a stale binary reporting the correct version.
-    // Read through a Provider so the value is resolved at execution time and participates in
-    // up-to-date checking. When the commit cannot be read the build still succeeds and records
-    // nothing: a working-tree or exported-source build legitimately has no provenance, and the
-    // candidate gate is where refusing that belongs. Failing the whole build here would break
-    // ordinary development to protect a property only certification needs.
-    val buildCommit = providers.provider {
-        val head = providers.environmentVariable("PIPELINEK_BUILD_COMMIT").orNull
-        if (!head.isNullOrBlank()) {
-            return@provider head.trim()
-        }
-        val process = runCatching {
-            ProcessBuilder("git", "rev-parse", "HEAD")
-                .directory(rootDir)
-                .redirectErrorStream(true)
-                .start()
-        }.getOrNull() ?: return@provider ""
-        val output = process.inputStream.bufferedReader().readText().trim()
-        val finished = runCatching { process.waitFor(30, TimeUnit.SECONDS) }
-            .getOrDefault(false)
-        if (!finished) {
-            process.destroyForcibly()
-            return@provider ""
-        }
-        // A 40-hex full SHA, or nothing. A truncated or non-SHA value would be a worse answer
-        // than absence, because it would look like provenance while not being any.
-        if (process.exitValue() == 0 && output.matches(Regex("[0-9a-f]{40}"))) output else ""
-    }
+    // The marker the resolver wrote. Its CONTENT is the commit, and its content is
+    // what makes the version resource up-to-date.
+    val commitMarker = layout.buildDirectory.file("tmp/build-commit.txt")
+
     inputs.property("version", versionValue)
-    inputs.property("buildCommit", buildCommit)
+    inputs.file(commitMarker)
     outputs.dir(outputDir)
+    dependsOn(resolveBuildCommit)
+
     doLast {
+        val commit = commitMarker.get().asFile
+            .takeIf { it.exists() }
+            ?.readText(Charsets.UTF_8)
+            ?.trim()
+            .orEmpty()
         val target = outputDir.get()
             .file("dev/rubentxu/pipeline/v2/application/pipelinek-version.properties")
             .asFile
@@ -126,7 +183,7 @@ val generateVersionResource by tasks.registering {
                 "version=$versionValue\n" +
                 "# Provenance. Absent when the build could not resolve a commit, which is a\n" +
                 "# legitimate working-tree build and an unacceptable candidate.\n" +
-                "buildCommit=${buildCommit.get()}\n",
+                "buildCommit=$commit\n",
         )
     }
 }

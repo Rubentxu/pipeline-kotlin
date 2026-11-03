@@ -1193,6 +1193,10 @@ residue_suffix() {
 # returned said different things.
 cleanup_logs() {
     local status=$?
+    stop_pending_guards
+    # A run that ends early leaves the daemon it started behind, and a daemon
+    # that outlives the run that started it is a process nobody asked for.
+    stop_this_run_daemon
     measure_residue
     report_residue
     # The account is sealed BEFORE the removal. The removal is what takes the
@@ -1204,13 +1208,83 @@ cleanup_logs() {
     rm -rf "$cycle_dir"
     return "$status"
 }
+
+# The guards of stage 1 run in the background, so a run that ends before they
+# do would leave them reading a directory that no longer exists. They read
+# only the tree and write only inside the cycle, so ending them is safe; not
+# ending them would leave processes that outlive the run that started them.
+guard_ids=()
+guard_labels=()
+guard_outs=()
+guard_failures=()
+guard_launched_ms=()
+guard_pids=()
+declare -A guard_index=()
+stop_pending_guards() {
+    local pid
+    for pid in "${guard_pids[@]:-}"; do
+        [[ -n "$pid" ]] || continue
+        kill "$pid" 2>/dev/null || true
+    done
+}
+
+# The Gradle daemon this run started, and only that one.
+#
+# Gradle matches a daemon on the JVM arguments it was started with, and
+# `-Djava.io.tmpdir` is one of them; this run gives every invocation its own
+# temporary directory, so the daemon that served this run names this run's
+# directory in its command line and no other daemon does.
+#
+# `gradlew --stop` is NOT the way to stop it: that command stops every daemon
+# of the version and it does not ask whether a daemon is busy -- measured, a
+# build running inside a daemon dies with "Gradle build daemon has been
+# stopped: stop command received". On a machine where the user has another
+# project building with the same Gradle, it would kill the user's build from
+# inside this gate. A SIGTERM to the daemon of this run is precise, and
+# measured to leave an idle daemon stopped.
+#
+# The two counters are kept apart because "stopped" and "still alive" are
+# different facts, and a report that merges them is a report nobody can act
+# on.
+daemon_stopped_count=0
+daemon_unresponsive_count=0
+stop_this_run_daemon() {
+    local version pid waited_ms
+    daemon_stopped_count=0
+    daemon_unresponsive_count=0
+    version="$(sed -n 's|.*/gradle-\([0-9][0-9.]*\)-bin\.zip.*|\1|p' \
+        pipelinek/gradle/wrapper/gradle-wrapper.properties | head -1)"
+    [[ -n "$version" ]] || return 0
+    for pid in $(ps -eo pid,args --no-headers 2>/dev/null \
+            | grep -F "gradle-daemon-main-$version.jar" \
+            | grep -F -- "-Djava.io.tmpdir=$cycle_dir/tmp" \
+            | grep -v grep \
+            | awk '{print $1}'); do
+        kill -TERM "$pid" 2>/dev/null || continue
+        waited_ms=0
+        while kill -0 "$pid" 2>/dev/null && (( waited_ms < 10000 )); do
+            sleep 0.1
+            waited_ms=$(( waited_ms + 100 ))
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            daemon_unresponsive_count=$(( daemon_unresponsive_count + 1 ))
+        else
+            daemon_stopped_count=$(( daemon_stopped_count + 1 ))
+        fi
+    done
+}
 trap cleanup_logs EXIT
 
 prep_started_ms=$(now_ms)
 if [[ "$subset" == 0 ]]; then
     log "preparation  clean build outputs"
+    # Gradle runs on its daemon. `--no-daemon` made every invocation start a
+    # JVM that verified nothing of the product -- measured at 12,94 s for
+    # `--no-daemon help` against 2,24 s on a warm daemon -- and the three
+    # invocations of a full run paid it three times. The daemon this run
+    # starts is stopped at the end of the run, before the census of residue.
     stage_started_at=$(date +%s)
-    ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" clean > "$log_dir/clean.log" 2>&1 \
+    ./pipelinek/gradlew -p pipelinek "${gradle_cache_args[@]}" clean > "$log_dir/clean.log" 2>&1 \
         || { tail -40 "$log_dir/clean.log" >&2; fail "preparation (the tail of the clean log is above)"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
 else
@@ -1237,6 +1311,39 @@ prep_wall_ms=$(( $(now_ms) - prep_started_ms ))
 
 stage1_started_ms=$(now_ms)
 if want_stage 1; then
+    # --- Stages 1a, 1c, 1d, 1e, 1f: five guards of the tree, run together ------
+    # These five read the tree and nothing else: the LOC census, the words a
+    # comment uses, the places that end the process, the scenarios that create
+    # one, and the costs the durable path pays. None of them reads what
+    # another one wrote, and none of them writes what another one reads, so
+    # running them one after another pays for the sum of five clocks instead
+    # of the slowest one. Measured on the reference host: 15,8 s in series,
+    # about 7 s together.
+    #
+    # Each keeps its own log, its own clock and its own message, so a guard
+    # that fails still names itself and the reader still sees which one did.
+    # The order of the report does not change: the earliest failing guard is
+    # still the one the run stops at.
+    log "stage 1a..1f/4  five guards of the tree, run together"
+    guard_block_started_ms="$(now_ms)"
+
+    # One guard, launched in the background. The exit status goes to a file
+    # beside its log because a background job cannot end the RUN: `fail` there
+    # would leave the script, not the guard.
+    launch_guard() {
+        local id="$1" label="$2" script="$3" out="$4" failure="$5"
+        guard_ids+=("$id")
+        guard_labels+=("$label")
+        guard_outs+=("$out")
+        guard_failures+=("$failure")
+        guard_launched_ms+=("$(now_ms)")
+        guard_index["$id"]=$(( ${#guard_ids[@]} - 1 ))
+        ( python3 "$script" >"$out" 2>&1
+          printf '%s\n' "$?" >"$out.status"
+          now_ms >"$out.ended" ) &
+        guard_pids+=("$!")
+    }
+
     # --- Stage 1a: the LOC budget -------------------------------------------
     # AGENTS.md section 4's contract: VERIFY_LOC <= 2 * PRODUCT_LOC, globally
     # and per module. The census reads the Git index and the tracked files, so
@@ -1245,36 +1352,9 @@ if want_stage 1; then
     if [[ "$skip_budget" == 1 ]]; then
         log "stage 1a/4  LOC budget SKIPPED by --no-budget"
     else
-        log "stage 1a/4  LOC budget"
-        stage_started_at=$(date +%s)
-        python3 scripts/check-budgets.py || fail "stage 1a: LOC budget"
-        echo "    ok in $(elapsed "$stage_started_at")s"
+        launch_guard "1a" "LOC budget" scripts/check-budgets.py \
+            "$log_dir/budget.out" "stage 1a: LOC budget"
     fi
-
-    # --- Stage 1b: only src/main and src/test may hold Kotlin ----------------
-    # AGENTS.md section 2 allows Kotlin unit tests and forbids the rest: "0
-    # tests Kotlin UAT/E2E/harness interno". A bespoke lane named anything
-    # other than `src/test` is exactly that rest, and an earlier census looked
-    # only for `src/test`, so a seven-file `src/pluginContractTest` source set
-    # sat in the tree for a whole cycle with no gate noticing and no task
-    # compiling it. Enumerating only the permitted name would repeat the
-    # blindness; so the forbidden names are searched for by name instead.
-    log "stage 1b/4  forbidden Kotlin source sets"
-    stage_started_at=$(date +%s)
-    stray_lanes=()
-    while IFS= read -r stray; do
-        stray_lanes+=("$stray")
-    done < <(find pipelinek -path '*/src/*' -name '*.kt' -not -path '*/build/*' \
-             -not -path 'pipelinek/buildSrc/*' -not -path 'examples/*' \
-             -not -path '*/src/main/*' -not -path '*/src/test/*' \
-         | LC_ALL=C sort)
-    if [[ ${#stray_lanes[@]} -gt 0 ]]; then
-        printf '    a Kotlin source set exists outside src/test, which AGENTS.md section 2\n' >&2
-        printf '    forbids: it is either dead code or a lane no gate enumerates.\n' >&2
-        printf '  %s\n' "${stray_lanes[@]}" >&2
-        fail "stage 1b: forbidden Kotlin test source set"
-    fi
-    echo "    ok in $(elapsed "$stage_started_at")s"
 
     # --- Stage 1c: the words a comment uses ----------------------------------
     # A comment that names its ticket, its document section, or its commit is
@@ -1286,11 +1366,8 @@ if want_stage 1; then
     # budget is a contract, and the guard is a check on the words the source
     # says. Skipping it because the operator did not want the census of lines
     # would be the wrong reason to stop saying what the code does.
-    log "stage 1c/4  comment provenance"
-    stage_started_at=$(date +%s)
-    python3 scripts/check-comment-provenance.py >"$log_dir/comment.out" 2>&1 \
-        || { cat "$log_dir/comment.out" >&2; fail "stage 1c: comment provenance"; }
-    echo "    ok in $(elapsed "$stage_started_at")s"
+    launch_guard "1c" "comment provenance" scripts/check-comment-provenance.py \
+        "$log_dir/comment.out" "stage 1c: comment provenance"
 
     # --- Stage 1d: only the entry point may end the process ------------------
     # A helper that ends the process takes a decision that belongs to somebody
@@ -1300,11 +1377,8 @@ if want_stage 1; then
     # the CLI already declares. The guard reads the product sources, resolves
     # the function that holds each exit call, and fails when that function is
     # not the entry point.
-    log "stage 1d/4  process exits"
-    stage_started_at=$(date +%s)
-    python3 scripts/check-process-exits.py >"$log_dir/exits.out" 2>&1 \
-        || { cat "$log_dir/exits.out" >&2; fail "stage 1d: process exits"; }
-    echo "    ok in $(elapsed "$stage_started_at")s"
+    launch_guard "1d" "process exits" scripts/check-process-exits.py \
+        "$log_dir/exits.out" "stage 1d: process exits"
 
     # --- Stage 1e: a scenario may not create a process ------------------------
     # A `.pipeline.kts` program reaches the outside world through the steps the
@@ -1318,11 +1392,8 @@ if want_stage 1; then
     # check on what the source SAYS, not a measurement of lines. The rule is
     # about CREATING a process; asking about the process already running is a
     # question, and several scenarios need it.
-    log "stage 1e/4  process creation in scenarios"
-    stage_started_at=$(date +%s)
-    python3 scripts/check-scenario-process-creation.py >"$log_dir/scenario-process.out" 2>&1 \
-        || { cat "$log_dir/scenario-process.out" >&2; fail "stage 1e: a scenario creates a process"; }
-    echo "    ok in $(elapsed "$stage_started_at")s"
+    launch_guard "1e" "process creation in scenarios" scripts/check-scenario-process-creation.py \
+        "$log_dir/scenario-process.out" "stage 1e: a scenario creates a process"
 
     # --- Stage 1f: the durable path spends no probe and no fixed wait --------
     # The durable shell used to establish the child's detachment with an
@@ -1339,11 +1410,84 @@ if want_stage 1; then
     # longer has fails too, and a cost whose purpose is a probe or a fixed
     # wait is refused by name. The counts are taken over the code of the live
     # path, which is the only place where "there are none" is a fact.
-    log "stage 1f/4  the durable path's costs"
-    stage_started_at=$(date +%s)
-    python3 scripts/check-durable-shell-cost.py >"$log_dir/durable-cost.out" 2>&1 \
-        || { cat "$log_dir/durable-cost.out" >&2; fail "stage 1f: the durable path spends a probe or a fixed wait"; }
-    echo "    ok in $(elapsed "$stage_started_at")s"
+    launch_guard "1f" "the durable path's costs" scripts/check-durable-shell-cost.py \
+        "$log_dir/durable-cost.out" "stage 1f: the durable path spends a probe or a fixed wait"
+
+    # --- Stage 1b: only src/main and src/test may hold Kotlin ----------------
+    # AGENTS.md section 2 allows Kotlin unit tests and forbids the rest: "0
+    # tests Kotlin UAT/E2E/harness interno". A bespoke lane named anything
+    # other than `src/test` is exactly that rest, and an earlier census looked
+    # only for `src/test`, so a seven-file `src/pluginContractTest` source set
+    # sat in the tree for a whole cycle with no gate noticing and no task
+    # compiling it. Enumerating only the permitted name would repeat the
+    # blindness; so the forbidden names are searched for by name instead.
+    #
+    # It is a census of names, not a build, so it runs while the five guards
+    # above are still reading the tree: it is the work of the block that fills
+    # the time the guards need anyway.
+    stage1b_started_at=$(date +%s)
+    stray_lanes=()
+    while IFS= read -r stray; do
+        stray_lanes+=("$stray")
+    done < <(find pipelinek -path '*/src/*' -name '*.kt' -not -path '*/build/*' \
+             -not -path 'pipelinek/buildSrc/*' -not -path 'examples/*' \
+             -not -path '*/src/main/*' -not -path '*/src/test/*' \
+         | LC_ALL=C sort)
+    if [[ ${#stray_lanes[@]} -gt 0 ]]; then
+        printf '    a Kotlin source set exists outside src/test, which AGENTS.md section 2\n' >&2
+        printf '    forbids: it is either dead code or a lane no gate enumerates.\n' >&2
+        printf '  %s\n' "${stray_lanes[@]}" >&2
+        stop_pending_guards
+        fail "stage 1b: forbidden Kotlin test source set"
+    fi
+    stage1b_elapsed_s=$(( $(date +%s) - stage1b_started_at ))
+
+    # The five guards have been reading the tree while the census of names
+    # above did its own work. Their results are collected here, in the order
+    # the reader already knows, so the block costs the slowest of them
+    # instead of the sum of the five.
+    for guard_pid in "${guard_pids[@]:-}"; do
+        [[ -n "$guard_pid" ]] || continue
+        wait "$guard_pid" 2>/dev/null || true
+    done
+    guard_block_ended_ms="$(now_ms)"
+
+    for guard_id in 1a 1b 1c 1d 1e 1f; do
+        if [[ "$guard_id" == "1b" ]]; then
+            log "stage 1b/4  forbidden Kotlin source sets"
+            echo "    ok in ${stage1b_elapsed_s}s"
+            continue
+        fi
+        guard_slot="${guard_index[$guard_id]:-}"
+        if [[ -z "$guard_slot" ]]; then
+            continue
+        fi
+        guard_out="${guard_outs[$guard_slot]}"
+        guard_status="$(cat "$guard_out.status" 2>/dev/null || printf '127')"
+        if [[ "$guard_status" != "0" ]]; then
+            if [[ "$guard_id" == "1a" ]]; then
+                cat "$guard_out"
+            else
+                cat "$guard_out" >&2
+            fi
+            fail "${guard_failures[$guard_slot]}"
+        fi
+        log "stage $guard_id/4  ${guard_labels[$guard_slot]}"
+        if [[ "$guard_id" == "1a" ]]; then
+            # The census is the reader's: it is the one guard whose output is
+            # the result, not just a yes or a no.
+            cat "$guard_out"
+        fi
+        guard_ended_ms="$(cat "$guard_out.ended" 2>/dev/null || now_ms)"
+        guard_took_ms=$(( guard_ended_ms - guard_launched_ms[guard_slot] ))
+        printf '    ok in %d.%ds\n' $(( guard_took_ms / 1000 )) $(( (guard_took_ms % 1000) / 100 ))
+    done
+
+    # The clock of the block itself, which is what the acceptance criterion
+    # talks about: the sum of five clocks in series, or the clock of the
+    # slowest of the five run together.
+    printf '    the five guards together: %d ms\n' \
+        $(( guard_block_ended_ms - guard_block_started_ms ))
 
     # --- Stage 1g: the identity of what THIS run verifies --------------------
     # The verdict is evidence about a commit, so the identifier it prints has
@@ -1517,7 +1661,7 @@ JSON
     require_timing_probe
     require_relocation_probe
     build_started_ms=$(now_ms)
-    ./pipelinek/gradlew --no-daemon -p pipelinek --init-script "$timing_probe" \
+    ./pipelinek/gradlew -p pipelinek --init-script "$timing_probe" \
         --init-script "$relocation_probe" "${gradle_cache_args[@]}" \
         detektMain \
         detektTest \
@@ -1779,7 +1923,7 @@ else
     # shared directory of the machine, where nobody owns it.
     require_relocation_probe
     unit_started_ms=$(now_ms)
-    ./pipelinek/gradlew --no-daemon -p pipelinek --init-script "$timing_probe" \
+    ./pipelinek/gradlew -p pipelinek --init-script "$timing_probe" \
         --init-script "$relocation_probe" "${gradle_cache_args[@]}" "${gradle_args[@]}" \
         > "$log_dir/stage2.log" 2>&1 \
         || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (the tail of the stage log is above)"; }
@@ -2405,6 +2549,43 @@ stage3_wall_ms=$(( $(now_ms) - stage3_started_ms ))
 # --- Stage 4: wall clock -------------------------------------------------------
 
 log "stage 4/4  wall clock"
+
+# --- The Gradle daemon this run started ---------------------------------------
+# The gate used to run Gradle with `--no-daemon`, so every invocation paid for
+# a JVM that verified nothing of the product: `--no-daemon help` measured
+# 12,94 s against 2,24 s for the same command on a warm daemon. The daemon is
+# the cheaper way to say the same thing, and the three invocations of a run
+# share ONE daemon.
+#
+# That daemon belongs to this run, and the proof is in its own command line:
+# Gradle matches a daemon on the JVM arguments it was started with, and
+# `-Djava.io.tmpdir` is one of them; this run gives every invocation its own
+# temporary directory, so the daemon that served this run names this run's
+# directory and no other daemon does.
+#
+# The gate stops it, because the gate can stop EXACTLY this one, and it stops
+# it before the census of residue, so what the census measures is a run whose
+# services are already down. The daemons of this version that are NOT ours
+# belong to other work of this user: the gate names them and leaves them
+# alone.
+gradle_version="$(sed -n 's|.*/gradle-\([0-9][0-9.]*\)-bin\.zip.*|\1|p' \
+    pipelinek/gradle/wrapper/gradle-wrapper.properties | head -1)"
+daemons_of_version=0
+if [[ -n "$gradle_version" ]]; then
+    daemons_of_version="$(ps -eo args --no-headers 2>/dev/null \
+        | grep -F "gradle-daemon-main-$gradle_version.jar" \
+        | grep -v grep \
+        | wc -l | tr -d ' ')"
+fi
+daemon_stop_started_ms="$(now_ms)"
+stop_this_run_daemon
+component_set "daemon-stop" "$(( $(now_ms) - daemon_stop_started_ms ))" \
+    "the Gradle daemon this run started, stopped before the census of residue"
+daemons_ours=$(( daemon_stopped_count + daemon_unresponsive_count ))
+printf '    the Gradle daemon of this run: %s stopped, %s still alive\n' \
+    "$daemon_stopped_count" "$daemon_unresponsive_count"
+printf '    Gradle daemons of this version that are NOT this run: %s (left alive: they belong to other work of this user)\n' \
+    "$(( daemons_of_version - daemons_ours ))"
 # What this run left behind. The gate promises to leave zero owned temporary
 # artifacts, and a promise nobody measures is a promise nobody checks.
 #

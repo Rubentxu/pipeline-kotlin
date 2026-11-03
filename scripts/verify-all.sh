@@ -689,6 +689,15 @@ task_category() {
 # ran has to be the number of tasks the clock measured. A difference is a hole
 # in the census, and a census with a hole in it is not published as a census.
 #
+# The check is a comparison of TASKS, and it is worth saying why, because the
+# console does not say "one line per task": Gradle prints the header of a task
+# again every time that task produces output after some other task has produced
+# output, and how many times that happens depends on how the build happened to
+# interleave. Counting the lines would make the verdict of the gate depend on
+# the interleaving of the build instead of on the tree, and the same tree would
+# pass one day and fail the next. The census counts each task once, and when
+# the two witnesses disagree it says WHICH task is the hole.
+#
 # A free task costs nothing in the census, and that is not a zero invented:
 # the cost of a task that did no work is the cost of doing no work. It is
 # still COUNTED, because it is still a task of that part of the build: a part
@@ -698,13 +707,22 @@ task_category() {
 # passed in 240 s" cannot tell a build that worked from a build a cache did.
 read_timings() {
     local log="$1" stage_ms="$2" label="$3"
-    local lines n path ms state bucket slowest_ms=0 slowest=""
+    local lines path ms state bucket slowest_ms=0 slowest=""
     local console_line console_path console_state
     local executed=0 free=0
     local -A state_counts=()
+    local -A console_tasks=()
 
     # The console of Gradle: one line per task of the build, with the state it
     # ended in when it did no work. A line with no state is a task that ran.
+    #
+    # Gradle prints the header of a task AGAIN every time that task produces
+    # output after some other task has produced output, so the same task can
+    # appear more than once in the console, and HOW MANY times it appears
+    # depends on how the build happened to interleave. Counting those lines
+    # would count CHUNKS OF OUTPUT, not tasks, and the census would change
+    # from one run to the next with the same tree. So the census counts
+    # TASKS: one task, one entry, however many times its header was printed.
     while read -r console_line; do
         console_path="${console_line#> Task }"
         console_state=""
@@ -714,10 +732,15 @@ read_timings() {
             *" NO-SOURCE")  console_state="NO-SOURCE";  console_path="${console_path% NO-SOURCE}" ;;
             *" SKIPPED")    console_state="SKIPPED";    console_path="${console_path% SKIPPED}" ;;
         esac
+        if [[ -n "${console_tasks[$console_path]:-}" ]]; then
+            continue
+        fi
         if [[ -z "$console_state" ]]; then
+            console_tasks[$console_path]="EXECUTED"
             executed=$(( executed + 1 ))
             state_counts[EXECUTED]=$(( ${state_counts[EXECUTED]:-0} + 1 ))
         else
+            console_tasks[$console_path]="$console_state"
             free=$(( free + 1 ))
             state_counts[$console_state]=$(( ${state_counts[$console_state]:-0} + 1 ))
             # The task did no work, so it cost nothing, but it belongs to a
@@ -731,10 +754,13 @@ read_timings() {
 
     # The clock: one line per task that RAN, with the duration of its work.
     lines="$(grep -a '^TASK_TIMING ' "$log" || true)"
-    n=0
+    local -A measured=()
     while read -r _ path ms state; do
         [[ "$ms" =~ ^[0-9]+$ ]] || continue
-        n=$(( n + 1 ))
+        if [[ -n "${measured[$path]:-}" ]]; then
+            continue
+        fi
+        measured[$path]="$ms"
         if (( ms > slowest_ms )); then
             slowest_ms=$ms
             slowest="$path"
@@ -742,8 +768,26 @@ read_timings() {
         bucket="$(task_category "$path")"
         component_add "build:$bucket" "$ms" 1 "tasks of the build"
     done <<< "$lines"
-    if (( n != executed )); then
-        fail "$label: the console declares ${executed} task(s) that ran and the clock measured ${n}: the census has a hole in it"
+
+    # The census is a SET comparison, and it says WHICH task is the hole. A
+    # count that does not match says that something is wrong and not what; a
+    # name says it.
+    local -A unmeasured=() undeclared=()
+    for path in "${!console_tasks[@]}"; do
+        if [[ "${console_tasks[$path]}" == "EXECUTED" && -z "${measured[$path]:-}" ]]; then
+            unmeasured[$path]=1
+        fi
+    done
+    for path in "${!measured[@]}"; do
+        if [[ "${console_tasks[$path]:-}" != "EXECUTED" ]]; then
+            undeclared[$path]=1
+        fi
+    done
+    if (( ${#unmeasured[@]} > 0 )); then
+        fail "$label: ${#unmeasured[@]} task(s) ran and the clock did not measure them: ${!unmeasured[*]}"
+    fi
+    if (( ${#undeclared[@]} > 0 )); then
+        fail "$label: ${#undeclared[@]} task(s) were measured and the console does not declare them as run: ${!undeclared[*]}"
     fi
     if (( slowest_ms > stage_ms )); then
         fail "$label: a task took ${slowest_ms}ms, more than the ${stage_ms}ms of the invocation that ran it"

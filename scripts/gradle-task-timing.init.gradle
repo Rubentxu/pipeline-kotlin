@@ -60,11 +60,31 @@ def timingService = gradle.sharedServices.registerIfAbsent('pipelinekTaskTiming'
 
 gradle.allprojects { project ->
     project.tasks.configureEach { task ->
+        // The path the CONSOLE prints, and not the path of the task inside its
+        // own build. Gradle prints the tasks of a nested build with the name
+        // of that build in front (":buildSrc:jar"), and the gate compares this
+        // clock with that console: two spellings for one task would look like
+        // a hole in the census, and the hole would be in the SPELLING.
+        //
+        // The path is computed WHEN THE TASK IS CONFIGURED, and the two
+        // actions carry it with them. Gradle does not allow a task to read
+        // its project while it RUNS ("invocation of 'Task.project' at
+        // execution time is unsupported"), and the configuration cache says
+        // so out loud: the probe of the gate has to survive the cache.
+        //
+        // The path is built by CONCATENATION, and not with the interpolation
+        // of a GString. A GString is not a String: it has a hash of its own,
+        // so a map keyed by one cannot be read back with the same text. The
+        // clock would store the start of the task under a key that the end of
+        // the task could not find, and the task would look like it had no
+        // duration at all.
+        def gradleOfTask = project.gradle
+        def consolePath = gradleOfTask.parent == null ? task.path : ':' + project.rootProject.name + task.path
         task.doFirst {
-            timingService.get().startedAt[task.path] = System.nanoTime()
+            timingService.get().startedAt[consolePath] = System.nanoTime()
         }
         task.doLast {
-            def began = timingService.get().startedAt.remove(task.path)
+            def began = timingService.get().startedAt.remove(consolePath)
             if (began == null) {
                 return
             }
@@ -75,7 +95,7 @@ gradle.allprojects { project ->
             // A task that reaches this point RAN its work. The state of a task
             // that did not run is not written here: it is declared by Gradle
             // in its console, and the gate reads it from there.
-            println "TASK_TIMING ${task.path} ${millis} EXECUTED"
+            println "TASK_TIMING ${consolePath} ${millis} EXECUTED"
         }
     }
 }

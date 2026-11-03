@@ -102,7 +102,7 @@ internal class RuntimeScriptedStepFacade(
         returnStdout: ReturnStdout,
         encoding: String?,
         label: String?,
-    ): String = shell(callSite, script, encoding, label, ShellReturnMode.STDOUT).asStdout()
+    ): String = shell(callSite, script, encoding, label, returnStdout.returnMode).asStdout()
 
     override suspend fun sh(
         callSite: ScriptedCallSiteId,
@@ -110,7 +110,7 @@ internal class RuntimeScriptedStepFacade(
         returnStatus: ReturnStatus,
         encoding: String?,
         label: String?,
-    ): Int = shell(callSite, script, encoding, label, ShellReturnMode.STATUS).asStatus()
+    ): Int = shell(callSite, script, encoding, label, returnStatus.returnMode).asStatus()
 
     /** One call, three shapes: the return mode is the only thing that varies. */
     private suspend fun shell(

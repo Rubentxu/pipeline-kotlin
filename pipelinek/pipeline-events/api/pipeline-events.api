@@ -201,21 +201,23 @@ public final class dev/rubentxu/pipeline/v2/events/CompensationStarted : dev/rub
 }
 
 public final class dev/rubentxu/pipeline/v2/events/CompilationFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/util/List;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/util/List;Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
 	public final fun component4 ()Ljava/time/Instant;
 	public final fun component5 ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
 	public final fun component6 ()Ljava/util/List;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/events/CompilationFinished;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/CompilationFinished;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/CompilationFinished;
+	public final fun component7 ()Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/util/List;Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;)Ldev/rubentxu/pipeline/v2/events/CompilationFinished;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/CompilationFinished;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/util/List;Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/CompilationFinished;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCacheKey ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
 	public final fun getDiagnostics ()Ljava/util/List;
 	public fun getEventId ()Ljava/lang/String;
 	public fun getKind ()Ljava/lang/String;
 	public fun getOccurredAt ()Ljava/time/Instant;
+	public final fun getOrigin ()Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
 	public fun getRunId ()Ljava/lang/String;
 	public fun getSequence ()J
 	public fun hashCode ()I
@@ -223,17 +225,19 @@ public final class dev/rubentxu/pipeline/v2/events/CompilationFinished : dev/rub
 }
 
 public final class dev/rubentxu/pipeline/v2/events/CompilationStarted : dev/rubentxu/pipeline/v2/events/DomainEvent {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
 	public final fun component4 ()Ljava/time/Instant;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)Ldev/rubentxu/pipeline/v2/events/CompilationStarted;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/CompilationStarted;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/CompilationStarted;
+	public final fun component5 ()Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;)Ldev/rubentxu/pipeline/v2/events/CompilationStarted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/CompilationStarted;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/CompilationStarted;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getEventId ()Ljava/lang/String;
 	public fun getKind ()Ljava/lang/String;
 	public fun getOccurredAt ()Ljava/time/Instant;
+	public final fun getOrigin ()Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
 	public fun getRunId ()Ljava/lang/String;
 	public fun getSequence ()J
 	public fun hashCode ()I

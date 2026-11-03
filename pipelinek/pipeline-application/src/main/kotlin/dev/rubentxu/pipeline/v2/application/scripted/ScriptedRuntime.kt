@@ -168,7 +168,7 @@ class ScriptedScope internal constructor(
         encoding: String? = null,
         label: String? = null,
     ): String {
-        return invoke(ShellCommand(script, encoding, label, ShellReturnMode.STDOUT)).asStdout()
+        return invoke(ShellCommand(script, encoding, label, returnStdout.returnMode)).asStdout()
     }
 
     suspend fun sh(
@@ -177,7 +177,7 @@ class ScriptedScope internal constructor(
         encoding: String? = null,
         label: String? = null,
     ): Int {
-        return invoke(ShellCommand(script, encoding, label, ShellReturnMode.STATUS)).asStatus()
+        return invoke(ShellCommand(script, encoding, label, returnStatus.returnMode)).asStatus()
     }
 
     private suspend fun invoke(command: ShellCommand): ShellInvocationResult = invokeAt(callSites.next(), command)

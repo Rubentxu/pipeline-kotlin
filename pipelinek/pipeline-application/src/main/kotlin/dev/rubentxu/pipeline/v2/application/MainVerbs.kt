@@ -2,6 +2,9 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
 import dev.rubentxu.pipeline.v2.output.store.UnnameableRunIdentity
+import dev.rubentxu.pipeline.v2.scripting.ScriptCacheInspection
+import dev.rubentxu.pipeline.v2.scripting.ScriptCacheState
+import dev.rubentxu.pipeline.v2.scripting.ScriptCacheStore
 import java.nio.file.Paths
 import java.nio.file.Files
 import java.util.Locale
@@ -254,9 +257,36 @@ internal fun runDoctorVerb(args: Array<String>): CliExit {
             "${runtimeConfig.osName()} ${runtimeConfig.property("os.version")}",
         ),
         InstallationHealth.workdir(cwd, writable),
+        InstallationHealth.fact("script-cache", scriptCacheReading()),
     )
     checks.forEach { println(it.render()) }
     return InstallationHealth.decision(checks)
+}
+
+/**
+ * How the report says where the compiled-script cache is.
+ *
+ * The cache decides on its own whether it may be used, and the user is the
+ * one who has to live with that decision: a run that compiles its script
+ * every time because the cache directory is not private looks exactly like a
+ * run whose script has never been compiled before. The report says where the
+ * cache is and what it will do with it, so the two are not confused.
+ *
+ * It observes and it never creates: a report that asked a question and left a
+ * directory behind would be a report with a side effect.
+ */
+private fun scriptCacheReading(): String {
+    val inspection: ScriptCacheInspection = try {
+        ScriptCacheStore.inspect(System.getenv(), System.getProperty("user.home"))
+    } catch (_: Throwable) {
+        return "unknown (the cache directory could not be observed)"
+    }
+    return when (inspection.state) {
+        ScriptCacheState.OFF -> "off"
+        ScriptCacheState.PRIVATE -> "${inspection.root} (private)"
+        ScriptCacheState.WILL_CREATE -> "${inspection.root} (private, created on the first run)"
+        ScriptCacheState.REFUSED -> "${inspection.root} (NOT USED: ${inspection.reason})"
+    }
 }
 
 /**

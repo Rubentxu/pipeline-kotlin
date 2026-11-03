@@ -45,7 +45,7 @@ import java.nio.file.Files
 internal val CLI_ENVIRONMENT: List<Pair<String, String>> = listOf(
     "PIPELINE_CREDENTIALS_STORE" to "credentials store file (default ~/.pipeline/credentials.bin)",
     "PIPELINE_STORE_PASSPHRASE" to "passphrase that decrypts the credentials store",
-    "PIPELINEK_SCRIPT_CACHE_DIR" to "compiled .pipeline.kts cache directory (default off)",
+    "PIPELINEK_SCRIPT_CACHE_DIR" to "compiled .pipeline.kts cache directory (default \$XDG_CACHE_HOME/pipelinek/script-cache; 'off' disables it)",
     "PIPELINE_SANDBOX_ALLOW_EXTRA" to "comma-separated env keys the sandbox keeps despite its deny-list",
     "PIPELINE_SANDBOX_PATH_KEEP" to "comma-separated PATH prefixes the sandbox keeps after normalising",
     PipelineTelemetryFactory.OTEL_ENABLED_ENV to "enable the optional OpenTelemetry SDK (default false)",

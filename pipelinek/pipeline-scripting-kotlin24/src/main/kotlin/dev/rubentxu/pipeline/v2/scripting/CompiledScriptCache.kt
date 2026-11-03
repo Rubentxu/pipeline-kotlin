@@ -25,6 +25,14 @@ enum class CacheMissReason {
 
     /** The compiled script is not a JVM script, so there is no jar format to save it in. */
     NOT_JVM_SCRIPT,
+
+    /**
+     * The store is there but may not be used: its privacy could not be proven.
+     * A store nobody else may read is the only store a compiled script may
+     * live in, so a store that fails that requirement is not consulted and
+     * not written to.
+     */
+    UNSAFE_STORE,
 }
 
 /**
@@ -55,11 +63,8 @@ interface CompiledScriptCache {
 
     /**
      * The store that stores nothing.
-     * This is the default because the product has no established user-home
-     * convention to place a cache in, and inventing one is a product decision
-     * (read-only HOME, sandboxed CI, ephemeral containers all make a
-     * "sensible default" wrong in a different direction each time). Opting in
-     * is therefore explicit; removing this default later is a one-line change.
+     * It is what the cache becomes when the user turns it off, and what it
+     * becomes when the directory it would use cannot be proven private.
 */
     object Disabled : CompiledScriptCache {
         override fun load(key: CacheKey): CacheLookup = CacheLookup.Miss(CacheMissReason.ABSENT)
@@ -68,8 +73,9 @@ interface CompiledScriptCache {
 
     companion object {
         /**
-         * Opt-in switch. Absent or blank means no cache, which is the behaviour
-         * every existing installation already has.
+         * Where the cache lives, when the user says where it lives.
+         * The literal `off` turns the cache off; without a value the location
+         * is the one [ScriptCachePolicy] resolves.
 */
         const val DIRECTORY_ENV_VAR: String = "PIPELINEK_SCRIPT_CACHE_DIR"
 
@@ -79,11 +85,14 @@ interface CompiledScriptCache {
          * keeps the decision testable without touching the real environment: a
          * test that called `System.getenv()` would be non-hermetic, and a
          * non-hermetic default is how a suite starts passing for the wrong reason.
+         *
+         * The cache is ON by default, at the location [ScriptCachePolicy]
+         * resolves, and the store only uses it when it can prove the directory
+         * is private. A user who wants no cache at all says `off`.
 */
         fun fromEnvironment(env: Map<String, String> = System.getenv()): CompiledScriptCache {
-            val directory = env[DIRECTORY_ENV_VAR]?.takeIf { it.isNotBlank() }
-                ?: return Disabled
-            return JarCompiledScriptCache(Path.of(directory))
+            val root = ScriptCachePolicy.locate(env, System.getProperty("user.home")) ?: return Disabled
+            return JarCompiledScriptCache(root)
         }
     }
 }
@@ -100,11 +109,31 @@ interface CompiledScriptCache {
  * for "what is this compilation's identity", which is the exact defect class
  * Forbids: two keys for one compilation is a cache that serves the wrong
  * artifact without any visible symptom.
- * @param root directory holding the jars; created on first store.
+ *
+ * The store has a DOOR: the directory is only used when it can be proven
+ * private ([ScriptCachePolicy.mayHoldArtifacts]). A compiled script carries
+ * the literals of the script that produced it, and those literals may be
+ * anybody's business, so a directory another user can read is a directory
+ * that is not used at all — neither read from nor written to.
+ * @param root directory holding the jars; created private on first store.
 */
 class JarCompiledScriptCache(private val root: Path) : CompiledScriptCache {
 
     override fun load(key: CacheKey): CacheLookup {
+        // The door is asked BEFORE the file: a store that may not be used
+        // must not even be looked at, because looking is how another user's
+        // artifact would reach this one. Reading does not create the
+        // directory: a lookup that left a directory behind would be a lookup
+        // with a side effect.
+        if (!ScriptCacheStore.isUsable(root)) {
+            return CacheLookup.Miss(
+                if (ScriptCacheStore.factsFor(root).exists) {
+                    CacheMissReason.UNSAFE_STORE
+                } else {
+                    CacheMissReason.ABSENT
+                },
+            )
+        }
         val jar = root.resolve(fileNameFor(key))
         if (!Files.isRegularFile(jar)) return CacheLookup.Miss(CacheMissReason.ABSENT)
         return try {
@@ -126,9 +155,9 @@ class JarCompiledScriptCache(private val root: Path) : CompiledScriptCache {
 
     override fun store(key: CacheKey, script: CompiledScript) {
         if (script !is KJvmCompiledScript) return
+        if (!ScriptCacheStore.ensurePrivate(root)) return
         val target = root.resolve(fileNameFor(key))
         val tmp = try {
-            Files.createDirectories(root)
             root.resolve("${fileNameFor(key)}.${System.nanoTime()}.tmp")
         } catch (t: Throwable) {
             return

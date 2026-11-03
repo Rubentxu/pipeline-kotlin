@@ -2,6 +2,8 @@
 //@ expect-stdout DOCTOR_SAID_WRITABLE
 //@ expect-stdout DOCTOR_DEFECTIVE_EXIT
 //@ expect-stdout DOCTOR_SAID_UNWRITABLE
+//@ expect-stdout DOCTOR_NAMES_THE_CACHE
+//@ expect-stdout DOCTOR_SAYS_WHETHER_IT_IS_USED
 //@ expect-stdout CAPABILITIES_ONE_LINE
 //@ expect-stdout CAPABILITIES_SCHEMA_V2
 //@ expect-stdout CAPABILITIES_ONE_VOCABULARY
@@ -24,7 +26,7 @@
 // language. Both were invisible from the inside, because the code that
 // produced them was the code that read them back.
 //
-// Ten facts are checked here, and each of them can fail on its own:
+// Twelve facts are checked here, and each of them can fail on its own:
 //
 //   - the doctor answers 0 for an installation it finds healthy, and says so
 //     in words;
@@ -37,7 +39,9 @@
 //     catalogue one — report the same version of the same build;
 //   - a request the product refuses is answered with the code that means
 //     "refused", and a capability this build does not carry is answered with
-//     its OWN code, so the two stay distinguishable from the outside.
+//     its OWN code, so the two stay distinguishable from the outside;
+//   - the health report says where the cache of compiled scripts is, names
+//     the directory it was given, and says whether it will use it.
 //
 // WHY THE FIRST DIRECTORY IS NAMED "NOT WRITABLE"
 //
@@ -131,6 +135,47 @@ pipeline {
                         cat doctor-unwritable.txt >&2
                         echo LEG_doctor_said_unwritable
                     fi
+                fi
+                """.trimIndent(),
+            )
+
+            // The cache of compiled scripts: where it is, and what the
+            // product will do with it.
+            //
+            // A cache that silently did nothing looks exactly like a script
+            // that was never compiled, and a report about a directory the
+            // operator did not name is a report about nothing. So the report
+            // has to name the place it was given, and it has to say whether
+            // the artifacts will land there.
+            sh(
+                """
+                '${product}' doctor > doctor-cache.txt 2>&1
+                line="$(grep -F 'script-cache:' doctor-cache.txt || true)"
+                if [ -z "${'$'}line" ]; then
+                    echo "the report does not say where the cache of compiled scripts is:" >&2
+                    cat doctor-cache.txt >&2
+                    echo LEG_doctor_cache_not_reported
+                else
+                    if [ -n "${'$'}PIPELINEK_SCRIPT_CACHE_DIR" ]; then
+                        case "${'$'}line" in
+                            *"${'$'}PIPELINEK_SCRIPT_CACHE_DIR"*) echo DOCTOR_NAMES_THE_CACHE ;;
+                            *)
+                                echo "the report names a cache directory that is not the one this run was given:" >&2
+                                echo "${'$'}line" >&2
+                                echo LEG_doctor_cache_wrong_place
+                                ;;
+                        esac
+                    else
+                        echo DOCTOR_NAMES_THE_CACHE
+                    fi
+                    case "${'$'}line" in
+                        *"(private"*|*"NOT USED"*) echo DOCTOR_SAYS_WHETHER_IT_IS_USED ;;
+                        *)
+                            echo "the report does not say whether the cache will be used:" >&2
+                            echo "${'$'}line" >&2
+                            echo LEG_doctor_cache_no_decision
+                            ;;
+                    esac
                 fi
                 """.trimIndent(),
             )

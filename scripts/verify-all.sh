@@ -1548,7 +1548,7 @@ JSON
     log "stage 1i/4  product calibration (cold script, warm script, startup)"
     stage_started_at=$(date +%s)
     calib_dir="$cycle_dir/calibration"
-    mkdir -p "$calib_dir/cache"
+    mkdir -p "$calib_dir"
     cat > "$calib_dir/calibration.pipeline.kts" <<'CALIBRATION_SCRIPT'
 pipeline {
     stages {
@@ -1562,16 +1562,26 @@ CALIBRATION_SCRIPT
     if [[ ! -x "$dist_bin" ]]; then
         fail "stage 1i: the distribution this gate just assembled is not there: $dist_bin"
     fi
-    # The script cache is the product's own and it is off by default. Turning
-    # it on HERE is what makes the two numbers comparable: the first pass has
-    # to compile, and the second one has to find the compiled bytes the first
-    # pass left behind.
+    # The script cache is ON by default, and the default is where the base
+    # directory specification says it is. The calibration therefore measures
+    # the DEFAULT: no variable naming the cache, and the cache home pointed
+    # at this run's own directory, so the measurement neither pollutes the
+    # user's cache nor depends on what it happens to hold. Two passes are
+    # what makes the numbers comparable: the first one has to compile, and
+    # the second one has to find the compiled bytes the first one left behind.
     had_cache_dir=0
     saved_cache_dir="${PIPELINEK_SCRIPT_CACHE_DIR-}"
     if [[ -n "${PIPELINEK_SCRIPT_CACHE_DIR+x}" ]]; then
         had_cache_dir=1
     fi
-    export PIPELINEK_SCRIPT_CACHE_DIR="$calib_dir/cache"
+    had_xdg_cache_home=0
+    saved_xdg_cache_home="${XDG_CACHE_HOME-}"
+    if [[ -n "${XDG_CACHE_HOME+x}" ]]; then
+        had_xdg_cache_home=1
+    fi
+    unset PIPELINEK_SCRIPT_CACHE_DIR
+    export XDG_CACHE_HOME="$calib_dir/xdg-cache"
+    default_cache_dir="$calib_dir/xdg-cache/pipelinek/script-cache"
 
     cold_started_ms=$(now_ms)
     "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/cold.log" 2>&1 \
@@ -1583,15 +1593,15 @@ CALIBRATION_SCRIPT
     # file that was there before the pass has to be the file that is there
     # after it: same name, same size, same moment. A second pass that rewrote
     # it would be a second cold pass wearing a warm name.
-    if [[ -z "$(find "$calib_dir/cache" -type f -print -quit 2>/dev/null)" ]]; then
+    if [[ -z "$(find "$default_cache_dir" -type f -print -quit 2>/dev/null)" ]]; then
         fail "stage 1i: the first pass left no compiled bytes, so there is nothing for a second pass to reuse"
     fi
-    cache_before="$(find "$calib_dir/cache" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
+    cache_before="$(find "$default_cache_dir" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
     warm_started_ms=$(now_ms)
     "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/warm.log" 2>&1 \
         || { tail -20 "$calib_dir/warm.log" >&2; fail "stage 1i: the second compilation of a script did not succeed"; }
     warm_ms=$(( $(now_ms) - warm_started_ms ))
-    cache_after="$(find "$calib_dir/cache" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
+    cache_after="$(find "$default_cache_dir" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
     if [[ "$cache_before" != "$cache_after" ]]; then
         fail "stage 1i: the second pass rewrote the compiled bytes, so it was not a warm pass"
     fi
@@ -1634,10 +1644,19 @@ CALIBRATION_SCRIPT
             "${product_tmpdir:-UNKNOWN}" "$cycle_dir/tmp" >&2
     fi
 
+    # The cache home goes back the way it was, so the scenarios of the next
+    # stage keep the persistent cache they had: a gate that left the cache
+    # home pointing at its own cycle would make every scenario compile from
+    # scratch, and would charge the product for a cold cache it does not have.
     if (( had_cache_dir == 1 )); then
         export PIPELINEK_SCRIPT_CACHE_DIR="$saved_cache_dir"
     else
         unset PIPELINEK_SCRIPT_CACHE_DIR
+    fi
+    if (( had_xdg_cache_home == 1 )); then
+        export XDG_CACHE_HOME="$saved_xdg_cache_home"
+    else
+        unset XDG_CACHE_HOME
     fi
 
     component_set "product:script_cold" "$cold_ms" "first compilation of a script"

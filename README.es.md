@@ -35,12 +35,32 @@ unzip -q "$ASSET"
 PIPELINEK="./$(basename "$ASSET" .zip)/bin/pipelinek"
 
 "$PIPELINEK" version          # → pipeline <versión>
-"$PIPELINEK" doctor           # jdk / os / workdir / writable
+"$PIPELINEK" doctor           # jdk / os / workdir / writable / cache de scripts
 ```
 
 Hace falta Java 21 o superior en el `PATH`. El ZIP trae `bin/pipelinek`
 (UNIX) y `bin/pipelinek.bat` (Windows); funcionan Linux, macOS y Windows
 (WSL). No hace falta `sudo` y no arranca ningún demonio.
+
+## La caché de scripts compilados
+
+Compilar un `.pipeline.kts` cuesta segundos; ejecutar el resultado compilado,
+milisegundos. PipelineK guarda la forma compilada en una caché para que la
+segunda ejecución del mismo script sea rápida, y la caché está **activada por
+defecto**.
+
+| | |
+|---|---|
+| Dónde | `${XDG_CACHE_HOME:-$HOME/.cache}/pipelinek/script-cache` |
+| Qué tan privada | El directorio lo crea PipelineK, es tuyo y nadie más lo puede leer. Si no se puede demostrar que es privado —existe pero es de otro usuario, o otros pueden leerlo— la caché **no se usa**, y `doctor` dice por qué. |
+| Cómo cambiarla | `PIPELINEK_SCRIPT_CACHE_DIR=/otra/ruta` |
+| Cómo desactivarla | `PIPELINEK_SCRIPT_CACHE_DIR=off` |
+
+Un script compilado lleva dentro los literales del script que lo produjo, así
+que la caché es un sitio donde tu código puede quedar en forma legible. Por
+eso la regla es cerrada por defecto: una caché que no se puede demostrar
+privada no se usa, y la ejecución simplemente compila otra vez.
+`pipelinek doctor` dice siempre dónde está la caché y si se está usando.
 
 ## Tu primer pipeline
 

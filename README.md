@@ -32,7 +32,7 @@ unzip -q "$ASSET"
 PIPELINEK="./$(basename "$ASSET" .zip)/bin/pipelinek"
 
 "$PIPELINEK" version          # → pipeline <version>
-"$PIPELINEK" doctor           # jdk / os / workdir / writable
+"$PIPELINEK" doctor           # jdk / os / workdir / writable / script cache
 ```
 
 Java 21 or newer is required on the `PATH`. The ZIP ships `bin/pipelinek`
@@ -257,6 +257,25 @@ This build ships with:
   `bin/pipelinek` (UNIX) and `bin/pipelinek.bat` (Windows).
 - **Disk**: ~200 MB for the distribution plus per-run control data.
 - **Concurrency**: one pipeline run per CLI invocation. No daemon mode.
+
+### The cache of compiled scripts
+
+Compiling a `.pipeline.kts` costs seconds; running the compiled result costs
+milliseconds. PipelineK keeps the compiled form in a cache so the second run of
+the same script is fast, and the cache is **on by default**.
+
+| | |
+|---|---|
+| Where | `${XDG_CACHE_HOME:-$HOME/.cache}/pipelinek/script-cache` |
+| How private | The directory is created by PipelineK, owned by you, and readable by nobody else. If it cannot be proven private — it exists but belongs to someone else, or others may read it — the cache is **not used**, and `doctor` says why. |
+| How to move it | `PIPELINEK_SCRIPT_CACHE_DIR=/some/path` |
+| How to turn it off | `PIPELINEK_SCRIPT_CACHE_DIR=off` |
+
+A compiled script carries the literals of the script that produced it, so the
+cache is a place where your code may sit in a readable form. The rule is
+therefore closed by default: a cache directory that cannot be proven private
+is not used, and the run simply compiles again. `pipelinek doctor` always
+reports where the cache is and whether it is being used.
 
 ## Documentation
 

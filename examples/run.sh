@@ -739,12 +739,14 @@ trap on_exit EXIT
 # 17 with it, because a run compiles the SAME source twice and the cache
 # serves the second one.
 #
-# The product keeps that cache off by default, and for a good reason: there
-# is no user-home directory that is the right place for it in a read-only
-# HOME, in a sandboxed CI or in an ephemeral container, and guessing one is a
-# product decision rather than a harness one. This launcher has no such
-# problem -- but it does have a directory that is right for a CACHE, which is
-# not the same thing as a directory that is right for a workspace.
+# The product's own cache is ON by default, in the place the base directory
+# specification names, and it only uses that place when it can prove it is
+# private. This launcher names a directory ANYWAY, and for two reasons of its
+# own: a cache that outlives the cycle is the whole point of the namespace
+# below, and the harness must be able to say which distribution the artifacts
+# in it belong to. The directory the harness names is therefore created
+# PRIVATE, because the product refuses a store that anybody but its owner may
+# reach -- and a refused store means every scenario compiles from scratch.
 #
 # WHY THE CACHE OUTLIVES THE CYCLE
 #
@@ -830,6 +832,25 @@ distribution_digest() {
     done | LC_ALL=C sort | sha256sum | cut -d' ' -f1
 }
 
+# A cache directory the product will accept, or none at all.
+#
+# The product refuses a store that anybody but its owner may reach, and it is
+# right to: a compiled script carries the literals of the script that produced
+# it. The harness therefore makes the directory PRIVATE before handing it
+# over. Only the leaf is tightened -- it is the directory the harness created
+# and named -- while the directories above it stay traversable, so the cleanup
+# can still reach the namespaces it owns.
+#
+# A `chmod` the filesystem refuses is not an error: the product then refuses
+# the store as well, the run loses the reuse and loses nothing else, because a
+# cache is a performance concern and never a correctness one.
+make_private_dir() {
+    local dir="$1"
+    mkdir -p -- "$dir" 2>/dev/null || return 1
+    chmod 700 -- "$dir" 2>/dev/null || true
+    [[ -w "$dir" ]]
+}
+
 # The namespace this run's artifacts live in. It is persistent when the
 # machine has a place to put it, and cycle-local when it does not: a
 # read-only HOME, a sandboxed CI, an ephemeral container. The run loses the
@@ -861,7 +882,7 @@ resolve_script_cache() {
         fi
     fi
 
-    if [[ -n "$ns" ]] && mkdir -p "$ns" 2>/dev/null && [[ -w "$ns" ]]; then
+    if [[ -n "$ns" ]] && make_private_dir "$ns"; then
         printf '%s\n' "$digest" > "$marker" 2>/dev/null || true
         # The root is marked as a place where namespaces live, so a cleanup
         # later can tell that root from a directory full of things the
@@ -873,7 +894,7 @@ resolve_script_cache() {
         return 0
     fi
     script_cache_dir="$cycle_root/script-cache"
-    if mkdir -p "$script_cache_dir" 2>/dev/null && [[ -w "$script_cache_dir" ]]; then
+    if make_private_dir "$script_cache_dir"; then
         export PIPELINEK_SCRIPT_CACHE_DIR="$script_cache_dir"
     else
         script_cache_dir=""

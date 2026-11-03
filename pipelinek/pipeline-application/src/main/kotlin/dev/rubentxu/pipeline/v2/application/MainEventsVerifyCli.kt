@@ -70,7 +70,7 @@ object MainEventsVerifyCli {
         val accepted = when (admission) {
             is CliAdmission.Rejected -> {
                 refuse(admission.error.refusalLines("events verify").joinToString("\n"))
-                return 2
+                return CliExit.INVALID_ARGUMENT.code
             }
             is CliAdmission.Admitted -> admission
         }
@@ -80,26 +80,26 @@ object MainEventsVerifyCli {
         val contractPath = accepted.values["--contract"]
         if (db.isNullOrBlank()) {
             refuse("events verify: --db is required: the event store lives under it.")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         if (runId.isNullOrBlank()) {
             refuse("events verify: --run is required: it names the run to verify.")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         if (contractPath.isNullOrBlank()) {
             refuse("events verify: --contract is required: it names the contract to verify against.")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
 
         val fromSequence = readFromSequence(accepted.values["--from-sequence"])
         if (fromSequence == null) {
             refuse("events verify: --from-sequence must be a whole number.")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         val scopeAfterLastStart = readScope(accepted.values["--scope"])
         if (scopeAfterLastStart == null) {
             refuse("events verify: --scope must be $SCOPE_LAST_SEGMENT or $SCOPE_WHOLE.")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
 
         return verify(db, runId, contractPath, fromSequence, scopeAfterLastStart)
@@ -157,19 +157,19 @@ object MainEventsVerifyCli {
         val dbAdmission = admitEventStore(db, EventStorePurpose.Read)
         if (dbAdmission is EventStoreAdmission.Refused) {
             System.err.println(dbAdmission.refusal.render())
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         val contractFile = Path.of(contractPath)
         if (!Files.exists(contractFile)) {
             System.err.println("Error: contract not found: $contractPath")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
 
         val contract = try {
             YamlEventContractCodec.decode(Files.readString(contractFile))
         } catch (e: Exception) {
             System.err.println("Error: cannot decode contract: ${e.message}")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
 
         val store = (dbAdmission as EventStoreAdmission.Admitted).store

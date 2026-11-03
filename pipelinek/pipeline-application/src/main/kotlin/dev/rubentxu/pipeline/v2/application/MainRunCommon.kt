@@ -135,7 +135,7 @@ internal fun refuseNonCanonicalExecution(steps: List<NonCanonicalStep>): Nothing
     // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
     // event store has to give them back before the process ends, and ending here would skip
     // that release. The branch that owns nothing turns the refusal into the exit.
-    throw CommandRefused(exitCode = 2)
+    throw CommandRefused(CliExit.InvalidArgument(message = "the run uses steps that are not canonical"))
 }
 
 /**
@@ -273,5 +273,5 @@ internal fun compileOrRefuse(
         // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
         // event store has to give them back before the process ends, and ending here would skip
         // that release. The branch that owns nothing turns the refusal into the exit.
-        throw CommandRefused(exitCode = 1)
+        throw CommandRefused(CliExit.PipelineFailed(message = rejection.message ?: "the pipeline definition was rejected"))
     }

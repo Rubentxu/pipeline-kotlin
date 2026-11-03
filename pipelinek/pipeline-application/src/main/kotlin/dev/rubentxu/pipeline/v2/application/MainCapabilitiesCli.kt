@@ -64,7 +64,7 @@ object MainCapabilitiesCli {
         when (admission) {
             is CliAdmission.Rejected -> {
                 System.err.println(admission.error.refusalLines("capabilities").joinToString("\n"))
-                return 2
+                return CliExit.INVALID_ARGUMENT.code
             }
             is CliAdmission.Admitted -> Unit
         }
@@ -72,6 +72,6 @@ object MainCapabilitiesCli {
             .encodeToString(JsonObject.serializer(), document()) + "\n"
         System.out.write(line.toByteArray(Charsets.UTF_8))
         System.out.flush()
-        return 0
+        return CliExit.SUCCESS.code
     }
 }

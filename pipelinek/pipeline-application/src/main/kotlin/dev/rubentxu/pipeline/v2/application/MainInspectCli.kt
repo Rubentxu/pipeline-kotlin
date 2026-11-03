@@ -247,7 +247,7 @@ object MainInspectCli {
         // trace and exit 1 — the code this CLI reserves for a run that executed and failed.
         val dbPath = compiled.dbPath
         val controlRoot = compiled.controlRoot
-        val events = readRunEvents(runId, dbPath, wholeRunReport = false) ?: return 2
+        val events = readRunEvents(runId, dbPath, wholeRunReport = false) ?: return CliExit.INVALID_ARGUMENT.code
 
         // Resolve each event to its operation BEFORE any Output Plane read, because the
         // tail belongs to the operation and not to the run.
@@ -268,7 +268,7 @@ object MainInspectCli {
                         "This run's step operations: ${owned.joinToString(", ")}"
                     },
             )
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
 
         val consoleTails: Map<String, InspectConsoleTail> = InspectionReader.readConsoleTails(
@@ -291,7 +291,7 @@ object MainInspectCli {
         }
 
         InspectionPresentation.emitDocument(System.out, runId, compiled, withContext)
-        return 0
+        return CliExit.SUCCESS.code
     }
 
     /**
@@ -375,13 +375,13 @@ object MainInspectCli {
             // refusal rather than a crash: a verb that cannot name its own
             // missing input is a verb that fails with a stack trace.
             System.err.println("inspect: --db and --control-root are required to read the run's state")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
 
         val admission = admitEventStore(dbPath, EventStorePurpose.Read)
         if (admission is EventStoreAdmission.Refused) {
             System.err.println(admission.refusal.render())
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         val store = (admission as EventStoreAdmission.Admitted).store
 
@@ -395,20 +395,20 @@ object MainInspectCli {
             }
         } catch (failure: Exception) {
             System.err.println("inspect: ${failure.shortDiagnostic()}")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
 
         return when (result) {
             is RuntimeIntrospectionResult.Observation -> {
                 println(InspectionPresentation.renderRunState(result.observation))
-                0
+                CliExit.SUCCESS.code
             }
 
             is RuntimeIntrospectionResult.Refused -> {
                 System.err.println(
                     "inspect: ${InspectionPresentation.renderIntrospectionRefusal(result.refusal, runId)}",
                 )
-                2
+                CliExit.INVALID_ARGUMENT.code
             }
         }
     }
@@ -429,7 +429,7 @@ object MainInspectCli {
 
         // Read-only admission: a missing store is refused here and no file is
         // created, so profiling a mistyped run id cannot fabricate a database.
-        val costInput = foldRunEvents(runId, dbPath, wholeRunReport = true, RunCostProjection::project) ?: return 2
+        val costInput = foldRunEvents(runId, dbPath, wholeRunReport = true, RunCostProjection::project) ?: return CliExit.INVALID_ARGUMENT.code
 
         val outcome = summarize(costInput)
         val lines = when (query.format) {
@@ -437,7 +437,7 @@ object MainInspectCli {
             MainInspectCli.InspectFormat.TEXT -> RunCostReport.textLines(runId, outcome)
         }
         lines.forEach(::println)
-        return 0
+        return CliExit.SUCCESS.code
     }
 
     /**
@@ -455,13 +455,13 @@ object MainInspectCli {
 
         // Read-only admission: a missing store is refused and no file is
         // created, so explaining a mistyped run id cannot fabricate a database.
-        val diagnosis = foldRunEvents(runId, dbPath, wholeRunReport = true, RunExplainProjection::project) ?: return 2
+        val diagnosis = foldRunEvents(runId, dbPath, wholeRunReport = true, RunExplainProjection::project) ?: return CliExit.INVALID_ARGUMENT.code
         val lines = when (query.format) {
             MainInspectCli.InspectFormat.JSON -> RunExplainReport.jsonLines(runId, diagnosis)
             MainInspectCli.InspectFormat.TEXT -> RunExplainReport.textLines(runId, diagnosis)
         }
         lines.forEach(::println)
-        return 0
+        return CliExit.SUCCESS.code
     }
 
     /**
@@ -489,16 +489,16 @@ object MainInspectCli {
 
         val trace = foldRunEvents(runId, dbPath, wholeRunReport = true) { events ->
             RunTelemetryProjection.fromEvents(runId, events)
-        } ?: return 2
+        } ?: return CliExit.INVALID_ARGUMENT.code
         if (query.otlp) {
             val out = System.out
             RunTelemetryOtlp.writeSpans(trace, out)
             RunTelemetryOtlp.writeMetrics(trace, out)
             out.flush()
-            return 0
+            return CliExit.SUCCESS.code
         }
         RunTelemetryReport.forEachJsonLine(trace, ::println)
-        return 0
+        return CliExit.SUCCESS.code
     }
 
     /**

@@ -85,7 +85,7 @@ object MainSagaInspectCli {
         val read = SqliteSagaObligationReader(options.dbPath).read(runId)
         if (read is SagaInspectionRead.Refused) {
             System.err.println("saga inspect: ${read.refusal.render()}")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         val state = read as SagaInspectionRead.Read
 
@@ -100,10 +100,10 @@ object MainSagaInspectCli {
                     "saga inspect: no run $runId in ${options.dbPath}. " +
                         "Nothing was read, so nothing can be said about what it owes.",
                 )
-                return 2
+                return CliExit.INVALID_ARGUMENT.code
             }
             println("saga inspect: run $runId armed no saga promise; there is nothing owed.")
-            return 0
+            return CliExit.SUCCESS.code
         }
 
         val report = SagaInspectionProjection.read(runId, state.rows, state.events)
@@ -112,7 +112,7 @@ object MainSagaInspectCli {
         } else {
             print(renderText(report))
         }
-        return 0
+        return CliExit.SUCCESS.code
     }
 
     /**

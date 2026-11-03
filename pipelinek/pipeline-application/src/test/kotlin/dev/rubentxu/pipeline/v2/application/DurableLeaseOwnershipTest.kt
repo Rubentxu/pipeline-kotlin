@@ -131,7 +131,12 @@ class DurableLeaseOwnershipTest {
         val refused = assertThrows(CommandRefused::class.java) {
             acquireDurableLease(scope, "run-1", owner, store)
         }
-        assertEquals(2, refused.exitCode, "el rechazo de admisión del lease sale 2")
+        assertEquals(2, refused.exit.code, "el rechazo de admisión del lease sale 2")
+        assertEquals(
+            "InvalidArgument",
+            refused.exit.name,
+            "el rechazo viaja como el CASO de la taxonomía, no como un número suelto",
+        )
         assertEquals(
             0,
             store.closeCount,

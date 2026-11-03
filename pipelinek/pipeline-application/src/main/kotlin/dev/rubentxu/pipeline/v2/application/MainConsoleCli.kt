@@ -81,7 +81,7 @@ object MainConsoleCli {
     fun main(args: Array<String>): Int = when (val admitted = CliConsoleParser.parse(args)) {
         is ConsoleCliParseResult.Rejected -> {
             System.err.println(renderConsoleCliRefusal(admitted.refusal))
-            2
+            CliExit.INVALID_ARGUMENT.code
         }
 
         is ConsoleCliParseResult.Admitted -> {
@@ -93,7 +93,7 @@ object MainConsoleCli {
                 System.err.println(
                     renderConsoleCliRefusal(ConsoleCliRefusal.ControlDirNotFound(request.controlDir)),
                 )
-                2
+                CliExit.INVALID_ARGUMENT.code
             } else {
                 // The dispatch is on the request variant: Paged / Range go
                 // Through the byte-budgeted [ConsolePresentation.emit] path (unchanged); Frames
@@ -116,7 +116,7 @@ object MainConsoleCli {
                         System.err.println(
                             renderConsoleCliRefusal(ConsoleCliRefusal.FilterNotResolvable(outcome.refusal)),
                         )
-                        return 2
+                        return CliExit.INVALID_ARGUMENT.code
                     }
                 }
                 when (request) {

@@ -8,7 +8,6 @@ import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
-import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
@@ -65,7 +64,7 @@ internal fun runVolatilePipeline(
     try {
         runVolatilePipelineOwned(config, secretPatternRegistry, compiledQuery, scriptPath, outputProtocol, telemetry)
     } catch (refused: CommandRefused) {
-        refused.exitCode
+        refused.exit.code
     }
 
 /**
@@ -92,7 +91,7 @@ private fun runVolatilePipelineOwned(
     // Durable run selection flags are rejected without persistent state.
     if (config.durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
         System.err.println("Error: --resume and --rerun require --db (no durable state exists without a journal database)")
-        return 2
+        return CliExit.INVALID_ARGUMENT.code
     }
     val eventStore = composeNarratingEventStore(
         raw = InMemoryEventStore(),
@@ -130,23 +129,6 @@ private fun runVolatilePipelineOwned(
         )
     }
 
-    // compose registry BEFORE the gate so contributed keys are eligible.
-    // admission happens FIRST and inside the same function, so the in-memory and
-    // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now
-    // also covers the decision about WHICH artifacts are allowed to resolve at all.
-    // The refusal travels as a value, in BOTH worlds: the volatile branch owns nothing that
-    // outlives the process, so its entry turns the refusal into the exit code, and the durable
-    // branch owns a lease and an event store and gives them back before it ends. A refusal that
-    // ended the process HERE would skip the branch's own `finally`, and what that finally
-    // releases is the output observer — a thread. So the rule is the same everywhere: a refusal
-    // UNWINDS, and the place that owns the process ends it.
-    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry)) {
-        is PluginAdmission.Admitted -> admission.composition
-        is PluginAdmission.Refused -> throw CommandRefused(admission.exitCode)
-    }
-    val composedStepRegistry = composition.steps
-    val nonCanonicalSteps = compiledPipeline
-        ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
     // the default `pipeline run <script>` (in-memory) branch composes
     // the SAME credential injection stack as the durable branch, through the SAME
     // function. The default path is the temp in-memory control dir's sibling;
@@ -157,7 +139,29 @@ private fun runVolatilePipelineOwned(
     // does have one does not need the provider on the in-memory path.
     // The same question, the same answer: a run that declares no credential binding
     // does not open the store, so it is never asked for a passphrase.
+    //
+    // The seam is composed BEFORE the plugin admission, in the SAME order the
+    // durable branch composes it, so both worlds answer the same refusal when
+    // two things are wrong at once. The reason and the measurement are in the
+    // durable branch, where the order was already published.
     val credentialSeam = composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec)
+    // compose registry BEFORE the gate so contributed keys are eligible.
+    // the admission happens inside ONE function, so the in-memory and
+    // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now
+    // also covers the decision about WHICH artifacts are allowed to resolve at all.
+    // The refusal travels as a value, in BOTH worlds: the volatile branch owns nothing that
+    // outlives the process, so its entry turns the refusal into the exit code, and the durable
+    // branch owns a lease and an event store and gives them back before it ends. A refusal that
+    // ended the process HERE would skip the branch's own `finally`, and what that finally
+    // releases is the output observer — a thread. So the rule is the same everywhere: a refusal
+    // UNWINDS, and the place that owns the process ends it.
+    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry)) {
+        is PluginAdmission.Admitted -> admission.composition
+        is PluginAdmission.Refused -> throw CommandRefused(admission.exit)
+    }
+    val composedStepRegistry = composition.steps
+    val nonCanonicalSteps = compiledPipeline
+        ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
     // the workspace decision rule / the workspace origin rule clause 3.1 + the typed-owner decision: the workspace origin is decided
     // ONCE, here at the boundary. Both facts cross into the runtime — the shared
     // directory and its owner — because a runtime that receives only the root
@@ -283,14 +287,14 @@ private fun runVolatilePipelineOwned(
             protocol = outputProtocol,
         )
     }
-    val exitFailure = volatileRunFailed(runOutcome, events)
+    val exit = runExit(runOutcome, events.lastOrNull())
     // P6: the Saga verdict travels in BOTH worlds. A Saga can now run without
     // `--db` —the volatile store is bound exactly like the durable one—, so the
     // run has to SAY what happened to it, exactly as the durable path says. A
     // Saga that settled without saying so is a Saga the operator cannot see,
     // and "the run was green" is not a substitute for "the Saga was settled".
     SagaVerdict.verdicts(events.filterIsInstance<SagaTerminal>()).forEach { System.err.println(it) }
-    return if (exitFailure) 1 else 0
+    return exit.code
 }
 
 /**
@@ -377,37 +381,9 @@ private fun resolveVolatileControlRoot(config: CliFlags): Path =
             validateControlRoot(config.controlRoot)
         } catch (e: IllegalArgumentException) {
             System.err.println("Error: ${e.message}")
-            throw CommandRefused(exitCode = 2)
+            throw CommandRefused(CliExit.InvalidArgument(message = e.message ?: "the control root is not usable"))
         }
     } else {
         Files.createTempDirectory("pipelinek-inmem-run")
     }
 
-/**
- * The exit decision of a volatile run.
- *
- * ## Why the volatile world renders a failure its own way
- *
- * The durable world prints the typed failure report after the verdict line; this one
- * prints the message on the verdict line itself, and the E2E scenario
- * `negative/15-error` pins that exact text. The two renderings are not the same fact
- * read twice: the FACT is the typed [RunOutcome], and both worlds read it. What differs
- * is how a failure is rendered for a human, and that rendering is part of what the
- * scenarios observe.
- */
-private fun volatileRunFailed(runOutcome: RunOutcome?, events: List<dev.rubentxu.pipeline.v2.events.DomainEvent>): Boolean =
-    if (runOutcome != null) {
-        reportRunOutcome(runOutcome)
-    } else {
-        // The LEGACY path: no typed outcome was produced, so there are only two stories —
-        // "it finished successfully" and "it did not". The "unstable" arm that used to live
-        // here was UNREACHABLE: the word it compared against could only be those two, so the
-        // arm could never run and only misled whoever read it.
-        val lastEvent = events.lastOrNull()
-        val succeeded = lastEvent is RunFinished && lastEvent.outcome == RunOutcome.SUCCESS_TOKEN
-        if (succeeded) {
-            System.err.println("Pipeline finished with SUCCESS"); false
-        } else {
-            System.err.println("Pipeline finished with FAILURE"); true
-        }
-    }

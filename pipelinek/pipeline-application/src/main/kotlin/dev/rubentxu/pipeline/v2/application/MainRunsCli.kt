@@ -181,7 +181,7 @@ Exit codes:
         val admission = admitEventStore(options.dbPath, EventStorePurpose.Write)
         if (admission is EventStoreAdmission.Refused) {
             System.err.println(admission.refusal.render())
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         val store = (admission as EventStoreAdmission.Admitted).store
 
@@ -195,7 +195,7 @@ Exit codes:
             }
         } catch (failure: Exception) {
             System.err.println("runs cancel: ${failure.shortDiagnostic()}")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
 
         return when (outcome) {
@@ -204,17 +204,17 @@ Exit codes:
                     "cancelled run $runId at ${outcome.terminalAtMs} " +
                         "(${outcome.streamsSealed} output stream(s) sealed)",
                 )
-                0
+                CliExit.SUCCESS.code
             }
 
             is CancelOutcome.AlreadyCancelled -> {
                 println("run $runId was already cancelled at ${outcome.terminalAtMs}")
-                0
+                CliExit.SUCCESS.code
             }
 
             is CancelOutcome.Refused -> {
                 System.err.println("runs cancel: ${outcome.refusal.render(runId)}")
-                2
+                CliExit.INVALID_ARGUMENT.code
             }
         }
     }
@@ -299,7 +299,7 @@ Exit codes:
         )
         if (admission is EventStoreAdmission.Refused) {
             System.err.println(admission.refusal.render())
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         val store = (admission as EventStoreAdmission.Admitted).store
 
@@ -314,7 +314,7 @@ Exit codes:
             }
         } catch (failure: Exception) {
             System.err.println("runs recover: ${failure.shortDiagnostic()}")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
 
         return when (outcome) {
@@ -325,12 +325,12 @@ Exit codes:
                 // run that is still broken.
                 val verb = if (options.dryRun) "would recover" else "recovered"
                 println("$verb run $runId as ${outcome.terminal.render()} at ${outcome.terminalAtMs}")
-                0
+                CliExit.SUCCESS.code
             }
 
             is RecoverOutcome.AlreadyRecovered -> {
                 println("run $runId was already recovered at ${outcome.terminalAtMs}")
-                0
+                CliExit.SUCCESS.code
             }
 
             is RecoverOutcome.ReattachPending -> {
@@ -338,12 +338,12 @@ Exit codes:
                     "run $runId is still in flight (retry by ${outcome.deadlineMs.asInstant()}); " +
                         "nothing was recovered",
                 )
-                0
+                CliExit.SUCCESS.code
             }
 
             is RecoverOutcome.FailClosed -> {
                 System.err.println("runs recover: ${outcome.reason.render(runId)}")
-                2
+                CliExit.INVALID_ARGUMENT.code
             }
         }
     }

@@ -87,14 +87,14 @@ internal fun composeCredentialSeam(
         // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
         // event store has to give them back before the process ends, and ending here would skip
         // that release. The branch that owns nothing turns the refusal into the exit.
-        throw CommandRefused(exitCode = 3)
+        throw CommandRefused(CliExit.IncompatibleVersion(message = "the credential store could not be opened: no passphrase is available"))
     } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
         System.err.println("Error: $e.message")
         System.err.println("Hint: check PIPELINE_STORE_PASSPHRASE.")
-        throw CommandRefused(exitCode = 3)
+        throw CommandRefused(CliExit.IncompatibleVersion(message = "the credential store could not be unlocked: the passphrase did not match"))
     } catch (e: LocalSecretStore.SecretStoreTamperException) {
         System.err.println("Error: credentials store tampered: ${e.message}")
-        throw CommandRefused(exitCode = 4)
+        throw CommandRefused(CliExit.RuntimeNotAvailable(message = "the credential store did not pass its integrity check"))
     }
 
     // Composition root: construct credential ports and executor

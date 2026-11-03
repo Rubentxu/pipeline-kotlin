@@ -1,14 +1,20 @@
 package dev.rubentxu.pipeline.v2.application
 
 /**
- * A refusal the operator has already been told about, carrying the exit code it means.
+ * A refusal the operator has already been told about, carrying the exit it means.
  *
- * ## WHY THE REASON IS NOT CARRIED HERE
+ * ## WHY THE CASE AND NOT THE NUMBER
  * The place that knows WHY a request was refused is the place that says it: the reason is
  * printed where the refusal is decided, in the operator's words, exactly as it was before this
  * type existed. This exception carries only what the process owner cannot know on its own —
- * the exit code the refusal means — so the text the operator reads is decided in one place and
- * cannot drift away from the decision that produced it.
+ * the [CliExit] case that owns the refusal — so the text the operator reads is decided in one
+ * place and cannot drift away from the decision that produced it.
+ *
+ * The case and not the NUMBER because a number written here would be a second copy of what
+ * the taxonomy declares, free to drift: the day a case moved, a refusal that wrote the old
+ * number would keep answering with it, and a consumer that branches on the code would read
+ * the refusal as something else. The code is read from the case, at the point where the
+ * process ends.
  *
  * ## WHY THE PROCESS DOES NOT END HERE
  * A refusal is a decision about the run, not a reason to abandon what the run already owns.
@@ -18,8 +24,8 @@ package dev.rubentxu.pipeline.v2.application
  * release of every resource acquired before it.
  *
  * So the refusal UNWINDS instead of ending: the branch that owns resources gives them back
- * and reports the code, and the branch that owns nothing ends the process. Either way the
+ * and reports the case, and the branch that owns nothing ends the process. Either way the
  * operator reads the same text and the process ends with the same code.
  */
-internal class CommandRefused(val exitCode: Int) :
-    RuntimeException("the command was refused with exit code $exitCode")
+internal class CommandRefused(val exit: CliExit) :
+    RuntimeException("the command was refused with exit code ${exit.code}")

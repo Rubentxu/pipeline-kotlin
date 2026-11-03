@@ -2799,6 +2799,79 @@ check_events_refusal() {
     return 0
 }
 
+# The credentials-refusal flow, hoisted out of the scenario body for the same
+# reason the events-refusal flow is: the scenario owns its variables, and this
+# checker receives what it reads by value and what it rebinds by NAME, so the
+# rebinding stays visible at the call site.
+#
+# A refusal flow answers the DOOR's question instead of the run's. The store
+# is the fixture: the scenario seeds it through the distribution's own writer,
+# so the bytes the door refuses are bytes the product really wrote, and the
+# passphrase travels with them because the question is about the INTEGRITY of
+# the store and not about the absence of a key.
+check_credentials_refusal() {
+    local cr_name="$1" cr_root="$2" cr_credentials_refusal="$3"
+    local -n cr_code="$4"
+    local -n cr_verdict_stdout="$5"
+    local -n cr_verdict_stderr="$6"
+    local -n cr_verdict_is_run="$7"
+    local refusal_code=0
+    local tampered=""
+    # The scenario's own run has to have succeeded. The door's answer is the
+    # verdict, and a scenario whose pipeline crashed for an unrelated reason
+    # would otherwise report the door's answer and hide the crash behind it.
+    if [[ "$cr_code" != 0 ]]; then
+        printf 'FAIL %-52s the scenario run exited %s, expected 0 (the refusal is asked about a store, not about a crashed run)\n' \
+            "$cr_name" "$cr_code"
+        show_printed "$cr_root/stderr.txt"
+        failed=$((failed + 1))
+        failures+=("$cr_name: the scenario run exited $cr_code")
+        return 1
+    fi
+    case "$cr_credentials_refusal" in
+        tampered-store)
+            # The store the scenario seeded, and a COPY of it whose magic says
+            # something else. The copy is what gets broken: a store that does
+            # not pass its own integrity check has to be a file the launcher
+            # made, not one it damaged in the scenario's own root.
+            tampered="$cr_root/creds-tampered.bin"
+            if ! cp "$cr_root/creds.bin" "$tampered"; then
+                printf 'FAIL %-52s the scenario credential store could not be copied\n' "$cr_name"
+                failed=$((failed + 1))
+                failures+=("$cr_name: the scenario credential store could not be copied")
+                return 1
+            fi
+            # The magic is what says "this file is a store". One changed byte
+            # leaves a file that is not a store any more, and the door has to
+            # say THAT instead of answering as if the key were wrong: a store
+            # that was tampered with and a store that was locked are two
+            # different facts and the operator has to be able to act on them.
+            printf 'X' | dd of="$tampered" bs=1 seek=0 count=1 conv=notrunc status=none
+            # The door is asked about the copy. The subshell keeps the
+            # redirection local, so the scenario's own store stays the store it
+            # seeded and the environment the scenario runs under is untouched.
+            (
+                export PIPELINE_CREDENTIALS_STORE="$tampered"
+                binary credentials list \
+                    >"$cr_root/stdout.credentials-refusal.txt" \
+                     2>"$cr_root/stderr.credentials-refusal.txt"
+            ) || refusal_code=$?
+            ;;
+        *)
+            printf 'FAIL %-52s unknown credentials-refusal fixture: %s\n' "$cr_name" "$cr_credentials_refusal"
+            failed=$((failed + 1))
+            failures+=("$cr_name: unknown credentials-refusal fixture '$cr_credentials_refusal'")
+            return 1
+            ;;
+    esac
+
+    cr_verdict_stdout="$cr_root/stdout.credentials-refusal.txt"
+    cr_verdict_stderr="$cr_root/stderr.credentials-refusal.txt"
+    cr_code="$refusal_code"
+    cr_verdict_is_run=0
+    return 0
+}
+
 run_scenario_body() {
     local script="$1"
     local relative="${script#"$here"/}"
@@ -2830,6 +2903,7 @@ run_scenario_body() {
     # be a way to reach the product without the clock.
     local scenario_product=""
     local events_refusal=""
+    local credentials_refusal=""
     local events_resume=""
     local step_verdict=""
     local failure_stage=""
@@ -2895,6 +2969,7 @@ scenario_prepare() {
             '//@ distribution '*)  distribution="${directive#//@ distribution }" ;;
             '//@ plugin-trust '*)  plugin_trust="${directive#//@ plugin-trust }" ;;
             '//@ events-refusal '*) events_refusal="${directive#//@ events-refusal }" ;;
+            '//@ credentials-refusal '*) credentials_refusal="${directive#//@ credentials-refusal }" ;;
             '//@ events-resume '*)  events_resume="${directive#//@ events-resume }" ;;
             '//@ step-verdict '*)   step_verdict="${directive#//@ step-verdict }" ;;
             '//@ failure-stage '*)  failure_stage="${directive#//@ failure-stage }" ;;
@@ -3310,7 +3385,7 @@ scenario_prepare() {
     # durable scenario writes lives in this directory, so the second execution
     # would find the first one's effect and read it as a repeat.
     run_volatile=1
-    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" || "$events_resume" != "" || "$step_verdict" != "" || "$run_state" != "" || "$recover" == 1 ]]; then
+    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" || "$events_resume" != "" || "$step_verdict" != "" || "$run_state" != "" || "$recover" == 1 || "$credentials_refusal" != "" ]]; then
         run_volatile=0
     fi
 
@@ -3843,6 +3918,14 @@ scenario_execute() {
         fi
     fi
 
+    if [[ "$credentials_refusal" != "" ]]; then
+        if ! check_credentials_refusal "$name" "$root" "$credentials_refusal" \
+            code verdict_stdout verdict_stderr verdict_is_run; then
+            phase_failed=1
+            return 0
+        fi
+    fi
+
     if [[ "$events_resume" != "" ]]; then
         # The scenario writes a history and the launcher acts as an EXTERNAL
         # client of it: it reads by cursor, cuts between pages — every page is
@@ -4199,6 +4282,8 @@ scenario_verify() {
         label="$name (cancel)"
     elif [[ "$events_refusal" != "" ]]; then
         label="$name (events-refusal)"
+    elif [[ "$credentials_refusal" != "" ]]; then
+        label="$name (credentials-refusal)"
     elif [[ "$events_resume" != "" ]]; then
         label="$name (events-resume)"
     elif [[ "$step_verdict" != "" ]]; then
@@ -4226,6 +4311,7 @@ scenario_verify() {
     if [[ "$cancel" == 1 ]]; then projections=$((projections + 1)); fi
     if [[ "$recover" == 1 ]]; then projections=$((projections + 1)); fi
     if [[ "$events_refusal" != "" ]]; then projections=$((projections + 1)); fi
+    if [[ "$credentials_refusal" != "" ]]; then projections=$((projections + 1)); fi
     if [[ "$events_resume" != "" ]]; then projections=$((projections + 1)); fi
     if [[ "$step_verdict" != "" ]]; then projections=$((projections + 1)); fi
     if [[ "$failure_stage" != "" ]]; then projections=$((projections + 1)); fi

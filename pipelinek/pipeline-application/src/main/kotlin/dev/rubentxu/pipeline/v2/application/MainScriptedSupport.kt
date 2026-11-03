@@ -86,7 +86,7 @@ internal fun runScriptedFrontend(
             // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
             // event store has to give them back before the process ends, and ending here would skip
             // that release. The branch that owns nothing turns the refusal into the exit.
-            throw CommandRefused(exitCode = 2)
+            throw CommandRefused(CliExit.InvalidArgument(message = outcome.message))
         }
     }
 }

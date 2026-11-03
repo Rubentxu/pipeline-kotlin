@@ -102,12 +102,12 @@ internal fun computeBundledPlugins(): List<String> {
             // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
             // event store has to give them back before the process ends, and ending here would skip
             // that release. The branch that owns nothing turns the refusal into the exit.
-            throw CommandRefused(exitCode = 2)
+            throw CommandRefused(CliExit.InvalidArgument(message = "the bundled plugin classpath is in conflict"))
         }
         is BundledPluginResolution.Rejected -> {
             System.err.println("Bundled plugin classpath rejected: ${resolution.reason}")
             if (resolution.cause != null) resolution.cause.printStackTrace(System.err)
-            throw CommandRefused(exitCode = 2)
+            throw CommandRefused(CliExit.InvalidArgument(message = "the bundled plugin classpath was rejected"))
         }
     }
 }
@@ -210,9 +210,9 @@ internal sealed interface PluginAdmission {
 
     /**
      * The admission was refused, the operator has been told why, and the caller ends the process
-     * with [exitCode].
+     * with the code the case owns.
      */
-    data class Refused(val exitCode: Int) : PluginAdmission
+    data class Refused(val exit: CliExit) : PluginAdmission
 }
 
 /**
@@ -271,7 +271,7 @@ internal fun admitThenCompose(
             val reason = outcome.rejection.toString()
             val detail = outcome.detail?.let { " — $it" }.orEmpty()
             System.err.println("Plugin admission refused for ${outcome.artifact}: $reason$detail")
-            PluginAdmission.Refused(exitCode = 2)
+            PluginAdmission.Refused(CliExit.INVALID_ARGUMENT)
         }
 
         is CompositionOutcome.UnattributedProvider -> {
@@ -281,12 +281,12 @@ internal fun admitThenCompose(
                 "Plugin admission refused: provider ${outcome.providerClass} could not be " +
                     "attributed to an artifact (${outcome.reason})",
             )
-            PluginAdmission.Refused(exitCode = 2)
+            PluginAdmission.Refused(CliExit.INVALID_ARGUMENT)
         }
 
         is CompositionOutcome.RuntimeVersionUnavailable -> {
             System.err.println("FATAL — ${outcome.detail}")
-            PluginAdmission.Refused(exitCode = 3)
+            PluginAdmission.Refused(CliExit.INCOMPATIBLE_VERSION)
         }
     }
     // A refusal is NOT a failed run: nothing ran. The span says so, so a trace

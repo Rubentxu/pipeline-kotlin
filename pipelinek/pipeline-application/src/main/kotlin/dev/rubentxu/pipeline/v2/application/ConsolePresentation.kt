@@ -34,7 +34,7 @@ object ConsolePresentation {
     ): Int = when (result) {
         is ObservationOutputRead.Refused -> {
             err.println(ConsoleReadService.renderRefusal(result.reason))
-            1
+            CliExit.PIPELINE_FAILED.code
         }
 
         is ObservationOutputRead.Page -> {
@@ -54,7 +54,7 @@ object ConsolePresentation {
                     if (moreFrames) {
                         err.println(ConsoleFramePlane.encodeFrameOrdinal(lastOrdinal))
                     }
-                    0
+                    CliExit.SUCCESS.code
                 }
                 MainConsoleCli.ConsoleFormat.JSONL -> {
                     java.io.OutputStreamWriter(out, StandardCharsets.UTF_8).use { writer ->
@@ -66,7 +66,7 @@ object ConsolePresentation {
                     if (moreFrames) {
                         err.println(ConsoleFramePlane.encodeFrameOrdinal(lastOrdinal))
                     }
-                    0
+                    CliExit.SUCCESS.code
                 }
             }
         }
@@ -93,7 +93,7 @@ object ConsolePresentation {
     ): Int = when (result) {
         is ObservationOutputRead.Refused -> {
             err.println(ConsoleReadService.renderRefusal(result.reason))
-            1
+            CliExit.PIPELINE_FAILED.code
         }
 
         is ObservationOutputRead.Page -> {
@@ -118,7 +118,7 @@ object ConsolePresentation {
                         // consumer back into the page it already has.
                         err.println(ConsoleFramePlane.encodeFrameOrdinal(page.lastOrdinal))
                     }
-                    0
+                    CliExit.SUCCESS.code
                 }
                 MainConsoleCli.ConsoleFormat.JSONL -> {
                     // Per-frame records: one jsonl line per real frame, in observation order.
@@ -138,7 +138,7 @@ object ConsolePresentation {
                         // delivered, which is where the next read continues from.
                         err.println(ConsoleFramePlane.encodeFrameOrdinal(page.lastOrdinal))
                     }
-                    0
+                    CliExit.SUCCESS.code
                 }
             }
         }
@@ -162,7 +162,7 @@ object ConsolePresentation {
     ): Int = when (result) {
         is ConsoleReadService.Result.Refused -> {
             err.println(ConsoleReadService.renderRefusal(result.reason))
-            1
+            CliExit.PIPELINE_FAILED.code
         }
         is ConsoleReadService.Result.Page -> {
             when (request.format) {
@@ -172,7 +172,7 @@ object ConsolePresentation {
                     out.write(result.page.bytes)
                     out.flush()
                     result.page.next?.let { err.println(it.encode()) }
-                    0
+                    CliExit.SUCCESS.code
                 }
                 MainConsoleCli.ConsoleFormat.JSONL -> emitJsonlPage(result.page, out, err)
             }
@@ -217,7 +217,7 @@ object ConsolePresentation {
         ObservationJsonLines.writeTo(listOf(record), writer)
         writer.flush()
         page.next?.let { err.println(it.encode()) }
-        return 0
+        return CliExit.SUCCESS.code
     }
 
     /**

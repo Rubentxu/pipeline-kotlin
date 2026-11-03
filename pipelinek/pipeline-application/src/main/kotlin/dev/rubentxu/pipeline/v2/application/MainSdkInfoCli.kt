@@ -38,7 +38,7 @@ object MainSdkInfoCli {
         when (admission) {
             is CliAdmission.Rejected -> {
                 System.err.println(admission.error.refusalLines("sdk-info").joinToString("\n"))
-                return 2
+                return CliExit.INVALID_ARGUMENT.code
             }
             is CliAdmission.Admitted -> Unit
         }
@@ -65,7 +65,7 @@ object MainSdkInfoCli {
             .encodeToString(JsonObject.serializer(), obj) + "\n"
         System.out.write(line.toByteArray(Charsets.UTF_8))
         System.out.flush()
-        return 0
+        return CliExit.SUCCESS.code
     }
 
     /** One SDK coordinate as exposed by the subcommand. */

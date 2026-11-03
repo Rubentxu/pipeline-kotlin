@@ -113,6 +113,47 @@ sealed interface CliExit {
         const val SCHEMA: String = "pipelinek.cli/1"
 
         /**
+         * The case that owns code 0.
+         *
+         * ## Why these are named and not spelled at every site
+         *
+         * A place that answers an exit used to write the NUMBER, and the number was a
+         * second copy of what the taxonomy already says. The copy could drift: the day
+         * [InvalidArgument] moved, every site that wrote `2` would keep the old
+         * number and a consumer that branches on it would read a refusal as something
+         * else.
+         *
+         * These names are the SAME cases the taxonomy declares, not new ones: the code
+         * still lives in the case, and this is the one place that says which case owns
+         * which code. A site that names a case reads the number from it, so the number
+         * can only move with the case that owns it.
+         */
+        internal val SUCCESS: CliExit = Success()
+
+        /** The case that owns code 1. */
+        internal val PIPELINE_FAILED: CliExit = PipelineFailed(message = "the command reported a failure")
+
+        /** The case that owns code 2. */
+        internal val INVALID_ARGUMENT: CliExit = InvalidArgument(message = "the request was not understood")
+
+        /** The case that owns code 3. */
+        internal val INCOMPATIBLE_VERSION: CliExit =
+            IncompatibleVersion(message = "the version this build needs is not available")
+
+        /** The case that owns code 4. */
+        internal val RUNTIME_NOT_AVAILABLE: CliExit = RuntimeNotAvailable(message = "this build cannot serve the request")
+
+        /** The case that owns code 5. */
+        internal val UNKNOWN_EXECUTION: CliExit = UnknownExecution(message = "the execution named is unknown")
+
+        /** The case that owns code 6. */
+        internal val READ_FAILURE: CliExit = ReadFailure(message = "the durable material could not be read")
+
+        /** The case that owns code 7. */
+        internal val INTEGRITY_VIOLATION: CliExit =
+            IntegrityViolation(message = "the durable material did not match its digest")
+
+        /**
          * Every case of this taxonomy, once.
          *
          * The codes are READ from the cases, never written here. A copy of the
@@ -120,14 +161,14 @@ sealed interface CliExit {
          * moved would leave the copy naming a number nobody owns.
          */
         private val CASES: List<CliExit> = listOf(
-            Success(),
-            PipelineFailed(message = "the command reported a failure"),
-            InvalidArgument(message = "the request was not understood"),
-            IncompatibleVersion(message = "the version this build needs is not available"),
-            RuntimeNotAvailable(message = "this build cannot serve the request"),
-            UnknownExecution(message = "the execution named is unknown"),
-            ReadFailure(message = "the durable material could not be read"),
-            IntegrityViolation(message = "the durable material did not match its digest"),
+            SUCCESS,
+            PIPELINE_FAILED,
+            INVALID_ARGUMENT,
+            INCOMPATIBLE_VERSION,
+            RUNTIME_NOT_AVAILABLE,
+            UNKNOWN_EXECUTION,
+            READ_FAILURE,
+            INTEGRITY_VIOLATION,
         )
 
         /**

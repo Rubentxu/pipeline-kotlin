@@ -248,7 +248,7 @@ fun main(args: Array<String>) {
         System.err.println(
             "Error: pipeline script not found or not readable: ${scriptPath.toAbsolutePath()}",
         )
-        System.exit(2)
+        System.exit(CliExit.INVALID_ARGUMENT.code)
         return
     }
 
@@ -263,7 +263,7 @@ fun main(args: Array<String>) {
             computeScriptClasspath(config.pluginJars)
         } catch (refused: CommandRefused) {
             // Validation holds nothing, so the refusal becomes the exit right here.
-            kotlin.system.exitProcess(refused.exitCode)
+            kotlin.system.exitProcess(refused.exit.code)
         }
         val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
         // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
@@ -315,7 +315,7 @@ fun main(args: Array<String>) {
                 else -> "the script produced no pipeline"
             }
             System.err.println("VALIDATION FAILED: $verdict")
-            System.exit(2)
+            System.exit(CliExit.INVALID_ARGUMENT.code)
         } else {
             System.err.println("VALIDATION SUCCESSFUL")
         }

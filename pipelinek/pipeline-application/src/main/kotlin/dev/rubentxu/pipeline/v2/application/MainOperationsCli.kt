@@ -169,7 +169,7 @@ internal object MainOperationsCli {
             is CliAdmission.Rejected -> {
                 System.err.println(admission.error.refusalLines("operations").joinToString("\n"))
                 System.err.println(USAGE)
-                return 2
+                return CliExit.INVALID_ARGUMENT.code
             }
             is CliAdmission.Admitted -> admission
         }
@@ -180,17 +180,17 @@ internal object MainOperationsCli {
         if (runId == null) {
             System.err.println("operations: a run id is required.")
             System.err.println(USAGE)
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         if (controlRoot.isNullOrBlank()) {
             System.err.println("operations: --control-root is required: the Output Plane lives under it.")
             System.err.println(USAGE)
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         if (format != "text" && format != "json") {
             System.err.println("operations: --format must be text or json.")
             System.err.println(USAGE)
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
 
         val store = OutputPlaneProvider.storeForReading(Path.of(controlRoot))
@@ -204,6 +204,6 @@ internal object MainOperationsCli {
             System.out.write(text(operations).toByteArray(Charsets.UTF_8))
         }
         System.out.flush()
-        return 0
+        return CliExit.SUCCESS.code
     }
 }

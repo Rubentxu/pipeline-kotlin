@@ -78,7 +78,7 @@ object MainObserveCli {
                 // which is not what the operator asked to read.
                 System.err.println(result.error.refusalLines("observe").joinToString("\n"))
                 System.err.println(USAGE)
-                return 2
+                return CliExit.INVALID_ARGUMENT.code
             }
         }
 
@@ -106,7 +106,7 @@ object MainObserveCli {
             else -> when (val admission = admitEventStore(dbPath, EventStorePurpose.Read)) {
                 is EventStoreAdmission.Refused -> {
                     System.err.println(admission.refusal.render())
-                    return 2
+                    return CliExit.INVALID_ARGUMENT.code
                 }
                 is EventStoreAdmission.Admitted -> EventLane.Open(admission.store)
             }
@@ -116,7 +116,7 @@ object MainObserveCli {
             ComposeLanes.forRequest(parsed, eventLane)
         } catch (e: java.io.IOException) {
             System.err.println("observe: cannot open a durable store: ${e.message}")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
 
         val outcome = if (parsed.follow) {
@@ -133,15 +133,15 @@ object MainObserveCli {
         }
         lanes.close()
         return when (outcome) {
-            is ObserveOutcome.Replayed -> 0
+            is ObserveOutcome.Replayed -> CliExit.SUCCESS.code
             // Every follow is a success: it returned because the run reached its terminal fact, or
             // because the consumer stopped it. The exit code says the READER succeeded; how the run
             // ended is on the run plane, and putting it in an exit code would make this verb a
             // second authority on the outcome.
-            is ObserveOutcome.Followed -> 0
+            is ObserveOutcome.Followed -> CliExit.SUCCESS.code
             is ObserveOutcome.Refused -> {
                 System.err.println("observe: ${outcome.reason}")
-                2
+                CliExit.INVALID_ARGUMENT.code
             }
         }
     }

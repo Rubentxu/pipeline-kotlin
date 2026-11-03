@@ -12,7 +12,6 @@ import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.events.DomainEvent
-import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
@@ -115,7 +114,7 @@ internal fun runDurablePipeline(
             )
         }
     } catch (refused: CommandRefused) {
-        refused.exitCode
+        refused.exit.code
     }
 
 /**
@@ -198,6 +197,15 @@ private fun runDurablePipelineOwned(
     // The need for the secret store is a fact about this RUN, and the run knows
     // it: the compiled script says, in its own declaration, whether it binds a
     // credential.
+    //
+    // The seam is composed BEFORE the plugin admission, and the in-memory
+    // branch composes it in the same place. The order decides WHICH refusal
+    // an operator sees when two things are wrong at once — a run that binds a
+    // credential whose passphrase is not at hand, and a plugin artifact that
+    // may not be admitted. Composing the seam first makes both worlds answer
+    // the same code for the same situation; with the admission first, the
+    // in-memory world answered 2 and this one answered 3, and the two worlds
+    // told the operator different stories about a single run.
     val credentials = composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec)
 
     // The legacy PipelineOrchestrator was constructed here but
@@ -214,7 +222,7 @@ private fun runDurablePipelineOwned(
     // store, and it gives them back before the process ends.
     val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry)) {
         is PluginAdmission.Admitted -> admission.composition
-        is PluginAdmission.Refused -> throw CommandRefused(admission.exitCode)
+        is PluginAdmission.Refused -> throw CommandRefused(admission.exit)
     }
     val composedStepRegistry = composition.steps
     // the workspace decision rule + the typed owner decision: the workspace origin is decided
@@ -339,7 +347,7 @@ private fun runDurablePipelineOwned(
     }
     val runOutcome = runOutcomeAndLastEvent.first
     val lastEvent = runOutcomeAndLastEvent.second
-    val exitFailure = durableRunFailed(runOutcome, lastEvent)
+    val exit = runExit(runOutcome, lastEvent)
     // SAGA: what happened to the Sagas of this run. It belongs in the verdict block, next
     // to the reason the run failed, because "the Saga settled" and "a human has to resolve
     // a pending obligation right now" are different worlds and the exit code cannot say
@@ -353,7 +361,7 @@ private fun runDurablePipelineOwned(
     // The exit code is a value the caller owns: only the caller ends the
     // process, and it does so after the scope has given back what the run
     // acquired.
-    return if (exitFailure) 1 else 0
+    return exit.code
 }
 
 /**
@@ -492,7 +500,7 @@ private fun selectDurableRunIdentity(
         // invocation/admission error, not a pipeline failure. Typed
         // rejection, no stack trace, exit 2 per the CLI exit contract.
         System.err.println("Error: ${e.message}")
-        throw CommandRefused(exitCode = 2)
+        throw CommandRefused(CliExit.InvalidArgument(message = e.message ?: "the run cannot be resumed"))
     }
     return DurableRunIdentity(runId = runSelection.runId.value, correlationId = pk1Correlation)
 }
@@ -521,10 +529,10 @@ private fun admitDurableEventStore(dbPath: String): DurableEventStores {
     val dbAdmission = admitEventStore(dbPath, EventStorePurpose.Produce)
     if (dbAdmission is EventStoreAdmission.Refused) {
         System.err.println(dbAdmission.refusal.render())
-        // The refusal is a value the caller turns into an exit code: the run
+        // The refusal is a value the caller turns into an exit: the run
         // may already own a lease and an event store, and the process must not
         // end while it holds them.
-        throw CommandRefused(exitCode = 2)
+        throw CommandRefused(CliExit.InvalidArgument(message = "the durable event store was refused"))
     }
     val rawEventStore = (dbAdmission as EventStoreAdmission.Admitted).store
     // The raw methods are read before anything wraps the store: the connection factory and the
@@ -548,7 +556,7 @@ private fun resolveDurableControlRoot(config: CliFlags, dbPath: String): Path =
             validateControlRoot(config.controlRoot)
         } catch (e: IllegalArgumentException) {
             System.err.println("Error: ${e.message}")
-            throw CommandRefused(exitCode = 2)
+            throw CommandRefused(CliExit.InvalidArgument(message = e.message ?: "the control root is not usable"))
         }
     } else {
         // The store's directory, made absolute. A relative `--db` has no parent component, and
@@ -557,7 +565,7 @@ private fun resolveDurableControlRoot(config: CliFlags, dbPath: String): Path =
         val storeDirectory = Paths.get(dbPath).toAbsolutePath().parent
         if (storeDirectory == null) {
             System.err.println("Error: the store path has no directory to hold it: ${dbPath}")
-            throw CommandRefused(exitCode = 2)
+            throw CommandRefused(CliExit.InvalidArgument(message = "the store path has no directory to hold it"))
         }
         storeDirectory.resolve("durable-shell")
     }
@@ -623,7 +631,7 @@ internal fun <S> acquireDurableLease(
                 "Error: cannot establish ownership of run $runId: " +
                     RunId.unnameableReason(runId),
             )
-            throw CommandRefused(exitCode = 2)
+            throw CommandRefused(CliExit.InvalidArgument(message = "the run id cannot name a durable directory"))
         }
     val lease = leaseStore.acquire(LeaseRequest(identity, runOwner))
     // SAGA / durable run: the fencing token of the lease THIS process holds. It is the epoch the
@@ -641,7 +649,7 @@ internal fun <S> acquireDurableLease(
                 "Error: run $runId is already owned by '${lease.heldBy.value}'; " +
                     "another process is publishing events for this run"
             )
-            throw CommandRefused(exitCode = 2)
+            throw CommandRefused(CliExit.InvalidArgument(message = "the run is already owned by another process"))
         }
         is LeaseAcquisition.Unverifiable -> {
             // Fail closed: a process that cannot prove it is the authority must
@@ -649,7 +657,7 @@ internal fun <S> acquireDurableLease(
             // operator response differs. The store is already owned by the
             // scope: no hand close on the way out.
             System.err.println("Error: cannot establish ownership of run $runId: ${lease.reason}")
-            throw CommandRefused(exitCode = 2)
+            throw CommandRefused(CliExit.InvalidArgument(message = "the ownership of the run could not be established"))
         }
     }
     return DurableLease(runOwner = runOwner, leaseEpoch = leaseEpoch)
@@ -763,7 +771,7 @@ private fun resolveScriptedFrontend(
                         // The source already compiled (host), so this is an internal
                         // invariant violation: fail closed, never fall back to eager.
                         System.err.println("Error: scripted source lowering failed: ${lowered.diagnostics}")
-                        throw CommandRefused(exitCode = 2)
+                        throw CommandRefused(CliExit.InvalidArgument(message = "the scripted source could not be lowered"))
                     }
                 }
             } else null
@@ -785,66 +793,16 @@ private fun resolveScriptedFrontend(
             when {
                 scriptedResult is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure -> {
                     System.err.println("Error: scripted frontend compilation failed: ${scriptedResult.diagnostics}")
-                    throw CommandRefused(exitCode = 2)
+                    throw CommandRefused(CliExit.InvalidArgument(message = "the scripted frontend did not compile"))
                 }
                 else -> when (val out = (scriptedResult as dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Success).output) {
                     is dev.rubentxu.pipeline.v2.scripting.ScriptEvaluationOutput.CompiledEntryPoint -> out.entryPoint
                     else -> {
                         System.err.println("Error: scripted frontend did not produce a compiled entry point")
-                        throw CommandRefused(exitCode = 2)
+                        throw CommandRefused(CliExit.InvalidArgument(message = "the scripted frontend did not produce a compiled entry point"))
                     }
                 }
             }
         }
     return ScriptedFrontend(artifact = artifact, entryPoint = entryPoint)
 }
-
-/**
- * says WHY the run failed, on the stream an operator is already reading.
- *
- * ## The defect this exists to end
- *
- * The exit decision has always been correct: a failure exits 1. But the exit carried
- * no reason. stderr said "Pipeline finished with FAILURE", the JSON envelope's
- * `RunFinished` carried an empty `diagnostics`, and the typed `PipelineFailure`
- * message went nowhere an operator could see it.
- *
- * That silence is not cosmetic — it is the reason three separate delivery defects
- * shipped: a Step refused at admission, refused at execute-time, and refused for a
- * missing network permission all produced **byte-identical** output. A user filing
- * that report could not have told them apart, and neither could triage.
- *
- * ## Why stderr and not the event stream
- *
- * The `RunFinished` event is a lifecycle bookend and its shape is a published
- * contract; widening it is a separate decision. stderr is where the outcome is
- * already summarised one line above, and where `--allow-network` and every other
- * operator-facing diagnostic already goes. A message that is emitted nowhere is a
- * message that does not exist, and this one is the difference between a bug report
- * and a fix.
- *
- * The message is printed as-is, with no prefix of its own: the failure kinds are
- * already typed, and re-labelling them here would create a second vocabulary.
- */
-/**
- * The exit decision of a durable run.
- *
- * When the coordinator ran, the typed outcome is the single authority for the
- * exit decision; the legacy event-based branch only covers compile-failure
- * paths where no definition was produced.
- */
-private fun durableRunFailed(runOutcome: RunOutcome?, lastEvent: DomainEvent?): Boolean =
-    if (runOutcome != null) {
-        reportRunOutcome(runOutcome)
-    } else {
-        // The LEGACY path: no typed outcome was produced, so there are only two stories —
-        // "it finished successfully" and "it did not". The "unstable" arm that used to live
-        // here was UNREACHABLE: the word it compared against could only be those two, so the
-        // arm could never run and only misled whoever read it.
-        val succeeded = lastEvent is RunFinished && lastEvent.outcome == RunOutcome.SUCCESS_TOKEN
-        if (succeeded) {
-            System.err.println("Pipeline finished with SUCCESS"); false
-        } else {
-            System.err.println("Pipeline finished with FAILURE"); true
-        }
-    }

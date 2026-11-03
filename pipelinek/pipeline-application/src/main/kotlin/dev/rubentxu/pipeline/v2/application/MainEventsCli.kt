@@ -208,7 +208,7 @@ object MainEventsCli {
         val parsed = CliEventsParser.parse(args)
         if (parsed is EventsCliParseResult.Rejected) {
             System.err.println("Error: ${parsed.reason}")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         val p = (parsed as EventsCliParseResult.Parsed).args
         return runWithArgs(p)
@@ -226,19 +226,19 @@ object MainEventsCli {
         val dbAdmission = admitEventStore(p.db, EventStorePurpose.Read)
         if (dbAdmission is EventStoreAdmission.Refused) {
             System.err.println(dbAdmission.refusal.render())
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         val cursor = p.afterCursor?.let { token ->
             EventCursor.decode(token) ?: run {
                 System.err.println("Error: invalid cursor token: $token")
-                return 2
+                return CliExit.INVALID_ARGUMENT.code
             }
         }
         // The token carries its run id precisely so it cannot be read as another run's position. A
         // cursor from run A applied to run B used to be accepted and would have skipped B's rows.
         if (cursor != null && cursor.runId != p.runId) {
             System.err.println("Error: cursor belongs to run '${cursor.runId}', not to '${p.runId}'")
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         val store = (dbAdmission as EventStoreAdmission.Admitted).store
         // The store's own answer about the run and the cursor, asked through the port that can
@@ -248,7 +248,7 @@ object MainEventsCli {
         // something that is not there".
         admitEventRead(store, p.runId, cursor)?.let { refusal ->
             System.err.println(refusal.render())
-            return 2
+            return CliExit.INVALID_ARGUMENT.code
         }
         try {
             val reader = EventHistoryReader(store)
@@ -262,7 +262,7 @@ object MainEventsCli {
                                 System.err.println(
                                     "Error: cannot parse subject ref: ${p.subjectCanonical}",
                                 )
-                                return 2
+                                return CliExit.INVALID_ARGUMENT.code
                             },
                     )
                 else -> EventQuery.All
@@ -577,10 +577,10 @@ object MainEventsCli {
      * ```
 */
     internal fun exitCodeFor(outcome: EventPageDrain.Outcome): Int = when (outcome) {
-        is EventPageDrain.Outcome.Answered -> 0
+        is EventPageDrain.Outcome.Answered -> CliExit.SUCCESS.code
         // The stall is reported on stderr (evt-stalled-v1:...); the process still completed an
         // observation and must not be read as a failure by a caller that only looks at the status.
-        is EventPageDrain.Outcome.Stalled -> 0
+        is EventPageDrain.Outcome.Stalled -> CliExit.SUCCESS.code
     }
 
     /**
@@ -597,10 +597,10 @@ object MainEventsCli {
      * A change to one that is not mirrored in the other is a defect in the contract, not in the code.
 */
     internal fun typedExitCodeFor(outcome: EventPageDrain.TypedOutcome): Int = when (outcome) {
-        is EventPageDrain.TypedOutcome.Answered -> 0
+        is EventPageDrain.TypedOutcome.Answered -> CliExit.SUCCESS.code
         // Same reasoning as the envelope branch: the stall is named on stderr as `evt-stalled-v1:...`
         // and the observation still completed, so a status-only consumer must not read it as failure.
-        is EventPageDrain.TypedOutcome.Stalled -> 0
+        is EventPageDrain.TypedOutcome.Stalled -> CliExit.SUCCESS.code
     }
 
     /** One line per refusal, then a count, so "were there any" is a single-token question. */

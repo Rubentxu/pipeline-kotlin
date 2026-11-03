@@ -505,7 +505,7 @@ print_cost_breakdown() {
         printf '    cost census: nothing was measured\n'
         return 0
     fi
-    printf '    cost census (milliseconds; a part is the work it did -- a part that ran in parallel is the SUM of its pieces, which is more than the clock of the stage that ran them):\n'
+    printf '    cost census (milliseconds; a part is the work it did -- a part that ran in parallel is the SUM of the durations of its pieces, so it is NOT a wall clock and must not be compared with one):\n'
     for key in "${component_order[@]}"; do
         printf '      %-24s %9d ms  %s\n' \
             "$key" "${component_ms[$key]}" "${component_note[$key]}"
@@ -540,9 +540,9 @@ require_relocation_probe() {
 # Which part of the build a task belongs to. The first match wins, and the
 # order matters three times over: the static analysis of the test sources is
 # part of the analysis and not part of the tests; the compilation of the test
-# sources is reported apart from the tests themselves, because the two land in
-# different stages and one bucket for both would hide which of them is the
-# expensive half; and the test tasks are what "the cost of the tests" means.
+# sources is reported apart from the tests themselves, because one bucket for
+# both would hide which of them is the expensive half; and the test tasks are
+# what "the cost of the tests" means.
 task_category() {
     case "$1" in
         *detekt*)                                         printf 'static' ;;
@@ -588,7 +588,7 @@ read_timings() {
         fail "$label: the timing lines carry no readable duration"
     fi
     if (( slowest_ms > stage_ms )); then
-        fail "$label: a task took ${slowest_ms}ms, more than the ${stage_ms}ms of the stage that ran it"
+        fail "$label: a task took ${slowest_ms}ms, more than the ${stage_ms}ms of the invocation that ran it"
     fi
     printf '    %s: %d task(s) timed, the slowest %s at %dms\n' \
         "$label" "$n" "$slowest" "$slowest_ms"
@@ -1292,6 +1292,97 @@ else
 fi
 prep_wall_ms=$(( $(now_ms) - prep_started_ms ))
 
+# The one Gradle invocation of this run, and the stage whose window holds it.
+# The build and the unit tests travel TOGETHER when both stages are wanted,
+# and a work that travels together has ONE clock: the invocation's. These
+# three variables are the only place that clock is kept, so a reader never
+# finds two clocks for the same work.
+gradle_invocation_wall_ms=0
+gradle_invocation_holder=""
+gradle_invocation_label=""
+unit_tests_in_stage1=0
+
+# The modules that have a unit test, and the Gradle tasks that run them.
+#
+# The discovery is ONCE per run, in the place that owns the invocation that
+# carries the tasks: stage 1 when the two stages share an invocation, stage 2
+# when they do not. It reads the tree and nothing else, so the answer is the
+# same whichever stage asks first.
+unit_tasks_discovered=0
+modules_with_tests=()
+tasks=()
+selected=()
+gradle_args=()
+discover_unit_tasks() {
+    [[ "$unit_tasks_discovered" == 1 ]] && return 0
+    unit_tasks_discovered=1
+    modules_with_tests=()
+    while IFS= read -r kt; do
+        mod="${kt%%/src/test/*}"
+        modules_with_tests+=("$mod")
+    done < <(find pipelinek -path '*/src/test/*' -name '*.kt' -not -path '*/build/*' | LC_ALL=C sort | awk -F'/src/test/' '!seen[$1]++')
+    tasks=()
+    selected=()
+    # No module has a unit test. That is a fact about the tree, and the caller
+    # says it out loud; there is no test task to carry.
+    if [[ ${#modules_with_tests[@]} -eq 0 ]]; then
+        gradle_args=()
+        return 0
+    fi
+    # `find pipelinek ...` yields paths relative to the repository root, so a module
+    # reads `pipelinek/pipeline-domain`. Gradle is invoked with `-p pipelinek`, which makes
+    # `pipelinek` the Gradle ROOT rather than a project segment, so its project path is
+    # `:pipeline-domain` -- not `:pipelinek/pipeline-domain`. Prefixing the find output
+    # verbatim made every task path unresolvable, and the stage failed with
+    # "Cannot locate tasks that match ':pipelinek/pipeline-domain:test'" before running
+    # a single test. The unit tests had therefore never executed through this gate.
+    # A NESTED module needs the other half of the translation: settings.gradle.kts
+    # declares `:pipeline-step-sdk:runtime`, with a colon, while the directory is
+    # `pipeline-step-sdk/runtime`, with a slash. Stripping only the `pipelinek/` prefix
+    # therefore resolved the flat modules and failed on the first nested one with
+    # "Cannot locate tasks that match ':pipeline-step-sdk/runtime:test' as project
+    # 'pipeline-step-sdk/runtime' not found". Gradle aborted the whole stage, so
+    # the flat modules ran and the nested ones never did -- and the census that
+    # follows could not have reported it, because the stage had already exited.
+    for m in "${modules_with_tests[@]}"; do
+        gradle_path="${m#pipelinek/}"
+        gradle_path="${gradle_path//\//:}"
+        module_selected ":${gradle_path}" || continue
+        tasks+=(":${gradle_path}:test")
+        selected+=("$m")
+    done
+    # A module filter that excluded every module would otherwise run an empty
+    # task list and report SUCCESS, which is the same silent green stage 2 exists
+    # to prevent -- reached now through a filter instead of through an empty
+    # source set. Selecting nothing is a mistake in the invocation, so it says so.
+    if [[ ${#tasks[@]} -eq 0 ]]; then
+        echo "verify-all: --module '$module_filter' matched none of the ${#modules_with_tests[@]}" >&2
+        echo "module(s) that have a unit test:" >&2
+        for m in "${modules_with_tests[@]}"; do
+            echo "  $(gradle_path_of "$m")" >&2
+        done
+        fail "the module filter selected nothing"
+    fi
+    modules_with_tests=("${selected[@]}")
+    printf '    %s\n' "${modules_with_tests[@]}" | sed 's/^/    module: /'
+    # `--tests` narrows which classes the Test tasks execute. It is appended per
+    # task, because Gradle binds `--tests` to the task named before it; a single
+    # trailing flag applies to the last task only, which is the same
+    # "the filter applied to one module" bug as a census scoped to a guess.
+    # Every task carries its own filters right after it, so when the test tasks
+    # travel in the same invocation as the tasks of the build, each filter still
+    # binds to the test task it belongs to.
+    gradle_args=()
+    if [[ ${#test_filters[@]} -gt 0 ]]; then
+        for t in "${tasks[@]}"; do
+            gradle_args+=("$t")
+            for p in "${test_filters[@]}"; do gradle_args+=(--tests "$p"); done
+        done
+    else
+        gradle_args=("${tasks[@]}")
+    fi
+}
+
 # --- Stage 1: the checks that read the tree, then the build ------------------
 # The stage runs four checks that read ONLY the tree, and only then the Gradle
 # invocation that builds the product and analyses it. The order is the point,
@@ -1652,7 +1743,50 @@ JSON
     # distribution". It travels, inside the application's `lib/`. What it is not
     # is a PUBLISHED SDK artifact — an external consumer compiles against the
     # ports in `:pipeline-runtime-api`, never against these adapters.
-    log "stage 1h/4  compile + detekt + detektTest + apiCheck + installDist"
+    # The build and the unit tests travel in ONE invocation when both stages
+    # are wanted. Two invocations paid twice for things that happen once: the
+    # configuration of the build, the moment the tests could begin, and the
+    # wait that one stage imposed on the other. With a single invocation
+    # Gradle can compile a module and start its tests while the static
+    # analysis of another module is still running.
+    #
+    # The clock of that work is ONE clock, and it is the invocation's. The
+    # stages do not have two: the invocation's clock is printed on its own
+    # line, and the stage that holds it prints only its own work.
+    gradle_build_tasks=(
+        detektMain
+        detektTest
+        apiCheck
+        :pipeline-runtime:compileKotlin
+        :pipeline-application:installDist
+    )
+    if want_stage 2; then
+        log "stage 1h+2/4  ONE Gradle invocation: compile + detekt + detektTest + apiCheck + installDist + the permanent unit tests"
+        discover_unit_tasks
+        gradle_build_tasks+=("${gradle_args[@]}")
+        gradle_invocation_label="stage 1h+2"
+        unit_tests_in_stage1=1
+        # The instant the tests are asked for, so each report can be attributed
+        # to THIS run or to an up-to-date task Gradle legitimately reused.
+        # Cached test results are correct evidence -- the inputs did not change
+        # -- but calling them "executed" reports a number this invocation did
+        # not earn, and it made 505 tests read as a 17s stage when 36 of them
+        # came from the cache. The count is therefore split: how many reports
+        # this run rewrote, and how many it read.
+        #
+        # The instant is kept in MILLISECONDS because the attribution below is
+        # made against a report's own timestamp, which carries milliseconds too.
+        # Whole seconds would leave a one-second window in which a report
+        # written by the PREVIOUS invocation is indistinguishable from one
+        # written by this one. The whole-second form is kept too, because the
+        # mtime is read in seconds and the two witnesses are compared with each
+        # other below.
+        test_run_started_ms=$(date +%s%3N)
+        test_run_started_s=$(date +%s)
+    else
+        log "stage 1h/4  compile + detekt + detektTest + apiCheck + installDist"
+        gradle_invocation_label="stage 1h"
+    fi
     stage_started_at=$(date +%s)
     # The per-task clock rides along with the build. Without it this stage has
     # ONE number for four different works, and the reader cannot tell which of
@@ -1663,15 +1797,13 @@ JSON
     build_started_ms=$(now_ms)
     ./pipelinek/gradlew -p pipelinek --init-script "$timing_probe" \
         --init-script "$relocation_probe" "${gradle_cache_args[@]}" \
-        detektMain \
-        detektTest \
-        apiCheck \
-        :pipeline-runtime:compileKotlin \
-        :pipeline-application:installDist \
+        "${gradle_build_tasks[@]}" \
         > "$log_dir/stage1.log" 2>&1 \
-        || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1h (the tail of the stage log is above)"; }
+        || { tail -40 "$log_dir/stage1.log" >&2; fail "$gradle_invocation_label (the tail of the stage log is above)"; }
     build_wall_ms=$(( $(now_ms) - build_started_ms ))
-    read_timings "$log_dir/stage1.log" "$build_wall_ms" "stage 1h"
+    gradle_invocation_wall_ms=$build_wall_ms
+    gradle_invocation_holder="stage 1"
+    read_timings "$log_dir/stage1.log" "$gradle_invocation_wall_ms" "$gradle_invocation_label"
     # The four works this stage does are what the gate exists to certify, so
     # each one is a part the census declares mandatory: if the clock did not
     # measure it, the census is incomplete and the run is not a green gate.
@@ -1834,101 +1966,61 @@ xml_read_tests=0
 
 stage2_started_ms=$(now_ms)
 if want_stage 2; then
-log "stage 2/4  permanent unit tests"
+if [[ "$unit_tests_in_stage1" == 1 ]]; then
+    log "stage 2/4  the permanent unit tests ran in the invocation of stage 1; this stage reads their evidence"
+else
+    log "stage 2/4  permanent unit tests"
+fi
 stage_started_at=$(date +%s)
 
-modules_with_tests=()
-while IFS= read -r kt; do
-    mod="${kt%%/src/test/*}"
-    modules_with_tests+=("$mod")
-done < <(find pipelinek -path '*/src/test/*' -name '*.kt' -not -path '*/build/*' | LC_ALL=C sort | awk -F'/src/test/' '!seen[$1]++')
+# The unit tests and the build travel in ONE invocation when both stages are
+# wanted. The discovery and the invocation happened in the place that owns
+# them -- stage 1, when the two stages share an invocation -- and this stage
+# reads the evidence they left. The discovery is a no-op the second time: it
+# already ran, and the tree it read has not changed.
+discover_unit_tasks
 if [[ ${#modules_with_tests[@]} -eq 0 ]]; then
     echo "    no module has a unit test yet; nothing to run (NOT_RUN, not PASS)"
 else
-    tasks=()
-    selected=()
-    # `find pipelinek ...` yields paths relative to the repository root, so a module
-    # reads `pipelinek/pipeline-domain`. Gradle is invoked with `-p pipelinek`, which makes
-    # `pipelinek` the Gradle ROOT rather than a project segment, so its project path is
-    # `:pipeline-domain` -- not `:pipelinek/pipeline-domain`. Prefixing the find output
-    # verbatim made every task path unresolvable, and the stage failed with
-    # "Cannot locate tasks that match ':pipelinek/pipeline-domain:test'" before running
-    # a single test. The unit tests had therefore never executed through this gate.
-    # A NESTED module needs the other half of the translation: settings.gradle.kts
-    # declares `:pipeline-step-sdk:runtime`, with a colon, while the directory is
-    # `pipeline-step-sdk/runtime`, with a slash. Stripping only the `pipelinek/` prefix
-    # therefore resolved the flat modules and failed on the first nested one with
-    # "Cannot locate tasks that match ':pipeline-step-sdk/runtime:test' as project
-    # 'pipeline-step-sdk/runtime' not found". Gradle aborted the whole stage, so
-    # the flat modules ran and the nested ones never did -- and the census that
-    # follows could not have reported it, because the stage had already exited.
-    for m in "${modules_with_tests[@]}"; do
-        gradle_path="${m#pipelinek/}"
-        gradle_path="${gradle_path//\//:}"
-        module_selected ":${gradle_path}" || continue
-        tasks+=(":${gradle_path}:test")
-        selected+=("$m")
-    done
-    # A module filter that excluded every module would otherwise run an empty
-    # task list and report SUCCESS, which is the same silent green stage 2 exists
-    # to prevent -- reached now through a filter instead of through an empty
-    # source set. Selecting nothing is a mistake in the invocation, so it says so.
-    if [[ ${#tasks[@]} -eq 0 ]]; then
-        echo "verify-all: --module '$module_filter' matched none of the ${#modules_with_tests[@]}" >&2
-        echo "module(s) that have a unit test:" >&2
-        for m in "${modules_with_tests[@]}"; do
-            echo "  $(gradle_path_of "$m")" >&2
-        done
-        fail "stage 2: the module filter selected nothing"
+    if [[ "$unit_tests_in_stage1" != 1 ]]; then
+        # The instant the tests are asked for, so each report can be attributed
+        # to THIS run or to an up-to-date task Gradle legitimately reused.
+        # Cached test results are correct evidence -- the inputs did not change
+        # -- but calling them "executed" reports a number this invocation did
+        # not earn, and it made 505 tests read as a 17s stage when 36 of them
+        # came from the cache. The count is therefore split: how many reports
+        # this run rewrote, and how many it read.
+        #
+        # The instant is kept in MILLISECONDS because the attribution below is
+        # made against a report's own timestamp, which carries milliseconds too.
+        # Whole seconds would leave a one-second window in which a report
+        # written by the PREVIOUS invocation is indistinguishable from one
+        # written by this one. The whole-second form is kept too, because the
+        # mtime is read in seconds and the two witnesses are compared with each
+        # other below.
+        test_run_started_ms=$(date +%s%3N)
+        test_run_started_s=$(date +%s)
+        # The per-task clock rides along here too. The unit tests are the part
+        # of the build a reader most wants to weigh against the scenarios, and
+        # the stage clock alone cannot say how much of it was the tests and how
+        # much was the compilation of the sources the tests exercise.
+        require_timing_probe
+        # The workers that run the tests are the ones that inherit the temporary
+        # directory of the run: they are the ones that create the product's own
+        # temporaries, and without the relocation their residue lands in the
+        # shared directory of the machine, where nobody owns it.
+        require_relocation_probe
+        unit_started_ms=$(now_ms)
+        ./pipelinek/gradlew -p pipelinek --init-script "$timing_probe" \
+            --init-script "$relocation_probe" "${gradle_cache_args[@]}" "${gradle_args[@]}" \
+            > "$log_dir/stage2.log" 2>&1 \
+            || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (the tail of the stage log is above)"; }
+        unit_wall_ms=$(( $(now_ms) - unit_started_ms ))
+        gradle_invocation_wall_ms=$unit_wall_ms
+        gradle_invocation_holder="stage 2"
+        gradle_invocation_label="stage 2"
+        read_timings "$log_dir/stage2.log" "$unit_wall_ms" "stage 2"
     fi
-    modules_with_tests=("${selected[@]}")
-    printf '    %s\n' "${modules_with_tests[@]}" | sed 's/^/    module: /'
-    # The instant the tests are asked for, so each report can be attributed to
-    # THIS run or to an up-to-date task Gradle legitimately reused. Cached test
-    # results are correct evidence -- the inputs did not change -- but calling
-    # them "executed" reports a number this invocation did not earn, and it made
-    # 505 tests read as a 17s stage when 36 of them came from the cache. The
-    # count is therefore split: how many reports this run rewrote, and how many
-    # it read.
-    #
-    # The instant is kept in MILLISECONDS because the attribution below is made
-    # against a report's own timestamp, which carries milliseconds too. Whole
-    # seconds would leave a one-second window in which a report written by the
-    # PREVIOUS invocation is indistinguishable from one written by this one.
-    # The whole-second form is kept too, because the mtime is read in seconds
-    # and the two witnesses are compared with each other below.
-    test_run_started_ms=$(date +%s%3N)
-    test_run_started_s=$(date +%s)
-    # `--tests` narrows which classes the Test tasks execute. It is appended per
-    # task, because Gradle binds `--tests` to the task named before it; a single
-    # trailing flag applies to the last task only, which is the same
-    # "the filter applied to one module" bug as a census scoped to a guess.
-    gradle_args=()
-    if [[ ${#test_filters[@]} -gt 0 ]]; then
-        for t in "${tasks[@]}"; do
-            gradle_args+=("$t")
-            for p in "${test_filters[@]}"; do gradle_args+=(--tests "$p"); done
-        done
-    else
-        gradle_args=("${tasks[@]}")
-    fi
-    # The per-task clock rides along here too. The unit tests are the part of
-    # the build a reader most wants to weigh against the scenarios, and the
-    # stage clock alone cannot say how much of it was the tests and how much
-    # was the compilation of the sources the tests exercise.
-    require_timing_probe
-    # The workers that run the tests are the ones that inherit the temporary
-    # directory of the run: they are the ones that create the product's own
-    # temporaries, and without the relocation their residue lands in the
-    # shared directory of the machine, where nobody owns it.
-    require_relocation_probe
-    unit_started_ms=$(now_ms)
-    ./pipelinek/gradlew -p pipelinek --init-script "$timing_probe" \
-        --init-script "$relocation_probe" "${gradle_cache_args[@]}" "${gradle_args[@]}" \
-        > "$log_dir/stage2.log" 2>&1 \
-        || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (the tail of the stage log is above)"; }
-    unit_wall_ms=$(( $(now_ms) - unit_started_ms ))
-    read_timings "$log_dir/stage2.log" "$unit_wall_ms" "stage 2"
     component_require "build:unit" "the permanent unit tests are part of the build"
     # Gradle's exit status is not the result. A Test task can report success
     # with its classes skipped or absent, so the executed/failed/skipped counts
@@ -2648,6 +2740,23 @@ printf '      %-24s %9d ms\n' "the whole run" "$total_ms"
 if (( sequential_ms > total_ms )); then
     echo "verify-all: the stages took ${sequential_ms}ms together, more than the ${total_ms}ms of the run that held them." >&2
     fail "stage 4: the sequential clocks do not fit inside the wall clock"
+fi
+
+# ONE clock for the whole of Gradle's work. When the build and the permanent
+# unit tests travel in the SAME invocation, that work has ONE wall clock, not
+# two, and it lives inside the window of the stage that holds it. The sum
+# above therefore counts it once, and that sum still fits inside the run.
+if [[ -n "$gradle_invocation_label" ]]; then
+    printf '    the ONE Gradle invocation (%s) and its ONE wall clock:\n' "$gradle_invocation_label"
+    printf '      %-24s %9d ms\n' "gradle (wall clock)" "$gradle_invocation_wall_ms"
+    printf '      %-24s %s\n' "counted inside" "$gradle_invocation_holder"
+    if [[ "$unit_tests_in_stage1" == 1 ]]; then
+        echo "    stage 2 did not run Gradle: the permanent unit tests traveled in that"
+        echo "    same invocation, so stage 2 only read the evidence it left behind."
+    fi
+    echo "    the parts of the cost census that come from it are SUMS of the durations of"
+    echo "    tasks that ran in parallel inside that one invocation, so they are NOT clocks"
+    echo "    and must not be compared with one."
 fi
 
 # A part the gate declared mandatory and did not measure is a hole in the

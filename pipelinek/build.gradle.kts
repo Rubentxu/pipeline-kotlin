@@ -893,4 +893,30 @@ project(":pipeline-application").pluginManager.withPlugin("org.jetbrains.kotlin.
             .withPropertyName("externalExamplePlugins")
             .withPathSensitivity(PathSensitivity.RELATIVE)
     }
+    // The test task of the application consumes the SAME four JARs, because
+    // `runtimeOnly` is inherited by `testRuntimeOnly`: the JARs are on the
+    // runtime classpath of the tests as well. The dependency on the task that
+    // produces them is therefore just as real here as it is for the
+    // distribution tasks above.
+    //
+    // It was NOT declared, and nothing noticed. The gate used to run the tests
+    // in an invocation of their own, where the producer of the JARs was not in
+    // the graph, so the undeclared dependency stayed invisible: the JARs were
+    // already on disk, left there by the invocation of the build, and the
+    // tests found them. ONE invocation that carries the build AND the tests
+    // puts the producer and the consumer in the same graph, and Gradle refuses
+    // to run them: "Task ':pipeline-application:test' uses this output of task
+    // ':buildExamplePlugins' without declaring an explicit or implicit
+    // dependency". The dependency is declared here, which is what the ordering
+    // needed in the first place: without it the tests could start before the
+    // JARs existed.
+    //
+    // The staged copies in `lib/` are NOT declared as inputs of the test task.
+    // The tests read the originals, which are the output of
+    // `:buildExamplePlugins`; the staged copies are the output of
+    // `:pipeline-application:installDist`, and declaring them here would trade
+    // one undeclared dependency for another.
+    appProject.tasks.matching { it.name == "test" }.configureEach {
+        dependsOn(":buildExamplePlugins")
+    }
 }

@@ -99,6 +99,7 @@ e2e_not_run=0
 e2e_stage3_ran=0
 e2e_observed=""
 e2e_executed=""
+e2e_launches=""
 e2e_scope="full"
 receipt_state="NOT_RUN"
 diagnostics_path=""
@@ -2072,6 +2073,23 @@ tasks_suffix() {
     printf '  tasks=executed:%s cached:%s' "$task_executed_total" "$task_no_work_total"
 }
 
+# What the E2E stage COST in launches of the product. It travels with the
+# verdict line for the same reason the test census does: the seconds on the
+# line are the same whether the product was started 50 times or 500, and a
+# reader comparing two runs needs to know which one paid for the work.
+#
+#   <n>      the launches of the product the E2E stage made.
+#
+# A run that never ran the E2E stage says NOT_RUN instead of staying silent,
+# because a silent field reads like a zero.
+jvm_suffix() {
+    if [[ -z "$e2e_launches" ]]; then
+        printf '  jvm=NOT_RUN'
+        return 0
+    fi
+    printf '  jvm=%s' "$e2e_launches"
+}
+
 # Everything the run observed, as ONE argument.
 #
 # These used to travel as separate `%s` in the verdict format, and that is how a
@@ -2081,8 +2099,9 @@ tasks_suffix() {
 # unrepresentable -- one string, one `%s` -- and each field keeps saying NOT_RUN
 # rather than going quiet when its stage was skipped.
 evidence_suffixes() {
-    printf '%s%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
-        "$(receipt_suffix)" "$(residue_suffix)" "$(components_suffix)" "$(tasks_suffix)"
+    printf '%s%s%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
+        "$(jvm_suffix)" "$(receipt_suffix)" "$(residue_suffix)" "$(components_suffix)" \
+        "$(tasks_suffix)"
 }
 
 stage3_started_ms=$(now_ms)
@@ -2148,6 +2167,17 @@ fi
 stage3_cache="$(grep -aE '^script cache: ' "$log_dir/stage3.log" || true)"
 if [[ -n "$stage3_cache" ]]; then
     printf '    %s\n' "$stage3_cache"
+fi
+
+# What the E2E stage COST in launches of the product. Every invocation of the
+# binary is one JVM, and the launcher counts them; the gate carries the count
+# to the verdict line, because a cost nobody can see is a cost nobody can
+# reduce. The number is the WHOLE census: the per-verb breakdown stays in the
+# launcher's own report, where a reader can act on it.
+stage3_launches="$(grep -aE '^product launches: ' "$log_dir/stage3.log" || true)"
+if [[ -n "$stage3_launches" ]]; then
+    printf '    %s\n' "$stage3_launches"
+    e2e_launches="$(sed -nE 's/^product launches: ([0-9]+).*/\1/p' <<<"$stage3_launches")"
 fi
 
 # What the E2E stage COST, per scenario. The launcher measures every scenario
@@ -2309,12 +2339,22 @@ if [[ ! -f "$receipt_file" ]]; then
     echo "  carries a secret; either way there is no account of this cycle to read." >&2
     fail_with_verdict "stage 3: the E2E receipt is absent"
 fi
+# The census the launcher published is handed to the reader, so that the
+# receipt and the verdict line are checked against each other: the number on
+# the verdict line and the number the receipt carries are the same fact told
+# twice, and a reader that trusts one of them has to be able to check the
+# other.
+launch_check_args=()
+if [[ -n "$e2e_launches" ]]; then
+    launch_check_args+=(--launches "$e2e_launches")
+fi
 if python3 scripts/check-e2e-receipt.py check \
         --receipt "$receipt_file" \
         --census "$cycle_dir/planned-scenarios.txt" \
         --expected-sha "$gate_content_sha" \
         --expected-head "$gate_head_sha" \
         --expected-identity "$gate_content_kind" \
+        "${launch_check_args[@]}" \
         --product "$receipt_product"; then
     receipt_state="ok"
 else

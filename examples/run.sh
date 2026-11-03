@@ -250,6 +250,47 @@ cycle_root="$(mktemp -d "$cycle_base/pipelinek-e2e-XXXXXXXX")"
 receipt_rows_file="$cycle_root/receipt.rows"
 : > "$receipt_rows_file"
 
+# The launches of the product, counted.
+#
+# The suite costs one JVM per invocation of the product, and the cost has to be
+# something a reader can SEE: a number nobody can name is a number nobody can
+# reduce. The count is therefore published, per verb and in total, in the
+# launcher's report and in the receipt.
+#
+# It is kept in a FILE and not in a variable because the product is reached
+# from processes that are not this one: the generated entry point below is a
+# separate script, and a shell variable it cannot see would count nothing.
+# The append is one short write to a file opened for append, which the kernel
+# serialises, so two scenarios counting at the same time cannot lose one
+# another's launch.
+#
+# The counter is an instrument, and an instrument that breaks the thing it
+# measures is worse than no instrument: a failure to count is swallowed, and
+# the count that reaches the report is the count that happened.
+product_launches_file="$cycle_root/product-launches.log"
+: > "$product_launches_file"
+
+note_product_launch() {
+    printf '%s\n' "${1:-unknown}" >> "$product_launches_file" || true
+}
+
+# The census of the launches: how many times the product was invoked, per verb
+# and in total.
+#
+# ONE computation, TWO readers: the report at the end of the cycle and the
+# receipt. A census computed twice is a census that can disagree with itself,
+# and a receipt that counts the launches differently from the report is a
+# receipt nobody can reconcile with the run it describes.
+product_launch_total=""
+product_launch_verbs=""
+product_launch_census() {
+    product_launch_total="$(wc -l < "$product_launches_file" 2>/dev/null | tr -d ' ')"
+    product_launch_total="${product_launch_total:-0}"
+    product_launch_verbs="$(sort "$product_launches_file" 2>/dev/null | uniq -c | sort -rn \
+        | awk '{ printf "%s=%s ", $2, $1 }')"
+    product_launch_verbs="${product_launch_verbs% }"
+}
+
 # The passphrase of the machine's credential store. It is declared HERE, empty,
 # because the receipt's leak guard reads it and the guard runs from the exit
 # trap: a run that dies before the store was seeded has no secret to leak, and
@@ -322,8 +363,14 @@ write_receipt() {
         printf 'run.sh: the receipt was NOT written: %s could not be created\n' "$out_dir" >&2
         return 0
     fi
+    # The census is taken HERE, once, and handed to the writer. The receipt
+    # publishes the launches of the cycle it describes, and the report at the
+    # end of the cycle publishes the same census: two readers, one number.
+    product_launch_census
     if ! PIPELINEK_RECEIPT_ROWS="$receipt_rows_file" \
         PIPELINEK_RECEIPT_OUT="$receipt_path" \
+        PIPELINEK_RECEIPT_LAUNCH_TOTAL="$product_launch_total" \
+        PIPELINEK_RECEIPT_LAUNCH_VERBS="$product_launch_verbs" \
         PIPELINEK_RECEIPT_SHA="${PIPELINEK_E2E_SHA:-}" \
         PIPELINEK_RECEIPT_HEAD="${PIPELINEK_E2E_HEAD:-}" \
         PIPELINEK_RECEIPT_IDENTITY="${PIPELINEK_E2E_IDENTITY:-unknown}" \
@@ -369,6 +416,19 @@ def number(name):
         return int(raw)
     except ValueError:
         return 0
+
+
+def launch_by_verb():
+    # The census the launcher took, rendered as a map. The launcher computed
+    # it once and handed it over as pairs, so the receipt does not count the
+    # launches a second time: two counters of the same launches are two
+    # numbers that can disagree.
+    counts = {}
+    for item in text("PIPELINEK_RECEIPT_LAUNCH_VERBS", "").split():
+        name, _, count = item.partition("=")
+        if name:
+            counts[name] = int(count) if count.isdigit() else 0
+    return counts
 
 
 scenarios = {}
@@ -493,6 +553,20 @@ document = {
         "unstable": number("PIPELINEK_RECEIPT_UNSTABLE"),
         "seeded": number("PIPELINEK_RECEIPT_SEEDED"),
         "durableReruns": number("PIPELINEK_RECEIPT_DURABLE"),
+    },
+    # The launches of the product, per verb and in total.
+    #
+    # This is NOT the population above. `executions` counts the pipeline
+    # executions the ledger recorded; this counts every invocation of the
+    # binary, INCLUDING the reads a consumer makes once the run is over
+    # (`operations`, `console`, `events`, `inspect`, `credentials`, and the
+    # rest). The two answer different questions -- "how much did the suite
+    # RUN" and "how much did the suite COST" -- and publishing one number
+    # under both names would make a reader believe the suite ran the product
+    # far fewer times than it did.
+    "productLaunches": {
+        "total": number("PIPELINEK_RECEIPT_LAUNCH_TOTAL"),
+        "byVerb": launch_by_verb(),
     },
     "cache": {
         "written": number("PIPELINEK_RECEIPT_CACHE_WRITTEN"),
@@ -1104,6 +1178,7 @@ binary() {
         touch "$clock_marker"
         return 124
     fi
+    note_product_launch "${1:-}"
     timeout --kill-after=5s "$left" "$(product_path)" "$@"
     local rc=$?
     if (( rc == 124 )); then
@@ -1128,6 +1203,7 @@ binary_within() {
     fi
     local capped="$budget"
     if (( capped > left )); then capped="$left"; fi
+    note_product_launch "${1:-}"
     timeout --kill-after=5s "$capped" "$(product_path)" "$@"
     local rc=$?
     if (( rc == 124 && capped == left )); then
@@ -1161,6 +1237,12 @@ write_product_entry_point() {
         printf '    touch %q\n' "$clock_marker"
         printf '    exit 124\n'
         printf 'fi\n'
+        # The launch is counted from HERE, in the generated script, because
+        # this process is not the one that starts the product: the count is
+        # written where the count is taken. A failure to count is swallowed:
+        # the counter is an instrument, and an instrument that breaks the
+        # thing it measures is worse than no instrument.
+        printf 'printf "%%s\\n" "${1:-unknown}" >> %q || true\n' "$product_launches_file"
         printf 'rc=0\n'
         printf 'timeout --kill-after=5s "$left" %q "$@" || rc=$?\n' "$product"
         printf 'if (( rc == 124 )); then\n'
@@ -2228,6 +2310,7 @@ emit_scenario_markers() {
         # for a run that starts its own trace: the trace an OPERATOR attached
         # the run to lives in the live spans, and those travel to a collector
         # rather than to the event store this read sees.
+        note_product_launch inspect
         trace="$(timeout --kill-after=5s 30 "$(product_path)" inspect "$rid" --db "$db" --telemetry 2>/dev/null \
             | python3 -c '
 import json
@@ -4581,6 +4664,7 @@ store_passphrase="e2e-stage-$$"
 stage_store="$cycle_root/stage-store.bin"
 export PIPELINE_STORE_PASSPHRASE="$store_passphrase"
 export PIPELINE_CREDENTIALS_STORE="$stage_store"
+note_product_launch credentials
 if ! printf '%s' 'a secret the machine keeps and this run does not ask for' \
     | "$(product_path)" credentials add --kind secret-text --from-stdin stage-fixture \
         >"$cycle_root/stage-store.txt" 2>&1; then
@@ -4906,6 +4990,15 @@ else
     printf 'script cache: %d artifact(s) written, %d present -- cycle-local: this cycle could not reuse them\n' \
         "$cache_written" "$cache_present"
 fi
+
+# What the cycle COST in launches of the product. Every invocation of the
+# binary is one JVM, and the number is the price of the suite: a reader who
+# wants to know what a change buys pays for it in launches, so the launches
+# are published, per verb and in total. The census is the SAME one the
+# receipt carries.
+product_launch_census
+printf 'product launches: %s launch(es) of the product (%s)\n' \
+    "$product_launch_total" "${product_launch_verbs:-none}"
 
 # The stage clock, as the fact it now is. Every scenario reported, so nothing is
 # hidden by this line: the stage was simply too slow for the budget it was given.

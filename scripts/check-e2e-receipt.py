@@ -95,6 +95,38 @@ def as_int(value: object) -> int:
     return 0
 
 
+def launch_problems(document: dict) -> list[str]:
+    """The problems the census of the product's launches has.
+
+    The census is OPTIONAL: a receipt written before the launcher counted its
+    launches carries none, and a reader that insisted on the section would
+    refuse an account that is otherwise sound.
+
+    What it does NOT accept is a census that does not add up. The total and
+    the breakdown are the same fact told twice, and a receipt whose two
+    tellings disagree is a receipt nobody can read the cost of the suite from.
+    """
+    launches = document.get("productLaunches")
+    if launches is None:
+        return []
+    if not isinstance(launches, dict):
+        return ["the product launches are not an object"]
+    total = launches.get("total")
+    by_verb = launches.get("byVerb")
+    if not isinstance(total, int) or isinstance(total, bool) or total < 0:
+        return ["the total of the product launches is not a count"]
+    if not isinstance(by_verb, dict):
+        return ["the launches per verb are not an object"]
+    counted = 0
+    for name, value in by_verb.items():
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return [f"the launches of {name!r} are not a count"]
+        counted += value
+    if counted != total:
+        return [f"the launches add up to {counted} and the receipt says {total}"]
+    return []
+
+
 def validate(document: object) -> list[str]:
     """The problems a receipt has, as a list of sentences. Empty means sound."""
     problems: list[str] = []
@@ -140,6 +172,8 @@ def validate(document: object) -> list[str]:
         for key in ("filter", "gate", "selected"):
             if key not in scope:
                 problems.append(f"the scope carries no {key!r}")
+
+    problems.extend(launch_problems(document))
 
     scenarios = document.get("scenarios")
     if not isinstance(scenarios, list):
@@ -344,6 +378,19 @@ def command_check(args: argparse.Namespace) -> int:
     ):
         if expected and document.get(key) != expected:
             problems.append(f"the receipt names {key} {document.get(key)!r} and the gate verified {expected!r}")
+    # The launch census the launcher PUBLISHED and the one the receipt CARRIES
+    # are the same fact told twice. The gate read the published one to build
+    # its verdict line, so the receipt has to agree with it: a receipt that
+    # counts the launches differently is a receipt whose cost nobody can read.
+    if args.launches is not None:
+        launches = document.get("productLaunches")
+        if not isinstance(launches, dict):
+            problems.append("the receipt carries no product launches and the gate counted some")
+        elif launches.get("total") != args.launches:
+            problems.append(
+                f"the launcher published {args.launches} launch(es) and the receipt carries "
+                f"{launches.get('total')}"
+            )
     if problems:
         for problem in problems:
             print(f"check-e2e-receipt: the receipt is not a sound account: {problem}", file=sys.stderr)
@@ -440,6 +487,7 @@ def main(argv: list[str]) -> int:
     check.add_argument("--expected-sha", default="")
     check.add_argument("--expected-head", default="")
     check.add_argument("--expected-identity", default="")
+    check.add_argument("--launches", type=int, default=None)
     check.set_defaults(handler=command_check)
 
     seal = subparsers.add_parser("seal", help="write the gate's verdict into the receipt")

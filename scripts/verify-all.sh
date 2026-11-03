@@ -4,9 +4,10 @@
 #   0. a clean of the project's build outputs, so the run measures a real build;
 #   1. the checks that read only the tree, cheapest first, and then the build:
 #      the LOC budget census, the forbidden-source-set census, the comment
-#      provenance guard, the process-exit guard, static analysis (detekt), the
-#      public-API compatibility check, and the development distribution built
-#      ONCE with installDist;
+#      provenance guard, the process-exit guard, the identity of the content
+#      this run verifies, static analysis (detekt), the public-API
+#      compatibility check, and the development distribution built ONCE with
+#      installDist;
 #   2. the permanent unit tests of every module that has any;
 #   3. the tracked E2E scenarios in examples/, run by examples/run.sh;
 #   4. the wall-clock gate.
@@ -109,6 +110,120 @@ diagnostics_path=""
 # said PASS for a run that did not decide would be a claim nobody observed.
 # Every place that decides a verdict sets it here.
 gate_verdict="FAIL"
+
+# --- The identity of what THIS run verifies ----------------------------------
+#
+# The gate COMPILES the working tree, so what it verifies is the working
+# tree's content. The verdict names that content, because a verdict is quoted
+# as evidence about a commit: "PASS sha=X" says "X passed", and that is only
+# true when X IS the code that ran.
+#
+# A commit is not the working tree. On a tree with staged changes, HEAD is a
+# commit whose tree does NOT contain the code that was compiled, so naming it
+# would claim that a commit passed when it was never built. The identity is
+# therefore computed from the CONTENT:
+#
+#   - the working tree equals HEAD's tree: the commit IS the content, and the
+#     identifier is the commit, so the reader's `git rev-parse HEAD` matches
+#     the verdict.
+#   - the working tree differs: the identifier is the TREE object of the
+#     working tree. A tree is not a commit, so the identifier cannot be read
+#     as "that commit passed", and the verdict names HEAD beside it.
+#
+# The tree of the working tree is computed with Git's own hash: a temporary
+# index, filled from HEAD and then filled again with what is on disk, names
+# the same content the compiler read. Ignored files are not part of it, and
+# neither are build outputs: they are generated, not verified.
+
+# The commit that was HEAD.
+gate_head_id() {
+    git -C "$1" rev-parse HEAD 2>/dev/null || printf 'unknown'
+}
+
+# Whether the working tree of $1 IS HEAD's tree, without hashing anything.
+working_tree_is_head() {
+    git -C "$1" diff --quiet HEAD -- >/dev/null 2>&1 || return 1
+    [[ -z "$(git -C "$1" ls-files --others --exclude-standard 2>/dev/null)" ]] || return 1
+    return 0
+}
+
+# The tree object of what is on disk, staged or not.
+working_tree_id() {
+    local repo="$1" index_file tree
+    # The temporary index lives inside the repository's own directory: the
+    # shared temporary directory of the machine is watched by the residue
+    # census, and a file that appears there for a few milliseconds is a
+    # question the census would have to answer.
+    index_file="$(mktemp "${repo}/.git/pipelinek-gate-index.XXXXXX" 2>/dev/null || true)"
+    if [[ -z "$index_file" ]]; then
+        index_file="$(mktemp "${TMPDIR:-/tmp}/pipelinek-gate-index.XXXXXX")" || return 1
+    fi
+    rm -f "$index_file"
+    if ! GIT_INDEX_FILE="$index_file" git -C "$repo" read-tree HEAD >/dev/null 2>&1; then
+        rm -f "$index_file"
+        return 1
+    fi
+    if ! GIT_INDEX_FILE="$index_file" git -C "$repo" add -A -- . >/dev/null 2>&1; then
+        rm -f "$index_file"
+        return 1
+    fi
+    tree="$(GIT_INDEX_FILE="$index_file" git -C "$repo" write-tree 2>/dev/null || true)"
+    rm -f "$index_file"
+    [[ -n "$tree" ]] || return 1
+    printf '%s' "$tree"
+}
+
+# The identifier of the content of $1.
+#
+# The two cases answer different questions and the verdict says which is
+# which: a clean tree is named by its commit, and a tree with changes is
+# named by its content, which is a tree object and NOT a commit.
+gate_content_id() {
+    local repo="$1" head tree
+    head="$(git -C "$repo" rev-parse HEAD 2>/dev/null || true)"
+    if [[ -z "$head" ]]; then
+        printf 'unknown'
+        return 0
+    fi
+    if working_tree_is_head "$repo"; then
+        printf '%s' "$head"
+        return 0
+    fi
+    tree="$(working_tree_id "$repo" || true)"
+    if [[ -z "$tree" ]]; then
+        # The content cannot be named. The commit is what the gate can still
+        # say, and saying it is better than a silent substitution.
+        printf '%s' "$head"
+        return 0
+    fi
+    printf '%s' "$tree"
+}
+
+# The identity fields of a verdict line.
+#
+# The commit is printed beside the content only when they differ: the common
+# case, a clean tree, has ONE identity, and two copies of it would be noise.
+identity_fields() {
+    if [[ "$gate_content_sha" == "$gate_head_sha" ]]; then
+        printf 'sha=%s' "$gate_content_sha"
+    else
+        printf 'sha=%s  head=%s' "$gate_content_sha" "$gate_head_sha"
+    fi
+}
+
+gate_head_sha="$(gate_head_id "$repo_root")"
+gate_content_sha="$(gate_content_id "$repo_root")"
+
+# What KIND of thing the content identifier is. A reader of the receipt has to
+# be able to tell a commit from a tree without knowing the repository, and the
+# two are the same shape: forty hexadecimal characters.
+if [[ "$gate_head_sha" == "unknown" ]]; then
+    gate_content_kind="unknown"
+elif [[ "$gate_content_sha" == "$gate_head_sha" ]]; then
+    gate_content_kind="commit"
+else
+    gate_content_kind="tree"
+fi
 
 # The help is the header, and the header is the help: the range of lines the
 # old text named by hand had drifted past the end of the comment block and
@@ -262,8 +377,8 @@ fail() { printf 'verify-all: FAILED at %s\n' "$*" >&2; exit 1; }
 # somebody assumed.
 fail_with_verdict() {
     printf 'verify-all: FAILED at %s\n' "$1" >&2
-    printf '\nFAIL  sha=%s  elapsed=%ss  budget=%ss%s\n' \
-        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" \
+    printf '\nFAIL  %s  elapsed=%ss  budget=%ss%s\n' \
+        "$(identity_fields)" \
         "$(elapsed "$started_at")" "$BUDGET_SECONDS" "$(evidence_suffixes)"
     exit 1
 }
@@ -552,8 +667,18 @@ receipts_to_prune() {
 # against, and the gate never has to read a fact back from the document it
 # asked for.
 prepare_receipt() {
-    local sha short stamp
-    sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)"
+    local sha short stamp content_now
+    sha="$gate_content_sha"
+    # The content must NOT have changed while the gate was running. The
+    # stages verified the content that was on disk when they ran, and a
+    # receipt that named a LATER content would claim the run verified
+    # something it never saw. A tree that moves under the run is a tree that
+    # the run cannot describe, and it fails the run instead.
+    content_now="$(gate_content_id "$repo_root")"
+    if [[ "$content_now" != "$gate_content_sha" ]]; then
+        echo "verify-all: the working tree changed during the run (it was $gate_content_sha and now it is $content_now)" >&2
+        return 1
+    fi
     short="${sha:0:12}"
     stamp="$(date +%Y%m%d-%H%M%S)"
     receipt_dir="$state_base/receipts"
@@ -578,6 +703,8 @@ prepare_receipt() {
         e2e_scope="full"
     fi
     export PIPELINEK_E2E_SHA="$sha"
+    export PIPELINEK_E2E_HEAD="$gate_head_sha"
+    export PIPELINEK_E2E_IDENTITY="$gate_content_kind"
     export PIPELINEK_E2E_HOST="$host_description"
     export PIPELINEK_E2E_JDK="${java_version:-unknown}"
     export PIPELINEK_E2E_SCOPE="$e2e_scope"
@@ -877,7 +1004,7 @@ log_dir="$cycle_dir/logs"
 # 1. This run's own temporary directory, the relocated one. Everything the
 #    product writes lands there, because the product's JVM is given
 #    -Djava.io.tmpdir pointing at it -- and the gate PROVES that, per run, by
-#    asking the product's own JVM which directory it uses (stage 1h). What
+#    asking the product's own JVM which directory it uses (stage 1i). What
 #    survives there when the run is over is this run's residue, with no
 #    ambiguity at all: it FAILS the run.
 #
@@ -1217,7 +1344,139 @@ if want_stage 1; then
         || { cat "$log_dir/durable-cost.out" >&2; fail "stage 1f: the durable path spends a probe or a fixed wait"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
 
-    # --- Stage 1f: compile, static analysis, API compatibility, distribution --
+    # --- Stage 1g: the identity of what THIS run verifies --------------------
+    # The verdict is evidence about a commit, so the identifier it prints has
+    # to BE the content that was compiled. A commit is not the working tree:
+    # on a tree with changes, HEAD names a commit whose tree does not contain
+    # the code that ran, and a verdict that names it claims that commit
+    # passed when it was never built.
+    #
+    # This check is the instrument that can fail if that stops being true,
+    # and it is measured on a FIXTURE -- a repository of the gate's own, with
+    # a commit and then a change -- so the question "what does the gate call a
+    # tree with changes?" has an answer that does not depend on the tree the
+    # developer happens to be working on. A check that only ran against the
+    # working tree would pass on a clean tree and prove nothing.
+    log "stage 1g/4  the identity of what this run verifies"
+    stage_started_at=$(date +%s)
+    fixture_dir="$cycle_dir/identity-fixture"
+    fixture_repo="$fixture_dir/repo"
+    rm -rf "$fixture_dir"
+    mkdir -p "$fixture_repo"
+    # The fixture's git does not read the machine's configuration: a global
+    # ignore that skipped the fixture's file would make its tree look clean
+    # when it is not, and the check would fail for a reason that has nothing
+    # to do with the gate. A machine that installs hooks for its own commits
+    # would judge the fixture's commit and refuse it, and the instrument has
+    # to answer the same on every machine, so the fixture's git reads no
+    # configuration at all.
+    saved_config_global="${GIT_CONFIG_GLOBAL-}"
+    saved_config_system="${GIT_CONFIG_SYSTEM-}"
+    export GIT_CONFIG_GLOBAL=/dev/null
+    export GIT_CONFIG_SYSTEM=/dev/null
+    git -c init.defaultBranch=main init --quiet "$fixture_repo" >/dev/null 2>&1 \
+        || fail "stage 1g: the identity fixture could not be created"
+    printf 'the fixture\n' > "$fixture_repo/fixture.txt"
+    git -C "$fixture_repo" add -A -- . >/dev/null 2>&1 \
+        || fail "stage 1g: the identity fixture could not be staged"
+    # The fixture's commit is written with PLUMBING -- write-tree,
+    # commit-tree, update-ref -- and not with `git commit`.
+    #
+    # `git commit` is the command a machine reserves for deciding who the
+    # author of a commit is, and this fixture is not a commit of anybody: it
+    # is a byte pattern the instrument needs. The plumbing writes the same
+    # object without asking anybody's permission.
+    fixture_tree="$(git -C "$fixture_repo" write-tree 2>/dev/null || echo unknown)"
+    fixture_commit="$(printf 'the fixture of the identity check\n' \
+        | env GIT_AUTHOR_NAME=gate GIT_AUTHOR_EMAIL=gate@localhost \
+              GIT_COMMITTER_NAME=gate GIT_COMMITTER_EMAIL=gate@localhost \
+              git -C "$fixture_repo" commit-tree "$fixture_tree" 2>/dev/null || echo unknown)"
+    git -C "$fixture_repo" update-ref HEAD "$fixture_commit" >/dev/null 2>&1 \
+        || fail "stage 1g: the identity fixture could not be committed"
+    fixture_head="$(git -C "$fixture_repo" rev-parse HEAD 2>/dev/null || echo unknown)"
+    fixture_clean="$(gate_content_id "$fixture_repo")"
+    if [[ "$fixture_clean" != "$fixture_head" ]]; then
+        fail "stage 1g: the identity of a tree with no changes is not the commit that holds it"
+    fi
+    # The change is a MODIFICATION of a tracked file and an UNTRACKED file,
+    # because a tree can differ from its commit in several ways and the
+    # identity has to name all of them.
+    printf 'the fixture, changed\n' > "$fixture_repo/fixture.txt"
+    printf 'an untracked file\n' > "$fixture_repo/added.txt"
+    git -C "$fixture_repo" add -A -- . >/dev/null 2>&1 \
+        || fail "stage 1g: the identity fixture could not be staged again"
+    fixture_dirty="$(gate_content_id "$fixture_repo")"
+    if [[ "$fixture_dirty" == "$fixture_head" ]]; then
+        fail "stage 1g: the identity of a tree with changes is the commit that does not contain it"
+    fi
+    fixture_type="$(git -C "$fixture_repo" cat-file -t "$fixture_dirty" 2>/dev/null || echo unknown)"
+    if [[ "$fixture_type" != "tree" ]]; then
+        fail "stage 1g: the identity of a tree with changes is not a tree object but a ${fixture_type}"
+    fi
+    fixture_index_tree="$(git -C "$fixture_repo" write-tree 2>/dev/null || echo unknown)"
+    if [[ "$fixture_dirty" != "$fixture_index_tree" ]]; then
+        fail "stage 1g: the identity of a tree with changes does not name the content that was staged"
+    fi
+    if [[ -n "$saved_config_global" ]]; then
+        export GIT_CONFIG_GLOBAL="$saved_config_global"
+    else
+        unset GIT_CONFIG_GLOBAL
+    fi
+    if [[ -n "$saved_config_system" ]]; then
+        export GIT_CONFIG_SYSTEM="$saved_config_system"
+    else
+        unset GIT_CONFIG_SYSTEM
+    fi
+
+    # The reader of the receipt is the ONLY reader of the launcher's account,
+    # and its rule -- an account that calls its identifier a commit must name
+    # that commit -- is the rule that stops the gate from publishing a commit
+    # it never built.
+    #
+    # Nothing else inside the gate would notice if that rule disappeared: the
+    # launcher's account is written from the values the gate itself computed,
+    # so a reader without the rule would agree with whatever it is given, and
+    # the gate would publish the account of a content it never verified. The
+    # gate therefore checks that the reader REFUSES an account that lies about
+    # its identity, and that it accepts one that does not.
+    probe_sha="$(printf '%040d' 0)"
+    probe_head="$(printf '%040d' 1)"
+    probe_receipt() {
+        cat > "$2" <<JSON
+{
+  "schema": "pipelinek.e2e-receipt/2",
+  "sha": "$probe_sha",
+  "head": "$probe_head",
+  "identity": "$1",
+  "generatedAt": "1970-01-01T00:00:00Z",
+  "host": "stage-1g",
+  "jdk": "stage-1g",
+  "scope": {"filter": "", "gate": "stage-1g", "selected": 0},
+  "totals": {"scenarios": 0, "passed": 0, "failed": 0, "blocked": 0,
+             "checks": 0, "executions": 0, "runs": 0, "steps": 0},
+  "cache": {},
+  "scenarios": []
+}
+JSON
+    }
+    probe_receipt commit "$fixture_dir/lying-receipt.json"
+    probe_receipt tree "$fixture_dir/honest-receipt.json"
+    if python3 scripts/check-e2e-receipt.py check \
+        --receipt "$fixture_dir/lying-receipt.json" >/dev/null 2>"$fixture_dir/lying.err"; then
+        fail "stage 1g: the reader of the receipt accepts an account that claims a commit it did not verify"
+    fi
+    if ! grep -q 'the identity is a commit and the sha' "$fixture_dir/lying.err"; then
+        fail "stage 1g: the reader of the receipt refused a lying account for a reason this gate does not name"
+    fi
+    if ! python3 scripts/check-e2e-receipt.py check \
+        --receipt "$fixture_dir/honest-receipt.json" >/dev/null 2>"$fixture_dir/honest.err"; then
+        fail "stage 1g: the reader of the receipt refuses an account that does not lie"
+    fi
+
+    rm -rf "$fixture_dir"
+    echo "    ok in $(elapsed "$stage_started_at")s"
+
+    # --- Stage 1h: compile, static analysis, API compatibility, distribution --
     # One Gradle invocation, so the distribution is assembled exactly once and
     # the tests below reuse the same compiled classes rather than recompiling.
     # `detektTest` sits beside `detektMain` because they are the same analysis
@@ -1248,7 +1507,7 @@ if want_stage 1; then
     # distribution". It travels, inside the application's `lib/`. What it is not
     # is a PUBLISHED SDK artifact — an external consumer compiles against the
     # ports in `:pipeline-runtime-api`, never against these adapters.
-    log "stage 1g/4  compile + detekt + detektTest + apiCheck + installDist"
+    log "stage 1h/4  compile + detekt + detektTest + apiCheck + installDist"
     stage_started_at=$(date +%s)
     # The per-task clock rides along with the build. Without it this stage has
     # ONE number for four different works, and the reader cannot tell which of
@@ -1265,9 +1524,9 @@ if want_stage 1; then
         :pipeline-runtime:compileKotlin \
         :pipeline-application:installDist \
         > "$log_dir/stage1.log" 2>&1 \
-        || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1g (the tail of the stage log is above)"; }
+        || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1h (the tail of the stage log is above)"; }
     build_wall_ms=$(( $(now_ms) - build_started_ms ))
-    read_timings "$log_dir/stage1.log" "$build_wall_ms" "stage 1g"
+    read_timings "$log_dir/stage1.log" "$build_wall_ms" "stage 1h"
     # The four works this stage does are what the gate exists to certify, so
     # each one is a part the census declares mandatory: if the clock did not
     # measure it, the census is incomplete and the run is not a green gate.
@@ -1277,7 +1536,7 @@ if want_stage 1; then
     component_require "build:distribution" "the assembly of the distribution is part of the build"
     echo "    ok in $(elapsed "$stage_started_at")s"
 
-    # --- Stage 1g: what the PRODUCT costs -----------------------------------
+    # --- Stage 1i: what the PRODUCT costs -----------------------------------
     # The gate's own time is only half the story. What a consumer waits for is
     # the product's own latency, and that has two very different shapes. The
     # first compilation of a script pays for the compiler; the second one pays
@@ -1285,7 +1544,7 @@ if want_stage 1; then
     # and it is invisible unless BOTH are measured. The third number is the
     # price of starting the product at all, which every invocation pays and
     # which no other number in this report contains.
-    log "stage 1h/4  product calibration (cold script, warm script, startup)"
+    log "stage 1i/4  product calibration (cold script, warm script, startup)"
     stage_started_at=$(date +%s)
     calib_dir="$cycle_dir/calibration"
     mkdir -p "$calib_dir/cache"
@@ -1300,7 +1559,7 @@ pipeline {
 CALIBRATION_SCRIPT
     dist_bin="$repo_root/pipelinek/pipeline-application/build/install/pipelinek/bin/pipelinek"
     if [[ ! -x "$dist_bin" ]]; then
-        fail "stage 1h: the distribution this gate just assembled is not there: $dist_bin"
+        fail "stage 1i: the distribution this gate just assembled is not there: $dist_bin"
     fi
     # The script cache is the product's own and it is off by default. Turning
     # it on HERE is what makes the two numbers comparable: the first pass has
@@ -1315,7 +1574,7 @@ CALIBRATION_SCRIPT
 
     cold_started_ms=$(now_ms)
     "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/cold.log" 2>&1 \
-        || { tail -20 "$calib_dir/cold.log" >&2; fail "stage 1h: the first compilation of a script did not succeed"; }
+        || { tail -20 "$calib_dir/cold.log" >&2; fail "stage 1i: the first compilation of a script did not succeed"; }
     cold_ms=$(( $(now_ms) - cold_started_ms ))
 
     # The second pass is only warm if it did NOT compile the script again. The
@@ -1324,16 +1583,16 @@ CALIBRATION_SCRIPT
     # after it: same name, same size, same moment. A second pass that rewrote
     # it would be a second cold pass wearing a warm name.
     if [[ -z "$(find "$calib_dir/cache" -type f -print -quit 2>/dev/null)" ]]; then
-        fail "stage 1h: the first pass left no compiled bytes, so there is nothing for a second pass to reuse"
+        fail "stage 1i: the first pass left no compiled bytes, so there is nothing for a second pass to reuse"
     fi
     cache_before="$(find "$calib_dir/cache" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
     warm_started_ms=$(now_ms)
     "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/warm.log" 2>&1 \
-        || { tail -20 "$calib_dir/warm.log" >&2; fail "stage 1h: the second compilation of a script did not succeed"; }
+        || { tail -20 "$calib_dir/warm.log" >&2; fail "stage 1i: the second compilation of a script did not succeed"; }
     warm_ms=$(( $(now_ms) - warm_started_ms ))
     cache_after="$(find "$calib_dir/cache" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
     if [[ "$cache_before" != "$cache_after" ]]; then
-        fail "stage 1h: the second pass rewrote the compiled bytes, so it was not a warm pass"
+        fail "stage 1i: the second pass rewrote the compiled bytes, so it was not a warm pass"
     fi
 
     # The price of starting the product. Three runs, and the MEDIAN, because
@@ -1344,7 +1603,7 @@ CALIBRATION_SCRIPT
     for startup_index in 1 2 3; do
         startup_started_ms=$(now_ms)
         "$dist_bin" version > "$calib_dir/version-$startup_index.log" 2>&1 \
-            || fail "stage 1h: the product did not report its version"
+            || fail "stage 1i: the product did not report its version"
         startup_runs+=("$(( $(now_ms) - startup_started_ms ))")
     done
     startup_median="$(printf '%s\n' "${startup_runs[@]}" | sort -n | sed -n '2p')"
@@ -1365,7 +1624,7 @@ CALIBRATION_SCRIPT
     proof_log="$calib_dir/tmpdir-proof.log"
     JAVA_OPTS="${JAVA_OPTS:-} -XshowSettings:properties" "$dist_bin" version \
         > "$proof_log" 2>&1 \
-        || { tail -20 "$proof_log" >&2; fail "stage 1h: the product did not report its version while proving its temporary directory"; }
+        || { tail -20 "$proof_log" >&2; fail "stage 1i: the product did not report its version while proving its temporary directory"; }
     product_tmpdir="$(LC_ALL=C awk -F' = ' '/^[[:space:]]*java\.io\.tmpdir = /{ print $2; exit }' "$proof_log")"
     if [[ "$product_tmpdir" == "$cycle_dir/tmp" ]]; then
         relocation_proved=1
@@ -2053,6 +2312,9 @@ fi
 if python3 scripts/check-e2e-receipt.py check \
         --receipt "$receipt_file" \
         --census "$cycle_dir/planned-scenarios.txt" \
+        --expected-sha "$gate_content_sha" \
+        --expected-head "$gate_head_sha" \
+        --expected-identity "$gate_content_kind" \
         --product "$receipt_product"; then
     receipt_state="ok"
 else
@@ -2172,8 +2434,8 @@ if [[ "$subset" == 1 ]]; then
     # against 900 s would be a number about nothing, so none is printed.
     echo "    elapsed ${total}s (SUBSET: not compared against the ${BUDGET_SECONDS}s gate)"
     gate_verdict="SUBSET"
-    printf '\nPASS (subset)  sha=%s  elapsed=%ss%s\n' \
-        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$(evidence_suffixes)"
+    printf '\nPASS (subset)  %s  elapsed=%ss%s\n' \
+        "$(identity_fields)" "$total" "$(evidence_suffixes)"
     printf 'This is not the gate. Quote scripts/verify-all.sh with no filters for that.\n'
     exit 0
 fi
@@ -2196,8 +2458,8 @@ fi
 # name, not a defect to redden the whole gate over.
 if (( e2e_not_run > 0 )); then
     gate_verdict="INCOMPLETE"
-    printf '\nINCOMPLETE  sha=%s  elapsed=%ss  budget=%ss%s\n' \
-        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" \
+    printf '\nINCOMPLETE  %s  elapsed=%ss  budget=%ss%s\n' \
+        "$(identity_fields)" "$total" \
         "$BUDGET_SECONDS" "$(evidence_suffixes)"
     printf 'Every stage above ran and passed, but %s scenario(s) never ran at all.\n' "$e2e_not_run"
     printf 'This is not the gate: a scenario that was selected and skipped is a gap\n'
@@ -2208,7 +2470,7 @@ else
     # operator has to come back and read.
     VERIFY_ALL_VERDICT=PASS
     gate_verdict="PASS"
-    printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss%s\n' \
-        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" \
+    printf '\nPASS  %s  elapsed=%ss  budget=%ss%s\n' \
+        "$(identity_fields)" "$total" \
         "$BUDGET_SECONDS" "$(evidence_suffixes)"
 fi

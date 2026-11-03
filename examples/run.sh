@@ -325,6 +325,8 @@ write_receipt() {
     if ! PIPELINEK_RECEIPT_ROWS="$receipt_rows_file" \
         PIPELINEK_RECEIPT_OUT="$receipt_path" \
         PIPELINEK_RECEIPT_SHA="${PIPELINEK_E2E_SHA:-}" \
+        PIPELINEK_RECEIPT_HEAD="${PIPELINEK_E2E_HEAD:-}" \
+        PIPELINEK_RECEIPT_IDENTITY="${PIPELINEK_E2E_IDENTITY:-unknown}" \
         PIPELINEK_RECEIPT_HOST="${PIPELINEK_E2E_HOST:-}" \
         PIPELINEK_RECEIPT_JDK="${PIPELINEK_E2E_JDK:-}" \
         PIPELINEK_RECEIPT_SCOPE="${PIPELINEK_E2E_SCOPE:-unknown}" \
@@ -349,7 +351,7 @@ import json
 import os
 import sys
 
-SCHEMA = "pipelinek.e2e-receipt/1"
+SCHEMA = "pipelinek.e2e-receipt/2"
 UNIT = "\x1f"
 
 rows_path = os.environ["PIPELINEK_RECEIPT_ROWS"]
@@ -453,6 +455,13 @@ with open(rows_path, "r", encoding="utf-8", errors="replace") as handle:
 document = {
     "schema": SCHEMA,
     "sha": text("PIPELINEK_RECEIPT_SHA", "unknown"),
+    # The commit that was HEAD, and the KIND of the identifier above.
+    # A commit and a tree are the same shape -- forty hexadecimal
+    # characters -- so a reader cannot tell them apart without being told,
+    # and a receipt that names a tree as if it were a commit would claim
+    # that a commit passed.
+    "head": text("PIPELINEK_RECEIPT_HEAD", "unknown"),
+    "identity": text("PIPELINEK_RECEIPT_IDENTITY", "unknown"),
     "generatedAt": text("PIPELINEK_RECEIPT_GENERATED", "unknown"),
     "host": text("PIPELINEK_RECEIPT_HOST", "unknown"),
     "jdk": text("PIPELINEK_RECEIPT_JDK", "unknown"),

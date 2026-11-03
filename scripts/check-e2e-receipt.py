@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The gate's reader of the E2E receipt (schema `pipelinek.e2e-receipt/1`).
+"""The gate's reader of the E2E receipt (schema `pipelinek.e2e-receipt/2`).
 
 The receipt is the launcher's own account of a cycle: which scenarios ran,
 what each of them concluded, which runs it made, and -- for a scenario that
@@ -14,6 +14,16 @@ Two subcommands, and the split is the point:
           failure and the exact command that reproduces it.
   seal   write the gate's own verdict into the receipt's `gate` section, so
           the document that survives the run says what the run was.
+
+WHAT THE RECEIPT NAMES
+
+The receipt names WHAT was verified. `sha` is the identifier of the content the
+run verified, `head` is the commit that was HEAD, and `identity` says which of
+the two the `sha` is: `commit` or `tree`. A commit and a tree have the same
+shape -- forty hexadecimal characters -- so the reader needs the third field to
+tell them apart, and it needs the two to agree with each other: an account that
+calls its identifier a commit while naming something else would claim that a
+commit passed when it was never built.
 
 WHY THE RECEIPT FAILS THE GATE WHEN IT IS NOT WELL FORMED
 
@@ -45,15 +55,21 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 
-SCHEMA = "pipelinek.e2e-receipt/1"
+SCHEMA = "pipelinek.e2e-receipt/2"
 
 # The verdicts a scenario can carry. `none` is the verdict of a scenario that
 # was selected and produced no readable verdict: a declared third state, and
 # not a pass.
 VERDICTS = ("ok", "fail", "blocked", "none")
+
+# The shape of a Git object identifier. A commit and a tree have the same
+# shape, so the shape proves that the receipt carries SOMETHING Git wrote and
+# not that it names the content the gate verified.
+SHA_SHAPE = re.compile(r"[0-9a-f]{40}")
 
 
 def fail(message: str) -> int:
@@ -90,9 +106,32 @@ def validate(document: object) -> list[str]:
     if schema != SCHEMA:
         problems.append(f"the schema is {schema!r} and this reader only knows {SCHEMA!r}")
 
-    for key in ("sha", "generatedAt", "host", "jdk", "scope", "totals", "cache", "scenarios"):
+    for key in ("sha", "head", "identity", "generatedAt", "host", "jdk", "scope", "totals", "cache", "scenarios"):
         if key not in document:
             problems.append(f"the document carries no {key!r}")
+
+    # The identity of the content the run verified.
+    #
+    # A commit and a tree have the SAME shape -- forty hexadecimal
+    # characters -- so the receipt has to say which one it carries, and
+    # the two facts have to agree with each other: a receipt that calls
+    # its identifier a commit while naming something else would claim
+    # that a commit passed when it was never built.
+    sha = document.get("sha")
+    head = document.get("head")
+    identity = document.get("identity")
+    if isinstance(sha, str) and sha != "unknown" and not SHA_SHAPE.fullmatch(sha):
+        problems.append(f"the sha {sha!r} is neither a forty-character hexadecimal identifier nor 'unknown'")
+    if isinstance(head, str) and head != "unknown" and not SHA_SHAPE.fullmatch(head):
+        problems.append(f"the head {head!r} is neither a forty-character hexadecimal identifier nor 'unknown'")
+    if identity not in ("commit", "tree", "unknown"):
+        problems.append(f"the identity {identity!r} is not one of 'commit', 'tree' or 'unknown'")
+    elif identity == "commit" and sha != head:
+        problems.append(f"the identity is a commit and the sha {sha!r} is not the head {head!r}")
+    elif identity == "tree" and sha == head:
+        problems.append("the identity is a tree and the sha is the head, so the content is not named")
+    elif identity == "unknown" and (sha != "unknown" or head != "unknown"):
+        problems.append("the identity is unknown and the receipt names a sha or a head anyway")
 
     scope = document.get("scope")
     if not isinstance(scope, dict):
@@ -293,6 +332,18 @@ def command_check(args: argparse.Namespace) -> int:
         return fail(f"the receipt at {args.receipt} could not be read: {error}")
 
     problems = validate(document)
+    # The receipt has to name the content the GATE verified. The launcher
+    # wrote the document from the environment the gate gave it, and this is
+    # where that copy is checked against the gate's own answer: a receipt
+    # that names another content would be an account of a run that did not
+    # happen.
+    for flag, expected, key in (
+        ("--expected-sha", args.expected_sha, "sha"),
+        ("--expected-head", args.expected_head, "head"),
+        ("--expected-identity", args.expected_identity, "identity"),
+    ):
+        if expected and document.get(key) != expected:
+            problems.append(f"the receipt names {key} {document.get(key)!r} and the gate verified {expected!r}")
     if problems:
         for problem in problems:
             print(f"check-e2e-receipt: the receipt is not a sound account: {problem}", file=sys.stderr)
@@ -303,9 +354,11 @@ def command_check(args: argparse.Namespace) -> int:
     scope = document["scope"]
 
     print(
-        "    receipt: ok  schema={}  sha={}  scope={}  filter={}".format(
+        "    receipt: ok  schema={}  sha={}  identity={}  head={}  scope={}  filter={}".format(
             document["schema"],
             document.get("sha", "unknown"),
+            document.get("identity", "unknown"),
+            document.get("head", "unknown"),
             scope.get("gate", "unknown"),
             scope.get("filter", ""),
         )
@@ -384,6 +437,9 @@ def main(argv: list[str]) -> int:
     check.add_argument("--receipt", required=True)
     check.add_argument("--census", default="")
     check.add_argument("--product", default="pipelinek")
+    check.add_argument("--expected-sha", default="")
+    check.add_argument("--expected-head", default="")
+    check.add_argument("--expected-identity", default="")
     check.set_defaults(handler=command_check)
 
     seal = subparsers.add_parser("seal", help="write the gate's verdict into the receipt")

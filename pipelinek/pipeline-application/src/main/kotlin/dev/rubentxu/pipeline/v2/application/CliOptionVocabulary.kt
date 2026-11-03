@@ -35,9 +35,9 @@ internal sealed interface ApplyOutcome {
  * Mutable accumulator threaded through [applyOption].
  *
  * One constructor argument and the rest of the shape in the body: the state
- * carries twenty-three fields, and a constructor with twenty-four parameters
- * is a list of things a reader has to hold in the head to know what the
- * parser is tracking.
+ * carries many fields, and a constructor with that many parameters is a list
+ * of things a reader has to hold in the head to know what the parser is
+ * tracking.
  */
 internal class ParseState(
     /**
@@ -119,6 +119,14 @@ internal class ParseState(
      * still decides the lane.
      */
     var follow: Boolean = false
+    /**
+     * `--compile-only`. The validation compiles the script and does NOT run it.
+     *
+     * It belongs to `validate` and to nothing else: `run` executes the script,
+     * so "compile it without running it" is not a run the operator can ask for.
+     * The parser refuses it on `run` by naming the verb that owns it.
+     */
+    var compileOnly: Boolean = false
     /** `--format`. JSON/JSONL are opt-in; text is the default */
     var format: ObservationFormat = ObservationFormat.TEXT
     /**
@@ -261,6 +269,23 @@ internal val EXECUTION_ONLY_OPTIONS: Set<String> =
     (EXECUTION_ONLY_FLAGS.map { it.token } + EXECUTION_ONLY_VALUED.map { it.token }).toSet()
 
 /**
+ * The validation-only half of each table.
+ *
+ * `--compile-only` asks a validation to compile the script WITHOUT running the
+ * author's body. A reader cannot honour it — there is no script to compile —
+ * so the reader refuses it by name rather than dropping it: an option that is
+ * silently ignored is an option the operator believed in.
+ *
+ * It is a set of its own and not a member of [EXECUTION_ONLY_OPTIONS] because
+ * that name says what it is: the options only a verb that RUNS may carry, and
+ * this one belongs to the verb that VALIDATES.
+ */
+private val VALIDATION_ONLY_FLAGS: List<FlagOption> = listOf(FlagOption.COMPILE_ONLY)
+
+internal val VALIDATION_ONLY_OPTIONS: Set<String> =
+    VALIDATION_ONLY_FLAGS.map { it.token }.toSet()
+
+/**
  * The whole option surface of this CLI, in one table.
  * Two enums rather than one, and the reason is exhaustiveness: [FlagOptions] matches a
  * `when (FlagOption)` over six cases and [ValuedOptions] a `when (ValuedOption)` over fifteen, both
@@ -283,6 +308,16 @@ private enum class FlagOption(val token: String) {
     ALLOW_NETWORK("--allow-network"),
     GREP_INVERT("--grep-invert"),
     FOLLOW("--follow"),
+
+    /**
+     * Compile the script and do NOT run it.
+     *
+     * A BOOLEAN with no value, like the other flags: the only question is
+     * whether this validation evaluates the author's body, and a
+     * `--compile-only=<something>` spelling would invite a mode this runtime
+     * does not implement.
+     */
+    COMPILE_ONLY("--compile-only"),
     ;
 
     companion object {
@@ -367,6 +402,7 @@ private object FlagOptions {
         FlagOption.ALLOW_NETWORK -> flag(index) { state.allowNetwork = true }
         FlagOption.GREP_INVERT -> flag(index) { state.grepInvert = true }
         FlagOption.FOLLOW -> flag(index) { state.follow = true }
+        FlagOption.COMPILE_ONLY -> flag(index) { state.compileOnly = true }
     }
 
     /** A flag occupies exactly one position, so its outcome never depends on what follows it. */

@@ -121,9 +121,30 @@ class CliVerbOptionContractTest {
         )
     }
 
+    /**
+     * `--compile-only` asks for a compilation WITHOUT running the author's
+     * body, and `validate` is the verb that can keep that promise.
+     */
     @Test
-    fun `the verb that reads refuses the receipt by naming it`() {
-        val error = CliObservationParser.parse(arrayOf("--receipt", RECEIPT, RUN_ID)).rejected()
+    fun `the verb that validates admits the compile-only form and applies it`() {
+        val flags = CliExecutionParser.parse(arrayOf("validate", "--compile-only", SCRIPT)).parsed()
+
+        assertTrue(flags.compileOnly, "validate accepted --compile-only and did not apply it")
+    }
+
+    @Test
+    fun `the verb that runs refuses the compile-only form by naming the verb that owns it`() {
+        val error = CliExecutionParser.parse(arrayOf("run", "--compile-only", SCRIPT)).rejected()
+
+        assertEquals(
+            CliError.OptionBelongsToVerb("--compile-only", "validate", COMPILE_ONLY_BELONGS_TO_VALIDATE),
+            error,
+            "run does not refuse --compile-only by naming the verb that owns it",
+        )
+    }
+
+    @Test
+    fun `the verb that reads refuses the receipt by naming it`() {        val error = CliObservationParser.parse(arrayOf("--receipt", RECEIPT, RUN_ID)).rejected()
 
         assertEquals(
             CliError.OptionNotReadable("--receipt"),
@@ -295,5 +316,14 @@ class CliVerbOptionContractTest {
          */
         const val VALIDATE_PUBLISHES_NOTHING =
             "'validate' compiles a script and publishes nothing, so it has no receipt to write."
+
+        /**
+         * Why the compile-only form is refused by the verb that runs the body.
+         *
+         * The expectation is a literal: a row that computed the reason from the code under
+         * test would agree with every spelling of it, including the wrong one.
+         */
+        const val COMPILE_ONLY_BELONGS_TO_VALIDATE =
+            "'run' executes the script, so compiling it without running it is 'validate --compile-only'."
     }
 }

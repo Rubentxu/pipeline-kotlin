@@ -155,6 +155,19 @@ data class CliFlags(
      * channel to carry.
 */
     val query: ObservationQuery = ObservationQuery(),
+    /**
+     * `--compile-only`: the validation compiles the script and does NOT run it.
+     *
+     * FALSE by default, which means the validation does what it always did:
+     * it compiles the script AND evaluates it, so the author's top-level body
+     * runs inside the validating process. The model that says so is owned by
+     * [ScriptTrust] and rendered by the help.
+     *
+     * TRUE only for `validate`: `run` executes the script, so "compile it
+     * without running it" is not a run the operator can ask for, and the parser
+     * refuses the flag there by naming the verb that owns it.
+     */
+    val compileOnly: Boolean = false,
 )
 
 /**

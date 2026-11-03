@@ -18,6 +18,9 @@ internal fun printUsage(out: Appendable) {
     CLI_VERBS.forEach { verb ->
         out.append("  %-13s %s\n".format(Locale.ROOT, verb.label, verb.summary))
     }
+    out.append("\n")
+    out.append(ScriptTrust.HEADING).append("\n")
+    ScriptTrust.LINES.forEach { line -> out.append("  ").append(line).append("\n") }
     out.append("\nEnvironment:\n")
     CLI_ENVIRONMENT.forEach { (name, purpose) -> out.append("  %-28s %s\n".format(Locale.ROOT, name, purpose)) }
     out.append("\nEnvironment (internal, set by the product itself):\n")

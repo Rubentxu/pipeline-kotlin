@@ -4,8 +4,10 @@ import kotlin.script.experimental.api.EvaluationResult
 import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.ScriptEvaluationConfiguration
+import kotlin.script.experimental.api.ScriptEvaluator
 import kotlin.script.experimental.api.SourceCode
 import kotlin.script.experimental.api.plus
+import kotlin.script.experimental.jvm.BasicJvmScriptEvaluator
 import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
 
 /**
@@ -69,6 +71,15 @@ import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
  *   answer. Asking the store again here would be a second answer to one
  *   question, and the two could disagree: the console would announce a reuse
  *   while this host compiled, or the reverse.
+ * @param evaluator the step that RUNS the compiled script.
+ *   It is a constructor argument because the compilation and the evaluation are
+ *   two different promises, and only one of them is always kept. The default is
+ *   upstream's own evaluator — the one the superclass would have used — so a
+ *   host that says nothing about it behaves exactly as it did before. A host
+ *   that is handed a different evaluator compiles the SAME way and evaluates
+ *   differently, and that is the only difference the swap makes: the
+ *   compilation configuration, the classpath, the default imports and the
+ *   compiler options are all built by the superclass either way.
 */
 /**
  * Why an evaluation of a cache-loaded artifact threw.
@@ -140,7 +151,8 @@ class CachingJvmScriptingHost(
     private val cache: CompiledScriptCache,
     private val cacheKey: CacheKey,
     private val lookup: CacheLookup,
-) : BasicJvmScriptingHost() {
+    evaluator: ScriptEvaluator = BasicJvmScriptEvaluator(),
+) : BasicJvmScriptingHost(evaluator = evaluator) {
 
     /**
      * Where the artifact this host ENDED UP with came from.

@@ -122,6 +122,16 @@ internal object CliExecutionParser {
             )
         }
 
+        // `--compile-only` asks for a compilation WITHOUT running the author's body, and that
+        // is a promise only `validate` can keep: `run` executes the script, so "compile it
+        // without running it" is not a run the operator can ask for. Refused by naming the
+        // verb that owns it, exactly as `--receipt` is refused on the other side.
+        if (state.compileOnly && command == CliCommand.RUN) {
+            return CliParseResult.Rejected(
+                CliError.OptionBelongsToVerb("--compile-only", "validate", COMPILE_ONLY_BELONGS_TO_VALIDATE),
+            )
+        }
+
         val assembledQuery = buildObservationQuery(
             grepSelectors = state.grepSelectors,
             grepInvert = state.grepInvert,
@@ -158,6 +168,7 @@ internal object CliExecutionParser {
                 format = state.format,
                 outputProtocolTokens = state.outputProtocolTokens,
                 query = assembledQuery,
+                compileOnly = state.compileOnly,
             ),
         )
     }
@@ -165,4 +176,8 @@ internal object CliExecutionParser {
     /** Why `--receipt` is refused by the verb that never runs anything. */
     private const val RECEIPT_BELONGS_TO_RUN =
         "'validate' compiles a script and publishes nothing, so it has no receipt to write."
+
+    /** Why `--compile-only` is refused by the verb that runs the author's body. */
+    private const val COMPILE_ONLY_BELONGS_TO_VALIDATE =
+        "'run' executes the script, so compiling it without running it is 'validate --compile-only'."
 }

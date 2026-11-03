@@ -46,6 +46,13 @@
 # `--diagnostics local` is NOT a filter: it keeps the E2E artefacts of the run
 # so an operator can read them, and the run still measures the whole gate. The
 # path of what was kept travels with the verdict line.
+#   scripts/verify-all.sh --overlap
+# `--overlap` is NOT a filter either: it makes the gate report HOW MUCH of the
+# build ran at the same time. The per-task clock the gate already reads
+# measures how long each task took, and a duration cannot say whether two
+# tasks ran one after another or together. The tasks, the tests and the
+# scenarios that run are the same, so the verdict is still the full gate's
+# verdict and the wall clock is still compared with the budget.
 # The gate has four stages, and a stage number that names a fifth is a typo: a
 # typo that selected nothing would run nothing and print a clean verdict, which
 # is the same silent green this script refuses everywhere else.
@@ -89,6 +96,17 @@ scenario_given=0
 # of what was kept travels with it, because an artefact nobody knows the
 # address of is an artefact nobody reads.
 diagnostics_local=0
+# Whether the overlap of the tasks of the build is measured and reported.
+#
+# This is NOT a filter either, for the same reason `--diagnostics local` is
+# not: a filter selects what the run MEASURES, and this selects what the run
+# REPORTS. The tasks that run, the tests that run and the scenarios that run
+# are the same with and without it, so the verdict stays the full gate's
+# verdict and the wall clock is still compared with the budget. The cost is
+# two clock readings per task, and it buys the one number the per-task clock
+# cannot give: whether the tasks of the build ran one after another or at the
+# same time.
+overlap_probe_on=0
 
 # The state of the E2E stage, declared HERE so that the exit trap can read it
 # whatever the run did. A trap that asked for a variable the run never reached
@@ -256,6 +274,11 @@ while [[ $# -gt 0 ]]; do
                 echo "verify-all: --diagnostics only knows 'local'" >&2; exit 2
             fi
             diagnostics_local=1; shift ;;
+        # A flag that takes NO value must not shift inside the case: the loop
+        # shifts once more at its end, and a second shift with nothing left to
+        # shift fails, which under `set -e` ends the run with status 1 and
+        # without a word. That is how `--overlap` first died: silently.
+        --overlap)   overlap_probe_on=1 ;;
         -h|--help)   usage; exit 0 ;;
         *) echo "verify-all: unknown argument '$1'" >&2; exit 2 ;;
     esac
@@ -537,6 +560,44 @@ require_relocation_probe() {
     fi
 }
 
+# The overlap clock of the build. The per-task clock above measures HOW LONG
+# each task took, and a duration cannot say whether two tasks ran one after
+# another or at the same time. This one records the WINDOW of each task, and
+# the gate reports, per build the command line ran, the window the tasks
+# occupied, the work summed, the average concurrency and the peak
+# concurrency.
+#
+# It is a REUSABLE instrument, versioned with the gate, because the question
+# it answers ("how much of this overlaps that") is asked again and again. A
+# throwaway script answers it exactly once, and the next reader of the same
+# question cannot compare the two answers because they measured different
+# things.
+#
+# One Gradle command line can run SEVERAL builds (an included build of a
+# composite is configured and executed inside the same invocation), and each
+# of them evaluates this script again with its OWN clock origin. The windows
+# of two builds are therefore not on the same timeline, and every line the
+# probe prints names the build it belongs to so a number is never read against
+# the wrong clock.
+overlap_probe="$repo_root/scripts/gradle-task-overlap.init.gradle"
+
+require_overlap_probe() {
+    if [[ ! -f "$overlap_probe" ]]; then
+        fail "the overlap clock of the build is missing: $overlap_probe"
+    fi
+}
+
+# The extra initialization script this run rides along with the build. The
+# array is EMPTY unless the operator asked for the overlap clock, so the
+# default run asks Gradle for exactly what it asked before. The `+` guard on
+# the expansion is what keeps an empty array from being an unbound variable
+# under `set -u`.
+declare -a overlap_probe_args=()
+if (( overlap_probe_on == 1 )); then
+    require_overlap_probe
+    overlap_probe_args=(--init-script "$overlap_probe")
+fi
+
 # Which part of the build a task belongs to. The first match wins, and the
 # order matters three times over: the static analysis of the test sources is
 # part of the analysis and not part of the tests; the compilation of the test
@@ -599,6 +660,51 @@ read_timings() {
     for state_name in $(printf '%s\n' "${!state_counts[@]}" | sort); do
         printf '      %-14s %d task(s)\n' "$state_name" "${state_counts[$state_name]}"
     done
+}
+
+# Read what the overlap clock of the build wrote and report it.
+#
+# The numbers are READ, not recomputed here. The probe is the one place that
+# knows what a window is and how the concurrency was counted; a reader that
+# recomputed the same thing here would be a second implementation of the same
+# rule, and the two would have to agree for the report to be true. The gate
+# reports what the instrument wrote, or it says the number is unknown.
+#
+# TWO of the numbers are not clocks and the report says so, because a report
+# that reads them as clocks is wrong in a way that always flatters the build:
+# the SUM is the work (work that ran in parallel is counted once per task that
+# did it) and the FACTOR is the ratio of that work to the window.
+read_overlap() {
+    local log="$1" label="$2"
+    local kind build rest
+    local builds=0
+    printf '    %s: how much of the build ran at the same time\n' "$label"
+    while read -r kind build rest; do
+        case "$kind" in
+            TASK_OVERLAP_BUILD)
+                builds=$(( builds + 1 ))
+                printf '      build %s (%s)\n' "$build" "$rest"
+                ;;
+            TASK_OVERLAP_TASKS)
+                printf '        %s task(s) with a window\n' "$rest"
+                ;;
+            TASK_OVERLAP_WINDOW)
+                printf '        the tasks occupied %s ms\n' "${rest##* }"
+                ;;
+            TASK_OVERLAP_SUM)
+                printf '        %s ms of work SUMMED, not a clock: work that ran in parallel is counted once per task that did it\n' "$rest"
+                ;;
+            TASK_OVERLAP_FACTOR)
+                printf '        average concurrency %s hundredths (100 means the tasks ran one after another)\n' "$rest"
+                ;;
+            TASK_OVERLAP_CONCURRENCY)
+                printf '        peak concurrency: %s task(s) at the same instant\n' "$rest"
+                ;;
+        esac
+    done < <(grep -aE '^TASK_OVERLAP_(BUILD|TASKS|WINDOW|SUM|FACTOR|CONCURRENCY) ' "$log" || true)
+    if (( builds == 0 )); then
+        fail "$label: the build wrote no overlap summary, so the overlap of its tasks is unknown"
+    fi
 }
 
 # The host the measurement was taken on. A number without the machine it came
@@ -1796,7 +1902,8 @@ JSON
     require_relocation_probe
     build_started_ms=$(now_ms)
     ./pipelinek/gradlew -p pipelinek --init-script "$timing_probe" \
-        --init-script "$relocation_probe" "${gradle_cache_args[@]}" \
+        --init-script "$relocation_probe" \
+        "${overlap_probe_args[@]+"${overlap_probe_args[@]}"}" "${gradle_cache_args[@]}" \
         "${gradle_build_tasks[@]}" \
         > "$log_dir/stage1.log" 2>&1 \
         || { tail -40 "$log_dir/stage1.log" >&2; fail "$gradle_invocation_label (the tail of the stage log is above)"; }
@@ -1804,6 +1911,9 @@ JSON
     gradle_invocation_wall_ms=$build_wall_ms
     gradle_invocation_holder="stage 1"
     read_timings "$log_dir/stage1.log" "$gradle_invocation_wall_ms" "$gradle_invocation_label"
+    if (( overlap_probe_on == 1 )); then
+        read_overlap "$log_dir/stage1.log" "$gradle_invocation_label"
+    fi
     # The four works this stage does are what the gate exists to certify, so
     # each one is a part the census declares mandatory: if the clock did not
     # measure it, the census is incomplete and the run is not a green gate.
@@ -2012,7 +2122,8 @@ else
         require_relocation_probe
         unit_started_ms=$(now_ms)
         ./pipelinek/gradlew -p pipelinek --init-script "$timing_probe" \
-            --init-script "$relocation_probe" "${gradle_cache_args[@]}" "${gradle_args[@]}" \
+            --init-script "$relocation_probe" \
+            "${overlap_probe_args[@]+"${overlap_probe_args[@]}"}" "${gradle_cache_args[@]}" "${gradle_args[@]}" \
             > "$log_dir/stage2.log" 2>&1 \
             || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (the tail of the stage log is above)"; }
         unit_wall_ms=$(( $(now_ms) - unit_started_ms ))
@@ -2020,6 +2131,9 @@ else
         gradle_invocation_holder="stage 2"
         gradle_invocation_label="stage 2"
         read_timings "$log_dir/stage2.log" "$unit_wall_ms" "stage 2"
+        if (( overlap_probe_on == 1 )); then
+            read_overlap "$log_dir/stage2.log" "stage 2"
+        fi
     fi
     component_require "build:unit" "the permanent unit tests are part of the build"
     # Gradle's exit status is not the result. A Test task can report success

@@ -68,6 +68,13 @@ RULES: list[tuple[str, str, str]] = [
     # and not the denominator; the catch-all rule below would otherwise call it
     # a release tool and make the ratio look better than the truth.
     ("verify", "build timing probe", "scripts/gradle-task-timing.init.gradle"),
+    # The overlap clock of the build. It measures the WINDOW of each task, so
+    # it can say how much of the build ran at the same time; the probe above
+    # measures durations and cannot. It produces no artifact and ships
+    # nothing, so it is the numerator and not the denominator; the catch-all
+    # rule below would otherwise call it a release tool and make the ratio
+    # look better than the truth.
+    ("verify", "build overlap probe", "scripts/gradle-task-overlap.init.gradle"),
     # The external-consumer check verifies the published artifacts against a
     # consumer outside this repository. It does not ship them: it runs on the
     # publisher's machine during publication. Counting it as production would

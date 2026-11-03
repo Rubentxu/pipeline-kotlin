@@ -53,6 +53,16 @@
 # tasks ran one after another or together. The tasks, the tests and the
 # scenarios that run are the same, so the verdict is still the full gate's
 # verdict and the wall clock is still compared with the budget.
+#   scripts/verify-all.sh --level cambio
+# `--level` is NOT a filter either: it does not change WHAT the run measures.
+# It says what KIND of run this is, and the verdict says it in every line:
+# `PASS sha=… level=cambio elapsed=…`. A verdict that does not know whether it
+# is a change or a release cannot be quoted as either, and the reader would
+# have to guess. The default is `certificacion`, because that is what this gate
+# has always been: a gate that changes its meaning without being told is a
+# gate whose verdict nobody can quote. The three levels run the SAME work
+# today; what the change level leaves out arrives with the slice that moves
+# the checks, and the report says so while it happens.
 # The gate has four stages, and a stage number that names a fifth is a typo: a
 # typo that selected nothing would run nothing and print a clean verdict, which
 # is the same silent green this script refuses everywhere else.
@@ -107,6 +117,27 @@ diagnostics_local=0
 # cannot give: whether the tasks of the build ran one after another or at the
 # same time.
 overlap_probe_on=0
+
+# The LEVEL of this run: what KIND of run it is.
+#
+# Three names, and they do not mean the same thing:
+#
+#   certificacion  the run that certifies a tree. Its verdict is the one a
+#                  release can be quoted against.
+#   cambio         the run that answers "does this change break something".
+#   milestone      the run that measures a milestone: the clock of the gate,
+#                  measured more than once.
+#
+# The level is a DECLARATION about the run, not a filter: it does not change
+# what the run measures. It changes what the verdict MEANS, and it says so in
+# every verdict line, because a verdict that does not know whether it is a
+# change or a release is a verdict nobody can quote.
+#
+# The default is `certificacion`, because that is what this gate has always
+# been. A gate that changes its meaning without being told is a gate whose
+# verdict nobody can quote.
+level="certificacion"
+level_given=0
 
 # The state of the E2E stage, declared HERE so that the exit trap can read it
 # whatever the run did. A trap that asked for a variable the run never reached
@@ -230,6 +261,18 @@ identity_fields() {
     fi
 }
 
+# The LEVEL of the run, in the same place as the identity: what this run is,
+# next to WHAT it verified. Two facts, one line, both of them things the
+# reader has to know before reading any number.
+#
+# Every verdict line carries it: PASS, PASS (subset), INCOMPLETE and FAIL.
+# A line that says "PASS sha=… elapsed=…" and does not say what kind of run
+# it was is a line that has to be guessed at, and a guess is how a change run
+# ends up quoted as a certification.
+level_field() {
+    printf 'level=%s' "$level"
+}
+
 gate_head_sha="$(gate_head_id "$repo_root")"
 gate_content_sha="$(gate_content_id "$repo_root")"
 
@@ -279,6 +322,22 @@ while [[ $# -gt 0 ]]; do
         # shift fails, which under `set -e` ends the run with status 1 and
         # without a word. That is how `--overlap` first died: silently.
         --overlap)   overlap_probe_on=1 ;;
+        # `--level` takes a value, so it shifts: the loop shifts once more at
+        # its end, and the value has to be consumed here or it would be read
+        # as the next argument.
+        #
+        # A flag that takes a value and does NOT get one has to say so. The
+        # inner shift would consume the flag itself, the loop's own shift
+        # would then have nothing to shift, and under `set -e` the run would
+        # end with status 1 and without a word: a silent death is the one
+        # thing a gate must never do with a mistake.
+        --level)
+            if [[ $# -lt 2 ]]; then
+                echo "verify-all: --level needs a value" >&2
+                echo "  the levels are: cambio, milestone, certificacion." >&2
+                exit 2
+            fi
+            level="$2"; level_given=1; shift ;;
         -h|--help)   usage; exit 0 ;;
         *) echo "verify-all: unknown argument '$1'" >&2; exit 2 ;;
     esac
@@ -302,6 +361,26 @@ fi
 for t in ${test_filters+"${test_filters[@]}"}; do
     [[ -n "$t" ]] || { echo "verify-all: --test was given an empty pattern" >&2; exit 2; }
 done
+
+# The LEVEL is checked here, before any work, and it fails CLOSED: a level that
+# this gate does not know is a typo, and a typo that ran the whole gate under a
+# name nobody recognises would publish a verdict that says what it is not.
+#
+# The three names are closed on purpose. A free-text level would let a run
+# declare itself "certificacion" with a typo, or "release" for a run that
+# certified nothing, and the whole point of the level is that the reader can
+# rely on what it says.
+if [[ "$level_given" == 1 && -z "${level// /}" ]]; then
+    echo "verify-all: --level was given an empty value" >&2; exit 2
+fi
+case "$level" in
+    cambio|milestone|certificacion) ;;
+    *)
+        echo "verify-all: --level only knows three levels." >&2
+        echo "  got: '$level'" >&2
+        echo "  the levels are: cambio, milestone, certificacion." >&2
+        exit 2 ;;
+esac
 
 # The gate has four stages. A number that names a fifth is a typo, and a typo
 # that selected nothing would run nothing and print a clean verdict: the same
@@ -433,8 +512,8 @@ fail() { printf 'verify-all: FAILED at %s\n' "$*" >&2; exit 1; }
 # somebody assumed.
 fail_with_verdict() {
     printf 'verify-all: FAILED at %s\n' "$1" >&2
-    printf '\nFAIL  %s  elapsed=%ss  budget=%ss%s\n' \
-        "$(identity_fields)" \
+    printf '\nFAIL  %s  %s  elapsed=%ss  budget=%ss%s\n' \
+        "$(identity_fields)" "$(level_field)" \
         "$(elapsed "$started_at")" "$BUDGET_SECONDS" "$(evidence_suffixes)"
     exit 1
 }
@@ -982,6 +1061,47 @@ print_host_description() {
     printf '    reference host: %s\n' "$host_description"
 }
 
+# What the level of this run MEANS, said out loud, next to the numbers.
+#
+# A level that only appears as a field in the verdict line is a label the
+# reader has to interpret alone. The gate knows two things about its own
+# level that the reader cannot know: what the level promises, and what it does
+# NOT do yet. Both travel with the run, because the day the change level
+# starts paying less, the reader has to be able to see that the difference
+# came from the level and not from a quieter host.
+#
+# TODAY the three levels run the SAME work. That is stated here, in the report
+# of every run, so nobody reads a `level=cambio` verdict as a cheap run: it is
+# not one yet. What the change level leaves out arrives with the slice that
+# moves the checks, and the day it arrives this text changes with it.
+print_level_meaning() {
+    printf '    the level of this run: %s\n' "$level"
+    case "$level" in
+        certificacion)
+            echo "      this run is the CERTIFICATION: its verdict is the one a release"
+            echo "      can be quoted against, and its clock is compared with the"
+            echo "      ${BUDGET_SECONDS}s budget of AGENTS.md section 4."
+            ;;
+        cambio)
+            echo "      this run is a CHANGE run: it is not a certification, and its"
+            echo "      verdict is not the one a release can be quoted against."
+            echo "      a FULL run at this level still has to fit inside the"
+            echo "      ${BUDGET_SECONDS}s budget, because today the three levels run the"
+            echo "      SAME work: what the change level leaves out arrives with the"
+            echo "      slice that moves the checks."
+            ;;
+        milestone)
+            echo "      this run is a MILESTONE run: it is not a certification, and its"
+            echo "      verdict is not the one a release can be quoted against."
+            echo "      a FULL run at this level still has to fit inside the"
+            echo "      ${BUDGET_SECONDS}s budget, because today the three levels run the"
+            echo "      SAME work: what the milestone level adds (the repeated runs that"
+            echo "      measure the clock, and the calibration) arrives with the slice"
+            echo "      that moves the checks."
+            ;;
+    esac
+}
+
 # --- The receipt of the E2E stage ---------------------------------------------
 # The receipt is the ONE artefact of a run that outlives it. The cycle is
 # removed when the run ends -- that is the promise the gate makes about its
@@ -1082,6 +1202,7 @@ seal_receipt() {
         --receipt "$receipt_file" \
         --verdict "$verdict" \
         --scope "$e2e_scope" \
+        --level "$level" \
         --wall-ms "$wall_ms" \
         --budget-seconds "$BUDGET_SECONDS" \
         --tests-rewritten "${xml_fresh_tests:-0}" \
@@ -1199,10 +1320,10 @@ if [[ "$list_only" == 1 ]]; then
 fi
 
 if [[ "$subset" == 1 ]]; then
-    printf 'SUBSET RUN -- filters in effect: stage=%s module=%s test=%s scenario=%s\n' \
+    printf 'SUBSET RUN -- filters in effect: stage=%s module=%s test=%s scenario=%s level=%s\n' \
         "${stage_spec:-all}" "${module_filter:-all}" \
         "$([[ ${#test_filters[@]} -gt 0 ]] && printf '%s ' "${test_filters[@]}" || printf 'all ')" \
-        "${scenario_filter:-all}"
+        "${scenario_filter:-all}" "$level"
     printf 'This is NOT the AGENTS.md section 4 gate and its wall clock is not a gate measurement.\n\n'
 fi
 
@@ -3186,13 +3307,15 @@ if [[ "$subset" == 1 ]]; then
     # A subset that spends 3 minutes instead of 240 is not a budget breach, and a
     # subset that spends 900 is not evidence the gate would. Comparing either
     # against 900 s would be a number about nothing, so none is printed.
+    print_level_meaning
     echo "    elapsed ${total}s (SUBSET: not compared against the ${BUDGET_SECONDS}s gate)"
     gate_verdict="SUBSET"
-    printf '\nPASS (subset)  %s  elapsed=%ss%s\n' \
-        "$(identity_fields)" "$total" "$(evidence_suffixes)"
+    printf '\nPASS (subset)  %s  %s  elapsed=%ss%s\n' \
+        "$(identity_fields)" "$(level_field)" "$total" "$(evidence_suffixes)"
     printf 'This is not the gate. Quote scripts/verify-all.sh with no filters for that.\n'
     exit 0
 fi
+print_level_meaning
 echo "    elapsed ${total}s against a budget of ${BUDGET_SECONDS}s"
 if [[ "$total" -gt "$BUDGET_SECONDS" ]]; then
     echo "verify-all: BLOCKED_BUDGET. ${total}s > ${BUDGET_SECONDS}s." >&2
@@ -3212,8 +3335,8 @@ fi
 # name, not a defect to redden the whole gate over.
 if (( e2e_not_run > 0 )); then
     gate_verdict="INCOMPLETE"
-    printf '\nINCOMPLETE  %s  elapsed=%ss  budget=%ss%s\n' \
-        "$(identity_fields)" "$total" \
+    printf '\nINCOMPLETE  %s  %s  elapsed=%ss  budget=%ss%s\n' \
+        "$(identity_fields)" "$(level_field)" "$total" \
         "$BUDGET_SECONDS" "$(evidence_suffixes)"
     printf 'Every stage above ran and passed, but %s scenario(s) never ran at all.\n' "$e2e_not_run"
     printf 'This is not the gate: a scenario that was selected and skipped is a gap\n'
@@ -3224,7 +3347,7 @@ else
     # operator has to come back and read.
     VERIFY_ALL_VERDICT=PASS
     gate_verdict="PASS"
-    printf '\nPASS  %s  elapsed=%ss  budget=%ss%s\n' \
-        "$(identity_fields)" "$total" \
+    printf '\nPASS  %s  %s  elapsed=%ss  budget=%ss%s\n' \
+        "$(identity_fields)" "$(level_field)" "$total" \
         "$BUDGET_SECONDS" "$(evidence_suffixes)"
 fi

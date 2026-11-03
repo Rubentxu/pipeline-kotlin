@@ -48,6 +48,7 @@ Usage:
   check-e2e-receipt.py check --receipt PATH [--census PATH] [--product PATH]
   check-e2e-receipt.py seal --receipt PATH --verdict V --scope S --wall-ms N
                             --budget-seconds N --tests-rewritten N --tests-read N
+                            [--level LEVEL]
 """
 
 from __future__ import annotations
@@ -453,6 +454,7 @@ def command_seal(args: argparse.Namespace) -> int:
     document["gate"] = {
         "verdict": args.verdict,
         "scope": args.scope,
+        "level": args.level,
         "wallMs": args.wall_ms,
         "budgetSeconds": args.budget_seconds,
         "testsRewritten": args.tests_rewritten,
@@ -494,6 +496,7 @@ def main(argv: list[str]) -> int:
     seal.add_argument("--receipt", required=True)
     seal.add_argument("--verdict", required=True)
     seal.add_argument("--scope", required=True)
+    seal.add_argument("--level", default="certificacion")
     seal.add_argument("--wall-ms", dest="wall_ms", type=int, required=True)
     seal.add_argument("--budget-seconds", dest="budget_seconds", type=int, default=900)
     seal.add_argument("--tests-rewritten", dest="tests_rewritten", type=int, default=0)

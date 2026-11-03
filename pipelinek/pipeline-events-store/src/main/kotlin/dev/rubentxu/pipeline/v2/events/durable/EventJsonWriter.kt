@@ -220,13 +220,16 @@ internal object EventJsonWriter {
                 sb.append(EventJsonWriter.jsonString(event.emittedBy))
             }
             is CompilationStarted -> {
-                // no extra fields
+                sb.append(",\"origin\":")
+                sb.append(EventJsonWriter.jsonString(event.origin.name))
             }
             is CompilationFinished -> {
                 sb.append(",\"cacheKey\":")
                 sb.append(encodeCacheKey(event.cacheKey))
                 sb.append(",\"diagnostics\":")
                 sb.append(encodeDiagnostics(event.diagnostics))
+                sb.append(",\"origin\":")
+                sb.append(EventJsonWriter.jsonString(event.origin.name))
             }
             is RunFinished -> {
                 sb.append(",\"outcome\":")

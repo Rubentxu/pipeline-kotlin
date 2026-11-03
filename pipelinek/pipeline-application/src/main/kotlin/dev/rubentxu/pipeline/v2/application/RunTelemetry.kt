@@ -114,7 +114,19 @@ object RunTelemetryProjection {
                         // when it begins, like every other span.
                         val span = OpenSpan(ids.next(SPAN_COMPILE), at)
                         compileSpan = span
-                        signals.add(started("pipelinek.script.compile", span.spanId, parent.spanId, at, emptyList()))
+                        // The span carries the origin as an attribute, so a
+                        // dashboard can tell a compilation that reused a
+                        // stored artifact from one that ran the compiler —
+                        // the same fact the console states in words.
+                        signals.add(
+                            started(
+                                "pipelinek.script.compile",
+                                span.spanId,
+                                parent.spanId,
+                                at,
+                                listOf(TelemetryAttribute.Text("script.origin", event.origin.name)),
+                            ),
+                        )
                     }
                 }
 

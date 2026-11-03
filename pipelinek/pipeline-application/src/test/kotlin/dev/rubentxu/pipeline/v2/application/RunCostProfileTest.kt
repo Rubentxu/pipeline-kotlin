@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.runtime.profile.RunEvidence
 import dev.rubentxu.pipeline.v2.runtime.profile.RuntimeCost
 import dev.rubentxu.pipeline.v2.runtime.profile.summarize
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
+import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -43,10 +44,10 @@ class RunCostProfileTest {
         RunFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), outcome, emptyList())
 
     private fun compileStart(at: Long) =
-        CompilationStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at))
+        CompilationStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), ScriptOrigin.COMPILED)
 
     private fun compileFinish(at: Long) =
-        CompilationFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), cacheKey, emptyList())
+        CompilationFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), cacheKey, emptyList(), ScriptOrigin.COMPILED)
 
     private fun stepStart(at: Long, stage: Int = 0, step: Int = 0, name: String = "deploy") =
         StepStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, name, "sh")

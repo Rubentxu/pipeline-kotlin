@@ -36,6 +36,7 @@ import dev.rubentxu.pipeline.v2.events.StashFailed
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
 import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
+import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
 import java.time.Instant
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -117,6 +118,7 @@ class RedactingEventSinkSurfacesTest {
             "CompilationFinished" to CompilationFinished(
                 EVENT_ID, RUN_ID, 0L, NOW, CacheKey("k", CacheKey.V1),
                 listOf(ScriptingDiagnostic(ScriptDiagnosticSeverity.ERROR, SECRET, 1, 1, "p.pipeline.kts")),
+                ScriptOrigin.COMPILED,
             ),
             "DirectiveDenied" to DirectiveDenied(
                 EVENT_ID, RUN_ID, 0L, NOW, 0, "stage", "key", reason = SECRET,

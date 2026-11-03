@@ -256,6 +256,10 @@ internal object DomainEventJsonDecoder {
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
+                // A row written before the origin was recorded carries no
+                // word: it decodes to UNKNOWN, which is the truth about that
+                // row. It is never read as COMPILED.
+                origin = EventJsonFields.parseScriptOrigin(s),
             )
             EventKind.CompilationFinished -> {
                 val cacheKey = EventJsonFields.parseCacheKey(s)
@@ -268,6 +272,7 @@ internal object DomainEventJsonDecoder {
                     occurredAt = occurredAt,
                     cacheKey = cacheKey,
                     diagnostics = diagnostics,
+                    origin = EventJsonFields.parseScriptOrigin(s),
                 )
             }
             EventKind.RunFinished -> {

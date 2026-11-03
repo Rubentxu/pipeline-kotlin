@@ -81,6 +81,7 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import dev.rubentxu.pipeline.v2.events.WorkflowLoaded
 import dev.rubentxu.pipeline.v2.events.WsCleaned
 import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
+import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
 
 /**
@@ -123,11 +124,37 @@ internal object ConsoleFamilyLines {
             else "Finished: ${sanitize(event.outcome)} (${event.diagnostics.size} diagnostic(s))",
         )
 
-        is CompilationStarted -> Line(Family.RUN, "Compiling pipeline")
+        is CompilationStarted -> Line(Family.RUN, compilationStartedText(event.origin))
 
         is CompilationFinished -> compilationFinished(event)
 
         else -> unrouted(event, this)
+    }
+
+    /**
+     * What the console says when the compilation phase OPENS.
+     *
+     * The line used to be a constant, `"Compiling pipeline"`, and that was a
+     * lie on every cached run: the operator saw "Compiling pipeline" and
+     * could not tell a working cache from a cache that does not exist. The
+     * measured difference is not small — a cold run of a script costs 5,1 s
+     * and a warm one 1,2 s — and the text erased it.
+     *
+     * The line now states the DECISION, which is the only thing known when
+     * the phase opens: the compilation is going to compile, or it is going to
+     * reuse a stored artifact. [ScriptOrigin.UNKNOWN] renders as
+     * "Preparing pipeline", which is the truth about a record that does not
+     * say — it never claims a compiler ran.
+     *
+     * The closing line carries the OUTCOME (see [compilationFinished]), so the
+     * one case where the two disagree — a stored artifact that loads but
+     * cannot be evaluated, and the run compiles after all — is visible in the
+     * transcript instead of hidden.
+    */
+    private fun compilationStartedText(origin: ScriptOrigin): String = when (origin) {
+        ScriptOrigin.COMPILED -> "Compiling pipeline"
+        ScriptOrigin.REUSED -> "Reusing compiled pipeline"
+        ScriptOrigin.UNKNOWN -> "Preparing pipeline"
     }
 
     /**
@@ -157,8 +184,9 @@ internal object ConsoleFamilyLines {
     private fun compilationFinished(event: CompilationFinished): Line {
         val errors = event.diagnostics.filter { it.severity == ScriptDiagnosticSeverity.ERROR }
         val summary = describeBySeverity(event.diagnostics)
+        val origin = " (" + originText(event.origin) + ")"
         if (errors.isEmpty()) {
-            return Line(Family.RUN, summary)
+            return Line(Family.RUN, summary + origin)
         }
         val detail = errors.joinToString("\n") { diagnostic ->
             val location = if (diagnostic.path.isBlank()) {
@@ -168,7 +196,22 @@ internal object ConsoleFamilyLines {
             }
             sanitize("$location: ${diagnostic.message}")
         }
-        return Line(Family.FAILURE, "$summary\n$detail")
+        return Line(Family.FAILURE, "$summary$origin\n$detail")
+    }
+
+    /**
+     * How the origin reads in the closing line.
+     *
+     * The wording is the OUTCOME, not the decision: this line closes the
+     * phase, and the phase closed with what really happened. "reused" means
+     * the source was not compiled in this run; "compiled" means it was;
+     * "origin not recorded" is what a durable row written before the origin
+     * existed can honestly say.
+    */
+    private fun originText(origin: ScriptOrigin): String = when (origin) {
+        ScriptOrigin.COMPILED -> "compiled"
+        ScriptOrigin.REUSED -> "reused"
+        ScriptOrigin.UNKNOWN -> "origin not recorded"
     }
 
     /**

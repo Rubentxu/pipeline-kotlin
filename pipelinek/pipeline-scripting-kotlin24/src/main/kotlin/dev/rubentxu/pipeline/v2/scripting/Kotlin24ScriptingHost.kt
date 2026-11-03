@@ -101,16 +101,13 @@ class Kotlin24ScriptingHost(
         val effectiveRunId = runId ?: definition.sourcePath?.fileName?.toString() ?: UUID.randomUUID().toString()
         val compilationStartedId = UUID.randomUUID().toString()
         val compilationFinishedId = UUID.randomUUID().toString()
+        // The phase starts HERE, before anything is read, so the duration the
+        // telemetry measures is the whole phase and not the part of it that
+        // happens after the cache was consulted. The event that announces the
+        // phase is published a little later, once the cache has answered: the
+        // console has to say whether the script is being COMPILED or REUSED,
+        // and that answer does not exist before the lookup.
         val compilationStartedAt = Instant.now()
-
-        eventSink.append(
-            CompilationStarted(
-                eventId = compilationStartedId,
-                runId = effectiveRunId,
-                sequence = 0L,
-                occurredAt = compilationStartedAt,
-            )
-        )
 
         // Extract env vars from the original script text before any escaping.
         // This must happen before creating `source` so we pass escaped text to the compiler.
@@ -176,9 +173,33 @@ class Kotlin24ScriptingHost(
         val cacheForThisCompilation =
             if (identity is CacheIdentity.Verified) cache else CompiledScriptCache.Disabled
 
+        // The ONE lookup of this compilation. The owner of the compilation asks
+        // the store once and keeps the answer: the event published below and
+        // the line the console prints both read it. Asking the store a second
+        // time — once here to know what to announce and once inside the
+        // caching host to know what to run — would be two answers to one
+        // question, and the two could disagree: the console would announce a
+        // reuse the run does not perform.
+        val lookup = cacheForThisCompilation.load(cacheKey)
+        val plannedOrigin = when (lookup) {
+            is CacheLookup.Hit -> ScriptOrigin.REUSED
+            is CacheLookup.Miss -> ScriptOrigin.COMPILED
+        }
+
+        eventSink.append(
+            CompilationStarted(
+                eventId = compilationStartedId,
+                runId = effectiveRunId,
+                sequence = 0L,
+                occurredAt = compilationStartedAt,
+                origin = plannedOrigin,
+            )
+        )
+
         // A fresh host per compilation: the cache key is fixed data for this one
         // compilation, so this object carries no mutable state across compiles.
-        val host = CachingJvmScriptingHost(cacheForThisCompilation, cacheKey)
+        // The lookup travels with it, already resolved.
+        val host = CachingJvmScriptingHost(cacheForThisCompilation, cacheKey, lookup)
 
         val rwd: ResultWithDiagnostics<*> = try {
             host.evalWithTemplate<Any>(
@@ -225,7 +246,10 @@ class Kotlin24ScriptingHost(
             {},
         )
         } catch (t: Throwable) {
-            return compilationFailure(t, effectiveRunId, identity, definition)
+            // The host has already recorded how this run obtained its artifact,
+            // even though the compilation blew up: a throwable that escaped the
+            // evaluation carries the origin the host had reached.
+            return compilationFailure(t, effectiveRunId, identity, definition, host.effectiveOrigin)
         }
 
         val compilationFinishedAt = Instant.now()
@@ -281,6 +305,11 @@ class Kotlin24ScriptingHost(
                 occurredAt = compilationFinishedAt,
                 cacheKey = cacheKey,
                 diagnostics = diagnostics,
+                // The OUTCOME, not the decision: the host reports what this
+                // run really did. It differs from the announced origin in
+                // exactly one case — a stored artifact that loads but cannot
+                // be evaluated, which makes the run compile after all.
+                origin = host.effectiveOrigin,
             )
         )
 
@@ -307,6 +336,7 @@ class Kotlin24ScriptingHost(
         effectiveRunId: String,
         identity: CacheIdentity,
         definition: ScriptDefinition,
+        origin: ScriptOrigin,
     ): ScriptCompilationResult.Failure {
         val diag = ScriptingDiagnostic(
             severity = ScriptDiagnosticSeverity.ERROR,
@@ -327,6 +357,7 @@ class Kotlin24ScriptingHost(
                 occurredAt = Instant.now(),
                 cacheKey = cacheKey,
                 diagnostics = listOf(diag),
+                origin = origin,
             )
         )
         return ScriptCompilationResult.Failure(

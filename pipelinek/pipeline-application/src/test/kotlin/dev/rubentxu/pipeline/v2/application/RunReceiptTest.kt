@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
+import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import java.time.Instant
 import java.util.Base64
 import kotlinx.serialization.json.Json
@@ -278,5 +279,6 @@ class RunReceiptTest {
         occurredAt = Instant.EPOCH,
         cacheKey = cacheKey,
         diagnostics = emptyList(),
+        origin = ScriptOrigin.COMPILED,
     )
 }

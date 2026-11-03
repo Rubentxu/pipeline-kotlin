@@ -523,6 +523,13 @@ Exit codes:
      * The scan knows WHICH verb is asking, because an option that belongs to
      * the other verb is refused HERE: an option that is merely ignored
      * downstream is an option the operator believes was honoured.
+     *
+     * WHICH argument a valued option may consume is [readOptionValue]'s
+     * decision, and it is the same decision everywhere in the CLI: a value
+     * spelled like another option of this build is refused, so
+     * `runs cancel --db --control-root /tmp/ctl run-1` names the option that
+     * would have swallowed the other one instead of answering about a run
+     * nobody asked about.
      */
     private fun scanOptions(args: Array<String>, verb: RunsVerb): OptionParse<Scanned> {
         var dbPath: String? = null
@@ -536,14 +543,25 @@ Exit codes:
         while (index < args.size) {
             when (val arg = args[index]) {
                 "--db" -> {
-                    dbPath = args.getOrNull(++index)
-                        ?: return OptionParse.Rejected(CliError.MissingOptionValue("--db"))
+                    when (val outcome = readOptionValue("--db", args, index + 1, RUNS_OWNED_TOKENS)) {
+                        is OptionValueOutcome.Present -> {
+                            dbPath = outcome.value
+                            index += 1
+                        }
+
+                        is OptionValueOutcome.Refused -> return OptionParse.Rejected(outcome.error)
+                    }
                 }
 
                 "--control-root" -> {
-                    val raw = args.getOrNull(++index)
-                        ?: return OptionParse.Rejected(CliError.MissingOptionValue("--control-root"))
-                    controlRoot = Paths.get(raw)
+                    when (val outcome = readOptionValue("--control-root", args, index + 1, RUNS_OWNED_TOKENS)) {
+                        is OptionValueOutcome.Present -> {
+                            controlRoot = Paths.get(outcome.value)
+                            index += 1
+                        }
+
+                        is OptionValueOutcome.Refused -> return OptionParse.Rejected(outcome.error)
+                    }
                 }
 
                 "--reason" -> {
@@ -552,8 +570,14 @@ Exit codes:
                             CliError.OptionBelongsToVerb("--reason", "runs cancel", REASON_BELONGS_TO_CANCEL),
                         )
                     }
-                    reason = args.getOrNull(++index)
-                        ?: return OptionParse.Rejected(CliError.MissingOptionValue("--reason"))
+                    when (val outcome = readOptionValue("--reason", args, index + 1, RUNS_OWNED_TOKENS)) {
+                        is OptionValueOutcome.Present -> {
+                            reason = outcome.value
+                            index += 1
+                        }
+
+                        is OptionValueOutcome.Refused -> return OptionParse.Rejected(outcome.error)
+                    }
                 }
 
                 "--dry-run" -> {
@@ -607,6 +631,17 @@ Exit codes:
     /** Why `--dry-run` is refused by the verb that cannot be simulated. */
     private const val DRY_RUN_BELONGS_TO_RECOVER =
         "'runs cancel' closes the run for real, so it cannot be simulated."
+
+    /**
+     * The tokens this family owns that the shared vocabulary does not know.
+     *
+     * The family's other tokens (`--db`, `--control-root`) are in the shared
+     * table already, and [readOptionValue] refuses those on its own. These two
+     * belong to one verb of the family each, and a value spelled like one of
+     * them is refused the same way: `--reason` names an operator's reason, not
+     * a path.
+     */
+    private val RUNS_OWNED_TOKENS: Set<String> = setOf("--reason", "--dry-run")
 }
 
 /**

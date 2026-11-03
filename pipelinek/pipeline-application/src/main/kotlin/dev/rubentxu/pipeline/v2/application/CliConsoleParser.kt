@@ -5,8 +5,7 @@ import dev.rubentxu.pipeline.v2.output.OutputCursor
 // The `console` verb.
 //
 // The verb owns TWO positional arguments — the run id and the operation id —
-// and refuses a third. Body moved here from the admission object the console verb used to own;
-// the verb main calls this and renders the typed [ConsoleCliRefusal] through
+// and refuses a third. The verb main calls this and renders the typed [ConsoleCliRefusal] through
 // [renderConsoleCliRefusal], which produces the `Error: ...` wire line for
 // argument refusals. The data-plane refusals
 // (`console-refused: foreign-stream ...`, etc.) are produced by [ConsoleReadService.renderRefusal]
@@ -61,6 +60,11 @@ internal class ConsoleCliOptions {
  * `--range`, `--frames`, `--after-cursor`, `--max-bytes`, `--after-ordinal` and `--frame-limit`
  * remain exclusive in the combinations [consoleValidate] documents. The body moved here
  * without changing a decision, so this is a relocation, not a relaxation.
+ *
+ * WHICH argument a valued option may consume is [readOptionValue]'s decision, and it is the
+ * same decision everywhere in the CLI: a value spelled like another option of this build is
+ * refused, so `console --db --control-root /tmp/ctl run-1` names the option that would have
+ * swallowed the other one instead of reading a control directory nobody named.
  */
 internal object CliConsoleParser {
     @Suppress("CyclomaticComplexMethod")
@@ -80,25 +84,29 @@ internal object CliConsoleParser {
                 "--frame-limit", "--after-ordinal", "--format",
                 "--follow-poll-interval", "--follow-max-polls",
                 "--stage", "--step", "--kind", "--run", "--db" -> {
-                    val value = args.getOrNull(index + 1)
-                        ?: return ConsoleCliParseResult.Rejected(ConsoleCliRefusal.MissingOptionValue(arg))
-                    when (arg) {
-                        "--control-dir" -> options.controlDir = value
-                        "--max-bytes" -> options.maxBytes = value
-                        "--after-cursor" -> options.afterCursor = value
-                        "--range" -> options.range = value
-                        "--frame-limit" -> options.frameLimit = value
-                        "--after-ordinal" -> options.afterOrdinal = value
-                        "--format" -> options.formatToken = value
-                        "--follow-poll-interval" -> options.followPollInterval = value
-                        "--follow-max-polls" -> options.followMaxPolls = value
-                        "--stage" -> stages += value
-                        "--step" -> steps += value
-                        "--kind" -> kinds += value
-                        "--run" -> options.runOverride = value
-                        "--db" -> options.dbPath = value
+                    when (val read = readConsoleValue(arg, args, index + 1)) {
+                        is ConsoleValue.Refusal -> return ConsoleCliParseResult.Rejected(read.refusal)
+                        is ConsoleValue.Value -> {
+                            val value = read.value
+                            when (arg) {
+                                "--control-dir" -> options.controlDir = value
+                                "--max-bytes" -> options.maxBytes = value
+                                "--after-cursor" -> options.afterCursor = value
+                                "--range" -> options.range = value
+                                "--frame-limit" -> options.frameLimit = value
+                                "--after-ordinal" -> options.afterOrdinal = value
+                                "--format" -> options.formatToken = value
+                                "--follow-poll-interval" -> options.followPollInterval = value
+                                "--follow-max-polls" -> options.followMaxPolls = value
+                                "--stage" -> stages += value
+                                "--step" -> steps += value
+                                "--kind" -> kinds += value
+                                "--run" -> options.runOverride = value
+                                "--db" -> options.dbPath = value
+                            }
+                            index++
+                        }
                     }
-                    index++
                 }
                 "--frames" -> options.frames = true
                 "--follow" -> options.follow = true
@@ -139,6 +147,56 @@ internal object CliConsoleParser {
         return consoleValidate(options)
     }
 }
+
+/**
+ * The value of a console option, or the console's refusal.
+ *
+ * The console keeps its OWN refusal vocabulary, so the shared owner's answer
+ * is translated here and not rendered here.
+ */
+private sealed interface ConsoleValue {
+    data class Value(val value: String) : ConsoleValue
+    data class Refusal(val refusal: ConsoleCliRefusal) : ConsoleValue
+}
+
+/**
+ * The value of the console option [token], read at the argument after it.
+ *
+ * The shared owner refuses two things: a value that is not there, and a value
+ * spelled like an option of this build. The first has a console case of its
+ * own, with the console's own wording; the second is a fact the whole CLI
+ * words one way, so the console borrows that sentence.
+ */
+private fun readConsoleValue(token: String, args: Array<String>, valueIndex: Int): ConsoleValue =
+    when (val outcome = readOptionValue(token, args, valueIndex, CONSOLE_OWNED_TOKENS)) {
+        is OptionValueOutcome.Present -> ConsoleValue.Value(outcome.value)
+        is OptionValueOutcome.Refused -> when (val error = outcome.error) {
+            is CliError.MissingOptionValue -> ConsoleValue.Refusal(ConsoleCliRefusal.MissingOptionValue(error.option))
+            else -> ConsoleValue.Refusal(ConsoleCliRefusal.SharedRefusal(error.toCliExit().message))
+        }
+    }
+
+/**
+ * The tokens the console verb owns that the shared vocabulary does not know.
+ *
+ * The verb's other tokens (`--db`, `--format`, `--stage`, `--step`, `--kind`)
+ * are in the shared table already, and [readOptionValue] refuses those on its
+ * own. These are the ones only this verb knows, and a value spelled like one
+ * of them is refused the same way: `--control-dir` names a directory, not a
+ * path that happens to start with a dash.
+ */
+private val CONSOLE_OWNED_TOKENS: Set<String> = setOf(
+    "--control-dir",
+    "--max-bytes",
+    "--after-cursor",
+    "--range",
+    "--frame-limit",
+    "--after-ordinal",
+    "--follow-poll-interval",
+    "--follow-max-polls",
+    "--run",
+    "--frames",
+)
 
 private fun consolePositional(arg: String, runId: String?, opId: String?, hasRunOverride: Boolean): ConsoleCliRefusal? = when {
     arg.startsWith("--") -> ConsoleCliRefusal.UnknownOption(arg)

@@ -54,9 +54,9 @@ object MainSagaInspectCli {
         // only place that can tell the run id from an option's value. The verb reads the run
         // id from the parsed options instead of from `args[0]`, and the request is therefore
         // the same one whether the operator wrote the run id before the options or after.
-        val options = when (val r = parseOptions(args)) {
-            is OptionsParse.Parsed -> r.value
-            is OptionsParse.Rejected -> {
+        val options = when (val r = CliSagaInspectParser.parse(args)) {
+            is SagaInspectParseResult.Parsed -> r.value
+            is SagaInspectParseResult.Rejected -> {
                 val code = refuse(r.error, "saga inspect")
                 System.err.println(USAGE)
                 return code
@@ -107,85 +107,12 @@ object MainSagaInspectCli {
         }
 
         val report = SagaInspectionProjection.read(runId, state.rows, state.events)
-        if (options.format == OutputFormat.JSON) {
+        if (options.format == SagaInspectFormat.JSON) {
             println(renderJson(report))
         } else {
             print(renderText(report))
         }
         return 0
-    }
-
-    /** The formats this verb renders. The spelling is derived, so the refusal can name them. */
-    private enum class OutputFormat(val cli: String) {
-        TEXT("text"),
-        JSON("json"),
-    }
-
-    private data class Options(
-        val dbPath: String?,
-        val format: OutputFormat,
-        /** The run this request is about; null means the operator wrote none. */
-        val runId: String?,
-    )
-
-    private sealed interface OptionsParse {
-        data class Parsed(val value: Options) : OptionsParse
-
-        /**
-         * The refusal, as the typed error the renderer turns into a sentence.
-         *
-         * Not a string: the words belong to [toCliExit], and this verb used to
-         * write its own ("--db needs a path"), which is a third wording for a
-         * mistake the rest of the CLI words one way.
-         */
-        data class Rejected(val error: CliError) : OptionsParse
-    }
-
-    private fun parseOptions(args: Array<String>): OptionsParse {
-        var dbPath: String? = null
-        var format = OutputFormat.TEXT
-        // The run id is the ONE positional argument this verb owns, and it is read wherever
-        // the operator wrote it: the parser is the only place that knows which options carry
-        // a value, so it is the only place that can tell the run id from an option's value.
-        var runId: String? = null
-        var index = 0
-        while (index < args.size) {
-            when (val option = args[index]) {
-                "--db" -> {
-                    val value = args.getOrNull(index + 1)
-                        ?: return OptionsParse.Rejected(CliError.MissingOptionValue("--db"))
-                    dbPath = value
-                    index += 2
-                }
-
-                "--format" -> {
-                    val value = args.getOrNull(index + 1)
-                        ?: return OptionsParse.Rejected(CliError.MissingOptionValue("--format"))
-                    format = OutputFormat.entries.firstOrNull { it.cli == value }
-                        ?: return OptionsParse.Rejected(
-                            CliError.InvalidOptionValue(
-                                "--format",
-                                "must be one of ${OutputFormat.entries.joinToString { it.cli }}, got '$value'",
-                            ),
-                        )
-                    index += 2
-                }
-
-                else -> if (option.startsWith("--")) {
-                    return OptionsParse.Rejected(CliError.UnknownOption(option))
-                } else {
-                    // The FIRST positional is the run id; a SECOND one is not a request of
-                    // this verb, and it is refused naming the token the operator has to
-                    // remove.
-                    if (runId != null) {
-                        return OptionsParse.Rejected(CliError.TooManyPositionals(option))
-                    }
-                    runId = option
-                    index += 1
-                }
-            }
-        }
-        return OptionsParse.Parsed(Options(dbPath, format, runId))
     }
 
     /**

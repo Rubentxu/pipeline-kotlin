@@ -213,6 +213,7 @@ internal object CliOptionAdmission {
         request: CliRequest,
     ): CliAdmission {
         val owned = request.options
+        val ownedTokens = owned.mapTo(mutableSetOf()) { it.token }
         val flags = linkedSetOf<String>()
         val values = linkedMapOf<String, String>()
         val positionals = mutableListOf<String>()
@@ -231,26 +232,24 @@ internal object CliOptionAdmission {
                 index += 1
                 continue
             }
-            val value = args.getOrNull(index + 1)
-                ?: return CliAdmission.Rejected(CliError.MissingOptionValue(token))
             // A valued option that was handed another option of THIS BUILD is
             // refused rather than consumed: storing it as the value would drop
-            // a flag the operator asked for and still exit 0. The check is
-            // scoped to the tokens this build knows, exactly as the shared
-            // parser scopes it — a token that names nothing is far more likely
-            // to be a path than a mistyped flag.
-            //
-            // The verb's OWN tokens join that set, and they are the stronger
-            // half of it: a token this request's verb owns is even less likely
-            // to be a path than one the shared parser happens to know.
-            // `events verify --db --run r1` used to take "--run" for the value
-            // of "--db", and the operator was told about the "r1" left over
-            // instead of about the option that ate the other one.
-            if (knownOptionArity(value) != null || owned.any { it.token == value }) {
-                return CliAdmission.Rejected(CliError.OptionValueIsAnOption(token, value))
+            // a flag the operator asked for and still exit 0. The decision is
+            // [readOptionValue]'s, the one owner of it, and this verb's OWN
+            // tokens join the ones the build knows: a token this request's verb
+            // owns is even less likely to be a path than one the shared parser
+            // happens to know. `events verify --db --run r1` is refused
+            // naming the option that would have taken the other one as its
+            // value, instead of storing "--run" as the path and leaving the
+            // operator with a "r1" nobody explained.
+            when (val outcome = readOptionValue(token, args, index + 1, ownedTokens)) {
+                is OptionValueOutcome.Present -> {
+                    values[token] = outcome.value
+                    index += 2
+                }
+
+                is OptionValueOutcome.Refused -> return CliAdmission.Rejected(outcome.error)
             }
-            values[token] = value
-            index += 2
         }
         // A positional argument is part of the request too, and a verb has to
         // say, in the shape of the request it accepts, HOW MANY of them it

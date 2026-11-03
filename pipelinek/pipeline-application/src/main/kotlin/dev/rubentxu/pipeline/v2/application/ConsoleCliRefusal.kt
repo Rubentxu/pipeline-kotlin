@@ -29,6 +29,22 @@ sealed interface ConsoleCliRefusal {
     data class MissingOptionValue(val option: String) : ConsoleCliRefusal
 
     /**
+     * A refusal the console does not word itself.
+     *
+     * The console keeps its own vocabulary for the facts only it has — the
+     * range/frames categories, the filter shapes, the run-id collision. For a
+     * fact the whole CLI words ONE way, the console borrows the shared
+     * sentence instead of writing a second one: two renderings of one fact
+     * are two things that can disagree.
+     *
+     * The shared refusal the console meets today is a value spelled like
+     * another option of this build, and the shared sentence names both
+     * tokens: the option that was written, and the option it was about to
+     * swallow.
+     */
+    data class SharedRefusal(val message: String) : ConsoleCliRefusal
+
+    /**
      * A reader flag offered to a range read, or the other way round.
      *
      * [spansNothing] is the argument, in one token: the flag does not shrink the answer, it does not
@@ -165,6 +181,7 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
     is ConsoleCliRefusal.NotACursorToken -> "Error: not an output cursor token: ${refusal.token}"
     is ConsoleCliRefusal.ControlDirNotFound -> "Error: control dir not found: ${refusal.path}"
     is ConsoleCliRefusal.MissingOptionValue -> "Error: ${refusal.option} requires a value"
+    is ConsoleCliRefusal.SharedRefusal -> "Error: ${refusal.message}"
     is ConsoleCliRefusal.IncompatibleWithRange -> "Error: ${refusal.toString()}"
     is ConsoleCliRefusal.IncompatibleWithFrames -> "Error: ${refusal.toString()}"
     is ConsoleCliRefusal.UnknownFormat ->

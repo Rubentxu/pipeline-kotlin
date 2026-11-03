@@ -148,11 +148,8 @@ internal class ParseState(
  *    `--allow-network`.
  * 3. **Application** — [FlagOptions] and [ValuedOptions] decide what an option MEANS, grouped by
  *    the shape of its value so neither is a twenty-five-branch switch.
- * This used to open with `val value = args.getOrNull(index + 1) ?: return MissingOptionValue`
- * BEFORE dispatching on the name, which made every option take a value and nothing stop a valued
- * option from swallowing a flag. The arity of every option is now carried by the
- * [FlagOptions] / [ValuedOptions] tables above, and those tables are the whole record of the
- * fix.
+ * The arity of every option is carried by the [FlagOptions] / [ValuedOptions] tables
+ * above: a flag never takes a value, and a valued option never swallows a flag.
  * **The arity of a row is still observed by nothing.** The row-per-row record of the arity
  * was removed with the rest of the test suite. [CliVerbOptionContractTest] observes WHICH
  * verb admits an option and WHICH refuses it, and that is a different fact: a row that
@@ -171,15 +168,71 @@ internal fun applyOption(
         ?: return ApplyOutcome.Rejected(CliError.UnknownOption(option))
     return when (recognised) {
         is RecognisedOption.Flag -> FlagOptions.apply(recognised.option, index, state)
-        is RecognisedOption.Valued -> {
-            val value = args.getOrNull(index + 1)
-                ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-            if (value in KNOWN_OPTIONS) {
-                return ApplyOutcome.Rejected(CliError.OptionValueIsAnOption(option, value))
-            }
-            ValuedOptions.apply(recognised.option, value, index, state)
+        is RecognisedOption.Valued -> when (val outcome = readOptionValue(option, args, index + 1)) {
+            is OptionValueOutcome.Present -> ValuedOptions.apply(recognised.option, outcome.value, index, state)
+            is OptionValueOutcome.Refused -> ApplyOutcome.Rejected(outcome.error)
         }
     }
+}
+
+/**
+ * The value of a valued option, or the refusal that there is none.
+ *
+ * Two shapes, so every caller reads them with an exhaustive `when`: the value the
+ * operator wrote, or the typed refusal that says the request was not one this verb
+ * can read.
+ */
+internal sealed interface OptionValueOutcome {
+    /** The option carried a value this request can use. */
+    data class Present(val value: String) : OptionValueOutcome
+
+    /** The option did not carry a value this request can use. */
+    data class Refused(val error: CliError) : OptionValueOutcome
+}
+
+/**
+ * The value of the valued option [token], read from [args] at [valueIndex].
+ *
+ * ## THE ONE owner of this decision
+ *
+ * A valued option consumes the next argument. WHICH argument it may consume is a
+ * decision, and it is taken HERE, once: every verb reads its values through this
+ * function, so the same option means the same thing in every verb.
+ *
+ * `events --db --limit 5 run-1` names the option that would have swallowed the other
+ * one, and `events --kind` with no value is refused instead of being dropped and
+ * answered as if it had never been written.
+ *
+ * ## What it decides, and only this
+ *
+ * Two facts, and only two:
+ *
+ *  - the value is NOT THERE -> [CliError.MissingOptionValue];
+ *  - the value IS spelled like an option -> [CliError.OptionValueIsAnOption].
+ *
+ * The scope of the second check is the tokens THIS BUILD knows ([knownOptionArity])
+ * plus the tokens the calling verb owns ([ownedTokens]). A token that names nothing
+ * is far more likely to be a path than a mistyped flag, so a value that is not an
+ * option of this build is accepted: refusing every value that begins with `--`
+ * would make `--grep --verbose-stop` unexpressible, trading one silent drop for a
+ * new surprise.
+ *
+ * @param valueIndex the index of the argument that holds the value: the one AFTER
+ *   the option.
+ * @param ownedTokens the tokens the calling verb owns, beyond the ones this build knows.
+ */
+internal fun readOptionValue(
+    token: String,
+    args: Array<String>,
+    valueIndex: Int,
+    ownedTokens: Set<String> = emptySet(),
+): OptionValueOutcome {
+    val value = args.getOrNull(valueIndex)
+        ?: return OptionValueOutcome.Refused(CliError.MissingOptionValue(token))
+    if (knownOptionArity(value) != null || value in ownedTokens) {
+        return OptionValueOutcome.Refused(CliError.OptionValueIsAnOption(token, value))
+    }
+    return OptionValueOutcome.Present(value)
 }
 
 /** The execution-only half of each table. Split by arity because the two enums are distinct types. */
@@ -268,9 +321,6 @@ private sealed interface RecognisedOption {
     data class Flag(val option: FlagOption) : RecognisedOption
     data class Valued(val option: ValuedOption) : RecognisedOption
 }
-
-/** Every token this build knows, used to stop a valued option from eating a flag. */
-private val KNOWN_OPTIONS: Set<String> = FlagOption.BY_TOKEN.keys + ValuedOption.BY_TOKEN.keys
 
 /** Look the token up. `null` means this build has no such option, and that is an error, not a skip. */
 private fun recognise(option: String): RecognisedOption? =

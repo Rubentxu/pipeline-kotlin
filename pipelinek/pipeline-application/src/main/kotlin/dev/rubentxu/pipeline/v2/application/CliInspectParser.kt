@@ -11,159 +11,253 @@ internal object CliInspectParser {
     /**
      * `pipelinek inspect <runId> [opts]`.
      *
-     * The option table moved here from the verb, so the verb's main now calls this and
+     * The option table lives here, so the verb's main calls this and
      * translates the typed result into the `inspect: ...` stderr line + the code the taxonomy
      * declares. The `Error:` prefix is not the inspect prefix — inspect prefixes with `inspect:`,
      * and this separation is intentional (events and console share `Error:` as their
-     * CLI-admission prefix). [MainInspectCli.parseInspect] stays as the verb's own entry point,
-     * and the option-table layout is why this function carries the same
-     * `@Suppress("CyclomaticComplexMethod")`.
+     * CLI-admission prefix). [MainInspectCli.parseInspect] stays as the verb's own entry point.
      *
      * ## The rejections are VALUES, not sentences
      *
      * Every refusal below is a [CliError] and carries no words of its own. The sentence the
      * operator reads is written once, in [toCliExit], and every verb that refuses a request says
-     * it the same way. This parser used to hand the verb a sentence it had written itself
-     * ("unknown option '--x'"), and the verb printed it with its own prefix: a second rendering
-     * of the same fact, free to disagree with the first.
+     * it the same way. A parser that handed the verb a sentence of its own would be a second
+     * rendering of the same fact, free to disagree with the first.
     */
-    @Suppress("CyclomaticComplexMethod")
-    fun parse(args: Array<String>): InspectParseResult {
-        var failed = false
-        var kind: String? = null
-        var stage: String? = null
-        var step: Long? = null
-        var context = 0
-        var logTail = 0
-        var opId: String? = null
-        var fields: List<MainInspectCli.InspectField>? = null
-        var format: MainInspectCli.InspectFormat = MainInspectCli.InspectFormat.TEXT
-        var controlRoot: String? = null
-        var dbPath: String? = null
-        var state = false
-        var profile = false
-        var explain = false
-        var telemetry = false
-        var otlp = false
-        // The run id is the ONE positional argument this verb owns, and it is read
-        // wherever the operator wrote it: the parser is the only place that knows
-        // which options carry a value, so the run id is whichever argument is not an
-        // option and not an option's value.
-        var runId: String? = null
-
-        var i = 0
-        while (i < args.size) {
-            val a = args[i]
-            when (a) {
-                "--failed" -> failed = true
-                "--state" -> state = true
-                "--profile" -> profile = true
-                "--explain" -> explain = true
-                "--telemetry" -> telemetry = true
-                "--otlp" -> otlp = true
-                "--kind" -> {
-                    kind = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--kind"))
-                }
-                "--stage" -> {
-                    stage = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--stage"))
-                }
-                "--step" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--step"))
-                    step = raw.toLongOrNull()
-                        ?: return rejectInspect(CliError.InvalidOptionValue("--step", "must be a Long, got '$raw'"))
-                }
-                "--context" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--context"))
-                    context = raw.toIntOrNull()
-                        ?: return rejectInspect(CliError.InvalidOptionValue("--context", "must be an Int, got '$raw'"))
-                    if (context < 0) {
-                        return rejectInspect(CliError.InvalidOptionValue("--context", "must be >= 0, got $context"))
-                    }
-                }
-                "--log-tail" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--log-tail"))
-                    logTail = raw.toIntOrNull()
-                        ?: return rejectInspect(CliError.InvalidOptionValue("--log-tail", "must be an Int, got '$raw'"))
-                    if (logTail < 0) {
-                        return rejectInspect(CliError.InvalidOptionValue("--log-tail", "must be >= 0, got $logTail"))
-                    }
-                }
-                "--log-tail-op" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--log-tail-op"))
-                    if (raw.isBlank()) {
-                        return rejectInspect(CliError.InvalidOptionValue("--log-tail-op", "must not be blank"))
-                    }
-                    opId = raw
-                }
-                "--fields" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--fields"))
-                    fields = raw.split(',').map { token ->
-                        val upper = token.trim().uppercase()
-                        MainInspectCli.InspectField.parse(upper)
-                            ?: return rejectInspect(CliError.InvalidOptionValue("--fields", "unknown token '$token'"))
-                    }
-                }
-                "--format" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--format"))
-                    format = MainInspectCli.InspectFormat.parse(raw) ?: return rejectInspect(
-                        CliError.InvalidOptionValue(
-                            "--format",
-                            "must be one of ${MainInspectCli.InspectFormat.values().joinToString { it.cli }}",
-                        ),
-                    )
-                }
-                "--control-root" -> {
-                    controlRoot = args.getOrNull(++i)
-                        ?: return rejectInspect(CliError.MissingOptionValue("--control-root"))
-                }
-                "--db" -> {
-                    dbPath = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--db"))
-                }
-                else -> if (a.startsWith("--")) {
-                    return rejectInspect(CliError.UnknownOption(a))
-                } else if (runId != null) {
-                    // The FIRST positional is the run id; a SECOND one is not a request of
-                    // this verb, and it is refused naming the token to remove.
-                    return rejectInspect(CliError.TooManyPositionals(a))
-                } else {
-                    runId = a
-                }
-            }
-            i++
-        }
-
-        // Whole-run reports are modes, and a query carries one. What they may
-        // be combined into is decided in its own function, so that this one is
-        // about READING the options and not about what they may mean.
-        val conflict = rejectConflictingModes(state, profile, explain, telemetry, otlp)
-        if (conflict != null) return conflict
-
-        return InspectParseResult.Parsed(
-            CompiledInspectionQuery(
-                failed = failed,
-                kind = kind,
-                stage = stage,
-                step = step,
-                context = context,
-                logTail = logTail,
-                opId = opId,
-                fields = fields,
-                format = format,
-                controlRoot = controlRoot,
-                dbPath = dbPath,
-                state = state,
-                profile = profile,
-                explain = explain,
-                telemetry = telemetry,
-                otlp = otlp,
-                runId = runId,
-            ),
-        )
-    }
+    fun parse(args: Array<String>): InspectParseResult = scanOptions(args)
 }
 
-private fun rejectInspect(error: CliError): InspectParseResult.Rejected =
-    InspectParseResult.Rejected(error)
+/**
+ * The options as the operator wrote them, read once.
+ *
+ * WHICH argument a valued option may consume is [readOptionValue]'s decision,
+ * and it is the same decision everywhere in the CLI: a MISSING value is refused,
+ * and a value spelled like another option of this build is refused too, so
+ * `inspect --db --control-root /tmp/ctl run-1` names the option that would have
+ * swallowed the other one instead of answering about a run nobody asked about.
+ *
+ * The refusals are VALUES, not sentences: the words are written once, in
+ * [toCliExit], and this parser hands the error over unchanged.
+ *
+ * ## Two seams, one per responsibility
+ *
+ * [readInspectValue] decides WHICH argument an option may consume, and every
+ * `apply*` function decides WHAT the option means. The scan does neither of
+ * them twice: it reads the argument, and the meaning of the option is applied
+ * by the one function that owns that option.
+ */
+private fun scanOptions(args: Array<String>): InspectParseResult {
+    val scan = InspectScan()
+    var index = 0
+    while (index < args.size) {
+        val token = args[index]
+        when (token) {
+            "--failed", "--state", "--profile", "--explain", "--telemetry", "--otlp" ->
+                scan.flags += token
+
+            "--kind", "--stage", "--control-root", "--db" -> {
+                val refusal = readInspectValue(scan, token, args, index, ::applyPlain)
+                if (refusal != null) return InspectParseResult.Rejected(refusal)
+                index += 1
+            }
+
+            "--step" -> {
+                val refusal = readInspectValue(scan, token, args, index, ::applyStep)
+                if (refusal != null) return InspectParseResult.Rejected(refusal)
+                index += 1
+            }
+
+            "--context", "--log-tail" -> {
+                val refusal = readInspectValue(scan, token, args, index, ::applyCount)
+                if (refusal != null) return InspectParseResult.Rejected(refusal)
+                index += 1
+            }
+
+            "--log-tail-op" -> {
+                val refusal = readInspectValue(scan, token, args, index, ::applyOpId)
+                if (refusal != null) return InspectParseResult.Rejected(refusal)
+                index += 1
+            }
+
+            "--fields" -> {
+                val refusal = readInspectValue(scan, token, args, index, ::applyFields)
+                if (refusal != null) return InspectParseResult.Rejected(refusal)
+                index += 1
+            }
+
+            "--format" -> {
+                val refusal = readInspectValue(scan, token, args, index, ::applyFormat)
+                if (refusal != null) return InspectParseResult.Rejected(refusal)
+                index += 1
+            }
+
+            else -> if (token.startsWith("--")) {
+                return InspectParseResult.Rejected(CliError.UnknownOption(token))
+            } else if (scan.runId != null) {
+                // The FIRST positional is the run id; a SECOND one is not a request of
+                // this verb, and it is refused naming the token to remove.
+                return InspectParseResult.Rejected(CliError.TooManyPositionals(token))
+            } else {
+                scan.runId = token
+            }
+        }
+        index++
+    }
+
+    // Whole-run reports are modes, and a query carries one. What they may
+    // be combined into is decided in its own function, so that this one is
+    // about READING the options and not about what they may mean.
+    val conflict = rejectConflictingModes(scan.flags)
+    if (conflict != null) return conflict
+
+    return InspectParseResult.Parsed(scan.compile())
+}
+
+/**
+ * Read the value of one option and apply what the option means.
+ *
+ * The value is read at the argument after the token, and the shared owner
+ * decides whether that argument MAY be consumed: a value spelled like an
+ * option of this build is refused instead of swallowed. The meaning is then
+ * applied by [apply], the one function that owns that option.
+ *
+ * Null when the value was read and applied; the refusal otherwise.
+ */
+private fun readInspectValue(
+    scan: InspectScan,
+    token: String,
+    args: Array<String>,
+    index: Int,
+    apply: (InspectScan, String, String) -> CliError?,
+): CliError? = when (val outcome = readOptionValue(token, args, index + 1, INSPECT_OWNED_TOKENS)) {
+    is OptionValueOutcome.Present -> apply(scan, token, outcome.value)
+    is OptionValueOutcome.Refused -> outcome.error
+}
+
+/** A plain value: the option names a path or a name, and the words are kept as they were written. */
+private fun applyPlain(scan: InspectScan, token: String, raw: String): CliError? {
+    scan.plain[token] = raw
+    return null
+}
+
+/** `--step` names the step of the run to read. */
+private fun applyStep(scan: InspectScan, token: String, raw: String): CliError? {
+    val parsed = raw.toLongOrNull()
+        ?: return CliError.InvalidOptionValue(token, "must be a Long, got '$raw'")
+    scan.step = parsed
+    return null
+}
+
+/** `--context` and `--log-tail` name how much of the run to read, and neither can be negative. */
+private fun applyCount(scan: InspectScan, token: String, raw: String): CliError? {
+    val parsed = raw.toIntOrNull()
+        ?: return CliError.InvalidOptionValue(token, "must be an Int, got '$raw'")
+    if (parsed < 0) {
+        return CliError.InvalidOptionValue(token, "must be >= 0, got $parsed")
+    }
+    scan.counts[token] = parsed
+    return null
+}
+
+/** `--log-tail-op` names ONE operation to read the tail of. */
+private fun applyOpId(scan: InspectScan, token: String, raw: String): CliError? {
+    if (raw.isBlank()) {
+        return CliError.InvalidOptionValue(token, "must not be blank")
+    }
+    scan.opId = raw
+    return null
+}
+
+/** `--fields` names the columns to render. */
+private fun applyFields(scan: InspectScan, token: String, raw: String): CliError? {
+    val fields = mutableListOf<MainInspectCli.InspectField>()
+    for (part in raw.split(',')) {
+        val parsed = MainInspectCli.InspectField.parse(part.trim().uppercase())
+            ?: return CliError.InvalidOptionValue(token, "unknown token '$part'")
+        fields += parsed
+    }
+    scan.fields = fields
+    return null
+}
+
+/** `--format` names the rendering. */
+private fun applyFormat(scan: InspectScan, token: String, raw: String): CliError? {
+    val parsed = MainInspectCli.InspectFormat.parse(raw)
+        ?: return CliError.InvalidOptionValue(
+            token,
+            "must be one of ${MainInspectCli.InspectFormat.values().joinToString { it.cli }}",
+        )
+    scan.format = parsed
+    return null
+}
+
+/**
+ * The options as the operator wrote them, before they are interpreted.
+ *
+ * One property per axis, none of them a constructor parameter: the holder is
+ * filled while the arguments are scanned and read afterwards, so a constructor
+ * would have to carry the same values anyway.
+ */
+private class InspectScan {
+    /** The options whose value is kept as it was written. */
+    val plain = mutableMapOf<String, String>()
+
+    /** The options whose value is a count. */
+    val counts = mutableMapOf<String, Int>()
+
+    /** The options that carry no value. */
+    val flags = mutableSetOf<String>()
+
+    var step: Long? = null
+    var opId: String? = null
+    var fields: List<MainInspectCli.InspectField>? = null
+    var format: MainInspectCli.InspectFormat = MainInspectCli.InspectFormat.TEXT
+
+    /** The run this request is about; null means the operator wrote none. */
+    var runId: String? = null
+
+    /** The query these options describe. */
+    fun compile(): CompiledInspectionQuery = CompiledInspectionQuery(
+        failed = "--failed" in flags,
+        kind = plain["--kind"],
+        stage = plain["--stage"],
+        step = step,
+        context = counts["--context"] ?: 0,
+        logTail = counts["--log-tail"] ?: 0,
+        opId = opId,
+        fields = fields,
+        format = format,
+        controlRoot = plain["--control-root"],
+        dbPath = plain["--db"],
+        state = "--state" in flags,
+        profile = "--profile" in flags,
+        explain = "--explain" in flags,
+        telemetry = "--telemetry" in flags,
+        otlp = "--otlp" in flags,
+        runId = runId,
+    )
+}
+
+/**
+ * The tokens the inspect verb owns that the shared vocabulary does not know.
+ *
+ * The verb's other tokens (`--db`, `--kind`, `--stage`, `--step`, `--context`,
+ * `--format`, `--control-root`) are in the shared table already, and
+ * [readOptionValue] refuses those on its own. These are the ones only this verb
+ * knows, and a value spelled like one of them is refused the same way.
+ */
+private val INSPECT_OWNED_TOKENS: Set<String> = setOf(
+    "--failed",
+    "--state",
+    "--profile",
+    "--explain",
+    "--telemetry",
+    "--otlp",
+    "--context",
+    "--log-tail",
+    "--log-tail-op",
+    "--fields",
+)
 
 /**
  * Parsed inspection query. Immutable data class.
@@ -183,7 +277,7 @@ data class CompiledInspectionQuery(
      * When set, the `--log-tail` scope is one operation (this opId),
      * not the whole run. The per-op read filters frames whose stream id carries this
      * opId as a middle segment. When null, the tail is the run-wide last-N-bytes path.
-*/
+    */
     val opId: String? = null,
     val fields: List<MainInspectCli.InspectField>? = null,
     val format: MainInspectCli.InspectFormat = MainInspectCli.InspectFormat.TEXT,
@@ -259,28 +353,15 @@ sealed interface InspectParseResult {
  *
  * Null when the query carries at most one report.
  */
-private fun rejectConflictingModes(
-    state: Boolean,
-    profile: Boolean,
-    explain: Boolean,
-    telemetry: Boolean,
-    otlp: Boolean,
-): InspectParseResult.Rejected? {
-    val modes = buildList {
-        if (state) add("--state")
-        if (profile) add("--profile")
-        if (explain) add("--explain")
-        if (telemetry) add("--telemetry")
-    }
+private fun rejectConflictingModes(flags: Set<String>): InspectParseResult.Rejected? {
+    val modes = listOf("--state", "--profile", "--explain", "--telemetry").filter { it in flags }
     if (modes.size > 1) {
-        return rejectInspect(
-            CliError.InvalidCombination(
-                "a query carries one whole-run report; got ${modes.joinToString(" + ")}",
-            ),
+        return InspectParseResult.Rejected(
+            CliError.InvalidCombination("a query carries one whole-run report; got ${modes.joinToString(" + ")}"),
         )
     }
-    if (otlp && !telemetry) {
-        return rejectInspect(
+    if ("--otlp" in flags && "--telemetry" !in flags) {
+        return InspectParseResult.Rejected(
             CliError.InvalidCombination("--otlp renders the telemetry export; it requires --telemetry"),
         )
     }

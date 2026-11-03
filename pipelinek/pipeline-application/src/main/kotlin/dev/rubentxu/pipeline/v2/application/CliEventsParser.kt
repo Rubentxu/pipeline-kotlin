@@ -17,84 +17,26 @@ internal object CliEventsParser {
      * [MainEventsCli.parseEventsInspectionFlags], which stays in the verb because it has its own
      * closed ADT (`EventsInspectionFlag`) the existing tests exercise directly.
     */
-    @Suppress("CyclomaticComplexMethod")
     fun parse(args: Array<String>): EventsCliParseResult {
-        var db: String? = null
-        var runId: String? = null
-        var kind: String? = null
-        var subjectCanonical: String? = null
-        val limit = EVENTS_DEFAULT_LIMIT
-        var afterCursor: String? = null
-        var limitArg: String? = null
-        var projection: EventsRowProjection = EventsRowProjection.Envelope
-        var follow = false
-        var fieldsWhitelist: List<EventField>? = null
-        var contextWindow = 0
-        var tailCount = 0
-
-        var i = 0
-        while (i < args.size) {
-            val arg = args[i]
-            when (arg) {
-                "--db" -> db = args.getOrNull(++i)
-                "--kind" -> kind = args.getOrNull(++i)
-                "--subject" -> subjectCanonical = args.getOrNull(++i)
-                "--limit" -> limitArg = args.getOrNull(++i)
-                "--after-cursor" -> afterCursor = args.getOrNull(++i)
-                "--typed" -> projection = EventsRowProjection.Typed
-                "--follow" -> follow = true
-                "--fields" -> {
-                    val raw = args.getOrNull(++i)
-                        ?: return EventsCliParseResult.Rejected("--fields requires a value")
-                    val parsed = parseEventsFieldsToken(raw)
-                        ?: return EventsCliParseResult.Rejected("--fields has unknown token(s): $raw")
-                    fieldsWhitelist = parsed
-                }
-                "--context" -> {
-                    val raw = args.getOrNull(++i)
-                        ?: return EventsCliParseResult.Rejected("--context requires a value")
-                    val n = parseEventsNonNegativeInt(raw)
-                        ?: return EventsCliParseResult.Rejected(
-                            "--context must be a non-negative Int, got '$raw'",
-                        )
-                    contextWindow = n
-                }
-                "--tail" -> {
-                    val raw = args.getOrNull(++i)
-                        ?: return EventsCliParseResult.Rejected("--tail requires a value")
-                    val n = parseEventsNonNegativeInt(raw)
-                        ?: return EventsCliParseResult.Rejected(
-                            "--tail must be a non-negative Int, got '$raw'",
-                        )
-                    tailCount = n
-                }
-                else -> when {
-                    arg.startsWith("--") -> return EventsCliParseResult.Rejected("unknown option: $arg")
-                    runId != null -> return EventsCliParseResult.Rejected("unexpected extra argument: $arg")
-                    else -> runId = arg
-                }
-            }
-            i++
+        val scan = when (val outcome = scanOptions(args)) {
+            is EventsScanResult.Rejected -> return EventsCliParseResult.Rejected(outcome.reason)
+            is EventsScanResult.Scanned -> outcome.options
         }
+        val db = scan.values["--db"]
+        val runId = scan.runId
         if (db == null || runId == null) {
-            return EventsCliParseResult.Rejected(
-                "Usage: pipeline events --db <path> <runId> [--kind K] " +
-                    "[--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] " +
-                    "[--after-cursor TOKEN] [--follow] " +
-                    "[--fields SEQ,KIND,EVENTID,SUBJECT,SOURCE] " +
-                    "[--context N] [--tail N] " +
-                    "[--typed]",
-            )
+            return EventsCliParseResult.Rejected(EVENTS_USAGE_TEXT)
         }
+        val limitArg = scan.values["--limit"]
         val parsedLimit = if (limitArg != null) {
             val p = limitArg.toIntOrNull()
             if (p == null || p <= 0) {
                 return EventsCliParseResult.Rejected("--limit must be a positive integer, got: $limitArg")
             }
             p
-        } else limit
-        if (projection == EventsRowProjection.Typed &&
-            (fieldsWhitelist != null || contextWindow > 0 || tailCount > 0)
+        } else EVENTS_DEFAULT_LIMIT
+        if (scan.projection == EventsRowProjection.Typed &&
+            (scan.fieldsWhitelist != null || scan.contextWindow > 0 || scan.tailCount > 0)
         ) {
             return EventsCliParseResult.Rejected(
                 "--typed is mutually exclusive with --fields / --context / --tail " +
@@ -105,18 +47,160 @@ internal object CliEventsParser {
             EventsCliArgs(
                 db = db,
                 runId = runId,
-                kind = kind,
-                subjectCanonical = subjectCanonical,
+                kind = scan.values["--kind"],
+                subjectCanonical = scan.values["--subject"],
                 limit = parsedLimit,
-                afterCursor = afterCursor,
-                projection = projection,
-                follow = follow,
-                fieldsWhitelist = fieldsWhitelist,
-                contextWindow = contextWindow,
-                tailCount = tailCount,
+                afterCursor = scan.values["--after-cursor"],
+                projection = scan.projection,
+                follow = scan.follow,
+                fieldsWhitelist = scan.fieldsWhitelist,
+                contextWindow = scan.contextWindow,
+                tailCount = scan.tailCount,
             ),
         )
     }
+
+    /**
+     * The options as the operator wrote them, read once.
+     *
+     * WHICH argument a valued option may consume is [readOptionValue]'s decision,
+     * and it is the same decision everywhere in the CLI: `events --db --limit 5 run-1`
+     * names the option that would have swallowed the other one, and `events --kind`
+     * with no value is refused instead of being dropped and answered as if it had
+     * never been written.
+     *
+     * The refusals here are SENTENCES, because the events verb has always
+     * answered in sentences: the shared refusal is turned into words through
+     * [toCliExit], the ONE mapping from an error to a sentence, and the verb's
+     * own refusals keep their own words.
+     */
+    private fun scanOptions(args: Array<String>): EventsScanResult {
+        val options = EventsScan()
+        var index = 0
+        while (index < args.size) {
+            val arg = args[index]
+            when (arg) {
+                "--typed" -> options.projection = EventsRowProjection.Typed
+                "--follow" -> options.follow = true
+                // The five options that carry a plain value. They are the same
+                // KIND of option, so they are read together; the shared owner
+                // says whether the argument after the token may be consumed.
+                "--db", "--kind", "--subject", "--limit", "--after-cursor" -> {
+                    when (val read = readEventsValue(arg, args, index + 1)) {
+                        is EventsValue.Refusal -> return EventsScanResult.Rejected(read.reason)
+                        is EventsValue.Value -> {
+                            options.values[arg] = read.value
+                            index += 1
+                        }
+                    }
+                }
+
+                "--fields" -> {
+                    when (val read = readEventsValue(arg, args, index + 1)) {
+                        is EventsValue.Refusal -> return EventsScanResult.Rejected(read.reason)
+                        is EventsValue.Value -> {
+                            options.fieldsWhitelist = parseEventsFieldsToken(read.value)
+                                ?: return EventsScanResult.Rejected(
+                                    "--fields has unknown token(s): ${read.value}",
+                                )
+                            index += 1
+                        }
+                    }
+                }
+
+                "--context" -> {
+                    when (val read = readEventsValue(arg, args, index + 1)) {
+                        is EventsValue.Refusal -> return EventsScanResult.Rejected(read.reason)
+                        is EventsValue.Value -> {
+                            options.contextWindow = parseEventsNonNegativeInt(read.value)
+                                ?: return EventsScanResult.Rejected(
+                                    "--context must be a non-negative Int, got '${read.value}'",
+                                )
+                            index += 1
+                        }
+                    }
+                }
+
+                "--tail" -> {
+                    when (val read = readEventsValue(arg, args, index + 1)) {
+                        is EventsValue.Refusal -> return EventsScanResult.Rejected(read.reason)
+                        is EventsValue.Value -> {
+                            options.tailCount = parseEventsNonNegativeInt(read.value)
+                                ?: return EventsScanResult.Rejected(
+                                    "--tail must be a non-negative Int, got '${read.value}'",
+                                )
+                            index += 1
+                        }
+                    }
+                }
+
+                else -> when {
+                    arg.startsWith("--") -> return EventsScanResult.Rejected("unknown option: $arg")
+                    options.runId != null ->
+                        return EventsScanResult.Rejected("unexpected extra argument: $arg")
+
+                    else -> options.runId = arg
+                }
+            }
+            index++
+        }
+        return EventsScanResult.Scanned(options)
+    }
+}
+
+/**
+ * The value of an option, or the sentence that refuses it.
+ *
+ * The events verb answers in sentences, so the shared refusal is turned into
+ * words here, through [toCliExit], the ONE mapping from an error to a sentence.
+ */
+private sealed interface EventsValue {
+    data class Value(val value: String) : EventsValue
+    data class Refusal(val reason: String) : EventsValue
+}
+
+/** The value of the option [arg], read at the argument after it. */
+private fun readEventsValue(arg: String, args: Array<String>, valueIndex: Int): EventsValue =
+    when (val outcome = readOptionValue(arg, args, valueIndex, EVENTS_OWNED_TOKENS)) {
+        is OptionValueOutcome.Present -> EventsValue.Value(outcome.value)
+        is OptionValueOutcome.Refused -> EventsValue.Refusal(outcome.error.toCliExit().message)
+    }
+
+/**
+ * The tokens the events verb owns that the shared vocabulary does not know.
+ *
+ * The verb's other tokens (`--db`, `--kind`, `--limit`, `--after-cursor`,
+ * `--follow`) are in the shared table already, and [readOptionValue] refuses
+ * those on its own. These five are the ones only this verb knows, and a value
+ * spelled like one of them is refused the same way: `--subject` names a
+ * subject, not a path.
+ */
+private val EVENTS_OWNED_TOKENS: Set<String> =
+    setOf("--subject", "--typed", "--fields", "--context", "--tail")
+
+/**
+ * The events verb's options, read but not yet interpreted.
+ *
+ * The five plain values travel in one map because they are the same KIND of
+ * option: a token and the argument after it. The three options that carry a
+ * MEANING of their own (a field list, two counts) keep their own fields,
+ * because their values are not read before they are checked.
+ */
+private class EventsScan(
+    val values: MutableMap<String, String> = mutableMapOf(),
+    var projection: EventsRowProjection = EventsRowProjection.Envelope,
+    var follow: Boolean = false,
+    var fieldsWhitelist: List<EventField>? = null,
+    var contextWindow: Int = 0,
+    var tailCount: Int = 0,
+    /** The run this request is about; null means the operator wrote none. */
+    var runId: String? = null,
+)
+
+/** The outcome of reading the events verb's options. */
+private sealed interface EventsScanResult {
+    data class Scanned(val options: EventsScan) : EventsScanResult
+    data class Rejected(val reason: String) : EventsScanResult
 }
 
 /**
@@ -150,3 +234,12 @@ private fun parseEventsNonNegativeInt(raw: String): Int? {
 
 /** Events verb default page size: the legacy default the verb applied when `--limit` was absent. */
 private const val EVENTS_DEFAULT_LIMIT: Int = 100
+
+/** The shape of an events request, for an operator who did not write one. */
+private const val EVENTS_USAGE_TEXT: String =
+    "Usage: pipeline events --db <path> <runId> [--kind K] " +
+        "[--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] " +
+        "[--after-cursor TOKEN] [--follow] " +
+        "[--fields SEQ,KIND,EVENTID,SUBJECT,SOURCE] " +
+        "[--context N] [--tail N] " +
+        "[--typed]"

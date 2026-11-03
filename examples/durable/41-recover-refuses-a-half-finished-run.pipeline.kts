@@ -1,4 +1,4 @@
-// 40-recover-refuses-a-half-finished-run.pipeline.kts — recovering a run that did not finish.
+// 41-recover-refuses-a-half-finished-run.pipeline.kts — recovering a run that did not finish.
 //
 //@ durable-once
 //@ recover

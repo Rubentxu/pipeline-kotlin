@@ -1,4 +1,4 @@
-// 06-observer-death-does-not-kill-the-producer.pipeline.kts — the observer dies; the run does not.
+// 08-observer-death-does-not-kill-the-producer.pipeline.kts — the observer dies; the run does not.
 //
 //@ durable-once
 //@ expect-exit 0

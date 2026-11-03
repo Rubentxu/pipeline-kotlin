@@ -67,6 +67,19 @@
 #                                     second one was a no-op rather than a
 #                                     refusal, and that the run's history ends
 #                                     with a terminal bookend.
+#   //@ recover                       the first run is expected to DIE, and
+#                                     then the run is recovered with
+#                                     `pipelinek runs recover`.
+#                                     The verdict is the recover's: the run
+#                                     that died could not say anything about
+#                                     its own outcome.
+#                                     The launcher checks that a recover GIVEN
+#                                     A REASON is refused, that a dry run
+#                                     writes nothing, that the dry run and the
+#                                     recovery decide the SAME thing, that the
+#                                     recovery of a run whose work did not
+#                                     finish does not close it, and that the
+#                                     run is still running afterwards.
 #   //@ credentials <id> <kind>       seed <id> into this scenario's own store
 #                                     before the run, so a pipeline that binds a
 #                                     credential has one to resolve. Repeatable.
@@ -98,6 +111,77 @@
 #                                     `lying-capabilities-omitted` is the OTHER
 #                                     direction: the plugin's contract requires a
 #                                     capability and the manifest omits it.
+#   //@ plugin-trust <fixture>        the operator's trust policy for the
+#                                     plugin this scenario brings: the
+#                                     launcher generates the key pair, signs
+#                                     the plugin's bytes with a detached
+#                                     Ed25519 signature and pins those bytes
+#                                     by their SHA-256, so the run is pointed
+#                                     at a policy the scenario owns.
+#                                     `signed` is the plugin admitted under
+#                                     that policy; `signed-then-tampered` is
+#                                     the same policy and the same signature
+#                                     over DIFFERENT bytes, so the artifact is
+#                                     no longer the one the operator approved.
+#   //@ events-refusal <fixture>      the scenario's own run is the fixture,
+#                                     and the launcher then asks the reader a
+#                                     question it must REFUSE.
+#                                     `unknown-run` asks about a run that does
+#                                     not exist; `cursor-beyond-tail` asks for
+#                                     a cursor past the end of the history;
+#                                     `no-event-history` asks about a file
+#                                     that is not an event store at all -- and
+#                                     the reader must not have written to the
+#                                     file it was only asked to read.
+#   //@ credentials-refusal <kind>    the scenario's own run is the fixture,
+#                                     and the launcher then asks the
+#                                     credential door about a store whose
+#                                     magic has been changed: `tampered-store`
+#                                     is a COPY of the scenario's own store
+#                                     with one byte of its magic replaced, so
+#                                     the door must say THAT instead of
+#                                     answering as if the key were wrong.
+#   //@ events-resume <kind> <limit>  the scenario's own run is the fixture,
+#                                     and the launcher acts as an EXTERNAL
+#                                     client that reads the history by cursor,
+#                                     one page per process, and comes back
+#                                     with the cursor.
+#                                     What is asserted is that between one
+#                                     read and the next NO fact is skipped and
+#                                     NO fact is repeated: the paged reader
+#                                     must end up having seen exactly what a
+#                                     single read sees.
+#   //@ step-verdict <verdicts>       the scenario declares what each step's
+#                                     verdict must be, and the launcher reads
+#                                     ONLY the step terminal events -- never
+#                                     the failure event -- and compares the
+#                                     pairs, in any order.
+#                                     Each pair is `<step>=<verdict>`; a
+#                                     terminal event that carries no verdict
+#                                     is the defect this catches.
+#   //@ failure-stage <stages>        the scenario declares which stage each
+#                                     failure belongs to, and the launcher
+#                                     reads ONLY the failure events -- never
+#                                     the step's terminal event -- and
+#                                     compares the pairs, in any order.
+#                                     Each pair is `<step>=<stage>`; a failure
+#                                     that names no stage is not a failure in
+#                                     the first stage.
+#   //@ events-follow <kind> <clock>  the scenario's own run is the fixture,
+#                                     and the launcher acts as an EXTERNAL
+#                                     client that follows a history that has
+#                                     ALREADY ENDED, with a filter.
+#                                     The follow has to END: it ends when the
+#                                     run's terminal fact says the run is
+#                                     over, not when the filter has delivered
+#                                     something.
+#                                     The bound is a wall clock, because the
+#                                     failure this catches is a wait that
+#                                     never returns.
+#   //@ run-state <text>              the scenario's own run is the fixture,
+#                                     and the launcher asks the introspection
+#                                     plane about the RUN: `pipelinek inspect
+#                                     --state` must say this text.
 #   //@ timeout <seconds>            the clock this scenario gets. The default is
 #                                    an order of magnitude above what any scenario
 #                                    takes today, so the clock only fires on a

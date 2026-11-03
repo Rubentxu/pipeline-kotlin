@@ -1,4 +1,4 @@
-// 05-run-state.pipeline.kts — what the product says about a run that is over.
+// 07-run-state.pipeline.kts — what the product says about a run that is over.
 //
 //@ expect-exit 0
 //@ run-state run-state terminal outcome=succeeded

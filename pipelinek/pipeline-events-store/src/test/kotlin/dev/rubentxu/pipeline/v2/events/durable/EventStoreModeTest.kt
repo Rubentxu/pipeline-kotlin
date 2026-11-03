@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test
  * scenario cannot make that happen on demand — so the mapping is pinned here, per purpose.
  *
  * The behavioural half — an observer killed in mid-flight leaves the producer running — is pinned
- * by the end-to-end scenario `examples/events/06-observer-death-does-not-kill-the-producer.pipeline.kts`,
+ * by the end-to-end scenario `examples/events/08-observer-death-does-not-kill-the-producer.pipeline.kts`,
  * which runs the real distribution. Nothing here touches a database.
  */
 class EventStoreModeTest {

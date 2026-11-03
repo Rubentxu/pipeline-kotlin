@@ -199,6 +199,12 @@ and it is written down where it is kept true: in the header of
 [`examples/run.sh`](examples/run.sh). The launcher is not a framework: it has
 no registry, no fixtures and no assertions of its own.
 
+Every scenario runs under a ceiling: `PIPELINEK_E2E_SCENARIO_TIMEOUT_SECONDS`
+seconds, 120 by default, and there is no "disable" mode — a value that is not
+a positive number of seconds makes that scenario FAIL rather than run
+unbounded. A scenario that needs more time asks for it with its own
+`//@ timeout <seconds>` directive.
+
 `//@` is an ordinary Kotlin comment rather than a `#!` line, and that
 is deliberate. `#!` only ever worked by accident: the script compiler
 strips a shebang from the *first* line of a file, so a second `#!` line
@@ -221,7 +227,7 @@ This build ships with:
   run, a cursor past the tail and a storage failure are three different
   refusals with three different remedies, not one "unknown run". The follow
   contract that carries them is published as the capability
-  `events.follow.v2`.
+  `events.follow.v3`.
 - A failure that says **which stage** it belongs to: the `StepFailed` event
   carries the stage, so a client attributes the failure to its stage from the
   failure event itself, without joining it with another event. The step index
@@ -298,8 +304,10 @@ code that implements each surface:
 | How the build is verified, and what is out of bounds | `AGENTS.md` in the repository root |
 
 The reason to prefer this over a prose tree is not preference: a KDoc block
-and a Markdown file drift apart, and only the first one fails to compile when
-it does.
+lives next to the code it describes, and it is read with that code. A comment
+is never compiled, so a drift between a KDoc and this file is invisible to
+the compiler; what catches it is an instrument — `DocumentationDriftTest`
+reads this file and the code and fails when they disagree.
 
 ## Releases and distribution channels
 

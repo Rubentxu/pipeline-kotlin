@@ -239,15 +239,20 @@ val repositoryRoot: String = rootDir.parentFile.absolutePath
 // A JVM is not free. Starting one costs about a second of classloading before a
 // single test runs, so a module whose whole suite takes less than that gains nothing
 // and pays the entire cost. The list below is the modules whose measured test work is
-// above that line, and four is the number that measured fastest for each of them.
+// above that line.
 //
-// What it buys, measured on this machine, is a run of ONE module: the application
-// module's test task goes from 6.1 s to 4.5 s, and the scripting module's from 10.1 s
-// to 9.5 s. What it does NOT buy is a faster whole stage, where every module's tests
-// run at once: that stage is already saturated by the modules running side by side,
-// and extra JVMs inside them only add startup work that competes for the same cores.
-// That is why the setting is scoped to the modules that carry volume instead of being
-// switched on everywhere.
+// What it buys, measured here as the median of three runs of ONE module's test task
+// (warm daemon, no build cache): the application module goes from 5.65 s to 4.68 s,
+// the events store from 4.00 s to 3.42 s, the domain from 3.39 s to 2.96 s, the
+// credentials from 3.82 s to 3.59 s and the scripting module from 9.80 s to 9.54 s.
+// Four forks measured fastest in the module with the largest volume, where one, two,
+// four and eight were tried: 5.65 s, 4.99 s, 4.68 s and 4.84 s.
+//
+// What it does NOT buy is a faster whole stage, where every module's tests run at
+// once: that stage is already saturated by the modules running side by side, and extra
+// JVMs inside them only add startup work that competes for the same cores. That is
+// why the setting is scoped to the modules that carry volume instead of being switched
+// on everywhere.
 //
 // It is only safe because no test in this tree captures a global. The standard output
 // of the JVM is a global: two classes running side by side that both capture it steal

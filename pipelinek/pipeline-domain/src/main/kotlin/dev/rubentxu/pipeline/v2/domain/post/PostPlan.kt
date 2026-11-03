@@ -118,7 +118,7 @@ fun PostCondition.selects(outcome: StageOutcome): Boolean = when (this) {
  * the only grouping key.
  * The plan carries the REAL nodes, not references to them: there is no second
  * `BodyRef -> node` registry to consult, so a ref without a binding would be
- * exactly the fake-reference path the Step Constitution forbids. The same
+ * exactly the fake-reference path the contract forbids. The same
  * [StepNode] values execute identically on a
  * durable rerun, which is the property replay requires.
  * Generic over the node type so the pure planner never needs to know how the

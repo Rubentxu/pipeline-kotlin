@@ -40,12 +40,11 @@ interface TypedStepOutput {
  * REUSE   persisted bytes -> decode -> O -> outcomeOf(O)
  * ```
  * Reuse recovers `O` through the Step's own declared `outputCodec`, so the carrier is
- * Reconstructed rather than remembered. Before of the Runtime Observation Contract Closure
- * this was also a NECESSITY: the durable status could not tell an `Unstable` step from a
- * `Success` one (both were journalled `SUCCEEDED`), so the typed payload was the only place
- * The distinction existed. gave the durable layer its own `UNSTABLE` case, and made
- * such rows reusable — but the DESIGN RULE is unchanged, now for an authority reason instead
- * of an impossibility one: the semantic outcome is DERIVED from the typed carrier
+ * Reconstructed rather than remembered. Deriving the outcome from the carrier is a
+ * NECESSITY, not a convenience: the durable status alone cannot tell an `Unstable` step
+ * from a `Success` one, so the typed payload is where the distinction lives. The durable
+ * layer carries its own `UNSTABLE` case and such rows are reusable — but the DESIGN RULE
+ * rests on authority alone: the semantic outcome is DERIVED from the typed carrier
  * (`outcomeOf`), never re-read from the status column. One fact, one authority: the status
  * records that the operation finished unstable; the carrier says what the step produced and
  * carries the marker. Two independent renderings of the same fact would be a second authority

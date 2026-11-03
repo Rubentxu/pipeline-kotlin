@@ -255,23 +255,21 @@ open class StageScopeCore(
         checkout(spec.scm)
     }
     /**
-     * PURE_CONSTRUCTOR (Semantic Conservation Law): builds the [CheckoutSpec] and
-     * emits nothing.
-     * It used to `steps.add(StepSpec.Checkout(spec.scm))` as well, which made
-     * `git(..)` — defined as `checkout(scmGit(..).scm)` — emit TWO `Checkout`
-     * steps for one checkout. OBSERVED before the fix: a single `git(..)` call
-     * produced two identical `Checkout` rows, and three calls produced six.
-     * A side effect here is invisible to the `non-canonical plugins` bridge gate
-     * because every emitted step is canonical, which is how the duplicate
-     * survived an audit that recorded the surface as gated.
+     * PURE_CONSTRUCTOR (the purity rule: no I/O, no clock, no emitted step): builds the
+     * [CheckoutSpec] and emits nothing.
+     * `git(..)` is defined as `checkout(scmGit(..).scm)`, so this builder MUST NOT emit
+     * the step itself: emitting here as well would make one checkout produce TWO
+     * `Checkout` steps. A side effect here is invisible to the `non-canonical plugins`
+     * bridge gate because every emitted step is canonical, which is how a duplicate
+     * survives an audit that records the surface as gated.
      * Purity constrains EFFECTS, not the
      * fate of the carrier. `[MustUseReturnValues]` makes discarding the
      * `[CheckoutSpec]` a compile error inside `.pipeline.kts` (the scripting host
-     * enables `-Xreturn-value-checker=check`). OBSERVED before the gate: a
-     * statement-position `scmGit(..)` compiled and produced a `success` run with
-     * an empty stage and zero checkouts — the author asked for a checkout and
-     * silently got nothing. The annotation does not change purity: this still
-     * returns a value and still emits no step and no event.
+     * enables `-Xreturn-value-checker=check`), because a statement-position
+     * `scmGit(..)` that compiles and produces a `success` run with an empty stage
+     * and zero checkouts would give the author a checkout they silently did not
+     * get. The annotation does not change purity: this still returns a value and
+     * still emits no step and no event.
 */
     fun scmGit(
         url: String,
@@ -387,14 +385,13 @@ open class StageScopeTopSteps(
 ) : StageScopeCore(stageName, runtimeConfig) {
 
     /**
-     * REMOVED (Semantic Honesty Gate / Semantic Conservation Law)
-     * The step-retrofit overload projected a full
+     * The step-retrofit overload is REFUSED (a policy nobody reads is
+     * metadata-without-an-interpreter): it projects a full
      * [dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy] (maxAttempts +
-     * baseMs + jitterMs) onto the preceding step, but NO runtime consumer ever
-     * read that policy: the canonical coordinator projects only `maxAttempts`
-     * from the `core.retry` block-step payload, and baseMs/jitterMs were never
-     * executed by any code path. Declaring a delay was a silent lie, and a
-     * policy nobody reads is metadata-without-an-interpreter.
+     * baseMs + jitterMs) onto the preceding step, but NO runtime consumer reads
+     * that policy — the canonical coordinator projects only `maxAttempts` from
+     * the `core.retry` block-step payload, and baseMs/jitterMs are executed by
+     * no code path. Declaring a delay that nothing honours is a silent lie.
      * The supported surface is the block form `retry(n) { ... }`, which lowers
      * to a `core.retry` Block Step and is honoured by the coordinator.
      * @throws IllegalArgumentException always.

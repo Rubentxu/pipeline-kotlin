@@ -256,18 +256,18 @@ internal object ConsoleFamilyLines {
             "[step: ${scope.stage(event.stageIndex)}] ${event.stepName}",
         )
 
-        // "finished", and now the verdict too. `StepExecutionBoundary` emits this from a `finally`,
+        // "finished", and the verdict too. `StepExecutionBoundary` emits this from a `finally`,
         // so it closes the step's span on success, failure and exception alike — which is why the
-        // word "finished" alone said nothing about the result, and why rendering it "ok" printed,
-        // for one failing step and in this order:
+        // word "finished" alone says nothing about the result, and why a projection that renders
+        // it "ok" prints, for one failing step and in this order:
         //     ERROR: step 's1/sh-0' failed [SCRIPT]: shell exited with code 7
         //     [PipelineK] [step: s1] s1/sh-0 ok
-        // Measured in an earlier build against distribution 0.62.0. SEMANTIC CONSTITUTION: a
-        // projection must not render a status its event does not carry. `StepFinished` now DOES
-        // carry `outcome` — the step's verdict, published with the event that ends the step — so
-        // this line may name it, and must, or the operator reads "finished" right after "failed"
-        // and has to guess. When the event carries no verdict (a step whose execution ended
-        // without a decided outcome), the line says "finished" and nothing more.
+        // That ordering is a recorded observation, not a hypothetical. The observation contract
+        // requires the verdict: a projection must not render a status its event does not carry.
+        // `StepFinished` DOES carry `outcome` — the step's verdict, published with the event that
+        // ends the step — so this line may name it, and must, or the operator reads "finished"
+        // right after "failed" and has to guess. When the event carries no verdict (a step whose
+        // execution ended without a decided outcome), the line says "finished" and nothing more.
         is StepFinished -> Line(
             Family.STRUCTURE,
             buildString {

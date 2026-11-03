@@ -97,8 +97,8 @@ interface DirectiveContributor {
  * Fail-closed registry keyed by [DirectiveKey].
  * Duplicate keys are REJECTED, never resolved first-wins or last-wins: a
  * shadowed definition is a silent semantic change, which is the defect class the
- * Semantic Honesty Gate exists to remove. The rejection names both the key and
- * the contributors involved so the collision is diagnosable.
+ * fail-closed rule exists to remove. The rejection names both the key and the
+ * contributors involved so the collision is diagnosable.
 */
 class DirectiveRegistry private constructor(
     private val byKey: Map<DirectiveKey, DirectiveDefinitionAny>,

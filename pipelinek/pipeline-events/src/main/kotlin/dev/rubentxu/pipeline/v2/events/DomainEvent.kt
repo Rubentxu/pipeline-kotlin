@@ -244,7 +244,7 @@ data class StepFinished(
  *   exist. `LocalAny` has no label, and a `CapabilitySet` requirement is not a
  *   label at all — the only way to emit this event for those would be to
  *   invent a label, which is precisely the "metadata accepted but never
- *   interpreted" shape the Semantic Conservation Law forbids.
+ *   interpreted" shape the contract forbids.
  *   [ExecutionTargetResolved] carries the declared requirement and the granted
  *   target instead, so every case of the requirement hierarchy is
  *   representable and an observer can tell a satisfied requirement from an

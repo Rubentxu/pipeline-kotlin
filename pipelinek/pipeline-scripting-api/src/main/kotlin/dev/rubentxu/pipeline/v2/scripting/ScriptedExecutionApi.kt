@@ -52,9 +52,8 @@ data class ScriptedSourceLocation(
      * three shapes.
      * The shape is part of the identity because two `sh` calls at the same
      * source position with different return modes have different semantics and
-     * different outputs. A previously separate `shReturnStdoutCallSite` carried
-     * the `:ro` suffix; the mode now carries it directly, so the identity has one
-     * place to be wrong instead of two.
+     * different outputs. The return mode carries the suffix directly, so the identity
+     * has one place to be wrong instead of two.
 */
     fun shellCallSite(returnMode: ScriptedShellReturnMode = ScriptedShellReturnMode.NONE): ScriptedCallSiteId =
         ScriptedCallSiteId(

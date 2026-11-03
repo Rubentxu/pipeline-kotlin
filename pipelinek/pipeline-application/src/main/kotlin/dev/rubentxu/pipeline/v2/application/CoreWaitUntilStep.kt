@@ -325,7 +325,8 @@ object CoreWaitUntilStep {
      * NOT REACHED on the production path (see the object KDoc).
      * Present because [StepDefinition] requires a handler. It REFUSES: it cannot reach the
      * predicate, so it cannot report a verdict, and reporting one anyway — a `Satisfied` it never
-     * evaluated — is the silent no-op the Semantic Constitution forbids.
+     * evaluated — is the silent no-op the contract forbids: a verdict must report what was
+     * actually evaluated.
      *
      * The refusal is a typed RESULT, not a thrown exception: [StepHandler] forbids throwing to
      * signal a step failure, and an exception would be classified upstream as an engine bug

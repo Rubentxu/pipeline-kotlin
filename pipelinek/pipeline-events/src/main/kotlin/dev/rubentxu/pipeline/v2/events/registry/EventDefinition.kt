@@ -1,8 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.registry
 
 /**
- * The typed contract a plugin declares for its OWN event payload (of the Runtime Observation
- * Contract Closure.
+ * The typed contract a plugin declares for its OWN event payload.
  * The core `DomainEvent` hierarchy stays sealed: it is the vocabulary of the ENGINE, and opening
  * it would let any classpath stranger masquerade as a core event. A plugin event instead travels
  * as identity — the same `PipelineEventEnvelope` every event gets — plus a payload that only
@@ -10,7 +9,7 @@ package dev.rubentxu.pipeline.v2.events.registry
  * it in. Nothing here names a concrete event, a transport, or a storage format: a definition is
  * a declaration, and a declaration performs no effects (a builder that executes is a Step
  * wearing a builder's name).
- * Every field is required by the Semantic Constitution/: an external contribution without
+ * Every field is required: an external contribution without
  * schema, version and emission authority is forbidden, so the definition is where those three
  * become MANDATORY instead of conventional. `kind` must be namespaced
  * (`<plugin-id>.<EventName>`) so two plugins cannot collide by accident and a collision that
@@ -95,7 +94,7 @@ interface EventPayloadCodec<P : Any> {
     /**
      * Deserializes a payload written under [schemaVersion]. A version the implementation does
      * not recognise MUST return [PayloadDecode.UnknownSchemaVersion] — reading an unknown shape
-     * as "probably fine" is the semantic drop the Constitution forbids.
+     * as "probably fine" is a silent semantic drop, which the codec contract forbids.
 */
     fun decode(raw: String, schemaVersion: Int): PayloadDecode<P>
 }

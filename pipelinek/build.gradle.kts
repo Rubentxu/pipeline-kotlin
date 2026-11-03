@@ -430,13 +430,10 @@ val publishedContractModules = listOf(
     // (read-side contracts for events, output, scripting, and domain) gave consumers a
     // complete read plane; this fifth entry adds the write plane, and the BOM picks up the
     // matching `api(...)` constraint (see pipelinek/pipeline-sdk-bom/build.gradle.kts).
-    // This comment used to name `PublishedContractBoundaryFitnessTest` as the guard on the
-    // size of this list, and pointed at its source under
-    // `pipelinek/pipeline-architecture-tests/`. That fitness was deleted on with the rest
-    // of the QA harness, so the list above now has NO automated guard on its membership.
-    // `apiCheck` proves the published surface is internally consistent; it does not prove the
-    // list is the right list. Anyone adding a sixth published contract must decide here, in
-    // review, whether it earns publication.
+    // The list above has NO automated guard on its membership: `apiCheck` proves the published
+    // surface is internally consistent; it does not prove the list is the right list. Anyone
+    // adding a sixth published contract must decide here, in review, whether it earns
+    // publication.
     "pipeline-runtime-api",
 )
 

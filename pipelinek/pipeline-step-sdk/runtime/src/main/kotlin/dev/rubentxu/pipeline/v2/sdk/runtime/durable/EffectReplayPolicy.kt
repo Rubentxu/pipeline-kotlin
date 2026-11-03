@@ -11,12 +11,11 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  * [ReplayPolicy] is part of its fingerprint, so changing what this decides
  * changes what a resumed run is allowed to do.
  * ## Decision matrix
- * This table is **normative**, and so is its ORDER. It previously contradicted
- * the implementation in two ways, both of which survived because nothing
- * asserted it: the `RERUN` row did not match the enum's own documentation, and
- * the `ABORTS_PIPELINE` row was unreachable for any `RERUN` Step because the
- * policy branch returned first. The table is now pinned row by row by
- * `DefaultEffectReplayPolicyTest`.
+ * This table is **normative**, and so is its ORDER. The table and the
+ * implementation are pinned row by row by `DefaultEffectReplayPolicyTest`, so
+ * the two cannot drift apart: the `RERUN` row matches the enum's own
+ * documentation, and the `ABORTS_PIPELINE` row is reachable for any `RERUN`
+ * Step because the policy branch does not return first.
  * The order separates **admission** from **replay**, and that separation is the
  * point: `ABORTS_PIPELINE` means "this Step, when executed, aborts the
  * pipeline", so it must not outrank the first execution or the abort would be
@@ -34,12 +33,12 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  * 8  journalled + MEMOIZED + EXECUTES_SUBPROCESS
  *     or WRITES_WORKSPACE (incl. mixed sets)       EXECUTE
  * ```
- * **Reusable completion** is `[isReusableCompletion]`: `SUCCEEDED` and — since the
- * Runtime Observation Contract Closure — `UNSTABLE`. An unstable run COMPLETED: its work is
- * done, its typed output is journalled, and replaying it would re-execute finished work only
+ * **Reusable completion** is `[isReusableCompletion]`: `SUCCEEDED` and `UNSTABLE`. An
+ * unstable run COMPLETED: its work is done, its typed output is journalled, and replaying it
+ * would re-execute finished work only
  * because its durable status is not green. `FAILED`, `FAILED_TIMEOUT`, `ABORTED`, `DIVERGENT`
  * and `LOST` are not completions and stay non-reusable; `ABORTED` in particular keeps the
- * pre-existing non-reuse rule rather than gaining reuse by analogy. A reusable row is served
+ * non-reuse rule rather than gaining reuse by analogy. A reusable row is served
  * by decoding the persisted typed output — the semantic outcome is then derived from the
  * carrier (`outcomeOf`), never from the durable status, so an unstable reuse reports unstable.
  * A **mixed** effect set is never memoisable: only a set that is purely

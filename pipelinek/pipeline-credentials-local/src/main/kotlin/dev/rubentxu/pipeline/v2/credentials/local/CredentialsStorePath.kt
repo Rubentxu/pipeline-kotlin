@@ -5,35 +5,36 @@ import java.nio.file.Path
 /**
  * ONE authority for where the credentials store lives.
  * ## Why this object exists
- * Three readers used to answer "where is the credentials store" and they did not
- * agree:
+ * Two readers answer "where is the credentials store":
  * ```text
- * MainCredentialsCli.resolveStoreFile   -> PIPELINE_CREDENTIALS_STORE, else ~/.pipeline/credentials.bin
- * composeWithCredentialsExecutor        -> PIPELINE_CREDENTIALS_STORE, else <controlRoot>/../credentials.bin
- * Main.kt (in-memory branch, same rule)   -> PIPELINE_CREDENTIALS_STORE, else <controlRoot>/../credentials.bin
+ * MainCredentialsCli.resolveStoreFile -> CredentialsStorePath.fromEnvironment(...)
+ * composeCredentialSeam              -> CredentialsStorePath.fromEnvironment(...)
  * ```
- * All three honoured the env var, so the divergence lived entirely in the default.
- * Two of the three were a verbatim copy of each other, which is what let them
- * drift apart without anyone noticing.
- * ## The symptom it caused
- * `pipelinek credentials add` writes with no `--control-root` in scope, so it can
- * only write the user-home default. `pipelinek run` with no `--control-root`
- * creates a FRESH TEMPORARY directory per run (`Files.createTempDirectory`
- * in `Main.kt`), so the runtime default resolved to `/tmp/credentials.bin`. A user
- * who followed the documented flow — add a credential, then run a pipeline — got
- * no credentials, and nothing said why: the documented "store file does not exist"
- * branch returns `null` silently by design.
- * That is the Semantic Constitution "silent no-op" in a credentials path, and
- * the two KDoc blocks that described the two rules each cited the other as the
- * authority, so neither was falsifiable by reading.
+ * `composeCredentialSeam` is the reader of BOTH run branches, the in-memory one
+ * and the durable one, so the two run worlds resolve the same store.
+ * Each of them DELEGATES: none of them decides a path on its own, so two of
+ * them cannot disagree about the default.
+ * ## The symptom a divergent default would cause
+ * A reader that computed the default for itself would let the store location
+ * drift between the command that WRITES a credential and the command that
+ * READS it. `pipelinek credentials add` writes with no `--control-root` in
+ * scope, so it can only write the user-home default. `pipelinek run` with no
+ * `--control-root` creates a FRESH TEMPORARY directory per run
+ * (`Files.createTempDirectory` in `MainVolatileRun.kt`), so a runtime default
+ * computed from that directory would resolve to `/tmp/credentials.bin`. A user who
+ * follows the documented flow — add a credential, then run a pipeline — would
+ * get no credentials, and nothing would say why: the documented "store file
+ * does not exist" branch returns `null` silently by design. That is the
+ * silent no-op the contract forbids in a credentials path.
  * ## The rule
  * The store is located by the ENVIRONMENT, and by nothing else. It is emphatically
  * not a sibling of the run's journal: on the default in-memory path there is no
  * user-predictable control root at all, so a per-run directory cannot be a
  * location a user can populate before running anything.
- * [resolve] therefore takes no control root. Adding one back would reintroduce the
- * defect with a parameter, which is why the value is also the only thing the
- * fitness in `pipeline-credentials-local` checks for.
+ * [resolve] therefore takes no control root. A control root parameter would
+ * make the location depend on something the user cannot predict, which is why
+ * the value is also the only thing the fitness in `pipeline-credentials-local`
+ * checks for.
 */
 object CredentialsStorePath {
 

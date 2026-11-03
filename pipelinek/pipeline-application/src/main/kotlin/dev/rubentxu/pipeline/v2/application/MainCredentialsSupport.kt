@@ -23,13 +23,10 @@ import java.nio.file.Path
  * ONE authority: PIPELINE_CREDENTIALS_STORE if set, else ~/.pipeline/credentials.bin.
  * PIPELINE_STORE_PASSPHRASE supplies the passphrase.
  *
- * This decision used to be written TWICE: the in-memory branch called
- * `composeWithCredentialsExecutor`, and the durable branch carried an inline
- * copy of the same body. The two copies even disagreed on a detail nobody had
- * noticed — the in-memory one opened the store with a fresh `SystemClock()`
- * while the durable one used the run's clock. Two copies of a decision is two
- * chances to disagree, and the disagreement would have been invisible. One
- * function, one clock, one store.
+ * This decision is written ONCE: the in-memory branch and the durable branch call
+ * this same function, hand it the run's clock, and get the same store. Two copies
+ * of a decision are two chances to disagree, and the disagreement would be invisible.
+ * One function, one clock, one store.
  *
  * Behavior:
  * - The run declares no credential binding -> null (no store is opened, and no
@@ -54,11 +51,11 @@ internal fun composeCredentialSeam(
     clock: Clock,
     pipelineSpec: PipelineSpec?,
 ): CredentialSeam {
-    // [controlDirRoot] is deliberately NOT a parameter of this function. It used to
-    // be (`controlDirRoot.parent.resolve("credentials.bin")`), which meant the
-    // documented `credentials add` -> `run` flow could not find the store it had
-    // just written. Removing it from the signature is what makes that impossible
-    // to reintroduce by accident; see CredentialsStorePath's KDoc.
+    // [controlDirRoot] is deliberately NOT a parameter of this function. A control
+    // root would put the store under the run's own directory, and the documented
+    // `credentials add` -> `run` flow could not find the store it had just written.
+    // Its absence from the signature is what makes that impossible to reintroduce by
+    // accident; see CredentialsStorePath's KDoc.
     val credentialsStorePath: Path = CredentialsStorePath.fromEnvironment(System.getenv())
 
     val storeNeeded = pipelineSpec?.declaresCredentialBinding() == true

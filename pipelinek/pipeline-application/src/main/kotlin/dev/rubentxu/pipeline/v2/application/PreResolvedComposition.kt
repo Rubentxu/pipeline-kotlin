@@ -11,29 +11,27 @@ import java.nio.file.Path
 
 /**
  * Everything a plugin contributes, resolved ONCE, before the run exists.
- * ## What this replaces
- * Composition used to happen in three places, at three different times, under three separate
- * classloader swaps:
- * - `Main.kt` composed the Step registry, **twice** — once in the in-memory branch and once in
- *   the durable branch — with the same block of code written out twice;
- * - `CompositionRoot` composed the event registry inside its own body;
- * - `CompositionRoot` composed the directive registry inside its own body, further down.
- * Three authorities for one question ("what does this installation contribute?") means a run
- * could observe two different answers: a plugin's Step present while its Directive was not yet
- * folded in, or an eligibility analysis already computed against a Step registry that a later
- * throw would discard. `runCanonicalPipeline` also defaulted `stepRegistry` to
- * `CoreStepRegistryFactory.registry()`, so a caller who forgot to pass one got a silent
- * registry — a fail-open path through exactly the admission guarantee the composition builds.
+ * ## Why one place
+ * A run asks ONE question — "what does this installation contribute?" — and it
+ * gets ONE answer. Steps, directives, events and capabilities are resolved
+ * together, under ONE classloader window, so a plugin's Step and its Directive
+ * cannot arrive from different classpath views, and a capability cannot be
+ * resolved apart from the Step that requires it.
+ *
+ * `PluginComposition.resolve` is the only builder of this value. It returns a
+ * complete composition or it throws: a failure in any of the four resolutions
+ * means there is no composition at all, and a half-built one is never handed
+ * out. There is no default Step registry to fall back on, so a caller that does
+ * not pass one has nothing to compose with.
  * ## The law this type states
- * A run either has a complete, frozen composition or it has none. There is no state in which
- * steps are composed and directives are not, because this value cannot be constructed that way:
- * the constructor runs all three compositions and a failure in any of them means the value does
- * not exist. Fail-closed is therefore a property of the construction, not a check somebody
- * remembers to run.
+ * A run either has a complete, frozen composition or it has none. Fail-closed
+ * is therefore a property of the construction, not a check somebody has to
+ * remember to run.
  * The three registries are frozen independently and deliberately: they answer different
  * questions (which Steps, which Directives, which Event kinds), they are built by different
  * contributors, and forcing them into one shared map would couple three kinds that the external
- * Library Constitution requires to stay independent.
+ * plugin contract requires to stay independent: each registry answers its own question and is
+ * frozen on its own.
 */
 data class PreResolvedComposition internal constructor(
     /** Core Steps plus every external Step the plugins contributed. Frozen. */
@@ -48,14 +46,11 @@ data class PreResolvedComposition internal constructor(
     val discoveredDirectivePlugins: List<String>,
     /**
      * Every [RuntimeCapabilityContributor] the plugins declared.
-     * This was a FOURTH authority, and it was resolved outside this window. Discovery ran
-     * `ServiceLoader` without swapping the TCCL, as a default argument evaluated AFTER the swap
-     * was undone — so a plugin whose classes live below the TCCL contributed its Step and kept
-     * its capability. The failure was found with a plugin the application does not depend on,
-     * and it is the same failure `ExternalCapabilityContributorDiscovery` records in its own
-     * KDoc for `http.request`. It belongs here because a capability is only meaningful
-     * alongside the Step that requires it: resolving the two under different loaders produces
-     * a registry that admits a Step and a runtime that cannot supply what the Step needs.
+     * Resolved inside the same classloader window as the Steps, and for the same
+     * reason: a capability that arrives under a different loader than the Step
+     * that requires it is a Step that is admitted and then refused for something
+     * its own plugin never got to provide. It belongs here because a capability
+     * is only meaningful alongside the Step that requires it.
 */
     val capabilityContributors: List<RuntimeCapabilityContributor>,
 ) {

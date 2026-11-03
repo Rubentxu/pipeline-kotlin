@@ -184,7 +184,7 @@ val computeSagaRelease = tasks.register("computeSagaRelease") {
     val namespaceName = sagaNamespace
     val releaseVersion = version.toString()
 
-    // R4 — declare sdkVersion as an explicit input so the
+    // Declare sdkVersion as an explicit input so the
     // apiRange is regenerated when the host version changes (see
     // example-block-plugin for the same change with the full story).
     inputs.property("sdkVersion", sdkVersion)

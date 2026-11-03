@@ -265,7 +265,7 @@ internal class StepDispatchEngine(
                             innerScope,
                             childReentry,
                         )
-                        // R14: a body-only dispatch has no typed value of its own, so the carrier is
+                        // A body-only dispatch has no typed value of its own, so the carrier is
                         // built explicitly with a null encoded output rather than narrowed from one.
                         return terminal(DispatchedStep(CommonExecutionResult(outcome = body), innerScope.ambient))
                     }
@@ -512,9 +512,10 @@ internal class StepDispatchEngine(
                     outcome = execution.outcome,
                 ),
             )
-            // R14: `executeAndJournal` already returns the atomic carrier, so this is a COMPOSITION.
-            // It used to be `Dispatched(execution.outcome, ...)`, which is the narrowing this whole
-            // slice exists to remove: a recovered or a fresh encoded value died at this line.
+            // `executeAndJournal` already returns the atomic carrier, so this is a COMPOSITION.
+            // The carrier crosses this line whole. Narrowing it to the outcome alone is exactly
+            // what this whole slice exists to remove: a recovered or a fresh encoded value dies
+            // at that narrowing.
             return terminal(DispatchedStep(execution, innerScope.ambient))
         } finally {
             // The span is closed HERE and only here, so a dispatch that threw

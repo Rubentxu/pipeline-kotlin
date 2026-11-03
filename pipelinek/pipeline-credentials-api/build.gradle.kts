@@ -27,14 +27,11 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// The `performanceTest` lane and its Kover exclusion were REMOVED
-// the testing reset). The lane read `sourceSets["test"]`, and Gradle 8.14 has no
-// `failOnNoDiscoveredTests` property, so an empty source set reports success
-// regardless -- the lane would have been a green performance gate that measured
-// nothing. The Kover `disabledForTestTasks` entry existed only to stop that lane
-// re-entering `check`; with the lane gone, the exclusion had nothing to exclude.
-// `StreamingRedactor`'s throughput floor is no longer enforced by a timed probe.
-// A wall-clock floor is a property of the machine, not of the code, so it could
-// not have become a portable permanent gate anyway; see the E2E pipelines for
+// This module has NO performance lane. A lane over `sourceSets["test"]` would be a green
+// performance gate that measured nothing: Gradle 8.14 has no `failOnNoDiscoveredTests`
+// property, so a source set with no tagged test reports success regardless. (The property
+// arrives in Gradle 9, and this build runs on 8.14.5.)
+// `StreamingRedactor`'s throughput floor is therefore not enforced by a timed probe: a
+// wall-clock floor is a property of the machine, not of the code. The E2E pipelines carry
 // the behavioural replacement.
 

@@ -6,8 +6,7 @@ package dev.rubentxu.pipeline.v2.domain.directive
  * key means the engine resolves a [DirectiveKey] through a registry, so a new
  * directive needs no engine change. Closed by structure means the engine matches
  * a finite structural ADT ([DirectiveExecutionPolicy]) and never branches on a
- * concrete key, mirroring the Step Constitution: variation is read from the
- * declaration, never from the name.
+ * concrete key: variation is read from the declaration, never from the name.
  * This is an inner domain contract. It MUST NOT depend on infrastructure,
  * persistence, process execution, the compiler, or any adapter. Everything here
  * is a pure value: no clocks, no filesystem, no ambient state.
@@ -55,8 +54,8 @@ enum class DirectivePhase {
  * arguments are an opaque encoded payload rather than `Any?` on purpose: the
  * kernel routes by key and hands decoding to the definition, so the kernel never
  * needs to know a directive's argument shape. Encoding lives with the
- * definition, which owns its codec (Step Constitution rule: the compiler MUST
- * NOT know how to build a plugin's input).
+ * definition, which owns its codec (the same rule the step layer follows: the
+ * compiler MUST NOT know how to build a plugin's input).
 */
 data class DirectiveInvocation(
     val key: DirectiveKey,

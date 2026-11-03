@@ -75,12 +75,11 @@ data class DurableShellResult(
 /**
  * The durable shell, using ProcessBuilder + setsid.
  *
- * It used to implement a `DurableShellLaunching` interface that promised fake
- * implementations for unit testing. There were none, and there was no other
- * implementation and no other caller: the interface was a seam with one side
- * of it missing. The executor is now the seam, and a launch returns what it
- * produced ([LaunchedShell]) instead of leaving it in fields for a later,
- * separate step to read back.
+ * The executor is the seam, and a launch returns what it produced ([LaunchedShell])
+ * instead of leaving it in fields for a later,
+ * separate step to read back. A seam needs both sides, so there is no separate
+ * launch contract that a unit-test double could implement: the class that
+ * launches is the class that owns it.
  * ## State Machine
  * LAUNCHING → RUNNING → COMPLETE | LOST | LAUNCH_FAILED | TIMED_OUT
  * ## Control Directory Layout

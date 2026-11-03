@@ -31,11 +31,9 @@ tasks.test {
     // Required, not optional. Without it Gradle defaults to the JUnit 4 runner, discovers zero
     // JUnit 5 tests, and reports BUILD SUCCESSFUL with an empty result set — a green gate that ran
     // nothing. This module's first build did exactly that.
-    // The @Tag("performance") exclusion and the `performanceTest` task that used to sit here moved
-    // with the soak to `:pipeline-output-store`, which is where the store it measures
-    // now lives. Keeping a `performanceTest` task over a source set with no tagged test would have
-    // been a task that reports success having executed nothing — the exact failure mode the
-    // `useJUnitPlatform` line above exists to prevent, one layer up.
+    // There is NO performance lane here, and none in `:pipeline-output-store` either: a task
+    // over a source set with no tagged test reports success having executed nothing — the exact
+    // failure mode the `useJUnitPlatform` line above exists to prevent, one layer up.
     useJUnitPlatform()
     testLogging {
         events("failed")

@@ -27,18 +27,15 @@ import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
  * [dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy.WaitUntilShape] is the Step
  * KIND's default; a call site that asks for something else says so here, and the projection
  * reads what this carrier says.
- * That sentence was false until, when this KDoc claimed the first two fields were
- * STRUCTURE and that "the structural projection reads the declared shape, not this carrier".
- * The projection did read the shape — for the cadence — so `StageScope.waitUntil(
- * initialRecurrencePeriod = 7)` compiled, was encoded, and reached neither polling branch.
- * A dead semantic parameter (SEMANTIC CONSTITUTION), and a documented one.
- * [maxBackoffMs] is the field that disproved the claim: it is RUNTIME DATA — a per-block
- * ceiling the shape cannot express — and before it existed the only code that could set it
- * was a regex over the raw payload whose result reached exclusively the INLINE polling
- * branch; the durable branch, which is the one production reaches, polled at
- * [DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS] no matter what the payload said. The projection now
- * reads all three here, through this carrier, so both branches get the same numbers from
- * one authority.
+ * Every field is read through this carrier, so the inline branch and the durable
+ * branch get the same numbers from one authority. A field the code declares and
+ * no branch reads would be a lie no reader can detect, which is why the
+ * projection reads every field here rather than taking the shape's defaults for
+ * the ones it ignores.
+ * [maxBackoffMs] is RUNTIME DATA — a per-block ceiling the shape cannot express —
+ * so it has to travel in the payload rather than in the declared shape. The
+ * durable branch polls at [DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS] when the payload
+ * says nothing.
 */
 data class CoreWaitUntilInput(
     val initialRecurrencePeriod: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,

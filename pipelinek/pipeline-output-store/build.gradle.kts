@@ -52,9 +52,8 @@ tasks.test {
 // E2E pipelines under `examples/output/`, not by JUnit; the AGENTS.md rule against filesystem
 // persistence in unit tests is what scopes the suite.
 
-// The `performanceTest` lane, its `tasks.test` tag exclusion and its Kover
-// `disabledForTestTasks` entry were REMOVED. All three read this module's test source set, and a
-// Gradle test task that discovers no tests reports SUCCESS -- Gradle 8.14 has no
-// `failOnNoDiscoveredTests` property at all -- so the lane would have been a green 1 GiB soak
-// that never allocated anything. The soak's real subject (Output Plane segment growth
-// and rollover) is exercised instead by an E2E pipeline under `examples/`.
+// This module has NO performance lane. A Gradle test task that discovers no tests reports
+// SUCCESS -- Gradle 8.14 has no `failOnNoDiscoveredTests` property at all -- so a lane over
+// this source set would be a green 1 GiB soak that never allocates anything. The soak's real
+// subject (Output Plane segment growth and rollover) is exercised by an E2E pipeline under
+// `examples/`.

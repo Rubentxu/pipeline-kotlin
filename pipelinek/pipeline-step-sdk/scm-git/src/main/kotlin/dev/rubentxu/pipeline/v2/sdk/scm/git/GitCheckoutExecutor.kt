@@ -554,12 +554,12 @@ open class GitCheckoutExecutor(
     /**
      * Emits a SEMANTIC event about what the checkout did.
      * ## Why git's own stdout does not come through here
-     * This used to have a sibling, `emitEcho`, which pushed `git`'s stdout and stderr into
-     * `EchoOutputCaptured`. That was a second authority over process bytes: the event log
-     * carried process output, and the Output Plane — where process output belongs — was
-     * unreachable from this module. So `scm.git` kept the transcript alive in the event log
-     * as a side effect of having an `EventSink`.
-     * Removing it loses nothing a caller could act on:
+     * The event plane carries SEMANTIC facts, and process bytes are not one of them. Pushing
+     * `git`'s stdout and stderr into `EchoOutputCaptured` would be a second authority over
+     * process bytes: the event log would carry process output, and the Output Plane — where
+     * process output belongs — would be unreachable from this module. So `scm.git` would keep
+     * the transcript alive in the event log as a side effect of having an `EventSink`.
+     * A caller loses nothing it could act on:
      *  - **Failures** already carry their stderr, in the typed failure itself
      *    (`"git clone failed${captured.stderr.prependIndent()}"`).
      *  - **Progress** lines like `Cloning into '…'` are process logging, not a semantic fact, and
@@ -571,9 +571,9 @@ open class GitCheckoutExecutor(
      * authorities over two different questions, with no overlap between them.
      * ## A record that cannot be written is not a warning
      * The sink is where the run's memory of the checkout lives, so a write it refuses takes the
-     * fact away. This used to print a warning on stderr and let the checkout carry on: the
-     * checkout went on to do work, reported success, and the run's record said nothing about any
-     * of it. The refusal now travels as [CheckoutRecordRefused] and the checkout ends in failure,
+     * fact away. Printing a warning on stderr and letting the checkout carry on would let the
+     * checkout go on to do work, report success, and leave the run's record saying nothing about
+     * any of it. The refusal travels as [CheckoutRecordRefused] and the checkout ends in failure,
      * which is the only honest outcome when the fact is gone.
 */
     private fun emitEvent(req: GitCheckoutRequest, event: dev.rubentxu.pipeline.v2.events.DomainEvent) {

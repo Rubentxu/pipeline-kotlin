@@ -102,15 +102,13 @@ fun interface ScriptedOperationRuntime {
 
 /**
  * The scripted recovery seam.
- * `RunningScriptedOperationReconciler` and `ScriptedRunningResolution` used to be the only way a
- * scripted operation left `RUNNING` could be recovered. Both existed to serve
- * `JournaledScriptedOperationRuntime` and `DurableScriptedOperationReconciler`, a second durable
- * stack that production never constructed. With those gone, this port had ZERO production
- * consumers, which made it worse than dead code: it was the hook where a second reconciliation
- * authority could be plugged back in, and it sat in `src/main` looking like part of the contract.
- * Recovery for the scripted surface is the CANONICAL one —
- * `DurableInvocationResolver` plus `ExternalSubprocessRecovery` plus `RecoveryInterpretationEngine` —
- * and `ScriptedRegistryInvoker` already consumes it. There is deliberately no scripted variant left.
+ * A scripted operation that is left `RUNNING` is recovered by the CANONICAL path:
+ * `DurableInvocationResolver` plus `ExternalSubprocessRecovery` plus
+ * `RecoveryInterpretationEngine`, and `ScriptedRegistryInvoker` consumes exactly that.
+ * There is deliberately no scripted variant of this seam. This port is where a second
+ * reconciliation authority could be plugged in, and two authorities that decide the same
+ * thing get eliminated rather than synchronised: the recovery decision for the scripted
+ * surface has ONE owner, and it is the same owner the rest of the durable spine uses.
 */
 
 /** Internal source identity provider; generated façades replace the fixed test adapter. */

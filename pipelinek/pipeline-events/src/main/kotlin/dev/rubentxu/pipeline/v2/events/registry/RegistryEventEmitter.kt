@@ -6,12 +6,12 @@ import java.time.Clock
 import java.util.UUID
 
 /**
- * The fail-closed bridge between a registered [EventDefinition] and the event stream (slice
- * 2): emission requires registration, encoding goes through the registered codec, and the
+ * The fail-closed bridge between a registered [EventDefinition] and the event stream:
+ * emission requires registration, encoding goes through the registered codec, and the
  * sequence comes from the store's own authority — this class never invents one.
  * Laws:
- *  - an UNREGISTERED kind cannot be emitted at all (Constitution: no registration, no
- *    event — the refusal is typed, not an exception);
+ *  - an UNREGISTERED kind cannot be emitted at all (no registration, no event — the
+ *    refusal is typed, not an exception);
  *  - the payload bytes are produced by the definition's own codec, so what a reader decodes
  *    is provably what the contributor emitted;
  *  - emission is an INTERPRETER of a pure decision: everything decidable (registered? encodes?)

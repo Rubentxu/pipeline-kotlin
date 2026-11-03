@@ -6,11 +6,12 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 /**
  * An [EventSink] that mirrors the run to the console AS IT HAPPENS.
  * ## Why a decorator and not a poller
- * `pipeline run` used to collect the whole run and print it once, at the end,
- * as a JSON array. Reading the store while it is being written would be a second
- * reader racing the writer for the same rows. A decorator on the sink chain is
- * the same object the engine already calls, so live output costs no extra
- * authority and cannot observe a half-committed page.
+ * The end-of-run JSON dump collects the whole run and prints it once, at the
+ * end, as a JSON array; the text format streams instead, and this sink is the
+ * streaming half of that choice. Reading the store while it is being written
+ * would be a second reader racing the writer for the same rows. A decorator on
+ * the sink chain is the same object the engine already calls, so live output
+ * costs no extra authority and cannot observe a half-committed page.
  * ## Where it MUST sit
  * BELOW [dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink], never above
  * it. Events travel DOWN the chain, so the redaction has to come first: this sink
@@ -50,10 +51,11 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * make the run unreplayable and would quietly turn a display preference into a durability
  * decision — the CLI would be destroying the record of what happened.
  * It exists at all because this is the DEFAULT path: with `--format text` the end-of-run dump is
- * suppressed, so a filter applied only there would never be applied to anything.
- * `--grep`, `--stage`, `--step` and `--kind` were therefore silently dead parameters on the very
- * path they are advertised on. That is the "dead semantic parameter" the Semantic Constitution
- * forbids: the CLI accepts a flag that changes no observable output.
+ * suppressed, so a filter applied only there would never reach anything the reader sees.
+ * `--grep`, `--stage`, `--step` and `--kind` therefore filter the LIVE rendering and nothing
+ * else: they decide which line reaches the terminal, and they leave the record intact. A flag
+ * that changed no observable output would be a dead semantic parameter, and the contract
+ * forbids one.
 */
 class ConsolePrintingEventSink(
     private val delegate: EventSink,

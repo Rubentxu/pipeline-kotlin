@@ -42,26 +42,26 @@ data class EnvironmentSpec(val values: Map<String, String>) {
 
 /**
  * DEPRECATED. Superseded by [StageOption]; nothing constructs this.
- * Retained rather than deleted, for one reason: it is PUBLISHED API. It was a
+ * Retained rather than deleted, for one reason: it is PUBLISHED API. It is a
  * public class in `dev.rubentxu.pipeline.v2.domain`, so removing it outright
  * breaks every external plugin author who named it, and
  * `:pipeline-domain:apiCheck` (binary-compatibility validator) is right to
  * refuse. This is the same rule already applied to the deprecated
  * Supersede, do not silently break.
- * Why it was wrong, stated so the deprecation is informative rather than a
+ * Why it is wrong, stated so the deprecation is informative rather than a
  * bare marker: a `name: String` / `value: String?` pair cannot express WHICH
  * options exist, so an option that no interpreter reads is indistinguishable
- * from one that is. It compiled, serialized, and did nothing — the silent drop
- * the Semantic Constitution names as a defect class.
+ * from one that is. It compiles, serializes, and does nothing — the silent drop
+ * the contract names as a defect class.
  * @see StageOption for the carrier that replaced it.
- * NOTHING ENFORCES THAT IT STAYS UNUSED. This comment used to say a fitness test
- * pinned "no production source constructs this type"; that file is gone. The guard it described was a
- * SOURCE-TEXT FITNESS -- it grepped the tree -- which AGENTS.md bans
- * inside unit tests, so it could not simply be rewritten. What holds the line
- * today is only the deprecation itself: a construction site would have to name
- * a deprecated type on purpose. The residual risk is real and small -- a
- * migration that reintroduces the name/value pair would reintroduce the silent
- * drop -- and it is recorded here rather than closed.
+ * NOTHING ENFORCES THAT IT STAYS UNUSED, and the reason is a rule rather than an
+ * oversight: the fitness that could enforce it is a SOURCE-TEXT FITNESS -- it
+ * greps the tree -- which AGENTS.md bans inside unit tests, so it cannot be
+ * written at all. What holds the line today is only the deprecation itself:
+ * a construction site would have to name a deprecated type on purpose. The
+ * residual risk is real and small -- a migration that reintroduces the name/value
+ * pair would reintroduce the silent drop -- and it is recorded here rather than
+ * closed.
 */
 @Deprecated(
     message = "OptionSpec is a name/value bag with no type-level statement of which options " +
@@ -87,12 +87,14 @@ data class OptionSpec(val name: String, val value: String? = null) {
  * ## Why only one case
  * The rule that decides it: *"Every option must map to a real
  * policy/interpreter or be rejected."* Only `Timeout` has one
- * (`StageNode.projectShellOptions` -> `ShOptions.timeoutMs`); `Retry`,
- * `SkipDefaultCheckout` and `Timestamps` were removed from the DSL surface in
- * Precisely because nothing read them. Adding their cases here would
- * re-create the defect the previous shape had — a declared option with no
- * interpreter — inside a more respectable-looking type. The ADT grows a case on
- * the day an interpreter exists, not on the day a design note lists it.
+ * (`StageNode.projectShellOptions` -> `ShOptions.timeoutMs`). The stage DSL also
+ * offers `retry` and `timestamps`, but those are BODY decorators
+ * (`StepSpec.RetryBlock`, `StepSpec.Timestamps`) with their own interpreters, not
+ * stage options, so this ADT carries no case for them. A case for an option that
+ * has no interpreter would re-create the defect the previous shape had — a
+ * declared option with no interpreter — inside a more respectable-looking type.
+ * The ADT grows a case on the day an interpreter exists, not on the day a design
+ * note lists it.
  * ## Proof that the sealed-ness is load-bearing
  * Mutation M-s3-3 added `data object Timestamps : StageOption` — a declared case
  * with no interpreter, precisely the violation. It did not compile:
@@ -153,8 +155,9 @@ data class ToolSpec(val name: String, val version: String) {
  * The `post` block as it appears in the compiled IR
  * TYPED over [PostCondition] rather than `Map<String, ...>`: a bare string key
  * would let `post { alwyas { } }` compile into a block that silently never runs,
- * which is the exact fake-fallback class the Step Constitution forbids. The
- * closed enum makes an unrecognised condition a compile error instead.
+ * which is the exact fake-fallback class the contract forbids: a condition that
+ * is accepted and never matched. The closed enum makes an unrecognised condition
+ * a compile error instead.
  * Values are [StepNode] lists because the IR must round-trip through
  * serialization without knowing any execution detail. The pure
  * [dev.rubentxu.pipeline.v2.domain.post.PostPlanner] decides which of these

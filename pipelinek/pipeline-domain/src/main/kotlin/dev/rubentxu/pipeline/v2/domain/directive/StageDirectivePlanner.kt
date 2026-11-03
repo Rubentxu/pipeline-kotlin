@@ -10,10 +10,10 @@ import dev.rubentxu.pipeline.v2.domain.StageNode
  * the interpreter; this file is the decision.
  * Fail-closed law: the FIRST directive that cannot be admitted denies the whole
  * stage. An unknown key is never skipped, because skipping would turn a
- * misspelled or uninstalled directive into a silent no-op — the exact defect
- * class the Semantic Honesty Gate removes. Admission happens before any effect,
- * so the denial observable is "the stage never started", not "the stage started
- * and something inside failed".
+ * misspelled or uninstalled directive into a silent no-op, and the contract
+ * forbids a silent no-op. Admission happens before any effect, so the denial
+ * observable is "the stage never started", not "the stage started and something
+ * inside failed".
 */
 
 /** One admitted directive, with the policy the engine must later interpret. */

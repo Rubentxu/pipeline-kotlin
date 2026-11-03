@@ -41,8 +41,8 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * Statuses are persisted BY NAME (`status.name`) and decoded with `OperationStatus.valueOf`.
  * That makes the format self-describing and forward-extensible: a newer binary reads every
  * journal an older binary wrote, because old names never disappear. The reverse is NOT
- * supported, deliberately: a binary older than the case that wrote a name — `UNSTABLE` since
- * the Runtime Observation Contract Closure, exactly like `FAILED_TIMEOUT` before it —
+ * supported, deliberately: a binary older than the case that wrote a name — `UNSTABLE`, a case
+ * the durable layer carries on its own, exactly like `FAILED_TIMEOUT` —
  * throws `IllegalArgumentException` from `valueOf` and fails closed, loudly, instead of
  * silently misreading a status it cannot represent. **Downgrade is outside the contract.**
  *

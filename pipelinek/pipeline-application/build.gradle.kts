@@ -274,10 +274,9 @@ dependencies {
     // :pipeline-step-sdk plugins). The external JARs are produced by
     // `:buildExamplePlugins` in the root build, which builds the four
     // standalone plugin builds concurrently in ONE invocation.
-    // The `pluginContractTest` source set that used to reach these same four JAR files is
-    // gone (see TEST LANES REMOVED below), so this `runtimeOnly` line is now the ONLY
-    // declaration of them. That is the right shape: they are PRODUCT plugins of the shipped
-    // distribution, and the certification that consumed them was QA scaffolding.
+    // These four external plugins reach the application through this `runtimeOnly` line and
+    // through nothing else. That is the right shape: they are PRODUCT plugins of the shipped
+    // distribution, and the release gate consumes them from there.
     runtimeOnly(files(rootDir.resolve("../examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("../examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("../examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar")))

@@ -9,9 +9,9 @@ import org.junit.jupiter.api.Test
 /**
  * Whether a reader of a run's journal can change it.
  *
- * The guarantee issue #145 asks for has two halves. This file holds the one that can be decided
- * without a disk: a verb that READS a run opens the store in the reader's lane, and the reader's
- * lane cannot write.
+ * The guarantee that a reader of a run's journal cannot change it has two halves. This file
+ * holds the one that can be decided without a disk: a verb that READS a run opens the store in
+ * the reader's lane, and the reader's lane cannot write.
  *
  * The mapping is the whole of that guarantee, and it is a mapping somebody can break by accident:
  * a follow that "needs to repair something" is exactly the kind of change that would hand the

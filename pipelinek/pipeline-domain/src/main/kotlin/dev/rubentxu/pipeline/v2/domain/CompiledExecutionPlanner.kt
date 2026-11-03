@@ -57,7 +57,7 @@ object CompiledExecutionPlanner {
                 // than a gap. The planner enumerates structure known at COMPILE time, and a
                 // scripted body has none by construction: its steps are produced at RUN time by
                 // the artifact. Emitting a placeholder unit here would be the declarative
-                // "fake runtime return" the semantic constitution forbids, and emitting nothing
+                // "fake runtime return" the contract forbids, and emitting nothing
                 // leaves the run with nothing to dispatch statically — which is the truth.
                 is StageBody.Scripted -> Unit
             }

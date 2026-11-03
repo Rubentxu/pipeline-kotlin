@@ -148,3 +148,23 @@ goal-compass.json
 /backlog-import-auditoria-2026-11.sh
 
 .codegraph/
+
+# ── Contexto del agente: nada de esto es contenido del proyecto ──────────
+# entornos e índices que se regeneran
+.codegraph/
+.venv/
+__pycache__/
+*.py[cod]
+node_modules/
+coverage/
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# artefactos y transitorios
+*.log
+*.tmp
+*.swp
+*~
+.DS_Store
+Thumbs.db

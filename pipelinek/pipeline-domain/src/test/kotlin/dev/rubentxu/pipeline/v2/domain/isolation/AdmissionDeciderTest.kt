@@ -19,6 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.isolation.NetworkAccess.Allowlisted
 import dev.rubentxu.pipeline.v2.domain.isolation.NetworkAccess.Denied as NetworkDenied
 import dev.rubentxu.pipeline.v2.domain.isolation.PluginAdmissionFact.Attested
 import dev.rubentxu.pipeline.v2.domain.isolation.PluginAdmissionFact.NoPlugins
+import dev.rubentxu.pipeline.v2.domain.isolation.PluginAdmissionFact.OutOfScope
 import dev.rubentxu.pipeline.v2.domain.isolation.PluginAdmissionFact.Unattested
 import dev.rubentxu.pipeline.v2.domain.isolation.ResourceBudget.Bounded
 import dev.rubentxu.pipeline.v2.domain.isolation.ResourceBudget.Unbounded
@@ -287,6 +288,32 @@ class AdmissionDeciderTest {
             val admission = decide(
                 ExecutionRequirements(),
                 plugins = Unattested(listOf("example-plugin.jar")),
+            )
+
+            assertInstanceOf<Allowed>(admission)
+        }
+
+        @Test
+        fun `a decision that is not about the artifacts is answered by the posture`() {
+            // The product decides the admission of an execution BEFORE it admits
+            // the artifacts, so the caller has no provenance to report. The core
+            // must answer the posture and NOT invent an artifact verdict: a core
+            // that reported the artifacts as unattested here would refuse a run
+            // for a reason the operator never caused.
+            val admission = decide(
+                ExecutionRequirements(trustIntent = UntrustedIsolated),
+                attestation = TrustedProfileOnly,
+                plugins = OutOfScope,
+            )
+
+            assertInstanceOf<MissingAttestation>(deniedReason(admission))
+        }
+
+        @Test
+        fun `a decision that is not about the artifacts admits the legacy posture`() {
+            val admission = decide(
+                ExecutionRequirements(),
+                plugins = OutOfScope,
             )
 
             assertInstanceOf<Allowed>(admission)

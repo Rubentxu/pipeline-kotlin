@@ -1,0 +1,45 @@
+# The map from a build module to the E2E families whose scenarios can observe
+# a defect in it.
+#
+# One line per module the build declares, and three fields separated by tabs:
+#
+#     <module>  <families>  <why>
+#
+# The families are the directories under examples/ that hold scenarios, comma
+# separated. The field "-" says that NO scenario observes this module: the E2E
+# has no observer for it, and the change level refuses a change that touches
+# it instead of certifying nothing and saying PASS.
+#
+# A module that is not in this file is a module whose change certifies
+# nothing, and the gate says so by name rather than guessing a family.
+#
+# The map is not a partition: several modules can observe the same family, and
+# a family can be observed by several modules. What it says is WHICH families
+# can OBSERVE a change, not which module owns them.
+#
+:pipeline-application	control-flow,durable,events,negative,output,plugins,security,smoke,steps	it owns the core steps every scenario calls (sh, echo, writeFile, readFile, sleep, stash, waitUntil) and the CLI they run through
+:pipeline-domain	control-flow,durable,events,negative,output,plugins,security,smoke,steps	the pure core decides the outcome of every scenario
+:pipeline-scripting-api	control-flow,durable,events,negative,output,plugins,security,smoke,steps	the DSL surface every scenario is written in
+:pipeline-scripting-kotlin24	control-flow,durable,events,negative,output,plugins,security,smoke,steps	the host that compiles every scenario
+:pipeline-step-sdk:api	control-flow,durable,events,negative,output,plugins,security,smoke,steps	the contract every step implements (StepContext, PipelineJson, the workspace anchors)
+:pipeline-step-sdk:runtime	control-flow,durable,events,negative,output,plugins,security,smoke,steps	the shell step is in every scenario, and the trust profile is what admits an external plugin
+:pipeline-step-sdk:files	control-flow,negative,output,steps	the executors of writeFile, readFile, fileExists, cleanWs and deleteDir, and the anchoring that keeps a step inside its workspace
+:pipeline-step-sdk:utilities	output,security,steps	findFiles, the typed json and yaml codecs, sha256, and the zip defence
+:pipeline-step-sdk:scm-git	durable,smoke	the checkout the saga scenarios and the smoke run use as their action
+:pipeline-step-sdk:workflow-control	control-flow,steps	the dir step the workspace helpers and the control-block scenarios call
+:pipeline-step-sdk:http	-	no scenario calls the http step, so no family observes it
+:pipeline-step-sdk:junit	-	no scenario calls the junit.results step, so no family observes it
+:pipeline-artefacts-local	negative,output,smoke	the artefact store: the archive and the query bridge, the plugin artefact that cannot be measured, and the archive step
+:pipeline-credentials-api	negative,security	the credential contract: the bindings and the store refusals
+:pipeline-credentials-executor	negative,security	the executor that runs a stage with credentials
+:pipeline-credentials-local	negative,security	the local store: the passphrase, the tamper refusal and the unreadable store
+:pipeline-credentials-multipart	security	the materializer that writes a credential for the child
+:pipeline-event-harness	events	the events verify verb
+:pipeline-events	durable,events,negative	the event contract and the three refusals the negative family asks of it
+:pipeline-events-store	durable,events,negative	the journal the events are read from, and the durable path that writes it
+:pipeline-output	output	the output contract
+:pipeline-output-store	output	the store behind the output
+:pipeline-release	-	no scenario observes the release machinery: the manifest, the candidate admission and the SDK zip belong to the publication
+:pipeline-runtime-api	control-flow,durable,events	the ports the runtime implements: cancel, recover, inspect and the telemetry
+:pipeline-runtime	control-flow,durable,events	the adapters over the stores that those ports name
+:pipeline-sdk-bom	-	no scenario observes the published coordinates: the BOM carries version constraints and no behaviour

@@ -1561,6 +1561,300 @@ gate_scenarios_census="$(plan_scenarios)"
 # which is a different thing entirely from "the comparison never ran".
 e2e_census_gate="$(printf '%s\n' "$gate_scenarios_census" | grep -c . || true)"
 
+# --- The map from a build module to the E2E families -------------------------
+#
+# The map answers ONE question: which E2E families can OBSERVE a change to a
+# given build module. A green that observed nothing is worth nothing, so the
+# question needs an answer.
+#
+# That answer cannot be read off the name of a module, and a guess is the
+# worst possible answer, because a family chosen for convenience certifies
+# scenarios that nobody connected to the change. So the answer is written
+# down, in ONE file, one line per module, and the gate READS it.
+#
+# The map is not a partition and it is not decoration: every module the build
+# declares has a line, every family the tree holds has a module, and a module
+# that no family observes says so in its own field instead of being left out.
+# A map that leaves a module out makes the change level certify nothing and
+# say PASS, which is the worst thing a gate can do.
+family_map_file="scripts/e2e-family-map.tsv"
+
+# The modules the build declares, read from the build's own settings file and
+# not remembered here: a list kept in the gate goes stale the day a module is
+# added, and the day it goes stale is the day a change to that module
+# certifies nothing.
+#
+# The COMMENTS are stripped before the list is read. The settings file names a
+# module inside a comment -- one of the QA modules, and the reason it is not
+# in the build -- and a reader that counted comments would believe that
+# module is still there. Measured on this tree: 27 names with the comments
+# read, 26 with them stripped.
+declared_modules() {
+    sed 's|//.*||' pipelinek/settings.gradle.kts \
+        | awk '
+            /(^|[^[:alnum:]_])include[[:space:]]*\(/ { inside = 1 }
+            inside {
+                rest = $0
+                while (match(rest, /"[^"]*"/)) {
+                    name = substr(rest, RSTART + 1, RLENGTH - 2)
+                    if (name ~ /^:/) print name
+                    rest = substr(rest, RSTART + RLENGTH)
+                }
+                if ($0 ~ /\)/) inside = 0
+            }
+        ' | LC_ALL=C sort -u
+}
+
+# The family of a scenario: the first segment of its path relative to the
+# examples directory. ONE rule, read in two places -- the cost report that
+# prices each family, and the map that says which families can observe a
+# change. Two readings of one rule would one day read it differently, and the
+# difference would be a family the cost report prices and the map does not
+# know.
+e2e_family_of_path() {
+    local path="$1" family
+    family="${path%%/*}"
+    if [[ "$family" == "$path" ]]; then family="(root)"; fi
+    printf '%s' "$family"
+}
+
+# The families the tree holds: the family of every scenario the gate planned.
+# The census the gate took IS the source, so the families and the scenarios
+# can never disagree: they are the same reading.
+families_in_tree() {
+    local scenario
+    while IFS= read -r scenario; do
+        [[ -n "$scenario" ]] || continue
+        e2e_family_of_path "$scenario"
+        printf '\n'
+    done <<< "$gate_scenarios_census" | LC_ALL=C sort -u
+}
+
+# The map, read once into two tables: the families of each module, and the
+# reason it says so. A module that appears twice is a map that answers two
+# different things to one question, and the gate refuses it.
+declare -A family_map_families=()
+declare -A family_map_reasons=()
+declare -a family_map_repeated=()
+
+read_family_map() {
+    local line module families reason
+    family_map_families=()
+    family_map_reasons=()
+    family_map_repeated=()
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -n "$line" ]] || continue
+        case "$line" in '#'*) continue ;; esac
+        IFS=$'\t' read -r module families reason <<< "$line"
+        [[ -n "$module" ]] || continue
+        if [[ -n "${family_map_families[$module]+x}" ]]; then
+            family_map_repeated+=("$module")
+            continue
+        fi
+        family_map_families["$module"]="$families"
+        family_map_reasons["$module"]="$reason"
+    done < "$family_map_file"
+}
+
+# The families of one module, one per line. The field "-" is the way a line
+# says that no family observes the module.
+family_map_families_of() {
+    local list="${family_map_families[$1]-}"
+    [[ "$list" == "-" || -z "$list" ]] && return 0
+    printf '%s\n' "${list//,/$'\n'}"
+}
+
+# The module a changed path belongs to: the LONGEST declared module whose
+# directory holds it. Longest, because the step SDK nests its modules one
+# level deep: a file under pipelinek/pipeline-step-sdk/files belongs to
+# :pipeline-step-sdk:files and NOT to :pipeline-step-sdk.
+family_map_module_of_path() {
+    local path="$1" rest first second key
+    case "$path" in
+        pipelinek/*) rest="${path#pipelinek/}" ;;
+        *) return 1 ;;
+    esac
+    first="${rest%%/*}"
+    [[ "$first" != "$rest" ]] || return 1
+    second="${rest#*/}"
+    if [[ "$second" != "$rest" && "$second" == */* ]]; then
+        second="${second%%/*}"
+        key=":$first:$second"
+        if [[ -n "${declared_set[$key]+x}" ]]; then printf '%s' "$key"; return 0; fi
+    fi
+    key=":$first"
+    if [[ -n "${declared_set[$key]+x}" ]]; then printf '%s' "$key"; return 0; fi
+    return 1
+}
+
+# The files the change touches.
+#
+# The change is the WORKING TREE, because that is what the gate verifies: it
+# compiles the files that are on disk, not the ones a commit names. So the
+# touched set is HEAD against the working tree, and NOT a range of commits: a
+# change level that asked about a committed range would answer a question
+# nobody asked, about a tree the gate never built.
+#
+# Two readings, because there are two kinds of difference: the tracked files
+# that differ from HEAD, and the files HEAD does not hold at all. A new file
+# is a change too, and a reader that only asked Git for the first kind would
+# not know about it.
+family_map_touched() {
+    git -C "$repo_root" diff --name-only HEAD -- 2>/dev/null || true
+    git -C "$repo_root" ls-files --others --exclude-standard 2>/dev/null || true
+}
+
+# The check, and the report.
+#
+# Four things can be wrong with the map, and every one of them is a failure:
+#
+#   - a module the build declares and the map does not name: a change to it
+#     would certify nothing and say PASS;
+#   - a module the map names and the build does not declare: the map is stale;
+#   - a family the map names and the tree does not hold: the map promises
+#     scenarios that are not there;
+#   - a family the tree holds and no module maps to: the family is DEAD,
+#     nothing in the map says who can observe it, and the coverage the map
+#     claims for the change level is empty there.
+#
+# And one more, and it is the one the change level is about: a module the
+# change TOUCHES that no family observes. The change level then says those
+# modules by name and stops, because the alternative is a green that costs
+# nothing.
+declare -A declared_set=()
+family_map_check() {
+    local module family path key list m f
+    local -a missing=() stale=() unknown=() dead=() unmapped=() observable=()
+    local -A tree_family_set=() observable_set=() touched_set=()
+    local outside_the_modules=0
+
+    if [[ ! -f "$family_map_file" ]]; then
+        fail "the map of modules to E2E families: $family_map_file is not there"
+    fi
+    read_family_map
+
+    while IFS= read -r module; do
+        [[ -n "$module" ]] || continue
+        declared_set["$module"]=1
+    done < <(declared_modules)
+    if (( ${#declared_set[@]} == 0 )); then
+        fail "the map of modules to E2E families: the modules the build declares could not be read"
+    fi
+    while IFS= read -r family; do
+        [[ -n "$family" ]] || continue
+        tree_family_set["$family"]=1
+    done < <(families_in_tree)
+
+    if (( ${#family_map_repeated[@]} > 0 )); then
+        printf '    the map names the same module twice:\n' >&2
+        for m in $(printf '%s\n' "${family_map_repeated[@]}" | LC_ALL=C sort -u); do printf '      %s\n' "$m" >&2; done
+        fail "the map of modules to E2E families: a module appears twice"
+    fi
+
+    for module in "${!declared_set[@]}"; do
+        [[ -n "${family_map_families[$module]+x}" ]] || missing+=("$module")
+    done
+    if (( ${#missing[@]} > 0 )); then
+        printf '    the map does not name every module the build declares:\n' >&2
+        for m in $(printf '%s\n' "${missing[@]}" | LC_ALL=C sort); do printf '      %s\n' "$m" >&2; done
+        fail "the map of modules to E2E families: ${#missing[@]} module(s) the build declares are not in the map"
+    fi
+
+    for module in "${!family_map_families[@]}"; do
+        [[ -n "${declared_set[$module]+x}" ]] || stale+=("$module")
+    done
+    if (( ${#stale[@]} > 0 )); then
+        printf '    the map names modules the build does not declare:\n' >&2
+        for m in $(printf '%s\n' "${stale[@]}" | LC_ALL=C sort); do printf '      %s\n' "$m" >&2; done
+        fail "the map of modules to E2E families: ${#stale[@]} module(s) the map names are not in the build"
+    fi
+
+    for module in "${!family_map_families[@]}"; do
+        for family in $(family_map_families_of "$module"); do
+            [[ -n "${tree_family_set[$family]+x}" ]] || unknown+=("$family")
+        done
+    done
+    if (( ${#unknown[@]} > 0 )); then
+        printf '    the map names families the tree does not hold:\n' >&2
+        for f in $(printf '%s\n' "${unknown[@]}" | LC_ALL=C sort -u); do printf '      %s\n' "$f" >&2; done
+        fail "the map of modules to E2E families: ${#unknown[@]} family(ies) the map names are not in the tree"
+    fi
+
+    for family in "${!tree_family_set[@]}"; do
+        local found=0
+        for module in "${!family_map_families[@]}"; do
+            for f in $(family_map_families_of "$module"); do
+                [[ "$f" == "$family" ]] && found=1
+            done
+        done
+        (( found == 0 )) && dead+=("$family")
+    done
+    if (( ${#dead[@]} > 0 )); then
+        printf '    these families have no module that maps to them, so nothing in the\n' >&2
+        printf '    map says who can observe a change to them:\n' >&2
+        for f in $(printf '%s\n' "${dead[@]}" | LC_ALL=C sort); do printf '      %s\n' "$f" >&2; done
+        fail "the map of modules to E2E families: ${#dead[@]} family(ies) are dead"
+    fi
+
+    for module in "${!family_map_families[@]}"; do
+        [[ -n "${family_map_reasons[$module]-}" ]] || unmapped+=("$module")
+    done
+    if (( ${#unmapped[@]} > 0 )); then
+        printf '    these lines of the map do not say why:\n' >&2
+        for m in $(printf '%s\n' "${unmapped[@]}" | LC_ALL=C sort); do printf '      %s\n' "$m" >&2; done
+        fail "the map of modules to E2E families: ${#unmapped[@]} line(s) do not say why"
+    fi
+
+    if [[ "$level" == "cambio" && "$subset" == 0 ]]; then
+        while IFS= read -r path; do
+            [[ -n "$path" ]] || continue
+            if key="$(family_map_module_of_path "$path")"; then
+                touched_set["$key"]=1
+                for family in $(family_map_families_of "$key"); do observable_set["$family"]=1; done
+            else
+                outside_the_modules=1
+            fi
+        done < <(family_map_touched)
+
+        for module in "${!touched_set[@]}"; do
+            list="${family_map_families[$module]-}"
+            if [[ -z "$list" || "$list" == "-" ]]; then unmapped+=("$module"); fi
+        done
+        if (( ${#unmapped[@]} > 0 )); then
+            printf '    the change touches modules that no E2E family observes:\n' >&2
+            for m in $(printf '%s\n' "${unmapped[@]}" | LC_ALL=C sort); do printf '      %s\n' "$m" >&2; done
+            printf '  a change to them certifies nothing, and a green that certifies\n' >&2
+            printf '  nothing is not a green: certify the change with the full gate.\n' >&2
+            fail "the map of modules to E2E families: ${#unmapped[@]} module(s) the change touches have no family"
+        fi
+
+        if (( outside_the_modules == 1 || ${#observable_set[@]} == 0 )); then
+            observable_set=()
+            for family in "${!tree_family_set[@]}"; do observable_set["$family"]=1; done
+        fi
+        for family in "${!observable_set[@]}"; do observable+=("$family"); done
+    fi
+
+    printf '    the map of modules to E2E families:\n'
+    printf '      %d module(s) the build declares, %d famil(ies) in the tree\n' \
+        "${#declared_set[@]}" "${#tree_family_set[@]}"
+    printf '      every declared module is in the map, and every family has a module\n'
+    if [[ "$level" == "cambio" && "$subset" == 0 ]]; then
+        printf '      the change touches %d module(s)\n' "${#touched_set[@]}"
+        for m in $(printf '%s\n' "${!touched_set[@]}" | LC_ALL=C sort); do printf '        %s\n' "$m"; done
+        printf '      the families that can observe the change: %s\n' \
+            "$(printf '%s\n' "${observable[@]}" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+        if (( outside_the_modules == 1 )); then
+            printf '      the change also touches files outside the modules, so no family can be ruled out\n'
+        fi
+    fi
+}
+
+# The map is checked BEFORE any stage runs: a broken map is a fact about the
+# tree, and a tree with a broken map must not spend a build on the way to
+# saying so.
+family_map_check
+
 # --- JDK resolution ----------------------------------------------------------
 # Prefer an explicit JAVA_HOME that already satisfies the requirement; then the
 # asdf installations this repository has used; then whatever is on PATH.
@@ -3274,9 +3568,8 @@ fi
     # The cost of the scenarios, per family. The launcher already prices every
     # scenario it ran; the gate turns those prices into parts a reader can act
     # on, because a suite whose cost is only a total is a suite nobody can
-    # shrink. The family is the first segment of the path relative to the
-    # examples directory, so the parts line up with the directories a reader
-    # can see in the tree.
+    # shrink. The family is the one `e2e_family_of_path` names, so the parts
+    # line up with the directories a reader can see in the tree.
     #
     # The resolution is the one the launcher publishes: a tenth of a second.
     # Finer numbers are not invented here.
@@ -3285,10 +3578,7 @@ fi
     while read -r cost_path cost_label; do
         [[ -n "$cost_path" ]] || continue
         e2e_cost_n=$(( e2e_cost_n + 1 ))
-        cost_family="${cost_path%%/*}"
-        if [[ "$cost_family" == "$cost_path" ]]; then
-            cost_family="(root)"
-        fi
+        cost_family="$(e2e_family_of_path "$cost_path")"
         cost_ms="$(printf '%s' "$cost_label" | sed 's/s$//' | awk '{ printf "%d", $1 * 1000 }')"
         e2e_cost_total_ms=$(( e2e_cost_total_ms + cost_ms ))
         component_add "e2e_family:$cost_family" "$cost_ms" 1 \

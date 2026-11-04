@@ -63,6 +63,11 @@ RULES: list[tuple[str, str, str]] = [
     # the product and ships nothing, so it is the numerator and not the
     # denominator.
     ("verify", "source guard", "scripts/check-e2e-receipt.py"),
+    # The map from a build module to the E2E families. It is data and not
+    # code, and it is verification material: the change level reads it to
+    # decide which scenarios can observe a change. It is in the numerator and
+    # not in the denominator, or the ratio would look better than the truth.
+    ("verify", "E2E family map", "scripts/e2e-family-map.tsv"),
     # The per-task clock the gate reads to report what each part of the build
     # cost. It produces no artifact and ships nothing, so it is the numerator
     # and not the denominator; the catch-all rule below would otherwise call it

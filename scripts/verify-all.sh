@@ -65,6 +65,11 @@
 # because only the certification measures a build from nothing. The change and
 # milestone levels start from the outputs that are already on disk, and their
 # clock is NOT the clock of a certification.
+# The level also moves the INSTRUMENTS. The certification is the run that
+# MEASURES: it is the only one that owes the whole line base of the cost
+# census, and the only one that refuses a run that executed no test. The
+# change and milestone levels VERIFY: a part they did not measure is named in
+# the report, not failed, because they were never asked to measure it.
 # The gate has four stages, and a stage number that names a fifth is a typo: a
 # typo that selected nothing would run nothing and print a clean verdict, which
 # is the same silent green this script refuses everywhere else.
@@ -593,6 +598,29 @@ declare -a component_order=()
 component_measured_total=0
 component_required_total=0
 
+# The LINE BASE of the certification: the parts a certification measures.
+#
+# This list is the ONLY owner of that fact. A certification OWES every part
+# in it: if the clock did not measure one of them, the census is incomplete
+# and the run is not a green gate. A run that only VERIFIES owes none of
+# them, and instead has to SAY which ones it did not measure -- and it reads
+# the names from here, so the list of what a certification measures has one
+# home and not one per stage.
+#
+# The order is the order of the work, and it is fixed: two runs that report
+# the same thing must report it in the same order.
+declare -a certification_baseline=(
+    "build:static the static analysis of the sources is part of the build"
+    "build:api the public-API check is part of the build"
+    "build:compile the compilation is part of the build"
+    "build:distribution the assembly of the distribution is part of the build"
+    "product:script_cold the price of the first compilation is part of the baseline"
+    "product:script_warm the price of a cached compilation is part of the baseline"
+    "product:startup the price of starting the product is part of the baseline"
+    "build:unit the permanent unit tests are part of the build"
+    "e2e:scenarios the cost of the scenarios is part of the baseline"
+)
+
 # How the tasks of the build ended. Two runs of the same gate cost the reader
 # the same wall clock on the page, and one of them may have done almost no
 # work at all: the tasks were up to date, or they were served from the build
@@ -667,7 +695,13 @@ component_set() {
 
 component_require() {
     local key="$1" why="$2"
-    component_touch "$key"
+    # Only a run that MEASURES the certification OWES a part. The other levels
+    # verify, and a part they did not measure is REPORTED by the census, not
+    # failed: they were never asked to measure it, and failing them for it
+    # would punish them for the level they were told to run at.
+    if [[ "$full_certification" != 1 ]]; then
+        return 0
+    fi
     if [[ -z "${component_required[$key]+x}" ]]; then
         component_required[$key]="$why"
         component_required_total=$(( component_required_total + 1 ))
@@ -678,6 +712,16 @@ component_is_measured() {
     local key="$1"
     [[ -n "${component_measured_flag[$key]+x}" ]]
 }
+
+# What this run OWES, registered once and from the line base above.
+#
+# The obligation is a property of the RUN, not of the stage that happens to
+# touch a part: a certification owes the whole line base, and a run that only
+# verifies owes nothing at all. The parts that were not measured are named by
+# the census, which reads the same list.
+for baseline_entry in "${certification_baseline[@]}"; do
+    component_require "${baseline_entry%% *}" "${baseline_entry#* }"
+done
 
 components_suffix() {
     # NOT_RUN means this run measured no part at all. A run that measured
@@ -1114,6 +1158,19 @@ print_host_description() {
 # report says so here, in the report of every run at that level.
 print_level_meaning() {
     printf '    the level of this run: %s\n' "$level"
+    if [[ "$subset" == 1 ]]; then
+        # A SUBSET is not a certification even when the level says
+        # "certificacion": it did not delete the build outputs, and it quotes
+        # no wall clock. Saying otherwise here would give the run a meaning
+        # it does not have.
+        echo "      this run is a SUBSET: it is not a certification, and its verdict"
+        echo "      is not the one a release can be quoted against. It did NOT delete"
+        echo "      the build outputs, so it measured the work that was invalidated,"
+        echo "      starting from the outputs already on disk."
+        echo "      it does NOT owe the certification's line base; the census names"
+        echo "      the parts of it that this run did not measure."
+        return 0
+    fi
     case "$level" in
         certificacion)
             echo "      this run is the CERTIFICATION: its verdict is the one a release"
@@ -1131,6 +1188,8 @@ print_level_meaning() {
             echo "      its clock is still held to the ${BUDGET_SECONDS}s ceiling, but it"
             echo "      is NOT the clock of a certification and must not be quoted as the"
             echo "      cost of this gate."
+            echo "      it does NOT owe the certification's line base; the census names"
+            echo "      the parts of it that this run did not measure."
             ;;
         milestone)
             echo "      this run is a MILESTONE run: it is not a certification, and its"
@@ -1141,6 +1200,8 @@ print_level_meaning() {
             echo "      its clock is still held to the ${BUDGET_SECONDS}s ceiling, but it"
             echo "      is NOT the clock of a certification and must not be quoted as the"
             echo "      cost of this gate."
+            echo "      it does NOT owe the certification's line base; the census names"
+            echo "      the parts of it that this run did not measure."
             ;;
     esac
 }
@@ -2342,13 +2403,11 @@ JSON
     if (( overlap_probe_on == 1 )); then
         read_overlap "$log_dir/stage1.log" "$gradle_invocation_label"
     fi
-    # The four works this stage does are what the gate exists to certify, so
-    # each one is a part the census declares mandatory: if the clock did not
-    # measure it, the census is incomplete and the run is not a green gate.
-    component_require "build:static" "the static analysis of the sources is part of the build"
-    component_require "build:api" "the public-API check is part of the build"
-    component_require "build:compile" "the compilation is part of the build"
-    component_require "build:distribution" "the assembly of the distribution is part of the build"
+    # The four works this stage does are what the gate exists to certify, and
+    # they are part of the certification's line base: the census declares them
+    # mandatory, and that declaration lives in ONE place -- the line base of
+    # the census -- so the stages that measure and the run that owes cannot
+    # drift apart.
     echo "    ok in $(elapsed "$stage_started_at")s"
 
     # --- Stage 1i: what the PRODUCT costs -----------------------------------
@@ -2476,9 +2535,6 @@ CALIBRATION_SCRIPT
     component_set "product:script_cold" "$cold_ms" "first compilation of a script"
     component_set "product:script_warm" "$warm_ms" "second compilation, served from the script cache"
     component_set "product:startup" "$startup_median" "median of three starts of the product"
-    component_require "product:script_cold" "the price of the first compilation is part of the baseline"
-    component_require "product:script_warm" "the price of a cached compilation is part of the baseline"
-    component_require "product:startup" "the price of starting the product is part of the baseline"
     printf '    cold %dms, warm %dms, startup %dms (the median of three)\n' \
         "$cold_ms" "$warm_ms" "$startup_median"
     echo "    ok in $(elapsed "$stage_started_at")s"
@@ -2565,7 +2621,6 @@ else
             read_overlap "$log_dir/stage2.log" "stage 2"
         fi
     fi
-    component_require "build:unit" "the permanent unit tests are part of the build"
     # Gradle's exit status is not the result. A Test task can report success
     # with its classes skipped or absent, so the executed/failed/skipped counts
     # are read from the JUnit XML that the task wrote.
@@ -2701,13 +2756,16 @@ else
     # run is not a smaller measurement of the same thing; it is a measurement
     # of something else.
     #
-    # `--no-build-cache` on the full gate is what makes this refusal
+    # `--no-build-cache` on the certification is what makes this refusal
     # unreachable in practice. The guard is here so that a gate whose cache
     # switch is removed, or whose flag stops working, cannot quote a number it
-    # did not earn. A SUBSET run is not measured against the budget, so a
-    # cached subset is not a breach: it is the inner loop doing its job, and
-    # the note below says so.
-    if [[ "$subset" == 0 && "$xml_cached" -gt 0 ]]; then
+    # did not earn.
+    #
+    # The refusal belongs to the CERTIFICATION, because the certification is
+    # the run that quotes a wall clock. The other levels verify and do not
+    # measure, so a report served from the cache is not a breach there: it is
+    # the cache doing its job, and the census above already counted it.
+    if [[ "$xml_cached" -gt 0 ]] && (( full_certification == 1 )); then
         echo "verify-all: $xml_cached report(s) were served from the build cache," >&2
         echo "so this run did NOT execute the whole test graph ($xml_cached_tests" >&2
         echo "test(s) never ran). Its wall clock would measure the cache and not" >&2
@@ -2715,7 +2773,21 @@ else
         fail "stage 2: part of the test graph was served from the build cache"
     fi
     if [[ "$xml_fresh" -eq 0 ]]; then
-        if [[ "$subset" == 1 ]]; then
+        if (( full_certification == 1 )); then
+            # The refusal names the state it found, because the census knows it:
+            # the old wording asserted a cause ("up to date") that the gate had
+            # no way to observe. A report restored from the cache is a different
+            # fact with the same consequence, and only one of the two is true.
+            #
+            # The certification deletes the build outputs, so "remove the test
+            # outputs and rerun" is exactly what it does.
+            echo "verify-all: no report was rewritten, so this run executed no test:" >&2
+            echo "the test graph was served without running ($xml_cached report(s) restored" >&2
+            echo "from the build cache, $xml_disk already on disk)." >&2
+            echo "That is NOT a measurement of the gate's cost; remove the test" >&2
+            echo "outputs and rerun before quoting a wall clock." >&2
+            fail "stage 2: no test task was executed by this run"
+        else
             # For a scoped run this is the normal second invocation with no
             # source change, and failing would punish the fast loop for the
             # cache doing its job. It still says what happened, because a silent
@@ -2727,38 +2799,23 @@ else
             # cache did not run because the build cache had its output. The
             # first is a no-op; the second is a measurement of the cache. The
             # census knows which one it is, so the note does not guess.
+            #
+            # A level that does not measure the certification is not a breach
+            # either: it was never asked to execute anything, it was asked to
+            # VERIFY, and a run that verified and found nothing to run has said
+            # so honestly.
             if [[ "$xml_cached" -gt 0 ]]; then
                 echo "    note: $xml_cached report(s) were served from the build cache;" \
                      "nothing was executed by this run."
             else
                 echo "    note: every task was up to date; nothing was executed by this run."
             fi
-        else
-            # The refusal names the state it found, because the census knows it:
-            # the old wording asserted a cause ("up to date") that the gate had
-            # no way to observe. A report restored from the cache is a different
-            # fact with the same consequence, and only one of the two is true.
-            #
-            # The ADVICE depends on the level, because the two levels are in
-            # different states and the way out is different. The certification
-            # deletes the build outputs, so "remove the test outputs and rerun"
-            # is exactly what it does. A change level does NOT delete them, so
-            # that advice would send the reader to a door that does not exist:
-            # there, the reason nothing ran is that there was nothing to run,
-            # because the change invalidated nothing.
-            echo "verify-all: no report was rewritten, so this run executed no test:" >&2
-            echo "the test graph was served without running ($xml_cached report(s) restored" >&2
-            echo "from the build cache, $xml_disk already on disk)." >&2
-            if [[ "$level" == "certificacion" ]]; then
-                echo "That is NOT a measurement of the gate's cost; remove the test" >&2
-                echo "outputs and rerun before quoting a wall clock." >&2
-            else
-                echo "This run is at level '$level', and that level does NOT delete the" >&2
-                echo "build outputs: it measures the work a change invalidated, and" >&2
-                echo "there was none. Run it after a change, or run the certification," >&2
-                echo "which measures a build from nothing." >&2
+            if [[ "$subset" != 1 ]]; then
+                echo "    this run is at level '$level', and that level does NOT measure the"
+                echo "    certification: it measures the work a change invalidated, and there"
+                echo "    was none. Run it after a change, or run the certification, which"
+                echo "    measures a build from nothing."
             fi
-            fail "stage 2: no test task was executed by this run"
         fi
     fi
     [[ "$xml_fail" -eq 0 ]] || fail "stage 2: $xml_fail failing test(s) in the JUnit XML"
@@ -3209,7 +3266,6 @@ if [[ -n "$diagnostics_path" ]]; then
 fi
     component_set "e2e:scenarios" "$e2e_cost_total_ms" \
         "sum of every scenario the launcher priced; they run in parallel"
-    component_require "e2e:scenarios" "the cost of the scenarios is part of the baseline"
     echo "    ok in $(elapsed "$stage_started_at")s"
 else
   log "stage 3/4  SKIPPED by --stage"
@@ -3364,18 +3420,42 @@ fi
 # baseline, not a zero. The census would otherwise publish a number for a
 # cost it never observed, which is the same defect as the gate that reported
 # a scenario it never ran.
-missing_parts=()
-for part_key in "${!component_required[@]}"; do
-    if ! component_is_measured "$part_key"; then
-        missing_parts+=("$part_key")
-    fi
-done
-if (( ${#missing_parts[@]} > 0 )); then
-    echo "verify-all: the cost census declared parts it did not measure:" >&2
-    for part_key in "${missing_parts[@]}"; do
-        printf '  %s: %s\n' "$part_key" "${component_required[$part_key]}" >&2
+#
+# The obligation belongs to the CERTIFICATION, because it is the run that
+# quotes a wall clock, and a clock that does not cover the whole line base is
+# not a measurement of the gate. A run that only VERIFIES owes no part, so it
+# does not fail here: it NAMES the parts of the line base it did not measure,
+# because a census that covers less than the reader may assume is the same
+# silence the census was built to end.
+if (( full_certification == 1 )); then
+    missing_parts=()
+    for part_key in "${!component_required[@]}"; do
+        if ! component_is_measured "$part_key"; then
+            missing_parts+=("$part_key")
+        fi
     done
-    fail "stage 4: the cost census is incomplete"
+    if (( ${#missing_parts[@]} > 0 )); then
+        echo "verify-all: the cost census declared parts it did not measure:" >&2
+        for part_key in "${missing_parts[@]}"; do
+            printf '  %s: %s\n' "$part_key" "${component_required[$part_key]}" >&2
+        done
+        fail "stage 4: the cost census is incomplete"
+    fi
+else
+    not_measured_parts=()
+    for baseline_entry in "${certification_baseline[@]}"; do
+        if ! component_is_measured "${baseline_entry%% *}"; then
+            not_measured_parts+=("$baseline_entry")
+        fi
+    done
+    if (( ${#not_measured_parts[@]} > 0 )); then
+        printf '    the certification measures these parts, and this run did NOT measure:\n'
+        for baseline_entry in "${not_measured_parts[@]}"; do
+            printf '      %-24s %s\n' "${baseline_entry%% *}" "${baseline_entry#* }"
+        done
+    else
+        printf '    this run measured every part of the certification line base.\n'
+    fi
 fi
 
 if [[ "$subset" == 1 ]]; then

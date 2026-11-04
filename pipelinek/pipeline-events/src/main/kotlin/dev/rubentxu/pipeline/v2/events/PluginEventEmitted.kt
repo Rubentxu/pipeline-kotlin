@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.v2.events
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
 import java.time.Instant
 
 /**
@@ -16,10 +19,13 @@ import java.time.Instant
  * The payload string MUST be the bytes the registered codec's `encode` produced; the emitter
  * enforces that (fail-closed) rather than trusting callers to keep the two in sync.
 */
+@Serializable
+@SerialName("PluginEventEmitted")
 data class PluginEventEmitted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     /** The registry kind this payload was emitted under — e.g. `acme.validated`. */
     val registryKind: String,
@@ -31,4 +37,5 @@ data class PluginEventEmitted(
     val emittedBy: String,
 ) : DomainEvent {
     override val kind: String get() = "PluginEventEmitted"
+    override fun withSequence(sequence: Long): PluginEventEmitted = copy(sequence = sequence)
 }

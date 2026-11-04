@@ -1,9 +1,12 @@
 package dev.rubentxu.pipeline.v2.scripting
 
+import kotlinx.serialization.Serializable
+
 /**
  * Severity level for a [ScriptingDiagnostic], modelled after
  * [kotlin.script.experimental.api.ScriptDiagnostic.Severity].
 */
+@Serializable
 enum class ScriptDiagnosticSeverity {
     DEBUG,
     INFO,
@@ -16,6 +19,7 @@ enum class ScriptDiagnosticSeverity {
  * A diagnostic (warning, error, info) produced during script compilation
  * or evaluation.
 */
+@Serializable
 data class ScriptingDiagnostic(
     val severity: ScriptDiagnosticSeverity,
     val message: String,

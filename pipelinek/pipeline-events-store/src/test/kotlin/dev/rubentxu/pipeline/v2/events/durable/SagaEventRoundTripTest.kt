@@ -21,7 +21,7 @@ import java.time.Instant
  * So the two sides are pinned to each other here, on the events the loop announces: what goes
  * out is what comes back, field for field.
  */
-class SagaLoopCodecRoundTripTest {
+class SagaEventRoundTripTest {
 
     @Test
     fun `a compensation that started survives the round trip`() {

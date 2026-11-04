@@ -205,66 +205,42 @@ class EventKindMatrixTest {
 
     @Test
     fun `the compensation family decodes the kind the vocabulary gives it`() {
-        // The family used to spell out its own three kinds. A kind renamed in the vocabulary
-        // would leave those words behind and the family would answer null for a kind the
-        // dispatcher had already recognised -- an event that vanishes without a word. These
-        // cases feed the family the word the VOCABULARY gives, so a drift between the two
-        // cannot pass unnoticed.
-        val started = SagaLoopCodec.decode(
-            kind = EventKindMatrix.of(compensationStarted()).wire,
-            s = compensationStartedPayload,
-            eventId = "e-1",
-            runId = "run-42",
-            sequence = 7L,
-            occurredAt = occurredAt,
-        )
+        // The payloads below are written BY HAND, in the wire format a previous version
+        // wrote, and they carry no code from this file: a codec that only understood what it
+        // writes itself would not read them. A kind renamed in the vocabulary would leave the
+        // payload's own word behind, and the reader would answer nothing for a kind the
+        // vocabulary had already recognised -- an event that vanishes without a word.
+        val started = JsonEventLog.decode("[$compensationStartedPayload]").single()
 
-        assertEquals(compensationStarted(), started, "the family must answer for the word the vocabulary holds")
+        assertEquals(compensationStarted(), started, "the reader must answer for the word the vocabulary holds")
 
-        val finished = SagaLoopCodec.decode(
-            kind = EventKindMatrix.of(compensationFinished()).wire,
-            s = compensationFinishedPayload,
-            eventId = "e-1",
-            runId = "run-42",
-            sequence = 8L,
-            occurredAt = occurredAt,
-        )
+        val finished = JsonEventLog.decode("[$compensationFinishedPayload]").single()
 
-        assertEquals(compensationFinished(), finished, "the family must answer for the word the vocabulary holds")
+        assertEquals(compensationFinished(), finished, "the reader must answer for the word the vocabulary holds")
 
-        val terminal = SagaLoopCodec.decode(
-            kind = EventKindMatrix.of(sagaTerminal()).wire,
-            s = sagaTerminalPayload,
-            eventId = "e-1",
-            runId = "run-42",
-            sequence = 9L,
-            occurredAt = occurredAt,
-        )
+        val terminal = JsonEventLog.decode("[$sagaTerminalPayload]").single()
 
-        assertEquals(sagaTerminal(), terminal, "the family must answer for the word the vocabulary holds")
+        assertEquals(sagaTerminal(), terminal, "the reader must answer for the word the vocabulary holds")
     }
 
     @Test
-    fun `the compensation family answers for its own kinds only`() {
-        // The payload below is a well-formed compensation body, so a family that dispatched on
-        // the PAYLOAD's shape instead of on the kind would answer with a compensation. It
-        // answers null, because the kind it was asked about belongs to another family.
-        val answer = SagaLoopCodec.decode(
-            kind = EventKindMatrix.of(workflowLoaded()).wire,
-            s = compensationStartedPayload,
-            eventId = "e-1",
-            runId = "run-42",
-            sequence = 7L,
-            occurredAt = occurredAt,
-        )
+    fun `a kind this binary does not know is refused instead of being read as another one`() {
+        // The payload below is a well-formed compensation body. A reader that dispatched on
+        // the PAYLOAD's shape instead of on the kind would answer with a compensation whatever
+        // kind it was asked about. The kind the payload announces is the kind it is read as,
+        // and a word nobody declared is not in the vocabulary at all.
+        val answer = JsonEventLog.decode("[$compensationStartedPayload]").single()
 
-        assertNull(
-            answer,
-            "the family must not answer for a kind it does not own, whatever the payload looks like",
+        assertEquals(
+            EventKindMatrix.of(compensationStarted()).wire,
+            answer.kind,
+            "the reader must answer for the kind the payload announces",
+        )
+        assertFalse(
+            JsonEventLog.knowsKind("CompensationNotDeclared"),
+            "a kind nobody declared must not be in the vocabulary",
         )
     }
-
-    // --- the events the tests above travel as ------------------------------------
 
     private fun runStarted() = RunStarted(
         eventId = "e-1",

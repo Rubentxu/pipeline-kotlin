@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.scripting
 
+import kotlinx.serialization.Serializable
+
 /**
  * Where the executable form of a pipeline script came from.
  *
@@ -23,6 +25,7 @@ package dev.rubentxu.pipeline.v2.scripting
  * A vocabulary the producer needs and the consumer needs therefore belongs
  * below both of them, or it would have to travel twice.
  */
+@Serializable
 enum class ScriptOrigin {
 
     /**

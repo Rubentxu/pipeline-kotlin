@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import kotlinx.serialization.Serializable
+
 import org.jetbrains.annotations.NotNull
 
 /**
@@ -21,6 +23,7 @@ import org.jetbrains.annotations.NotNull
  * @see SecretHandle for the secret value channel (never the ID)
 */
 @JvmInline
+@Serializable
 value class CredentialsId(@NotNull val value: String) {
     init {
         require(value.isNotBlank()) { "CredentialsId value must not be blank" }

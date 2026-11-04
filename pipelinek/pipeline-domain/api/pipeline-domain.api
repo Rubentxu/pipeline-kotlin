@@ -162,6 +162,7 @@ public final class dev/rubentxu/pipeline/v2/domain/BoundPurpose : java/lang/Enum
 public final class dev/rubentxu/pipeline/v2/domain/BoundPurpose$Companion {
 	public final fun getSupportedTokens ()Ljava/util/Set;
 	public final fun parse (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/Capability {
@@ -785,11 +786,24 @@ public final class dev/rubentxu/pipeline/v2/domain/CredentialsId {
 	public final synthetic fun unbox-impl ()Ljava/lang/String;
 }
 
+public final synthetic class dev/rubentxu/pipeline/v2/domain/CredentialsId$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/CredentialsId$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize-qAEYobA (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/String;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize-Bf3yznE (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/String;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/CredentialsId$Companion {
 	public final fun from-qAEYobA (Ljava/lang/String;)Ljava/lang/String;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/CredentialsRef {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/CredentialsRef$Companion;
 	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/CredentialsRef;
 	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
 	public fun equals (Ljava/lang/Object;)Z
@@ -801,6 +815,21 @@ public final class dev/rubentxu/pipeline/v2/domain/CredentialsRef {
 	public fun toString ()Ljava/lang/String;
 	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
 	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/domain/CredentialsRef$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/CredentialsRef$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize-40RzzN0 (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/String;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize-V2hi_jY (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/String;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/CredentialsRef$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/DefinitionId {
@@ -1066,6 +1095,7 @@ public final class dev/rubentxu/pipeline/v2/domain/FailureKind : java/lang/Enum 
 public final class dev/rubentxu/pipeline/v2/domain/FailureKind$Companion {
 	public final fun getSupportedTokens ()Ljava/util/Set;
 	public final fun parse (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/FailureKind;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/IdGenerator {

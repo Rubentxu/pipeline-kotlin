@@ -13,7 +13,7 @@ object JsonEventLog {
         val sb = StringBuilder("[")
         events.forEachIndexed { index, event ->
             if (index > 0) sb.append(",")
-            sb.append(EventJsonWriter.encodeEvent(event))
+            sb.append(EventJsonCodec.encodeEvent(event))
         }
         sb.append("]")
         return sb.toString()
@@ -30,10 +30,10 @@ object JsonEventLog {
      * mean parsing what was just serialized, and would break on any field whose value legitimately
      * contains the delimiter.
      * So this delegates. The field order, the escaping and the `kind` tag are produced by the same
-     * [EventJsonWriter.encodeEvent] the store itself uses, and an event encoded here is byte-for-byte
+     * [EventJsonCodec.encodeEvent] the store itself uses, and an event encoded here is byte-for-byte
      * the same element [encode] would put at that index.
 */
-    fun encodeOne(event: DomainEvent): String = EventJsonWriter.encodeEvent(event)
+    fun encodeOne(event: DomainEvent): String = EventJsonCodec.encodeEvent(event)
 
     /**
      * Streams the same JSON array as [encode] to
@@ -45,7 +45,7 @@ object JsonEventLog {
         var index = 0
         for (event in events) {
             if (index > 0) out.append(',')
-            out.append(EventJsonWriter.encodeEvent(event))
+            out.append(EventJsonCodec.encodeEvent(event))
             index++
         }
         out.append(']')
@@ -76,7 +76,7 @@ object JsonEventLog {
         for (eventStr in eventStrings) {
             val trimmed = eventStr.trim()
             if (trimmed.isEmpty()) continue
-            val event = when (val outcome = DomainEventJsonDecoder.decode(trimmed)) {
+            val event = when (val outcome = EventJsonCodec.decode(trimmed)) {
                 is EventDecodeOutcome.Decoded -> outcome.event
                 // A document legitimately holds kinds this binary does not know, and an object whose
                 // field cannot be read is skipped exactly as before. [decode] answers "which events
@@ -111,7 +111,7 @@ object JsonEventLog {
         for (eventStr in splitArray(payload.substring(1, payload.length - 1))) {
             val trimmed = eventStr.trim()
             if (trimmed.isEmpty()) continue
-            return DomainEventJsonDecoder.decode(trimmed)
+            return EventJsonCodec.decode(trimmed)
         }
         return EventDecodeOutcome.Failed(
             EventDecodeFailure.UnreadableField(
@@ -135,7 +135,7 @@ object JsonEventLog {
      * type that owns it, so that what can be read and the arms that read it are one thing and
      * not two.
      */
-    fun knowsKind(kind: String): Boolean = DomainEventJsonDecoder.knowsKind(kind)
+    fun knowsKind(kind: String): Boolean = EventJsonCodec.knowsKind(kind)
 
     /**
      * Decodes ONE stored payload into a closed outcome, rather than a list that may be shorter than

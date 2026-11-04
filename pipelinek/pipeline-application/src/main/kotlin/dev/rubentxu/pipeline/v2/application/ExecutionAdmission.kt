@@ -38,7 +38,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
  * The request is decided while the request is being read, before the flags are
  * built and before anything is opened: a refusal at this point has read no
  * script, evaluated no Kotlin and started no child. The order IS the contract
- * (RSO-04): the request is resolved and decided without executing anything.
+ * the request is resolved and decided without executing anything.
  */
 internal object ExecutionAdmission {
 

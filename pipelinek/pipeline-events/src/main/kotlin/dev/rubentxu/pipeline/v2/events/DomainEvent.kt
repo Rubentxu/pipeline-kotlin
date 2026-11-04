@@ -9,30 +9,60 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
 import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonClassDiscriminator
 import java.time.Instant
 
 /**
  * Sealed hierarchy of domain events emitted during a pipeline run.
 */
+@Serializable
+@OptIn(ExperimentalSerializationApi::class)
+@JsonClassDiscriminator("kind")
 sealed interface DomainEvent {
     val eventId: String
     val runId: String
     val sequence: Long
     val kind: String
     val occurredAt: Instant
+
+    /**
+     * The same event, carrying [sequence] as its own.
+     *
+     * ## Why the sequence is assigned and not declared
+     *
+     * The store owns the order of a run's events: it is the only authority that counts, and it
+     * counts at the moment it admits the event. An event is immutable, so the assignment produces
+     * a NEW event and the store keeps that one.
+     *
+     * ## Why this is a member and not a table
+     *
+     * The store used to hold one branch per kind of the hierarchy to do this copy, in each of its
+     * two implementations: a hundred and fifty-two branches that all said the same thing, and a
+     * new kind that did not compile until somebody remembered both. This is the ONE operation the
+     * store needs from an event, and every kind says how it is done in its own file, next to the
+     * shape it declares.
+     */
+    fun withSequence(sequence: Long): DomainEvent
 }
 
 /**
  * Emitted when a pipeline run starts.
 */
+@Serializable
+@SerialName("RunStarted")
 data class RunStarted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val scriptPath: String,
 ) : DomainEvent {
     override val kind: String get() = "RunStarted"
+    override fun withSequence(sequence: Long): RunStarted = copy(sequence = sequence)
 }
 
 /**
@@ -50,16 +80,20 @@ data class RunStarted(
  * required because the stdout line is observable in real time, while
  * the event is the durable record.
 */
+@Serializable
+@SerialName("RunCorrelated")
 data class RunCorrelated(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val correlationId: CorrelationId,
     val ownerId: String,
     val startedAtMs: Long,
 ) : DomainEvent {
     override val kind: String get() = "RunCorrelated"
+    override fun withSequence(sequence: Long): RunCorrelated = copy(sequence = sequence)
 }
 
 /**
@@ -72,14 +106,19 @@ data class RunCorrelated(
  *   [CompilationFinished.origin], and the two differ only when a stored artifact
  *   turns out to be unusable and the run has to compile after all.
 */
+@Serializable
+@SerialName("CompilationStarted")
 data class CompilationStarted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
-    val origin: ScriptOrigin,
+    @Serializable(with = ScriptOriginWireSerializer::class)
+    val origin: ScriptOrigin = ScriptOrigin.UNKNOWN,
 ) : DomainEvent {
     override val kind: String get() = "CompilationStarted"
+    override fun withSequence(sequence: Long): CompilationStarted = copy(sequence = sequence)
 }
 
 /**
@@ -92,59 +131,76 @@ data class CompilationStarted(
  *   and a consumer that needs to know whether the cache actually served the run
  *   reads THIS one.
 */
+@Serializable
+@SerialName("CompilationFinished")
 data class CompilationFinished(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val cacheKey: CacheKey,
     val diagnostics: List<ScriptingDiagnostic>,
-    val origin: ScriptOrigin,
+    @Serializable(with = ScriptOriginWireSerializer::class)
+    val origin: ScriptOrigin = ScriptOrigin.UNKNOWN,
 ) : DomainEvent {
     override val kind: String get() = "CompilationFinished"
+    override fun withSequence(sequence: Long): CompilationFinished = copy(sequence = sequence)
 }
 
 /**
  * Emitted when a pipeline run finishes.
 */
+@Serializable
+@SerialName("RunFinished")
 data class RunFinished(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val outcome: String,
     val diagnostics: List<ScriptingDiagnostic>,
 ) : DomainEvent {
     override val kind: String get() = "RunFinished"
+    override fun withSequence(sequence: Long): RunFinished = copy(sequence = sequence)
 }
 
 /**
  * Emitted when a stage in the pipeline starts.
 */
+@Serializable
+@SerialName("StageStarted")
 data class StageStarted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageIndex: Int,
     val stageName: String,
 ) : DomainEvent {
     override val kind: String get() = "StageStarted"
+    override fun withSequence(sequence: Long): StageStarted = copy(sequence = sequence)
 }
 
 /**
  * Emitted when a stage in the pipeline finishes.
 */
+@Serializable
+@SerialName("StageFinished")
 data class StageFinished(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageIndex: Int,
     val stageName: String,
     val outcome: String,
 ) : DomainEvent {
     override val kind: String get() = "StageFinished"
+    override fun withSequence(sequence: Long): StageFinished = copy(sequence = sequence)
 }
 
 /**
@@ -160,25 +216,32 @@ data class StageFinished(
  * run closed instead. Emitting a skip for an unverifiable predicate would be
  * exactly the silent lie this whole design exists to prevent.
 */
+@Serializable
+@SerialName("StageSkipped")
 data class StageSkipped(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageIndex: Int,
     val stageName: String,
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "StageSkipped"
+    override fun withSequence(sequence: Long): StageSkipped = copy(sequence = sequence)
 }
 
 /**
  * Emitted when a step within a stage starts.
 */
+@Serializable
+@SerialName("StepStarted")
 data class StepStarted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageIndex: Int,
     val stepIndex: Int,
@@ -186,6 +249,7 @@ data class StepStarted(
     val stepType: String,
 ) : DomainEvent {
     override val kind: String get() = "StepStarted"
+    override fun withSequence(sequence: Long): StepStarted = copy(sequence = sequence)
 }
 
 /**
@@ -221,18 +285,23 @@ data class StepStarted(
  * which carries the verdict. The two are written from the same
  * [dev.rubentxu.pipeline.v2.domain.StepOutcome], so they cannot disagree.
  */
+@Serializable
+@SerialName("StepFinished")
 data class StepFinished(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageIndex: Int,
     val stepIndex: Int,
     val stepName: String,
     val stepType: String,
-    val outcome: String?,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val outcome: String? = null,
 ) : DomainEvent {
     override val kind: String get() = "StepFinished"
+    override fun withSequence(sequence: Long): StepFinished = copy(sequence = sequence)
 }
 
 /**
@@ -258,15 +327,20 @@ data class StepFinished(
     "Superseded by ExecutionTargetResolved; never had a producer and its label-shaped " +
         "payload cannot express LocalAny or CapabilitySet.",
 )
+@Serializable
+@SerialName("AgentResolved")
 data class AgentResolved(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val agentLabel: String,
-    val remoteUri: String?,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val remoteUri: String? = null,
 ) : DomainEvent {
     override val kind: String get() = "AgentResolved"
+    override fun withSequence(sequence: Long): AgentResolved = copy(sequence = sequence)
 }
 
 /**
@@ -283,10 +357,13 @@ data class AgentResolved(
  * dependency. The value is the same canonical encoding the runtime decoded, so
  * an observer comparing it against the script sees exactly what was declared.
 */
+@Serializable
+@SerialName("ExecutionTargetResolved")
 data class ExecutionTargetResolved(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageIndex: Int,
     val stageName: String,
@@ -295,30 +372,38 @@ data class ExecutionTargetResolved(
     val targetId: String,
 ) : DomainEvent {
     override val kind: String get() = "ExecutionTargetResolved"
+    override fun withSequence(sequence: Long): ExecutionTargetResolved = copy(sequence = sequence)
 }
 
 /**
  * Emitted when a parallel branch starts execution.
 */
+@Serializable
+@SerialName("ParallelBranchStarted")
 data class ParallelBranchStarted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val branchIndex: Int,
     val branchName: String,
     val parentStageIndex: Int,
 ) : DomainEvent {
     override val kind: String get() = "ParallelBranchStarted"
+    override fun withSequence(sequence: Long): ParallelBranchStarted = copy(sequence = sequence)
 }
 
 /**
  * Emitted when a parallel branch finishes execution.
 */
+@Serializable
+@SerialName("ParallelBranchFinished")
 data class ParallelBranchFinished(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val branchIndex: Int,
     val branchName: String,
@@ -326,15 +411,19 @@ data class ParallelBranchFinished(
     val outcome: String,
 ) : DomainEvent {
     override val kind: String get() = "ParallelBranchFinished"
+    override fun withSequence(sequence: Long): ParallelBranchFinished = copy(sequence = sequence)
 }
 
 /**
  * Emitted when a retry attempt starts.
 */
+@Serializable
+@SerialName("RetryAttemptStarted")
 data class RetryAttemptStarted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val attemptNumber: Int,
     val maxAttempts: Int,
@@ -344,15 +433,19 @@ data class RetryAttemptStarted(
     val stepIndex: Int,
 ) : DomainEvent {
     override val kind: String get() = "RetryAttemptStarted"
+    override fun withSequence(sequence: Long): RetryAttemptStarted = copy(sequence = sequence)
 }
 
 /**
  * Emitted when a retry attempt finishes.
 */
+@Serializable
+@SerialName("RetryAttemptFinished")
 data class RetryAttemptFinished(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val attemptNumber: Int,
     val maxAttempts: Int,
@@ -363,24 +456,33 @@ data class RetryAttemptFinished(
     val outcome: String,
 ) : DomainEvent {
     override val kind: String get() = "RetryAttemptFinished"
+    override fun withSequence(sequence: Long): RetryAttemptFinished = copy(sequence = sequence)
 }
 
 /**
  * Emitted when a timeout is scheduled for a step or stage.
 */
+@Serializable
+@SerialName("TimeoutScheduled")
 data class TimeoutScheduled(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val timeoutSeconds: Long,
     val timeoutAction: String,
-    val stepName: String?,
-    val stepType: String?,
-    val stageIndex: Int?,
-    val stepIndex: Int?,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val stepName: String? = null,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val stepType: String? = null,
+    @Serializable(with = AbsentIntWireSerializer::class)
+    val stageIndex: Int? = null,
+    @Serializable(with = AbsentIntWireSerializer::class)
+    val stepIndex: Int? = null,
 ) : DomainEvent {
     override val kind: String get() = "TimeoutScheduled"
+    override fun withSequence(sequence: Long): TimeoutScheduled = copy(sequence = sequence)
 }
 
 /**
@@ -403,33 +505,43 @@ data class TimeoutScheduled(
  * no stage. A consumer that has to tell "this build says unknown" from "this build says
  * nothing" negotiates the capability `events.failurestage.v1`.
  */
+@Serializable
+@SerialName("StepFailed")
 data class StepFailed(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
-    val stageIndex: Int?,
+    @Serializable(with = AbsentIntWireSerializer::class)
+    val stageIndex: Int? = null,
     val stepIndex: Int,
     val stepName: String,
     val stepType: String,
+    @Serializable(with = FailureKindWireSerializer::class)
     val failureKind: FailureKind,
     val message: String,
 ) : DomainEvent {
     override val kind: String get() = "StepFailed"
+    override fun withSequence(sequence: Long): StepFailed = copy(sequence = sequence)
 }
 
 /**
  * Emitted when echo output is captured during step execution.
 */
+@Serializable
+@SerialName("EchoOutputCaptured")
 data class EchoOutputCaptured(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stepIndex: Int,
     val content: String,
 ) : DomainEvent {
     override val kind: String get() = "EchoOutputCaptured"
+    override fun withSequence(sequence: Long): EchoOutputCaptured = copy(sequence = sequence)
 }
 
 /**
@@ -439,15 +551,19 @@ data class EchoOutputCaptured(
  * @param credentialsId The bound credential ID (structural carrier)
  * @param purpose How the credential is injected (ENV / FILE / VALUE)
 */
+@Serializable
+@SerialName("CredentialBound")
 data class CredentialBound(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val credentialsId: CredentialsId,
     val purpose: BoundPurpose,
 ) : DomainEvent {
     override val kind: String get() = "CredentialBound"
+    override fun withSequence(sequence: Long): CredentialBound = copy(sequence = sequence)
 }
 
 /**
@@ -457,16 +573,20 @@ data class CredentialBound(
  * @param purpose How the credential was injected
  * @param stepIndex The step that triggered the use
 */
+@Serializable
+@SerialName("CredentialUsed")
 data class CredentialUsed(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val credentialsId: CredentialsId,
     val purpose: BoundPurpose,
     val stepIndex: Int,
 ) : DomainEvent {
     override val kind: String get() = "CredentialUsed"
+    override fun withSequence(sequence: Long): CredentialUsed = copy(sequence = sequence)
 }
 
 /**
@@ -475,14 +595,18 @@ data class CredentialUsed(
  * Emitted exactly once per withCredentials block on scope exit (success/failure/interrupt).
  * @param credentialsId The unbound credential ID
 */
+@Serializable
+@SerialName("CredentialUnbound")
 data class CredentialUnbound(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val credentialsId: CredentialsId,
 ) : DomainEvent {
     override val kind: String get() = "CredentialUnbound"
+    override fun withSequence(sequence: Long): CredentialUnbound = copy(sequence = sequence)
 }
 
 // =============================================================================
@@ -498,16 +622,20 @@ data class CredentialUnbound(
  * @param branch Branch being checked out
  * @param credentialsRef Typed carrier for credentials (not secret bytes)
 */
+@Serializable
+@SerialName("GitCheckoutStarted")
 data class GitCheckoutStarted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val url: String,
     val branch: String,
-    val credentialsRef: CredentialsRef?,
+    val credentialsRef: CredentialsRef? = null,
 ) : DomainEvent {
     override val kind: String get() = "GitCheckoutStarted"
+    override fun withSequence(sequence: Long): GitCheckoutStarted = copy(sequence = sequence)
 }
 
 /**
@@ -520,10 +648,13 @@ data class GitCheckoutStarted(
  * @param changelogPath Path to changelog.txt (empty string if changelog=false)
  * @param durationMs Time taken in milliseconds
 */
+@Serializable
+@SerialName("GitCheckoutCompleted")
 data class GitCheckoutCompleted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val url: String,
     val branch: String,
@@ -532,6 +663,7 @@ data class GitCheckoutCompleted(
     val durationMs: Long,
 ) : DomainEvent {
     override val kind: String get() = "GitCheckoutCompleted"
+    override fun withSequence(sequence: Long): GitCheckoutCompleted = copy(sequence = sequence)
 }
 
 /**
@@ -544,10 +676,13 @@ data class GitCheckoutCompleted(
  * @param reason stderr first 256 chars, non-ASCII stripped
  * @param exitCode git exit code
 */
+@Serializable
+@SerialName("GitCheckoutFailed")
 data class GitCheckoutFailed(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val url: String,
     val branch: String,
@@ -555,6 +690,7 @@ data class GitCheckoutFailed(
     val exitCode: Int,
 ) : DomainEvent {
     override val kind: String get() = "GitCheckoutFailed"
+    override fun withSequence(sequence: Long): GitCheckoutFailed = copy(sequence = sequence)
 }
 
 /**
@@ -566,17 +702,21 @@ data class GitCheckoutFailed(
  * @param previousSha SHA from last poll (null for first poll)
  * @param newSha Current remote SHA
 */
+@Serializable
+@SerialName("GitPollChanged")
 data class GitPollChanged(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val url: String,
     val branch: String,
-    val previousSha: String?,
+    val previousSha: String? = null,
     val newSha: String,
 ) : DomainEvent {
     override val kind: String get() = "GitPollChanged"
+    override fun withSequence(sequence: Long): GitPollChanged = copy(sequence = sequence)
 }
 
 // =============================================================================
@@ -592,12 +732,14 @@ data class GitPollChanged(
  * @param size Size in bytes
  * @param archivedAt When the file was archived
 */
+@Serializable
 data class ArtifactEntry(
     val runId: String,
     val stageName: String,
     val relPath: String,
     val sha256: String,
     val size: Long,
+    @Serializable(with = InstantWireSerializer::class)
     val archivedAt: Instant,
 )
 
@@ -613,17 +755,22 @@ data class ArtifactEntry(
  * @param atomicallyMoved True if ATOMIC_MOVE succeeded; false if cross-fs fallback was used
  * @param occurredAt Timestamp
 */
+@Serializable
+@SerialName("FileWritten")
 data class FileWritten(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
+    @Serializable(with = PathWireSerializer::class)
     val path: java.nio.file.Path,
     val sha256: String,
     val size: Long,
     val atomicallyMoved: Boolean,
 ) : DomainEvent {
     override val kind: String get() = "FileWritten"
+    override fun withSequence(sequence: Long): FileWritten = copy(sequence = sequence)
 }
 
 /**
@@ -639,16 +786,21 @@ data class FileWritten(
  * @param size Size in bytes (null if file does not exist)
  * @param occurredAt Timestamp
 */
+@Serializable
+@SerialName("FileRead")
 data class FileRead(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
+    @Serializable(with = PathWireSerializer::class)
     val path: java.nio.file.Path,
-    val sha256: String?,
-    val size: Long?,
+    val sha256: String? = null,
+    val size: Long? = null,
 ) : DomainEvent {
     override val kind: String get() = "FileRead"
+    override fun withSequence(sequence: Long): FileRead = copy(sequence = sequence)
 }
 
 /**
@@ -658,15 +810,20 @@ data class FileRead(
  * @param path Resolved absolute path checked
  * @param exists Whether the file exists (path guard may force false)
 */
+@Serializable
+@SerialName("FileExistsChecked")
 data class FileExistsChecked(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
+    @Serializable(with = PathWireSerializer::class)
     val path: java.nio.file.Path,
     val exists: Boolean,
 ) : DomainEvent {
     override val kind: String get() = "FileExistsChecked"
+    override fun withSequence(sequence: Long): FileExistsChecked = copy(sequence = sequence)
 }
 
 /**
@@ -680,14 +837,18 @@ data class FileExistsChecked(
  * @param files List of archived artifact entries
  * @param occurredAt Timestamp
 */
+@Serializable
+@SerialName("ArtifactArchived")
 data class ArtifactArchived(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val files: List<ArtifactEntry>,
 ) : DomainEvent {
     override val kind: String get() = "ArtifactArchived"
+    override fun withSequence(sequence: Long): ArtifactArchived = copy(sequence = sequence)
 }
 
 /**
@@ -699,14 +860,18 @@ data class ArtifactArchived(
  * @param reason Scrubbed failure reason
  * @param occurredAt Timestamp
 */
+@Serializable
+@SerialName("ArtifactArchiveFailed")
 data class ArtifactArchiveFailed(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "ArtifactArchiveFailed"
+    override fun withSequence(sequence: Long): ArtifactArchiveFailed = copy(sequence = sequence)
 }
 
 // =============================================================================
@@ -718,15 +883,19 @@ data class ArtifactArchiveFailed(
  * @param path The directory path entered
  * @param previousPath The previous working directory (for restore on exit)
 */
+@Serializable
+@SerialName("DirEntered")
 data class DirEntered(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val path: String,
     val previousPath: String,
 ) : DomainEvent {
     override val kind: String get() = "DirEntered"
+    override fun withSequence(sequence: Long): DirEntered = copy(sequence = sequence)
 }
 
 /**
@@ -734,15 +903,19 @@ data class DirEntered(
  * @param path The directory path exited
  * @param restoredTo The working directory after restoration
 */
+@Serializable
+@SerialName("DirExited")
 data class DirExited(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val path: String,
     val restoredTo: String,
 ) : DomainEvent {
     override val kind: String get() = "DirExited"
+    override fun withSequence(sequence: Long): DirExited = copy(sequence = sequence)
 }
 
 // =============================================================================
@@ -756,16 +929,20 @@ data class DirExited(
  * @param deletedCount Number of files/directories deleted (0 if already deleted)
  * @param sha256 SHA-256 hex.deleted marker file content
 */
+@Serializable
+@SerialName("DirDeleted")
 data class DirDeleted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val path: String,
     val deletedCount: Int,
     val sha256: String,
 ) : DomainEvent {
     override val kind: String get() = "DirDeleted"
+    override fun withSequence(sequence: Long): DirDeleted = copy(sequence = sequence)
 }
 
 /**
@@ -775,10 +952,13 @@ data class DirDeleted(
  * @param patterns Ant-style glob patterns applied (empty list = delete all non-.v2)
  * @param sha256 SHA-256 hex.cleaned marker file content
 */
+@Serializable
+@SerialName("WsCleaned")
 data class WsCleaned(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val deletedFiles: Int,
     val deletedDirs: Int,
@@ -786,6 +966,7 @@ data class WsCleaned(
     val sha256: String,
 ) : DomainEvent {
     override val kind: String get() = "WsCleaned"
+    override fun withSequence(sequence: Long): WsCleaned = copy(sequence = sequence)
 }
 
 // =============================================================================
@@ -799,21 +980,28 @@ data class WsCleaned(
  * @param stageResult The stage result after catch (UNSTABLE or FAILURE)
  * @param message The user-provided message from catchError
 */
+@Serializable
+@SerialName("CatchErrorTriggered")
 data class CatchErrorTriggered(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageName: String,
     // Typed. The wire spelling is unchanged — `.wireToken`, not `.name`, because
     // these have always travelled UPPER CASE. Both fields share one vocabulary with the
     // catchError scope that produced them, so `stageResult` can no longer drift into a
     // token that `buildResult` never meant.
-    val buildResult: CatchErrorBuildResult?,
+    @Serializable(with = OptionalBuildResultWireSerializer::class)
+    val buildResult: CatchErrorBuildResult? = null,
+    @Serializable(with = CatchErrorBuildResult.Serializer::class)
     val stageResult: CatchErrorBuildResult,
-    val message: String?,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val message: String? = null,
 ) : DomainEvent {
     override val kind: String get() = "CatchErrorTriggered"
+    override fun withSequence(sequence: Long): CatchErrorTriggered = copy(sequence = sequence)
 }
 
 /**
@@ -821,15 +1009,19 @@ data class CatchErrorTriggered(
  * @param stageName The stage containing the unstable step
  * @param message The user-provided message
 */
+@Serializable
+@SerialName("StageMarkedUnstable")
 data class StageMarkedUnstable(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageName: String,
     val message: String,
 ) : DomainEvent {
     override val kind: String get() = "StageMarkedUnstable"
+    override fun withSequence(sequence: Long): StageMarkedUnstable = copy(sequence = sequence)
 }
 
 /**
@@ -838,16 +1030,20 @@ data class StageMarkedUnstable(
  * @param stepCount Number of steps appended (0 for re-entrant no-op)
  * @param sha256 SHA-256 of the loaded file content
 */
+@Serializable
+@SerialName("WorkflowLoaded")
 data class WorkflowLoaded(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val path: String,
     val stepCount: Int,
     val sha256: String,
 ) : DomainEvent {
     override val kind: String get() = "WorkflowLoaded"
+    override fun withSequence(sequence: Long): WorkflowLoaded = copy(sequence = sequence)
 }
 
 /**
@@ -861,16 +1057,20 @@ data class WorkflowLoaded(
  * @param durationMs Elapsed time of THIS poll (ms)
  * @param conditionResult Whether the condition returned true this iteration
 */
+@Serializable
+@SerialName("WaitUntilPolled")
 data class WaitUntilPolled(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val attempt: Int,
     val durationMs: Long,
     val conditionResult: Boolean,
 ) : DomainEvent {
     override val kind: String get() = "WaitUntilPolled"
+    override fun withSequence(sequence: Long): WaitUntilPolled = copy(sequence = sequence)
 }
 
 /**
@@ -879,16 +1079,20 @@ data class WaitUntilPolled(
  * @param totalDurationMs Total elapsed time (ms)
  * @param outcome "completed" or "deadline-exceeded"
 */
+@Serializable
+@SerialName("WaitUntilCompleted")
 data class WaitUntilCompleted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val totalAttempts: Int,
     val totalDurationMs: Long,
     val outcome: String,
 ) : DomainEvent {
     override val kind: String get() = "WaitUntilCompleted"
+    override fun withSequence(sequence: Long): WaitUntilCompleted = copy(sequence = sequence)
 }
 
 // =============================================================================
@@ -901,16 +1105,20 @@ data class WaitUntilCompleted(
  * @param workspaceRoot The durable workspace root used for resolution
  * @param sha256 SHA-256 of the resolved path string (for replay fingerprinting)
 */
+@Serializable
+@SerialName("PwdResolved")
 data class PwdResolved(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val path: String,
     val workspaceRoot: String,
     val sha256: String,
 ) : DomainEvent {
     override val kind: String get() = "PwdResolved"
+    override fun withSequence(sequence: Long): PwdResolved = copy(sequence = sequence)
 }
 
 /**
@@ -919,16 +1127,20 @@ data class PwdResolved(
  * @param osName The raw os.name system property value
  * @param sha256 SHA-256 of the osName string (for replay fingerprinting)
 */
+@Serializable
+@SerialName("UnixDetected")
 data class UnixDetected(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val isUnix: Boolean,
     val osName: String,
     val sha256: String,
 ) : DomainEvent {
     override val kind: String get() = "UnixDetected"
+    override fun withSequence(sequence: Long): UnixDetected = copy(sequence = sequence)
 }
 
 // =============================================================================
@@ -940,15 +1152,20 @@ data class UnixDetected(
  * @param ordinal The milestone ordinal
  * @param label The milestone label (null if not provided)
 */
+@Serializable
+@SerialName("MilestoneReached")
 data class MilestoneReached(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val ordinal: Int,
-    val label: String?,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val label: String? = null,
 ) : DomainEvent {
     override val kind: String get() = "MilestoneReached"
+    override fun withSequence(sequence: Long): MilestoneReached = copy(sequence = sequence)
 }
 
 /**
@@ -958,15 +1175,19 @@ data class MilestoneReached(
  * @param ordinal The milestone ordinal that was aborted
  * @param reason The reason for abortion (e.g., "ordinal-already-reached")
 */
+@Serializable
+@SerialName("MilestoneAborted")
 data class MilestoneAborted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val ordinal: Int,
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "MilestoneAborted"
+    override fun withSequence(sequence: Long): MilestoneAborted = copy(sequence = sequence)
 }
 
 // =============================================================================
@@ -979,16 +1200,20 @@ data class MilestoneAborted(
  * @param action The action taken ("interrupt")
  * @param durationMs The elapsed time since timeout started (ms)
 */
+@Serializable
+@SerialName("TimeoutTriggered")
 data class TimeoutTriggered(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageOrStep: String,
     val action: String,
     val durationMs: Long,
 ) : DomainEvent {
     override val kind: String get() = "TimeoutTriggered"
+    override fun withSequence(sequence: Long): TimeoutTriggered = copy(sequence = sequence)
 }
 
 // =============================================================================
@@ -998,25 +1223,33 @@ data class TimeoutTriggered(
 /**
  * Emitted when entering a timestamps block.
 */
+@Serializable
+@SerialName("TimestampsEntered")
 data class TimestampsEntered(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
 ) : DomainEvent {
     override val kind: String get() = "TimestampsEntered"
+    override fun withSequence(sequence: Long): TimestampsEntered = copy(sequence = sequence)
 }
 
 /**
  * Emitted when exiting a timestamps block.
 */
+@Serializable
+@SerialName("TimestampsExited")
 data class TimestampsExited(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
 ) : DomainEvent {
     override val kind: String get() = "TimestampsExited"
+    override fun withSequence(sequence: Long): TimestampsExited = copy(sequence = sequence)
 }
 
 // =============================================================================
@@ -1029,10 +1262,13 @@ data class TimestampsExited(
  * Introduced to name the durable-protocol admission laws at the spine rather
  * than only in characterization tests.
 */
+@Serializable
+@SerialName("StepAdmissionObserved")
 data class StepAdmissionObserved(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageIndex: Int,
     val stepIndex: Int,
@@ -1041,6 +1277,7 @@ data class StepAdmissionObserved(
     val executorCalls: Int,
 ) : DomainEvent {
     override val kind: String get() = "StepAdmissionObserved"
+    override fun withSequence(sequence: Long): StepAdmissionObserved = copy(sequence = sequence)
 }
 
 /**
@@ -1056,16 +1293,20 @@ data class StepAdmissionObserved(
  * @param name Logical stash name (re-used by `core.unstash` consumers)
  * @param files Stashed entries (sha256 + size)
 */
+@Serializable
+@SerialName("StashCreated")
 data class StashCreated(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageName: String,
     val name: String,
     val files: List<StashedEntry>,
 ) : DomainEvent {
     override val kind: String get() = "StashCreated"
+    override fun withSequence(sequence: Long): StashCreated = copy(sequence = sequence)
 }
 
 /**
@@ -1078,16 +1319,20 @@ data class StashCreated(
  * @param name Logical stash name (must match a previous `StashCreated`)
  * @param entries Restored entries
 */
+@Serializable
+@SerialName("StashRestored")
 data class StashRestored(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageName: String,
     val name: String,
     val entries: List<RestoredEntry>,
 ) : DomainEvent {
     override val kind: String get() = "StashRestored"
+    override fun withSequence(sequence: Long): StashRestored = copy(sequence = sequence)
 }
 
 /**
@@ -1095,10 +1340,13 @@ data class StashRestored(
  * stash, IO error). The reason is passed through `SecretPatternRegistry.scrub()`
  * BEFORE emit (no-secret-material contract)
 */
+@Serializable
+@SerialName("StashFailed")
 data class StashFailed(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageName: String,
     val name: String,
@@ -1106,9 +1354,11 @@ data class StashFailed(
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "StashFailed"
+    override fun withSequence(sequence: Long): StashFailed = copy(sequence = sequence)
 }
 
 /** Deterministic per-file summary of a stashed file (no content, no timestamp). */
+@Serializable
 data class StashedEntry(
     val relPath: String,
     val sha256: String,
@@ -1116,6 +1366,7 @@ data class StashedEntry(
 )
 
 /** Deterministic per-file summary of a restored file. */
+@Serializable
 data class RestoredEntry(
     val relPath: String,
     val sha256: String,
@@ -1131,6 +1382,7 @@ data class RestoredEntry(
  * no timestamp). Mirrors StashedEntry/RestoredEntry contract: stable for
  * Fingerprinting, no secret material, compliant
 */
+@Serializable
 data class HtmlReportEntry(
     val relPath: String,
     val sha256: String,
@@ -1142,10 +1394,13 @@ data class HtmlReportEntry(
  * reports archive under a sanitized `reportName` and generates `index.html`.
  * `entries` is the deterministic per-file summary used for fingerprinting.
 */
+@Serializable
+@SerialName("HtmlReportPublished")
 data class HtmlReportPublished(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageName: String,
     val reportName: String,
@@ -1154,6 +1409,7 @@ data class HtmlReportPublished(
     val targetPath: String,
 ) : DomainEvent {
     override val kind: String get() = "HtmlReportPublished"
+    override fun withSequence(sequence: Long): HtmlReportPublished = copy(sequence = sequence)
 }
 
 /**
@@ -1161,10 +1417,13 @@ data class HtmlReportPublished(
  * the report directory is missing or no files match the glob. `reason`
  * is one of the closed values: "DIRECTORY_MISSING" or "NO_FILES_MATCHED".
 */
+@Serializable
+@SerialName("HtmlReportSkipped")
 data class HtmlReportSkipped(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageName: String,
     val reportName: String,
@@ -1172,6 +1431,7 @@ data class HtmlReportSkipped(
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "HtmlReportSkipped"
+    override fun withSequence(sequence: Long): HtmlReportSkipped = copy(sequence = sequence)
 }
 
 /**
@@ -1180,18 +1440,23 @@ data class HtmlReportSkipped(
  * (`INFRASTRUCTURE`). `reason` is passed through `SecretPatternRegistry.scrub()`
  * BEFORE emit (no-secret-material contract)
 */
+@Serializable
+@SerialName("HtmlReportFailed")
 data class HtmlReportFailed(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageName: String,
     val reportName: String,
     val reportDir: String,
+    @Serializable(with = FailureKindWireSerializer::class)
     val failureKind: FailureKind,
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "HtmlReportFailed"
+    override fun withSequence(sequence: Long): HtmlReportFailed = copy(sequence = sequence)
 }
 
 /**
@@ -1203,10 +1468,13 @@ data class HtmlReportFailed(
  * concrete directive name-driven behaviour: these events are observability of
  * decisions the engine already took, not a second decision channel.
 */
+@Serializable
+@SerialName("DirectiveAdmitted")
 data class DirectiveAdmitted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageIndex: Int,
     val stageName: String,
@@ -1215,12 +1483,16 @@ data class DirectiveAdmitted(
     val policy: String,
 ) : DomainEvent {
     override val kind: String get() = "DirectiveAdmitted"
+    override fun withSequence(sequence: Long): DirectiveAdmitted = copy(sequence = sequence)
 }
 
+@Serializable
+@SerialName("DirectiveDenied")
 data class DirectiveDenied(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageIndex: Int,
     val stageName: String,
@@ -1228,6 +1500,7 @@ data class DirectiveDenied(
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "DirectiveDenied"
+    override fun withSequence(sequence: Long): DirectiveDenied = copy(sequence = sequence)
 }
 
 /**
@@ -1243,10 +1516,13 @@ data class DirectiveDenied(
  * observability of a decision already taken; it is not a second decision
  * channel.
 */
+@Serializable
+@SerialName("GateEvaluated")
 data class GateEvaluated(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageIndex: Int,
     val stageName: String,
@@ -1255,6 +1531,7 @@ data class GateEvaluated(
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "GateEvaluated"
+    override fun withSequence(sequence: Long): GateEvaluated = copy(sequence = sequence)
 }
 
 /**
@@ -1274,10 +1551,13 @@ data class GateEvaluated(
  * Emission authority: the stage interpreter (the canonical coordinator), never
  * a step handler. A post block that plans nothing emits nothing.
 */
+@Serializable
+@SerialName("PostConditionSelected")
 data class PostConditionSelected(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val stageIndex: Int,
     val stageName: String,
@@ -1286,6 +1566,7 @@ data class PostConditionSelected(
     val skippedConditions: List<String>,
 ) : DomainEvent {
     override val kind: String get() = "PostConditionSelected"
+    override fun withSequence(sequence: Long): PostConditionSelected = copy(sequence = sequence)
 }
 
 /**
@@ -1294,60 +1575,81 @@ data class PostConditionSelected(
  * the `core.lock` handler, through [dev.rubentxu.pipeline.v2.runtime.EVENT_SINK_CAPABILITY].
  * No sensitive payload: `resource` is a pipeline-author-declared resource name.
 */
+@Serializable
+@SerialName("LockRequested")
 data class LockRequested(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val resource: String,
-    val reason: String?,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val reason: String? = null,
     val skipIfLocked: Boolean,
 ) : DomainEvent {
     override val kind: String get() = "LockRequested"
+    override fun withSequence(sequence: Long): LockRequested = copy(sequence = sequence)
 }
 
+@Serializable
+@SerialName("LockAcquired")
 data class LockAcquired(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val resource: String,
 ) : DomainEvent {
     override val kind: String get() = "LockAcquired"
+    override fun withSequence(sequence: Long): LockAcquired = copy(sequence = sequence)
 }
 
+@Serializable
+@SerialName("LockReleased")
 data class LockReleased(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val resource: String,
 ) : DomainEvent {
     override val kind: String get() = "LockReleased"
+    override fun withSequence(sequence: Long): LockReleased = copy(sequence = sequence)
 }
 
 /** `skipIfLocked` with the resource held: nothing ran, the step succeeded. */
+@Serializable
+@SerialName("LockSkipped")
 data class LockSkipped(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val resource: String,
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "LockSkipped"
+    override fun withSequence(sequence: Long): LockSkipped = copy(sequence = sequence)
 }
 
 /** The resource was not obtained: timeout or cancellation while waiting. */
+@Serializable
+@SerialName("LockAcquireFailed")
 data class LockAcquireFailed(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val resource: String,
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "LockAcquireFailed"
+    override fun withSequence(sequence: Long): LockAcquireFailed = copy(sequence = sequence)
 }
 
 /**
@@ -1359,49 +1661,71 @@ data class LockAcquireFailed(
  * against. Publishing it as if it were an identity would be a lie a later reader
  * would build on.
 */
+@Serializable
+@SerialName("InputRequested")
 data class InputRequested(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val message: String,
-    val submitter: String?,
-    val id: String?,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val submitter: String? = null,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val id: String? = null,
 ) : DomainEvent {
     override val kind: String get() = "InputRequested"
+    override fun withSequence(sequence: Long): InputRequested = copy(sequence = sequence)
 }
 
+@Serializable
+@SerialName("InputProceed")
 data class InputProceed(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
-    val submitter: String?,
-    val message: String?,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val submitter: String? = null,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val message: String? = null,
 ) : DomainEvent {
     override val kind: String get() = "InputProceed"
+    override fun withSequence(sequence: Long): InputProceed = copy(sequence = sequence)
 }
 
+@Serializable
+@SerialName("InputAborted")
 data class InputAborted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
-    val submitter: String?,
-    val message: String?,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val submitter: String? = null,
+    @Serializable(with = OptionalStringWireSerializer::class)
+    val message: String? = null,
 ) : DomainEvent {
     override val kind: String get() = "InputAborted"
+    override fun withSequence(sequence: Long): InputAborted = copy(sequence = sequence)
 }
 
 /** No answer was obtained: timed out, cancelled, or the question was unaskable. */
+@Serializable
+@SerialName("InputDenied")
 data class InputDenied(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "InputDenied"
+    override fun withSequence(sequence: Long): InputDenied = copy(sequence = sequence)
 }
 
 // OFFICIAL_PLUGIN ──────────────────────
@@ -1416,29 +1740,37 @@ data class InputDenied(
  * A request left the runtime. Emitted before the transport is invoked, so a reader can
  * see the attempt even when the transport never answers.
 */
+@Serializable
+@SerialName("HttpRequestStarted")
 data class HttpRequestStarted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val url: String,
     val method: String,
     val headerCount: Int,
 ) : DomainEvent {
     override val kind: String get() = "HttpRequestStarted"
+    override fun withSequence(sequence: Long): HttpRequestStarted = copy(sequence = sequence)
 }
 
 /** A response arrived, whatever its status. The status itself is metadata, not content. */
+@Serializable
+@SerialName("HttpResponseReceived")
 data class HttpResponseReceived(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val url: String,
     val status: Int,
     val durationMs: Long,
 ) : DomainEvent {
     override val kind: String get() = "HttpResponseReceived"
+    override fun withSequence(sequence: Long): HttpResponseReceived = copy(sequence = sequence)
 }
 
 /**
@@ -1446,28 +1778,36 @@ data class HttpResponseReceived(
  * status received and the range that was expected, because "it returned 503" without
  * "and you asked for 2xx" leaves the reader to guess which of the two was a mistake.
 */
+@Serializable
+@SerialName("HttpStatusRejected")
 data class HttpStatusRejected(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val url: String,
     val status: Int,
     val accepted: String,
 ) : DomainEvent {
     override val kind: String get() = "HttpStatusRejected"
+    override fun withSequence(sequence: Long): HttpStatusRejected = copy(sequence = sequence)
 }
 
 /** The transport never produced a response: unreachable host, refused connection, elapsed bound. */
+@Serializable
+@SerialName("HttpRequestFailed")
 data class HttpRequestFailed(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val url: String,
     val reason: String,
 ) : DomainEvent {
     override val kind: String get() = "HttpRequestFailed"
+    override fun withSequence(sequence: Long): HttpRequestFailed = copy(sequence = sequence)
 }
 
 /**
@@ -1493,10 +1833,13 @@ data class HttpRequestFailed(
  * let a reader believe a compensation was owed when nothing had been attempted yet, or believe
  * an effect had landed when only a promise existed.
  */
+@Serializable
+@SerialName("CompensationArmed")
 data class CompensationArmed(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val sagaId: String,
     val actionId: String,
@@ -1508,6 +1851,7 @@ data class CompensationArmed(
     val leaseEpoch: Long,
 ) : DomainEvent {
     override val kind: String get() = "CompensationArmed"
+    override fun withSequence(sequence: Long): CompensationArmed = copy(sequence = sequence)
 }
 
 /**
@@ -1534,10 +1878,13 @@ data class CompensationArmed(
  * It is not the truth. The truth is the `saga_obligation` row; this event is its projection, and
  * it says that a body is ABOUT TO RUN, which is not the same as saying that anything was undone.
  */
+@Serializable
+@SerialName("CompensationStarted")
 data class CompensationStarted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val sagaId: String,
     val actionId: String,
@@ -1547,6 +1894,7 @@ data class CompensationStarted(
     val slot: String,
 ) : DomainEvent {
     override val kind: String get() = "CompensationStarted"
+    override fun withSequence(sequence: Long): CompensationStarted = copy(sequence = sequence)
 }
 
 /**
@@ -1569,10 +1917,13 @@ data class CompensationStarted(
  * an uncertain one may or may not have. [detail] carries the provider's message for a failure and
  * the reason for an uncertainty, and is empty for a confirmation.
  */
+@Serializable
+@SerialName("CompensationFinished")
 data class CompensationFinished(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val sagaId: String,
     val actionId: String,
@@ -1582,9 +1933,11 @@ data class CompensationFinished(
     /** `CONFIRMED`, `FAILED` or `UNCERTAIN`. */
     val outcome: String,
     /** The provider's message (a failure) or the reason (an uncertainty). */
+    @Serializable(with = OptionalStringWireSerializer::class)
     val detail: String? = null,
 ) : DomainEvent {
     override val kind: String get() = "CompensationFinished"
+    override fun withSequence(sequence: Long): CompensationFinished = copy(sequence = sequence)
 }
 
 /**
@@ -1609,18 +1962,23 @@ data class CompensationFinished(
  * It does not say the pipeline succeeded. A Saga that was compensated is a Saga that recovered
  * from a failure, and the run that failed is still a failed run.
  */
+@Serializable
+@SerialName("SagaTerminal")
 data class SagaTerminal(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
+    @Serializable(with = InstantWireSerializer::class)
     override val occurredAt: Instant,
     val sagaId: String,
     /** `SETTLED` or `NEEDS_INTERVENTION`. */
     val state: String,
     /** The name of the [dev.rubentxu.pipeline.v2.domain.saga.InterventionReason], when there is one. */
+    @Serializable(with = OptionalStringWireSerializer::class)
     val reason: String? = null,
     /** The actions that were compensated, in the order they were compensated. */
     val compensatedActions: List<String>,
 ) : DomainEvent {
     override val kind: String get() = "SagaTerminal"
+    override fun withSequence(sequence: Long): SagaTerminal = copy(sequence = sequence)
 }

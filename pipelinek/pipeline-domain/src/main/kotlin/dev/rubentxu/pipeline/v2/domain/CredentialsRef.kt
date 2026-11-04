@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import kotlinx.serialization.Serializable
+
 import org.jetbrains.annotations.NotNull
 
 /**
@@ -25,4 +27,5 @@ import org.jetbrains.annotations.NotNull
  * @see dev.rubentxu.pipeline.v2.credentials.api.CredentialScope for the scope that resolves refs
 */
 @JvmInline
+@Serializable
 value class CredentialsRef(@NotNull val id: CredentialsId)

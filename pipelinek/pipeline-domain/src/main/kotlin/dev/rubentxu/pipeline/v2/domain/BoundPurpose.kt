@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import kotlinx.serialization.Serializable
+
 /**
  * Records how a credential is bound to a step at runtime.
  * ## Purpose
@@ -20,6 +22,7 @@ package dev.rubentxu.pipeline.v2.domain
  * [ENV] is deprecated — renamed to [API_KEY] (semantically equivalent for callers)
  * [VALUE] is deprecated — no direct replacement in; reserved for future `returnStdout` interplay
 */
+@Serializable
 enum class BoundPurpose {
     /**
      * Secret text credential — maps to `string` binding.

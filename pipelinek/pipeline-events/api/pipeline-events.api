@@ -1,5 +1,16 @@
+public final class dev/rubentxu/pipeline/v2/events/AbsentIntWireSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/AbsentIntWireSerializer;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Integer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Integer;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+}
+
 public final class dev/rubentxu/pipeline/v2/events/AgentResolved : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/AgentResolved$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -18,9 +29,27 @@ public final class dev/rubentxu/pipeline/v2/events/AgentResolved : dev/rubentxu/
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/AgentResolved;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/AgentResolved$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/AgentResolved$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/AgentResolved;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/AgentResolved;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/AgentResolved$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/ArtifactArchiveFailed : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/ArtifactArchiveFailed$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -38,9 +67,27 @@ public final class dev/rubentxu/pipeline/v2/events/ArtifactArchiveFailed : dev/r
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/ArtifactArchiveFailed;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/ArtifactArchiveFailed$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/ArtifactArchiveFailed$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/ArtifactArchiveFailed;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/ArtifactArchiveFailed;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/ArtifactArchiveFailed$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/ArtifactArchived : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/ArtifactArchived$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/util/List;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -58,9 +105,27 @@ public final class dev/rubentxu/pipeline/v2/events/ArtifactArchived : dev/rubent
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/ArtifactArchived;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/ArtifactArchived$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/ArtifactArchived$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/ArtifactArchived;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/ArtifactArchived;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/ArtifactArchived$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/ArtifactEntry {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/ArtifactEntry$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -81,8 +146,25 @@ public final class dev/rubentxu/pipeline/v2/events/ArtifactEntry {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final synthetic class dev/rubentxu/pipeline/v2/events/ArtifactEntry$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/ArtifactEntry$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/ArtifactEntry;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/ArtifactEntry;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/ArtifactEntry$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class dev/rubentxu/pipeline/v2/events/CatchErrorTriggered : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/CatchErrorTriggered$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -105,9 +187,27 @@ public final class dev/rubentxu/pipeline/v2/events/CatchErrorTriggered : dev/rub
 	public final fun getStageResult ()Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/CatchErrorTriggered;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/CatchErrorTriggered$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/CatchErrorTriggered$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/CatchErrorTriggered;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/CatchErrorTriggered;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/CatchErrorTriggered$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/CompensationArmed : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/CompensationArmed$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;J)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()Ljava/lang/String;
@@ -139,9 +239,27 @@ public final class dev/rubentxu/pipeline/v2/events/CompensationArmed : dev/ruben
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/CompensationArmed;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/CompensationArmed$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/CompensationArmed$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/CompensationArmed;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/CompensationArmed;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/CompensationArmed$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/CompensationFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/CompensationFinished$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -170,9 +288,27 @@ public final class dev/rubentxu/pipeline/v2/events/CompensationFinished : dev/ru
 	public final fun getSlot ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/CompensationFinished;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/CompensationFinished$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/CompensationFinished$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/CompensationFinished;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/CompensationFinished;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/CompensationFinished$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/CompensationStarted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/CompensationStarted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -198,10 +334,29 @@ public final class dev/rubentxu/pipeline/v2/events/CompensationStarted : dev/rub
 	public final fun getSlot ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/CompensationStarted;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/CompensationStarted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/CompensationStarted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/CompensationStarted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/CompensationStarted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/CompensationStarted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/CompilationFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/CompilationFinished$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/util/List;Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/util/List;Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -222,10 +377,29 @@ public final class dev/rubentxu/pipeline/v2/events/CompilationFinished : dev/rub
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/CompilationFinished;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/CompilationFinished$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/CompilationFinished$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/CompilationFinished;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/CompilationFinished;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/CompilationFinished$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/CompilationStarted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/CompilationStarted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -242,9 +416,27 @@ public final class dev/rubentxu/pipeline/v2/events/CompilationStarted : dev/rube
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/CompilationStarted;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/CompilationStarted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/CompilationStarted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/CompilationStarted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/CompilationStarted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/CompilationStarted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/CredentialBound : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/CredentialBound$Companion;
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -264,9 +456,27 @@ public final class dev/rubentxu/pipeline/v2/events/CredentialBound : dev/rubentx
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/CredentialBound;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/CredentialBound$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/CredentialBound$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/CredentialBound;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/CredentialBound;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/CredentialBound$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/CredentialUnbound : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/CredentialUnbound$Companion;
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -284,9 +494,27 @@ public final class dev/rubentxu/pipeline/v2/events/CredentialUnbound : dev/ruben
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/CredentialUnbound;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/CredentialUnbound$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/CredentialUnbound$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/CredentialUnbound;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/CredentialUnbound;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/CredentialUnbound$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/CredentialUsed : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/CredentialUsed$Companion;
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -308,9 +536,27 @@ public final class dev/rubentxu/pipeline/v2/events/CredentialUsed : dev/rubentxu
 	public final fun getStepIndex ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/CredentialUsed;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/CredentialUsed$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/CredentialUsed$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/CredentialUsed;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/CredentialUsed;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/CredentialUsed$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/DirDeleted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/DirDeleted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;ILjava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -332,9 +578,27 @@ public final class dev/rubentxu/pipeline/v2/events/DirDeleted : dev/rubentxu/pip
 	public final fun getSha256 ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DirDeleted;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/DirDeleted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/DirDeleted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/DirDeleted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/DirDeleted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/DirDeleted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/DirEntered : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/DirEntered$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -354,9 +618,27 @@ public final class dev/rubentxu/pipeline/v2/events/DirEntered : dev/rubentxu/pip
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DirEntered;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/DirEntered$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/DirEntered$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/DirEntered;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/DirEntered;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/DirEntered$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/DirExited : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/DirExited$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -376,9 +658,27 @@ public final class dev/rubentxu/pipeline/v2/events/DirExited : dev/rubentxu/pipe
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DirExited;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/DirExited$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/DirExited$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/DirExited;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/DirExited;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/DirExited$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/DirectiveAdmitted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/DirectiveAdmitted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -404,9 +704,27 @@ public final class dev/rubentxu/pipeline/v2/events/DirectiveAdmitted : dev/ruben
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DirectiveAdmitted;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/DirectiveAdmitted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/DirectiveAdmitted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/DirectiveAdmitted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/DirectiveAdmitted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/DirectiveAdmitted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/DirectiveDenied : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/DirectiveDenied$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -430,17 +748,41 @@ public final class dev/rubentxu/pipeline/v2/events/DirectiveDenied : dev/rubentx
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DirectiveDenied;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/DirectiveDenied$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/DirectiveDenied$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/DirectiveDenied;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/DirectiveDenied;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/DirectiveDenied$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/DomainEvent$Companion;
 	public abstract fun getEventId ()Ljava/lang/String;
 	public abstract fun getKind ()Ljava/lang/String;
 	public abstract fun getOccurredAt ()Ljava/time/Instant;
 	public abstract fun getRunId ()Ljava/lang/String;
 	public abstract fun getSequence ()J
+	public abstract fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/DomainEvent$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/EchoOutputCaptured : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/EchoOutputCaptured$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -460,6 +802,23 @@ public final class dev/rubentxu/pipeline/v2/events/EchoOutputCaptured : dev/rube
 	public final fun getStepIndex ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/EchoOutputCaptured;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/EchoOutputCaptured$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/EchoOutputCaptured$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/EchoOutputCaptured;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/EchoOutputCaptured;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/EchoOutputCaptured$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/EventRecordIdentity {
@@ -577,6 +936,7 @@ public final class dev/rubentxu/pipeline/v2/events/EventStore$DefaultImpls {
 }
 
 public final class dev/rubentxu/pipeline/v2/events/ExecutionTargetResolved : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/ExecutionTargetResolved$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -602,9 +962,36 @@ public final class dev/rubentxu/pipeline/v2/events/ExecutionTargetResolved : dev
 	public final fun getTargetId ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/ExecutionTargetResolved;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/ExecutionTargetResolved$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/ExecutionTargetResolved$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/ExecutionTargetResolved;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/ExecutionTargetResolved;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/ExecutionTargetResolved$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/FailureKindWireSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/FailureKindWireSerializer;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/domain/FailureKind;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/domain/FailureKind;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
 }
 
 public final class dev/rubentxu/pipeline/v2/events/FileExistsChecked : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/FileExistsChecked$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/nio/file/Path;Z)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -624,10 +1011,29 @@ public final class dev/rubentxu/pipeline/v2/events/FileExistsChecked : dev/ruben
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/FileExistsChecked;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/FileExistsChecked$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/FileExistsChecked$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/FileExistsChecked;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/FileExistsChecked;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/FileExistsChecked$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/FileRead : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/FileRead$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/Long;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/Long;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -648,9 +1054,27 @@ public final class dev/rubentxu/pipeline/v2/events/FileRead : dev/rubentxu/pipel
 	public final fun getSize ()Ljava/lang/Long;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/FileRead;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/FileRead$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/FileRead$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/FileRead;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/FileRead;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/FileRead$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/FileWritten : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/FileWritten$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/nio/file/Path;Ljava/lang/String;JZ)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -674,9 +1098,27 @@ public final class dev/rubentxu/pipeline/v2/events/FileWritten : dev/rubentxu/pi
 	public final fun getSize ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/FileWritten;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/FileWritten$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/FileWritten$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/FileWritten;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/FileWritten;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/FileWritten$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/GateEvaluated : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/GateEvaluated$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/util/List;ZLjava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -702,9 +1144,27 @@ public final class dev/rubentxu/pipeline/v2/events/GateEvaluated : dev/rubentxu/
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/GateEvaluated;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/GateEvaluated$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/GateEvaluated$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/GateEvaluated;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/GateEvaluated;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/GateEvaluated$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/GitCheckoutCompleted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/GitCheckoutCompleted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -730,9 +1190,27 @@ public final class dev/rubentxu/pipeline/v2/events/GitCheckoutCompleted : dev/ru
 	public final fun getUrl ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/GitCheckoutCompleted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/GitCheckoutCompleted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/GitCheckoutCompleted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/GitCheckoutCompleted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/GitCheckoutCompleted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/GitCheckoutCompleted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/GitCheckoutFailed : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/GitCheckoutFailed$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -756,9 +1234,28 @@ public final class dev/rubentxu/pipeline/v2/events/GitCheckoutFailed : dev/ruben
 	public final fun getUrl ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/GitCheckoutFailed;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/GitCheckoutFailed$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/GitCheckoutFailed$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/GitCheckoutFailed;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/GitCheckoutFailed;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/GitCheckoutFailed$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/GitCheckoutStarted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/GitCheckoutStarted$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -780,10 +1277,29 @@ public final class dev/rubentxu/pipeline/v2/events/GitCheckoutStarted : dev/rube
 	public final fun getUrl ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/GitCheckoutStarted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/GitCheckoutStarted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/GitCheckoutStarted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/GitCheckoutStarted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/GitCheckoutStarted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/GitCheckoutStarted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/GitPollChanged : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/GitPollChanged$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -806,9 +1322,27 @@ public final class dev/rubentxu/pipeline/v2/events/GitPollChanged : dev/rubentxu
 	public final fun getUrl ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/GitPollChanged;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/GitPollChanged$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/GitPollChanged$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/GitPollChanged;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/GitPollChanged;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/GitPollChanged$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/HtmlReportEntry {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/HtmlReportEntry$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;J)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -823,7 +1357,23 @@ public final class dev/rubentxu/pipeline/v2/events/HtmlReportEntry {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final synthetic class dev/rubentxu/pipeline/v2/events/HtmlReportEntry$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/HtmlReportEntry$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/HtmlReportEntry;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/HtmlReportEntry;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/HtmlReportEntry$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class dev/rubentxu/pipeline/v2/events/HtmlReportFailed : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/HtmlReportFailed$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -849,9 +1399,27 @@ public final class dev/rubentxu/pipeline/v2/events/HtmlReportFailed : dev/rubent
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/HtmlReportFailed;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/HtmlReportFailed$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/HtmlReportFailed$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/HtmlReportFailed;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/HtmlReportFailed;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/HtmlReportFailed$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/HtmlReportPublished : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/HtmlReportPublished$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -877,9 +1445,27 @@ public final class dev/rubentxu/pipeline/v2/events/HtmlReportPublished : dev/rub
 	public final fun getTargetPath ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/HtmlReportPublished;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/HtmlReportPublished$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/HtmlReportPublished$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/HtmlReportPublished;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/HtmlReportPublished;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/HtmlReportPublished$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/HtmlReportSkipped : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/HtmlReportSkipped$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -903,9 +1489,27 @@ public final class dev/rubentxu/pipeline/v2/events/HtmlReportSkipped : dev/ruben
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/HtmlReportSkipped;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/HtmlReportSkipped$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/HtmlReportSkipped$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/HtmlReportSkipped;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/HtmlReportSkipped;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/HtmlReportSkipped$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/HttpRequestFailed : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/HttpRequestFailed$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -925,9 +1529,27 @@ public final class dev/rubentxu/pipeline/v2/events/HttpRequestFailed : dev/ruben
 	public final fun getUrl ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/HttpRequestFailed;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/HttpRequestFailed$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/HttpRequestFailed$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/HttpRequestFailed;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/HttpRequestFailed;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/HttpRequestFailed$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/HttpRequestStarted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/HttpRequestStarted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;I)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -949,9 +1571,27 @@ public final class dev/rubentxu/pipeline/v2/events/HttpRequestStarted : dev/rube
 	public final fun getUrl ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/HttpRequestStarted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/HttpRequestStarted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/HttpRequestStarted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/HttpRequestStarted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/HttpRequestStarted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/HttpRequestStarted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/HttpResponseReceived : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/HttpResponseReceived$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;IJ)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -973,9 +1613,27 @@ public final class dev/rubentxu/pipeline/v2/events/HttpResponseReceived : dev/ru
 	public final fun getUrl ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/HttpResponseReceived;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/HttpResponseReceived$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/HttpResponseReceived$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/HttpResponseReceived;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/HttpResponseReceived;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/HttpResponseReceived$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/HttpStatusRejected : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/HttpStatusRejected$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;ILjava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -997,10 +1655,29 @@ public final class dev/rubentxu/pipeline/v2/events/HttpStatusRejected : dev/rube
 	public final fun getUrl ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/HttpStatusRejected;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/HttpStatusRejected$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/HttpStatusRejected$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/HttpStatusRejected;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/HttpStatusRejected;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/HttpStatusRejected$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/InputAborted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/InputAborted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -1019,9 +1696,27 @@ public final class dev/rubentxu/pipeline/v2/events/InputAborted : dev/rubentxu/p
 	public final fun getSubmitter ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/InputAborted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/InputAborted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/InputAborted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/InputAborted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/InputAborted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/InputAborted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/InputDenied : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/InputDenied$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1039,10 +1734,29 @@ public final class dev/rubentxu/pipeline/v2/events/InputDenied : dev/rubentxu/pi
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/InputDenied;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/InputDenied$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/InputDenied$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/InputDenied;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/InputDenied;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/InputDenied$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/InputProceed : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/InputProceed$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -1061,10 +1775,29 @@ public final class dev/rubentxu/pipeline/v2/events/InputProceed : dev/rubentxu/p
 	public final fun getSubmitter ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/InputProceed;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/InputProceed$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/InputProceed$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/InputProceed;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/InputProceed;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/InputProceed$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/InputRequested : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/InputRequested$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -1085,9 +1818,36 @@ public final class dev/rubentxu/pipeline/v2/events/InputRequested : dev/rubentxu
 	public final fun getSubmitter ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/InputRequested;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/InputRequested$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/InputRequested$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/InputRequested;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/InputRequested;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/InputRequested$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/InstantWireSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/InstantWireSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/time/Instant;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/time/Instant;)V
 }
 
 public final class dev/rubentxu/pipeline/v2/events/LockAcquireFailed : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/LockAcquireFailed$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1107,9 +1867,27 @@ public final class dev/rubentxu/pipeline/v2/events/LockAcquireFailed : dev/ruben
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/LockAcquireFailed;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/LockAcquireFailed$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/LockAcquireFailed$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/LockAcquireFailed;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/LockAcquireFailed;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/LockAcquireFailed$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/LockAcquired : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/LockAcquired$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1127,9 +1905,27 @@ public final class dev/rubentxu/pipeline/v2/events/LockAcquired : dev/rubentxu/p
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/LockAcquired;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/LockAcquired$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/LockAcquired$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/LockAcquired;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/LockAcquired;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/LockAcquired$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/LockReleased : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/LockReleased$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1147,10 +1943,29 @@ public final class dev/rubentxu/pipeline/v2/events/LockReleased : dev/rubentxu/p
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/LockReleased;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/LockReleased$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/LockReleased$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/LockReleased;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/LockReleased;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/LockReleased$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/LockRequested : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/LockRequested$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -1171,9 +1986,27 @@ public final class dev/rubentxu/pipeline/v2/events/LockRequested : dev/rubentxu/
 	public final fun getSkipIfLocked ()Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/LockRequested;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/LockRequested$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/LockRequested$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/LockRequested;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/LockRequested;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/LockRequested$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/LockSkipped : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/LockSkipped$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1193,9 +2026,27 @@ public final class dev/rubentxu/pipeline/v2/events/LockSkipped : dev/rubentxu/pi
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/LockSkipped;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/LockSkipped$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/LockSkipped$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/LockSkipped;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/LockSkipped;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/LockSkipped$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/MilestoneAborted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/MilestoneAborted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1215,10 +2066,29 @@ public final class dev/rubentxu/pipeline/v2/events/MilestoneAborted : dev/rubent
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/MilestoneAborted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/MilestoneAborted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/MilestoneAborted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/MilestoneAborted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/MilestoneAborted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/MilestoneAborted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/MilestoneReached : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/MilestoneReached$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -1237,6 +2107,23 @@ public final class dev/rubentxu/pipeline/v2/events/MilestoneReached : dev/rubent
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/MilestoneReached;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/MilestoneReached$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/MilestoneReached$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/MilestoneReached;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/MilestoneReached;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/MilestoneReached$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/NullEventSink : dev/rubentxu/pipeline/v2/events/EventSink {
@@ -1248,7 +2135,26 @@ public final class dev/rubentxu/pipeline/v2/events/NullEventSink : dev/rubentxu/
 	public fun readSlice (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventSlice;
 }
 
+public final class dev/rubentxu/pipeline/v2/events/OptionalBuildResultWireSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/OptionalBuildResultWireSerializer;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/events/OptionalStringWireSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/OptionalStringWireSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/String;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/String;)V
+}
+
 public final class dev/rubentxu/pipeline/v2/events/ParallelBranchFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/ParallelBranchFinished$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;ILjava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1272,9 +2178,27 @@ public final class dev/rubentxu/pipeline/v2/events/ParallelBranchFinished : dev/
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/ParallelBranchFinished;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/ParallelBranchFinished$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/ParallelBranchFinished$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/ParallelBranchFinished;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/ParallelBranchFinished;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/ParallelBranchFinished$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/ParallelBranchStarted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/ParallelBranchStarted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;I)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1296,9 +2220,36 @@ public final class dev/rubentxu/pipeline/v2/events/ParallelBranchStarted : dev/r
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/ParallelBranchStarted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/ParallelBranchStarted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/ParallelBranchStarted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/ParallelBranchStarted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/ParallelBranchStarted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/ParallelBranchStarted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/PathWireSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/PathWireSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/nio/file/Path;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/nio/file/Path;)V
 }
 
 public final class dev/rubentxu/pipeline/v2/events/PluginEventEmitted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1322,9 +2273,27 @@ public final class dev/rubentxu/pipeline/v2/events/PluginEventEmitted : dev/rube
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/PluginEventEmitted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/PluginEventEmitted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/PostConditionSelected : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/PostConditionSelected$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1350,9 +2319,27 @@ public final class dev/rubentxu/pipeline/v2/events/PostConditionSelected : dev/r
 	public final fun getStageOutcome ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/PostConditionSelected;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/PostConditionSelected$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/PostConditionSelected$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/PostConditionSelected;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/PostConditionSelected;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/PostConditionSelected$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/PwdResolved : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/PwdResolved$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1374,9 +2361,27 @@ public final class dev/rubentxu/pipeline/v2/events/PwdResolved : dev/rubentxu/pi
 	public final fun getWorkspaceRoot ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/PwdResolved;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/PwdResolved$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/PwdResolved$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/PwdResolved;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/PwdResolved;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/PwdResolved$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/RestoredEntry {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/RestoredEntry$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;J)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1391,7 +2396,23 @@ public final class dev/rubentxu/pipeline/v2/events/RestoredEntry {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final synthetic class dev/rubentxu/pipeline/v2/events/RestoredEntry$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/RestoredEntry$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/RestoredEntry;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/RestoredEntry;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/RestoredEntry$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class dev/rubentxu/pipeline/v2/events/RetryAttemptFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/RetryAttemptFinished$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;IILjava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()I
@@ -1421,9 +2442,27 @@ public final class dev/rubentxu/pipeline/v2/events/RetryAttemptFinished : dev/ru
 	public final fun getStepType ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/RetryAttemptFinished;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/RetryAttemptFinished$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/RetryAttemptFinished$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/RetryAttemptFinished;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/RetryAttemptFinished;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/RetryAttemptFinished$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/RetryAttemptStarted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/RetryAttemptStarted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;II)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()I
@@ -1451,9 +2490,27 @@ public final class dev/rubentxu/pipeline/v2/events/RetryAttemptStarted : dev/rub
 	public final fun getStepType ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/RetryAttemptStarted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/RetryAttemptStarted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/RetryAttemptStarted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/RetryAttemptStarted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/RetryAttemptStarted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/RetryAttemptStarted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/RunCorrelated : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/RunCorrelated$Companion;
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1475,9 +2532,27 @@ public final class dev/rubentxu/pipeline/v2/events/RunCorrelated : dev/rubentxu/
 	public final fun getStartedAtMs ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/RunCorrelated;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/RunCorrelated$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/RunCorrelated$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/RunCorrelated;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/RunCorrelated;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/RunCorrelated$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/RunFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/RunFinished$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/util/List;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1497,9 +2572,27 @@ public final class dev/rubentxu/pipeline/v2/events/RunFinished : dev/rubentxu/pi
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/RunFinished;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/RunFinished$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/RunFinished$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/RunFinished;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/RunFinished;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/RunFinished$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/RunStarted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/RunStarted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1517,9 +2610,27 @@ public final class dev/rubentxu/pipeline/v2/events/RunStarted : dev/rubentxu/pip
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/RunStarted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/RunStarted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/RunStarted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/RunStarted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/RunStarted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/RunStarted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/SagaTerminal : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/SagaTerminal$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -1544,9 +2655,36 @@ public final class dev/rubentxu/pipeline/v2/events/SagaTerminal : dev/rubentxu/p
 	public final fun getState ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/SagaTerminal;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/SagaTerminal$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/SagaTerminal$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/SagaTerminal;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/SagaTerminal;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/SagaTerminal$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/ScriptOriginWireSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/ScriptOriginWireSerializer;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StageFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StageFinished$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1568,9 +2706,27 @@ public final class dev/rubentxu/pipeline/v2/events/StageFinished : dev/rubentxu/
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/StageFinished;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/StageFinished$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StageFinished$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StageFinished;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StageFinished;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StageFinished$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StageMarkedUnstable : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StageMarkedUnstable$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1590,9 +2746,27 @@ public final class dev/rubentxu/pipeline/v2/events/StageMarkedUnstable : dev/rub
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/StageMarkedUnstable;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/StageMarkedUnstable$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StageMarkedUnstable$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StageMarkedUnstable;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StageMarkedUnstable;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StageMarkedUnstable$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StageSkipped : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StageSkipped$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1614,9 +2788,27 @@ public final class dev/rubentxu/pipeline/v2/events/StageSkipped : dev/rubentxu/p
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/StageSkipped;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/StageSkipped$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StageSkipped$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StageSkipped;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StageSkipped;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StageSkipped$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StageStarted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StageStarted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1636,9 +2828,27 @@ public final class dev/rubentxu/pipeline/v2/events/StageStarted : dev/rubentxu/p
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/StageStarted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/StageStarted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StageStarted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StageStarted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StageStarted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StageStarted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StashCreated : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StashCreated$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1660,9 +2870,27 @@ public final class dev/rubentxu/pipeline/v2/events/StashCreated : dev/rubentxu/p
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/StashCreated;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/StashCreated$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StashCreated$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StashCreated;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StashCreated;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StashCreated$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StashFailed : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StashFailed$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1686,9 +2914,27 @@ public final class dev/rubentxu/pipeline/v2/events/StashFailed : dev/rubentxu/pi
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/StashFailed;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/StashFailed$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StashFailed$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StashFailed;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StashFailed;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StashFailed$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StashRestored : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StashRestored$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1710,9 +2956,27 @@ public final class dev/rubentxu/pipeline/v2/events/StashRestored : dev/rubentxu/
 	public final fun getStageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/StashRestored;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/StashRestored$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StashRestored$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StashRestored;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StashRestored;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StashRestored$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StashedEntry {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StashedEntry$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;J)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1727,7 +2991,23 @@ public final class dev/rubentxu/pipeline/v2/events/StashedEntry {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final synthetic class dev/rubentxu/pipeline/v2/events/StashedEntry$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StashedEntry$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StashedEntry;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StashedEntry;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StashedEntry$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class dev/rubentxu/pipeline/v2/events/StepAdmissionObserved : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StepAdmissionObserved$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;I)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1753,10 +3033,29 @@ public final class dev/rubentxu/pipeline/v2/events/StepAdmissionObserved : dev/r
 	public final fun getStepKey ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/StepAdmissionObserved;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/StepAdmissionObserved$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StepAdmissionObserved$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StepAdmissionObserved;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StepAdmissionObserved;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StepAdmissionObserved$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StepFailed : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StepFailed$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1783,10 +3082,29 @@ public final class dev/rubentxu/pipeline/v2/events/StepFailed : dev/rubentxu/pip
 	public final fun getStepType ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/StepFailed;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/StepFailed$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StepFailed$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StepFailed;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StepFailed;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StepFailed$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StepFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StepFinished$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -1811,9 +3129,27 @@ public final class dev/rubentxu/pipeline/v2/events/StepFinished : dev/rubentxu/p
 	public final fun getStepType ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/StepFinished;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/StepFinished$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StepFinished$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StepFinished;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StepFinished;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StepFinished$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StepStarted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StepStarted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1837,10 +3173,29 @@ public final class dev/rubentxu/pipeline/v2/events/StepStarted : dev/rubentxu/pi
 	public final fun getStepType ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/StepStarted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/StepStarted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/StepStarted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/StepStarted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/StepStarted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/StepStarted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/TimeoutScheduled : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/TimeoutScheduled$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()Ljava/lang/Integer;
 	public final fun component2 ()Ljava/lang/String;
@@ -1867,9 +3222,27 @@ public final class dev/rubentxu/pipeline/v2/events/TimeoutScheduled : dev/rubent
 	public final fun getTimeoutSeconds ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/TimeoutScheduled;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/TimeoutScheduled$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/TimeoutScheduled$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/TimeoutScheduled;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/TimeoutScheduled;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/TimeoutScheduled$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/TimeoutTriggered : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/TimeoutTriggered$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;J)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1891,9 +3264,27 @@ public final class dev/rubentxu/pipeline/v2/events/TimeoutTriggered : dev/rubent
 	public final fun getStageOrStep ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/TimeoutTriggered;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/TimeoutTriggered$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/TimeoutTriggered$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/TimeoutTriggered;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/TimeoutTriggered;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/TimeoutTriggered$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/TimestampsEntered : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/TimestampsEntered$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1909,9 +3300,27 @@ public final class dev/rubentxu/pipeline/v2/events/TimestampsEntered : dev/ruben
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/TimestampsEntered;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/TimestampsEntered$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/TimestampsEntered$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/TimestampsEntered;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/TimestampsEntered;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/TimestampsEntered$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/TimestampsExited : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/TimestampsExited$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1927,6 +3336,23 @@ public final class dev/rubentxu/pipeline/v2/events/TimestampsExited : dev/rubent
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/TimestampsExited;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/TimestampsExited$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/TimestampsExited$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/TimestampsExited;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/TimestampsExited;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/TimestampsExited$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/UndecodableEventRecordException : java/lang/IllegalStateException {
@@ -1964,6 +3390,7 @@ public final class dev/rubentxu/pipeline/v2/events/UndecodableReason$UnknownKind
 }
 
 public final class dev/rubentxu/pipeline/v2/events/UnixDetected : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/UnixDetected$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ZLjava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1985,9 +3412,27 @@ public final class dev/rubentxu/pipeline/v2/events/UnixDetected : dev/rubentxu/p
 	public fun hashCode ()I
 	public final fun isUnix ()Z
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/UnixDetected;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/UnixDetected$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/UnixDetected$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/UnixDetected;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/UnixDetected;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/UnixDetected$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/WaitUntilCompleted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/WaitUntilCompleted$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IJLjava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -2009,9 +3454,27 @@ public final class dev/rubentxu/pipeline/v2/events/WaitUntilCompleted : dev/rube
 	public final fun getTotalDurationMs ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/WaitUntilCompleted;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/WaitUntilCompleted$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/WaitUntilCompleted$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/WaitUntilCompleted;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/WaitUntilCompleted;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/WaitUntilCompleted$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/WaitUntilPolled : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/WaitUntilPolled$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IJZ)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -2033,9 +3496,27 @@ public final class dev/rubentxu/pipeline/v2/events/WaitUntilPolled : dev/rubentx
 	public fun getSequence ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/WaitUntilPolled;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/WaitUntilPolled$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/WaitUntilPolled$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/WaitUntilPolled;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/WaitUntilPolled;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/WaitUntilPolled$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/WorkflowLoaded : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/WorkflowLoaded$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;ILjava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -2057,9 +3538,27 @@ public final class dev/rubentxu/pipeline/v2/events/WorkflowLoaded : dev/rubentxu
 	public final fun getStepCount ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/WorkflowLoaded;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/WorkflowLoaded$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/WorkflowLoaded$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/WorkflowLoaded;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/WorkflowLoaded;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/WorkflowLoaded$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/WsCleaned : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/WsCleaned$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/util/List;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -2083,6 +3582,23 @@ public final class dev/rubentxu/pipeline/v2/events/WsCleaned : dev/rubentxu/pipe
 	public final fun getSha256 ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public synthetic fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun withSequence (J)Ldev/rubentxu/pipeline/v2/events/WsCleaned;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/events/WsCleaned$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/WsCleaned$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/WsCleaned;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/WsCleaned;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/WsCleaned$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/events/follow/EventFollowEvent {

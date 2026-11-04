@@ -1014,7 +1014,19 @@ public final class dev/rubentxu/pipeline/v2/scripting/CacheKey {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final synthetic class dev/rubentxu/pipeline/v2/scripting/CacheKey$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/CacheKey$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
 public final class dev/rubentxu/pipeline/v2/scripting/CacheKey$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 	public final fun sha256Hex ([Ljava/lang/String;)Ljava/lang/String;
 }
 
@@ -1206,6 +1218,7 @@ public final class dev/rubentxu/pipeline/v2/scripting/ScriptDefinition$Companion
 }
 
 public final class dev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity : java/lang/Enum {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity$Companion;
 	public static final field DEBUG Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
 	public static final field ERROR Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
 	public static final field FATAL Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
@@ -1214,6 +1227,10 @@ public final class dev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity :
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
 	public static fun values ()[Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationContext {
@@ -1287,6 +1304,7 @@ public final class dev/rubentxu/pipeline/v2/scripting/ScriptOrigin$Companion {
 	public final fun getSupportedTokens ()Ljava/util/Set;
 	public final fun parse (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
 	public final fun parseOrUnknown (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/rubentxu/pipeline/v2/scripting/ScriptedArtifactIdentity {
@@ -1579,6 +1597,7 @@ public final class dev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade$Default
 }
 
 public final class dev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic$Companion;
 	public fun <init> (Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;Ljava/lang/String;IILjava/lang/String;)V
 	public final fun component1 ()Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
 	public final fun component2 ()Ljava/lang/String;
@@ -1595,6 +1614,21 @@ public final class dev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic {
 	public final fun getSeverity ()Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/scripting/ScriptingHost {

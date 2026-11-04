@@ -83,6 +83,15 @@
 # change cost -- but they do NOT compare it with that budget, and their
 # verdict line says `budget=NONE`, so that no change run can be read as a
 # budget check.
+# The level also moves the TRIALS. A trial is a COMPLETE run of this gate at
+# that level, and the level says how many it publishes: the change level
+# publishes ONE, because a change asks one question, and the milestone and the
+# certification publish THREE, because the clock of a series is what AGENTS.md
+# section 4 compares with the 900 s budget and one run cannot say how much
+# that clock moves. The verdict line carries `trials=`, the worst of the
+# series and what the three together cost, and the budget compares the WORST:
+# the three trials are three runs of the same thing, and their sum is three
+# times the wall clock of one run.
 # The gate has four stages, and a stage number that names a fifth is a typo: a
 # typo that selected nothing would run nothing and print a clean verdict, which
 # is the same silent green this script refuses everywhere else.
@@ -169,16 +178,53 @@ overlap_probe_on=0
 level="certificacion"
 level_given=0
 
+# The TRIALS of this run.
+#
+# A trial is a COMPLETE run of this gate at this level, and the level says
+# how many of them it publishes. The change level publishes ONE: a change
+# asks one question, and asking it three times buys three times the waiting
+# and no knowledge the first answer did not already carry.
+#
+# The milestone and the certification publish THREE, and the reason is the one
+# AGENTS.md section 4 gives: the three-trial worst elapsed time is the number
+# the budget is compared with, and a clock measured once is a number nobody
+# can call stable. The clock of a change is not compared with anything, so its
+# variance is not worth three runs of it.
+#
+# `trial_child` is the trial THIS process is, and it is zero in the process
+# that CONDUCTS the series. A trial never conducts a series of its own: that
+# is what keeps a trial from being a series of series.
+trial_child=0
+# The size of the series this trial belongs to. It travels in the ENVIRONMENT
+# and not in the arguments, because the arguments of a trial are the arguments
+# the OPERATOR gave: a flag that said how many trials there are would be a
+# flag the operator could set, and the size of the series is the LEVEL's fact.
+trial_of="${PIPELINEK_GATE_TRIALS:-1}"
+if [[ ! "$trial_of" =~ ^[0-9]+$ ]] || (( trial_of < 1 )); then
+    echo "verify-all: the size of the trial series is not a number: $trial_of" >&2
+    exit 2
+fi
+trial_count=1
+
 # The state of the E2E stage, declared HERE so that the exit trap can read it
 # whatever the run did. A trap that asked for a variable the run never reached
 # would crash on the way out and replace the exit status of the run with the
 # exit status of the crash, which is how a failing stage turns into a
 # confusing one.
+#
+# These are the OWNERS of these names: the census assigns them when it
+# measures them, and nothing else assigns them. A second assignment
+# somewhere else would not be a second default but a second owner, and the
+# second owner wins.
 e2e_not_run=0
 e2e_stage3_ran=0
 e2e_observed=""
 e2e_executed=""
 e2e_launches=""
+e2e_census_gate=0
+e2e_census_launcher=0
+e2e_census_tree=0
+e2e_census_contrast="NOT_RUN"
 e2e_scope="full"
 receipt_state="NOT_RUN"
 diagnostics_path=""
@@ -346,6 +392,11 @@ fi
 # line that is not a comment keeps the two in step by construction.
 usage() { awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "$0"; }
 
+# The arguments this run was given, kept WHOLE: the process that CONDUCTS a
+# series of trials gives each trial the same arguments it was given, and a
+# half-parsed argument list is not the same thing.
+original_args=("$@")
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         # `--no-budget` is a subset flag as well as a budget skip. It used to set
@@ -391,6 +442,18 @@ while [[ $# -gt 0 ]]; do
                 exit 2
             fi
             level="$2"; level_given=1; shift ;;
+        # Which TRIAL of a series this process is. It is the CONDUCTOR's flag
+        # and not the operator's: the conductor numbers the trials, and a
+        # trial that ran a series of its own would measure the level's work
+        # three times over.
+        --trial-child)
+            trial_child="${2:-}"
+            if [[ ! "$trial_child" =~ ^[0-9]+$ ]] || (( trial_child < 1 )); then
+                echo "verify-all: --trial-child needs the number of the trial" >&2
+                echo "  the trials of a series are numbered from 1." >&2
+                exit 2
+            fi
+            shift ;;
         -h|--help)   usage; exit 0 ;;
         *) echo "verify-all: unknown argument '$1'" >&2; exit 2 ;;
     esac
@@ -472,6 +535,15 @@ fi
 measure_product=1
 if [[ "$level" == "cambio" ]]; then
     measure_product=0
+fi
+
+# How many TRIALS this level publishes. It is computed ONCE, here, where the
+# level and the subset are both final: a series of one trial of a filtered
+# run is a series nobody compares, and a series of three of a change run is
+# three times the waiting for the same answer.
+trial_count=1
+if [[ "$subset" == 0 && "$level" != "cambio" ]]; then
+    trial_count=3
 fi
 
 # The gate has four stages. A number that names a fifth is a typo, and a typo
@@ -610,9 +682,7 @@ fail() { printf 'verify-all: FAILED at %s\n' "$*" >&2; exit 1; }
 # somebody assumed.
 fail_with_verdict() {
     printf 'verify-all: FAILED at %s\n' "$1" >&2
-    printf '\nFAIL  %s  %s  elapsed=%ss  %s%s\n' \
-        "$(identity_fields)" "$(level_field)" \
-        "$(elapsed "$started_at")" "$(budget_field)" "$(evidence_suffixes)"
+    verdict_line "FAIL" "$(elapsed "$started_at")"
     exit 1
 }
 
@@ -691,6 +761,13 @@ declare -a certification_baseline=(
 task_console_lines=0
 task_executed_total=0
 task_no_work_total=0
+
+# The SERIES a level publishes, when it publishes one: the worst of its
+# trials and what the trials together cost. They are declared HERE so that
+# the verdict line can ask for them whether the run conducted a series or
+# not, and an unset one reads as no series rather than as a missing field.
+series_worst_s=""
+series_total_s=""
 
 # What became of the configuration cache of the build. The declaration is
 # Gradle's own, read from the log of the invocation that asked for the cache:
@@ -2170,7 +2247,15 @@ report_residue() {
         printf "    own-prefixed entries that appeared in the shared temporary directory: %s (not this run's: the product writes into its own directory)\n" "$foreign_residue_count"
         printf "    output of the persistent Kotlin compiler daemon seen in the shared temporary directory: %s (a service, not a temporary of the run)\n" "$service_residue_count"
     else
-        printf "    the shared temporary directory: NOT_MEASURED (another gate holds the lock)\n"
+        if (( trial_child > 0 )); then
+            # A trial of a series does not take the lock: the process that
+            # CONDUCTS the series holds it, and its census covers the whole
+            # series. Saying "another gate holds the lock" would blame a
+            # stranger for a lock this run is holding itself.
+            printf "    the shared temporary directory: NOT_MEASURED (the process that conducted this series holds the lock, and its census covers the whole series)\n"
+        else
+            printf "    the shared temporary directory: NOT_MEASURED (another gate holds the lock)\n"
+        fi
     fi
 }
 
@@ -2245,6 +2330,10 @@ cleanup_logs() {
     # EVERY outcome: the receipt of a failed run is the one an operator comes
     # back to read.
     seal_receipt "$gate_verdict"
+    # The account of a TRIAL goes to the process that conducted the series,
+    # and it goes on every outcome: a trial that failed is exactly the trial
+    # the conductor has to know about.
+    write_trial_summary
     rm -rf "$cycle_dir"
     return "$status"
 }
@@ -2317,7 +2406,592 @@ stop_this_run_daemon() {
         fi
     done
 }
+# The suffix travels WITH the verdict line. A gap that only exists in the
+# stage log disappears the moment somebody quotes the one line that says the
+# gate passed, which is the only line anybody actually reads. Same argument as
+# the subset marker below: the difference between this run and the full gate
+# has to be inside the line, not beside it.
+gaps_suffix() {
+    if [[ "$e2e_stage3_ran" == 1 && "$e2e_not_run" -gt 0 ]]; then
+        printf '  gaps=%s not_run' "$e2e_not_run"
+    fi
+}
+
+# The test evidence travels WITH the verdict line, for the same reason the gap
+# count does. The stage log is read by whoever ran the gate; the verdict line is
+# read by everyone else, and it is the one that gets pasted into a report. A line
+# that says "the gate passed" without saying how many tests really executed is
+# half a verdict: the reader cannot tell a measurement from a cache hit.
+#
+#   rewritten   tests in the reports THIS run wrote. They really ran.
+#   read        tests in the reports this run did not write: executed by an
+#               earlier invocation and read from disk.
+#
+# A run that never asked for the tests says NOT_RUN instead of staying silent,
+# because a silent field reads like a zero.
+tests_suffix() {
+    if [[ "$stage2_ran" == 1 ]]; then
+        printf '  tests=rewritten:%s read:%s' "$xml_fresh_tests" "$xml_read_tests"
+    else
+        printf '  tests=NOT_RUN'
+    fi
+}
+
+# How much of the E2E stage was OBSERVED rather than merely executed. It travels
+# with the verdict line for the same reason the test census does.
+#
+# Every number names its origin, because a number without its content is not
+# evidence: two of them are the launcher's (what it observed, and how many
+# executions it made), one is the gate's own (what it planned on disk), and the
+# last is the contrast between the two (the gate compared the inventories
+# NAME BY NAME and they agreed). The three counts are different questions and
+# they usually answer the same number, which is exactly why a reader who sees
+# only one of them cannot tell a measurement from a transcription.
+#
+#   launcher_observed   guarantees the launcher really compared.
+#   launcher_executions executions the launcher made.
+#   gate_planned        scenarios the gate found in the tree before the stages.
+#   launcher_scenarios  distinct scenarios the launcher's report names.
+#   contrast            the verdict of comparing the last two, name by name.
+scenarios_suffix() {
+    if [[ "$e2e_stage3_ran" == 1 && -n "$e2e_observed" ]]; then
+        printf '  scenarios=launcher_observed:%s launcher_executions:%s gate_planned:%s launcher_scenarios:%s tree_scenarios:%s contrast:%s' \
+            "$e2e_observed" "$e2e_executed" "$e2e_census_gate" "$e2e_census_launcher" "$e2e_census_tree" "$e2e_census_contrast"
+    else
+        printf '  scenarios=NOT_RUN'
+    fi
+}
+
+# The families this run executed, and the families the tree holds.
+#
+# It travels with the verdict line for the same reason the scenario census
+# does. A run that executed two of the nine families is not the gate, and a
+# line that does not name the two reads like the one that executed all nine.
+# The names are the tree's, so a reader can see WHICH scenarios did not run.
+families_suffix() {
+    if [[ "$e2e_stage3_ran" == 1 ]]; then
+        printf '  families=ran:%s tree:%s' "${e2e_families_ran:-unknown}" "$e2e_families_tree"
+    else
+        printf '  families=NOT_RUN'
+    fi
+}
+
+# Whether the receipt of the E2E stage is an account the gate could read.
+# It travels with the verdict line for the same reason the test census does:
+# the receipt is the trace of the run, and a run whose trace nobody could
+# read says it passed without saying what it passed ON.
+#
+#   ok       the receipt was written, and it held up against its own totals
+#            and against the gate's census.
+#   invalid  it was written, and it did not hold up.
+#   absent   it was not written at all.
+#   NOT_RUN  the E2E stage did not run, so there was no receipt to write.
+#
+# A run that never asked for the E2E stage says NOT_RUN instead of staying
+# silent, because a silent field reads like a zero.
+receipt_suffix() {
+    printf '  receipt=%s' "$receipt_state"
+}
+
+# How much of the build REALLY ran. It travels with the verdict line for the
+# same reason the test census does: the seconds on the line are the same
+# whether the tasks executed or the cache answered for them, and a reader who
+# compares two runs needs to know which one paid for the work.
+#
+#   executed   the tasks that ran their work.
+#   cached     the tasks that did none: up to date, served from the build
+#              cache, without source, or skipped. They are the ones the cache
+#              paid for.
+#
+# A run that never declared a task says NOT_RUN instead of staying silent,
+# because a silent field reads like a zero.
+tasks_suffix() {
+    if (( task_console_lines == 0 )); then
+        printf '  tasks=NOT_RUN'
+        return 0
+    fi
+    printf '  tasks=executed:%s cached:%s' "$task_executed_total" "$task_no_work_total"
+}
+
+# What became of the configuration cache of the build. It travels with the
+# verdict line for the same reason the count of tasks does: a gate that asks
+# for the cache and does not say what happened with it has a silent field, and
+# a silent field reads like "everything was fine".
+#
+#   reused     the entry stored by an earlier run was reused.
+#   stored     a new entry was stored, so nothing was reused.
+#   discarded  the entry that existed was discarded.
+#   absent     the invocation ran without saying anything about the cache.
+#   NOT_RUN    no invocation of this run asked for the cache.
+config_cache_suffix() {
+    if [[ "$config_cache_state" == "NOT_RUN" ]]; then
+        printf '  config_cache=NOT_RUN'
+        return 0
+    fi
+    printf '  config_cache=%s' "$config_cache_state"
+}
+
+# What the E2E stage COST in launches of the product. It travels with the
+# verdict line for the same reason the test census does: the seconds on the
+# line are the same whether the product was started 50 times or 500, and a
+# reader comparing two runs needs to know which one paid for the work.
+#
+#   <n>      the launches of the product the E2E stage made.
+#
+# A run that never ran the E2E stage says NOT_RUN instead of staying silent,
+# because a silent field reads like a zero.
+jvm_suffix() {
+    if [[ -z "$e2e_launches" ]]; then
+        printf '  jvm=NOT_RUN'
+        return 0
+    fi
+    printf '  jvm=%s' "$e2e_launches"
+}
+
+# Everything the run observed, as ONE argument.
+#
+# These used to travel as separate `%s` in the verdict format, and that is how a
+# count goes missing without anybody noticing: the format carried five
+# conversions and the call passed six arguments, so the shell read the surplus
+# as a second pass over the same format. Composing them first makes that
+# unrepresentable -- one string, one `%s` -- and each field keeps saying NOT_RUN
+# rather than going quiet when its stage was skipped.
+evidence_suffixes() {
+    printf '%s%s%s%s%s%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
+        "$(families_suffix)" "$(jvm_suffix)" "$(receipt_suffix)" "$(residue_suffix)" \
+        "$(components_suffix)" "$(tasks_suffix)" "$(config_cache_suffix)" "$(trials_suffix)"
+}
+
+# The TRIALS this line accounts for. It travels with the verdict line because
+# it is the difference between a clock measured once and a clock measured
+# three times: a reader who cannot tell them apart reads a single run as a
+# stable one, and that is the claim AGENTS.md section 4 does not allow.
+#
+# A run that published ONE trial says so, and a trial of a series says which
+# trial it is: the series is published by the process that CONDUCTS it, and a
+# trial that published the series itself would make every trial of the series
+# claim to be the series.
+trials_suffix() {
+    if (( trial_child > 0 )); then
+        printf '  trial=%s/%s' "$trial_child" "$trial_of"
+        return 0
+    fi
+    if [[ -n "${series_worst_s:-}" ]]; then
+        printf '  trials=%s worst=%ss total=%ss' "$trial_count" "$series_worst_s" "$series_total_s"
+        return 0
+    fi
+    printf '  trials=%s' "$trial_count"
+}
+
+# The verdict line, in ONE place.
+#
+# The shape of this line is the contract of the receipt, of the reports and
+# of every line somebody pastes into one. A second copy of the format would
+# be a second thing that has to be kept in step, and the day one of them was
+# not, the line that reached a report would say something the run did not
+# say.
+#
+# The word and the clock are the arguments: a run that failed says FAIL, a
+# run that could not finish says INCOMPLETE, and the clock of a series is
+# the worst of its trials, because that is the clock the budget is compared
+# with.
+verdict_line() {
+    local word="$1" clock="$2"
+    printf '\n%s  %s  %s  elapsed=%ss  %s%s\n' \
+        "$word" "$(identity_fields)" "$(level_field)" "$clock" \
+        "$(budget_field)" "$(evidence_suffixes)"
+}
+
+# --- The series of trials -----------------------------------------------------
+#
+# A level that publishes three trials CONDUCTS them: this process runs the gate
+# three times, once per trial, and each trial is a COMPLETE run of the gate at
+# this level, in its own process, with its own cycle, its own receipt and its
+# own census of residue.
+#
+# Why a separate process and not a loop over the stages: a trial that is not a
+# whole run is not a trial. The stages read the tree, they write their
+# artefacts, they measure their own residue and they seal their own account;
+# a run of the gate that left any of that out would be a run of something
+# else, and the clock of something else is not the clock the budget was
+# written for.
+#
+# The series owns three facts:
+#
+#   the WORST trial  the clock the budget is compared with. AGENTS.md section
+#                    4 compares the three-trial worst and not the sum of the
+#                    three, so the worst is what the verdict line publishes.
+#   the TOTAL        what the whole series cost. It is a datum and not the
+#                    budget's number, and the report says so in words.
+#   the AGREEMENT   the three trials have to verify the SAME thing: the same
+#                    content, the same scenarios, the same families, the same
+#                    verdict. A series that measured three different things
+#                    is not a series, and the conductor fails instead of
+#                    publishing the worst of three unrelated clocks.
+
+# The keys a trial hands to the conductor. The format is one `key=value` per
+# line: the conductor reads facts and not prose, and it checks every value it
+# reads.
+trial_summary_keys=(
+    trial_index trial_of trial_verdict trial_elapsed_s trial_wall_ms
+    trial_receipt trial_sha trial_head trial_identity trial_scope
+    trial_level stage2_ran xml_fresh_tests xml_read_tests
+    e2e_stage3_ran e2e_not_run e2e_observed e2e_executed e2e_census_gate
+    e2e_census_launcher e2e_census_tree e2e_census_contrast e2e_launches
+    e2e_families_ran e2e_families_tree receipt_state
+    component_measured_total component_required_total
+    task_console_lines task_executed_total task_no_work_total config_cache_state
+)
+
+# The facts the trials have to AGREE on: what they verified. The clock is not
+# among them -- a clock that moves is the thing the series MEASURES -- but the
+# content, the inventory of scenarios, the families and the verdict are: three
+# trials that verified three different things are not a series of anything.
+trial_agreement_keys=(
+    trial_verdict trial_sha trial_identity trial_scope trial_level
+    e2e_observed e2e_census_gate e2e_census_launcher e2e_census_tree
+    e2e_census_contrast e2e_families_ran e2e_families_tree receipt_state
+)
+
+# The values a trial hands over.
+#
+# The variables that carry the EVIDENCE have their owner where they are
+# measured: the census owns its numbers, the stages own their counters, and
+# the top of this script owns the defaults that let the exit trap read them
+# whatever the run did. They are NOT redeclared here, and this is not a
+# style question: this block runs AFTER the map has been checked, so a
+# default here would not be a default but a SECOND OWNER, and the second
+# owner wins. It would wipe the census the map measured, and the line would
+# publish "unknown" about a census that exists.
+#
+# Only the names of the series itself are declared here, because the series
+# is the only thing this block introduces.
+trial_index=0
+trial_verdict="FAIL"
+trial_elapsed_s=0
+trial_wall_ms=0
+trial_receipt=""
+trial_sha=""
+trial_scope="full"
+
+# What a trial hands to the conductor. It is written on EVERY outcome, from
+# the exit trap, because a trial that failed is exactly the trial the
+# conductor has to know about.
+write_trial_summary() {
+    local path="${PIPELINEK_GATE_TRIAL_SUMMARY:-}"
+    [[ -n "$path" ]] || return 0
+    # The clock of the trial is the one its VERDICT LINE carries, and not a
+    # clock read again here: the two would be a second apart whenever the
+    # second fell between the line and this file, and the conductor that
+    # rebuilds the line of the series from this one would then be rebuilding
+    # a line that says a second the line does not say.
+    local elapsed_s="${total:-}"
+    [[ -n "$elapsed_s" ]] || elapsed_s="$(elapsed "$started_at")"
+    {
+        printf 'trial_index=%s\n' "$trial_child"
+        printf 'trial_of=%s\n' "$trial_of"
+        printf 'trial_verdict=%s\n' "$gate_verdict"
+        printf 'trial_elapsed_s=%s\n' "$elapsed_s"
+        printf 'trial_wall_ms=%s\n' "$(( $(now_ms) - started_at_ms ))"
+        printf 'trial_receipt=%s\n' "${receipt_file:-}"
+        printf 'trial_sha=%s\n' "$gate_content_sha"
+        printf 'trial_head=%s\n' "$gate_head_sha"
+        printf 'trial_identity=%s\n' "$gate_content_kind"
+        printf 'trial_scope=%s\n' "$e2e_scope"
+        printf 'trial_level=%s\n' "$level"
+        printf 'stage2_ran=%s\n' "${stage2_ran:-0}"
+        printf 'xml_fresh_tests=%s\n' "${xml_fresh_tests:-0}"
+        printf 'xml_read_tests=%s\n' "${xml_read_tests:-0}"
+        printf 'e2e_stage3_ran=%s\n' "${e2e_stage3_ran:-0}"
+        printf 'e2e_not_run=%s\n' "${e2e_not_run:-0}"
+        printf 'e2e_observed=%s\n' "${e2e_observed:-}"
+        printf 'e2e_executed=%s\n' "${e2e_executed:-}"
+        printf 'e2e_census_gate=%s\n' "${e2e_census_gate:-0}"
+        printf 'e2e_census_launcher=%s\n' "${e2e_census_launcher:-0}"
+        printf 'e2e_census_tree=%s\n' "${e2e_census_tree:-0}"
+        printf 'e2e_census_contrast=%s\n' "${e2e_census_contrast:-NOT_RUN}"
+        printf 'e2e_launches=%s\n' "${e2e_launches:-}"
+        printf 'e2e_families_ran=%s\n' "${e2e_families_ran:-}"
+        printf 'e2e_families_tree=%s\n' "${e2e_families_tree:-0}"
+        printf 'receipt_state=%s\n' "${receipt_state:-NOT_RUN}"
+        printf 'component_measured_total=%s\n' "${component_measured_total:-0}"
+        printf 'component_required_total=%s\n' "${component_required_total:-0}"
+        printf 'task_console_lines=%s\n' "${task_console_lines:-0}"
+        printf 'task_executed_total=%s\n' "${task_executed_total:-0}"
+        printf 'task_no_work_total=%s\n' "${task_no_work_total:-0}"
+        printf 'config_cache_state=%s\n' "${config_cache_state:-NOT_RUN}"
+    } > "$path" 2>/dev/null || true
+    return 0
+}
+
+# Read the summary of a trial. Every key has to be one this gate knows, every
+# number has to look like a number, and every key has to be THERE: a summary
+# with a hole in it is the summary of a run that did not finish, and the
+# conductor cannot compare what it does not have.
+load_trial_summary() {
+    local path="$1" key value k
+    local -A known=() seen=()
+    for k in "${trial_summary_keys[@]}"; do known[$k]=1; done
+    if [[ ! -f "$path" ]]; then
+        echo "verify-all: the trial wrote no summary: $path" >&2
+        return 1
+    fi
+    while IFS='=' read -r key value; do
+        [[ -n "$key" ]] || continue
+        if [[ -z "${known[$key]+x}" ]]; then
+            echo "verify-all: the summary of a trial carries a key this gate does not know: $key" >&2
+            return 1
+        fi
+        case "$key" in
+            trial_index|trial_of|trial_elapsed_s|trial_wall_ms|stage2_ran|xml_fresh_tests|xml_read_tests|e2e_stage3_ran|e2e_not_run|e2e_census_gate|e2e_census_launcher|e2e_census_tree|e2e_families_tree|component_measured_total|component_required_total|task_console_lines|task_executed_total|task_no_work_total)
+                if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+                    echo "verify-all: the summary of a trial carries $key=$value and that is not a number" >&2
+                    return 1
+                fi
+                ;;
+            e2e_observed|e2e_executed|e2e_launches)
+                # These three are the launcher's own numbers, and they are
+                # absent when the launcher published no census: an absent
+                # count is a count nobody took, and it says so with nothing.
+                if [[ -n "$value" && ! "$value" =~ ^[0-9]+$ ]]; then
+                    echo "verify-all: the summary of a trial carries $key=$value and that is not a number" >&2
+                    return 1
+                fi
+                ;;
+            *)
+                if [[ ! "$value" =~ ^[A-Za-z0-9,._:/-]*$ ]]; then
+                    echo "verify-all: the summary of a trial carries $key=$value and that is not a plain value" >&2
+                    return 1
+                fi
+                ;;
+        esac
+        seen[$key]=1
+        printf -v "$key" '%s' "$value"
+    done < "$path"
+    for k in "${trial_summary_keys[@]}"; do
+        if [[ -z "${seen[$k]+x}" ]]; then
+            echo "verify-all: the summary of a trial does not carry $k" >&2
+            return 1
+        fi
+    done
+    return 0
+}
+
+# A series that failed still owes the reader a verdict line, and the line it
+# owes is the line of the trial that stopped it, with the verdict word the RUN
+# earned and not the one the trial earned: a run that published a red series
+# does not leave a green line behind it.
+series_failed() {
+    local line="$1" index="$2" why="$3" red_line="$1"
+    red_line="${red_line%  trial=${index}/${trial_count}}"
+    case "$red_line" in
+        PASS*) red_line="FAIL${red_line#PASS}" ;;
+        INCOMPLETE*) red_line="FAIL${red_line#INCOMPLETE}" ;;
+    esac
+    if [[ -n "$red_line" ]]; then
+        printf '\n%s  trials=%s stopped_at=%s\n' "$red_line" "$trial_count" "$index"
+    fi
+    printf 'verify-all: FAILED at %s\n' "$why" >&2
+    exit 1
+}
+
+# The series, conducted.
+conduct_trial_series() {
+    local n="$trial_count" i rc child_log summary child_line
+    local worst_s=0 worst_ms=0 worst_index=1 sum_s=0 total_s clock k
+    local -a clocks=() ms_of=() verdicts=() receipt_paths=() lines=()
+    local -A first=()
+
+    printf '\n=== the %s level publishes %s trials\n' "$level" "$n"
+    printf '    a trial is a COMPLETE run of this gate at this level, in its own process,\n'
+    printf '    with its own cycle, its own receipt and its own census of residue\n'
+
+    for (( i = 1; i <= n; i++ )); do
+        child_log="$cycle_dir/trial-${i}.log"
+        summary="$cycle_dir/trial-${i}.summary"
+        printf '\n=== trial %s of %s\n' "$i" "$n"
+        rc=0
+        PIPELINEK_GATE_TRIAL_SUMMARY="$summary" PIPELINEK_GATE_TRIALS="$n" \
+            bash "$repo_root/scripts/verify-all.sh" "${original_args[@]}" --trial-child "$i" 2>&1 \
+            | tee "$child_log" || rc=$?
+        child_line="$(grep -aE '^(PASS|FAIL|INCOMPLETE)( \(subset\))?  ' "$child_log" | tail -1 || true)"
+        if (( rc != 0 )); then
+            # A trial that failed fails the SERIES: the three trials exist to
+            # say that this content passes three times, and one red trial
+            # says it does not pass at all.
+            series_failed "$child_line" "$i" "trial $i of $n: the trial failed (its own verdict is above)"
+        fi
+        if ! load_trial_summary "$summary"; then
+            series_failed "$child_line" "$i" "trial $i of $n: its summary is not sound"
+        fi
+        if (( trial_index != i )); then
+            series_failed "$child_line" "$i" "trial $i of $n: it says it is trial $trial_index"
+        fi
+        if (( i == 1 )); then
+            for k in "${trial_agreement_keys[@]}"; do first[$k]="${!k}"; done
+        else
+            for k in "${trial_agreement_keys[@]}"; do
+                if [[ "${!k}" != "${first[$k]}" ]]; then
+                    printf '  trial 1 says %s=%s and trial %s says %s=%s\n' \
+                        "$k" "${first[$k]}" "$i" "$k" "${!k}" >&2
+                    printf '  a series of trials that verified different things is not a series\n' >&2
+                    series_failed "$child_line" "$i" "trial $i of $n: the trials do not agree"
+                fi
+            done
+        fi
+        clocks+=("$trial_elapsed_s")
+        ms_of+=("$trial_wall_ms")
+        verdicts+=("$trial_verdict")
+        receipt_paths+=("$trial_receipt")
+        lines+=("$child_line")
+    done
+
+    # The tree this run started on has to be the tree the trials verified. A
+    # tree that moved under the series is a tree the series cannot describe,
+    # and the line would name a content nobody ran.
+    if [[ "$trial_sha" != "$gate_content_sha" ]]; then
+        printf 'verify-all: the trials verified %s and this run started on %s\n' \
+            "$trial_sha" "$gate_content_sha" >&2
+        exit 1
+    fi
+
+    # The worst of the three, and what the three together cost. The worst is
+    # the clock the budget is compared with; the sum is what the series cost,
+    # and it is NOT the budget's number.
+    for (( i = 0; i < n; i++ )); do
+        clock="${clocks[$i]}"
+        if (( clock > worst_s )); then
+            worst_s=$clock
+            worst_ms="${ms_of[$i]}"
+            worst_index=$((i+1))
+        fi
+        sum_s=$(( sum_s + clock ))
+    done
+    total_s="$(elapsed "$started_at")"
+
+    # The evidence of the line is the evidence of the WORST trial: the clock
+    # the budget is compared with and the work behind it belong to the same
+    # trial, and a line that mixed the clock of one trial with the evidence
+    # of another would be a line nobody could read.
+    if ! load_trial_summary "$cycle_dir/trial-${worst_index}.summary"; then
+        printf 'verify-all: the summary of the worst trial is not sound\n' >&2
+        exit 1
+    fi
+
+    # The receipt of the RUN is the receipt of its worst trial, sealed with
+    # the series: the document that outlives the run has to say that the run
+    # was three trials and not one, and it has to carry the clock of each of
+    # them and the place where each of them left its own account.
+    local run_receipt="${receipt_paths[$((worst_index-1))]}" budget="$BUDGET_SECONDS" trials_json=""
+    if [[ "$full_certification" != 1 ]]; then
+        budget="none"
+    fi
+    for (( i = 0; i < n; i++ )); do
+        [[ -n "$trials_json" ]] && trials_json="$trials_json,"
+        trials_json="$trials_json{\"index\":$((i+1)),\"wallMs\":${ms_of[$i]},\"elapsedS\":${clocks[$i]},\"verdict\":\"${verdicts[$i]}\",\"receipt\":\"${receipt_paths[$i]}\"}"
+    done
+    if [[ -n "$run_receipt" && -f "$run_receipt" ]]; then
+        if ! python3 scripts/check-e2e-receipt.py seal \
+            --receipt "$run_receipt" \
+            --verdict "${verdicts[$((worst_index-1))]}" \
+            --scope "$trial_scope" \
+            --level "$level" \
+            --wall-ms "$worst_ms" \
+            --budget-seconds "$budget" \
+            --tests-rewritten "$xml_fresh_tests" \
+            --tests-read "$xml_read_tests" \
+            --sealed-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --trials "[$trials_json]" \
+            --trials-evidence-index "$worst_index"; then
+            echo "verify-all: the receipt of the run could not be sealed with the series" >&2
+            exit 1
+        fi
+    else
+        echo "verify-all: the series has no receipt to seal" >&2
+        exit 1
+    fi
+
+    printf '\n=== the series of the %s\n' "$level"
+    for (( i = 0; i < n; i++ )); do
+        printf '    trial %s  %s  elapsed=%ss  receipt=%s\n' \
+            "$((i+1))" "${verdicts[$i]}" "${clocks[$i]}" "${receipt_paths[$i]}"
+    done
+    if [[ "$full_certification" == 1 ]]; then
+        printf '    the worst of the %s trials is %ss (trial %s), and that is the clock the %ss budget is compared with\n' \
+            "$n" "$worst_s" "$worst_index" "$BUDGET_SECONDS"
+    else
+        printf '    the worst of the %s trials is %ss (trial %s); this level does NOT compare its clock with\n' \
+            "$n" "$worst_s" "$worst_index"
+        printf '    the %ss budget of AGENTS.md section 4: that budget belongs to the certification\n' "$BUDGET_SECONDS"
+    fi
+    printf '    the %s trials together took %ss, and the whole invocation took %ss\n' "$n" "$sum_s" "$total_s"
+    printf '    the receipt of the run: %s\n' "$run_receipt"
+
+    # What THIS run left behind is measured before the verdict line is
+    # published, and not only in the trap: a run that publishes a green line
+    # and then finds its own temporaries would be a green line nobody can
+    # trust.
+    measure_residue
+    report_residue
+    if [[ "$census_failed" == 1 ]]; then
+        echo "verify-all: the residue census could not be measured: ${census_failure_reason}" >&2
+        exit 1
+    fi
+    if (( own_residue_count > 0 )); then
+        echo "verify-all: the series left ${own_residue_count} of its own temporaries behind" >&2
+        exit 1
+    fi
+
+    # The verdict line of the RUN. It is built by the same functions that
+    # build the line of a trial, with the evidence of the worst trial and the
+    # clock of that same trial, and the series published at its end.
+    local verdict_word="${lines[$((worst_index-1))]%% *}"
+    if [[ -z "$verdict_word" ]]; then
+        echo "verify-all: the worst trial published no verdict line" >&2
+        exit 1
+    fi
+    print_level_meaning
+    if [[ "$full_certification" == 1 ]]; then
+        printf '    elapsed %ss against a budget of %ss\n' "$worst_s" "$BUDGET_SECONDS"
+    else
+        printf '    elapsed %ss (this clock is NOT compared with the %ss\n' "$worst_s" "$BUDGET_SECONDS"
+        printf '    budget of AGENTS.md section 4: that budget belongs to the certification,\n'
+        printf '    and this run did not measure a build from nothing)\n'
+    fi
+    # The series is published in the line itself, so a reader of the line
+    # alone knows that the clock next to the budget is the worst of three
+    # and not the clock of one.
+    series_worst_s="$worst_s"
+    series_total_s="$total_s"
+    if [[ "$full_certification" == 1 ]] && (( worst_s > BUDGET_SECONDS )); then
+        # A trial that breached the budget fails the SERIES, and the line that
+        # says so says FAIL: a line that said PASS next to a breach would be
+        # the one lie this gate exists not to tell.
+        verdict_line "FAIL" "$worst_s"
+        echo "verify-all: BLOCKED_BUDGET. the worst of the ${n} trials was ${worst_s}s > ${BUDGET_SECONDS}s." >&2
+        echo "  Per AGENTS.md section 4 this is not something to raise or split:" >&2
+        echo "  shrink the scenario set, drop duplicate verification, or cut the" >&2
+        echo "  slowest stage, then rerun the whole gate." >&2
+        exit 1
+    fi
+    verdict_line "$verdict_word" "$worst_s"
+    if [[ "$verdict_word" == "INCOMPLETE" ]]; then
+        printf 'Every stage above ran and passed, but %s scenario(s) never ran at all.\n' "$e2e_not_run"
+        printf 'This is not the gate: a scenario that was selected and skipped is a gap\n'
+        printf 'to name, not a pass. AGENTS.md section 4 does not allow an unrun test to be a PASS.\n'
+    fi
+    exit 0
+}
+
 trap cleanup_logs EXIT
+
+# A level that publishes a series of trials CONDUCTS it here, before any
+# stage runs. The trials are complete runs of this gate, and a run that
+# measured part of a trial would not be a trial: it would be a run whose
+# clock nobody could compare with the clock of the other two.
+if (( trial_count > 1 && trial_child == 0 )); then
+    conduct_trial_series
+fi
 
 prep_started_ms=$(now_ms)
 if [[ "$full_certification" == 1 ]]; then
@@ -3354,161 +4028,6 @@ e2e_stage3_ran=0
 e2e_census_launcher=0
 e2e_census_contrast="NOT_RUN"
 
-# The suffix travels WITH the verdict line. A gap that only exists in the
-# stage log disappears the moment somebody quotes the one line that says the
-# gate passed, which is the only line anybody actually reads. Same argument as
-# the subset marker below: the difference between this run and the full gate
-# has to be inside the line, not beside it.
-gaps_suffix() {
-    if [[ "$e2e_stage3_ran" == 1 && "$e2e_not_run" -gt 0 ]]; then
-        printf '  gaps=%s not_run' "$e2e_not_run"
-    fi
-}
-
-# The test evidence travels WITH the verdict line, for the same reason the gap
-# count does. The stage log is read by whoever ran the gate; the verdict line is
-# read by everyone else, and it is the one that gets pasted into a report. A line
-# that says "the gate passed" without saying how many tests really executed is
-# half a verdict: the reader cannot tell a measurement from a cache hit.
-#
-#   rewritten   tests in the reports THIS run wrote. They really ran.
-#   read        tests in the reports this run did not write: executed by an
-#               earlier invocation and read from disk.
-#
-# A run that never asked for the tests says NOT_RUN instead of staying silent,
-# because a silent field reads like a zero.
-tests_suffix() {
-    if [[ "$stage2_ran" == 1 ]]; then
-        printf '  tests=rewritten:%s read:%s' "$xml_fresh_tests" "$xml_read_tests"
-    else
-        printf '  tests=NOT_RUN'
-    fi
-}
-
-# How much of the E2E stage was OBSERVED rather than merely executed. It travels
-# with the verdict line for the same reason the test census does.
-#
-# Every number names its origin, because a number without its content is not
-# evidence: two of them are the launcher's (what it observed, and how many
-# executions it made), one is the gate's own (what it planned on disk), and the
-# last is the contrast between the two (the gate compared the inventories
-# NAME BY NAME and they agreed). The three counts are different questions and
-# they usually answer the same number, which is exactly why a reader who sees
-# only one of them cannot tell a measurement from a transcription.
-#
-#   launcher_observed   guarantees the launcher really compared.
-#   launcher_executions executions the launcher made.
-#   gate_planned        scenarios the gate found in the tree before the stages.
-#   launcher_scenarios  distinct scenarios the launcher's report names.
-#   contrast            the verdict of comparing the last two, name by name.
-scenarios_suffix() {
-    if [[ "$e2e_stage3_ran" == 1 && -n "$e2e_observed" ]]; then
-        printf '  scenarios=launcher_observed:%s launcher_executions:%s gate_planned:%s launcher_scenarios:%s tree_scenarios:%s contrast:%s' \
-            "$e2e_observed" "$e2e_executed" "$e2e_census_gate" "$e2e_census_launcher" "$e2e_census_tree" "$e2e_census_contrast"
-    else
-        printf '  scenarios=NOT_RUN'
-    fi
-}
-
-# The families this run executed, and the families the tree holds.
-#
-# It travels with the verdict line for the same reason the scenario census
-# does. A run that executed two of the nine families is not the gate, and a
-# line that does not name the two reads like the one that executed all nine.
-# The names are the tree's, so a reader can see WHICH scenarios did not run.
-families_suffix() {
-    if [[ "$e2e_stage3_ran" == 1 ]]; then
-        printf '  families=ran:%s tree:%s' "${e2e_families_ran:-unknown}" "$e2e_families_tree"
-    else
-        printf '  families=NOT_RUN'
-    fi
-}
-
-# Whether the receipt of the E2E stage is an account the gate could read.
-# It travels with the verdict line for the same reason the test census does:
-# the receipt is the trace of the run, and a run whose trace nobody could
-# read says it passed without saying what it passed ON.
-#
-#   ok       the receipt was written, and it held up against its own totals
-#            and against the gate's census.
-#   invalid  it was written, and it did not hold up.
-#   absent   it was not written at all.
-#   NOT_RUN  the E2E stage did not run, so there was no receipt to write.
-#
-# A run that never asked for the E2E stage says NOT_RUN instead of staying
-# silent, because a silent field reads like a zero.
-receipt_suffix() {
-    printf '  receipt=%s' "$receipt_state"
-}
-
-# How much of the build REALLY ran. It travels with the verdict line for the
-# same reason the test census does: the seconds on the line are the same
-# whether the tasks executed or the cache answered for them, and a reader who
-# compares two runs needs to know which one paid for the work.
-#
-#   executed   the tasks that ran their work.
-#   cached     the tasks that did none: up to date, served from the build
-#              cache, without source, or skipped. They are the ones the cache
-#              paid for.
-#
-# A run that never declared a task says NOT_RUN instead of staying silent,
-# because a silent field reads like a zero.
-tasks_suffix() {
-    if (( task_console_lines == 0 )); then
-        printf '  tasks=NOT_RUN'
-        return 0
-    fi
-    printf '  tasks=executed:%s cached:%s' "$task_executed_total" "$task_no_work_total"
-}
-
-# What became of the configuration cache of the build. It travels with the
-# verdict line for the same reason the count of tasks does: a gate that asks
-# for the cache and does not say what happened with it has a silent field, and
-# a silent field reads like "everything was fine".
-#
-#   reused     the entry stored by an earlier run was reused.
-#   stored     a new entry was stored, so nothing was reused.
-#   discarded  the entry that existed was discarded.
-#   absent     the invocation ran without saying anything about the cache.
-#   NOT_RUN    no invocation of this run asked for the cache.
-config_cache_suffix() {
-    if [[ "$config_cache_state" == "NOT_RUN" ]]; then
-        printf '  config_cache=NOT_RUN'
-        return 0
-    fi
-    printf '  config_cache=%s' "$config_cache_state"
-}
-
-# What the E2E stage COST in launches of the product. It travels with the
-# verdict line for the same reason the test census does: the seconds on the
-# line are the same whether the product was started 50 times or 500, and a
-# reader comparing two runs needs to know which one paid for the work.
-#
-#   <n>      the launches of the product the E2E stage made.
-#
-# A run that never ran the E2E stage says NOT_RUN instead of staying silent,
-# because a silent field reads like a zero.
-jvm_suffix() {
-    if [[ -z "$e2e_launches" ]]; then
-        printf '  jvm=NOT_RUN'
-        return 0
-    fi
-    printf '  jvm=%s' "$e2e_launches"
-}
-
-# Everything the run observed, as ONE argument.
-#
-# These used to travel as separate `%s` in the verdict format, and that is how a
-# count goes missing without anybody noticing: the format carried five
-# conversions and the call passed six arguments, so the shell read the surplus
-# as a second pass over the same format. Composing them first makes that
-# unrepresentable -- one string, one `%s` -- and each field keeps saying NOT_RUN
-# rather than going quiet when its stage was skipped.
-evidence_suffixes() {
-    printf '%s%s%s%s%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
-        "$(families_suffix)" "$(jvm_suffix)" "$(receipt_suffix)" "$(residue_suffix)" \
-        "$(components_suffix)" "$(tasks_suffix)" "$(config_cache_suffix)"
-}
 
 stage3_started_ms=$(now_ms)
 if want_stage 3; then
@@ -4025,9 +4544,7 @@ fi
 # name, not a defect to redden the whole gate over.
 if (( e2e_not_run > 0 )); then
     gate_verdict="INCOMPLETE"
-    printf '\nINCOMPLETE  %s  %s  elapsed=%ss  %s%s\n' \
-        "$(identity_fields)" "$(level_field)" "$total" \
-        "$(budget_field)" "$(evidence_suffixes)"
+    verdict_line "INCOMPLETE" "$total"
     printf 'Every stage above ran and passed, but %s scenario(s) never ran at all.\n' "$e2e_not_run"
     printf 'This is not the gate: a scenario that was selected and skipped is a gap\n'
     printf 'to name, not a pass. AGENTS.md section 4 does not allow an unrun test to be a PASS.\n'
@@ -4037,7 +4554,5 @@ else
     # operator has to come back and read.
     VERIFY_ALL_VERDICT=PASS
     gate_verdict="PASS"
-    printf '\nPASS  %s  %s  elapsed=%ss  %s%s\n' \
-        "$(identity_fields)" "$(level_field)" "$total" \
-        "$(budget_field)" "$(evidence_suffixes)"
+    verdict_line "PASS" "$total"
 fi

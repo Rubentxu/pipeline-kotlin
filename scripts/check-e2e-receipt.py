@@ -15,6 +15,18 @@ Two subcommands, and the split is the point:
   seal   write the gate's own verdict into the receipt's `gate` section, so
           the document that survives the run says what the run was.
 
+THE TRIALS OF A RUN
+
+A level that publishes a series of trials writes the series into the same
+`gate` section: one entry per trial, with its clock, its verdict and the
+receipt of that trial. The document that outlives the run then carries the
+series, and not only the last trial of it: a receipt that named one trial of
+three would let a series be quoted as a single run.
+
+The worst clock of the series is derived here, from the entries themselves,
+and not read from the caller: a worst that the caller states is a worst
+nobody checked.
+
 WHAT THE RECEIPT NAMES
 
 The receipt names WHAT was verified. `sha` is the identifier of the content the
@@ -48,7 +60,7 @@ Usage:
   check-e2e-receipt.py check --receipt PATH [--census PATH] [--product PATH]
   check-e2e-receipt.py seal --receipt PATH --verdict V --scope S --wall-ms N
                             --budget-seconds N --tests-rewritten N --tests-read N
-                            [--level LEVEL]
+                            [--level LEVEL] [--trials JSON]
 """
 
 from __future__ import annotations
@@ -112,6 +124,66 @@ def budget_seconds(value: str) -> int | None:
     if text in ("", "none"):
         return None
     return int(text)
+
+
+def parse_trials(value: str) -> list[dict]:
+    """The series of trials, as the seal received it.
+
+    A trial names its place in the series, its wall clock and its verdict.
+    The three are the facts a reader needs to know whether the series is a
+    series: a trial without a place is not part of one, and a trial without a
+    clock is not a measurement.
+    """
+    text = (value or "").strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except ValueError as error:
+        raise ValueError(f"the trials are not JSON: {error}") from error
+    if not isinstance(parsed, list):
+        raise ValueError("the trials are not a list")
+    for row in parsed:
+        if not isinstance(row, dict):
+            raise ValueError("a trial is not an object")
+        for key in ("index", "wallMs", "verdict"):
+            if key not in row:
+                raise ValueError(f"a trial does not carry {key!r}")
+        for key in ("index", "wallMs"):
+            if not isinstance(row[key], int) or isinstance(row[key], bool):
+                raise ValueError(f"the {key} of a trial is not a number")
+    return parsed
+
+
+def trials_problems(document: dict) -> list[str]:
+    """The problems the series of trials of the run has, if it has one.
+
+    The series is OPTIONAL: a run that publishes one trial carries no series,
+    and a reader that insisted on it would refuse an account that is otherwise
+    sound.
+
+    What it does NOT accept is a series whose worst clock is not the worst of
+    its trials: the worst is the number the budget is compared with, and a
+    worst that the document states and its own entries contradict is a number
+    nobody can trust.
+    """
+    gate = document.get("gate")
+    if not isinstance(gate, dict):
+        return []
+    trials = gate.get("trials")
+    if trials is None:
+        return []
+    try:
+        parse_trials(json.dumps(trials))
+    except ValueError as error:
+        return [f"the trials of the run are not a sound series: {error}"]
+    worst = max(row["wallMs"] for row in trials)
+    if gate.get("trialsWorstMs") != worst:
+        return [
+            f"the run says its worst trial was {gate.get('trialsWorstMs')} ms "
+            f"and its own trials say {worst} ms"
+        ]
+    return []
 
 
 def launch_problems(document: dict) -> list[str]:
@@ -385,6 +457,7 @@ def command_check(args: argparse.Namespace) -> int:
         return fail(f"the receipt at {args.receipt} could not be read: {error}")
 
     problems = validate(document)
+    problems.extend(trials_problems(document))
     # The receipt has to name the content the GATE verified. The launcher
     # wrote the document from the environment the gate gave it, and this is
     # where that copy is checked against the gate's own answer: a receipt
@@ -469,6 +542,11 @@ def command_seal(args: argparse.Namespace) -> int:
     except (OSError, ValueError) as error:
         return fail(f"the receipt at {args.receipt} could not be read: {error}")
 
+    try:
+        trials = parse_trials(args.trials)
+    except ValueError as error:
+        return fail(f"the trials of the run could not be read: {error}")
+
     document["gate"] = {
         "verdict": args.verdict,
         "scope": args.scope,
@@ -479,6 +557,15 @@ def command_seal(args: argparse.Namespace) -> int:
         "testsRead": args.tests_read,
         "sealedAt": args.sealed_at,
     }
+
+    # The series of trials, when the run published one. The worst clock is
+    # DERIVED from the entries, so the document cannot claim a worst that its
+    # own trials contradict.
+    if trials:
+        document["gate"]["trials"] = trials
+        document["gate"]["trialsWorstMs"] = max(row["wallMs"] for row in trials)
+        if args.trials_evidence_index:
+            document["gate"]["trialsEvidenceIndex"] = args.trials_evidence_index
 
     # The seal is written to a name of its own and then MOVED into place, so a
     # reader never sees a receipt with half a gate section in it.
@@ -520,6 +607,8 @@ def main(argv: list[str]) -> int:
     seal.add_argument("--tests-rewritten", dest="tests_rewritten", type=int, default=0)
     seal.add_argument("--tests-read", dest="tests_read", type=int, default=0)
     seal.add_argument("--sealed-at", dest="sealed_at", default="")
+    seal.add_argument("--trials", dest="trials", default="")
+    seal.add_argument("--trials-evidence-index", dest="trials_evidence_index", type=int, default=0)
     seal.set_defaults(handler=command_seal)
 
     args = parser.parse_args(argv)

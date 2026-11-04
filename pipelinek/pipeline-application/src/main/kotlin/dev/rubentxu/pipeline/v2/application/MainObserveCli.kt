@@ -84,7 +84,12 @@ object MainObserveCli {
                 // which is not what the operator asked to read.
                 err.println(result.error.refusalLines("observe").joinToString("\n"))
                 err.println(USAGE)
-                return CliExit.INVALID_ARGUMENT.code
+                // The CODE comes from the same mapping the sentence came from.
+                // A view this build cannot deliver is not a request that was
+                // misunderstood: the taxonomy has a case for it
+                // (RuntimeNotAvailable), and answering 2 here threw that case
+                // away and told the operator that it was their spelling.
+                return result.error.toCliExit().code
             }
         }
 

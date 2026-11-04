@@ -1,6 +1,16 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal
+import dev.rubentxu.pipeline.v2.runtime.CompositionOutcome
+import dev.rubentxu.pipeline.v2.runtime.FilePublisherKeyRing
+import dev.rubentxu.pipeline.v2.runtime.LiveSpanNames
+import dev.rubentxu.pipeline.v2.runtime.LiveSpanStatus
+import dev.rubentxu.pipeline.v2.runtime.LiveSpans
+import dev.rubentxu.pipeline.v2.runtime.LocalFileOperatorTrustDatabase
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.runtime.PluginCompositionAdmitter
+import dev.rubentxu.pipeline.v2.runtime.PluginTrustSource
+import dev.rubentxu.pipeline.v2.runtime.PreResolvedComposition
+import dev.rubentxu.pipeline.v2.runtime.durable.AdmissionControlJournal
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.application.observation.ConsolePrintingEventSink
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
@@ -184,6 +194,10 @@ internal fun admitPluginsForRun(
     config: CliFlags,
     controlDirRoot: Path,
     telemetry: PipelineTelemetry,
+    // The clock the admission row is stamped with. The row says WHEN the decision was
+    // recorded, and the journal that records it must not read the machine's clock:
+    // the same run would stamp its rows at instants the caller cannot reproduce.
+    clock: dev.rubentxu.pipeline.v2.domain.durable.Clock,
 ): PluginAdmission =
     admitThenCompose(
         pluginJars = config.pluginJars,
@@ -191,7 +205,7 @@ internal fun admitPluginsForRun(
         trust = pluginTrustSource(config.pluginTrust),
         // The row is written before the decision returns, which is what makes the journal an
         // audit trail rather than a log.
-        journal = AdmissionControlJournal(controlDirRoot),
+        journal = AdmissionControlJournal(controlDirRoot, clock),
         telemetry = telemetry,
         // Whether an unverified plugin the operator brought is a refusal instead of a
         // warning. FALSE by default: the policy is opt-in.
@@ -261,6 +275,11 @@ internal fun admitThenCompose(
             requireTrust,
             err,
             copyRoot,
+            // The plugins the INSTALLATION bundles, and the loader they are
+            // loaded through. Both are decided here, because both are facts
+            // about this process's classpath and not about the engine.
+            bundledPlugins = computeBundledPlugins(),
+            classLoaderFor = ::pluginClassLoaderFor,
         )
     ) {
         is CompositionOutcome.Composed -> {

@@ -169,10 +169,10 @@ reachable from outside this build.
 | `example-saga-plugin` | The Saga contract is reachable through the published capabilities, with the engine owning the state |
 
 Each one is the ROOT of its own Gradle build, on purpose: a plugin that needed
-anything from `pipeline-application` would make the open-world claim it proves
-false. The four are built by ONE task in the root build script, which forks a
-single Gradle invocation over the composite in `examples/example-plugins` so
-they build concurrently.
+anything from `pipeline-runtime` or `pipeline-application` would make the
+open-world claim it proves false. The four are built by ONE task in the root
+build script, which forks a single Gradle invocation over the composite in
+`examples/example-plugins` so they build concurrently.
 
 ## Verification
 
@@ -313,7 +313,7 @@ code that implements each surface:
 | The same, in Spanish | `README.es.md`, a short guide to the same product |
 | Every CLI flag and exit code | `pipelinek --help`, `pipelinek run --help`, and the flag table in `Main.kt` |
 | The certified DSL surface | The KDoc on `StageScope.kt` and `PipelineDsl.kt` in `:pipeline-scripting-api`, which is where the DSL is declared |
-| `--workspace`, `--db`, `--control-root` | The KDoc on `durable/WorkspaceResolver.kt` in `:pipeline-application` |
+| `--workspace`, `--db`, `--control-root` | The KDoc on `durable/WorkspaceResolver.kt` in `:pipeline-runtime` |
 | Secret redaction and credentials | Redaction: the KDoc on `SecretPatternRegistry.kt` in `:pipeline-credentials-api`, which also states that a bound secret of fewer than `MIN_MASKABLE_LENGTH` (8) characters runs normally but is **not** masked, so it reaches the transcript in the clear. Store access: `PassphraseResolver.kt` and `CredentialsStorePath.kt` in `:pipeline-credentials-local` |
 | Typed events, transcripts, recovery | The KDoc on `JsonEventLog.kt` in `:pipeline-events-store` |
 | How the build is verified, and what is out of bounds | `AGENTS.md` in the repository root |

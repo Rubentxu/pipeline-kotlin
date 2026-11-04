@@ -1,0 +1,115 @@
+package dev.rubentxu.pipeline.v2.runtime
+
+import dev.rubentxu.pipeline.v2.domain.step.SemVer
+
+/**
+ * The ONE place that knows which PipelineK version is running.
+ * ## Why this had to be extracted rather than written again
+ * Admission compares each plugin's declared `apiRange` against the running version. Before this
+ * type there was no production source for that value at all: every one of the eight existing
+ * admission-gate callers passed a literal `SemVer(0, 47, 0)` from a test. A gate that has
+ * never seen a real version is not a gate, so wiring pass 1 forced the question.
+ * Reusing [readImplementationVersion] rather than reading the resource a second time is the point:
+ * the `version` subcommand already reports this value, and a second reader would be a second
+ * answer to "what version is this", free to disagree with the first.
+ * ## Why a RESOURCE and not `Package.getImplementationVersion()`
+ * `Package.getImplementationVersion()` answers only when the code was loaded from a JAR carrying a
+ * manifest. The test suites launch the CLI as `java -cp <test classpath>`, where this module is a
+ * CLASSES DIRECTORY and that answer is `null`; admission would refuse every such run with
+ * `FATAL - jar manifest is missing Implementation-Version` and exit 3.
+ * The rule is the one that matters: a build with no version cannot decide plugin
+ * compatibility, and must refuse rather than guess. The value comes
+ * from a resource generated from `project.version`, which exists in a jar AND in a classes
+ * directory. The jar manifest attribute is still populated for `pipeline-release` and for external
+ * inspection, and nothing checks that the two never diverge — a second source that
+ * can disagree is worse than either source alone.
+ * ## Fail-closed, and why a fallback would be worse
+ * A missing or unparseable version is a packaging defect. Reporting a version, or admitting plugins
+ * against one, that did not come from the build would mean deciding plugin compatibility against a
+ * number nobody chose. Both the CLI subcommand and admission therefore refuse, and they refuse the
+ * same way, from the same value.
+*/
+object RuntimeApiVersion {
+
+    /**
+     * @throws IllegalStateException when the running build carries no usable version. That is a
+     *   build defect, not a runtime condition to be tolerated.
+*/
+    fun current(): SemVer {
+        val raw = readImplementationVersion()
+        if (raw.isNullOrBlank()) {
+            throw IllegalStateException(
+                "the generated version resource is missing or empty at $RESOURCE. Refusing to decide " +
+                    "plugin compatibility against a version that did not come from the build. Rebuild " +
+                    "via Gradle so the resource is generated from project.version.",
+            )
+        }
+        return parse(raw.trim())
+            ?: throw IllegalStateException(
+                "version '$raw' read from $RESOURCE is not MAJOR.MINOR.PATCH. The SDK admits plugin " +
+                    "apiRanges against a three-component SemVer and nothing else, so a version it " +
+                    "cannot read is a version it cannot safely compare.",
+            )
+    }
+
+    /**
+     * The version this build was made from, or null when the resource is absent.
+     * Non-throwing for the `version` subcommand, which reports rather than admits and owns its own
+     * fail-closed message.
+*/
+    fun readImplementationVersion(): String? =
+        RuntimeApiVersion::class.java.getResourceAsStream(RESOURCE)?.use { stream ->
+            stream.bufferedReader().readLines()
+                .firstOrNull { it.startsWith("version=") }
+                ?.removePrefix("version=")
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        }
+
+    /**
+     * The commit this build was made from, or null when the build did not record one.
+     * A product version is not provenance. `0.60.0` names a release line, and every commit on it
+     * reports it, so a harness holding two binaries cannot tell them apart by asking the binary.
+     * That is not hypothetical: a stale binary whose version matched the expected one is
+     * exactly this failure mode, and nothing in the run says so.
+     * Non-throwing and null-tolerant on purpose, unlike [current]. A local developer build has a
+     * legitimate commit and a tree that is dirty; that is a reportable fact, not a packaging
+     * defect. Only *certifying* a candidate requires the digest, and it makes that decision itself.
+*/
+    fun readBuildCommit(): String? =
+        RuntimeApiVersion::class.java.getResourceAsStream(RESOURCE)?.use { stream ->
+            stream.bufferedReader().readLines()
+                .firstOrNull { it.startsWith("buildCommit=") }
+                ?.removePrefix("buildCommit=")
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        }
+
+    /**
+     * Provenance as a closed result, decided once.
+     * [Recorded] means the build stated which commit it came from. [Absent] means it did not, which
+     * is a legitimate state for a working-tree build and an unacceptable one for a candidate. The
+     * two are different facts, so they are different cases rather than a nullable string the
+     * caller is trusted to check.
+*/
+    sealed interface BuildIdentity {
+        data class Recorded(val commit: String) : BuildIdentity
+
+        data object Absent : BuildIdentity
+    }
+
+    /** The commit this build came from, as a typed case. Never throws, never guesses. */
+    fun buildIdentity(): BuildIdentity =
+        readBuildCommit()?.let { BuildIdentity.Recorded(it) } ?: BuildIdentity.Absent
+
+    /** `MAJOR.MINOR.PATCH`, or null for anything else. Total: no exception, no partial parse. */
+    private fun parse(raw: String): SemVer? {
+        val parts = raw.split('.')
+        if (parts.size != 3) return null
+        val numbers = parts.map { it.toIntOrNull() ?: return null }
+        if (numbers.any { it < 0 }) return null
+        return SemVer(numbers[0], numbers[1], numbers[2])
+    }
+
+    private const val RESOURCE = "/dev/rubentxu/pipeline/v2/application/pipelinek-version.properties"
+}

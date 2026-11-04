@@ -126,7 +126,7 @@ internal class ProcessRendezvousHost(
      * Launches the production ingest agent as a separate JVM that owns the FIFO read ends.
      *
      * The agent lives in
-     * `dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent` (production, in
+     * `dev.rubentxu.pipeline.v2.runtime.durable.ingest.ObsPc2IngestAgent` (production, in
      * `pipeline-application`). The runtime module cannot depend on `pipeline-application` (it
      * would be a cycle: `application` already depends on `runtime`), so the agent is loaded by
      * name. The class name is a string the runtime owns; if the class is missing the runtime

@@ -1,8 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding
-import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
-import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
+import dev.rubentxu.pipeline.v2.runtime.RunRequest
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.runtime.RunPolicy
+import dev.rubentxu.pipeline.v2.runtime.RunState
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaCompensationBinding
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaVerdict
+import dev.rubentxu.pipeline.v2.runtime.durable.analyzeCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
@@ -62,8 +66,8 @@ private fun durableRunState(
     eventSink: dev.rubentxu.pipeline.v2.events.EventSink,
     sagaObligationStore: SagaObligationStore,
     lease: DurableLease,
-    outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal,
-): CanonicalRunState = CanonicalRunState(
+    outputWakeups: dev.rubentxu.pipeline.v2.runtime.observation.WakeupSignal,
+): RunState = RunState(
     outputWakeups = outputWakeups,
     journal = journal,
     cursorStore = cursorStore,
@@ -141,9 +145,13 @@ private fun runDurablePipelineOwned(
     // cursor, the Saga obligations and the lease share the database, the connection factory and
     // the clock, so they are built together and nowhere else.
     val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
+    // The run's source of opaque identifiers, created ONCE beside the clock: the two
+    // ambient reads the engine is forbidden to perform on its own are GIVEN to it here,
+    // once, and every collaborator downstream mints with these same two.
+    val idGenerator: dev.rubentxu.pipeline.v2.domain.IdGenerator = UuidIdGenerator()
     val durableStores = DurableStores.open(rawEventStore, controlDirRoot, clock)
     // the canonical engine threads `workspaceBase` through
-    // `CanonicalRuntimeContext.workspaceBase`; the capability bridge
+    // `RuntimeContext.workspaceBase`; the capability bridge
     // populates `WORKSPACE_IDENTITY_CAPABILITY` from
     // `context.shOptions.workspaceRoot`. Plugins consume the typed
     // seam via `StepHandlerContext.capabilities.get(WORKSPACE_IDENTITY_CAPABILITY, WorkspaceIdentity::class)`
@@ -205,7 +213,7 @@ private fun runDurablePipelineOwned(
     // admitted, which is precisely the defect S6/G removed once already.
     // The refusal travels as a value: the scope still holds the lease and the
     // store, and it gives them back before the process ends.
-    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry)) {
+    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry, clock)) {
         is PluginAdmission.Admitted -> admission.composition
         is PluginAdmission.Refused -> throw CommandRefused(admission.exit)
     }
@@ -247,6 +255,7 @@ private fun runDurablePipelineOwned(
                 journal = journal,
                 eventSink = eventStore,
                 clock = clock,
+                idGenerator = idGenerator,
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
                 outputWakeups = outputObserver.wakeups,
@@ -260,12 +269,13 @@ private fun runDurablePipelineOwned(
                 val nonCanonicalSteps = compiledPipeline.analyzeCanonicalDurableExecution(composedStepRegistry)
                 if (nonCanonicalSteps.isEmpty()) {
                     runCanonical(
-                        CanonicalRunRequest(
+                        RunRequest(
                             pipeline = compiledPipeline,
                             runId = RunId(runId),
                             state = durableRunState(journal, cursorStore, eventStore, sagaObligationStore, lease, outputObserver.wakeups),
-                            policy = CanonicalRunPolicy(
+                            policy = RunPolicy(
                                 clock = clock,
+                                idGenerator = idGenerator,
                                 effectReplayPolicy = effectPolicy,
                                 controlDirRoot = controlDirRoot,
                                 sandboxProfile = config.sandboxProfile,

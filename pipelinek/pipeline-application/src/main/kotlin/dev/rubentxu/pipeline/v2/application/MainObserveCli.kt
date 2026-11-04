@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationO
 import dev.rubentxu.pipeline.v2.application.observation.LiveOutputPresentation
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
+import dev.rubentxu.pipeline.v2.application.observation.ObservationRecord
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.application.observation.FollowDecision
@@ -663,7 +664,7 @@ internal object ComposeLanes {
 */
     fun forRequest(parsed: ObservationParseResult.Parsed, eventLane: EventLane): ObserveLanes {
         val store = parsed.controlRoot?.let {
-            dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeForReading(
+            dev.rubentxu.pipeline.v2.runtime.durable.OutputPlaneProvider.storeForReading(
                 java.nio.file.Paths.get(it),
             )
         }

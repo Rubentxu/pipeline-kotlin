@@ -34,7 +34,7 @@ interface SecretStore : AutoCloseable {
 
     /**
      * Legacy single-blob storage (compatibility)
-     * Internally wraps the bytes as a [dev.rubentxu.pipeline.v2.credentials.multipart.SecretText]
+     * Internally wraps the bytes as a [dev.rubentxu.pipeline.v2.domain.credentials.SecretText]
      * and delegates to [add].
      * @param id The credential ID
      * @param bytes The secret bytes

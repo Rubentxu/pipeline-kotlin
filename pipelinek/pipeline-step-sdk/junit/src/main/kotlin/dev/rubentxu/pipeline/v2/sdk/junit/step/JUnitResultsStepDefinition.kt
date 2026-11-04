@@ -40,12 +40,12 @@ import java.nio.file.Paths
  * and re-classified as `FailureKind.ENGINE`, losing the declared USER kind.
  * Returning a [JUnitResultsOutput] makes the boundary project the carrier's
  * `outcome` via `produced as? TypedStepOutput`, preserving the declared
- * kind end-to-end. This mirrors the [dev.rubentxu.pipeline.v2.application.CoreShellOutput]
+ * kind end-to-end. This mirrors the [dev.rubentxu.pipeline.v2.runtime.CoreShellOutput]
  * pattern that `core.sh` already uses.
  * The contract declares an
  * Empty capability set. The
  * handler reads the workspace path and the report bytes directly from
- * the typed input; it never reaches CanonicalRuntimeContext. A future
+ * the typed input; it never reaches RuntimeContext. A future
  * Follow-up introduces a typed WORKSPACE_OPERATIONS_CAPABILITY
  * Read path that the runtime already supplies
 */

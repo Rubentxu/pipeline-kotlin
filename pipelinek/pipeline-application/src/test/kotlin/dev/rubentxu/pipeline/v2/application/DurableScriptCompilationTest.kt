@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.runtime.NoopPipelineTelemetry
 import dev.rubentxu.pipeline.v2.scripting.JarCompiledScriptCache
 import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import java.nio.file.Files

@@ -50,6 +50,39 @@ dependencies {
     implementation(project(":pipeline-output-store"))
     implementation(libs.kotlin.stdlib)
 
+    // The engine's own dependencies, after the move out of `:pipeline-application`.
+    //
+    // The engine was a package of the CLI module and it borrowed that module's
+    // classpath. Now that it IS a module, it declares what it uses, and the
+    // arrow runs one way: the CLI depends on the engine, never the reverse.
+    //
+    // `:pipeline-step-sdk` is not one dependency but four: the engine reaches
+    // the step contract (`:api`), the durable shell and replay policies
+    // (`:runtime`), the file executors (`:files`) and the git transcript
+    // (`:scm-git`). Each is declared for the symbols it actually carries.
+    implementation(project(":pipeline-step-sdk:api"))
+    implementation(project(":pipeline-step-sdk:runtime"))
+    implementation(project(":pipeline-step-sdk:files"))
+    implementation(project(":pipeline-step-sdk:scm-git"))
+    // The credential scope the engine admits and leases.
+    implementation(project(":pipeline-credentials-api"))
+    implementation(project(":pipeline-credentials-executor"))
+    // The scripting contract the scripted frontend and the DSL steps speak.
+    implementation(project(":pipeline-scripting-api"))
+    // The local artifact index the engine reads and writes.
+    implementation(project(":pipeline-artefacts-local"))
+    // The coroutines the engine's parallel stage and file-lock coordination use.
+    implementation(libs.kotlinx.coroutines.core)
+    // The telemetry the engine's spans and metrics are written with. The
+    // OTLP EXPORTERS stay in `:pipeline-application`: the engine produces
+    // telemetry, and what is DONE with it is the CLI's decision.
+    implementation(platform(libs.opentelemetry.bom))
+    implementation(libs.opentelemetry.api)
+    implementation(libs.opentelemetry.sdk)
+    implementation(libs.opentelemetry.sdk.autoconfigure)
+    // The JSON the engine's wire codecs and event payloads speak.
+    implementation(libs.kotlinx.serialization.json)
+
     // Unit-test wiring, because `src/test/kotlin` is not empty.
     //
     // The module carries THREE unit tests, and each one is there for ONE
@@ -86,6 +119,10 @@ dependencies {
     // gone from the modules that have no tests, so no module reaches that
     // check in silence.
     testImplementation(libs.junit.jupiter)
+    // The metric reader the observability rows read. It is a TEST instrument:
+    // it collects what the SDK would have exported, so a row can assert on
+    // the measurement instead of on the code that produced it.
+    testImplementation(libs.opentelemetry.sdk.testing)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 

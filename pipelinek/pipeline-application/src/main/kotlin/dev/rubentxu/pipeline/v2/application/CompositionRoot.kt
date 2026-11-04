@@ -1,10 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
-import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
-import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
-import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
-import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter
+import dev.rubentxu.pipeline.v2.runtime.RunRequest
+import dev.rubentxu.pipeline.v2.dsl.pipeline
+import dev.rubentxu.pipeline.v2.runtime.durable.DurableRunCoordinator
+import dev.rubentxu.pipeline.v2.runtime.durable.FileBasedRetryControlJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.FileBasedWaitUntilControlJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.OutputPlaneProvider
+import dev.rubentxu.pipeline.v2.runtime.durable.credentials.WithCredentialsExecutorScopeAdapter
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -30,14 +32,14 @@ import kotlinx.coroutines.runBlocking
  *
  * This function took EIGHTEEN parameters and had two call sites — the
  * in-memory world and the durable one — which is exactly the shape in
- * which two call sites drift. It now takes ONE [CanonicalRunRequest], and
+ * which two call sites drift. It now takes ONE [RunRequest], and
  * both worlds build the same request. The difference between "runs in
- * memory" and "runs in SQL" is the [CanonicalRunState] group: the journal,
+ * memory" and "runs in SQL" is the [RunState] group: the journal,
  * the cursor store, the event sink and the Saga seam. The rest of the
  * request — the clock, the replay policy, the sandbox, the workspace, the
  * credential seam — is the SAME set of facts for both, filled in with the
  * values each world decided. Two of them differ on purpose (the credential
- * provider and the control root, by construction); [CanonicalRunRequest]
+ * provider and the control root, by construction); [RunRequest]
  * says which.
  *
  * Two parameters are GONE, and their absence is the point:
@@ -88,10 +90,10 @@ import kotlinx.coroutines.runBlocking
  * carry the same capability set. This file states that difference instead of
  * hiding it behind a claim of symmetry.
  */
-internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlocking {
+internal fun runCanonical(request: RunRequest): RunOutcome = runBlocking {
     val state = request.state
     val policy = request.policy
-    CanonicalDurableRunCoordinator(
+    DurableRunCoordinator(
         // The run's durable spine, what it was given, and what it resolves against.
         // The three groups are the whole request: the coordinator derives the rest.
         state = state,

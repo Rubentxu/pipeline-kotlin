@@ -27,7 +27,7 @@ package dev.rubentxu.pipeline.v2.runtime.recover
  *    left off.
  *  - Consult [RuntimeRecoverDecision.decideRecovery] (the pure decider).
  *  - For `ReuseTerminal`: materialise via the existing
- *    [dev.rubentxu.pipeline.v2.application.durable.RecoveredExecutionMaterializer.materialize],
+ *    [dev.rubentxu.pipeline.v2.runtime.durable.RecoveredExecutionMaterializer.materialize],
  *    append the terminal journal row via [dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal.append],
  *    advance the cursor via [dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore.advance],
  *    and reconcile the output store via the existing

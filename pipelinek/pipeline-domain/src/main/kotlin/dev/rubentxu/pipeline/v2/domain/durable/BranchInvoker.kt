@@ -34,7 +34,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.ParallelDecision.Start
  * The plan port defined here is the seam the durable path will consume once
  * it routes its branch decision through this port (this is part of the
  * InvocationEngine seam). The parallel dispatch and join no longer live in
- * `CanonicalDurableRunCoordinator` — the coordinator exposes a single `run`
+ * `DurableRunCoordinator` — the coordinator exposes a single `run`
  * entry point and delegates the aggregate to `ParallelStageEngine` — but
  * this port has NO production consumer yet: it remains a pure contract
  * test target.

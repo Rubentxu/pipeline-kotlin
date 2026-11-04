@@ -1,0 +1,702 @@
+package dev.rubentxu.pipeline.v2.runtime.durable
+
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.runtime.SpanScope
+import dev.rubentxu.pipeline.v2.domain.BlockSegment
+import dev.rubentxu.pipeline.v2.domain.BlockStepNode
+import dev.rubentxu.pipeline.v2.domain.ExecutionContext
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.StepNode
+import dev.rubentxu.pipeline.v2.domain.PipelineFailure
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
+import dev.rubentxu.pipeline.v2.events.DirExited
+import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
+import dev.rubentxu.pipeline.v2.events.TimestampsExited
+import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
+import dev.rubentxu.pipeline.v2.events.TimeoutTriggered
+import dev.rubentxu.pipeline.v2.events.TimestampsEntered
+import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
+import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import dev.rubentxu.pipeline.v2.domain.credentials.boundPurpose
+import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilCompletion
+import java.nio.file.Files
+
+/**
+ * The body-execution machinery, extracted from the durable coordinator.
+ * The coordinator remains the composition point: it constructs this engine
+ * and hands it its own child dispatcher, so the body loop re-enters the SAME
+ * dispatch path every other caller uses — composition, not a second engine.
+ * This first slice moves the child-iteration loop verbatim; the scope
+ * projections and the scope-specific engines follow in later slices.
+ * Bit-equivalence contract:
+ * (dir/retry/withEnv rows and segments) — the engine must satisfy it
+ * UNCHANGED.
+*/
+
+/**
+ * The single seam by which body children re-enter the coordinator's dispatch.
+ *
+ * It is INTERNAL because it carries the scope's parent, which is an internal
+ * value: a public seam that took an internal type would widen the published
+ * surface of the module for no consumer, and the module's own contract says
+ * the seam exists for the engine, not for anybody outside it.
+ */
+fun interface BodyChildDispatcher {
+    suspend fun dispatchChild(
+        child: StepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        childShOptions: ShOptions,
+        bodyPath: List<BlockSegment>,
+        spanScope: SpanScope,
+    ): StepOutcome
+}
+
+class BodyExecutionEngine(
+    private val eventSink: EventSink,
+    private val clock: Clock,
+    private val idGenerator: IdGenerator,
+    private val telemetry: PipelineTelemetry,
+    private val retryControlJournal: FileBasedRetryControlJournal? = null,
+    private val waitUntilControlJournal: WaitUntilControlJournal? = null,
+) {
+
+    /**
+     * Iterates a block's body children through the shared dispatch path.
+     * Moved verbatim from the coordinator: same deterministic child OpIds
+     * (`parentBodyPath + BlockSegment(childIndex, childKey)`), same
+     * per-USE CredentialUsed emission, same first-failure short circuit.
+*/
+    suspend fun invokeBodyChildren(
+        block: BlockStepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        childShOptions: ShOptions,
+        parentBodyPath: List<BlockSegment>,
+        spanScope: SpanScope,
+        leaseBindings: List<CredentialBindingSpec> = emptyList(),
+        dispatcher: BodyChildDispatcher,
+    ): StepOutcome {
+        for ((childIndex, child) in block.body.withIndex()) {
+            val childOpId = dev.rubentxu.pipeline.v2.runtime.durable.OpId(
+                runId.value,
+                stageIndex,
+                stepIndex,
+                branchIndex = null,
+                bodyPath = parentBodyPath + BlockSegment(childIndex, child.pluginStepId),
+            )
+            val childOutcome = dispatcher.dispatchChild(
+                child,
+                runId,
+                stageName,
+                stageIndex,
+                stepIndex,
+                childShOptions,
+                childOpId.bodyPath,
+                spanScope,
+            )
+            if (leaseBindings.isNotEmpty()) {
+                for (binding in leaseBindings) {
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.CredentialUsed(
+                            eventId = idGenerator.next(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            credentialsId = binding.credentialsId,
+                            // The single domain authority. The previous local
+                            // `when` covered only 3 of 7 kinds and reported `file`,
+                            // `certificate`, `zip` and `usernameColonPassword` as API_KEY.
+                            purpose = binding.boundPurpose,
+                            stepIndex = childIndex,
+                        ),
+                    )
+                }
+            }
+            when (childOutcome) {
+                is StepOutcome.Failure, is StepOutcome.Unstable -> return childOutcome
+                else -> { /* continue to the next child */ }
+            }
+        }
+        return StepOutcome.Success
+    }
+
+    /** The projected child ShOptions plus the context after the scope's overlays. */
+    data class ScopedBody(val shOptions: ShOptions, val context: ExecutionContext)
+
+    /**
+     * Projects a block's [BlockShellScope] onto the child execution surface:
+     * derives the child ShOptions, emits the scope's scheduling/entry events,
+     * and pushes the context overlays. Moved verbatim from the coordinator.
+     * The scope bookends whose event kinds have no other producer
+     * here — DirEntered/DirExited, TimestampsEntered/TimestampsExited and
+     * TimeoutTriggered — take `occurredAt` from the injected durable [clock],
+     * exactly like the sibling TimeoutScheduled already did. The WaitUntil and
+     * Retry attempt events keep `Instant.now()` because `WaitUntilEngine` and
+     * `RetryEngine` emit the SAME event kinds with the wall clock; changing this
+     * engine alone would make the two execution paths of one Step disagree on
+     * their time source. `occurredAt` is a non-deterministic identity field
+     * (excluded from semantic parity, absent from any fingerprint), so neither
+     * source touches durable replay semantics.
+*/
+    fun projectScope(
+        scope: BlockShellScope,
+        block: BlockStepNode,
+        runId: RunId,
+        stageIndex: Int,
+        stepIndex: Int,
+        stageShOptions: ShOptions,
+        context: ExecutionContext,
+    ): ScopedBody = when (scope) {
+        BlockShellScope.None -> ScopedBody(stageShOptions, context)
+        is BlockShellScope.Retry -> ScopedBody(stageShOptions, context)
+        // Block deadline becomes the child Sh watchdog budget -
+        // the tighter of the block budget and any inherited stage timeout.
+        is BlockShellScope.Timeout -> {
+            val inherited = stageShOptions.timeoutMs
+            val effective = when {
+                inherited == null -> scope.budgetMs
+                else -> minOf(inherited, scope.budgetMs)
+            }
+            // The timeout is now ADMITTED. Project the scheduling
+            // transition once, BEFORE any child StepStarted.
+            eventSink.append(
+                dev.rubentxu.pipeline.v2.events.TimeoutScheduled(
+                    eventId = idGenerator.next(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    occurredAt = clock.now(),
+                    timeoutSeconds = effective / 1000L,
+                    timeoutAction = "abort",
+                    stepName = block.id.value,
+                    stepType = block.pluginStepId.value,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                ),
+            )
+            ScopedBody(stageShOptions.copy(timeoutMs = effective), context)
+        }
+        is BlockShellScope.Directory -> {
+            Files.createDirectories(scope.target)
+            val contextAfterPush = context.pushed(
+                dev.rubentxu.pipeline.v2.domain.ContextOverlay.Cwd(scope.target.toString()),
+            )
+            eventSink.append(
+                dev.rubentxu.pipeline.v2.events.DirEntered(
+                    eventId = idGenerator.next(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    // DirEntered has no other producer, and its sibling
+                    // TimeoutScheduled already reads the injected durable [clock]. Take
+                    // `occurredAt` from the same seam so the dir bookends are reproducible
+                    // under an injected clock like the timeout bookends are.
+                    occurredAt = clock.now(),
+                    path = scope.target.toString(),
+                    previousPath = scope.previous.toString(),
+                ),
+            )
+            ScopedBody(stageShOptions.copy(workingDirectory = scope.target), contextAfterPush)
+        }
+        is BlockShellScope.TimestampsScope -> {
+            eventSink.append(
+                dev.rubentxu.pipeline.v2.events.TimestampsEntered(
+                    eventId = idGenerator.next(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    // No other producer; same injected seam as DirEntered.
+                    occurredAt = clock.now(),
+                ),
+            )
+            ScopedBody(stageShOptions, context)
+        }
+        is BlockShellScope.EnvScope -> {
+            // Parse env overrides and merge into ShOptions.env
+            val envOverrides = scope.overrides.associate { override ->
+                val parts = override.split("=", limit = 2)
+                if (parts.size == 2) {
+                    parts[0] to dev.rubentxu.pipeline.v2.domain.SecretHandle.plain(parts[1])
+                } else {
+                    override to dev.rubentxu.pipeline.v2.domain.SecretHandle.plain("")
+                }
+            }
+            val mergedEnv = scope.parentEnv + envOverrides
+            val envSpecValues = envOverrides.mapValues {
+                it.value.borrow { bytes -> String(bytes, Charsets.UTF_8) }
+            }
+            val contextAfterPush = context.pushed(
+                dev.rubentxu.pipeline.v2.domain.ContextOverlay.Environment(
+                    dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(envSpecValues),
+                ),
+            )
+            ScopedBody(stageShOptions.copy(env = mergedEnv), contextAfterPush)
+        }
+        // WaitUntil scope passes through ShOptions without special flags.
+        // The polling backoff is handled in the executeWaitUntilBody loop below.
+        is BlockShellScope.WaitUntilScope -> ScopedBody(stageShOptions, context)
+    }
+
+    suspend fun executeWaitUntilInline(
+        scope: BlockShellScope.WaitUntilScope,
+        block: BlockStepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        childShOptions: ShOptions,
+        parentBodyPath: List<BlockSegment>,
+        spanScope: SpanScope,
+    dispatcher: BodyChildDispatcher,
+    ): StepOutcome {
+        val overallStartMs = clock.now().toEpochMilli()
+        // Initial sleep before first poll
+        if (scope.initialRecurrencePeriod > 0) {
+            kotlinx.coroutines.delay(scope.initialRecurrencePeriod)
+        }
+
+        var currentBackoffMs = scope.initialRecurrencePeriod
+        val maxBackoffMs = scope.maxBackoffMs
+        var pollCount = 0
+
+        waitUntilPollLoop@ while (true) {
+            pollCount++
+            val pollAttemptPath = parentBodyPath + BlockSegment(pollCount, dev.rubentxu.pipeline.v2.domain.PluginStepId("wait-until-poll"))
+            val pollStartMs = clock.now().toEpochMilli()
+
+            val pollOutcome = invokeBodyChildren(
+                block,
+                runId,
+                stageName,
+                stageIndex,
+                stepIndex,
+                childShOptions,
+                pollAttemptPath,
+                spanScope,
+                dispatcher = dispatcher,
+            )
+
+            val pollDurationMs = clock.now().toEpochMilli() - pollStartMs
+
+            // ONE event per attempt, same rule as the durable branch: the
+            // poll's own record, with the measured duration and the evaluated
+            // verdict. There is no mirror emitted before the body runs.
+            eventSink.append(
+                WaitUntilPolled(
+                    eventId = idGenerator.next(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    occurredAt = clock.now(),
+                    attempt = pollCount,
+                    durationMs = pollDurationMs,
+                    conditionResult = pollOutcome is StepOutcome.Success,
+                ),
+            )
+
+            when (pollOutcome) {
+                is StepOutcome.Success -> {
+                    // Condition satisfied. The terminal is projected from the
+                    // SAME algebra the durable branch projects it from, so
+                    // the wire token and the typed result cannot disagree
+                    // between the two branches.
+                    val completion = WaitUntilCompletion.Satisfied
+                    val totalDurationMs = clock.now().toEpochMilli() - overallStartMs
+                    eventSink.append(
+                        WaitUntilCompleted(
+                            eventId = idGenerator.next(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            totalAttempts = pollCount,
+                            totalDurationMs = totalDurationMs,
+                            outcome = completion.wireOutcome,
+                        ),
+                    )
+                    return completion.toStepOutcome()
+                }
+                else -> {
+                    // Condition not satisfied (failure, unstable, etc.) — retry with backoff
+                    if (currentBackoffMs >= maxBackoffMs) {
+                        // THE CEILING IS THE DEADLINE. This poll ran with an
+                        // interval that had reached the ceiling, so it was the
+                        // LAST poll: the condition did not hold, and the wait
+                        // ends here. Same rule, same terminal and same message
+                        // as the durable branch, because both project it from
+                        // [WaitUntilCompletion].
+                        val completion = WaitUntilCompletion.DeadlineExceeded(
+                            attempt = pollCount,
+                            ceilingMs = maxBackoffMs,
+                        )
+                        val totalDurationMs = clock.now().toEpochMilli() - overallStartMs
+                        eventSink.append(
+                            WaitUntilCompleted(
+                                eventId = idGenerator.next(),
+                                runId = runId.value,
+                                sequence = 0L,
+                                occurredAt = clock.now(),
+                                totalAttempts = pollCount,
+                                totalDurationMs = totalDurationMs,
+                                outcome = completion.wireOutcome,
+                            ),
+                        )
+                        return completion.toStepOutcome()
+                    }
+                    // Exponential backoff: double currentBackoffMs, cap at maxBackoffMs
+                    currentBackoffMs = minOf(currentBackoffMs * 2, maxBackoffMs)
+                    kotlinx.coroutines.delay(currentBackoffMs)
+                }
+            }
+        }
+    }
+
+    /**
+     * Executes the projected scope end to end: the body-reentry binding, the
+     * scope's execution (engine delegation or inline loop per journal
+     * availability), and the bracketed bookends. Moved verbatim from the
+     * coordinator. The credential-lease path composes through the
+     * credentialLeasedBody callback the caller passes.
+*/
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
+    suspend fun executeScope3b(
+        scope: BlockShellScope,
+        block: BlockStepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        childShOptions: ShOptions,
+        parentBodyPath: List<BlockSegment>,
+        spanScope: SpanScope,
+        dispatcher: BodyChildDispatcher,
+        bodyInvokerAdapter: BodyInvokerAdapter,
+    ): StepOutcome {
+        val scopeInBody = spanScope
+        var outcome: StepOutcome = StepOutcome.Success
+        val bodyRef = dev.rubentxu.pipeline.v2.domain.step.BodyRefs.childBody(parentBodyPath)
+        bodyInvokerAdapter.open(bodyRef) { ctx ->
+            // Phase 1b: derive the per-call attemptSegment from the context the
+            // caller hands to [BodyInvoker.invoke]. An attempt N on the same bodyRef
+            // produces a distinct deterministic bodyPath (parentBodyPath +
+            // BlockSegment(N, retry-attempt)); this is the semantic application of
+            // `BodyInvocationContext.attempt` onto durable identity.
+            val attemptSegment = ctx.attempt?.let { seg ->
+                listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(seg.index, seg.key))
+            } ?: emptyList()
+            val attemptBasePath = parentBodyPath + attemptSegment
+            // Phase 1b: project `context.patch` onto the parent ExecutionContext AND onto
+            // the options the children are launched with. The two surfaces are projected
+            // together because a patch that reaches only one of them does not happen: the
+            // context would say `FOO=1` while the process runs without it.
+            when (val projection = projectInvocationPatch(scopeInBody.ambient, childShOptions, ctx.patch)) {
+                is InvocationPatchProjection.Refused -> StepOutcome.Failure(
+                    PipelineFailure(
+                        dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                        projection.reason,
+                    ),
+                )
+
+                is InvocationPatchProjection.Applied -> invokeBodyChildren(
+                    block = block,
+                    runId = runId,
+                    stageName = stageName,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    childShOptions = projection.shOptions,
+                    parentBodyPath = attemptBasePath,
+                    spanScope = scopeInBody.withAmbient(projection.context),
+                    dispatcher = dispatcher,
+                )
+            }
+        }
+
+        try {
+            // `core.retry` re-dispatches the SAME body per attempt.
+            // Each attempt appends a deterministic BlockSegment ("{attempt}:retry-attempt")
+            // to the child bodyPath, so every attempt gets its own journal rows under
+            // exactly-once OpId semantics; completed attempts are never re-executed on
+            // restart/replay (journal lookup, not memory). Other scopes run the body once.
+            // When `retryControlJournal` is bound, the retry aggregate
+            // is reconciled against durable state BEFORE each attempt dispatch. The legacy
+            // in-memory counter is replaced by a control journal that survives restarts.
+            // When the journal is NOT bound, the inline loop is preserved
+            // bit-equivalent — existing callers and tests see no change.
+            if (scope is BlockShellScope.Retry && retryControlJournal != null) {
+                // Retry aggregate is owned by RetryEngine
+                // (dev.rubentxu.pipeline.v2.runtime.durable.retry.RetryEngine).
+                // The coordinator hands the body to the engine through the
+                // public BodyInvoker port (the body-ref was opened by the
+                // adapter above); the engine plans, persists, invokes and
+                // folds outcomes, all `StepKey`-blind. The retry legacy loop
+                // (no retryControlJournal) remains bit-equivalent inline below.
+                val controlOpId = dev.rubentxu.pipeline.v2.runtime.durable.RetryIdentityFactory.controlOperationId(
+                    runId.value, stageIndex, stepIndex, parentBodyPath,
+                )
+                val fingerprint = computeRetryContractFingerprint(parentBodyPath, scope)
+                val retryEngine = dev.rubentxu.pipeline.v2.runtime.durable.retry.RetryEngine(
+                    journal = retryControlJournal,
+                    eventSink = eventSink,
+                    bodyInvoker = bodyInvokerAdapter,
+                    identity = dev.rubentxu.pipeline.v2.domain.durable.RetryControlIdentity(
+                        operationId = controlOpId,
+                    ),
+                    controlOpId = controlOpId,
+                    parentBodyPath = parentBodyPath,
+                    fingerprint = fingerprint,
+                    maxAttempts = scope.maxAttempts,
+                    runId = runId,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    blockId = block.id,
+                    blockPluginStepId = block.pluginStepId,
+                    telemetry = telemetry,
+                    clock = clock,
+                    idGenerator = idGenerator,
+                )
+                outcome = retryEngine.execute(bodyRef, scopeInBody.parent)
+            } else if (scope is BlockShellScope.WaitUntilScope && waitUntilControlJournal != null) {
+                // WaitUntil aggregate is owned by WaitUntilEngine
+                // (dev.rubentxu.pipeline.v2.runtime.durable.waituntil.WaitUntilEngine).
+                // The coordinator hands the body to the engine through the public
+                // BodyInvoker port; the engine plans, persists, polls and folds
+                // outcomes, all `StepKey`-blind. The waitUntil legacy loop (no
+                // waitUntilControlJournal) is the inline loop below, and it now
+                // applies the SAME rule — the backoff ceiling is the deadline —
+                // and projects its terminal from the same [WaitUntilCompletion]
+                // algebra, so the two branches cannot diverge on when a wait
+                // ends or on how it says so.
+                val waitUntilControlOpId =
+                    dev.rubentxu.pipeline.v2.runtime.durable.WaitUntilIdentityFactory.controlOperationId(
+                        runId.value, stageIndex, stepIndex, parentBodyPath,
+                    )
+                val waitUntilFingerprint = computeWaitUntilContractFingerprint(parentBodyPath, scope)
+                val waitUntilEngine =
+                    dev.rubentxu.pipeline.v2.runtime.durable.waituntil.WaitUntilEngine(
+                        journal = waitUntilControlJournal,
+                        eventSink = eventSink,
+                        bodyInvoker = bodyInvokerAdapter,
+                        controlOpId = waitUntilControlOpId,
+                        fingerprint = waitUntilFingerprint,
+                        initialRecurrencePeriodMs = scope.initialRecurrencePeriod,
+                        maxBackoffMs = scope.maxBackoffMs,
+                        runId = runId,
+                        stageIndex = stageIndex,
+                        stepIndex = stepIndex,
+                        telemetry = telemetry,
+                        clock = clock,
+                        idGenerator = idGenerator,
+                    )
+                outcome = waitUntilEngine.execute(bodyRef, scopeInBody.parent)
+            } else if (scope is BlockShellScope.WaitUntilScope) {
+                // Legacy waitUntil (no journal): the inline polling loop.
+                // It is not the shipped path — the production composition root
+                // always binds a control journal — but it is kept, and it now
+                // agrees with the durable branch on the terminal.
+                outcome = executeWaitUntilInline(
+                    scope = scope,
+                    block = block,
+                    runId = runId,
+                    stageName = stageName,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    childShOptions = childShOptions,
+                    parentBodyPath = parentBodyPath,
+                    spanScope = scopeInBody,
+                    dispatcher = dispatcher,
+                )
+            } else {
+                val attemptCount = when (scope) {
+                    is BlockShellScope.Retry -> scope.maxAttempts
+                    else -> 1
+                }
+                var attempt = 1
+                bodyLoop@ while (attempt <= attemptCount) {
+                // Each attempt re-evaluates the body from scratch; a prior attempt's
+                // failure must not survive a later successful attempt.
+                outcome = StepOutcome.Success
+                val attemptSegment = if (scope is BlockShellScope.Retry) {
+                    listOf(BlockSegment(attempt, PluginStepId("retry-attempt")))
+                } else emptyList()
+                val attemptBasePath = parentBodyPath + attemptSegment
+
+                if (scope is BlockShellScope.Retry) {
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.RetryAttemptStarted(
+                            eventId = idGenerator.next(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            attemptNumber = attempt,
+                            maxAttempts = scope.maxAttempts,
+                            stepName = block.id.value,
+                            stepType = block.pluginStepId.value,
+                            stageIndex = stageIndex,
+                            stepIndex = stepIndex,
+                        ),
+                    )
+                }
+
+                val attemptOutcome = invokeBodyChildren(
+                    block,
+                    runId,
+                    stageName,
+                    stageIndex,
+                    stepIndex,
+                    childShOptions,
+                    attemptBasePath,
+                    scopeInBody,
+                    dispatcher = dispatcher,
+                )
+                when (attemptOutcome) {
+                    is StepOutcome.Failure -> {
+                        outcome = attemptOutcome
+                        if (attempt < attemptCount) {
+                            attempt++
+                            continue@bodyLoop
+                        }
+                        break@bodyLoop // Stop on first failure after last attempt
+                    }
+                    is StepOutcome.Unstable -> {
+                        outcome = attemptOutcome
+                        break@bodyLoop
+                    }
+                    else -> {
+                        // Body completed without failure — no extra attempt
+                        break@bodyLoop
+                    }
+                }
+                }
+            }
+        } finally {
+            // Close the body-reentry seam unconditionally so a thrown outcome
+            // still drains the adapter's `openBodies` map. Mirrors the existing DirExited /
+            // TimestampsExited emission: the bracketed finally must always run.
+            bodyInvokerAdapter.close(bodyRef)
+            if (scope is BlockShellScope.Directory) {
+                eventSink.append(
+                    DirExited(
+                        eventId = idGenerator.next(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        // No other producer; keeps the DirEntered/DirExited
+                        // pair on one reproducible time source.
+                        occurredAt = clock.now(),
+                        path = scope.target.toString(),
+                        restoredTo = scope.previous.toString(),
+                    ),
+                )
+            }
+            if (scope is BlockShellScope.TimestampsScope) {
+                eventSink.append(
+                    dev.rubentxu.pipeline.v2.events.TimestampsExited(
+                        eventId = idGenerator.next(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        // No other producer; keeps the Timestamps* pair on
+                        // one reproducible time source.
+                        occurredAt = clock.now(),
+                    ),
+                )
+            }
+            // `TimeoutScheduled` is projected when the
+            // block deadline is admitted (above), but the deadline is ENFORCED by the child
+            // shell watchdog, which surfaces only the child's own StepFailed(TIMEOUT). Without
+            // this event the block's `timeout()` has an admission record but no breach record,
+            // and a block deadline that fires is indistinguishable from a plain script timeout.
+            // `TimeoutTriggered` already exists in the vocabulary, JSON codec, Sqlite store,
+            // sequence assigner and identity projector; it had NO producer, so the event was
+            // unreachable from any observable timeline. Emit it here, at the block authority
+            // seam, keyed on the TYPED body outcome — never on a concrete StepKey — so a
+            // deadline breach is observable from a separate process observing the event log.
+            if (scope is BlockShellScope.Timeout) {
+                val deadlineBreached = (outcome as? StepOutcome.Failure)
+                    ?.failure
+                    ?.kind == dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT
+                if (deadlineBreached) {
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.TimeoutTriggered(
+                            eventId = idGenerator.next(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            // The breach pairs with the already-durable
+                            // TimeoutScheduled admission; same seam, so an observer can
+                            // subtract the two reproducibly under an injected clock.
+                            occurredAt = clock.now(),
+                            stageOrStep = block.id.value,
+                            action = "abort",
+                            durationMs = scope.budgetMs,
+                        ),
+                    )
+                }
+            }
+        }
+
+        return outcome
+    }
+
+}
+
+    /**
+     * Deterministic fingerprint of a retry aggregate's contract.
+     * The fingerprint is stable across attempts for a given parent bodyPath and
+     * maxAttempts — divergence triggers [RetryReconciliationDecision.RejectDivergence].
+*/
+    internal fun computeRetryContractFingerprint(
+        parentBodyPath: List<BlockSegment>,
+        scope: BlockShellScope.Retry,
+    ): Fingerprint {
+        val input = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
+            stepId = BodyAggregateIdentity.RetryControlRow.key.value,
+            params = mapOf(
+                "maxAttempts" to kotlinx.serialization.json.JsonPrimitive(scope.maxAttempts),
+                "parentBodyPath" to kotlinx.serialization.json.JsonArray(
+                    parentBodyPath.map {
+                        kotlinx.serialization.json.JsonPrimitive(it.encoded)
+                    },
+                ),
+            ),
+            runId = "retry-contract", // Stable per-aggregate, NOT per-attempt.
+            attempt = 1,
+        )
+        return Fingerprint.compute(
+            input,
+            BodyAggregateIdentity.RetryControlRow.key.value,
+            ReplayPolicy.MEMOIZED,
+            1,
+        )
+    }
+
+    internal fun computeWaitUntilContractFingerprint(
+        parentBodyPath: List<BlockSegment>,
+        scope: BlockShellScope.WaitUntilScope,
+    ): Fingerprint {
+        val input = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
+            stepId = BodyAggregateIdentity.WaitUntilControlRow.key.value,
+            params = mapOf(
+                "initialRecurrencePeriodMs" to kotlinx.serialization.json.JsonPrimitive(scope.initialRecurrencePeriod),
+                "maxBackoffMs" to kotlinx.serialization.json.JsonPrimitive(scope.maxBackoffMs),
+                "parentBodyPath" to kotlinx.serialization.json.JsonArray(
+                    parentBodyPath.map { kotlinx.serialization.json.JsonPrimitive(it.encoded) },
+                ),
+            ),
+            runId = "wait-until-contract", // Stable per-aggregate, NOT per-attempt.
+            attempt = 1,
+        )
+        return Fingerprint.compute(
+            input,
+            BodyAggregateIdentity.WaitUntilControlRow.key.value,
+            ReplayPolicy.NEVER,
+            1,
+        )
+    }
+

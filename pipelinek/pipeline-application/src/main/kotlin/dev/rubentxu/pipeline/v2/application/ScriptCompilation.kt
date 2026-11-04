@@ -5,6 +5,16 @@ import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.runtime.LiveSpanAttributes
+import dev.rubentxu.pipeline.v2.runtime.LiveSpanNames
+import dev.rubentxu.pipeline.v2.runtime.LiveSpanStatus
+import dev.rubentxu.pipeline.v2.runtime.LiveSpans
+import dev.rubentxu.pipeline.v2.runtime.MetricBoundary
+import dev.rubentxu.pipeline.v2.runtime.MetricOutcome
+import dev.rubentxu.pipeline.v2.runtime.MetricStatus
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.runtime.SystemRuntimeConfig
+import dev.rubentxu.pipeline.v2.runtime.metricOutcomeOf
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptCache
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost

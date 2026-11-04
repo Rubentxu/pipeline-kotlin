@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.application.observation.LiveOutputDrain
 import dev.rubentxu.pipeline.v2.application.observation.LiveOutputDrainResult
 import dev.rubentxu.pipeline.v2.application.observation.LiveOutputPresentation
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
-import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
+import dev.rubentxu.pipeline.v2.runtime.durable.OutputPlaneProvider
 import java.nio.file.Path
 
 /**
@@ -47,7 +47,7 @@ internal fun startLiveOutputObserver(
 ): LiveOutputObserverHandle {
     // The signal the run's own writes will announce on. For a document
     // format nothing parks on it, and announcing to nobody is a no-op.
-    val wakeups = dev.rubentxu.pipeline.v2.application.observation.WakeupSignal()
+    val wakeups = dev.rubentxu.pipeline.v2.runtime.observation.WakeupSignal()
     if (format == ObservationFormat.JSON) {
         return LiveOutputObserverHandle(wakeups) { }
     }
@@ -64,7 +64,7 @@ internal fun startLiveOutputObserver(
         pollIntervalMs = 10,
         park = { millis ->
             wakeups.await(millis) !=
-                dev.rubentxu.pipeline.v2.application.observation.ParkOutcome.Interrupted
+                dev.rubentxu.pipeline.v2.runtime.observation.ParkOutcome.Interrupted
         },
     )
     val runFinished = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -113,7 +113,7 @@ private const val OBSERVER_JOIN_TIMEOUT_MS = 5_000L
  * it, so the run's announce path never has to ask whether anyone listens.
  */
 internal class LiveOutputObserverHandle(
-    val wakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal,
+    val wakeups: dev.rubentxu.pipeline.v2.runtime.observation.WakeupSignal,
     private val onClose: () -> Unit,
 ) : AutoCloseable {
     override fun close() = onClose()

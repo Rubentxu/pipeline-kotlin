@@ -5,7 +5,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * The retry control identity carries the COMPLETE inherited
  * canonical body path. Branch identity and parent bodyPath are NOT appended
  * here; they are captured by the underlying [operationId], which is the
- * canonical [dev.rubentxu.pipeline.v2.application.durable.OpId.format]
+ * canonical [dev.rubentxu.pipeline.v2.runtime.durable.OpId.format]
  * output for the retry's [BlockStepNode] (without the per-attempt segment).
  * Same retry + same attempt ordinal + same canonical child MUST produce the
  * same durable child identity across restarts. This identity is the anchor
@@ -14,7 +14,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
 data class RetryControlIdentity(
     /**
      * Canonical retry operation id, formatted as the
-     * [dev.rubentxu.pipeline.v2.application.durable.OpId.format] output for
+     * [dev.rubentxu.pipeline.v2.runtime.durable.OpId.format] output for
      * the retry [BlockStepNode] WITHOUT any attempt-BlockSegment.
 */
     val operationId: String,

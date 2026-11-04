@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.console.OperationSelection
-import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
+import dev.rubentxu.pipeline.v2.runtime.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader
 import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
 import dev.rubentxu.pipeline.v2.output.OutputStreamAddress

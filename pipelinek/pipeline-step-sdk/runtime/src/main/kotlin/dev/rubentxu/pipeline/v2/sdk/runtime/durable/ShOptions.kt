@@ -102,7 +102,7 @@ data class ShOptions(
 */
     val agentSecret: String? = null,
     // NOTE: a `Map<StepCapability, Any>` was briefly carried here so the
-    // plugin seams would not have to reach CanonicalDurableRunCoordinator.
+    // plugin seams would not have to reach DurableRunCoordinator.
     // That was reverted: it turned this type — a carrier of FACTS and POLICIES
     // for one execution — into a runtime service locator, and it bought only a
     // line count. Plugin seams travel through RuntimeCapabilityContributor

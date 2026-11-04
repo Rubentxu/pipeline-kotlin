@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
+import dev.rubentxu.pipeline.v2.runtime.TelemetrySource
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetrySignal
 import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryTrace

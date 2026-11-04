@@ -1,7 +1,11 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
-import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
+import dev.rubentxu.pipeline.v2.runtime.RunRequest
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.runtime.RunPolicy
+import dev.rubentxu.pipeline.v2.runtime.RunState
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaVerdict
+import dev.rubentxu.pipeline.v2.runtime.durable.analyzeCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
@@ -118,6 +122,10 @@ private fun runVolatilePipelineOwned(
     )
 
     val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
+    // The run's source of opaque identifiers, created ONCE beside the clock: the two
+    // ambient reads the engine is forbidden to perform on its own are GIVEN to it here,
+    // once, and every collaborator downstream mints with these same two.
+    val idGenerator: dev.rubentxu.pipeline.v2.domain.IdGenerator = UuidIdGenerator()
     val journal: dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal =
         InMemoryOperationJournal(clock)
     val cursorStore: dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore =
@@ -157,7 +165,7 @@ private fun runVolatilePipelineOwned(
     // ended the process HERE would skip the branch's own `finally`, and what that finally
     // releases is the output observer — a thread. So the rule is the same everywhere: a refusal
     // UNWINDS, and the place that owns the process ends it.
-    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry)) {
+    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry, clock)) {
         is PluginAdmission.Admitted -> admission.composition
         is PluginAdmission.Refused -> throw CommandRefused(admission.exit)
     }
@@ -198,10 +206,10 @@ private fun runVolatilePipelineOwned(
             absentPipelineOutcome(compilation)
         } else if (nonCanonicalSteps.isEmpty()) {
             runCanonical(
-                CanonicalRunRequest(
+                RunRequest(
                     pipeline = pipeline,
                     runId = RunId(runId),
-                    state = CanonicalRunState(
+                    state = RunState(
                         journal = journal,
                         cursorStore = cursorStore,
                         eventSink = eventStore,
@@ -220,13 +228,14 @@ private fun runVolatilePipelineOwned(
                         // The epoch is 0 because a volatile run has no lease: there is no
                         // takeover to fence against, and one writer owns the run for as long as
                         // the process lives.
-                        sagaBinding = dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding(
+                        sagaBinding = dev.rubentxu.pipeline.v2.runtime.durable.SagaCompensationBinding(
                             store = InMemorySagaObligationStore(),
                             leaseEpoch = 0,
                         ),
                     ),
-                    policy = CanonicalRunPolicy(
+                    policy = RunPolicy(
                         clock = clock,
+                        idGenerator = idGenerator,
                         effectReplayPolicy = DefaultEffectReplayPolicy(),
                         controlDirRoot = controlDirRoot,
                         sandboxProfile = config.sandboxProfile,

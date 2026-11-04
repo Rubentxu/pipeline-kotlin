@@ -1291,7 +1291,7 @@ data class PostConditionSelected(
 /**
  * The five `core.lock` events (`Dir*`/`Milestone*` convention,
  * MilestoneReached shape). Emission authority:
- * the `core.lock` handler, through [dev.rubentxu.pipeline.v2.domain.step.EVENT_SINK_CAPABILITY].
+ * the `core.lock` handler, through [dev.rubentxu.pipeline.v2.runtime.EVENT_SINK_CAPABILITY].
  * No sensitive payload: `resource` is a pipeline-author-declared resource name.
 */
 data class LockRequested(

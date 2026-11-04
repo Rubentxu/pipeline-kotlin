@@ -6,6 +6,9 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetryFactory
+import dev.rubentxu.pipeline.v2.runtime.SystemRuntimeConfig
+import dev.rubentxu.pipeline.v2.runtime.withPipelineTelemetry
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Paths

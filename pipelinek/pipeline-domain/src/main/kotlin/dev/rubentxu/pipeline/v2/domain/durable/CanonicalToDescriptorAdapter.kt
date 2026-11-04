@@ -34,8 +34,8 @@ import java.nio.file.Path
  *    transforms values.
  * ## Migration note
  * The canonical types (`BlockShellScope`, `BodyExecutionProjection`) are NOT
- * private inside `CanonicalDurableRunCoordinator`: they live in
- * `CanonicalStructuralDecisions.kt` (`:pipeline-application`), and the body
+ * private inside `DurableRunCoordinator`: they live in
+ * `StructuralDecisions.kt` (`:pipeline-application`), and the body
  * loop that used to be inlined in the coordinator now belongs to
  * `BodyExecutionEngine`. The family this adapter maps is the domain's own
  * published `CanonicalBlockShellScope` / `CanonicalBodyExecutionProjection`,
@@ -117,7 +117,7 @@ object CanonicalToDescriptorAdapter {
  * `BlockShellScope` and `BodyExecutionProjection` types.
  * ## Why a mirror, not a re-export
  * The canonical types are `internal sealed interface` inside
- * `CanonicalStructuralDecisions.kt` (`:pipeline-application`); they cannot
+ * `StructuralDecisions.kt` (`:pipeline-application`); they cannot
  * be re-exported from `:pipeline-domain` without publishing them. The mirror
  * lets the adapter + golden parity tests
  * reason about the canonical shape WITHOUT forcing the publication in this

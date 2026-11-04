@@ -618,7 +618,7 @@ class StageScope(
      * — byte-for-byte identical to `CorePublishHtmlStep.inputCodec.encode()`
      * So the durable fingerprint round-trips through the registry path
      * @param name Logical name of the report (used to derive the archive
-     *             subdirectory; sanitised by [dev.rubentxu.pipeline.v2.application.PublishHtmlSanitiser]).
+     *             subdirectory; sanitised by [dev.rubentxu.pipeline.v2.runtime.PublishHtmlSanitiser]).
      * @param reportDir Workspace-relative directory containing the report files.
      * @param reportFiles Ant-style glob (default `**` recursive match).
      * @param keepAll Whether to keep historical reports across runs (v1 runtime

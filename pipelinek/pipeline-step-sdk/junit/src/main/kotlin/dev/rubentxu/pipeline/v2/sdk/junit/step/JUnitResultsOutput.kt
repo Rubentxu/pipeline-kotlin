@@ -5,10 +5,10 @@ import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 
 /**
  * Typed output carrier for `junit.results`.
- * Mirrors the pattern that [dev.rubentxu.pipeline.v2.application.CoreShellOutput]
+ * Mirrors the pattern that [dev.rubentxu.pipeline.v2.runtime.CoreShellOutput]
  * established for `core.sh`: the carrier pairs the user-visible
  * [JUnitReportSummary] with the canonical [StepOutcome] so the
- * [dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary]
+ * [dev.rubentxu.pipeline.v2.runtime.durable.RegistryExecutionBoundary]
  * can project `outcome` via `produced as? TypedStepOutput` without ever
  * inspecting a concrete `StepKey`.
  * Without this carrier, every handler-thrown `PluginStepException` would

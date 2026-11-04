@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.console
 
-import dev.rubentxu.pipeline.v2.application.durable.OpId
+import dev.rubentxu.pipeline.v2.runtime.durable.OpId
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StepStarted

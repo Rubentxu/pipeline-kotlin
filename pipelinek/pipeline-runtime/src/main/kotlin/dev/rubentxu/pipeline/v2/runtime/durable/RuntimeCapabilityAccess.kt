@@ -1,0 +1,715 @@
+package dev.rubentxu.pipeline.v2.runtime.durable
+
+import dev.rubentxu.pipeline.v2.runtime.PLATFORM_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.events.registry.PLUGIN_EVENT_EMISSION_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.telemetry.STEP_OBSERVABILITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.PlatformIdentity
+import dev.rubentxu.pipeline.v2.runtime.EVENT_SINK_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.EXECUTION_BUDGET_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.EXECUTION_LANE_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.ExecutionBudget
+import dev.rubentxu.pipeline.v2.runtime.ExecutionLaneId
+import dev.rubentxu.pipeline.v2.runtime.FileLockCoordinator
+import dev.rubentxu.pipeline.v2.runtime.FileInputDecisions
+import dev.rubentxu.pipeline.v2.runtime.INPUT_DECISIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.LOCK_COORDINATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.SHELL_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.STAGE_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.StageIdentity
+import dev.rubentxu.pipeline.v2.runtime.ShellOperations
+import dev.rubentxu.pipeline.v2.runtime.TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.TemporaryWorkspaceOperations
+import dev.rubentxu.pipeline.v2.runtime.WORKSPACE_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.WORKSPACE_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.runtime.WorkspaceOperations
+import dev.rubentxu.pipeline.v2.runtime.WorkspaceOperationsAdapter
+import dev.rubentxu.pipeline.v2.runtime.ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.ArchiveArtifactsOperations
+import dev.rubentxu.pipeline.v2.runtime.ArchiveArtifactsOperationsAdapter
+import dev.rubentxu.pipeline.v2.runtime.STASH_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.StashOperations
+import dev.rubentxu.pipeline.v2.runtime.StashOperationsAdapter
+import dev.rubentxu.pipeline.v2.runtime.PUBLISH_HTML_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.PublishHtmlOperations
+import dev.rubentxu.pipeline.v2.runtime.PublishHtmlOperationsAdapter
+import dev.rubentxu.pipeline.v2.runtime.DELETE_DIR_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.DeleteDirOperations
+import dev.rubentxu.pipeline.v2.runtime.CLEAN_WS_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.CleanWsOperations
+import dev.rubentxu.pipeline.v2.runtime.MILESTONE_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.MilestoneOperations
+import dev.rubentxu.pipeline.v2.runtime.MilestoneOperationsAdapter
+import dev.rubentxu.pipeline.v2.runtime.MilestoneStateStore
+import dev.rubentxu.pipeline.v2.runtime.ARTIFACT_INDEX_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
+import dev.rubentxu.pipeline.v2.domain.step.BODY_CONTINUATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.BODY_SLOT_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
+import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
+import dev.rubentxu.pipeline.v2.domain.step.CapabilityRefusal
+import dev.rubentxu.pipeline.v2.domain.step.CapabilityRefusedException
+import dev.rubentxu.pipeline.v2.domain.step.CapabilitySlot
+import kotlin.reflect.KClass
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_LIFECYCLE_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_RUNTIME_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SagaLifecycle
+import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import dev.rubentxu.pipeline.v2.sdk.scm.git.SCM_GIT_TRANSCRIPT_CAPABILITY
+
+/**
+ * explicit, small capability bridge from a [RuntimeContext] to a
+ * [StepCapabilityAccess].
+ * It exposes ONLY the capabilities the canonical runtime actually declares and provides today
+ * ([EVENT_SINK_CAPABILITY] backed by the runtime's [RuntimeContext.eventSink], and — since
+ * [SHELL_OPERATIONS_CAPABILITY] backed by a fresh [ShOperationsAdapter] constructed
+ * from the runtime context). It derives the capability values from the runtime context WITHOUT
+ * handing the whole [RuntimeContext] to a handler and without rebuilding a pipeline
+ * context. Direction is contract.requiredCapabilities -> capability admission ->
+ * [StepCapabilityAccess] -> handler; a handler must never receive the raw runtime context.
+ * Lookup is fail-closed: [get] on a capability that is not available throws rather than returning a
+ * nullable/`Any?` sentinel, so a handler can only ever start once capability admission has confirmed
+ * availability.
+ *
+ * ## Why this class cannot be constructed directly
+ * The constructor is `internal`, and [CapabilityBindings] is the only thing that calls
+ * it. The bridge decides WHICH capabilities an invocation has; letting a caller construct one
+ * with a different set of collaborators would put a second decision site next to the first, and
+ * two decision sites are exactly what the fail-closed contract cannot afford: a Step could pass
+ * admission against one table and run against another.
+*/
+class RuntimeCapabilityAccess internal constructor(
+    context: RuntimeContext,
+    // Milestone state store for MILESTONE_OPERATIONS_CAPABILITY.
+    // Always non-null in production (coordinator provides it); nullable for test/adapter flexibility.
+    private val milestoneStateStore: MilestoneStateStore? = null,
+    // Per-run artifact index. Bound at
+    // composition root; shared between the producer (core.archiveArtifacts)
+    // and the consumer (core.artifact.query). When null (e.g. legacy /
+    // nested-step sub-contexts) the capability stays unexposed and BOTH
+    // Steps fail closed at registry-prepare-time / availability-check time.
+    private val artifactIndex: ArtifactIndexCapability? = null,
+    /**
+     * Behaviour supplying the capabilities an OFFICIAL_PLUGIN contributes.
+     * A CONTRIBUTOR rather than a map, and the difference is the whole point of
+     * H2b. A `Map<StepCapability, CapabilitySlot>` has to live somewhere, and it was
+     * briefly parked on `ShOptions` to spare this class a parameter — which
+     * turned a carrier of execution FACTS into a runtime service locator and
+     * bought nothing but a line count. A contributor is composed at the
+     * composition root, asked what it provides, and consulted at the two
+     * moments that must agree; it never becomes ambient configuration.
+     * Core supplies the PERMISSION (`network.egress`); the plugin supplies its
+     * own SEAM (`http.transport`); neither names the other's types.
+*/
+    private val capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
+) : StepCapabilityAccess {
+
+    private val provided: Map<StepCapability, CapabilitySlot> = buildProvided(context)
+
+    override fun available(): Set<StepCapability> = provided.keys
+
+    /**
+     * The bound value, read as the type the consumer declared.
+     *
+     * Two refusals, both named, neither a cast: the key is not part of this
+     * invocation's provision ([CapabilityRefusal.Absent]), or the provisioned
+     * value is not of the declared type ([CapabilityRefusal.Incompatible]).
+     * The absent case keeps the wording this bridge has always used, byte for
+     * byte, because it reaches the operator through the same diagnostic as
+     * before.
+     */
+    override fun <T : Any> get(key: StepCapability, type: KClass<T>): T {
+        val slot = provided[key]
+            ?: throw CapabilityRefusedException(CapabilityRefusal.Absent(key))
+        return slot.read(key, type)
+    }
+
+    /**
+     * Exposes [NETWORK_EGRESS_CAPABILITY] only when this run is entitled to ASK.
+     * The runtime owns this decision and the Step declares the requirement, so a
+     * pipeline that reaches for the network without `--allow-network` is rejected at
+     * prepare-time by the ordinary fail-closed admission path — before any handler
+     * runs and before a socket could exist.
+     * Reads `permitsAny` rather than testing the gate against its
+     * implementations. A run with no network entitlement at all never sees the
+     * capability, so the default is still refused at ADMISSION and not inside a
+     * handler; a run with an allowlist does get the capability and is refused per
+     * destination by the gate itself. Both are refusals, but they are different
+     * operator facts and they arrive through different mechanisms on purpose — which
+     * is also why this is a PROPERTY read and not a `when (gate)`: the runtime does
+     * not know which gates exist, only that a gate can say whether the question is on
+     * the table.
+*/
+    private fun egressPermission(
+        context: RuntimeContext,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
+    ) {
+        val gate = context.shOptions.networkEgress
+        if (gate.permitsAny) {
+            builder[NETWORK_EGRESS_CAPABILITY] = CapabilitySlot.of(gate)
+        }
+    }
+
+    /**
+     * Build the capability table for a given runtime context.
+     * [SHELL_OPERATIONS_CAPABILITY] is exposed ONLY when the runtime context can produce a
+     * working [ShellOperations] (i.e. when the adapter can be constructed). The adapter binds
+     * the runtime's [runId], [ShOptions], [controlDirRoot] and [EventSink] — exactly the
+     * four inputs the existing durable shell substrate expects. The control directory root
+     * always exists, so the adapter always constructs and the capability is always exposed,
+     * so `core.sh` retains its declared require-set.
+*/
+    // private because the class itself is the only thing that builds the table: a
+    // subclass could not widen it without also becoming a second decision site.
+    private fun buildProvided(context: RuntimeContext): Map<StepCapability, CapabilitySlot> {
+        val builder: MutableMap<StepCapability, CapabilitySlot> = mutableMapOf(
+            EVENT_SINK_CAPABILITY to CapabilitySlot.of(context.eventSink),
+        )
+        // The table is assembled in a fixed order and the order IS a property:
+        // `available()` hands out the key set, so insertion order is observable.
+        // Each binding below therefore lands in the sequence its anchor implies —
+        // permission, then plugin seams, then what the run IS, then what it can
+        // reach, then what it may destroy, then what was injected. The split is
+        // by anchor, not by line count, so a capability stays next to the reason
+        // it is exposed at all.
+        egressPermission(context, builder)
+        bindContributedCapabilities(builder)
+        bindProcessAndStageCapabilities(context, builder)
+        bindDurableChannelCapabilities(context, builder)
+        bindWorkspaceObservationCapabilities(context, builder)
+        bindWorkspaceDestructionCapabilities(context, builder)
+        bindWorkspaceContentCapabilities(context, builder)
+        bindOptionalSeamCapabilities(context, builder)
+        return builder.toMap()
+    }
+
+    /**
+     * Plugin-contributed seams, so a plugin can add a capability without the
+     * runtime enumerating it.
+     * A contribution that collides with one the runtime already granted is
+     * REFUSED rather than resolved by order: a plugin that silently overwrote
+     * a core capability would be a plugin changing the meaning of a Step it
+     * does not own. Identity is allowed through, so a plugin contributing the
+     * very same instance is not a conflict.
+*/
+    private fun bindContributedCapabilities(builder: MutableMap<StepCapability, CapabilitySlot>) {
+        for ((capability, value) in capabilityContributor.capabilities()) {
+            val existing = builder[capability]
+            require(existing == null || existing.holdsSameInstanceAs(value)) {
+                "capability $capability is contributed twice: by the runtime core and by a plugin"
+            }
+            builder[capability] = value
+        }
+    }
+
+    /**
+     * What the run IS: the shell it drives, the stage it is in, the budget it
+     * owes and the lane it holds. None of these depend on where durable state
+     * lives, so none of them can be absent.
+*/
+    private fun bindProcessAndStageCapabilities(
+        context: RuntimeContext,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
+    ) {
+        val shellOps: ShellOperations = ShOperationsAdapter(
+            runIdString = context.runId,
+            opId = context.opId,
+            shOptions = context.shOptions,
+            controlDirRoot = context.controlDirRoot,
+            eventSink = context.eventSink,
+            clock = context.clock,
+            idGenerator = context.idGenerator,
+            secretPatternRegistry = context.secretPatternRegistry,
+            outputWakeups = context.outputWakeups,
+        )
+        builder[SHELL_OPERATIONS_CAPABILITY] = CapabilitySlot.of(shellOps)
+        // The transcript destination for this step's subprocesses, over the Output Plane.
+        //
+        // The core binds the PLUGIN's seam on purpose. The Output Plane's durable authority
+        // lives here, the `scm-git` plugin lives BELOW it in the dependency graph, and the
+        // dependency cannot be inverted — a plugin cannot reach the core's store. So the
+        // destination is INJECTED: the core binds the capability, the plugin asks for it.
+        // The plugin never learns which store the bytes land in; the core never learns how git
+        // spells its argv. The alternative — a generic core-owned port plus a second
+        // capability for the secret registry — would split ONE fact into two grants and put
+        // the run's registry behind its own admission decision.
+        //
+        // The registry travels with the destination because redaction is a write-side
+        // obligation: the producer masks before the bytes leave it, and it needs the run's
+        // registry to do it — the same registry the shell's pump uses, so a git transcript and
+        // a shell transcript are scrubbed by the same rule.
+        //
+        // The store is resolved lazily, on the first byte, so a step that printed nothing
+        // leaves no transcript behind that says it produced console output.
+        builder[SCM_GIT_TRANSCRIPT_CAPABILITY] = CapabilitySlot.of(
+            OutputPlaneGitTranscript(
+                runId = context.runId,
+                opId = context.opId.format(),
+                controlDirRoot = context.controlDirRoot,
+                secretPatterns = context.secretPatternRegistry,
+                outputWakeups = context.outputWakeups,
+            ),
+        )
+        // Workspace file operations bound to the current stage identity.
+        // The adapter also receives the shared execution location, so
+        // file Steps resolve against the same current directory the shell vertical
+        // observes inside a `dir` scope. Previously it rebuilt its own
+        // WorkspaceResolver per operation and could never see the scope, which is
+        // the divergence the scope shape exists to remove.
+        builder[WORKSPACE_OPERATIONS_CAPABILITY] = CapabilitySlot.of(workspaceOperationsFor(context))
+        // Narrow stage identity (name + index) for handlers needing the current
+        // stage as a default (core.emit.event StageMarkedUnstable fallback). Derived from the
+        // runtime context; never exposes the context itself.
+        builder[STAGE_IDENTITY_CAPABILITY] = CapabilitySlot.of(
+            StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
+        )
+        // The durable EXECUTION LANE, derived HERE from the
+        // runtime's own operation identity — run id plus the parallel lineage the
+        // OpId already carries. Deriving it in the bridge is the point: a handler
+        // must not be handed the OpId and left to work out its own lane, and
+        // `StepHandlerContext` is deliberately not widened to carry it.
+        // `core.lock` uses this to decide re-entrancy: same lane re-enters (Jenkins
+        // is re-entrant per build, so a nested `lock` must not deadlock against its
+        // own hold), while a SIBLING `parallel` branch is a different lane and must
+        // contend — which is the exclusion the lock exists to provide.
+        // The projected scope budget, the same value the child
+        // shell watchdog consumes. Exposed so a SUSPENDING Step (one that runs no
+        // process, like core.lock) can honour the block deadline through a typed
+        // capability instead of escaping the watchdog. "No budget" is a real
+        // value (null), hence unconditional exposure: admission stays deterministic.
+        builder[EXECUTION_BUDGET_CAPABILITY] = CapabilitySlot.of(ExecutionBudget(context.shOptions.timeoutMs))
+        builder[EXECUTION_LANE_CAPABILITY] = CapabilitySlot.of(
+            ExecutionLaneId.of(
+                runId = context.runId,
+                branchLineage = context.opId.parallelLineage,
+            ),
+        )
+    }
+
+    /**
+     * The two capabilities a run PUBLISHES into the engine's own durable
+     * territory: a lock it holds, and a question waiting to be answered.
+     * Both are anchored to the CONTROL ROOT — the journal db parent,
+     * `--control-root` — and for the same reason: they are facts about the
+     * ENGINE's durable territory, not about a workspace that is NULL under the
+     * local-first Managed lease and not about a run that ends before its
+     * question is answered. The control directory root always exists, so the
+     * exposure mirrors the destructive capabilities below: always registered.
+*/
+    private fun bindDurableChannelCapabilities(
+        context: RuntimeContext,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
+    ) {
+        val root = context.controlDirRoot
+        // The POSIX file lock coordinator for core.lock.
+        // The lock namespace is anchored to the CONTROL ROOT — the engine's own
+        // durable territory (journal db parent, `--control-root`) — NOT to the
+        // workspace and NOT to the run:
+        //   - per-run would make two runs of one job never contend, which is
+        //     precisely the exclusion `lock` exists to provide;
+        //   - the workspace is NULL under the local-first Managed lease (no
+        //     `--workspace`), so it cannot be the anchor of a capability that
+        //     must work in the default mode;
+        //   - the control root is stable across runs sharing one `--db` /
+        //     `--control-root`, so two runs on one host contend through the OS
+        //     lock while a different install (different control dir) does not.
+        // The control directory root always exists, so the capability is
+        // always registered. The hold registry inside FileLockCoordinator is
+        // process-scoped, so a fresh instance per context still observes every
+        // hold this JVM has taken.
+        builder[LOCK_COORDINATION_CAPABILITY] = CapabilitySlot.of(
+            FileLockCoordinator(
+                root.resolve("locks"),
+            ),
+        )
+        // The filesystem answer channel for core.input.
+        // Anchored to the CONTROL ROOT for the same reason the lock is: a
+        // question is a fact about the ENGINE's durable territory (who may
+        // answer a run that lives in `--db`), not about a workspace that is
+        // NULL under the Managed lease and not about a run that ends before its
+        // question is answered. The control directory root always exists, so
+        // there is always somewhere to publish the request — the operator can
+        // always find it and answer it.
+        builder[INPUT_DECISIONS_CAPABILITY] = CapabilitySlot.of(
+            FileInputDecisions(
+                root.resolve("inputs"),
+            ),
+        )
+        // the compensation intent port.
+        //
+        // Exposed ONLY when the engine bound one for this invocation. The port is the only
+        // way a plugin may promise a compensation, and a promise that cannot be kept is
+        // worse than no promise at all, so its absence has to be a refusal at admission
+        // rather than a null the handler discovers halfway through a forward effect.
+        context.sagaCompensation?.let { operations ->
+            builder[SAGA_COMPENSATION_CAPABILITY] = CapabilitySlot.of(operations)
+        }
+        // the compensation PLAN port.
+        //
+        // Exposed ONLY when the engine bound one for this invocation, for the same reason as
+        // the intent port above: a Step that asks what a Saga owes must not reach a handler
+        // that has no durable state to answer from, and a Step that reports an observation
+        // must not reach a handler whose write would go nowhere.
+        context.sagaPlan?.let { plan ->
+            builder[SAGA_PLAN_CAPABILITY] = CapabilitySlot.of(plan)
+        }
+        // the compensation RUNTIME.
+        //
+        // Exposed ONLY when the engine bound one for this invocation, for the same reason as
+        // the two ports above: a Step that asks the engine to run a compensation must not
+        // reach a handler that has no durable state to decide from, no body to compensate
+        // through, or no way to record what happened.
+        context.sagaRuntime?.let { runtime ->
+            builder[SAGA_RUNTIME_CAPABILITY] = CapabilitySlot.of(runtime)
+            // the Saga's LIFECYCLE — the runtime that can also KEEP the
+            // effects of a Saga that ended well, instead of only undoing them.
+            //
+            // Exposed ONLY when the bound runtime really is that port, for the same reason as
+            // the port above: a Step that asks to close a Saga must not reach a handler whose
+            // runtime cannot close one. The check is a type test on the bound object, so the
+            // capability and the port can never drift apart.
+            if (runtime is SagaLifecycle) {
+                builder[SAGA_LIFECYCLE_CAPABILITY] = CapabilitySlot.of(runtime)
+            }
+        }
+    }
+
+    /**
+     * Where things ARE, as opposed to what they may do: the platform, the
+     * workspace, the active `dir` scope, and the temporary resource path derived
+     * from all three. Every value here is derived from the runtime context; none
+     * of them is optional, and none of them opens a capability a handler could
+     * use to mutate anything.
+*/
+    private fun bindWorkspaceObservationCapabilities(
+        context: RuntimeContext,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
+    ) {
+        // Raw environmental observation for platform-classification handlers
+        // (core.isUnix). The single remaining System.getProperty("os.name") read lives HERE,
+        // in the bridge adapter — never inside a handler.
+        builder[PLATFORM_IDENTITY_CAPABILITY] = CapabilitySlot.of(
+            PlatformIdentity(
+                osName = System.getProperty("os.name", ""),
+            ),
+        )
+        // Canonical workspace observation for workspace-projection
+        // handlers (core.pwd and official plugins). A nested `dir` scope carries
+        // its current working directory in ShOptions.workingDirectory, so the
+        // typed identity must follow that immutable scope projection rather than
+        // reverting to the pipeline root. This keeps relative plugin inputs such
+        // as `junitResults("build/test-results/test.xml", ".")` inside the
+        // active `dir` body.
+        // NOTE: `WorkspaceIdentity` is a low-level observation capability. The
+        // `core.pwd.tmp` Step does NOT use it directly — it goes through the
+        // dedicated `TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY` port below, which
+        // composes the effective workspace + canonical OpId into the deterministic
+        // `tmp-pwd-<sha256(opId)>` resource path (–, /)
+        val effectiveWorkspaceRoot = context.shOptions.workingDirectory ?: context.shOptions.workspaceRoot
+        builder[WORKSPACE_IDENTITY_CAPABILITY] = CapabilitySlot.of(
+            WorkspaceIdentity(
+                workspaceRoot = effectiveWorkspaceRoot,
+            ),
+        )
+        // The typed execution location, registered alongside
+        // the legacy WorkspaceIdentity above so consumers migrate per vertical
+        // instead of all at once.
+        // Unlike the single-value WorkspaceIdentity, this carries BOTH
+        // authorities separately: the resolved workspace for this stage (the
+        // lease root) and the active `dir` scope projection (the cwd). The
+        // legacy value above cannot express that difference — it collapses the
+        // two into one Path, which is why a handler asking for the security
+        // boundary could receive the current directory.
+        // This is a pure binding: it introduces no new behaviour and changes no
+        // value the legacy consumers already observe.
+        builder[EXECUTION_LOCATION_CAPABILITY] = CapabilitySlot.of(executionLocationFor(context))
+        // The ONLY capability consumed by
+        // CorePwdTmpStep.handler. The adapter binds the runtime's
+        // [runIdString], [OpId], [ShOptions] (workspaceRoot), [EventSink] —
+        // exactly the inputs needed to derive the deterministic tmp path and
+        // emit the canonical `PwdResolved` event. The handler does NOT see
+        // these inputs directly; it reaches the typed seam, which mirrors the
+        // `core.sh → ShellOperations` pattern.
+        val tmpOps: TemporaryWorkspaceOperations = TemporaryWorkspaceOperationsAdapter(
+            runIdString = context.runId,
+            opId = context.opId,
+            workspaceRoot = effectiveWorkspaceRoot,
+            eventSink = context.eventSink,
+            clock = context.clock,
+            idGenerator = context.idGenerator,
+        )
+        builder[TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] = CapabilitySlot.of(tmpOps)
+    }
+
+    /**
+     * What the run may DESTROY: the stage workspace itself (`deleteDir`) and its
+     * contents (`cleanWs`). They share an anchor and a
+     * security story, so they live together: both are gated by the typed lease
+     * through [executionLocationFor] rather than by the VCS-marker heuristic
+     * that retires, because a user-owned root may not be destroyed on the
+     * strength of a dotfile.
+*/
+    private fun bindWorkspaceDestructionCapabilities(
+        context: RuntimeContext,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
+    ) {
+        // DeleteDir operations for core.deleteDir.
+        // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex]
+        // and [EventSink] — exactly the inputs needed to resolve the
+        // workspace, execute deletion, and emit the canonical `DirDeleted` event.
+        // The control directory root always exists, so the capability is always
+        // registered.
+        val deleteOps: DeleteDirOperations = DeleteDirOperationsAdapter(
+            runIdString = context.runId,
+            stageIdentity = StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
+            eventSink = context.eventSink,
+            clock = context.clock,
+            idGenerator = context.idGenerator,
+            // The typed lease decides whether a
+            // user-owned root may be destroyed, replacing the VCS-marker
+            // heuristic that retires.
+            executionLocation = executionLocationFor(context),
+        )
+        builder[DELETE_DIR_OPERATIONS_CAPABILITY] = CapabilitySlot.of(deleteOps)
+        // CleanWs operations for core.cleanWs (registry candidate).
+        // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex]
+        // and [EventSink] — exactly the inputs needed to resolve the
+        // workspace, execute the cleanup via the existing CleanWsExecutor SDK substrate,
+        // and emit the canonical `WsCleaned` event (single emission authority).
+        // The control directory root always exists, so the capability is always
+        // registered.
+        val cleanWsOps: CleanWsOperations = CleanWsOperationsAdapter(
+            runIdString = context.runId,
+            stageIdentity = StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
+            eventSink = context.eventSink,
+            clock = context.clock,
+            idGenerator = context.idGenerator,
+            // The typed lease decides whether a
+            // user-owned root may be destroyed, replacing the VCS-marker
+            // heuristic that retires.
+            executionLocation = executionLocationFor(context),
+        )
+        builder[CLEAN_WS_OPERATIONS_CAPABILITY] = CapabilitySlot.of(cleanWsOps)
+    }
+
+    /**
+     * What the run may move rather than destroy: the stage archive, the
+     * stash/unstash seam, and the published HTML report.
+     * Same anchor as the destructive pair, for the
+     * same reason — they resolve a source and a destination against the shared
+     * [executionLocationFor], so a `dir(...)` scope narrows what a pattern can
+     * match instead of being bypassed by the adapter.
+*/
+    private fun bindWorkspaceContentCapabilities(
+        context: RuntimeContext,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
+    ) {
+        val root = context.controlDirRoot
+        // ArchiveArtifacts operations for core.archiveArtifacts.
+        // The adapter binds runId, StageIdentity, controlDirRoot and the EventSink —
+        // exactly the inputs needed to glob the stage workspace via the certified
+        // AntStyleGlob substrate, copy matched files into the artefacts retention
+        // directory, and emit ArtifactArchived / ArtifactArchiveFailed.
+        // The control directory root always exists, so the capability is always
+        // registered.
+        val archiveOps: ArchiveArtifactsOperations = ArchiveArtifactsOperationsAdapter(
+            runIdString = context.runId,
+            stageIdentity = StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
+            controlDirRoot = root,
+            eventSink = context.eventSink,
+            workspaceBase = context.workspaceBase,
+            // The archive source follows the shared location, so a
+            // `dir(...)` scope narrows what the pattern can match.
+            executionLocation = executionLocationFor(context),
+        )
+        builder[ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] = CapabilitySlot.of(archiveOps)
+        // Stash/unstash capability. Same anchor as
+        // ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY. Both CoreStashStep and
+        // CoreUnstashStep share the same STASH_OPERATIONS_CAPABILITY seam.
+        val stashOps: StashOperations = StashOperationsAdapter(
+            runIdString = context.runId,
+            stageIdentity = StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
+            controlDirRoot = root,
+            eventSink = context.eventSink,
+            workspaceBase = context.workspaceBase,
+            // Stash source and unstash target follow the same
+            // location every other workspace-aware Step reads.
+            executionLocation = executionLocationFor(context),
+        )
+        builder[STASH_OPERATIONS_CAPABILITY] = CapabilitySlot.of(stashOps)
+        // Core.publishHTML capability. Same anchor as
+        // STASH_OPERATIONS_CAPABILITY. CorePublishHtmlStep shares the same
+        // PUBLISH_HTML_OPERATIONS_CAPABILITY seam.
+        val publishHtmlOps: PublishHtmlOperations = PublishHtmlOperationsAdapter(
+            runIdString = context.runId,
+            stageIdentity = StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
+            controlDirRoot = root,
+            eventSink = context.eventSink,
+            workspaceBase = context.workspaceBase,
+            // ReportDir follows the shared location too.
+            executionLocation = executionLocationFor(context),
+        )
+        builder[PUBLISH_HTML_OPERATIONS_CAPABILITY] = CapabilitySlot.of(publishHtmlOps)
+    }
+
+    /**
+     * The capabilities that are INJECTED rather than derived: the milestone
+     * store, the artifact index, and the two body seams.
+     * They share one property that the rest of the table does not have — their
+     * value comes from a collaborator chosen at composition, not from the
+     * runtime context — and one consequence: each is exposed only when the
+     * collaborator is present, so an absent seam fails closed at capability
+     * admission rather than surfacing as a null a handler has to interpret.
+*/
+    private fun bindOptionalSeamCapabilities(
+        context: RuntimeContext,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
+    ) {
+        // Milestone state operations (core.milestone). The store is optional
+        // so existing call-sites that don't bind it see no change; when bound, the
+        // MILESTONE_OPERATIONS_CAPABILITY is populated with a MilestoneOperationsAdapter
+        // backed by the run-scoped store. The store lifetime is the coordinator lifetime,
+        // NOT per handler invocation — mirroring the legacy dispatcher's per-run semantics.
+        milestoneStateStore?.let { store ->
+            val milestoneOps: MilestoneOperations = MilestoneOperationsAdapter(store)
+            builder[MILESTONE_OPERATIONS_CAPABILITY] = CapabilitySlot.of(milestoneOps)
+        }
+        // Per-run artifact index for the
+        // core.archiveArtifacts → core.artifact.query bridge. Bound at
+        // composition root; the same instance is shared between the
+        // producer and the consumer so a successful archive is visible
+        // to the query Step within the same run.
+        // When null, the capability stays unexposed: archive with
+        // name=...  returns a typed SCRIPT failure, and artifactQuery
+        // returns typed USER failure (NotFound). Both fail-closed per
+        // the registry boundary's contract.
+        artifactIndex?.let { idx ->
+            builder[ARTIFACT_INDEX_CAPABILITY] = CapabilitySlot.of(idx)
+        }
+        // Body-reentry seam.
+        // BODY_INVOKER_CAPABILITY is exposed ONLY when the canonical runtime context carries
+        // a `bodyInvoker` adapter. The adapter is the engine-side implementation of the
+        // `BodyInvoker` port and is the single reentry point for any future block-step
+        // handler that declares the capability in its StepContract. A handler that asks for
+        // it without the adapter present fails closed at capability admission, exactly like
+        // every other capability in this bridge.
+        context.bodyInvoker?.let { adapter ->
+            builder[BODY_INVOKER_CAPABILITY] = CapabilitySlot.of(adapter)
+        }
+        // The public body-reentry seam for a Step that declared
+        // BodyExecutionOwner.HANDLER_CONTINUATION (as amended). Bound ONLY when the
+        // canonical runtime context carries a body-already-bound continuation, and never as a
+        // pair with BODY_INVOKER_CAPABILITY: one value, already bound, so a handler cannot be
+        // handed an invoker without a body identity or an identity without an invoker.
+        // A handler that declares the capability for a Step whose owner is not
+        // HANDLER_CONTINUATION never sees it here, and is rejected earlier by the owner /
+        // capability coherence check; a HANDLER_CONTINUATION handler that runs without this
+        // binding never runs at all.
+        context.bodyContinuation?.let { continuation ->
+            builder[BODY_CONTINUATION_CAPABILITY] = CapabilitySlot.of(continuation)
+        }
+        // the slot seam. Exposed ONLY when the engine bound a slot
+        // invoker for this invocation, which it does only for a
+        // HANDLER_CONTINUATION Step whose body is already bound — the same
+        // condition as the continuation above, and for the same reason: a
+        // handler that asks for a slot of a body it does not have must fail
+        // closed at admission, never receive a seam that cannot honour it.
+        context.bodySlotInvoker?.let { slotInvoker ->
+            builder[BODY_SLOT_CAPABILITY] = CapabilitySlot.of(slotInvoker)
+        }
+
+        // The plugin event seam, bound ONLY when the composition actually produced a
+        // registry. Null is the honest signal that this run has no plugin-contributed event kinds
+        // at all, and a Step declaring the capability is then refused at admission by the ordinary
+        // fail-closed path — never handed a seam that silently drops its observations.
+        context.pluginEventEmitter?.let { emitter ->
+            builder[PLUGIN_EVENT_EMISSION_CAPABILITY] = CapabilitySlot.of(
+                    PluginEventEmissionAdapter(emitter, context.runId)
+            )
+        }
+
+        // The observability seam, bound whenever the engine bound a seam for
+        // this dispatch. A run that asked for no telemetry is NOT that case:
+        // the engine binds the seam that observes nothing, so a Step that
+        // declares the capability is admitted and runs, and the run simply
+        // publishes nothing. A null seam therefore says something else — that
+        // this context was composed WITHOUT the engine's binding — and then the
+        // capability stays unexposed and the Step is refused at admission by
+        // the ordinary fail-closed path, never handed a seam that silently
+        // drops its observations.
+        //
+        // The value handed over is the seam itself, not an adapter around it:
+        // the seam is already typed by the published contract and already
+        // carries the step's own span as its parent. Wrapping it would buy a
+        // second spelling of the same fact and hide the parent from the
+        // plugin's own view.
+        context.stepObservability?.let { observability ->
+            builder[STEP_OBSERVABILITY_CAPABILITY] = CapabilitySlot.of(observability)
+        }
+    }
+
+    /**
+     * Derives the typed [ExecutionLocation] for this invocation
+     * .
+     * Kept out of [buildProvided] so the bridge stays readable and so the
+     * derivation has one name a test can reason about. It is a pure function of
+     * the context: the same context always yields the same location, and it
+     * reads no ambient process state.
+*/
+    private fun executionLocationFor(
+        context: RuntimeContext,
+    ): ExecutionLocation = ShOptionsExecutionLocationAdapter.from(
+        workspaceRoot = context.shOptions.workspaceRoot,
+        scopedWorkingDirectory = context.shOptions.workingDirectory,
+        fallbackRoot = context.shOptions.workspaceRoot,
+        //: ownership decided at the CLI boundary and carried
+        // on the transport. Without this the bridge re-derived `Managed` for every
+        // Run and the guard on a user-owned root never fired
+        ownership = context.shOptions.workspaceOwnership,
+    )
+
+    /**
+     * Binds the file-Step vertical to this stage and to the shared execution
+     * location.
+     * [executionLocationFor] is passed explicitly rather than recomputed inside
+     * the adapter, so the file vertical and the capability projection are
+     * guaranteed to describe the same location for a given step.
+*/
+    private fun workspaceOperationsFor(
+        context: RuntimeContext,
+    ): WorkspaceOperations = WorkspaceOperationsAdapter(
+        stageName = context.stageName,
+        stageIndex = context.stageIndex,
+        controlDirRoot = context.controlDirRoot,
+        eventSink = context.eventSink,
+        runId = context.runId,
+        workspaceBase = context.workspaceBase,
+        executionLocation = executionLocationFor(context),
+    )
+}

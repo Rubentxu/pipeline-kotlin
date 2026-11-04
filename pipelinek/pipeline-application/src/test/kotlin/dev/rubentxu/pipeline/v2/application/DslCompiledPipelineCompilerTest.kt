@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.StageSpec
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
+import dev.rubentxu.pipeline.v2.runtime.CoreWorkflowControlWireCodec
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf

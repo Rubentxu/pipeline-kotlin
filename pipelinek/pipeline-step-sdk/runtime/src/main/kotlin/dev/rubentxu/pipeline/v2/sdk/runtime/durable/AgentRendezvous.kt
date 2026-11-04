@@ -225,7 +225,7 @@ class AgentRendezvous internal constructor(
          * dependency on `pipeline-application`.
          */
         const val AGENT_MAIN_CLASS: String =
-            "dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent"
+            "dev.rubentxu.pipeline.v2.runtime.durable.ingest.ObsPc2IngestAgent"
 
         /**
          * The text the agent writes into the ready marker, so "the agent is attached" is an

@@ -252,9 +252,21 @@ This build ships with:
   bytes) and it carries a detached Ed25519 signature that verifies under the
   publisher key the operator keeps. Without the flag, plugins are admitted on
   their manifest and API range, as before.
+- A plugin the operator brings and that no trust decision approved is
+  REPORTED on stderr: the runtime says which plugin it loaded and that nothing
+  vouches for its bytes. With `--require-plugin-trust`, that plugin is REFUSED
+  instead of loaded, before any of its code runs.
+- A plugin artifact is COPIED into a private directory (mode 0700) inside the
+  run's control root, the copy is verified against the digest that was
+  admitted, and the COPY is what the run loads: the bytes that were verified
+  are the bytes that run.
 - Local credentials, with secret redaction at the durable shell seam. A run
   that binds no credential never opens the store, so it never asks for a
   passphrase.
+- A credential whose secret is SHORTER than the maskable minimum is not
+  masked, and the runtime says so on stderr: the credential id and the length,
+  never the value. The threshold governs masking, not validity — the credential
+  still works.
 - Local `artifacts`, `stash`, `unstash`, `archiveArtifacts`,
   `publishHTML`, `writeFile`, `pwd`, `isUnix`, `load`, `milestone`,
   `cleanWs`, `deleteDir`, `waitUntil`, `unstable`, `warnError`.

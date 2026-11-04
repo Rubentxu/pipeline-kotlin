@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.credentials.executor
 
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.credentials.api.SecretShorterThanMinimumMaskableLengthWarning
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
@@ -50,7 +52,17 @@ class WithCredentialsExecutor(
     private val provider: CredentialProvider,
     private val projector: CredentialProjector,
     private val clock: Clock,
-    private val redactionRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
+    private val redactionRegistry: SecretPatternRegistry? = null,
+    /**
+     * Where the report about a secret that cannot be masked goes.
+     *
+     * A value shorter than the minimum maskable length is not registered, so it reaches the
+     * transcript IN THE CLEAR. The operator is told, with the credential and the length and
+     * NEVER the value. The default destination is the process's own stderr, which is where the
+     * CLI's diagnostics go; a caller that reads them somewhere else passes its own.
+     */
+    private val warning: (SecretShorterThanMinimumMaskableLengthWarning) -> Unit =
+        ::reportShortSecret,
 ) {
 
     /**
@@ -67,7 +79,9 @@ class WithCredentialsExecutor(
         provider: CredentialProvider,
         materialization: CredentialMaterialization,
         clock: Clock,
-        redactionRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
+        redactionRegistry: SecretPatternRegistry? = null,
+        warning: (SecretShorterThanMinimumMaskableLengthWarning) -> Unit =
+            ::reportShortSecret,
     ) : this(
         provider = provider,
         projector = DefaultCredentialProjector(
@@ -76,6 +90,7 @@ class WithCredentialsExecutor(
         ),
         clock = clock,
         redactionRegistry = redactionRegistry,
+        warning = warning,
     )
 
     /**
@@ -152,11 +167,16 @@ class WithCredentialsExecutor(
                 // Delegate the per-kind projection to the port
                 val projection = projector.project(spec, credential, runId)
                 env.putAll(projection.bindings)
+                // The values THIS binding exposed are registered HERE, while the binding is
+                // known: a registry handed every bound value at the end would hold values
+                // whose credential nobody could name, and the operator who is told that a
+                // short secret is not masked has to be told WHICH one.
+                registerBoundSecrets(spec, projection.bindings)
                 // Retain materializations for deferred cleanup
                 retainedProjections.add(projection)
             }
 
-            registerBoundSecrets(env, retainedProjections)
+            registerMaterializedSecrets(retainedProjections)
 
             return BoundCredentials(
                 env = env.toMap(),
@@ -195,7 +215,8 @@ class WithCredentialsExecutor(
      *  - **Materialised files** are reached through a MASKED env handle — a key file binds as its
      *    PATH, and redacting the path would break the binding (and this class already asserts a
      *    bound key path DOES appear in the transcript). The CONTENT is a separate secret, so it is
-     *    registered here from the retained materialization, record by record.
+     *    registered by [registerMaterializedSecrets], from the retained materialization, record by
+     *    record.
      * ## Why this seam and not the store
      * A binding is the moment a secret becomes *visible*: it is the last point where the value
      * exists and the first where a child process can read it. Registering here means the registry
@@ -204,16 +225,23 @@ class WithCredentialsExecutor(
      * no later (by the time a transcript exists, the value is already durable).
 */
     private fun registerBoundSecrets(
-        env: Map<String, SecretHandle>,
+        spec: dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec,
+        bindings: Map<String, SecretHandle>,
+    ) {
+        val registry = redactionRegistry ?: return
+        BoundSecretRegistration.register(registry, spec, bindings, warning)
+    }
+
+    /**
+     * Registers the CONTENT of every materialised file, record by record.
+     *
+     * The path of a materialised file is bound as a MASKED handle and is not a secret; the
+     * content it holds is.
+     */
+    private fun registerMaterializedSecrets(
         projections: List<dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult>,
     ) {
         val registry = redactionRegistry ?: return
-
-        for (handle in env.values) {
-            if (!handle.isMasked) {
-                registry.addSecret(handle)
-            }
-        }
 
         for (materialization in projections.asSequence().flatMap { it.retainedMaterializations }) {
             val path = materialization.path ?: continue
@@ -433,4 +461,21 @@ class BoundCredentials(
         val detail: String,
         override val cause: Throwable,
     ) : RuntimeException("Credential cleanup failed: $detail", cause)
+
+}
+
+/**
+ * The default destination of the report about a secret that cannot be masked.
+ *
+ * The process's own stderr, which is where the CLI's diagnostics go. The sentence names the
+ * credential and the length and NEVER the value: a report about a secret that carries the
+ * secret is a second copy of it.
+ */
+internal fun reportShortSecret(report: SecretShorterThanMinimumMaskableLengthWarning) {
+    System.err.println(
+        "Credential ${report.credentialsId} binds a secret of ${report.length} characters, " +
+            "below the minimum maskable length " +
+            "(${SecretPatternRegistry.MIN_MASKABLE_LENGTH}): its value will appear in " +
+            "the transcript IN THE CLEAR",
+    )
 }

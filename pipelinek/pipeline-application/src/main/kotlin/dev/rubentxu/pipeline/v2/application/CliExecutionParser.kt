@@ -132,6 +132,21 @@ internal object CliExecutionParser {
             )
         }
 
+        // `--require-plugin-trust` demands that every plugin the operator brought carries a
+        // trust decision. Only a verb that LOADS plugins can keep that promise: `validate`
+        // compiles the script against the plugin classpath and admits nothing, so no trust
+        // decision is ever taken and the demand would be answered by silence. Refused by
+        // naming the verb that owns it.
+        if (state.requirePluginTrust && command == CliCommand.VALIDATE) {
+            return CliParseResult.Rejected(
+                CliError.OptionBelongsToVerb(
+                    "--require-plugin-trust",
+                    "run",
+                    REQUIRE_PLUGIN_TRUST_BELONGS_TO_RUN,
+                ),
+            )
+        }
+
         val assembledQuery = buildObservationQuery(
             grepSelectors = state.grepSelectors,
             grepInvert = state.grepInvert,
@@ -162,6 +177,7 @@ internal object CliExecutionParser {
                 allowNetwork = state.allowNetwork,
                 pluginJars = state.pluginJars.toList(),
                 pluginTrust = state.pluginTrust,
+                requirePluginTrust = state.requirePluginTrust,
                 correlationId = state.correlationId,
                 receiptPath = state.receiptPath,
                 view = state.view,
@@ -180,4 +196,9 @@ internal object CliExecutionParser {
     /** Why `--compile-only` is refused by the verb that runs the author's body. */
     private const val COMPILE_ONLY_BELONGS_TO_VALIDATE =
         "'run' executes the script, so compiling it without running it is 'validate --compile-only'."
+
+    /** Why `--require-plugin-trust` is refused by the verb that loads no plugin. */
+    private const val REQUIRE_PLUGIN_TRUST_BELONGS_TO_RUN =
+        "'validate' admits no plugin, so it takes no trust decision: requiring one is " +
+            "'run --require-plugin-trust'."
 }

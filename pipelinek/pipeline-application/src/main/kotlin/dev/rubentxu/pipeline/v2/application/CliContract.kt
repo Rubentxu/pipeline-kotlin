@@ -100,6 +100,15 @@ data class CliFlags(
      */
     val pluginTrust: String? = null,
     /**
+     * Whether every plugin the operator brought has to carry a trust decision.
+     *
+     * FALSE by default: without the flag, a plugin that no trust decision approved is
+     * loaded and the operator is told so on stderr. TRUE turns that warning into a
+     * refusal: an operator who asked for verification and got a loaded plugin has been
+     * told nothing.
+     */
+    val requirePluginTrust: Boolean = false,
+    /**
      * External invoker correlation token. When
      * supplied, the runtime binds it to the [RunId] in durable state
      * and emits it on the [dev.rubentxu.pipeline.v2.events.RunCorrelated]

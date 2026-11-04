@@ -59,7 +59,21 @@ class TarWriter(
         val listFile = Files.createTempFile("tar-list", ".txt")
         val root = pendingFiles.first().second
         try {
-            val listContent = pendingFiles.joinToString("\n") { (file, fileRoot) ->
+            // The list is NUL-terminated and read VERBATIM: a name that begins
+            // with a dash is a NAME, not an option of the archiver.
+            //
+            // The list used to be newline-separated and read as options, so a
+            // file called `--checkpoint-action=exec=...` was not archived: it
+            // was handed to tar as an option, and tar either ran it or
+            // refused the whole archive with "unrecognized option". A
+            // workspace is not a trusted place to put file names: the name
+            // comes from the pipeline, and the pipeline is what the operator
+            // wrote.
+            //
+            // NUL is also the only separator that can carry every name: a
+            // newline cannot appear in a name on every filesystem, and a name
+            // with a newline in it would have split the list in two.
+            val listContent = pendingFiles.joinToString(separator = "\u0000", postfix = "\u0000") { (file, fileRoot) ->
                 fileRoot.relativize(file).toString().replace("\\", "/")
             }
             Files.writeString(listFile, listContent)
@@ -80,6 +94,11 @@ class TarWriter(
                 "tar",
                 "-C", root.toString(),
                 "--no-recursion",
+                // The two flags that make the list a list of NAMES: the list is
+                // read verbatim, and it is separated by NUL. Without the first
+                // one, a name that begins with a dash is an option.
+                "--verbatim-files-from",
+                "--null",
                 "--files-from", listFile.toString(),
                 "-cf", "-",
             )

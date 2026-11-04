@@ -7,6 +7,8 @@ import dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.registry.EventRegistry
+import java.io.PrintStream
+import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -110,6 +112,25 @@ object PluginCompositionAdmitter {
         pluginJars: List<String>,
         trust: PluginTrustSource? = null,
         journal: AdmissionControlJournal? = null,
+        requireTrust: Boolean = false,
+        /**
+         * Where the admission's report goes.
+         *
+         * The admission prints what it decided about each artifact, and the caller owns
+         * the stream it is printed on. The destination is therefore a parameter all the
+         * way down, and never a global the caller has to trust to be the same one.
+         */
+        err: PrintStream = System.err,
+        /**
+         * Where the private copies of the artifacts go.
+         *
+         * The copies exist so that the bytes the runtime verified are the bytes the runtime
+         * loads, and they are named by digest so a second run over the same plugin reuses the
+         * same file instead of accumulating one per run. `null` means a temporary directory of
+         * this process's own: a composition that cannot be built without a private place for
+         * the copies is not a composition this runtime may build.
+         */
+        copyRoot: Path? = null,
     ): CompositionOutcome {
         val candidates = (computeBundledPlugins() + pluginJars).map { Path.of(it) }
 
@@ -196,6 +217,13 @@ object PluginCompositionAdmitter {
                 runtimeVersion = runtimeVersion,
                 trust = trustPolicy,
                 journal = journal,
+                // The operator's OWN artifacts, by the bytes the operator brought. The
+                // policy covers exactly these, and the requirement applies to exactly
+                // these: the plugins bundled with the installation are covered by the
+                // distribution they shipped in.
+                operatorDigests = operatorArtifacts.keys,
+                requireTrust = requireTrust,
+                err = err,
             )
         ) {
             is AdmittedArtifacts.Refused -> CompositionOutcome.Refused(
@@ -205,35 +233,36 @@ object PluginCompositionAdmitter {
             )
 
             is AdmittedArtifacts.Admitted -> {
-                // Time-of-check/time-of-use. Admission read every artifact's bytes; composition is
-                // about to LOAD them. If a file was replaced in between, the digest measured above
-                // describes bytes that are no longer there, and admitting on the strength of it would
-                // make the measurement decorative. Re-measured with the same function, refused with
-                // both digests so the drift is auditable.
-                val current = admitted.associate { measurement ->
-                    measurement.path to PluginManifestResourceReader.digestOfArtifactAt(measurement.path)
-                }
-                val changed = PluginArtifactIntegrity.changed(admitted, current)
-                if (changed != null) {
-                    return CompositionOutcome.Refused(
-                        artifact = changed.artifact,
-                        rejection = PluginManifestRejection.ArtifactChangedDuringAdmission(
-                            artifact = changed.artifact.toString(),
-                            measuredDigest = changed.measured.value,
-                            foundDigest = changed.found?.value ?: "<unreadable at composition time>",
-                        ),
+                // Time-of-check/time-of-use, closed by COPYING rather than by reading the
+                // original a second time. A second reading still leaves a window between the
+                // reading and the load, and the classloader reads the file AFTER the reading.
+                // The copy is verified against the digest the admission decided on and is
+                // then the artifact that is loaded, so what was verified is what runs.
+                val copies = when (
+                    val outcome = PrivatePluginArtifacts.copyAll(
+                        admitted = admission.artifacts,
+                        measured = measuredByPath,
+                        into = copyRoot ?: Files.createTempDirectory("pipelinek-plugin-copies"),
+                    )
+                ) {
+                    is PrivatePluginArtifacts.CopyOutcome.Copied -> outcome.artifacts
+
+                    is PrivatePluginArtifacts.CopyOutcome.Refused -> return CompositionOutcome.Refused(
+                        artifact = outcome.artifact,
+                        rejection = outcome.rejection,
+                        detail = outcome.detail,
                     )
                 }
 
-                val loader = pluginClassLoaderFor(admission.artifacts.map { it.path.toString() })
+                val loader = pluginClassLoaderFor(copies.map { it.path.toString() })
                 try {
                     CompositionOutcome.Composed(
                         // Pass 2 sees ONLY admitted artifacts. The parent loader still exposes the
-                        // bundled JARs, and every one of them is in `admission.artifacts`, so nothing
+                        // bundled JARs, and every one of them is in `copies`, so nothing
                         // reachable through ServiceLoader escaped pass 1. The same list is handed to
                         // the cross-check so a plugin is verified against its OWN contributions.
-                        composition = PluginComposition.resolve(loader, admission.artifacts),
-                        admitted = admission.artifacts,
+                        composition = PluginComposition.resolve(loader, copies),
+                        admitted = copies,
                     )
                 } catch (e: PluginContributionRefusal.Drift) {
                     // Pass 1 admitted the artifact; pass 2 caught the artifact LYING about what it

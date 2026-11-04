@@ -29,14 +29,17 @@ import java.util.regex.Pattern
  * appears in the transcript IN THE CLEAR. The threshold governs MASKING, not VALIDITY — a short
  * password is a weak password, not a malformed one, and refusing it would reject credentials that
  * work perfectly well. So the product accepts the binding and the redaction simply does not apply.
- * ## Why no warning is emitted
- * [SecretShorterThanMinimumMaskableLengthWarning] exists in the published API but nothing constructs
- * it. That is deliberate, not unfinished: the only production caller of the registration is
- * [addSecret], which reads through `SecretHandle.peek` — a non-consuming observer whose contract
- * cannot carry a result out — so there is no channel to emit through without changing the signature
- * of a published API and adding a second authority for redaction reporting. The type is kept because
- * it is already in the ABI dump, not because anything produces it. Do not read this section as a
- * promise that a short secret is announced anywhere.
+ * ## Who reports the short secret
+ * The REGISTRY discards the value in silence, because it cannot report: [addSecret] reads
+ * through `SecretHandle.peek`, a non-consuming observer whose contract cannot carry a result
+ * out, and adding a result to a published signature would make this type answer a second
+ * question about redaction.
+ * The REPORT is made by the seam that BOUNDS the credential, which is the one place that knows
+ * which credential the value belongs to: it builds
+ * [SecretShorterThanMinimumMaskableLengthWarning] and hands it to the operator's console. The
+ * report carries the credential id and the length, never the value.
+ * So the silence here is not the end of the story: it is the half of it that belongs to the
+ * registry. The other half belongs to the binding, and the binding makes it.
  * ## Performance
  * - Naive [Pattern.quote] alternation for ≤ 20 active secrets
  * - Aho-Corasick single-pass for > 20 secrets (switch in [RedactingEventSink])
@@ -379,10 +382,17 @@ class SecretPatternRegistry {
 
 /**
  * Warning event for a short secret that was not registered for masking.
- * **Nothing constructs or emits this type.** It is declared here and present in the published ABI
- * dump, and that is the only reason it still exists — see the class KDoc for why emitting it is not
- * a missing feature but a deliberate exclusion. Do not add a call site that builds one: nothing
- * consumes it, and a value that is constructed and dropped is worse than one that is absent.
+ *
+ * ## Who builds it and who reads it
+ * The seam that BOUNDS a credential builds it — it is the one place that knows which credential
+ * a value belongs to — and the operator's console reads it. The registry itself does not: it
+ * discards a short value in silence, because its registration reads through
+ * `SecretHandle.peek`, whose contract cannot carry a result out. See the class KDoc.
+ *
+ * ## What it must never carry
+ * The secret. A report about a secret that carries the secret is a second copy of it, in a
+ * place that is not protected the way the binding is.
+ *
  * @param credentialsId The credential ID that was not masked
  * @param length The actual length of the secret value
 */

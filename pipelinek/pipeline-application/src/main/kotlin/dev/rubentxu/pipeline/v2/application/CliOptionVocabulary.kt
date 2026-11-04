@@ -69,6 +69,16 @@ internal class ParseState(
      */
     var pluginTrust: String? = null
     /**
+     * `--require-plugin-trust` turns the trust policy from OPT-IN into MANDATORY: a plugin the
+     * operator brought that no trust decision approved is refused instead of loaded with a
+     * warning.
+     *
+     * FALSE by default, because the policy is opt-in and a run that names no plugin and no trust
+     * file has nothing to verify. Naming the flag is what makes the absence of a decision a
+     * refusal: an operator who asks for verification and gets silence has been told nothing.
+     */
+    var requirePluginTrust: Boolean = false
+    /**
      * External invoker correlation token, set by
      * `--correlation-id <uuid>`. The raw string lives here; conversion
      * to a typed [CorrelationId] happens after parsing succeeds. A blank
@@ -253,7 +263,16 @@ internal fun readOptionValue(
 
 /** The execution-only half of each table. Split by arity because the two enums are distinct types. */
 private val EXECUTION_ONLY_FLAGS: List<FlagOption> =
-    listOf(FlagOption.RESUME, FlagOption.RERUN, FlagOption.ISOLATED, FlagOption.ALLOW_NETWORK)
+    listOf(
+        FlagOption.RESUME,
+        FlagOption.RERUN,
+        FlagOption.ISOLATED,
+        FlagOption.ALLOW_NETWORK,
+        // The operator's demand that every plugin they brought carries a trust decision. A
+        // reader loads no plugin, so the demand means nothing to it: refused by name rather
+        // than accepted and dropped.
+        FlagOption.REQUIRE_PLUGIN_TRUST,
+    )
 
 private val EXECUTION_ONLY_VALUED: List<ValuedOption> =
     listOf(
@@ -318,6 +337,15 @@ private enum class FlagOption(val token: String) {
      * does not implement.
      */
     COMPILE_ONLY("--compile-only"),
+
+    /**
+     * Every plugin the operator brought has to carry a trust decision.
+     *
+     * A BOOLEAN with no value, like the other flags: the question is whether an
+     * unverified plugin may be loaded at all, and a spelling that took a value would
+     * invite a per-plugin policy this runtime does not implement.
+     */
+    REQUIRE_PLUGIN_TRUST("--require-plugin-trust"),
     ;
 
     companion object {
@@ -403,6 +431,7 @@ private object FlagOptions {
         FlagOption.GREP_INVERT -> flag(index) { state.grepInvert = true }
         FlagOption.FOLLOW -> flag(index) { state.follow = true }
         FlagOption.COMPILE_ONLY -> flag(index) { state.compileOnly = true }
+        FlagOption.REQUIRE_PLUGIN_TRUST -> flag(index) { state.requirePluginTrust = true }
     }
 
     /** A flag occupies exactly one position, so its outcome never depends on what follows it. */

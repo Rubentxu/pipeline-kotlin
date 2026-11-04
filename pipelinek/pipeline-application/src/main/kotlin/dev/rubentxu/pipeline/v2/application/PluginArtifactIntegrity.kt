@@ -9,10 +9,10 @@ import java.nio.file.Path
  *
  * ## What is decided here
  * Before the runtime may load a class from a plugin artifact, it has to know what that artifact is:
- * whether its bytes can be read at all, which artifacts are the same artifact, and whether the bytes
- * that were read are still the bytes that are about to be loaded. Those are the three questions this
- * file answers, and it answers them over measurements: no clock, no filesystem, no classloader. The
- * composition root does the reading and the loading; this says what the readings mean.
+ * whether its bytes can be read at all, and which artifacts are the same artifact. Those are the two
+ * questions this file answers, and it answers them over measurements: no clock, no filesystem, no
+ * classloader. The composition root does the reading and the loading; this says what the readings
+ * mean.
  *
  * ## Why the decisions are separated from the reading
  * The reading is I/O and the decision is arithmetic, and only the second one is worth pinning down.
@@ -32,8 +32,11 @@ import java.nio.file.Path
  * not a check.
  *
  * What the runtime does compare is the artifact with itself: the bytes read before admission have
- * to be the bytes that are loaded. That is a question the runtime can answer, and it is answered
- * here.
+ * to be the bytes that are loaded. That comparison is NOT made here. Reading the artifact a second
+ * time and comparing the two readings would still leave a window — the classloader reads the file
+ * AFTER the second reading — so the runtime answers it by copying the artifact into a private
+ * directory and verifying the COPY against the digest that was admitted: the thing verified is the
+ * thing loaded. That is `PrivatePluginArtifacts`, and it is the only place that answers it.
  */
 internal object PluginArtifactIntegrity {
 
@@ -71,14 +74,6 @@ internal object PluginArtifactIntegrity {
     }
 
     /**
-     * The artifact whose bytes are no longer the bytes that were measured.
-     *
-     * [found] is the digest read at the second measurement, or `null` when the artifact could not be
-     * read the second time. A file that became unreadable is a change, not an absence of one.
-     */
-    data class Changed(val artifact: Path, val measured: Digest, val found: Digest?)
-
-    /**
      * The artifacts the runtime may compose over.
      *
      * Two rules, applied in this order:
@@ -106,26 +101,5 @@ internal object PluginArtifactIntegrity {
         }
 
         return Selection.Admitted(admitted)
-    }
-
-    /**
-     * The artifact whose bytes changed between the two measurements, or `null` when every artifact
-     * still holds the bytes that were read.
-     *
-     * This is the time-of-check/time-of-use seam. A digest measured once and trusted later proves
-     * nothing about the file that is actually read, so the bytes are read again before they are
-     * loaded and the two readings have to agree.
-     *
-     * @param before the artifacts as they were measured before admission.
-     * @param after the digests read again, by path. A path that is absent counts as unreadable,
-     *   because a measurement that is missing is not a measurement.
-     */
-    fun changed(before: List<Measurement.Measured>, after: Map<Path, Digest?>): Changed? {
-        for (measurement in before) {
-            val found = after[measurement.path]
-            val same = found != null && found.value.equals(measurement.digest.value, ignoreCase = true)
-            if (!same) return Changed(measurement.path, measurement.digest, found)
-        }
-        return null
     }
 }

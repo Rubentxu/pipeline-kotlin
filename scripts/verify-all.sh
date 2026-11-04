@@ -76,6 +76,13 @@
 # source. The calibration of the product belongs to the milestone and to the
 # certification: what a consumer waits for is a milestone datum, not a cost
 # that every change has to pay. Every skip says WHAT it did not run and WHY.
+# The level also moves the BUDGET. The 900 s of AGENTS.md section 4 is the
+# CERTIFICATION's budget: it is written for a build from nothing, from clean
+# outputs, and only the certification measures one. The change and milestone
+# levels publish their clock as a datum -- the reader has to see what the
+# change cost -- but they do NOT compare it with that budget, and their
+# verdict line says `budget=NONE`, so that no change run can be read as a
+# budget check.
 # The gate has four stages, and a stage number that names a fifth is a typo: a
 # typo that selected nothing would run nothing and print a clean verdict, which
 # is the same silent green this script refuses everywhere else.
@@ -288,6 +295,29 @@ identity_fields() {
 # ends up quoted as a certification.
 level_field() {
     printf 'level=%s' "$level"
+}
+
+# The BUDGET field of a verdict line: the only wall-clock budget this
+# repository writes down.
+#
+# That budget is the CERTIFICATION's. It is written for a build from nothing,
+# from clean outputs, and only the certification measures one. A change run
+# starts from the outputs already on disk, and a milestone run measures the
+# work a change invalidated plus the calibration of the product: neither is the
+# clock the budget was written for, so neither is compared with it.
+#
+# A run that is not compared must not LOOK compared. A field that carries a
+# number next to a clock says "this clock was checked against that number",
+# and a reader who believes it will quote a change run as a budget check. So
+# the field says what is true: the certification carries the budget, and the
+# other levels carry NONE. The clock itself is published either way -- it is
+# the datum -- and the report says in words why it was not compared.
+budget_field() {
+    if [[ "$full_certification" == 1 ]]; then
+        printf 'budget=%ss' "$BUDGET_SECONDS"
+    else
+        printf 'budget=NONE'
+    fi
 }
 
 gate_head_sha="$(gate_head_id "$repo_root")"
@@ -574,9 +604,9 @@ fail() { printf 'verify-all: FAILED at %s\n' "$*" >&2; exit 1; }
 # somebody assumed.
 fail_with_verdict() {
     printf 'verify-all: FAILED at %s\n' "$1" >&2
-    printf '\nFAIL  %s  %s  elapsed=%ss  budget=%ss%s\n' \
+    printf '\nFAIL  %s  %s  elapsed=%ss  %s%s\n' \
         "$(identity_fields)" "$(level_field)" \
-        "$(elapsed "$started_at")" "$BUDGET_SECONDS" "$(evidence_suffixes)"
+        "$(elapsed "$started_at")" "$(budget_field)" "$(evidence_suffixes)"
     exit 1
 }
 
@@ -1229,6 +1259,9 @@ print_level_meaning() {
             echo "      ${BUDGET_SECONDS}s budget of AGENTS.md section 4."
             echo "      it deleted the build outputs and switched the build cache off,"
             echo "      so it measured a build from nothing."
+            echo "      it ran the static analysis (detekt) and the guard of the words"
+            echo "      the comments use, and it calibrated the product: those are the"
+            echo "      certification's work, and no other level runs them."
             ;;
         cambio)
             echo "      this run is a CHANGE run: it is not a certification, and its"
@@ -1236,9 +1269,10 @@ print_level_meaning() {
             echo "      it did NOT delete the build outputs and it kept the build cache"
             echo "      on, so it measured the work this change invalidated, starting"
             echo "      from the outputs already on disk."
-            echo "      its clock is still held to the ${BUDGET_SECONDS}s ceiling, but it"
-            echo "      is NOT the clock of a certification and must not be quoted as the"
-            echo "      cost of this gate."
+            echo "      its clock is NOT compared with the ${BUDGET_SECONDS}s budget:"
+            echo "      that budget is the certification's, and this clock is not the"
+            echo "      clock of a certification, so it must not be quoted as the cost"
+            echo "      of this gate."
             echo "      it does NOT owe the certification's line base; the census names"
             echo "      the parts of it that this run did not measure."
             echo "      it did NOT run the static analysis (detekt) nor the guard of the"
@@ -1251,9 +1285,10 @@ print_level_meaning() {
             echo "      it did NOT delete the build outputs and it kept the build cache"
             echo "      on, so it measured the work that was invalidated, starting from"
             echo "      the outputs already on disk."
-            echo "      its clock is still held to the ${BUDGET_SECONDS}s ceiling, but it"
-            echo "      is NOT the clock of a certification and must not be quoted as the"
-            echo "      cost of this gate."
+            echo "      its clock is NOT compared with the ${BUDGET_SECONDS}s budget:"
+            echo "      that budget is the certification's, and this clock is not the"
+            echo "      clock of a certification, so it must not be quoted as the cost"
+            echo "      of this gate."
             echo "      it does NOT owe the certification's line base; the census names"
             echo "      the parts of it that this run did not measure."
             echo "      it did NOT run the static analysis (detekt) nor the guard of the"
@@ -1359,13 +1394,22 @@ seal_receipt() {
     local verdict="$1"
     [[ -n "$receipt_file" && -f "$receipt_file" ]] || return 0
     local wall_ms=$(( $(now_ms) - started_at_ms ))
+    # The receipt is the document that outlives the run, so it has to say what
+    # the run was measured against. A run with no budget of its own records
+    # none: a number there would read as a check that happened, and nobody
+    # would know that the clock of a change run is not the clock the budget
+    # was written for.
+    local budget="$BUDGET_SECONDS"
+    if [[ "$full_certification" != 1 ]]; then
+        budget="none"
+    fi
     if ! python3 scripts/check-e2e-receipt.py seal \
         --receipt "$receipt_file" \
         --verdict "$verdict" \
         --scope "$e2e_scope" \
         --level "$level" \
         --wall-ms "$wall_ms" \
-        --budget-seconds "$BUDGET_SECONDS" \
+        --budget-seconds "$budget" \
         --tests-rewritten "${xml_fresh_tests:-0}" \
         --tests-read "${xml_read_tests:-0}" \
         --sealed-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; then
@@ -3108,11 +3152,19 @@ stage_started_at=$(date +%s)
 # which is the difference between "the run was stopped" and "scenario X was
 # stuck". Without this, a hung scenario takes the whole gate down with it and
 # the only thing the operator learns is that time ran out.
-stage_budget=$(( BUDGET_SECONDS - (stage_started_at - started_at) - 30 ))
-if (( stage_budget <= 0 )); then
-    fail "stage 3: the gate has no budget left for the E2E stage"
+#
+# That ceiling is the certification's, because the budget it comes from is
+# the certification's: a run with no budget has no "time left" to give away.
+# The other levels keep the launcher's own stage stop -- the one that stops a
+# hung scenario before it eats the run -- and the gate does not lend them a
+# number that belongs to another level.
+if [[ "$full_certification" == 1 ]]; then
+    stage_budget=$(( BUDGET_SECONDS - (stage_started_at - started_at) - 30 ))
+    if (( stage_budget <= 0 )); then
+        fail "stage 3: the gate has no budget left for the E2E stage"
+    fi
+    export PIPELINEK_E2E_BUDGET_SECONDS="$stage_budget"
 fi
-export PIPELINEK_E2E_BUDGET_SECONDS="$stage_budget"
 
 # The receipt of this cycle. The launcher writes it and the gate reads it back
 # and seals its own verdict into it.
@@ -3575,13 +3627,25 @@ if [[ "$subset" == 1 ]]; then
     exit 0
 fi
 print_level_meaning
-echo "    elapsed ${total}s against a budget of ${BUDGET_SECONDS}s"
-if [[ "$total" -gt "$BUDGET_SECONDS" ]]; then
-    echo "verify-all: BLOCKED_BUDGET. ${total}s > ${BUDGET_SECONDS}s." >&2
-    echo "  Per AGENTS.md section 4 this is not something to raise or split:" >&2
-    echo "  shrink the scenario set, drop duplicate verification, or cut the" >&2
-    echo "  slowest stage, then rerun the whole gate." >&2
-    fail "stage 4: wall clock ${total}s"
+# The wall clock is compared with the budget ONLY at the certification, which
+# is the run that deletes the outputs, switches the build cache off and
+# measures a build from nothing: the only clock the 900 s of AGENTS.md section
+# 4 was written for. The other levels publish their clock as a datum -- the
+# reader has to see what the change cost -- and say in words that it was not
+# compared, because a run that is not compared must not look compared.
+if [[ "$full_certification" == 1 ]]; then
+    echo "    elapsed ${total}s against a budget of ${BUDGET_SECONDS}s"
+    if [[ "$total" -gt "$BUDGET_SECONDS" ]]; then
+        echo "verify-all: BLOCKED_BUDGET. ${total}s > ${BUDGET_SECONDS}s." >&2
+        echo "  Per AGENTS.md section 4 this is not something to raise or split:" >&2
+        echo "  shrink the scenario set, drop duplicate verification, or cut the" >&2
+        echo "  slowest stage, then rerun the whole gate." >&2
+        fail "stage 4: wall clock ${total}s"
+    fi
+else
+    echo "    elapsed ${total}s (this clock is NOT compared with the ${BUDGET_SECONDS}s"
+    echo "    budget of AGENTS.md section 4: that budget belongs to the certification,"
+    echo "    and this run did not measure a build from nothing)"
 fi
 
 # A scenario that did not run is not a scenario that passed. AGENTS.md section 4
@@ -3594,9 +3658,9 @@ fi
 # name, not a defect to redden the whole gate over.
 if (( e2e_not_run > 0 )); then
     gate_verdict="INCOMPLETE"
-    printf '\nINCOMPLETE  %s  %s  elapsed=%ss  budget=%ss%s\n' \
+    printf '\nINCOMPLETE  %s  %s  elapsed=%ss  %s%s\n' \
         "$(identity_fields)" "$(level_field)" "$total" \
-        "$BUDGET_SECONDS" "$(evidence_suffixes)"
+        "$(budget_field)" "$(evidence_suffixes)"
     printf 'Every stage above ran and passed, but %s scenario(s) never ran at all.\n' "$e2e_not_run"
     printf 'This is not the gate: a scenario that was selected and skipped is a gap\n'
     printf 'to name, not a pass. AGENTS.md section 4 does not allow an unrun test to be a PASS.\n'
@@ -3606,7 +3670,7 @@ else
     # operator has to come back and read.
     VERIFY_ALL_VERDICT=PASS
     gate_verdict="PASS"
-    printf '\nPASS  %s  %s  elapsed=%ss  budget=%ss%s\n' \
+    printf '\nPASS  %s  %s  elapsed=%ss  %s%s\n' \
         "$(identity_fields)" "$(level_field)" "$total" \
-        "$BUDGET_SECONDS" "$(evidence_suffixes)"
+        "$(budget_field)" "$(evidence_suffixes)"
 fi

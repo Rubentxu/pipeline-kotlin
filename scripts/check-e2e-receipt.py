@@ -96,6 +96,24 @@ def as_int(value: object) -> int:
     return 0
 
 
+def budget_seconds(value: str) -> int | None:
+    """The budget of a run, or None when the run has no budget of its own.
+
+    The wall-clock budget of this repository belongs to the certification: it
+    is written for a build from nothing, and only that run measures one. The
+    other levels publish their clock as a datum and are not compared with it.
+
+    So the receipt records the budget only where there is one. A number in a
+    document that outlives the run reads as a check that happened, and a
+    reader who finds 900 there would read a change run as a budget check that
+    it never received.
+    """
+    text = value.strip().lower()
+    if text in ("", "none"):
+        return None
+    return int(text)
+
+
 def launch_problems(document: dict) -> list[str]:
     """The problems the census of the product's launches has.
 
@@ -498,7 +516,7 @@ def main(argv: list[str]) -> int:
     seal.add_argument("--scope", required=True)
     seal.add_argument("--level", default="certificacion")
     seal.add_argument("--wall-ms", dest="wall_ms", type=int, required=True)
-    seal.add_argument("--budget-seconds", dest="budget_seconds", type=int, default=900)
+    seal.add_argument("--budget-seconds", dest="budget_seconds", type=budget_seconds, default=None)
     seal.add_argument("--tests-rewritten", dest="tests_rewritten", type=int, default=0)
     seal.add_argument("--tests-read", dest="tests_read", type=int, default=0)
     seal.add_argument("--sealed-at", dest="sealed_at", default="")

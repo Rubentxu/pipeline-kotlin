@@ -20,6 +20,14 @@ package dev.rubentxu.pipeline.v2.application.durable
  * to share it — the command-typed legacy adapter and the seam router that chose
  * between them — are gone, because the legacy world could not produce a
  * successful execution under any input.
+ *
+ * ## What crosses this seam, and what does not
+ * A typed step failure does NOT cross as a value: it travels as the
+ * [dev.rubentxu.pipeline.v2.domain.PipelineStepException] it was raised as, and
+ * the boundary that owns the lifecycle turns it into the outcome with the
+ * classification it carries. The seam decides the outcome of a step that
+ * SUCCEEDED or failed in a way nobody classified; it never re-decides a
+ * classification that was already made.
  */
 fun interface CommonExecutionBoundary {
     suspend fun execute(

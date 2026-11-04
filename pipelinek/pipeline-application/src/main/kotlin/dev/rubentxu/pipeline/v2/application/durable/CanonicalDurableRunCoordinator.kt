@@ -255,7 +255,7 @@ internal class CanonicalDurableRunCoordinator(
      * The coordinator only ever hands an opaque [PreparedRegistryExecution] to this seam and
      * never names a decoded command type.
     */
-    private val executionBoundary: CommonExecutionBoundary = RegistryExecutionBoundary.adapt(
+    private val executionBoundary: CommonExecutionBoundary = RegistryExecutionBoundary(
         // The SAME holder PREPARE consulted: one capability set, two moments.
         capabilityBindings = capabilityBindings,
     )

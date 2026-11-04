@@ -119,7 +119,7 @@ internal object ScriptedFrontendRunner {
         val capabilityBindings = CanonicalCapabilityBindings()
         val executor = DurableStepExecutor(
             eventSink = eventSink,
-            executionBoundary = RegistryExecutionBoundary.adapt(capabilityBindings = capabilityBindings),
+            executionBoundary = RegistryExecutionBoundary(capabilityBindings = capabilityBindings),
             records = records,
             telemetry = telemetry,
         )

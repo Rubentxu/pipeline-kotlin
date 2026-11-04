@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
+import dev.rubentxu.pipeline.v2.domain.PipelineStepException
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
@@ -10,58 +11,65 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import kotlinx.coroutines.CancellationException
 
 /**
- * Registry strategy executor behind the [CommonExecutionBoundary].
+ * The ONE implementation of the [CommonExecutionBoundary] seam: the registry executor.
+ *
  * A [PreparedRegistryExecution] already passed registry resolution, capability admission and typed
  * decode during [RegistryExecutionPreparation.prepare]; it carries the admitted definition and its
- * already-decoded input. Therefore [CommonExecutionBoundary.execute] here runs the typed handler
- * WITHOUT re-decoding (the prepare/codec split is preserved).
+ * already-decoded input. Therefore the execution here runs the typed handler WITHOUT re-decoding
+ * (the prepare/codec split is preserved).
  * Direction: PreparedRegistryExecution -> capability admission (re-checked against the runtime access,
  * fail-closed) -> [StepCapabilityAccess] (via [CanonicalRuntimeCapabilityAccess], never the raw
  * context) -> typed handler -> durable outcome. The handler receives only a narrow
  * [StepHandlerContext] built from the runtime identity plus its declared capabilities; it never sees a
  * [CanonicalRuntimeContext].
+ *
  * ## /: atomic outcome + encodedOutput
- * The registry boundary returns the same shape as every other [CommonExecutionBoundary]
- * implementation: a [CommonExecutionResult] carrying both `outcome` and `encodedOutput?`. The encoded
+ * The boundary returns a [CommonExecutionResult] carrying both `outcome` and `encodedOutput?`. The encoded
  * output is the Step's typed `O` after `outputCodec.encode(O)`. After this boundary returns, the typed
- * `O` is GONE — only the `EncodedStepValue` (a `String` under a value class) crosses the seam.
+ * `O` is GONE — only the [EncodedStepValue] (a `String` under a value class) crosses the seam.
  * The boundary NEVER persists either field; durability is a separate concern.
  * A Step whose handler returns `Unit` reduces to `encodedOutput = null` (mirroring echo's
  * `EchoInput -> String` shape; echo's typed output crosses via `EVENT_SINK`, not via this slot).
- * A thrown handler is an adapter/engine defect and surfaces as `StepOutcome.Failure` (`ENGINE`);
- * the encoded output in that case is `null` because there is no successful terminal to encode.
+ *
+ * ## Who classifies a failure, and why this one does not
+ * A failure the handler raises TYPED —a `PipelineStepException` and its subclasses— already
+ * carries its classification in [PipelineStepException.failure]. This boundary does NOT
+ * re-label it: it re-throws it, and the lifecycle boundary above turns it into the outcome
+ * with the kind the failure carries. The reason is that the classification is not the
+ * engine's to invent here: `USER` says the user's step refused, `NETWORK` says the network
+ * did not answer, `PLUGIN` says a plugin broke its contract, and an engine that rewrites
+ * all of them to `ENGINE` claims "the product is broken" for failures that are not the
+ * product's. The kind is decided where the failure is raised, and it survives the whole chain.
+ * A failure that is NOT typed is this engine's own: a handler that blew up in a way nobody
+ * classified is an ENGINE failure, and only this boundary can say so.
+ *
  * ## Atomicity / no-retention invariant (user rule)
  * The boundary MUST NOT retain execution output after `execute` returns. The carrier is the
  * single source of truth and is computed in one pass — there is no `lastOutput` field, no
  * thread-local, no per-key cache. Future parallel / remote / retry scenarios rely on the
  * atomicity of the carrier value.
-*/
-object RegistryExecutionBoundary {
-
+ */
+class RegistryExecutionBoundary(
     /**
-     * Creates a [CommonExecutionBoundary] that executes registry Steps over the
-     * capabilities [bindings] names.
+     * The collaborators the capability table is built from.
      *
      * The collaborator set is not spelled out here: it is held by
      * [CanonicalCapabilityBindings], which the caller composes once and shares
      * with the preparation that admitted the Step. That is what makes the
      * EXECUTE-time table the SAME table admission saw.
-    */
-    fun adapt(capabilityBindings: CanonicalCapabilityBindings): CommonExecutionBoundary =
-        CommonExecutionBoundary { prepared, context ->
-            coexecute(prepared, context, capabilityBindings)
-        }
+     */
+    private val capabilityBindings: CanonicalCapabilityBindings,
+) : CommonExecutionBoundary {
 
     /**
      * Executes a [PreparedRegistryExecution] and returns both the closed
      * [dev.rubentxu.pipeline.v2.domain.StepOutcome] AND the encoded typed `O` (or `null` if the
      * handler returned `Unit`, threw, or surfaced a Failure).
-    */
+     */
     @Suppress("UNCHECKED_CAST")
-    suspend fun coexecute(
+    override suspend fun execute(
         prepared: PreparedRegistryExecution,
         context: CanonicalRuntimeContext,
-        capabilityBindings: CanonicalCapabilityBindings,
     ): CommonExecutionResult {
         // Erasure boundary: the concrete payload type lives behind the codec / in the prepared input.
         val definition = prepared.definition as StepDefinition<Any, Any>
@@ -119,6 +127,11 @@ object RegistryExecutionBoundary {
             // Cancellation, including TimeoutCancellationException, is structured execution
             // control owned by the cancelling parent. It is never an ENGINE failure or a
             // durable terminal fact at this generic boundary.
+            throw e
+        } catch (e: PipelineStepException) {
+            // The failure is already classified, and the classification is the caller's to
+            // publish. Re-throwing hands it to the lifecycle boundary intact, so the kind
+            // that was raised is the kind that is published and the one that is journalled.
             throw e
         } catch (e: Exception) {
             CommonExecutionResult(

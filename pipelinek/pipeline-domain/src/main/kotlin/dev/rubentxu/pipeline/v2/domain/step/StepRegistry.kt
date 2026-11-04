@@ -104,7 +104,7 @@ data class StepContract<I : Any, O : Any>(
  * are treated as fail-closed upstream.
  * The execute signature is `suspend` so that handlers can reach suspend
  * capability seams (e.g. `ShellOperations.invoke` which delegates to the suspend
- * `ShExecution.invokeShell` substrate). The boundary (`CommonExecutionBoundary.coexecute`)
+ * `ShExecution.invokeShell` substrate). The boundary (`CommonExecutionBoundary.execute`)
  * is suspend and runs the handler directly; pure-function handlers simply ignore the suspend
  * modifier.
 */

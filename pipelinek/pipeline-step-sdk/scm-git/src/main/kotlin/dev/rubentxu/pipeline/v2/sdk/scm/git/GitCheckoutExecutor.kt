@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
+import dev.rubentxu.pipeline.v2.domain.scm.GitRemotePolicy
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
 import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
@@ -133,7 +134,21 @@ open class GitCheckoutExecutor(
         val workspace = req.workspaceRoot.resolve(spec.relativeTargetDir)
         val gitDir = workspace.resolve(".git")
 
-        // Guard argv
+        // The remote is refused BEFORE the run is told a checkout started, before any
+        // credential is applied, and before any process is spawned. git reads an argument
+        // that starts with `-` as an OPTION, so a remote shaped like `--upload-pack=…` is
+        // not a repository but an instruction to run a program of the author's choosing —
+        // and with a `file://` remote that program runs on THIS machine. The refusal has
+        // to arrive before the program could.
+        //
+        // It is a typed refusal, not an exception: the caller classifies the failure by
+        // its type, and a remote the author wrote is the author's mistake (USER), not a
+        // broken infrastructure.
+        GitRemotePolicy.refusalFor(spec.url, spec.branch)?.let { refusal ->
+            return Result.failure(GitRemotePolicy.GitRemoteRefused(refusal))
+        }
+
+        // Guard argv: the credential rule, over the real arguments.
         guardProcessBuilderArgs(listOf("git", "ls-remote", spec.url, spec.branch))
 
         // Emit GitCheckoutStarted
@@ -537,7 +552,11 @@ open class GitCheckoutExecutor(
 
     private fun gitClone(url: String, branch: String, workspace: Path, env: Map<String, String>): Result<Unit> {
         return try {
-            val args = listOf("git", "clone", "--branch", branch, url, workspace.toString())
+            // `--` before the positionals: git stops reading options there, so a remote
+            // or a branch that looks like an option is a VALUE and never an instruction.
+            // The remote is refused earlier (see `execute`), so this is the second line of
+            // the same defence, not the only one.
+            val args = listOf("git", "clone", "--branch", branch, "--", url, workspace.toString())
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 2 * 1000)
             if (captured.succeeded) Result.success(Unit)
             else Result.failure(IllegalStateException("git clone failed${captured.stderr.prependIndent()}"))
@@ -590,11 +609,20 @@ open class GitCheckoutExecutor(
     private fun newEventId(): String = java.util.UUID.randomUUID().toString()
 
     override fun close() {
-        // Wipe credentials files AFTER execute completes.
-        // This ensures the credentials file persists through execute and
-        // is available for verification by callers after execute returns.
+        // The credentials files are wiped AFTER execute completes, so they persist through
+        // the checkout and are available for verification by callers after execute returns.
         // A composition with no applier has no file to wipe.
+        //
+        // Every temporary root this checkout opened goes away with it: the applier's
+        // directory (which holds the SSH key and the answer file), the executor's own
+        // control root, and the control roots of the poll executor and of the changelog
+        // writer. Leaving them behind put a private key and a token in the system
+        // temporary area for as long as the machine kept them, and nobody was looking
+        // after them.
         credentialsApplier?.close()
+        poll.close()
+        changelog.close()
+        GitTempRoot.deleteRecursively(gitControlRoot)
     }
 }
 

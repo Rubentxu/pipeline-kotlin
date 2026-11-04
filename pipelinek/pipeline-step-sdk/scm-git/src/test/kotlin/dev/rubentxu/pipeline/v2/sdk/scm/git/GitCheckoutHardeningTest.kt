@@ -1,0 +1,281 @@
+package dev.rubentxu.pipeline.v2.sdk.scm.git
+
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialLinkedSecretResolver
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskRuntime
+import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
+import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionResult
+import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
+import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
+import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
+import dev.rubentxu.pipeline.v2.domain.scm.GitScm
+import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.EventSink
+import java.nio.file.Files
+import java.nio.file.Path
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+
+/**
+ * The checkout that refuses to be tricked, and that leaves nothing behind.
+ *
+ * **The guarantee.** A remote that git would read as an option never becomes one,
+ * the configuration the checkout hands to git is a configuration git accepts, the
+ * ssh connection refuses a host whose key changed, and every temporary root the
+ * checkout opened is gone when the checkout ends.
+ *
+ * **Why the argv is the place to look.** git reads every argument that starts with
+ * `-` as an option. `--upload-pack=…` is not a repository: it is an instruction to
+ * run a program, and with a `file://` remote the program runs on this machine. The
+ * `--` before the positionals is what makes the value a value, and the policy is
+ * what refuses the value that has no business being there.
+ *
+ * **Why the configuration is checked with the real git.** The header that was
+ * missing its brackets did not weaken the authentication, it disabled it: git
+ * refuses a file with a bad line and the whole configuration stops being read. A
+ * test that only reads the text would have called that file correct.
+ */
+class GitCheckoutHardeningTest {
+
+    @TempDir
+    lateinit var temp: Path
+
+    @Test
+    fun `the ls-remote argv separates the positionals from the options`() {
+        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val poll = GitPollExecutor(taskRuntime = runtime, controlRoot = temp.resolve("poll"))
+
+        poll.execute("https://github.com/org/repo.git", "main")
+
+        assertEquals(
+            listOf("git", "ls-remote", "--", "https://github.com/org/repo.git", "main"),
+            runtime.argvs.single(),
+            "the remote and the branch are positionals, and without `--` git reads a " +
+                "remote that starts with `-` as an option",
+        )
+    }
+
+    @Test
+    fun `the clone argv separates the positionals from the options`() {
+        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val executor = executor(runtime = runtime)
+        val url = "https://github.com/org/repo.git"
+
+        executor.execute(request(url))
+
+        val clone = runtime.argvs.first { it.contains("clone") }
+        assertEquals(
+            listOf("git", "clone", "--branch", "main", "--", url, clone.last()),
+            clone,
+            "the remote is a positional, and `--` is what keeps a remote that looks like " +
+                "an option from becoming one",
+        )
+    }
+
+    @Test
+    fun `a remote that looks like an option is refused before any process is spawned`() {
+        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val executor = executor(runtime = runtime)
+
+        val result = executor.execute(request("--upload-pack=touch /tmp/pwned"))
+
+        assertTrue(result.isFailure, "the checkout accepted a remote that git would read as an option")
+        val message = result.exceptionOrNull()!!.message!!
+        assertTrue(
+            message.contains("option"),
+            "the refusal must say that git would read the remote as an option; it said: $message",
+        )
+        assertFalse(
+            message.contains("touch /tmp/pwned"),
+            "the refusal repeated the command it refused to run; it said: $message",
+        )
+        assertTrue(
+            runtime.argvs.isEmpty(),
+            "the checkout spawned a process before refusing the remote: ${runtime.argvs}",
+        )
+    }
+
+    @Test
+    fun `the per-host configuration is one git accepts`() {
+        val applier = applier()
+        applier.apply(
+            SecretHandleRef(CredentialsId("creds")),
+            SecretHandleRef(CredentialsId("creds")),
+            "https://github.com/org/repo.git",
+        )
+
+        val config = Path.of(applier.gitConfigFilePath())
+        val text = Files.readString(config)
+        assertTrue(
+            text.contains("[http \"https://github.com\"]"),
+            "the section header needs its brackets: git refuses a line that starts with a " +
+                "section name and no brackets, and it refuses the WHOLE file; the file says: $text",
+        )
+        assertFalse(
+            text.contains("helper=store"),
+            "the store helper keeps the credential in the plaintext ~/.git-credentials, " +
+                "which is a second copy of the secret in a place nobody asked for; the file says: $text",
+        )
+
+        val accepted = runGit("config", "--file", config.toString(), "--list")
+        assertEquals(
+            0,
+            accepted.exitCode,
+            "git does not accept the configuration the checkout wrote: ${accepted.output}",
+        )
+    }
+
+    @Test
+    fun `the ssh connection refuses a host whose key changed`() {
+        val knownHosts = temp.resolve("known_hosts")
+        val applier = applier(knownHosts = knownHosts)
+        applier.applySsh(SecretHandleRef(CredentialsId("ssh-key")), null, "ssh://git@github.com/org/repo.git")
+
+        val command = requireNotNull(applier.buildEnv()["GIT_SSH_COMMAND"]) {
+            "the ssh transport must put GIT_SSH_COMMAND in the environment it hands over"
+        }
+
+        assertTrue(
+            command.contains("StrictHostKeyChecking=accept-new"),
+            "a host we have not met is accepted and recorded, and a host whose key CHANGED is " +
+                "refused; the command was: $command",
+        )
+        assertFalse(
+            command.contains("StrictHostKeyChecking=no"),
+            "`no` accepts every key every time, which is the same as trusting whoever answers; " +
+                "the command was: $command",
+        )
+        assertFalse(
+            command.contains("UserKnownHostsFile=/dev/null"),
+            "a known hosts file that is /dev/null records nothing, so `accept-new` cannot tell " +
+                "a first contact from a changed key; the command was: $command",
+        )
+        assertTrue(
+            command.contains("UserKnownHostsFile=\"$knownHosts\""),
+            "the known hosts file must be the one the operator named, and quoted; the command " +
+                "was: $command",
+        )
+        val keyPath = applierRoot(applier).resolve(".git-ssh-key")
+        assertTrue(
+            command.contains("-i \"$keyPath\""),
+            "the key path must be quoted: a path with a space in it would otherwise split into " +
+                "two arguments; the command was: $command",
+        )
+    }
+
+    @Test
+    fun `closing the checkout removes every temporary root it opened`() {
+        val applierRoot = Files.createTempDirectory("scm-git-step")
+        val pollRoot = Files.createTempDirectory("git-poll-tasks")
+        val changelogRoot = Files.createTempDirectory("git-changelog-tasks")
+        val controlRoot = Files.createTempDirectory("git-tasks")
+        val executor = GitCheckoutExecutor(
+            poll = GitPollExecutor(controlRoot = pollRoot),
+            changelog = GitChangelogWriter(controlRoot = changelogRoot),
+            credentialsApplier = GitCredentialsApplier(applierRoot, GitCredentials()),
+            gitControlRoot = controlRoot,
+        )
+
+        executor.close()
+
+        listOf(applierRoot to "the credential directory", pollRoot to "the poll control root",
+            changelogRoot to "the changelog control root", controlRoot to "the executor control root")
+            .forEach { (root, what) ->
+                assertFalse(
+                    Files.exists(root),
+                    "$what is still on disk after the checkout ended, and it holds the SSH key " +
+                        "and the token",
+                )
+            }
+    }
+
+    private fun applier(knownHosts: Path? = null): GitCredentialsApplier {
+        val root = Files.createTempDirectory("scm-git-step")
+        return GitCredentialsApplier(
+            tempDir = root,
+            credentials = GitCredentials(),
+            linkedSecretResolver = CredentialLinkedSecretResolver { SecretHandle.plain("user:pass") },
+            knownHostsFile = knownHosts,
+        )
+    }
+
+    /** The directory an applier of this test owns, so the test can look inside it. */
+    private fun applierRoot(applier: GitCredentialsApplier): Path =
+        Path.of(applier.credentialsFilePath()).parent
+
+    private fun executor(runtime: CapturingRuntime): GitCheckoutExecutor = GitCheckoutExecutor(
+        poll = GitPollExecutor(taskRuntime = runtime, controlRoot = temp.resolve("poll")),
+        changelog = GitChangelogWriter(controlRoot = temp.resolve("changelog")),
+        credentialsApplier = GitCredentialsApplier(
+            tempDir = Files.createDirectories(temp.resolve("creds")),
+            credentials = GitCredentials(),
+        ),
+        taskRuntime = runtime,
+        gitControlRoot = temp.resolve("control"),
+    )
+
+    private fun request(url: String) = GitCheckoutRequest(
+        spec = CheckoutSpec(GitScm(url = url, branch = "main")),
+        runId = "run-1",
+        workspaceRoot = temp.resolve("workspace"),
+        eventSink = object : EventSink {
+            override fun append(event: DomainEvent) = Unit
+            override fun eventsFor(runId: String): Sequence<DomainEvent> = emptySequence()
+        },
+        clock = FIXED_CLOCK,
+        secretStore = null,
+        stepIndex = 0,
+        previousRemoteSha = null,
+    )
+
+    /**
+     * A runtime that records the argv it was asked to run and answers with a fixed
+     * output, so the test can look at the command line the checkout WOULD have run.
+     */
+    private class CapturingRuntime(private val stdout: String = "") : DurableTaskRuntime {
+        val argvs: MutableList<List<String>> = mutableListOf()
+
+        override suspend fun execute(
+            request: TaskExecutionRequest,
+            outputSink: dev.rubentxu.pipeline.v2.domain.durable.ExecutionOutputSink,
+        ): TaskExecutionResult {
+            (request.task as? TaskSpec.ExecTask)?.let { argvs.add(it.argv) }
+            outputSink.append(
+                dev.rubentxu.pipeline.v2.domain.durable.OutputChunk(
+                    stream = dev.rubentxu.pipeline.v2.domain.durable.TaskStream.STDOUT,
+                    data = stdout.toByteArray(),
+                ),
+            )
+            return TaskExecutionResult(
+                exitCode = 0,
+                startedAtEpochMs = 0,
+                endedAtEpochMs = 0,
+            )
+        }
+    }
+
+    private data class GitResult(val exitCode: Int, val output: String)
+
+    /**
+     * Runs the real git, because the question "does git accept this file?" has no
+     * answer without git.
+     */
+    private fun runGit(vararg args: String): GitResult {
+        val process = ProcessBuilder(listOf("git") + args).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        process.waitFor()
+        return GitResult(process.exitValue(), output)
+    }
+
+    private companion object {
+        val FIXED_CLOCK: Clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC)
+    }
+}

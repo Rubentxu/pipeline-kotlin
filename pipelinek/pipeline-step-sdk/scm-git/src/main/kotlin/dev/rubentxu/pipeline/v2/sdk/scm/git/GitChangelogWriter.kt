@@ -23,7 +23,7 @@ class GitChangelogWriter(
     private val timeoutSeconds: Long = 10,
     private val taskRuntime: DurableTaskRuntime? = null,
     private val controlRoot: Path = Files.createTempDirectory("git-changelog-tasks"),
-) {
+) : AutoCloseable {
     private val runtimeInstance: DurableTaskRuntime by lazy {
         taskRuntime ?: ProcessDurableTaskRuntime(
             controlRoot,
@@ -134,5 +134,17 @@ class GitChangelogWriter(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * Removes the control root this writer opened.
+     *
+     * The root holds what the durable task runtime writes while it runs `git log`, and
+     * nothing in it is worth keeping after the checkout is over. A writer that nobody
+     * closes leaves a directory in the system temporary area for as long as the machine
+     * keeps it.
+     */
+    override fun close() {
+        GitTempRoot.deleteRecursively(controlRoot)
     }
 }

@@ -24,7 +24,7 @@ class GitPollExecutor(
     private val timeoutSeconds: Long = 30,
     private val taskRuntime: DurableTaskRuntime? = null,
     private val controlRoot: Path = Files.createTempDirectory("git-poll-tasks"),
-) {
+) : AutoCloseable {
     private val runtimeInstance: DurableTaskRuntime by lazy {
         taskRuntime ?: ProcessDurableTaskRuntime(
             controlRoot,
@@ -49,7 +49,11 @@ class GitPollExecutor(
         transcript: GitTranscript? = null,
     ): Result<String> {
         return try {
-            val args = listOf("git", "ls-remote", url, branch)
+            // `--` before the positionals: git stops reading options there, so a remote or
+            // a branch that looks like an option is a VALUE and never an instruction.
+            // The credential rule is checked over the very same argv, where it is built.
+            val args = listOf("git", "ls-remote", "--", url, branch)
+            GitCredentialsApplier.guardProcessBuilderArgs(args)
             // ls-remote historically used redirectErrorStream(true); emulate
             // by passing both streams into the captured run and joining for
             // failure classification.
@@ -102,5 +106,17 @@ class GitPollExecutor(
             }
             else -> IllegalStateException("git ls-remote failed (exit $exitCode): ${output.take(256)}")
         }
+    }
+
+    /**
+     * Removes the control root this executor opened.
+     *
+     * The root holds what the durable task runtime writes while it runs git, and
+     * nothing in it is worth keeping after the checkout is over. A poll executor
+     * that nobody closes leaves a directory in the system temporary area for as
+     * long as the machine keeps it.
+     */
+    override fun close() {
+        GitTempRoot.deleteRecursively(controlRoot)
     }
 }

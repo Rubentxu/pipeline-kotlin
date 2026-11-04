@@ -32,12 +32,16 @@ import java.util.Base64
  * @param tempDir Parent temp directory for credential files (0700)
  * @param credentials GitCredentials carrying typed SecretHandleRef carriers
  * @param secretStore SecretStore for resolving SecretHandleRef to actual secret bytes
+ * @param knownHostsFile the file ssh records the host keys in. Null means the user's own
+ *   `~/.ssh/known_hosts`, which is where ssh looks by default and the only place where the
+ *   operator's trust decisions live across runs.
 */
 class GitCredentialsApplier(
     private val tempDir: Path,
     val credentials: GitCredentials,
     private val secretStore: SecretStore? = null,
     private val linkedSecretResolver: CredentialLinkedSecretResolver? = null,
+    knownHostsFile: Path? = null,
 ) : AutoCloseable {
 
     // If no explicit resolver was injected, build one from
@@ -56,6 +60,17 @@ class GitCredentialsApplier(
     private val credentialHelperScript: Path = tempDir.resolve(".git-credential-helper")
     private val sshWrapperScript: Path = tempDir.resolve(".git-ssh-wrapper")
     private var isClosed = false
+
+    /**
+     * Where ssh records the host keys it has seen.
+     *
+     * `accept-new` only protects against a MITM as long as the file PERSISTS: a file that
+     * starts empty on every run cannot tell a first contact from a changed key. The
+     * operator's own `~/.ssh/known_hosts` is the default because it is the one place
+     * where those decisions already live; a checkout that used a throwaway file would
+     * re-accept every key on every run, which is the hole this closes.
+     */
+    private val knownHosts: Path = knownHostsFile ?: defaultKnownHostsFile()
 
     init {
         // Ensure parent dir is 0700
@@ -87,7 +102,6 @@ class GitCredentialsApplier(
 */
     fun apply(tokenSecret: SecretHandleRef, repoUrl: String? = null) {
         check(!isClosed) { "GitCredentialsApplier already closed" }
-        guardProcessBuilderArgs(listOf("git", "credential", "store"))
 
         val isHttpUrl = repoUrl?.startsWith("http://") == true || repoUrl?.startsWith("https://") == true
 
@@ -132,7 +146,6 @@ class GitCredentialsApplier(
 */
     fun apply(usernameSecret: SecretHandleRef, passwordSecret: SecretHandleRef, repoUrl: String? = null) {
         check(!isClosed) { "GitCredentialsApplier already closed" }
-        guardProcessBuilderArgs(listOf("git", "config"))
 
         val isHttpUrl = repoUrl?.startsWith("http://") == true || repoUrl?.startsWith("https://") == true
 
@@ -149,15 +162,13 @@ class GitCredentialsApplier(
                 Files.setPosixFilePermissions(gitConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
             } else {
                 // Host doesn't look like a valid HTTP hostname - write minimal no-op config
-                val minimalConfig = "[credential]\n    helper=store\n"
-                Files.writeString(gitConfigFile, minimalConfig)
+                Files.writeString(gitConfigFile, MINIMAL_GIT_CONFIG)
                 Files.setPosixFilePermissions(gitConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
             }
         } else {
             // Non-HTTP URL (file://, ssh://, local paths) - write minimal config to satisfy
             // test assertions, but git will ignore this for non-HTTP transports
-            val minimalConfig = "[credential]\n    helper=store\n"
-            Files.writeString(gitConfigFile, minimalConfig)
+            Files.writeString(gitConfigFile, MINIMAL_GIT_CONFIG)
             Files.setPosixFilePermissions(gitConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
         }
     }
@@ -171,7 +182,6 @@ class GitCredentialsApplier(
 */
     fun applySsh(sshKeySecret: SecretHandleRef, passphraseSecret: SecretHandleRef?, repoUrl: String? = null) {
         check(!isClosed) { "GitCredentialsApplier already closed" }
-        guardProcessBuilderArgs(listOf("git", "clone"))
 
         // Skip for non-SSH URLs
         val isSshUrl = repoUrl?.startsWith("ssh://") == true ||
@@ -223,8 +233,24 @@ class GitCredentialsApplier(
         }
 
         if (Files.exists(sshKeyFile)) {
-            // GIT_SSH_COMMAND with our wrapper script
-            env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $sshKeyFile"
+            // The ssh command the checkout runs with.
+            //
+            // `StrictHostKeyChecking=accept-new` is the difference between "accept
+            // whatever the host says" and "accept a host we have not met, refuse a host
+            // whose key CHANGED". The old value (`no`, with `/dev/null` as the known
+            // hosts file) accepted every key, every time: a machine in the middle of the
+            // connection could present its own key and the checkout would have cloned
+            // from it, with the operator's credentials in the request.
+            //
+            // The known hosts file PERSISTS, which is what makes `accept-new` worth
+            // anything: a file that starts empty on every run cannot tell a first
+            // contact from a changed key.
+            //
+            // The key path is QUOTED: a temporary directory with a space in its name
+            // would otherwise split the argument and hand ssh a path that is not the
+            // key.
+            env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=accept-new " +
+                "-o UserKnownHostsFile=\"${knownHosts}\" -i \"${sshKeyFile}\""
         }
 
         if (Files.exists(askpassScript)) {
@@ -259,15 +285,23 @@ class GitCredentialsApplier(
         Files.setPosixFilePermissions(sshWrapperScript, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
     }
 
+    /**
+     * The per-host git configuration that carries the Basic header.
+     *
+     * The section header is `[http "https://host"]`, WITH the brackets: git's config
+     * grammar reads a line that starts with a section name and no brackets as a bad
+     * config line and refuses the WHOLE file, so the header that was missing them did
+     * not weaken the authentication — it disabled it, and the checkout fell back to
+     * asking the server for credentials it did not have.
+     *
+     * There is NO `helper=store` here. That helper tells git to keep the credential in
+     * the plaintext `~/.git-credentials`, which is a second copy of the secret in a
+     * place nobody asked for, and it is not needed: the header below is what
+     * authenticates the request, and it never reaches argv.
+     */
     private fun buildPerHostGitConfig(host: String, encodedBasicAuth: String): String {
-        // Per-host [credential] section using http.<url> subsection.
-        // http "https://hostname" is the correct git config format (URL-based subsection).
-        // NO hardcoded github.com literals - host is extracted from the repo URL.
-        return "[credential]\n" +
-            "    helper=store\n" +
-            "\n" +
-            "http \"https://$host\"\n" +
-            "    extraHeader=Authorization: Basic $encodedBasicAuth\n"
+        return "[http \"https://$host\"]\n" +
+            "    extraHeader = Authorization: Basic $encodedBasicAuth\n"
     }
 
     private fun resolveSecret(ref: SecretHandleRef): ByteArray {
@@ -372,6 +406,9 @@ class GitCredentialsApplier(
         val hostVar = "\$HOST"
         val lineVar = "\$line"
         val keypathVar = "\$keypath"
+        // The known hosts file travels in the SCRIPT, quoted: the path is the operator's
+        // or the user's, and neither is guaranteed to be free of spaces.
+        val knownHostsPath = knownHosts.toString()
         return """
             |#!/bin/bash
             |# SSH wrapper using answer-file pattern
@@ -400,9 +437,13 @@ class GitCredentialsApplier(
             |    done < "${answerFileRef}"
             |fi
             |
-            |# Build SSH command with key
+            |# Build SSH command with key.
+            |# StrictHostKeyChecking=accept-new: a host we have not met is accepted and
+            |# RECORDED, and a host whose key CHANGED is refused. The old value (`no`,
+            |# with /dev/null as the known hosts file) accepted every key every time,
+            |# which is the same as trusting whoever answers.
             |if [[ -n "${dollarSHELL_KEY}" && -f "${dollarSHELL_KEY}" ]]; then
-            |    exec ssh -i "${dollarSHELL_KEY}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${dollarAt}
+            |    exec ssh -i "${dollarSHELL_KEY}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="${knownHostsPath}" ${dollarAt}
             |else
             |    exec ssh ${dollarAt}
             |fi
@@ -445,6 +486,29 @@ class GitCredentialsApplier(
      * the SSH user (`ssh://git@host`) are all allowed.
      */
     companion object {
+        /**
+         * The configuration a transport that does not authenticate over HTTP gets.
+         *
+         * It says nothing: no `credential.helper`, no store of the secret in the
+         * plaintext `~/.git-credentials`, and no header. git reads it as a valid (empty)
+         * configuration, which is the truth: for `file://` and `ssh://` the credential
+         * travels through the SSH key or not at all, and a helper here would only add a
+         * second copy of the secret in a place the operator did not ask for.
+         */
+        const val MINIMAL_GIT_CONFIG: String =
+            "# No credential helper is configured for this transport.\n"
+
+        /**
+         * The user's own known_hosts, which is ssh's default location. `user.home` is
+         * consulted because there is no other authority for it, and a home that cannot be
+         * read leaves the path empty: ssh then refuses to record anything, which is the
+         * safe direction.
+         */
+        fun defaultKnownHostsFile(): Path {
+            val home = System.getProperty("user.home").orEmpty()
+            return Path.of(home, ".ssh", "known_hosts")
+        }
+
         fun guardProcessBuilderArgs(args: List<String>) {
             for ((index, arg) in args.withIndex()) {
                 val lower = arg.lowercase()
@@ -565,6 +629,13 @@ class GitCredentialsApplier(
         wipeFile(sshKeyFile)
         wipeFile(gitCredentialsFile)
         wipeFile(gitConfigFile)
+        // The DIRECTORY goes too. Wiping the files leaves their names in a directory
+        // listing and leaves the directory itself in the system temporary area, where a
+        // later reader can see that a key was written for a given host at a given
+        // moment. The directory is 0700 and its files were 0600, so what is left behind
+        // is readable by the invoking user alone — which is not the same as not being
+        // left behind.
+        GitTempRoot.deleteRecursively(tempDir)
     }
 
     private fun wipeFile(path: Path) {

@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
+import dev.rubentxu.pipeline.v2.domain.scm.GitRemotePolicy
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.scm.Scm
 
@@ -254,6 +255,12 @@ open class StageScopeCore(
         relativeTargetDir: String = ".",
     ): CheckoutSpec {
         require(url.isNotBlank()) { "Missing required parameter: url" }
+        // The remote is checked HERE, where the author is, and again where the argv is
+        // built. git reads an argument that starts with `-` as an OPTION, so a remote
+        // shaped like `--upload-pack=…` is an instruction to run a program, not a
+        // repository to fetch. Refusing it while the pipeline is being written means the
+        // refusal names the mistake before anything runs, and nothing is left half done.
+        GitRemotePolicy.requireSafeRemote(url, branch)
         // The carrier is registered as MUST_CONSUME. `checkout(..)` marks
         // it consumed. Nothing else in this file names a builder, so a future
         // PURE_BUILDER inherits the gate by calling this one method.

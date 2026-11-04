@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.MinimalJson
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.step.AdmissionRejection
 import dev.rubentxu.pipeline.v2.domain.step.ArtifactOrigin
 import dev.rubentxu.pipeline.v2.domain.step.Digest
@@ -39,9 +40,22 @@ import java.time.Instant
  * every control root it touches: a directory that means nothing is noise an operator has to learn
  * to ignore.
 */
-class AdmissionControlJournal(controlDirRoot: Path) {
+class AdmissionControlJournal(
+    controlDirRoot: Path,
+    private val clock: Clock,
+) {
 
     private val controlRoot: Path = controlDirRoot
+
+    /**
+     * The instant this journal stamps its rows with.
+     *
+     * Published so that the composer of a row and the writer of that row agree on WHEN. A
+     * row stamped from anywhere else would claim a moment this journal never wrote at, and
+     * the operator reading it back would be reading a decision's timestamp rather than the
+     * record's.
+     */
+    fun recordedAt(): Instant = clock.now()
 
     /**
      * Persist a row.
@@ -126,6 +140,7 @@ data class AdmissionControlRow(
             measuredDigest: Digest?,
             verdict: TrustMetadata,
             rejection: AdmissionRejection?,
+            recordedAt: Instant,
         ): AdmissionControlRow {
             val (refusedKind, refusedDetail) = when (rejection) {
                 null -> null to null
@@ -139,7 +154,7 @@ data class AdmissionControlRow(
                 verdict = verdict,
                 refusedKind = refusedKind,
                 refusedDetail = refusedDetail,
-                recordedAt = Instant.now(),
+                recordedAt = recordedAt,
             )
         }
     }

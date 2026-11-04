@@ -1,11 +1,13 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PipelineStepException
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
@@ -17,6 +19,7 @@ import dev.rubentxu.pipeline.v2.events.NullEventSink
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
+import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
@@ -125,6 +128,8 @@ class StepFailureKindPreservationTest {
         ),
         controlDirRoot = Path.of("/nonexistent-control-root"),
         eventSink = NullEventSink,
+        clock = FixedClock,
+        idGenerator = SequentialIdGenerator(),
     )
 
     /**
@@ -133,7 +138,7 @@ class StepFailureKindPreservationTest {
      */
     private suspend fun outcomeThroughTheWholeChain(kind: FailureKind): StepOutcome {
         val boundary = RegistryExecutionBoundary(CanonicalCapabilityBindings())
-        val result = StepExecutionBoundary(RecordingSink()).execute(context()) {
+        val result = StepExecutionBoundary(RecordingSink(), clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             boundary.execute(prepared(failingHandler(kind)), runtime())
         }
         return result.outcome
@@ -193,7 +198,7 @@ class StepFailureKindPreservationTest {
         val sink = RecordingSink()
         val boundary = RegistryExecutionBoundary(CanonicalCapabilityBindings())
 
-        StepExecutionBoundary(sink).execute(context()) {
+        StepExecutionBoundary(sink, clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             boundary.execute(prepared(failingHandler(FailureKind.USER)), runtime())
         }
 
@@ -210,7 +215,7 @@ class StepFailureKindPreservationTest {
     fun `a failure that is not a step failure stays ENGINE`() = runBlocking {
         val boundary = RegistryExecutionBoundary(CanonicalCapabilityBindings())
 
-        val result = StepExecutionBoundary(RecordingSink()).execute(context()) {
+        val result = StepExecutionBoundary(RecordingSink(), clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             boundary.execute(prepared(explodingHandler()), runtime())
         }
 
@@ -252,5 +257,9 @@ class StepFailureKindPreservationTest {
     private companion object {
         const val STEP_ID = "probe"
         const val RUN_ID = "run-1"
+    }
+    /** A clock that does not move, so nothing in these rows depends on the wall clock. */
+    private object FixedClock : Clock {
+        override fun now(): Instant = Instant.ofEpochMilli(2_000L)
     }
 }

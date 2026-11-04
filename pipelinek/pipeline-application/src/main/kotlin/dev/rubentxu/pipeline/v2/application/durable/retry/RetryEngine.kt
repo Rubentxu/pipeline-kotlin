@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable.retry
 
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
@@ -32,8 +34,6 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
 import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
-import java.time.Instant
-import java.util.UUID
 
 /**
  * Application-internal authority for the retry aggregate.
@@ -91,6 +91,8 @@ internal class RetryEngine(
     private val blockId: StepId,
     private val blockPluginStepId: PluginStepId,
     private val telemetry: PipelineTelemetry,
+    private val clock: Clock,
+    private val idGenerator: IdGenerator,
 ) {
 
     init {
@@ -136,10 +138,10 @@ internal class RetryEngine(
         }
         eventSink.append(
             RetryAttemptFinished(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId.value,
                 sequence = 0L,
-                occurredAt = Instant.now(),
+                occurredAt = clock.now(),
                 attemptNumber = attempt,
                 maxAttempts = maxAttempts,
                 stepName = blockId.value,
@@ -246,10 +248,10 @@ internal class RetryEngine(
                     journal.beginAttempt(controlOpId, attempt, fingerprint, OperationStatus.RUNNING)
                     eventSink.append(
                         RetryAttemptStarted(
-                            eventId = UUID.randomUUID().toString(),
+                            eventId = idGenerator.next(),
                             runId = runId.value,
                             sequence = 0L,
-                            occurredAt = Instant.now(),
+                            occurredAt = clock.now(),
                             attemptNumber = attempt,
                             maxAttempts = maxAttempts,
                             stepName = blockId.value,

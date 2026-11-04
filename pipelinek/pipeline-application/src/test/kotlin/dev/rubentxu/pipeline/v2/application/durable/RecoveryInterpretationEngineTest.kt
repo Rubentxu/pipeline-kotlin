@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.LiveSpanLedger
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
@@ -173,6 +174,8 @@ class RecoveryInterpretationEngineTest {
             eventSink = NullEventSink,
             records = DurableInvocationRecord(InMemoryOperationJournal(FixedClock)),
             telemetry = observer,
+            clock = FixedClock,
+            idGenerator = SequentialIdGenerator(),
         )
 
     /** The durable facts of the invocation under observation. */

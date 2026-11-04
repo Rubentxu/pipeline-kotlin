@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
@@ -12,8 +14,6 @@ import dev.rubentxu.pipeline.v2.domain.post.PostPlanner
 import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
-import java.time.Instant
-import java.util.UUID
 
 /**
  * What a stage DOES, out of the run loop
@@ -33,6 +33,8 @@ internal class StageExecutionEngine(
     private val stepDispatch: StepDispatcher,
     private val runLifecycle: RunLifecycleEngine,
     private val eventSink: EventSink,
+    private val clock: Clock,
+    private val idGenerator: IdGenerator,
 ) {
 
     /**
@@ -429,10 +431,10 @@ internal class StageExecutionEngine(
 
         eventSink.append(
             dev.rubentxu.pipeline.v2.events.PostConditionSelected(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId.value,
                 sequence = 0L,
-                occurredAt = Instant.now(),
+                occurredAt = clock.now(),
                 stageIndex = stageIndex,
                 stageName = stage.name,
                 stageOutcome = stageOutcome.wire().wire,

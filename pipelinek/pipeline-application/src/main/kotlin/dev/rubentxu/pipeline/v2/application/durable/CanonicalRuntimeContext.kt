@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
@@ -26,6 +28,18 @@ data class CanonicalRuntimeContext(
     val shOptions: ShOptions,
     val controlDirRoot: Path,
     val eventSink: EventSink,
+    // The run's clock and the run's source of identifiers: the TWO ambient reads the
+    // engine is forbidden to perform on its own.
+    //
+    // They ride here for the same reason [eventSink] does: this context is already the
+    // per-run carrier that the four capability adapters share, and an adapter that read
+    // the machine's clock or drew from the process's entropy would be a SECOND source of
+    // time and identity next to the engine's — the very defect the injection removes.
+    //
+    // They are required, not defaulted: a context without them could not say when it was
+    // built, and a default would be an ambient read wearing a default's clothes.
+    val clock: Clock,
+    val idGenerator: IdGenerator,
     val bodyInvoker: CanonicalBodyInvokerAdapter? = null,
     // The body-ALREADY-BOUND continuation of a Step that declared
     // BodyExecutionOwner.HANDLER_CONTINUATION, supplied under

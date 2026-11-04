@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable.waituntil
 
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
@@ -29,8 +31,6 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyRef
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
-import java.time.Instant
-import java.util.UUID
 
 /**
  * Application-internal authority for the waitUntil aggregate (
@@ -81,6 +81,8 @@ internal class WaitUntilEngine(
     private val stageIndex: Int,
     private val stepIndex: Int,
     private val telemetry: PipelineTelemetry,
+    private val clock: Clock,
+    private val idGenerator: IdGenerator,
 ) {
 
     init {
@@ -155,7 +157,7 @@ internal class WaitUntilEngine(
         }
 
         try {
-            val overallStartMs = System.currentTimeMillis()
+            val overallStartMs = clock.now().toEpochMilli()
             while (true) {
                 val decision = plan()
                 when (decision) {
@@ -189,11 +191,11 @@ internal class WaitUntilEngine(
                             kotlinx.coroutines.delay(initialRecurrencePeriodMs)
                         }
 
-                        val pollStartMs = System.currentTimeMillis()
+                        val pollStartMs = clock.now().toEpochMilli()
 
                         val pollOutcome: BodyOutcome = invokeBodyOnce(bodyRef, attempt)
 
-                        val pollDurationMs = System.currentTimeMillis() - pollStartMs
+                        val pollDurationMs = clock.now().toEpochMilli() - pollStartMs
                         // The poll's answer is read ONCE, by the fold that owns the reading. The
                         // engine never inspects the body outcome field by field, so there is one
                         // place where a body's answer becomes the predicate's verdict, and no
@@ -211,10 +213,10 @@ internal class WaitUntilEngine(
                         // that had.
                         eventSink.append(
                             WaitUntilPolled(
-                                eventId = UUID.randomUUID().toString(),
+                                eventId = idGenerator.next(),
                                 runId = runId.value,
                                 sequence = 0L,
-                                occurredAt = Instant.now(),
+                                occurredAt = clock.now(),
                                 attempt = attempt,
                                 durationMs = pollDurationMs,
                                 conditionResult = predicateSatisfied,
@@ -406,13 +408,13 @@ internal class WaitUntilEngine(
     }
 
     private fun emitCompleted(overallStartMs: Long, totalAttempts: Int, outcome: String) {
-        val totalDurationMs = System.currentTimeMillis() - overallStartMs
+        val totalDurationMs = clock.now().toEpochMilli() - overallStartMs
         eventSink.append(
             WaitUntilCompleted(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId.value,
                 sequence = 0L,
-                occurredAt = Instant.now(),
+                occurredAt = clock.now(),
                 totalAttempts = totalAttempts,
                 totalDurationMs = totalDurationMs,
                 outcome = outcome,

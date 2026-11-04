@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationArmOutcome
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationDeclaration
@@ -66,6 +67,7 @@ class SagaPlanOperationsAdapterTest {
             store = store,
             eventSink = NullEventSink,
             clock = FixedClock,
+            idGenerator = SequentialIdGenerator(),
         )
         val outcome = operations.arm(
             CompensationDeclaration(

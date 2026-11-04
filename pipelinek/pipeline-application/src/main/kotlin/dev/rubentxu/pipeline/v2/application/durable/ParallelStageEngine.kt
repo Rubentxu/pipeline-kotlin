@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
@@ -29,8 +30,6 @@ import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.async
 import java.nio.file.Path
-import java.time.Instant
-import java.util.UUID
 
 /**
  * The parallel aggregate, out of the step-execution spine
@@ -49,6 +48,7 @@ internal class ParallelStageEngine(
     private val journal: OperationJournal,
     private val eventSink: EventSink,
     private val clock: Clock,
+    private val idGenerator: IdGenerator,
     private val runLifecycle: RunLifecycleEngine,
     private val controlDirRoot: Path,
     private val workspaceBase: Path?,
@@ -215,10 +215,10 @@ internal class ParallelStageEngine(
                 async(kotlinx.coroutines.Dispatchers.Default) {
                     eventSink.append(
                         dev.rubentxu.pipeline.v2.events.ParallelBranchStarted(
-                            eventId = UUID.randomUUID().toString(),
+                            eventId = idGenerator.next(),
                             runId = runId.value,
                             sequence = 0L,
-                            occurredAt = Instant.now(),
+                            occurredAt = clock.now(),
                             branchIndex = branchIndex,
                             branchName = branch.name,
                             parentStageIndex = stageIndex,
@@ -240,10 +240,10 @@ internal class ParallelStageEngine(
                     }
                     eventSink.append(
                         dev.rubentxu.pipeline.v2.events.ParallelBranchFinished(
-                            eventId = UUID.randomUUID().toString(),
+                            eventId = idGenerator.next(),
                             runId = runId.value,
                             sequence = 0L,
-                            occurredAt = Instant.now(),
+                            occurredAt = clock.now(),
                             branchIndex = branchIndex,
                             branchName = branch.name,
                             parentStageIndex = stageIndex,

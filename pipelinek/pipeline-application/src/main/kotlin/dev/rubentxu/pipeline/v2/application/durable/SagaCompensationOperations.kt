@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.domain.saga.ArmRejection
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationArmOutcome
@@ -22,7 +23,6 @@ import dev.rubentxu.pipeline.v2.events.CompensationArmed
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.runtime.durable.SagaArmPersistence
 import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationStore
-import java.util.UUID
 
 /**
  * The per-RUN Saga seam the dispatcher needs to build an invocation-bound intent port.
@@ -66,6 +66,7 @@ class SagaCompensationOperations(
     private val store: SagaObligationStore,
     private val eventSink: EventSink,
     private val clock: Clock,
+    private val idGenerator: IdGenerator,
     private val ownerPluginId: String? = null,
     /**
      * The bodies this step owns, so the engine can measure the body a promise names.
@@ -182,7 +183,7 @@ class SagaCompensationOperations(
     private fun emitArmed(obligation: CompensationObligation) {
         eventSink.append(
             CompensationArmed(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId,
                 sequence = 0L,
                 occurredAt = clock.now(),

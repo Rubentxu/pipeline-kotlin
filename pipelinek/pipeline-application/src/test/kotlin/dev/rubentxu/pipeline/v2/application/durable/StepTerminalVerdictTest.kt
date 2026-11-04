@@ -1,14 +1,17 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PipelineStepException
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.application.observation.ObservedOutcome
 import dev.rubentxu.pipeline.v2.application.observation.outcomeOf
+import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -68,7 +71,7 @@ class StepTerminalVerdictTest {
     fun `a successful step's terminal event reads as success`() = runBlocking {
         val sink = RecordingSink()
 
-        StepExecutionBoundary(sink).execute(context()) {
+        StepExecutionBoundary(sink, clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             CommonExecutionResult(outcome = StepOutcome.Success)
         }
 
@@ -81,7 +84,7 @@ class StepTerminalVerdictTest {
         val sink = RecordingSink()
         val failure = PipelineFailure(kind = FailureKind.SCRIPT, message = "shell exited with code 3")
 
-        StepExecutionBoundary(sink).execute(context()) {
+        StepExecutionBoundary(sink, clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             CommonExecutionResult(outcome = StepOutcome.Failure(failure))
         }
 
@@ -93,7 +96,7 @@ class StepTerminalVerdictTest {
     fun `an unstable step's terminal event reads as unstable`() = runBlocking {
         val sink = RecordingSink()
 
-        StepExecutionBoundary(sink).execute(context()) {
+        StepExecutionBoundary(sink, clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             CommonExecutionResult(outcome = StepOutcome.Unstable)
         }
 
@@ -106,7 +109,7 @@ class StepTerminalVerdictTest {
         val sink = RecordingSink()
 
         val thrown = runCatching {
-            StepExecutionBoundary(sink).execute(context()) {
+            StepExecutionBoundary(sink, clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
                 throw IllegalStateException("the engine blew up")
             }
         }.exceptionOrNull()
@@ -123,7 +126,7 @@ class StepTerminalVerdictTest {
         val sink = RecordingSink()
         val failure = PipelineFailure(kind = FailureKind.USER, message = "the step refused")
 
-        StepExecutionBoundary(sink).execute(context()) {
+        StepExecutionBoundary(sink, clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             throw PipelineStepException(failure)
         }
 
@@ -132,5 +135,9 @@ class StepTerminalVerdictTest {
             "the step refused",
             sink.events.filterIsInstance<dev.rubentxu.pipeline.v2.events.StepFailed>().single().message,
         )
+    }
+    /** A clock that does not move, so nothing in these rows depends on the wall clock. */
+    private object FixedClock : Clock {
+        override fun now(): Instant = Instant.ofEpochMilli(2_000L)
     }
 }

@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.application.LocalExecutionTargetResolver
 import dev.rubentxu.pipeline.v2.domain.directive.AdmittedDirective
 import dev.rubentxu.pipeline.v2.domain.FailureKind
@@ -23,8 +25,6 @@ import dev.rubentxu.pipeline.v2.events.GateEvaluated
 import dev.rubentxu.pipeline.v2.events.ExecutionTargetResolved
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.events.StageSkipped
-import java.time.Instant
-import java.util.UUID
 
 /**
  * The BEFORE_STAGE directive seam, out of the run loop
@@ -47,6 +47,8 @@ import java.util.UUID
 */
 internal class BeforeStageDirectiveEngine(
     private val eventSink: EventSink,
+    private val clock: Clock,
+    private val idGenerator: IdGenerator,
     private val gateContext: (dev.rubentxu.pipeline.v2.domain.EnvironmentSpec) -> dev.rubentxu.pipeline.v2.domain.directive.GateContext,
     private val gateEvaluator: (WhenPredicate, dev.rubentxu.pipeline.v2.domain.directive.GateContext) -> dev.rubentxu.pipeline.v2.domain.directive.GateVerdict,
     /**
@@ -146,10 +148,10 @@ internal class BeforeStageDirectiveEngine(
             val reason = "directive '" + deniedDirective.key.value + "' " + deniedDirective.reason
             eventSink.append(
                 DirectiveDenied(
-                    eventId = UUID.randomUUID().toString(),
+                    eventId = idGenerator.next(),
                     runId = runId.value,
                     sequence = 0L,
-                    occurredAt = Instant.now(),
+                    occurredAt = clock.now(),
                     stageIndex = stageIndex,
                     stageName = stage.name,
                     directiveKey = deniedDirective.key.value,
@@ -179,10 +181,10 @@ internal class BeforeStageDirectiveEngine(
         if (resourceConflict is dev.rubentxu.pipeline.v2.domain.directive.ResourceCompositionDecision.Conflicting) {
             eventSink.append(
                 DirectiveDenied(
-                    eventId = UUID.randomUUID().toString(),
+                    eventId = idGenerator.next(),
                     runId = runId.value,
                     sequence = 0L,
-                    occurredAt = Instant.now(),
+                    occurredAt = clock.now(),
                     stageIndex = stageIndex,
                     stageName = stage.name,
                     directiveKey = resourceConflict.key.value,
@@ -213,10 +215,10 @@ internal class BeforeStageDirectiveEngine(
             is dev.rubentxu.pipeline.v2.domain.directive.GateCompositionDecision.Conflicting -> {
                 eventSink.append(
                     DirectiveDenied(
-                        eventId = UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
-                        occurredAt = Instant.now(),
+                        occurredAt = clock.now(),
                         stageIndex = stageIndex,
                         stageName = stage.name,
                         directiveKey = composition.key.value,
@@ -261,10 +263,10 @@ internal class BeforeStageDirectiveEngine(
             is StageDirectiveDecision.Denied -> {
                 eventSink.append(
                     DirectiveDenied(
-                        eventId = UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
-                        occurredAt = Instant.now(),
+                        occurredAt = clock.now(),
                         stageIndex = stageIndex,
                         stageName = stage.name,
                         directiveKey = decision.key.value,
@@ -280,10 +282,10 @@ internal class BeforeStageDirectiveEngine(
                 decision.phases.values.flatten().forEach { entry ->
                     eventSink.append(
                         DirectiveAdmitted(
-                            eventId = UUID.randomUUID().toString(),
+                            eventId = idGenerator.next(),
                             runId = runId.value,
                             sequence = 0L,
-                            occurredAt = Instant.now(),
+                            occurredAt = clock.now(),
                             stageIndex = stageIndex,
                             stageName = stage.name,
                             directiveKey = entry.invocation.key.value,
@@ -475,10 +477,10 @@ internal class BeforeStageDirectiveEngine(
             when (val result = targetResolver.acquire(entry.requirement)) {
                 is TargetLeaseResult.Granted -> eventSink.append(
                     ExecutionTargetResolved(
-                        eventId = UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
-                        occurredAt = Instant.now(),
+                        occurredAt = clock.now(),
                         stageIndex = stageIndex,
                         stageName = stage.name,
                         directiveKey = entry.key.value,
@@ -491,10 +493,10 @@ internal class BeforeStageDirectiveEngine(
                     val reason = "stage '" + stage.name + "' execution target: " + result.reason
                     eventSink.append(
                         DirectiveDenied(
-                            eventId = UUID.randomUUID().toString(),
+                            eventId = idGenerator.next(),
                             runId = runId.value,
                             sequence = 0L,
-                            occurredAt = Instant.now(),
+                            occurredAt = clock.now(),
                             stageIndex = stageIndex,
                             stageName = stage.name,
                             directiveKey = entry.key.value,
@@ -526,10 +528,10 @@ internal class BeforeStageDirectiveEngine(
                 // satisfied gate and an absent gate are indistinguishable.
                 eventSink.append(
                     GateEvaluated(
-                        eventId = UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
-                        occurredAt = Instant.now(),
+                        occurredAt = clock.now(),
                         stageIndex = stageIndex,
                         stageName = stage.name,
                         directiveKeys = gateKeys,
@@ -544,10 +546,10 @@ internal class BeforeStageDirectiveEngine(
                 // The negative verdict is observable BEFORE the skip it causes.
                 eventSink.append(
                     GateEvaluated(
-                        eventId = UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
-                        occurredAt = Instant.now(),
+                        occurredAt = clock.now(),
                         stageIndex = stageIndex,
                         stageName = stage.name,
                         directiveKeys = gateKeys,
@@ -561,10 +563,10 @@ internal class BeforeStageDirectiveEngine(
                 // control flow and belongs to the coordinator.
                 eventSink.append(
                     StageSkipped(
-                        eventId = UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
-                        occurredAt = Instant.now(),
+                        occurredAt = clock.now(),
                         stageIndex = stageIndex,
                         stageName = stage.name,
                         reason = verdict.reason,
@@ -579,10 +581,10 @@ internal class BeforeStageDirectiveEngine(
                 // still observable.
                 eventSink.append(
                     GateEvaluated(
-                        eventId = UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
-                        occurredAt = Instant.now(),
+                        occurredAt = clock.now(),
                         stageIndex = stageIndex,
                         stageName = stage.name,
                         directiveKeys = gateKeys,
@@ -593,10 +595,10 @@ internal class BeforeStageDirectiveEngine(
                 val reason = "stage '${stage.name}' gate could not be verified: " + verdict.reason
                 eventSink.append(
                     DirectiveDenied(
-                        eventId = UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
-                        occurredAt = Instant.now(),
+                        occurredAt = clock.now(),
                         stageIndex = stageIndex,
                         stageName = stage.name,
                         directiveKey = gateKeys.first(),

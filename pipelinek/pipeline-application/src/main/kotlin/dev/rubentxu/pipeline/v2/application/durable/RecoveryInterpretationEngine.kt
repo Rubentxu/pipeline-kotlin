@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
@@ -71,6 +73,17 @@ internal class RecoveryInterpretationEngine(
      * invocation's effect was re-run, refused, or SKIPPED by the replay.
      */
     private val telemetry: PipelineTelemetry,
+    /**
+     * The clock the engine seals its rows with. Injected rather than read: the row's
+     * `finishedAt` is a fact about the reconciliation, and a test that cannot pin it
+     * cannot say WHICH row it read back.
+     */
+    private val clock: Clock,
+    /**
+     * The run's source of opaque identifiers. The engine builds the boundary that seals
+     * the recovery's own events, so it owns the identity port that boundary mints with.
+     */
+    private val idGenerator: IdGenerator,
     /**
      * How a recovered terminal becomes a Step's typed value. NOT nullable, and that is
      * a correction rather than a style choice.
@@ -242,9 +255,9 @@ internal class RecoveryInterpretationEngine(
             )
             val terminal = resolution.terminal
             val measurement = telemetry.metrics.start(MetricBoundary.Recovery)
-            val materialised = materialize(request, terminal, System.currentTimeMillis())
+            val materialised = materialize(request, terminal, clock.now().toEpochMilli())
             val result = try {
-                StepExecutionBoundary(eventSink).execute(request.lifecycleContext) {
+                StepExecutionBoundary(eventSink, clock, idGenerator).execute(request.lifecycleContext) {
                     materialised.result
                 }
             } catch (throwable: Throwable) {
@@ -265,7 +278,7 @@ internal class RecoveryInterpretationEngine(
                     // direction produced the value. Timing here is the RECOVERY's own duration,
                     // not the original process's, which is the truth: we are recording how long
                     // reconciling took, because the original duration was never observed.
-                    val finishedAt = System.currentTimeMillis()
+                    val finishedAt = clock.now().toEpochMilli()
                     OperationOutput(
                         result = JsonPrimitive(encoded.value),
                         durationMs = (finishedAt - materialised.startedAtMs).coerceAtLeast(0),
@@ -290,7 +303,7 @@ internal class RecoveryInterpretationEngine(
         )
 
         is InvocationReconciliation.RejectedAbort -> RecoveryInterpretation.Settled(
-            StepExecutionBoundary(eventSink).execute(request.lifecycleContext) {
+            StepExecutionBoundary(eventSink, clock, idGenerator).execute(request.lifecycleContext) {
                 CommonExecutionResult(
                     outcome = StepOutcome.Failure(
                         PipelineFailure(

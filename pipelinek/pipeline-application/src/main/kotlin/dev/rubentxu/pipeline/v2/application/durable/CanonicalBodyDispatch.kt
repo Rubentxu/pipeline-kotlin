@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialLeaseAdmission
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup
@@ -46,6 +47,7 @@ internal class CanonicalBodyDispatch(
     private val leaseAdmission: CredentialLeaseAdmission,
     private val eventSink: EventSink,
     private val clock: Clock,
+    private val idGenerator: IdGenerator,
 ) {
 
     @Suppress("LongParameterList") // Every argument is named and read once; the alternative
@@ -201,7 +203,7 @@ internal class CanonicalBodyDispatch(
             when (emission) {
                 is BodyFoldEmission.CaughtFailure -> eventSink.append(
                     dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
-                        eventId = java.util.UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
                         occurredAt = clock.now(),
@@ -213,7 +215,7 @@ internal class CanonicalBodyDispatch(
                 )
                 is BodyFoldEmission.StageDegraded -> eventSink.append(
                     dev.rubentxu.pipeline.v2.events.StageMarkedUnstable(
-                        eventId = java.util.UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
                         occurredAt = clock.now(),
@@ -374,7 +376,7 @@ internal class CanonicalBodyDispatch(
     ) {
         eventSink.append(
             dev.rubentxu.pipeline.v2.events.StepFailed(
-                eventId = java.util.UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId.value,
                 sequence = 0L,
                 occurredAt = clock.now(),

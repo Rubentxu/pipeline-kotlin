@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
 import dev.rubentxu.pipeline.v2.application.CanonicalRunState
 import dev.rubentxu.pipeline.v2.application.PluginComposition
 import dev.rubentxu.pipeline.v2.application.RuntimeWorkspaceTransport
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
@@ -162,6 +163,7 @@ class DivergenceDetectorPortTest {
     /** What the run was given: the clock, the replay policy, the control root and the rest. */
     private fun policy(): CanonicalRunPolicy = CanonicalRunPolicy(
         clock = FixedClock,
+        idGenerator = SequentialIdGenerator(),
         effectReplayPolicy = DefaultEffectReplayPolicy(),
         controlDirRoot = Path.of("/nonexistent-control-root"),
         sandboxProfile = SandboxProfile.NONE,

@@ -5,13 +5,16 @@ import dev.rubentxu.pipeline.v2.application.LiveSpanLedger
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpans
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.Digest
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.SourceDescriptor
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
 import dev.rubentxu.pipeline.v2.events.NullEventSink
+import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -78,7 +81,7 @@ class RunLifecycleSpanLineageTest {
     @DisplayName("a stage hangs under the run that owns it")
     fun aStageHangsUnderTheRunThatOwnsIt() {
         val observer = LiveSpanLedger()
-        val engine = RunLifecycleEngine(NullEventSink, observer)
+        val engine = RunLifecycleEngine(NullEventSink, observer, clock = FixedClock, idGenerator = SequentialIdGenerator())
 
         val runSpan = openRunSpan(observer, "run-1")
         engine.openRun(pipeline(), RunId("run-1"), runSpan)
@@ -99,7 +102,7 @@ class RunLifecycleSpanLineageTest {
     @DisplayName("the work of a stage hangs under the stage")
     fun theWorkOfAStageHangsUnderTheStage() {
         val observer = LiveSpanLedger()
-        val engine = RunLifecycleEngine(NullEventSink, observer)
+        val engine = RunLifecycleEngine(NullEventSink, observer, clock = FixedClock, idGenerator = SequentialIdGenerator())
 
         val runSpan = openRunSpan(observer, "run-1")
         engine.openRun(pipeline(), RunId("run-1"), runSpan)
@@ -129,7 +132,7 @@ class RunLifecycleSpanLineageTest {
         val observer = LiveSpanLedger(
             onStart = { name, _ -> if (name == LiveSpanNames.STAGE) error("the collector is unreachable") },
         )
-        val engine = RunLifecycleEngine(NullEventSink, observer)
+        val engine = RunLifecycleEngine(NullEventSink, observer, clock = FixedClock, idGenerator = SequentialIdGenerator())
 
         val runSpan = openRunSpan(observer, "run-1")
         engine.openRun(pipeline(), RunId("run-1"), runSpan)
@@ -209,8 +212,8 @@ class RunLifecycleSpanLineageTest {
         dispatcher: CoroutineDispatcher,
     ) {
         val compiled = pipeline()
-        val firstEngine = RunLifecycleEngine(NullEventSink, observer)
-        val secondEngine = RunLifecycleEngine(NullEventSink, observer)
+        val firstEngine = RunLifecycleEngine(NullEventSink, observer, clock = FixedClock, idGenerator = SequentialIdGenerator())
+        val secondEngine = RunLifecycleEngine(NullEventSink, observer, clock = FixedClock, idGenerator = SequentialIdGenerator())
         val firstStageOpened = CompletableDeferred<Unit>()
         val secondStageOpened = CompletableDeferred<Unit>()
 
@@ -265,4 +268,8 @@ class RunLifecycleSpanLineageTest {
         stages = emptyList(),
         pluginLockDigest = Digest("lock"),
     )
+    /** A clock that does not move, so nothing in these rows depends on the wall clock. */
+    private object FixedClock : Clock {
+        override fun now(): Instant = Instant.ofEpochMilli(2_000L)
+    }
 }

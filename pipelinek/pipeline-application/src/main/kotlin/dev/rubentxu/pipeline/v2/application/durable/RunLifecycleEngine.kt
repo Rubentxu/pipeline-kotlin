@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanHandle
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
@@ -17,8 +19,6 @@ import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
-import java.time.Instant
-import java.util.UUID
 
 /**
  * The run-lifecycle bookends, extracted from [CanonicalDurableRunCoordinator]
@@ -58,6 +58,8 @@ import java.util.UUID
 internal class RunLifecycleEngine(
     private val eventSink: EventSink,
     private val telemetry: PipelineTelemetry,
+    private val clock: Clock,
+    private val idGenerator: IdGenerator,
 ) {
 
     private var runStartedEmitted: Boolean = false
@@ -94,10 +96,10 @@ internal class RunLifecycleEngine(
         runParent = liveSpanParentOf(runSpan)
         eventSink.append(
             RunStarted(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId.value,
                 sequence = 0L,
-                occurredAt = Instant.now(),
+                occurredAt = clock.now(),
                 scriptPath = pipeline.source.path,
             ),
         )
@@ -120,10 +122,10 @@ internal class RunLifecycleEngine(
     fun stageStarted(runId: RunId, stageIndex: Int, stageName: String): LiveSpanParent {
         eventSink.append(
             dev.rubentxu.pipeline.v2.events.StageStarted(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId.value,
                 sequence = 0L,
-                occurredAt = Instant.now(),
+                occurredAt = clock.now(),
                 stageIndex = stageIndex,
                 stageName = stageName,
             ),
@@ -186,10 +188,10 @@ internal class RunLifecycleEngine(
     fun stageFinished(runId: RunId, stageIndex: Int, stageName: String, outcome: String) {
         eventSink.append(
             dev.rubentxu.pipeline.v2.events.StageFinished(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId.value,
                 sequence = 0L,
-                occurredAt = Instant.now(),
+                occurredAt = clock.now(),
                 stageIndex = stageIndex,
                 stageName = stageName,
                 outcome = outcome,
@@ -231,10 +233,10 @@ internal class RunLifecycleEngine(
         }
         eventSink.append(
             RunFinished(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId.value,
                 sequence = 0L,
-                occurredAt = Instant.now(),
+                occurredAt = clock.now(),
                 outcome = outcome.wireToken,
                 diagnostics = emptyList(),
             ),

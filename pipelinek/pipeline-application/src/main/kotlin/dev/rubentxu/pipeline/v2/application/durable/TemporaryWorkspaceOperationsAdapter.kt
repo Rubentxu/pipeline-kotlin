@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.application.TempWorkspaceResult
 import dev.rubentxu.pipeline.v2.application.TemporaryWorkspaceOperations
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
@@ -7,8 +9,6 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.PwdResolved
 import java.nio.file.Files
 import java.nio.file.Path
-import java.time.Instant
-import java.util.UUID
 
 /**
  * The single canonical implementation of [TemporaryWorkspaceOperations] — the typed
@@ -49,6 +49,8 @@ class TemporaryWorkspaceOperationsAdapter(
     private val opId: OpId,
     private val workspaceRoot: Path,
     private val eventSink: EventSink,
+    private val clock: Clock,
+    private val idGenerator: IdGenerator,
 ) : TemporaryWorkspaceOperations {
 
     override fun resolveOrCreate(): TempWorkspaceResult {
@@ -62,10 +64,10 @@ class TemporaryWorkspaceOperationsAdapter(
         val absolutePath = tmpPath.toString()
         eventSink.append(
             PwdResolved(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runIdString,
                 sequence = 0L,
-                occurredAt = Instant.now(),
+                occurredAt = clock.now(),
                 path = absolutePath,
                 workspaceRoot = workspaceRoot.toAbsolutePath().toString(),
                 sha256 = sha256Hex(absolutePath),

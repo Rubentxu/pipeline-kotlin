@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -78,6 +79,12 @@ internal data class CanonicalRunState(
  */
 internal data class CanonicalRunPolicy(
     val clock: Clock,
+    // The run's source of opaque identifiers. It travels with the clock because the two
+    // are the SAME kind of fact: an ambient read the run was GIVEN, so that the engine
+    // never has to reach for the machine's clock or the process's entropy on its own.
+    // One instance per run: a run that drew its identities from two generators could
+    // not promise that no two of them repeat.
+    val idGenerator: IdGenerator,
     val effectReplayPolicy: EffectReplayPolicy,
     val controlDirRoot: Path,
     val sandboxProfile: SandboxProfile,

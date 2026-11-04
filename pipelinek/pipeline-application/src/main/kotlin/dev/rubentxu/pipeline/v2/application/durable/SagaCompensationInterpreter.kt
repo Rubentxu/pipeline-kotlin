@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
@@ -34,7 +35,6 @@ import dev.rubentxu.pipeline.v2.events.CompensationFinished
 import dev.rubentxu.pipeline.v2.events.CompensationStarted
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.SagaTerminal
-import java.util.UUID
 
 /**
  * The engine's compensation loop.
@@ -92,6 +92,7 @@ class SagaCompensationInterpreter(
     private val slotInvoker: BodySlotInvoker,
     private val eventSink: EventSink,
     private val clock: Clock,
+    private val idGenerator: IdGenerator,
     /**
      * The bodies this step owns, so the interpreter can tell which body is about to run.
      */
@@ -486,7 +487,7 @@ class SagaCompensationInterpreter(
         val intervention = directive as? CompensationDirective.NeedsIntervention
         eventSink.append(
             SagaTerminal(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId,
                 sequence = 0L,
                 occurredAt = clock.now(),
@@ -506,7 +507,7 @@ class SagaCompensationInterpreter(
     private fun announceStarted(obligation: CompensationObligation, slot: String) {
         eventSink.append(
             CompensationStarted(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId,
                 sequence = 0L,
                 occurredAt = clock.now(),
@@ -527,7 +528,7 @@ class SagaCompensationInterpreter(
     ) {
         eventSink.append(
             CompensationFinished(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId,
                 sequence = 0L,
                 occurredAt = clock.now(),

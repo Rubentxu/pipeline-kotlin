@@ -130,6 +130,7 @@ internal class CanonicalDurableRunCoordinator(
     private val cursorStore = state.cursorStore
     private val eventSink = state.eventSink
     private val clock = policy.clock
+    private val idGenerator = policy.idGenerator
     private val controlDirRoot = policy.controlDirRoot
     private val workspaceBase = policy.workspace.base
 
@@ -266,32 +267,43 @@ internal class CanonicalDurableRunCoordinator(
         executionBoundary = executionBoundary,
         records = invocationRecords,
         telemetry = telemetry,
+        clock = clock,
+        idGenerator = idGenerator,
     )
 
     // The run-lifecycle bookends and the running outcome live in
     // the extracted engine (same events, same ordering, same quirks).
-    private val runLifecycle = RunLifecycleEngine(eventSink, telemetry)
+    private val runLifecycle = RunLifecycleEngine(eventSink, telemetry, clock, idGenerator)
     // The BEFORE_STAGE directive seam. It admits, decodes, composes
     // evaluates and observes, then returns a closed verdict; this class keeps the run's control
     // flow, because only the owner of the loop may decide what the run does next.
     // The gate's DECISION is pure and lives in the domain; the engine interprets it.
     private val beforeStageDirectives = BeforeStageDirectiveEngine(
-        eventSink,
-        gateContext,
-        WhenPredicateEvaluator::evaluate,
-        capabilityContributor,
+        eventSink = eventSink,
+        clock = clock,
+        idGenerator = idGenerator,
+        gateContext = gateContext,
+        gateEvaluator = WhenPredicateEvaluator::evaluate,
+        capabilityContributor = capabilityContributor,
     )
     // The INTERPRETATION of a recovery resolution. The DECISION already
     // lives in invocationResolver; this engine performs the journal write and the lifecycle
     // events that a resolution names, and reports ProceedToExecution for the one resolution
     // That is not a recovery case.: it advances no cursor — that is traversal state
-    private val recoveryInterpretation = RecoveryInterpretationEngine(eventSink, invocationRecords, telemetry)
-    private val bodyExecutionEngine = BodyExecutionEngine(
+    private val recoveryInterpretation = RecoveryInterpretationEngine(
         eventSink,
-        clock,
+        invocationRecords,
         telemetry,
-        retryControlJournal,
-        waitUntilControlJournal,
+        clock = clock,
+        idGenerator = idGenerator,
+    )
+    private val bodyExecutionEngine = BodyExecutionEngine(
+        eventSink = eventSink,
+        clock = clock,
+        idGenerator = idGenerator,
+        telemetry = telemetry,
+        retryControlJournal = retryControlJournal,
+        waitUntilControlJournal = waitUntilControlJournal,
     )
     // The three OWNERS the dispatch engine observes. The coordinator builds them here because
     // it owns the ports they wrap; the engine never sees the ports themselves.
@@ -310,6 +322,7 @@ internal class CanonicalDurableRunCoordinator(
         eventRegistry = eventRegistry,
         eventSink = eventSink,
         clock = clock,
+        idGenerator = idGenerator,
         outputWakeups = state.outputWakeups,
         controlDirRoot = controlDirRoot,
         workspaceBase = workspaceBase,
@@ -323,6 +336,7 @@ internal class CanonicalDurableRunCoordinator(
         leaseAdmission = leaseAdmission,
         eventSink = eventSink,
         clock = clock,
+        idGenerator = idGenerator,
     )
     // The step-execution spine. A body child walks it again through the engine's own
     // `dispatchChild` — handed to `bodyDispatch` as the single re-entry reference — and a
@@ -349,6 +363,7 @@ internal class CanonicalDurableRunCoordinator(
         journal = journal,
         eventSink = eventSink,
         clock = clock,
+        idGenerator = idGenerator,
         runLifecycle = runLifecycle,
         controlDirRoot = controlDirRoot,
         workspaceBase = workspaceBase,
@@ -360,6 +375,8 @@ internal class CanonicalDurableRunCoordinator(
         stepDispatch = stepDispatch,
         runLifecycle = runLifecycle,
         eventSink = eventSink,
+        clock = clock,
+        idGenerator = idGenerator,
     )
 
     /**

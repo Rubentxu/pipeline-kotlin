@@ -1,13 +1,13 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.PipelineStepException
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
-import java.time.Instant
-import java.util.UUID
 
 /**
  * Identity and presentation data required for one emitted step lifecycle.
@@ -31,6 +31,8 @@ data class StepLifecycleContext(
 */
 class StepExecutionBoundary(
     private val eventSink: EventSink,
+    private val clock: Clock,
+    private val idGenerator: IdGenerator,
 ) {
     suspend fun execute(
         context: StepLifecycleContext,
@@ -64,10 +66,10 @@ class StepExecutionBoundary(
     }
 
     private fun StepLifecycleContext.stepStarted() = StepStarted(
-        eventId = UUID.randomUUID().toString(),
+        eventId = idGenerator.next(),
         runId = runId,
         sequence = 0L,
-        occurredAt = Instant.now(),
+        occurredAt = clock.now(),
         stageIndex = stageIndex,
         stepIndex = stepIndex,
         stepName = stepName,
@@ -75,10 +77,10 @@ class StepExecutionBoundary(
     )
 
     private fun StepLifecycleContext.stepFailed(outcome: StepOutcome.Failure) = StepFailed(
-        eventId = UUID.randomUUID().toString(),
+        eventId = idGenerator.next(),
         runId = runId,
         sequence = 0L,
-        occurredAt = Instant.now(),
+        occurredAt = clock.now(),
         // The stage the failure belongs to. The boundary knows it, and a consumer that has to
         // attribute the failure to a stage must not have to join this event with another one to
         // find out: a step index means a different step in each stage.
@@ -97,10 +99,10 @@ class StepExecutionBoundary(
      * event then says nothing about the result: that is the honest reading of "unknown".
      */
     private fun StepLifecycleContext.stepFinished(verdict: StepOutcome?) = StepFinished(
-        eventId = UUID.randomUUID().toString(),
+        eventId = idGenerator.next(),
         runId = runId,
         sequence = 0L,
-        occurredAt = Instant.now(),
+        occurredAt = clock.now(),
         stageIndex = stageIndex,
         stepIndex = stepIndex,
         stepName = stepName,

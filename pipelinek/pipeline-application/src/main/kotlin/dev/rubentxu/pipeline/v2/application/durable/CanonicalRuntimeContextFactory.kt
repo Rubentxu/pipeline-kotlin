@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
@@ -25,6 +26,9 @@ import java.nio.file.Path
  * It is built only on the execution path: reuse, divergence and recovery never reach it,
  * which is what keeps a replayed Step from acquiring a capability it did not use.
  */
+@Suppress("LongParameterList") // Every argument is a named fact the context cannot derive, and
+// the alternative would be a holder that exists only to satisfy a counting rule — the same
+// reason the function below carries.
 internal class CanonicalRuntimeContextFactory(
     // The registry that says which plugin declared a Step. A read, never a switch on the key.
     private val stepRegistry: StepRegistry?,
@@ -45,6 +49,12 @@ internal class CanonicalRuntimeContextFactory(
         dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create(),
     private val eventSink: EventSink,
     private val clock: Clock,
+    /**
+     * The run's source of opaque identifiers. It is bound into the context so the four
+     * capability adapters seal their events with the SAME authority the engine does:
+     * two generators in one run would let two collaborators mint the same identity.
+     */
+    private val idGenerator: IdGenerator,
     // The run's output-wake signal, handed to every runtime context so the
     // shell adapter can announce committed chunks to the live observer.
     // Optional so pre-existing construction sites compile; null skips the
@@ -92,6 +102,8 @@ internal class CanonicalRuntimeContextFactory(
             shOptions = stageShOptions,
             controlDirRoot = controlDirRoot,
             eventSink = eventSink,
+            clock = clock,
+            idGenerator = idGenerator,
             outputWakeups = outputWakeups,
             bodyInvoker = bodyInvokerAdapter,
             // bound ONLY for a HANDLER_CONTINUATION Step, and already
@@ -126,6 +138,7 @@ internal class CanonicalRuntimeContextFactory(
                     store = binding.store,
                     eventSink = eventSink,
                     clock = clock,
+                    idGenerator = idGenerator,
                     ownerPluginId = ownerPluginId,
                     // The bodies this Step owns. The engine measures the body a promise names, so
                     // the promise can be checked against the body that will run.
@@ -176,6 +189,7 @@ internal class CanonicalRuntimeContextFactory(
                     // them true.
                     eventSink = eventSink,
                     clock = clock,
+                    idGenerator = idGenerator,
                     // The bodies this Step owns: the compensation bodies are children of this
                     // Step's own body, so this is where the body that is about to run is found.
                     bodies = bodies,

@@ -118,6 +118,10 @@ private fun runVolatilePipelineOwned(
     )
 
     val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
+    // The run's source of opaque identifiers, created ONCE beside the clock: the two
+    // ambient reads the engine is forbidden to perform on its own are GIVEN to it here,
+    // once, and every collaborator downstream mints with these same two.
+    val idGenerator: dev.rubentxu.pipeline.v2.domain.IdGenerator = UuidIdGenerator()
     val journal: dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal =
         InMemoryOperationJournal(clock)
     val cursorStore: dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore =
@@ -157,7 +161,7 @@ private fun runVolatilePipelineOwned(
     // ended the process HERE would skip the branch's own `finally`, and what that finally
     // releases is the output observer — a thread. So the rule is the same everywhere: a refusal
     // UNWINDS, and the place that owns the process ends it.
-    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry)) {
+    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry, clock)) {
         is PluginAdmission.Admitted -> admission.composition
         is PluginAdmission.Refused -> throw CommandRefused(admission.exit)
     }
@@ -227,6 +231,7 @@ private fun runVolatilePipelineOwned(
                     ),
                     policy = CanonicalRunPolicy(
                         clock = clock,
+                        idGenerator = idGenerator,
                         effectReplayPolicy = DefaultEffectReplayPolicy(),
                         controlDirRoot = controlDirRoot,
                         sandboxProfile = config.sandboxProfile,

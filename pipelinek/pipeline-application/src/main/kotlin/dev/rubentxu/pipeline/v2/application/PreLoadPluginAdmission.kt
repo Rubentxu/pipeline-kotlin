@@ -288,6 +288,7 @@ object PreLoadPluginAdmission {
                         origin = origin,
                     ),
                     rejection = refusal,
+                    recordedAt = journal.recordedAt(),
                 ),
             )
             return TrustOutcome.Refused(refusal, null)
@@ -305,6 +306,7 @@ object PreLoadPluginAdmission {
                         measuredDigest = measuredDigest,
                         verdict = decision.failure.refusal.trustVerdict(origin),
                         rejection = decision.failure.refusal,
+                        recordedAt = journal.recordedAt(),
                     ),
                 )
                 TrustOutcome.Refused(decision.failure.refusal, decision.failure.detail)
@@ -322,6 +324,7 @@ object PreLoadPluginAdmission {
                             origin = origin,
                         ),
                         rejection = null,
+                        recordedAt = journal.recordedAt(),
                     ),
                 )
                 TrustOutcome.Approved(decision)

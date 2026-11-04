@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
@@ -88,6 +89,7 @@ class SagaCompensationInterpreterTest {
         store = store,
         eventSink = NullEventSink,
         clock = FixedClock,
+        idGenerator = SequentialIdGenerator(),
     )
 
     private fun declarationOf(actionId: String, compensationId: String) = CompensationDeclaration(
@@ -157,6 +159,7 @@ class SagaCompensationInterpreterTest {
         // promises that name no body, so there is nothing to compare and every compensation
         // runs. The body check has its own tests.
         bodies = null,
+        idGenerator = SequentialIdGenerator(),
         promisedBodies = SagaPromisedBodyReader { null },
     )
 

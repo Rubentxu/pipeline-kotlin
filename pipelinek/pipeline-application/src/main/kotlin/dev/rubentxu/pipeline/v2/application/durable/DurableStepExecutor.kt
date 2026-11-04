@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
@@ -65,6 +67,8 @@ internal class DurableStepExecutor(
     private val executionBoundary: CommonExecutionBoundary,
     private val records: DurableInvocationRecord,
     private val telemetry: PipelineTelemetry,
+    private val clock: Clock,
+    private val idGenerator: IdGenerator,
 ) {
 
     /**
@@ -99,9 +103,9 @@ internal class DurableStepExecutor(
                 LiveSpanAttributes.stepIndex(lifecycleContext.stepIndex),
             ),
         )
-        val executionStartMs = System.currentTimeMillis()
+        val executionStartMs = clock.now().toEpochMilli()
         val executionResult = try {
-            StepExecutionBoundary(eventSink).execute(lifecycleContext) {
+            StepExecutionBoundary(eventSink, clock, idGenerator).execute(lifecycleContext) {
                 executionBoundary.execute(prepared, runtime)
             }
         } catch (throwable: Throwable) {
@@ -110,7 +114,7 @@ internal class DurableStepExecutor(
         }
         LiveSpans.end(span, liveStatusOfStepOutcome(executionResult.outcome))
         val outcome = executionResult.outcome
-        val executionEndMs = System.currentTimeMillis()
+        val executionEndMs = clock.now().toEpochMilli()
         records.settle(
             operationId = operationId,
             fingerprint = fingerprint,

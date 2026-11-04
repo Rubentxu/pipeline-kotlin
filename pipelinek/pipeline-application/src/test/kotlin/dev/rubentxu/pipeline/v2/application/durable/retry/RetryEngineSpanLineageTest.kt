@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.LiveSpanLedger
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpanStatus
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.application.durable.RetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.RetryControlState
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
@@ -12,6 +13,7 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RetryControlIdentity
@@ -22,6 +24,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodyRef
 import dev.rubentxu.pipeline.v2.domain.step.CancellationReason
 import dev.rubentxu.pipeline.v2.events.NullEventSink
+import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -199,6 +202,8 @@ class RetryEngineSpanLineageTest {
         blockId = StepId(STEP_ID),
         blockPluginStepId = PluginStepId(STEP_ID),
         telemetry = ledger,
+        clock = FixedClock,
+        idGenerator = SequentialIdGenerator(),
     )
 
     /**
@@ -287,5 +292,9 @@ class RetryEngineSpanLineageTest {
 
         /** The fingerprint the retry contract under observation carries. */
         val fingerprint: Fingerprint = Fingerprint("a".repeat(64))
+    }
+    /** A clock that does not move, so nothing in these rows depends on the wall clock. */
+    private object FixedClock : Clock {
+        override fun now(): Instant = Instant.ofEpochMilli(2_000L)
     }
 }

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
@@ -28,6 +29,7 @@ internal fun runScriptedFrontend(
     journal: OperationJournal,
     eventSink: EventSink,
     clock: Clock,
+    idGenerator: IdGenerator,
     controlDirRoot: Path,
     sandboxProfile: SandboxProfile,
     outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
@@ -49,6 +51,7 @@ internal fun runScriptedFrontend(
             journal = journal,
             eventSink = eventSink,
             clock = clock,
+            idGenerator = idGenerator,
             shOptions = ShOptions(
                 workspaceRoot = controlDirRoot.resolve("workspace"),
                 captureStdout = false,

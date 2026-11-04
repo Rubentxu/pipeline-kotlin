@@ -3,8 +3,10 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.MILESTONE_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.MilestoneOperations
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.application.WORKSPACE_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.step.CapabilityRefusal
 import dev.rubentxu.pipeline.v2.domain.step.CapabilityRefusedException
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
@@ -17,6 +19,7 @@ import dev.rubentxu.pipeline.v2.runtime.telemetry.STEP_OBSERVABILITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.runtime.telemetry.StepObservability
 import dev.rubentxu.pipeline.v2.runtime.telemetry.StepSpan
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import java.time.Instant
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertSame
@@ -217,6 +220,8 @@ class CanonicalCapabilityAccessTest {
             ),
             controlDirRoot = Path.of("/nonexistent-control-root"),
             eventSink = NullEventSink,
+            clock = FixedClock,
+            idGenerator = SequentialIdGenerator(),
             stepObservability = stepObservability,
         )
 
@@ -237,5 +242,9 @@ class CanonicalCapabilityAccessTest {
 
     private companion object {
         const val RUN_ID = "run-1"
+    }
+    /** A clock that does not move, so nothing in these rows depends on the wall clock. */
+    private object FixedClock : Clock {
+        override fun now(): Instant = Instant.ofEpochMilli(2_000L)
     }
 }

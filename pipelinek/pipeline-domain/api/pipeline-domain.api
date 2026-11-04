@@ -1068,6 +1068,10 @@ public final class dev/rubentxu/pipeline/v2/domain/FailureKind$Companion {
 	public final fun parse (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/FailureKind;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/domain/IdGenerator {
+	public abstract fun next ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/InMemoryCompiledRunCoordinator {
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/CompiledStepDispatcher;)V
 	public final fun run (Ldev/rubentxu/pipeline/v2/domain/CompiledRunRequest;)Ldev/rubentxu/pipeline/v2/domain/RunOutcome;

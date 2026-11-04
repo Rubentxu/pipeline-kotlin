@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
 
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
@@ -190,7 +191,13 @@ class DurableInvocationRecordTest {
         val recoveryJournal = journal()
         val recoveryRecords = DurableInvocationRecord(recoveryJournal)
         runBlocking {
-            RecoveryInterpretationEngine(NullEventSink, recoveryRecords, NoopPipelineTelemetry).interpret(
+            RecoveryInterpretationEngine(
+                NullEventSink,
+                recoveryRecords,
+                NoopPipelineTelemetry,
+                clock = FixedClock,
+                idGenerator = SequentialIdGenerator(),
+            ).interpret(
                 resolution = InvocationReconciliation.RecoverRunning(lostTerminal()),
                 request = RecoveryInterpretationEngine.Request(
                     operationId = OP_ID,
@@ -289,6 +296,8 @@ class DurableInvocationRecordTest {
             },
             records = records,
             telemetry = NoopPipelineTelemetry,
+            clock = FixedClock,
+            idGenerator = SequentialIdGenerator(),
         )
 
     /** One row, in the shape the journal holds it. */
@@ -372,6 +381,8 @@ class DurableInvocationRecordTest {
         ),
         controlDirRoot = Path.of("/nonexistent-control-root"),
         eventSink = NullEventSink,
+        clock = FixedClock,
+        idGenerator = SequentialIdGenerator(),
     )
 
     /** The lifecycle coordinates of the invocation. */
@@ -389,9 +400,15 @@ class DurableInvocationRecordTest {
         return assertInstanceOf(RerunOperation::class.java, row, "$label must be a RERUN row")
     }
 
-    /** A clock that does not move, so nothing in these rows depends on the wall clock. */
+    /**
+     * A clock that does not move, so nothing in these rows depends on the wall clock.
+     *
+     * NOT the epoch: the durable row's `finishedAt` is a positive epoch-millis by
+     * contract, and a clock pinned at zero would make the engine write a value the
+     * domain rightly refuses. A frozen instant is not the same thing as a zero one.
+     */
     private object FixedClock : Clock {
-        override fun now(): Instant = Instant.EPOCH
+        override fun now(): Instant = Instant.ofEpochMilli(2_000L)
     }
 
     /** A codec that carries a string, and nothing else. */

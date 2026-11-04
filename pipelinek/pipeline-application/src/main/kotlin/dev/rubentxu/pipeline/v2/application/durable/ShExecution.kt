@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
@@ -34,7 +35,6 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRunti
 import dev.rubentxu.pipeline.v2.output.store.SealOutcome
 import java.nio.file.Path
 import java.time.Instant
-import java.util.UUID
 
 /**
  * Shell execution orchestration for durable steps.
@@ -93,6 +93,8 @@ object ShExecution {
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path,
         eventSink: EventSink,
+        clock: Clock,
+        idGenerator: IdGenerator,
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
         // The run's output-wake signal. Each committed chunk announces on it
         // so the run's own live observer can read sooner than its poll
@@ -282,6 +284,8 @@ object ShExecution {
                 runId = runId,
                 opId = opId.format(),
                 controlDirRoot = controlDirRoot,
+                clock = clock,
+                idGenerator = idGenerator,
                 timeoutMs = shOptions.timeoutMs,
                 secretPatternRegistry = secretPatternRegistry,
             )
@@ -389,6 +393,8 @@ object ShExecution {
         runId: String,
         opId: String,
         controlDirRoot: Path,
+        clock: Clock,
+        idGenerator: IdGenerator,
         timeoutMs: Long?,
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     ): ShellInvocationResult {
@@ -427,7 +433,7 @@ object ShExecution {
         val runtime = ProcessDurableTaskRuntime(
             controlDir,
             object : Clock {
-                override fun now(): Instant = Instant.now()
+                override fun now(): Instant = clock.now()
             },
         )
         val request = TaskExecutionRequest(
@@ -487,10 +493,10 @@ object ShExecution {
         val observableContent = redactTranscript(output, secretPatternRegistry)
         eventSink.append(
             EchoOutputCaptured(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runId,
                 sequence = 0L,
-                occurredAt = Instant.now(),
+                occurredAt = clock.now(),
                 stepIndex = stepIndex,
                 content = observableContent,
             ),

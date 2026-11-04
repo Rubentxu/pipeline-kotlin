@@ -1,13 +1,16 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PipelineStepException
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
+import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.DisplayName
@@ -66,7 +69,7 @@ class StepFailureAttributionTest {
     fun `the failure a step emits names the stage it happened in`() = runBlocking {
         val sink = RecordingSink()
 
-        StepExecutionBoundary(sink).execute(context()) {
+        StepExecutionBoundary(sink, clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             CommonExecutionResult(outcome = StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "exit 1")))
         }
 
@@ -78,7 +81,7 @@ class StepFailureAttributionTest {
     fun `a failure raised as a step exception names its stage too`() = runBlocking {
         val sink = RecordingSink()
 
-        StepExecutionBoundary(sink).execute(context()) {
+        StepExecutionBoundary(sink, clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             throw PipelineStepException(PipelineFailure(FailureKind.USER, "the step refused"))
         }
 
@@ -90,7 +93,7 @@ class StepFailureAttributionTest {
     fun `the failure and the step's terminal name the same stage`() = runBlocking {
         val sink = RecordingSink()
 
-        StepExecutionBoundary(sink).execute(context()) {
+        StepExecutionBoundary(sink, clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             CommonExecutionResult(outcome = StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "exit 1")))
         }
 
@@ -98,5 +101,9 @@ class StepFailureAttributionTest {
         // que los lea juntos vería un fallo en un stage y un terminal en otro, y no habría forma
         // de saber cuál de los dos dice la verdad.
         assertEquals(sink.terminal().stageIndex, sink.failure().stageIndex)
+    }
+    /** A clock that does not move, so nothing in these rows depends on the wall clock. */
+    private object FixedClock : Clock {
+        override fun now(): Instant = Instant.ofEpochMilli(2_000L)
     }
 }

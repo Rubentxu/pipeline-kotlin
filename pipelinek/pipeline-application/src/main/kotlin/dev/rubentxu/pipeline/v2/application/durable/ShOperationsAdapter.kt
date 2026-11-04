@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.application.ShellOperations
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
@@ -41,6 +43,12 @@ class ShOperationsAdapter(
     private val shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions,
     private val controlDirRoot: java.nio.file.Path,
     private val eventSink: EventSink,
+    // The run's clock and its source of identifiers, bound from the same context the
+    // engine seals ITS events with. The shell adapter publishes events of its own, and
+    // an adapter that read the machine's clock would be a SECOND source of time next
+    // to the engine's.
+    private val clock: Clock,
+    private val idGenerator: IdGenerator,
     // Registry threaded from the runtime
     // context. Null = no transcript redaction (legacy/test composition).
     private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
@@ -62,6 +70,8 @@ class ShOperationsAdapter(
             shOptions = shOptions,
             controlDirRoot = controlDirRoot,
             eventSink = eventSink,
+            clock = clock,
+            idGenerator = idGenerator,
             secretPatternRegistry = secretPatternRegistry,
             outputWakeups = outputWakeups,
         )

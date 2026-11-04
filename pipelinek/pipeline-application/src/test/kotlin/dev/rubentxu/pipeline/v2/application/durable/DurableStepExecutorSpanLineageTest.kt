@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.application.LiveSpanLedger
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.LiveSpans
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
@@ -130,6 +131,8 @@ class DurableStepExecutorSpanLineageTest {
         },
         records = DurableInvocationRecord(InMemoryOperationJournal(FixedClock)),
         telemetry = ledger,
+        clock = FixedClock,
+        idGenerator = SequentialIdGenerator(),
     )
 
     /** The durable input of the invocation under observation. */
@@ -178,6 +181,8 @@ class DurableStepExecutorSpanLineageTest {
         ),
         controlDirRoot = Path.of("/nonexistent-control-root"),
         eventSink = NullEventSink,
+        clock = FixedClock,
+        idGenerator = SequentialIdGenerator(),
     )
 
     /** The lifecycle coordinates of the invocation. */
@@ -189,9 +194,15 @@ class DurableStepExecutorSpanLineageTest {
         stepType = STEP_ID,
     )
 
-    /** A clock that does not move, so nothing in this row depends on the wall clock. */
+    /**
+     * A clock that does not move, so nothing in this row depends on the wall clock.
+     *
+     * NOT the epoch: the durable row's `finishedAt` is a positive epoch-millis by
+     * contract, and a clock pinned at zero would make the engine write a value the
+     * domain rightly refuses. A frozen instant is not the same thing as a zero one.
+     */
     private object FixedClock : Clock {
-        override fun now(): Instant = Instant.EPOCH
+        override fun now(): Instant = Instant.ofEpochMilli(2_000L)
     }
 
     /** A codec that carries a string, and nothing else. */

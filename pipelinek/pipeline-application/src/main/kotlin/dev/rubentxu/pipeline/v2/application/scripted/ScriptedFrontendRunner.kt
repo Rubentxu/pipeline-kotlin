@@ -15,6 +15,7 @@ import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.RunOutcomeReducer
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
@@ -70,6 +71,7 @@ internal object ScriptedFrontendRunner {
         journal: OperationJournal,
         eventSink: dev.rubentxu.pipeline.v2.events.EventSink,
         clock: Clock,
+        idGenerator: IdGenerator,
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path,
         structure: ScriptedStructuralAddress = ScriptedStructuralAddress.WholeProgram,
@@ -122,11 +124,19 @@ internal object ScriptedFrontendRunner {
             executionBoundary = RegistryExecutionBoundary(capabilityBindings = capabilityBindings),
             records = records,
             telemetry = telemetry,
+            clock = clock,
+            idGenerator = idGenerator,
         )
         // The scripted surface runs the SAME authorities as the canonical coordinator,
         // with the materialiser supplied by the engine's own default — so a recovered `core.sh`
         // returns the same value on both surfaces, and neither composition site can forget it.
-        val interpretation = RecoveryInterpretationEngine(eventSink, records, telemetry)
+        val interpretation = RecoveryInterpretationEngine(
+            eventSink,
+            records,
+            telemetry,
+            clock = clock,
+            idGenerator = idGenerator,
+        )
 
         val invoker = ScriptedRegistryInvoker(
             registry = registry,
@@ -152,6 +162,8 @@ internal object ScriptedFrontendRunner {
                     shOptions = shOptions,
                     controlDirRoot = controlDirRoot,
                     eventSink = eventSink,
+                    clock = clock,
+                    idGenerator = idGenerator,
                     outputWakeups = outputWakeups,
                     // The observability seam, under the same parent the
                     // scripted step's own execution hangs under. Null when the

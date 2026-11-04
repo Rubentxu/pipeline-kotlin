@@ -3,12 +3,14 @@ package dev.rubentxu.pipeline.v2.application.durable.waituntil
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
 
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilControlState
 import dev.rubentxu.pipeline.v2.application.observation.HumanConsoleRenderer
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilControlRowSnapshot
@@ -19,6 +21,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyRef
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
+import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -82,6 +85,8 @@ class WaitUntilPollEventTest {
             stageIndex = 0,
             stepIndex = 0,
             telemetry = NoopPipelineTelemetry,
+            clock = FixedClock,
+            idGenerator = SequentialIdGenerator(),
         )
 
         val outcome = runBlocking { engine.execute(BodyRef("body/wait-until"), LiveSpanParent.Root) }
@@ -174,5 +179,9 @@ class WaitUntilPollEventTest {
         }
 
         override fun eventsFor(runId: String): Sequence<DomainEvent> = events.asSequence()
+    }
+    /** A clock that does not move, so nothing in these rows depends on the wall clock. */
+    private object FixedClock : Clock {
+        override fun now(): Instant = Instant.ofEpochMilli(2_000L)
     }
 }

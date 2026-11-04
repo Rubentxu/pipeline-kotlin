@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.domain.ScriptedStageRef
 import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -46,6 +47,7 @@ internal class ScriptedStageExecution(
     private val journal: OperationJournal,
     private val eventSink: EventSink,
     private val clock: Clock,
+    private val idGenerator: IdGenerator,
     private val controlDirRoot: Path,
     /**
      * The live tracing seam. A scripted stage delegates to the SAME frontend runner
@@ -153,6 +155,7 @@ internal class ScriptedStageExecution(
             journal = journal,
             eventSink = eventSink,
             clock = clock,
+            idGenerator = idGenerator,
             shOptions = shOptions,
             controlDirRoot = controlDirRoot,
             structure = ScriptedStructuralAddress.InCanonicalStage(

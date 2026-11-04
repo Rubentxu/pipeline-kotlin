@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
 
@@ -62,6 +63,7 @@ class WaitUntilInlinePollEventTest {
         val engine = BodyExecutionEngine(
             eventSink = sink,
             clock = FixedClock,
+            idGenerator = SequentialIdGenerator(),
             telemetry = NoopPipelineTelemetry,
         )
 

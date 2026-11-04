@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.LiveSpanLedger
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
@@ -134,7 +135,8 @@ class ParallelStageSpanLineageTest {
         journal = InMemoryOperationJournal(FixedClock),
         eventSink = NullEventSink,
         clock = FixedClock,
-        runLifecycle = RunLifecycleEngine(NullEventSink, ledger),
+        idGenerator = SequentialIdGenerator(),
+        runLifecycle = RunLifecycleEngine(NullEventSink, ledger, clock = FixedClock, idGenerator = SequentialIdGenerator()),
         controlDirRoot = Path.of("/nonexistent-control-root"),
         workspaceBase = Path.of("/nonexistent-workspace"),
     )

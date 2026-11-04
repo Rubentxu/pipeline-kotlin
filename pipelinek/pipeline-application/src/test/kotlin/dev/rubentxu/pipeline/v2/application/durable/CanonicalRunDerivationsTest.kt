@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
 
 import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
 import dev.rubentxu.pipeline.v2.application.RuntimeWorkspaceTransport
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
@@ -155,6 +156,7 @@ class CanonicalRunDerivationsTest {
         allowNetwork: Boolean = false,
     ): CanonicalRunPolicy = CanonicalRunPolicy(
         clock = FixedClock,
+        idGenerator = SequentialIdGenerator(),
         effectReplayPolicy = DefaultEffectReplayPolicy(),
         controlDirRoot = CONTROL_ROOT,
         sandboxProfile = sandboxProfile,

@@ -225,6 +225,8 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
             shOptions = context.shOptions,
             controlDirRoot = context.controlDirRoot,
             eventSink = context.eventSink,
+            clock = context.clock,
+            idGenerator = context.idGenerator,
             secretPatternRegistry = context.secretPatternRegistry,
             outputWakeups = context.outputWakeups,
         )
@@ -444,6 +446,8 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
             opId = context.opId,
             workspaceRoot = effectiveWorkspaceRoot,
             eventSink = context.eventSink,
+            clock = context.clock,
+            idGenerator = context.idGenerator,
         )
         builder[TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] = CapabilitySlot.of(tmpOps)
     }
@@ -473,6 +477,8 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
                 index = context.stageIndex,
             ),
             eventSink = context.eventSink,
+            clock = context.clock,
+            idGenerator = context.idGenerator,
             // The typed lease decides whether a
             // user-owned root may be destroyed, replacing the VCS-marker
             // heuristic that retires.
@@ -493,6 +499,8 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
                 index = context.stageIndex,
             ),
             eventSink = context.eventSink,
+            clock = context.clock,
+            idGenerator = context.idGenerator,
             // The typed lease decides whether a
             // user-owned root may be destroyed, replacing the VCS-marker
             // heuristic that retires.

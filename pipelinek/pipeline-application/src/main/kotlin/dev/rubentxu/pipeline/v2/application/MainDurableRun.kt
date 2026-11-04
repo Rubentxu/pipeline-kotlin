@@ -141,6 +141,10 @@ private fun runDurablePipelineOwned(
     // cursor, the Saga obligations and the lease share the database, the connection factory and
     // the clock, so they are built together and nowhere else.
     val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
+    // The run's source of opaque identifiers, created ONCE beside the clock: the two
+    // ambient reads the engine is forbidden to perform on its own are GIVEN to it here,
+    // once, and every collaborator downstream mints with these same two.
+    val idGenerator: dev.rubentxu.pipeline.v2.domain.IdGenerator = UuidIdGenerator()
     val durableStores = DurableStores.open(rawEventStore, controlDirRoot, clock)
     // the canonical engine threads `workspaceBase` through
     // `CanonicalRuntimeContext.workspaceBase`; the capability bridge
@@ -205,7 +209,7 @@ private fun runDurablePipelineOwned(
     // admitted, which is precisely the defect S6/G removed once already.
     // The refusal travels as a value: the scope still holds the lease and the
     // store, and it gives them back before the process ends.
-    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry)) {
+    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry, clock)) {
         is PluginAdmission.Admitted -> admission.composition
         is PluginAdmission.Refused -> throw CommandRefused(admission.exit)
     }
@@ -247,6 +251,7 @@ private fun runDurablePipelineOwned(
                 journal = journal,
                 eventSink = eventStore,
                 clock = clock,
+                idGenerator = idGenerator,
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
                 outputWakeups = outputObserver.wakeups,
@@ -266,6 +271,7 @@ private fun runDurablePipelineOwned(
                             state = durableRunState(journal, cursorStore, eventStore, sagaObligationStore, lease, outputObserver.wakeups),
                             policy = CanonicalRunPolicy(
                                 clock = clock,
+                                idGenerator = idGenerator,
                                 effectReplayPolicy = effectPolicy,
                                 controlDirRoot = controlDirRoot,
                                 sandboxProfile = config.sandboxProfile,

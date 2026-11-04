@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.SpanScope
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
@@ -20,7 +21,6 @@ import dev.rubentxu.pipeline.v2.events.TimeoutTriggered
 import dev.rubentxu.pipeline.v2.events.TimestampsEntered
 import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
-import java.time.Instant
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.domain.credentials.boundPurpose
 import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
@@ -29,7 +29,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilCompletion
 import java.nio.file.Files
-import java.util.UUID
 
 /**
  * The body-execution machinery, extracted from the durable coordinator.
@@ -67,6 +66,7 @@ internal fun interface BodyChildDispatcher {
 internal class BodyExecutionEngine(
     private val eventSink: EventSink,
     private val clock: Clock,
+    private val idGenerator: IdGenerator,
     private val telemetry: PipelineTelemetry,
     private val retryControlJournal: FileBasedRetryControlJournal? = null,
     private val waitUntilControlJournal: WaitUntilControlJournal? = null,
@@ -112,7 +112,7 @@ internal class BodyExecutionEngine(
                 for (binding in leaseBindings) {
                     eventSink.append(
                         dev.rubentxu.pipeline.v2.events.CredentialUsed(
-                            eventId = UUID.randomUUID().toString(),
+                            eventId = idGenerator.next(),
                             runId = runId.value,
                             sequence = 0L,
                             occurredAt = clock.now(),
@@ -175,7 +175,7 @@ internal class BodyExecutionEngine(
             // transition once, BEFORE any child StepStarted.
             eventSink.append(
                 dev.rubentxu.pipeline.v2.events.TimeoutScheduled(
-                    eventId = UUID.randomUUID().toString(),
+                    eventId = idGenerator.next(),
                     runId = runId.value,
                     sequence = 0L,
                     occurredAt = clock.now(),
@@ -196,7 +196,7 @@ internal class BodyExecutionEngine(
             )
             eventSink.append(
                 dev.rubentxu.pipeline.v2.events.DirEntered(
-                    eventId = UUID.randomUUID().toString(),
+                    eventId = idGenerator.next(),
                     runId = runId.value,
                     sequence = 0L,
                     // DirEntered has no other producer, and its sibling
@@ -213,7 +213,7 @@ internal class BodyExecutionEngine(
         is BlockShellScope.TimestampsScope -> {
             eventSink.append(
                 dev.rubentxu.pipeline.v2.events.TimestampsEntered(
-                    eventId = UUID.randomUUID().toString(),
+                    eventId = idGenerator.next(),
                     runId = runId.value,
                     sequence = 0L,
                     // No other producer; same injected seam as DirEntered.
@@ -260,7 +260,7 @@ internal class BodyExecutionEngine(
         spanScope: SpanScope,
     dispatcher: BodyChildDispatcher,
     ): StepOutcome {
-        val overallStartMs = System.currentTimeMillis()
+        val overallStartMs = clock.now().toEpochMilli()
         // Initial sleep before first poll
         if (scope.initialRecurrencePeriod > 0) {
             kotlinx.coroutines.delay(scope.initialRecurrencePeriod)
@@ -273,7 +273,7 @@ internal class BodyExecutionEngine(
         waitUntilPollLoop@ while (true) {
             pollCount++
             val pollAttemptPath = parentBodyPath + BlockSegment(pollCount, dev.rubentxu.pipeline.v2.domain.PluginStepId("wait-until-poll"))
-            val pollStartMs = System.currentTimeMillis()
+            val pollStartMs = clock.now().toEpochMilli()
 
             val pollOutcome = invokeBodyChildren(
                 block,
@@ -287,17 +287,17 @@ internal class BodyExecutionEngine(
                 dispatcher = dispatcher,
             )
 
-            val pollDurationMs = System.currentTimeMillis() - pollStartMs
+            val pollDurationMs = clock.now().toEpochMilli() - pollStartMs
 
             // ONE event per attempt, same rule as the durable branch: the
             // poll's own record, with the measured duration and the evaluated
             // verdict. There is no mirror emitted before the body runs.
             eventSink.append(
                 WaitUntilPolled(
-                    eventId = UUID.randomUUID().toString(),
+                    eventId = idGenerator.next(),
                     runId = runId.value,
                     sequence = 0L,
-                    occurredAt = Instant.now(),
+                    occurredAt = clock.now(),
                     attempt = pollCount,
                     durationMs = pollDurationMs,
                     conditionResult = pollOutcome is StepOutcome.Success,
@@ -311,13 +311,13 @@ internal class BodyExecutionEngine(
                     // the wire token and the typed result cannot disagree
                     // between the two branches.
                     val completion = WaitUntilCompletion.Satisfied
-                    val totalDurationMs = System.currentTimeMillis() - overallStartMs
+                    val totalDurationMs = clock.now().toEpochMilli() - overallStartMs
                     eventSink.append(
                         WaitUntilCompleted(
-                            eventId = UUID.randomUUID().toString(),
+                            eventId = idGenerator.next(),
                             runId = runId.value,
                             sequence = 0L,
-                            occurredAt = Instant.now(),
+                            occurredAt = clock.now(),
                             totalAttempts = pollCount,
                             totalDurationMs = totalDurationMs,
                             outcome = completion.wireOutcome,
@@ -338,13 +338,13 @@ internal class BodyExecutionEngine(
                             attempt = pollCount,
                             ceilingMs = maxBackoffMs,
                         )
-                        val totalDurationMs = System.currentTimeMillis() - overallStartMs
+                        val totalDurationMs = clock.now().toEpochMilli() - overallStartMs
                         eventSink.append(
                             WaitUntilCompleted(
-                                eventId = UUID.randomUUID().toString(),
+                                eventId = idGenerator.next(),
                                 runId = runId.value,
                                 sequence = 0L,
-                                occurredAt = Instant.now(),
+                                occurredAt = clock.now(),
                                 totalAttempts = pollCount,
                                 totalDurationMs = totalDurationMs,
                                 outcome = completion.wireOutcome,
@@ -460,6 +460,8 @@ internal class BodyExecutionEngine(
                     blockId = block.id,
                     blockPluginStepId = block.pluginStepId,
                     telemetry = telemetry,
+                    clock = clock,
+                    idGenerator = idGenerator,
                 )
                 outcome = retryEngine.execute(bodyRef, scopeInBody.parent)
             } else if (scope is BlockShellScope.WaitUntilScope && waitUntilControlJournal != null) {
@@ -491,6 +493,8 @@ internal class BodyExecutionEngine(
                         stageIndex = stageIndex,
                         stepIndex = stepIndex,
                         telemetry = telemetry,
+                        clock = clock,
+                        idGenerator = idGenerator,
                     )
                 outcome = waitUntilEngine.execute(bodyRef, scopeInBody.parent)
             } else if (scope is BlockShellScope.WaitUntilScope) {
@@ -528,10 +532,10 @@ internal class BodyExecutionEngine(
                 if (scope is BlockShellScope.Retry) {
                     eventSink.append(
                         dev.rubentxu.pipeline.v2.events.RetryAttemptStarted(
-                            eventId = UUID.randomUUID().toString(),
+                            eventId = idGenerator.next(),
                             runId = runId.value,
                             sequence = 0L,
-                            occurredAt = Instant.now(),
+                            occurredAt = clock.now(),
                             attemptNumber = attempt,
                             maxAttempts = scope.maxAttempts,
                             stepName = block.id.value,
@@ -581,7 +585,7 @@ internal class BodyExecutionEngine(
             if (scope is BlockShellScope.Directory) {
                 eventSink.append(
                     DirExited(
-                        eventId = UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
                         // No other producer; keeps the DirEntered/DirExited
@@ -595,7 +599,7 @@ internal class BodyExecutionEngine(
             if (scope is BlockShellScope.TimestampsScope) {
                 eventSink.append(
                     dev.rubentxu.pipeline.v2.events.TimestampsExited(
-                        eventId = UUID.randomUUID().toString(),
+                        eventId = idGenerator.next(),
                         runId = runId.value,
                         sequence = 0L,
                         // No other producer; keeps the Timestamps* pair on
@@ -621,7 +625,7 @@ internal class BodyExecutionEngine(
                 if (deadlineBreached) {
                     eventSink.append(
                         dev.rubentxu.pipeline.v2.events.TimeoutTriggered(
-                            eventId = UUID.randomUUID().toString(),
+                            eventId = idGenerator.next(),
                             runId = runId.value,
                             sequence = 0L,
                             // The breach pairs with the already-durable

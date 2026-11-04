@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepId
@@ -73,6 +74,7 @@ class SagaPromisedBodyPortsTest {
         store = store,
         eventSink = NullEventSink,
         clock = FixedClock,
+        idGenerator = SequentialIdGenerator(),
         ownerPluginId = "example.saga",
         bodies = bodies,
     )
@@ -273,6 +275,7 @@ class SagaPromisedBodyPortsTest {
         slotInvoker = slots,
         eventSink = NullEventSink,
         clock = FixedClock,
+        idGenerator = SequentialIdGenerator(),
         bodies = bodies,
         // The body each promise is paid with, read from the durable row — as the engine does.
         promisedBodies = SagaPromisedBodyReader { key -> store.find("run-1", key)?.bodyDigest },

@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.IdGenerator
 import dev.rubentxu.pipeline.v2.application.CleanWsInput
 import dev.rubentxu.pipeline.v2.application.CleanWsOperations
 import dev.rubentxu.pipeline.v2.application.CleanWsResult
@@ -12,8 +14,6 @@ import dev.rubentxu.pipeline.v2.sdk.files.CleanWsExecutor
 import dev.rubentxu.pipeline.v2.sdk.files.RootDestruction
 import java.nio.file.Files
 import java.nio.file.Path
-import java.time.Instant
-import java.util.UUID
 
 /**
  * The canonical implementation of [dev.rubentxu.pipeline.v2.application.CleanWsOperations] —
@@ -44,6 +44,8 @@ class CleanWsOperationsAdapter(
     private val runIdString: String,
     private val stageIdentity: StageIdentity,
     private val eventSink: EventSink,
+    private val clock: Clock,
+    private val idGenerator: IdGenerator,
     /**
      * The typed workspace lease for this step.
      * Additive and optional. When supplied, ownership of the root is read from
@@ -103,10 +105,10 @@ class CleanWsOperationsAdapter(
 
         eventSink.append(
             WsCleaned(
-                eventId = UUID.randomUUID().toString(),
+                eventId = idGenerator.next(),
                 runId = runIdString,
                 sequence = 0L,
-                occurredAt = Instant.now(),
+                occurredAt = clock.now(),
                 deletedFiles = execResult.deletedFiles,
                 deletedDirs = execResult.deletedDirs,
                 patterns = execResult.patterns,

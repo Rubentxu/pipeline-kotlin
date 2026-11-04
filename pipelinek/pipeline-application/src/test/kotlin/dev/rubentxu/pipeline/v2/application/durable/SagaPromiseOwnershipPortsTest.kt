@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.saga.ArmRejection
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationArmOutcome
@@ -52,6 +53,7 @@ class SagaPromiseOwnershipPortsTest {
         store = store,
         eventSink = NullEventSink,
         clock = FixedClock,
+        idGenerator = SequentialIdGenerator(),
         ownerPluginId = ownerPluginId,
     )
 

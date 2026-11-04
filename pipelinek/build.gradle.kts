@@ -1,5 +1,6 @@
 import kotlinx.validation.KotlinApiBuildTask
 import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.jvm.tasks.Jar
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 plugins {
@@ -100,7 +101,15 @@ repositories {
 // artifact does is not what v0.91.0 did; the two artifacts do NOT behave
 // the same, and one version cannot carry both. The 0.92.0 train opens here
 // (ProductVersion 0.92.0) and its first candidate can be tagged v0.92.0-rc1.
-version = "0.92.0"
+// 2026-11-04: the 0.92.0 train closed at v0.92.0-rc1, and the law holds here
+// too: this tree has moved since that candidate. The published ABI of
+// :pipeline-credentials-api changed: the constructor of CredentialScope no
+// longer takes the list of the credentials that are active in the scope, a
+// parameter the scope never read. A consumer that built a scope has to build
+// it differently, so the two artifacts do NOT behave the same and one version
+// cannot carry both. The 0.93.0 train opens here (ProductVersion 0.93.0) and
+// its first candidate can be tagged v0.93.0-rc1.
+version = "0.93.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
@@ -214,6 +223,105 @@ subprojects {
         // restated without the task identity following it.
         tasks.named("check") {
             dependsOn(tasks.named("detektMain"))
+        }
+    }
+}
+
+// ── the integration leg: real modules composed, the world outside faked ───────
+//
+// A unit test exercises one module with its collaborators replaced. An
+// integration test exercises the SEAM between modules: the real objects of two
+// or more modules, wired as the product wires them, with every effect that
+// would reach outside the process replaced by a fake the test owns.
+//
+// The lane exists because the unit leg cannot observe a wiring mistake. Two
+// modules can each pass every unit test they own and still disagree about the
+// port they share; only a test that instantiates both of them can see it.
+//
+// What the lane does NOT do is reach outside the process. A filesystem, a
+// subprocess, the clock and the network stay faked, exactly as in a unit
+// test. The difference is which side of the boundary the code under test
+// sits on: INSIDE for a unit test, and STRADDLING for an integration test.
+//
+// The source set is declared here rather than in each module, so every module
+// gets the same lane and the same task names. A module without an
+// `src/integrationTest/kotlin` directory simply has no integration test, and
+// its task is skipped rather than reported as an empty success.
+subprojects {
+    pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+        // The Kotlin JVM plugin creates the `test` source set, and it does so
+        // through the Java plugin's source-set machinery. The lane is declared
+        // here, once, so every module gets the same one and the same task
+        // names: a lane declared per module would drift, and a lane that
+        // drifts is a lane whose reports nobody reads.
+        //
+        // The project is named explicitly because the receiver of this block
+        // is the plugin, not the project, and an unqualified `sourceSets`
+        // would not resolve. The extensions are reached by their TYPE rather
+        // than by their accessors, because the type-safe accessors are
+        // generated for the script's own receiver and not for the projects it
+        // enumerates.
+        val javaExtension =
+            project.extensions.getByType(org.gradle.api.plugins.JavaPluginExtension::class.java)
+        val lane: org.gradle.api.tasks.SourceSet = javaExtension.sourceSets.create("integrationTest")
+
+        // The Kotlin half of the lane. The source set carries the CONVENTIONAL
+        // directory, and it is added only when the plugin did not already map
+        // it, so a module that declares its own directory is not given the
+        // same sources twice.
+        val kotlinExtension = project.extensions
+            .getByType(org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension::class.java)
+        val kotlinLane = kotlinExtension.sourceSets.maybeCreate("integrationTest")
+        val kotlinDir = project.file("src/integrationTest/kotlin")
+        if (kotlinLane.kotlin.srcDirs.none { it == kotlinDir }) {
+            kotlinLane.kotlin.srcDir(kotlinDir)
+        }
+
+        // The lane compiles AGAINST the module's main, so it has to see the
+        // module's own seams and not only its published ones. Kotlin's
+        // `internal` is scoped to a compilation, and the lane is a separate
+        // compilation, so without this the lane could not reach an internal
+        // collaborator at all: the alternative would be to widen the product's
+        // visibility for the sake of a test, and the lane is the wrong reason
+        // to change what the product publishes.
+        kotlinExtension.target.compilations.configureEach {
+            if (name == "integrationTest") {
+                associateWith(kotlinExtension.target.compilations.getByName("main"))
+            }
+        }
+
+        project.configurations[lane.implementationConfigurationName]
+            .extendsFrom(project.configurations.getByName("testImplementation"))
+        project.configurations[lane.runtimeOnlyConfigurationName]
+            .extendsFrom(project.configurations.getByName("testRuntimeOnly"))
+
+        project.dependencies.add(lane.implementationConfigurationName, libs.junit.jupiter)
+        project.dependencies.add(lane.runtimeOnlyConfigurationName, libs.junit.platform.launcher)
+
+        // The lane's classpath. The lane compiles against the module's MAIN output
+        // and against its own configuration, and NOT against its own output:
+        // a classpath that names the lane's own output makes the Java and the
+        // Kotlin compile tasks depend on each other, and the build fails with
+        // a circular dependency.
+        lane.compileClasspath += javaExtension.sourceSets["main"].output
+        lane.runtimeClasspath += javaExtension.sourceSets["main"].output
+
+        project.tasks.register<org.gradle.api.tasks.testing.Test>("integrationTest") {
+            testClassesDirs = lane.output.classesDirs
+            classpath = lane.runtimeClasspath
+            useJUnitPlatform()
+            // The lane's reports live beside the unit ones, in a directory of
+            // their own, so a reader can tell which leg produced which number.
+            reports.junitXml.outputLocation.set(
+                project.layout.buildDirectory.dir("test-results/integrationTest"),
+            )
+            reports.html.outputLocation.set(
+                project.layout.buildDirectory.dir("reports/tests/integrationTest"),
+            )
+        }
+
+        project.tasks.named("check") {
+            dependsOn(project.tasks.named("integrationTest"))
         }
     }
 }
@@ -334,10 +442,15 @@ subprojects {
 // was false, and it was the same defect this session already paid for once in the KSP: a written
 // claim that no evidence backs, pointing a future reader at a consumer program that does not exist.
 // It also called this a four-module list while the set below has carried seven since the publication split.
-// The consequence for a break: a BCV-only module gets no maturity classification and no exception
-// receipt, because it has no consumer program that could break silently. Its internal callers are
-// inside this build, so a removed public type fails `compileKotlin` immediately and loudly. What
-// the dump buys is the review — a diff nobody has to be shown.
+// The consequence for a break depends on whether the module's bytes TRAVEL with the release.
+// A BCV-only module that nothing ships gets no maturity classification and no exception receipt,
+// because it has no consumer program that could break silently: its internal callers are inside
+// this build, so a removed public type fails `compileKotlin` immediately and loudly. What the dump
+// buys there is the review — a diff nobody has to be shown.
+// A BCV-only module whose JAR travels inside the distribution IS a published surface, even though
+// it resolves from no Maven coordinate: the ABI door compares it against the JAR that the previous
+// distribution shipped, so a break of it is named by the instrument, it carries a maturity
+// classification, and it needs an exception receipt like any other published break.
 // Adding a new module to BCV requires two steps: (1) append its name to
 // `bcvModules` below; (2) run `:pipeline-<x>:apiDump` to materialise the
 // baseline, then commit.api file alongside the build change.
@@ -430,13 +543,10 @@ val publishedContractModules = listOf(
     // (read-side contracts for events, output, scripting, and domain) gave consumers a
     // complete read plane; this fifth entry adds the write plane, and the BOM picks up the
     // matching `api(...)` constraint (see pipelinek/pipeline-sdk-bom/build.gradle.kts).
-    // This comment used to name `PublishedContractBoundaryFitnessTest` as the guard on the
-    // size of this list, and pointed at its source under
-    // `pipelinek/pipeline-architecture-tests/`. That fitness was deleted on with the rest
-    // of the QA harness, so the list above now has NO automated guard on its membership.
-    // `apiCheck` proves the published surface is internally consistent; it does not prove the
-    // list is the right list. Anyone adding a sixth published contract must decide here, in
-    // review, whether it earns publication.
+    // The list above has NO automated guard on its membership: `apiCheck` proves the published
+    // surface is internally consistent; it does not prove the list is the right list. Anyone
+    // adding a sixth published contract must decide here, in review, whether it earns
+    // publication.
     "pipeline-runtime-api",
 )
 
@@ -531,6 +641,30 @@ val publishedApiDumpDirs: Map<String, String> = publishedApiCoordinates.mapValue
     layout.buildDirectory.dir("api-artifacts/$name").get().asFile.absolutePath
 }
 
+/**
+ * The modules whose ABI is guarded but whose artifact is NOT published as a Maven
+ * coordinate.
+ *
+ * For a published module the previously published artifact is an artifact in a Maven
+ * repository, and the second reading finds it there. For a guarded module that is not
+ * published, the previously published bytes are the JAR the previous release's
+ * DISTRIBUTION shipped: the product's own ZIP carries every module it runs with, so
+ * the last published bytes of such a module live inside the last published ZIP. The
+ * comparison is the same one and the engine is the same one on both sides; only the
+ * place the previous artifact comes from differs.
+ *
+ * The previous artifact is named by the same property the published modules use
+ * (`-PpreviousArtifactVersion`) and the ZIP that carries it by
+ * `-PpreviousDistributionZip`. Without both, the previous side is SKIPPED and not
+ * empty: an empty dump would read as a total removal of the module's ABI.
+ *
+ * The list names the guarded modules whose JAR travels inside the distribution.
+ * A module that nothing ships is NOT here: with no published bytes to compare
+ * against, the second reading would have nothing to say, and the guard it does
+ * have is the review of the committed baseline.
+ */
+val guardedUnpublishedModules = listOf("pipeline-credentials-api", "pipeline-step-sdk:api")
+
 // The geometry of the comparison, handed to `:pipeline-release` — the module
 // that decides — so that the build script and the decision agree on which
 // artifacts, which versions and which modules are being compared. The
@@ -538,7 +672,7 @@ val publishedApiDumpDirs: Map<String, String> = publishedApiCoordinates.mapValue
 // exists to remove.
 extra["publishedApiDumpDirs"] = publishedApiDumpDirs
 extra["publishedApiVersions"] = publishedApiCoordinates.mapValues { it.value.second }
-extra["publishedApiModules"] = publishedContractModules
+extra["abiComparedModules"] = publishedContractModules + guardedUnpublishedModules
 
 subprojects {
     val publishedModule = publishedContractModules.firstOrNull { ":$it" == project.path }
@@ -572,6 +706,119 @@ subprojects {
                         // empty dump would read as a total removal of the module's ABI.
                         enabled = false
                     }
+                }
+            }
+        }
+    }
+}
+
+// The two sides of the comparison for a module that is GUARDED but not published.
+//
+// The published modules take their previous artifact from a Maven repository, because
+// that is where their previous release put it. A guarded module that is not published
+// has no Maven coordinate, so its previously published bytes are the JAR the previous
+// release's DISTRIBUTION shipped: the product's own ZIP carries every module it runs
+// with. Same comparison, same engine, different place the previous artifact comes from.
+subprojects {
+    val guardedModule = guardedUnpublishedModules.firstOrNull { ":$it" == project.path }
+    if (guardedModule != null) {
+        pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+            // The engine that produced this tree's committed baseline. Copying its
+            // worker classpath is what makes the two sides comparable: the same
+            // renderer, in the same build.
+            val apiBuildTask = tasks.named<KotlinApiBuildTask>("apiBuild")
+            val jarTask = tasks.named<Jar>("jar")
+
+            // The CANDIDATE side: the bytes this tree builds.
+            tasks.register<KotlinApiBuildTask>("candidateArtifactApiDump") {
+                group = "verification"
+                description =
+                    "Dump the public API surface of the candidate artifact of $guardedModule."
+                runtimeClasspath.setFrom(apiBuildTask.map { it.runtimeClasspath })
+                inputJar.set(jarTask.flatMap { it.archiveFile })
+                outputApiFile.set(
+                    File(publishedApiDumpDirs.getValue("candidate"), "$guardedModule.api"),
+                )
+                dependsOn(jarTask)
+            }
+
+            val previousZip = providers.gradleProperty("previousDistributionZip")
+            val previousVersion = providers.gradleProperty("previousArtifactVersion")
+            val extracted = layout.buildDirectory.file("previous-published/$guardedModule.jar")
+            // The name the ARTIFACT carries, which is not always the name of the
+            // project: the distribution names the JAR of a nested module by the
+            // module's own name, not by the path that leads to it.
+            val archiveBaseName = jarTask.flatMap { it.archiveBaseName }
+
+            // The JAR the previous release's distribution shipped, taken OUT of that
+            // distribution. It is not rebuilt from a tag: the bytes that were published
+            // are the bytes the comparison has to read.
+            tasks.register("extractPreviousPublishedJar") {
+                group = "verification"
+                description =
+                    "Extract the $guardedModule JAR the previous release's distribution shipped."
+                inputs.property("previousDistributionZip", previousZip)
+                inputs.property("previousArtifactVersion", previousVersion)
+                outputs.file(extracted)
+                doLast {
+                    val zipFile = File(previousZip.orNull ?: "")
+                    val version = previousVersion.orNull
+                    if (!zipFile.isFile) {
+                        throw GradleException(
+                            "the previous distribution named by -PpreviousDistributionZip does not " +
+                                "exist at $zipFile, so the previously published surface of " +
+                                "$guardedModule cannot be read",
+                        )
+                    }
+                    if (version.isNullOrBlank()) {
+                        throw GradleException(
+                            "-PpreviousArtifactVersion is required to name the $guardedModule JAR " +
+                                "inside the previous distribution",
+                        )
+                    }
+                    val entrySuffix = "lib/${archiveBaseName.get()}-$version.jar"
+                    java.util.zip.ZipFile(zipFile).use { zip ->
+                        // The distribution carries its payload under a top-level directory
+                        // that carries the version, so the entry is matched by its END and
+                        // not by its whole name. Exactly one entry has to match: none means
+                        // the artifact is not in there, and more than one means the
+                        // distribution carries two candidates for it.
+                        val matches = zip.entries().asSequence()
+                            .filter { it.name.endsWith(entrySuffix) }
+                            .toList()
+                        if (matches.size != 1) {
+                            throw GradleException(
+                                "the previous distribution carries ${matches.size} entries ending in " +
+                                    "'$entrySuffix': the published artifact of $guardedModule at " +
+                                    "version $version is not exactly there",
+                            )
+                        }
+                        val entry = matches.single()
+                        val target = extracted.get().asFile
+                        target.parentFile.mkdirs()
+                        zip.getInputStream(entry).use { input ->
+                            target.outputStream().use { output -> input.copyTo(output) }
+                        }
+                    }
+                }
+            }
+
+            // The PREVIOUS side: the JAR the previous release's distribution shipped.
+            tasks.register<KotlinApiBuildTask>("previousArtifactApiDump") {
+                group = "verification"
+                description =
+                    "Dump the public API surface of the previously published artifact of $guardedModule."
+                runtimeClasspath.setFrom(apiBuildTask.map { it.runtimeClasspath })
+                if (previousZip.isPresent && previousVersion.isPresent) {
+                    dependsOn("extractPreviousPublishedJar")
+                    inputJar.set(extracted)
+                    outputApiFile.set(
+                        File(publishedApiDumpDirs.getValue("previous"), "$guardedModule.api"),
+                    )
+                } else {
+                    // There is no artifact to read on this side. Skipped, not empty: an
+                    // empty dump would read as a total removal of the module's ABI.
+                    enabled = false
                 }
             }
         }
@@ -735,6 +982,26 @@ val buildExamplePlugins by tasks.registering(Exec::class) {
     val pluginJars = pluginDirs.map { pluginDir -> pluginDir.resolve("build/libs/${pluginDir.name}-0.1.0.jar") }
     outputs.files(pluginJars)
 
+    // The console of the NESTED build, captured instead of inherited.
+    //
+    // The nested build is a DIFFERENT build, and its task lines are not tasks
+    // of this one. Leaving them in this build's console made them look like
+    // they were, and the gate's census counts a task the console declares as
+    // one the clock has to have measured. The clock is THIS build's, so the
+    // nested lines opened a hole in the census: the console declared 285
+    // tasks that ran and the clock measured 271. A census with a hole in it is
+    // not published as a census, so the gate refused to publish one.
+    //
+    // The console is not discarded: it is this task's declared output, and a
+    // nested build that fails prints its own console before failing. The
+    // nested cost is still measured, once, as the duration of THIS task.
+    val nestedConsole = layout.buildDirectory.file("reports/example-plugins/build.log")
+    outputs.file(nestedConsole)
+    // The exit value is read here instead of letting the task fail on the
+    // spot, because a failure has to say WHAT the nested build said. Gradle's
+    // own failure message would name the exit code and nothing else.
+    isIgnoreExitValue = true
+
     workingDir = rootDir
     commandLine(
         rootDir.resolve("gradlew").absolutePath,
@@ -753,7 +1020,27 @@ val buildExamplePlugins by tasks.registering(Exec::class) {
         "buildExamplePlugins",
     )
 
+    doFirst {
+        // The stream is opened HERE, while the task RUNS, and not while the
+        // build is configured: a stream is not something the configuration
+        // cache can store, and a task that carried one would make the entry
+        // unstorable. Opening it in the action keeps the task serializable.
+        val consoleFile = nestedConsole.get().asFile
+        consoleFile.parentFile.mkdirs()
+        standardOutput = consoleFile.outputStream()
+    }
+
     doLast {
+        val exitCode = executionResult.get().exitValue
+        if (exitCode != 0) {
+            val consoleFile = nestedConsole.get().asFile
+            val consoleText = if (consoleFile.isFile) consoleFile.readText() else ""
+            throw GradleException(
+                "buildExamplePlugins: the composite build of the four example plugins failed " +
+                    "with exit code $exitCode. Its console is in " +
+                    "${consoleFile.absolutePath}:" + "\n" + consoleText,
+            )
+        }
         val missing = pluginJars.filterNot { it.isFile }
         if (missing.isNotEmpty()) {
             throw GradleException(
@@ -802,8 +1089,10 @@ val buildExamplePlugins by tasks.registering(Exec::class) {
 //                  Corrected claim holds from outside the build.
 //   * saga      — the Saga contract is reachable from OUTSIDE the build,
 //                  through the published capabilities, with the engine owning
-//                  the state: the scenarios drive a compensation loop with a
-//                  plugin that knows nothing of the runtime's internals.
+//                  the state. The plugin knows nothing of the runtime's
+//                  internals, and the compensation loop it drives is not
+//                  observed by any test in this repository: it is a declared
+//                  gap.
 //
 // Their BUILD is one task (above) and their PROOF is four different claims.
 // The composite changes WHEN they are built, not WHAT they are: the four JARs

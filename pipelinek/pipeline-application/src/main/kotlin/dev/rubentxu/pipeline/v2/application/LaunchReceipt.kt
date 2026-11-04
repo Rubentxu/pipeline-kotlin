@@ -56,16 +56,6 @@ data class LaunchReceipt(
         const val SCHEMA: String = "pipelinek.launch/1"
 
         /**
-         * JSON encoder configured to emit a single line (no pretty-print,
-         * no HTML escaping, no lenient parsing). The output is stable
-         * byte-for-byte for a given input.
-*/
-        private val ENCODER: Json = Json {
-            prettyPrint = false
-            encodeDefaults = true
-        }
-
-        /**
          * Build a successful [LaunchReceipt] from typed inputs.
 */
         fun launched(

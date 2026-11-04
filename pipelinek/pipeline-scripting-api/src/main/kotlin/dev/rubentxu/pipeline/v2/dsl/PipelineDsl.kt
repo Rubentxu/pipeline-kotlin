@@ -476,10 +476,9 @@ class StageBuilder(
 /**
  * Conversion: turn the DSL flat [StepSpec.CredentialsBinding] into
  * the sealed-typed `:pipeline-domain` [dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec].
- * The DSL type stays as-is (scripts and the binding-factory tests still
- * produce it), but at the executor call site the conversion is performed
- * once. This is the inversion that lets `:pipeline-credentials-executor`
- * depend on `:pipeline-domain` (typed) instead of the DSL flat shape.
+ * Scripts produce the flat [StepSpec.CredentialsBinding]; at the executor call
+ * site the conversion is performed once, so `:pipeline-credentials-executor`
+ * depends on `:pipeline-domain` (typed) instead of the DSL flat shape.
 */
 fun StepSpec.CredentialsBinding.toSpec():
     dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec =

@@ -27,11 +27,17 @@ import java.util.UUID
  * From the bound [RedactingEventSink]
  * 4. **Audit events**: emits [CredentialBound], [CredentialUsed], [CredentialUnbound]
  * Events through the bound [EventSink]
+ * ## How a credential is resolved
+ * The scope resolves a credential WHEN THE CALLER ASKS FOR IT, and it resolves nothing
+ * else: `env(binding)` reads the binding's credential from the store, and `env(id)`
+ * reads one by identifier. The scope does NOT carry a list of the credentials that are
+ * active in it, and a caller that wants a credential has to name it. A list of active
+ * bindings would be a second, unchecked statement about what the scope holds — one the
+ * scope never read and could not keep true — so the constructor does not take one.
  * ## Failures
  * Wipe failures propagate via `addSuppressed` and do NOT prevent step completion.
  * The first exception is rethrown; subsequent exceptions are suppressed.
  * @param store The credential store (e.g., [LocalSecretStore])
- * @param bindings The credential bindings active in this scope
  * @param eventSink The event sink for audit events
  * @param clock Clock for event timestamps
  * @param runId The run identifier for audit events
@@ -40,7 +46,6 @@ import java.util.UUID
 */
 class CredentialScope(
     private val store: SecretStore,
-    private val bindings: List<CredentialsBinding>,
     private val eventSink: EventSink,
     private val clock: Clock,
     private val runId: String,

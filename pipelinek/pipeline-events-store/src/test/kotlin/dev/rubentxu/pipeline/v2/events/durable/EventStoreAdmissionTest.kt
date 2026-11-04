@@ -40,7 +40,8 @@ class EventStoreAdmissionTest {
     /**
      * Table-driven contract: 4 observations x 3 purposes = twelve independent cases.
      * Both acceptance and refusal are necessary; a reject-all or allow-all
-     * mutation must turn at least one row red. No I/O, no duplicate E2E.
+     * mutation must turn at least one row red. No I/O, and no other test in this
+     * tree decides the same matrix.
      */
     @TestFactory
     fun `all admission decisions match the closed input matrix`(): List<DynamicTest> {

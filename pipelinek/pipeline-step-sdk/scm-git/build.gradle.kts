@@ -1,6 +1,5 @@
 import dev.rubentxu.pipeline.build.PluginCompatibilityPolicy
 import dev.rubentxu.pipeline.build.ProvenanceDigest
-import java.io.ByteArrayOutputStream
 
 plugins {
     kotlin("jvm")
@@ -83,6 +82,16 @@ val computeScmGitDigest = tasks.register("computeScmGitDigest") {
     val publisher = scmGitPublisher
     val namespace = scmGitNamespace
     val ver = scmGitVersion
+    // The paths and the exclusion set are taken HERE, while the build is
+    // configured, so that the action below carries the VALUES and not the
+    // script that owns them. An action that reaches into the script it was
+    // declared in cannot be stored in the configuration cache: the cache
+    // refuses to serialize a reference to a build script, and the task then
+    // runs against a script that is not there.
+    val classesDir = scmGitClassesDir
+    val resourcesDir = scmGitResourcesDir
+    val releaseProps = scmGitReleaseProps
+    val excludedResourcePaths = scmGitExcludedResourcePaths.toList()
 
     outputs.file(scmGitReleaseProps)
     dependsOn("compileKotlin", "processResources")
@@ -102,17 +111,17 @@ val computeScmGitDigest = tasks.register("computeScmGitDigest") {
     // PRINTS THE FILENAME IT WAS GIVEN. The shared ProvenanceDigest frames only the root name and
     // the relative path, so two checkouts of identical bytes hash identically.
     doLast {
-        val classesDir = scmGitClassesDir.get().asFile
-        require(classesDir.exists()) { "classes/kotlin/main does not exist: run compileKotlin first" }
-        val resourcesDir = scmGitResourcesDir.get().asFile
-        val out = scmGitReleaseProps.get().asFile
+        val classesDirFile = classesDir.get().asFile
+        require(classesDirFile.exists()) { "classes/kotlin/main does not exist: run compileKotlin first" }
+        val resourcesDirFile = resourcesDir.get().asFile
+        val out = releaseProps.get().asFile
         out.parentFile.mkdirs()
         val hex = ProvenanceDigest.computeDigestHex(
             listOf(
-                ProvenanceDigest.Root("classes", classesDir.toPath()),
-                ProvenanceDigest.Root("resources", resourcesDir.toPath()),
+                ProvenanceDigest.Root("classes", classesDirFile.toPath()),
+                ProvenanceDigest.Root("resources", resourcesDirFile.toPath()),
             ),
-            scmGitExcludedResourcePaths.mapTo(linkedSetOf()) { "resources/$it" },
+            excludedResourcePaths.mapTo(linkedSetOf()) { "resources/$it" },
         )
         require(hex.length == 64) { "Expected 64-hex SHA-256, got '${hex.take(80)}'" }
         val digest = "sha256:$hex"
@@ -195,12 +204,21 @@ val generateScmGitPluginCompatibility = tasks.register("generatePluginCompatibil
     group = "scm-git"
     description = "Emit the policy-derived compatibility resource for the artifact."
 
-    inputs.property("productVersion", rootProject.version.toString())
-    outputs.file(scmGitCompatibilityResource)
+    // The version and the destination are read HERE, while the build is
+    // configured, so that the action below carries the VALUES and not the
+    // script that owns them. An action that reaches into the script it was
+    // declared in cannot be stored in the configuration cache: the cache
+    // refuses to serialize a reference to a build script, and the task then
+    // runs against a script that is not there.
+    val productVersion = rootProject.version.toString()
+    val compatibilityResource = scmGitCompatibilityResource
+
+    inputs.property("productVersion", productVersion)
+    outputs.file(compatibilityResource)
 
     doLast {
-        val policy = PluginCompatibilityPolicy(rootProject.version.toString())
-        val out = scmGitCompatibilityResource.get().asFile
+        val policy = PluginCompatibilityPolicy(productVersion)
+        val out = compatibilityResource.get().asFile
         out.parentFile.mkdirs()
         out.writeText(policy.toJson())
         println("scm-git: compatibility metadata emitted to $out (apiRange=${policy.apiRange()})")
@@ -225,18 +243,30 @@ val emitScmGitManifest = tasks.register<JavaExec>("emitScmGitManifest") {
     outputs.file(scmGitManifest)
 
     val out = scmGitManifest
-    val captured = ByteArrayOutputStream()
-    standardOutput = captured
+    // The declaration prints the manifest on its standard output, and the task has to
+    // keep those bytes. It keeps them in a FILE, not in a stream held in memory: a
+    // stream is part of the task's own state, and the configuration cache refuses to
+    // store a task that owns one ("cannot serialize object of type
+    // 'java.io.ByteArrayOutputStream'"). The file is opened when the task RUNS, so
+    // the stored task state carries no stream at all.
+    val captureFile = layout.buildDirectory.file("tmp/emitScmGitManifest.out")
 
     doFirst {
         out.get().asFile.parentFile.mkdirs()
-        // The buffer lives for the whole configuration, so a second execution in the
-        // same build would APPEND to the first document and emit concatenated JSON.
-        captured.reset()
+        val capture = captureFile.get().asFile
+        capture.parentFile.mkdirs()
+        // `standardOutput` only accepts System.out or System.err while the task is
+        // being configured, so it is assigned here, when the task runs.
+        (this as JavaExec).standardOutput = capture.outputStream()
     }
 
     doLast {
-        val text = captured.toString(Charsets.UTF_8)
+        val exec = this as JavaExec
+        val stream = exec.standardOutput
+        if (stream !== System.out && stream !== System.err) {
+            (stream as? java.io.Closeable)?.close()
+        }
+        val text = captureFile.get().asFile.readText(Charsets.UTF_8)
         if (text.isBlank()) {
             throw GradleException(
                 "Manifest emission produced no output. The scm-git plugin would ship without " +
@@ -258,13 +288,12 @@ tasks.named("jar") {
 }
 
 // Unit-test wiring RESTORED, and the reason it went is still worth keeping.
-// It was REMOVED by the testing reset, on the grounds that this module is a git
-// STEP whose guarantee is that a pipeline mutates a real repository, so its verification belongs
-// to the executable E2E layer -- `.pipeline.kts` pipelines under `examples/`, driven by
-// `examples/run.sh` -- and not to a JUnit class. The reasoning about that guarantee stands,
-// and the E2E layer is still where this module's I/O behaviour is verified.
+// This module is a git STEP whose guarantee is that a pipeline mutates a real
+// repository, and AGENTS.md section 2 keeps a subprocess out of unit tests, so the I/O behaviour
+// belongs to the integration lane.
 // What the reasoning did NOT cover is that this module also holds PURE decisions, and one of
-// them had a defect no E2E scenario could have caught: `GitCredentialsApplier.guardProcessBuilderArgs`
+// them had a defect no integration test could have caught:
+// `GitCredentialsApplier.guardProcessBuilderArgs`
 // refused argv carrying a credential by echoing that very argv into its exception message, and
 // the guard runs OUTSIDE `GitCheckoutExecutor`'s `try`, so the exception never reached the
 // scrub and `RegistryExecutionBoundary` copied the message into a durable `StepFailed` event.

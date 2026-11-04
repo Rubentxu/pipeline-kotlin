@@ -91,11 +91,9 @@ interface EventFollower {
  * Conflated snapshot with live follow and was the finding from the
  * Audit. The natural tail is now a state the follow re-polls
  * past while the handle is open.
- * THAT DEFECT NOW HAS A GUARDIAN. It had none for a while: the state machine
- * below could regress to the exact defect its own KDoc describes while the
- * whole executable suite stayed green, because no E2E scenario observes the
- * event stream — `examples/run.sh` reads the process exit code and at most a
- * stderr substring.
+ * THAT DEFECT HAS A GUARDIAN. The state machine below could otherwise regress
+ * to the exact defect its own KDoc describes while every other test in the
+ * tree stayed green, because no other test observes the event stream.
  * The guardian is `SqliteEventFollowLiveTailTest` in
  * `:pipeline-events-store`. It drives the follow over a port that
  * serves only quiet pages and requires the follow to keep polling and

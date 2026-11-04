@@ -124,9 +124,9 @@ interface EventStore {
      * events), so for a store that has no undecodable representation this is exactly
      * [readSlice]'s rule. A store whose rows can fail to decode — SQLite, where the payload is
      * text and the kind can come from a newer runtime — MUST override this to report the refusal.
-     * Not overriding it is then a lie about the store's own storage. Nothing detects that lie
-     * today: the fitness test that used to make it visible is gone, and no E2E scenario reads
-     * an event record. So this paragraph is the whole
+     * Not overriding it is then a lie about the store's own storage. No test in this tree detects
+     * that lie: no test writes a row a store cannot decode and then reads it back through
+     * [readRecords]. So this paragraph is the whole
      * enforcement of a rule whose violation is silent.
      * @param after resume strictly after this cursor's sequence; `null` starts at the beginning.
      * @param limit bounds ROWS, not decodable events.

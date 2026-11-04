@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
+import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 
 /**
  * The primitive field readers of the [JsonEventLog] wire format: string,
@@ -139,7 +140,7 @@ internal object EventJsonFields {
         while (i < raw.length) {
             val c = raw[i]
             if (c == '\\' && i + 1 < raw.length) {
-                when (val next = raw[i + 1]) {
+                when (raw[i + 1]) {
                     '\\' -> { sb.append('\\'); i += 2 }
                     '"' -> { sb.append('"'); i += 2 }
                     'n' -> { sb.append('\n'); i += 2 }
@@ -154,6 +155,20 @@ internal object EventJsonFields {
         }
         return sb.toString()
     }
+
+    /**
+     * Reads the origin of a compilation: where the executable form came from.
+     *
+     * The word is OPTIONAL on the wire — a row written before the origin was
+     * recorded carries none — and its absence has a MEANING: "this record does
+     * not say". [ScriptOrigin.parseOrUnknown] owns that meaning, so this reader
+     * only has to find the word; it never decides what a missing origin is.
+     *
+     * The wire name lives HERE, beside the other names, so the writer and the
+     * reader cannot spell it differently.
+    */
+    fun parseScriptOrigin(json: String): ScriptOrigin =
+        ScriptOrigin.parseOrUnknown(stringField(json, "origin"))
 
     /**
      * Extracts the cacheKey object value from the event JSON.

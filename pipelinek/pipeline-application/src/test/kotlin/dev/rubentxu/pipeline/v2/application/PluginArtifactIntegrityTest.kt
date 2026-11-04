@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.step.Digest
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
@@ -11,14 +10,18 @@ import java.nio.file.Path
  * The artifact-integrity guarantee, observed where it is decided.
  *
  * The runtime composes over plugin artifacts, and every run with a plugin on the classpath goes
- * through this decision. Three facts have to hold for that composition to be trustworthy, and each
+ * through this decision. Two facts have to hold for that composition to be trustworthy, and each
  * one is a way the runtime could have been wrong:
  *
  *  - an artifact whose bytes cannot be read stops the run instead of being skipped;
- *  - two paths that hold the same bytes are one artifact, loaded once;
- *  - the bytes that were read before admission are the bytes that get loaded.
+ *  - two paths that hold the same bytes are one artifact, loaded once.
  *
- * The decision is exercised over values in memory, so a regression in any of the three is visible
+ * The third fact — that the bytes read before admission are the bytes that get loaded — is not
+ * decided here: it is decided by the private copy, because reading the artifact a second time
+ * would still leave a window between the reading and the load. That copy is exercised where it
+ * happens, over real files, in the test of the copy itself.
+ *
+ * The decision is exercised over values in memory, so a regression in either of the two is visible
  * without a plugin, a JAR, a classloader or a process. What this test cannot say is that the
  * composition root actually asks the question; that is what the executable examples are for, and
  * they ask it of the shipped binary.
@@ -121,65 +124,5 @@ class PluginArtifactIntegrityTest {
             PluginArtifactIntegrity.Selection.Admitted(emptyList()),
             selection,
         )
-    }
-
-    @Test
-    @DisplayName("bytes that did not change are not a change")
-    fun bytesThatDidNotChangeAreNotAChange() {
-        val before = listOf(measured(first, digest('a')), measured(second, digest('b')))
-
-        val changed = PluginArtifactIntegrity.changed(
-            before = before,
-            after = mapOf(first to digest('a'), second to digest('b')),
-        )
-
-        assertNull(changed)
-    }
-
-    @Test
-    @DisplayName("bytes that changed are refused, naming the artifact and both digests")
-    fun bytesThatChangedAreRefusedWithBothDigests() {
-        val before = listOf(measured(first, digest('a')), measured(second, digest('b')))
-
-        val changed = PluginArtifactIntegrity.changed(
-            before = before,
-            after = mapOf(first to digest('a'), second to digest('f')),
-        )
-
-        // The payload, not just "it is not null": a report that named the artifact but not the two
-        // digests would leave an operator unable to tell which file to quarantine.
-        assertEquals(
-            PluginArtifactIntegrity.Changed(second, digest('b'), digest('f')),
-            changed,
-        )
-    }
-
-    @Test
-    @DisplayName("an artifact that can no longer be read is a change, not an absence of one")
-    fun anArtifactThatBecameUnreadableIsAChange() {
-        val before = listOf(measured(first, digest('a')))
-
-        val changed = PluginArtifactIntegrity.changed(
-            before = before,
-            after = mapOf(first to null),
-        )
-
-        assertEquals(
-            PluginArtifactIntegrity.Changed(first, digest('a'), null),
-            changed,
-        )
-    }
-
-    @Test
-    @DisplayName("a digest written with different hex case is not a change")
-    fun aDigestInDifferentCaseIsNotAChange() {
-        val before = listOf(measured(first, Digest("sha256:" + "a".repeat(64))))
-
-        val changed = PluginArtifactIntegrity.changed(
-            before = before,
-            after = mapOf(first to Digest("sha256:" + "A".repeat(64))),
-        )
-
-        assertNull(changed)
     }
 }

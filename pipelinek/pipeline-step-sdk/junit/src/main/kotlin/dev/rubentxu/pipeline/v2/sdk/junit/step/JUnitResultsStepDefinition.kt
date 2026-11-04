@@ -43,7 +43,7 @@ import java.nio.file.Paths
  * kind end-to-end. This mirrors the [dev.rubentxu.pipeline.v2.application.CoreShellOutput]
  * pattern that `core.sh` already uses.
  * The contract declares an
- * Empty capability set, matching the UAT-closure precedent. The
+ * Empty capability set. The
  * handler reads the workspace path and the report bytes directly from
  * the typed input; it never reaches CanonicalRuntimeContext. A future
  * Follow-up introduces a typed WORKSPACE_OPERATIONS_CAPABILITY

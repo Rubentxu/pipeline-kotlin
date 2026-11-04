@@ -70,8 +70,6 @@ class UnsupportedEnvelopeVersionException(val found: Int) :
 */
 object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
 
-    private val refSerializer = ResourceRefSerializer
-
     @Serializable
     private data class Wire(
         val version: Int,
@@ -97,13 +95,11 @@ object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
             occurredAt = value.occurredAt.toString(),
             sequence = value.sequence,
             subject = value.subject,
-            // These two were declared on the wire and never written. The consumer build
-            // in an independent consumer build found it by round-tripping an envelope through
-            // this serializer and getting `causation = null, correlation = null` back, while this
-            // file's own KDoc advertised both in the wire form. A field that is accepted, declared
-            // and documented, and then silently dropped on encode, is the "dead semantic parameter"
-            // the semantic constitution forbids: the envelope looked like it carried causal context
-            // and carried none.
+            // These two are declared on the wire and written on every encode, so a round trip
+            // through this serializer returns the same causation and correlation the envelope
+            // carried. A field that is accepted, declared and documented, and then silently
+            // dropped on encode, would be a dead semantic parameter: the envelope would look
+            // like it carries causal context and carry none.
             causation = value.causation,
             correlation = value.correlation,
             provenance = value.provenance,

@@ -4,7 +4,7 @@ package dev.rubentxu.pipeline.v2.application.observation
  * Text selection — the `--grep` family — as a PURE decision type plus a
  * separately compiled matcher.
  * ## Why the split
- * The semantic constitution puts decision before interpretation:
+ * The purity rule puts decision before interpretation:
  * ```text
  * input -> pure decode/validation -> pure ADT decision -> interpreter -> effect
  * ```
@@ -16,9 +16,10 @@ package dev.rubentxu.pipeline.v2.application.observation
  * ## Why `Only` and `Except` are separate cases
  * They are not `selector + negate: Boolean`. An empty [Except] means "everything"
  * and an empty [Only] means "nothing" — collapsing them into a boolean makes
- * those two shapes indistinguishable and encodes a flag bag, which the semantic
- * Constitution rejects. Both carry a selector list, validated at the
- * boundary.
+ * those two shapes indistinguishable and encodes a flag bag, which the contract
+ * rejects: a flag bag is a decision that carries its own interpretation, and the
+ * two are exactly what this split keeps apart. Both carry a selector list,
+ * validated at the boundary.
 */
 sealed interface TextSelector {
     /** Substring match, like `grep -F`. */

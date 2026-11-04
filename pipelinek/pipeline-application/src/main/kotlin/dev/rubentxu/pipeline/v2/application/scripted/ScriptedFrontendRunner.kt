@@ -131,7 +131,6 @@ internal object ScriptedFrontendRunner {
         val invoker = ScriptedRegistryInvoker(
             registry = registry,
             capabilityBindings = capabilityBindings,
-            eventSink = eventSink,
             invocationResolver = resolver,
             stepExecutor = executor,
             recoveryInterpretation = interpretation,

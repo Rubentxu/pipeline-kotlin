@@ -19,7 +19,8 @@ import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
  * ## Why resolution is an ADT and not a nullable lookup
  * A miss here is not "this stage has no body" — it is a **named, refused** outcome, because the
  * alternative is a scripted stage silently degrading into something else, which is the
- * silent-no-op the semantic constitution forbids. Two distinct refusals, because they have two
+ * silent no-op the contract forbids: a resolution that answers "nothing" without naming
+ * WHY would let the stage look dispatched. Two distinct refusals, because they have two
  * distinct owners and two distinct repairs:
  * | case | who is wrong | what fixes it |
  * |---|---|---|
@@ -29,9 +30,9 @@ import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
  * because this registry cannot be in that state: the map is keyed by
  * `artifact.fingerprintMaterial()` — the key is COMPUTED from the object, not supplied beside it —
  * so an object filed under a key that is not its own is unrepresentable. A runtime re-check of
- * that would be a guard that cannot fail, which is a claim the code does not make and which
- * `SegmentOutputStore` used to carry in the shape of an `if (false)`. The property is held by the
- * construction, not by a second comparison.
+ * that would be a guard that cannot fail, which is a claim the code does not make; `SegmentOutputStore`
+ * carries no dead comparison of its own either. The property is held by the construction, not by a
+ * second comparison.
 */
 sealed interface ScriptedStageResolution {
 

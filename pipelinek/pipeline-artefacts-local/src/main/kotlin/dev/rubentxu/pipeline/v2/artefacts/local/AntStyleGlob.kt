@@ -34,7 +34,7 @@ import java.nio.file.Path
 // `patternList` is internal, not public: it is the decision `match()` acts on, and a unit test
 // cannot call `match()` at all because it walks a real directory. Exposing the list is what makes
 // "a pattern containing a comma stays one pattern" a testable fact instead of a comment -- the
-// matching itself stays E2E.
+// matching itself is filesystem behaviour, and no test in this tree exercises it.
 class AntStyleGlob private constructor(internal val patternList: List<String>) {
 
     /**

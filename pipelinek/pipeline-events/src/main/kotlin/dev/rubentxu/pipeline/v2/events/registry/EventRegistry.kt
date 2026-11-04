@@ -2,8 +2,8 @@ package dev.rubentxu.pipeline.v2.events.registry
 
 /**
  * The open registry where contributors declare their event kinds.
- * Constitution: payloads are typed, versioned, and registered through an open
- * `EventRegistry`).
+ * Payloads are typed, versioned, and registered through an open
+ * `EventRegistry`.
  * Laws, each pinned by [EventRegistryTest]:
  *  - **Fail-closed admission.** A duplicate [EventDefinition.kind] is a registration FAILURE,
  *    never a silent overwrite: two plugins claiming one kind would make every recorded payload

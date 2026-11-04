@@ -67,54 +67,111 @@ tasks.named<Jar>("jar") {
 // The version the RUNTIME reads, as a classpath RESOURCE rather than as a jar
 // manifest attribute.
 // Why this exists, and why it is not redundant with the manifest above: `Package.getImplementationVersion()`
-// only answers when the code was loaded from a JAR that declares a manifest. Thirty-four UAT and
-// corpus harnesses legitimately launch the CLI with `java -cp <test classpath>`, where
-// `pipeline-application` is a CLASSES DIRECTORY and no manifest exists. Reading the version only
-// from the manifest made admission fail closed on every one of those runs — 143 tests, all dying
-// with `FATAL - jar manifest is missing Implementation-Version` and exit 3. The fail-closed rule
-// was right; the SOURCE was wrong, because it conflated "no manifest" with "not a build artifact".
+// only answers when the code was loaded from a JAR that declares a manifest. A run that launches
+// the CLI with `java -cp <classpath>`, where `pipeline-application` is a CLASSES DIRECTORY, has no
+// manifest at all. Reading the version only from the manifest made admission fail closed on every
+// one of those runs, all dying with `FATAL - jar manifest is missing Implementation-Version` and
+// exit 3. The fail-closed rule was right; the SOURCE was wrong, because it conflated "no
+// manifest" with "not a build artifact".
 // Both are populated from the same `project.version`, which is the sole authority
 // `RuntimeApiVersionDriftTest` asserts the two agree, so this can never become a second authority
 // free to disagree with the manifest that `pipeline-release` certifies against.
+// The commit the bytes were made from.
+//
+// Provenance, recorded by the build that produced the bytes.
+// A product version names a release LINE, not a commit: every commit on 0.60.0 reports
+// `pipeline 0.60.0`. So two binaries of the same release cannot be separated by asking the binary
+// for its version, and a stale binary reporting the correct version is a failure mode that a
+// version check alone cannot see.
+//
+// It used to be read by a Provider evaluated while the build was being CONFIGURED. With the
+// configuration cache enabled that Provider is evaluated once, while the entry is stored, and
+// its value is frozen into the entry: a later build that reuses the entry reuses the OLD
+// commit, and the binary reports a provenance that is not the tree it was built from. The
+// value is therefore read by a task of its own, whose action runs at EXECUTION time, and it
+// travels to the version resource through a marker file.
+//
+// The marker is an INPUT of the version task, not a side effect: when the commit changes, the
+// marker's content changes and the version resource is rewritten; when it does not change, the
+// version resource stays up to date and is not rewritten.
+//
+// When the commit cannot be read the build still succeeds and records nothing: a working-tree
+// or exported-source build legitimately has no provenance, and the candidate gate is where
+// refusing that belongs. Failing the whole build here would break ordinary development to
+// protect a property only certification needs.
+val resolveBuildCommit = tasks.register("resolveBuildCommit") {
+    group = "application"
+    description = "Resolve the commit the build is made from, for the version resource."
+
+    // The marker and the working directory are taken HERE, while the build is
+    // configured, so that the action below carries the VALUES and not the
+    // script that owns them. An action that reaches into the script it was
+    // declared in cannot be stored in the configuration cache: the cache
+    // refuses to serialize a reference to a build script, and the task then
+    // runs against a script that is not there.
+    val marker = layout.buildDirectory.file("tmp/build-commit.txt")
+    val gitDirectory = rootDir
+
+    outputs.file(marker)
+    // The commit lives in the working tree, and nothing the build declares as an input
+    // says that it changed. A resolver with no declared inputs is never up-to-date, but
+    // that is an implicit rule: this one says it outright, so the FIRST commit read is
+    // never mistaken for the LAST one.
+    outputs.upToDateWhen { false }
+
+    doLast {
+        val override = System.getenv("PIPELINEK_BUILD_COMMIT")
+        val resolved = if (!override.isNullOrBlank()) {
+            override.trim()
+        } else {
+            val process = runCatching {
+                ProcessBuilder("git", "rev-parse", "HEAD")
+                    .directory(gitDirectory)
+                    .redirectErrorStream(true)
+                    .start()
+            }.getOrNull()
+            if (process == null) {
+                ""
+            } else {
+                val output = process.inputStream.bufferedReader().readText().trim()
+                val finished = runCatching { process.waitFor(30, TimeUnit.SECONDS) }
+                    .getOrDefault(false)
+                if (!finished) {
+                    process.destroyForcibly()
+                    ""
+                } else if (process.exitValue() == 0 && output.matches(Regex("[0-9a-f]{40}"))) {
+                    // A 40-hex full SHA, or nothing. A truncated or non-SHA value would be a worse answer
+                    // than absence, because it would look like provenance while not being any.
+                    output
+                } else {
+                    ""
+                }
+            }
+        }
+        val out = marker.get().asFile
+        out.parentFile.mkdirs()
+        out.writeText(resolved)
+    }
+}
+
 val generateVersionResource by tasks.registering {
     val outputDir = layout.buildDirectory.dir("generated/version-resources")
     val versionValue = project.version.toString()
-    // Provenance, recorded by the build that produced the bytes.
-    // A product version names a release LINE, not a commit: every commit on 0.60.0 reports
-    // `pipeline 0.60.0`. So a harness holding two binaries cannot separate them by asking the
-    // binary, and that is not hypothetical — five corpus failures seen in the
-    // field were a stale binary reporting the correct version.
-    // Read through a Provider so the value is resolved at execution time and participates in
-    // up-to-date checking. When the commit cannot be read the build still succeeds and records
-    // nothing: a working-tree or exported-source build legitimately has no provenance, and the
-    // candidate gate is where refusing that belongs. Failing the whole build here would break
-    // ordinary development to protect a property only certification needs.
-    val buildCommit = providers.provider {
-        val head = providers.environmentVariable("PIPELINEK_BUILD_COMMIT").orNull
-        if (!head.isNullOrBlank()) {
-            return@provider head.trim()
-        }
-        val process = runCatching {
-            ProcessBuilder("git", "rev-parse", "HEAD")
-                .directory(rootDir)
-                .redirectErrorStream(true)
-                .start()
-        }.getOrNull() ?: return@provider ""
-        val output = process.inputStream.bufferedReader().readText().trim()
-        val finished = runCatching { process.waitFor(30, TimeUnit.SECONDS) }
-            .getOrDefault(false)
-        if (!finished) {
-            process.destroyForcibly()
-            return@provider ""
-        }
-        // A 40-hex full SHA, or nothing. A truncated or non-SHA value would be a worse answer
-        // than absence, because it would look like provenance while not being any.
-        if (process.exitValue() == 0 && output.matches(Regex("[0-9a-f]{40}"))) output else ""
-    }
+    // The marker the resolver wrote. Its CONTENT is the commit, and its content is
+    // what makes the version resource up-to-date.
+    val commitMarker = layout.buildDirectory.file("tmp/build-commit.txt")
+
     inputs.property("version", versionValue)
-    inputs.property("buildCommit", buildCommit)
+    inputs.file(commitMarker)
     outputs.dir(outputDir)
+    dependsOn(resolveBuildCommit)
+
     doLast {
+        val commit = commitMarker.get().asFile
+            .takeIf { it.exists() }
+            ?.readText(Charsets.UTF_8)
+            ?.trim()
+            .orEmpty()
         val target = outputDir.get()
             .file("dev/rubentxu/pipeline/v2/application/pipelinek-version.properties")
             .asFile
@@ -126,7 +183,7 @@ val generateVersionResource by tasks.registering {
                 "version=$versionValue\n" +
                 "# Provenance. Absent when the build could not resolve a commit, which is a\n" +
                 "# legitimate working-tree build and an unacceptable candidate.\n" +
-                "buildCommit=${buildCommit.get()}\n",
+                "buildCommit=$commit\n",
         )
     }
 }
@@ -217,16 +274,15 @@ dependencies {
     // :pipeline-step-sdk plugins). The external JARs are produced by
     // `:buildExamplePlugins` in the root build, which builds the four
     // standalone plugin builds concurrently in ONE invocation.
-    // The `pluginContractTest` source set that used to reach these same four JAR files is
-    // gone (see TEST LANES REMOVED below), so this `runtimeOnly` line is now the ONLY
-    // declaration of them. That is the right shape: they are PRODUCT plugins of the shipped
-    // distribution, and the certification that consumed them was QA scaffolding.
+    // These four external plugins reach the application through this `runtimeOnly` line and
+    // through nothing else. That is the right shape: they are PRODUCT plugins of the shipped
+    // distribution, and the release gate consumes them from there.
     runtimeOnly(files(rootDir.resolve("../examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("../examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("../examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar")))
     // The external CONSUMER of the Saga contract, and the only bundled plugin
     // that drives a real compensation loop. It is bundled for the same reason the other three
-    // are: the E2E scenarios have to reach the Saga contract the way a real plugin does —
+    // are: a consumer has to reach the Saga contract the way a real plugin does —
     // from OUTSIDE, through published capabilities, with the engine owning the state.
     runtimeOnly(files(rootDir.resolve("../examples/example-saga-plugin/build/libs/example-saga-plugin-0.1.0.jar")))
 
@@ -294,10 +350,7 @@ tasks.test {
 //     there is one test configuration left in this build and it has no plugin-build edge.
 //   * `forkEveryPerClass` was read by `tasks.test` and by nothing else. Left declared, an
 //     unread `-PpipelineTestForkEvery` would have looked like a live tuning knob.
-// Their replacement is the executable E2E layer: `scripts/verify-all.sh` builds the real
-// distribution once (`:pipeline-application:installDist`, stage 1) and `examples/run.sh`
-// then runs the real binary against the `.pipeline.kts` pipelines under `examples/`
-// (stage 3). An earlier version of this comment named a single script,
-// `scripts/run-e2e-pipelines.sh`, which does not exist in this tree and never staged
-// anything. That path executes the shipped artifact, so it certifies behaviour rather
-// than asserting a tag on an empty source set.
+// Their replacement is the gate: `scripts/verify-all.sh` builds the real distribution once
+// (`:pipeline-application:installDist`, stage 2) and then runs the unit tests, the integration
+// tests and the mutants against it. That path exercises the shipped artifact, so it certifies
+// behaviour rather than asserting a tag on an empty source set.

@@ -28,11 +28,11 @@ import java.time.Instant
  *
  * **The observable capacity it serves.** A durable `sh` with `returnStdout` survives the death
  * of the worker that was running it: the resumed run reports the value the program printed. That
- * capacity is exercised end to end by the E2E layer; what is checked HERE is the thing it rests
- * on and that no end-to-end scenario can localise — the two readers agreeing on the value.
+ * capacity is not exercised end to end by any test in this tree; what is checked HERE is the thing
+ * it rests on — the two readers agreeing on the value.
  *
- * **Why this is a unit test and not a scenario.** The window between "the process published
- * `result.txt`" and "the executor deleted `output.txt`" is microseconds wide, so a scenario that
+ * **Why this is a unit test.** The window between "the process published
+ * `result.txt`" and "the executor deleted `output.txt`" is microseconds wide, so a test that
  * tried to kill a worker inside it would be flaky by construction. The seam, on the other hand,
  * is fully observable in process: the observer takes a control directory and returns a terminal,
  * and the executor's reader takes a control directory and returns a string.

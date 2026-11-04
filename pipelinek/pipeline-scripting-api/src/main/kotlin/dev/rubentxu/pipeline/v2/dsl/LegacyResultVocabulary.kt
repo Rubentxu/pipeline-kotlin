@@ -16,10 +16,9 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
  * `ContextOverlay.CatchErrorOverlay` was the third of that representation; it is now
  * RETIRED — the scope's contract travels in the block payload instead — and it is
  * published ABI only, kept for the wire format an older compiled pipeline carries.
- * Typing the representation is therefore allowed. Typing the *authoring signature* was not,
- * and it silently turned `error("boom", "USER")` and `catchError(buildResult = "FAILURE")`
- * — spellings the authoring contract documents — into compile errors. Ten UAT scenarios failed on
- * exactly that, which is how it was found.
+ * Typing the representation is therefore allowed. Typing the *authoring signature* is not: it turns
+ * `error("boom", "USER")` and `catchError(buildResult = "FAILURE")`
+ * — spellings the authoring contract documents — into compile errors.
  * So the split is:
  * ```text
  * STABLE authoring surface      String token, validated HERE, at script-construction time

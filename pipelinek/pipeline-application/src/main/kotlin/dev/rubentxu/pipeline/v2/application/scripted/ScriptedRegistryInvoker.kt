@@ -22,7 +22,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
-import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -246,7 +245,6 @@ internal class ScriptedRegistryInvoker(
 */
     private val metadataResolver: StepMetadataResolver =
         dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver.composite(registry),
-    private val eventSink: EventSink,
     private val invocationResolver: DurableInvocationResolver,
     private val stepExecutor: DurableStepExecutor,
     private val recoveryInterpretation: RecoveryInterpretationEngine,

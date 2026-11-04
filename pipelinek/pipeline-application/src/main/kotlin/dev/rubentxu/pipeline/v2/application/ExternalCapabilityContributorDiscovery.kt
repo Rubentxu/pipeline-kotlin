@@ -6,21 +6,21 @@ import java.util.ServiceLoader
 /**
  * Runtime discovery adapter for the SEAMS OFFICIAL_PLUGINs contribute
  * ## Why this exists
- * The HTTP plugin ships `HttpCapabilityContributor`, which supplies `http.transport`,
- * and `HttpRequestStep` declares that capability as required. Between those two
- * facts there was a gap that no test could see: the coordinator's
- * `capabilityContributor` defaulted to `RuntimeCapabilityContributor { emptyMap() }`,
- * `CompositionRoot` passed it a list that defaulted to `emptyList()`, and the CLI
- * passed neither. `HttpCapabilityContributor` was instantiated in exactly one place
- * in the repository — a test.
- * The consequence was that `http.request` was unreachable in the installed
- * distribution: admission refused it for a missing `http.transport`, with or
- * without `--allow-network`. A Step that passes its contract suite, is discovered
- * by `ServiceLoader`, appears in the plugin list the CLI prints, and still cannot
- * run.
- * It failed CLOSED, which is why this was a defect and not an incident: nothing
- * reached the network that should not have. But a feature that cannot execute is
- * not delivered.
+ * The HTTP plugin ships `HttpCapabilityContributor`, which supplies
+ * `http.transport`, and `HttpRequestStep` declares that capability as required.
+ * The contributor reaches the runtime through the plugin JAR's
+ * `META-INF/services/dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor`
+ * file: `ServiceLoader` instantiates it when the JAR sits on the runtime
+ * classpath, so the core never has to name the plugin to receive what the
+ * plugin owns.
+ *
+ * Two facts make that enough on their own. The capability arrives in the SAME
+ * installation as the Step that requires it, because both live in the plugin
+ * JAR. And discovery happens INSIDE the classloader window that resolves the
+ * Steps, so a plugin whose classes live below the TCCL contributes its Step
+ * and its capability, or neither. The composition holds the contributors it
+ * discovered, and the coordinator builds one `CompositeCapabilityContributor`
+ * out of them.
  * ## Why the same mechanism as Steps
  * `ExternalStepPluginDiscovery` is already the single `ServiceLoader` site for
  * Steps, and it is the reason a plugin ships by dropping a JAR on the classpath.

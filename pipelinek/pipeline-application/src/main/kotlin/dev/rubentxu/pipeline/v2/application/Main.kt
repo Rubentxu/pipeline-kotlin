@@ -107,7 +107,9 @@ private const val REDACTION_CANARY_PROPERTY = "pipelinek.redaction.canaries"
  *  4. `--output-protocol` is validated BEFORE the run starts.
  *  5. The script is checked for existence BEFORE any store, journal or
  *     process is created.
- *  6. `validate` compiles and reports; it never starts a process.
+ *  6. `validate` compiles and reports; what it does with the author's BODY is
+ *     the trust model owned by [ScriptTrust], and `--compile-only` is the form
+ *     that compiles without running it.
  *  7. `run` picks its world: volatile without `--db`, durable with it.
  */
 fun main(args: Array<String>) {
@@ -253,8 +255,13 @@ fun main(args: Array<String>) {
     }
 
     if (command == CliCommand.VALIDATE) {
-        // validate NEVER starts processes. It compiles the script
-        // and reports diagnostics — nothing else.
+        // What `validate` does with the author's BODY is the trust model, and
+        // the model is owned by [ScriptTrust] — the help renders it, and
+        // nothing here restates it. Two forms, both real:
+        //
+        //   - the default one compiles the script AND evaluates it, so the
+        //     author's top-level body runs inside this process;
+        //   - `--compile-only` compiles the script and does NOT run it.
         val rawStore = InMemoryEventStore()
         val store = RedactingEventSink(rawStore, secretPatternRegistry)
         val validateRunId = java.util.UUID.randomUUID().toString()
@@ -270,7 +277,12 @@ fun main(args: Array<String>) {
         // return values reflect the host environment during validation.
         dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.set(SystemRuntimeConfig())
         val compileResult = try {
-            host.compile(definition)
+            // The EVALUATOR is the only difference between the two forms, and
+            // it is swapped inside the host: the compilation is the same one
+            // either way, so a compile-only validation answers "does THIS
+            // script compile?" and not "does a program that resembles it
+            // compile?".
+            if (config.compileOnly) host.compileOnly(definition) else host.compile(definition)
         } finally {
             dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
         }
@@ -298,7 +310,12 @@ fun main(args: Array<String>) {
         val evalFailures = compileResult.diagnostics
             .filter { it.severity == dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity.ERROR }
             .mapNotNull { it.message.takeIf(String::isNotBlank) }
-        val noSpec = compileResult.isSuccess &&
+        // A compile-only validation has NO script instance on purpose: nothing
+        // was evaluated, so there is no instance to inspect. Asking it for a
+        // pipeline would be asking a question the form deliberately did not
+        // answer, and the verdict below would report a missing pipeline for a
+        // script that may declare a perfectly good one.
+        val noSpec = !config.compileOnly && compileResult.isSuccess &&
             compileResult.scriptInstance?.javaClass?.methods?.any { it.name == "get\$\$result" } != true
         if (!compileResult.isSuccess || evalFailures.isNotEmpty() || noSpec) {
             // compile failure is an invocation/admission error,
@@ -312,12 +329,22 @@ fun main(args: Array<String>) {
             val verdict = when {
                 evalFailures.size == 1 -> "1 error"
                 evalFailures.size > 1 -> "${evalFailures.size} errors"
+                config.compileOnly -> "the script did not compile"
                 else -> "the script produced no pipeline"
             }
             System.err.println("VALIDATION FAILED: $verdict")
             System.exit(CliExit.INVALID_ARGUMENT.code)
         } else {
-            System.err.println("VALIDATION SUCCESSFUL")
+            // Two validations that did DIFFERENT things must not print the
+            // same line: the operator has to be able to tell from the output
+            // alone whether the author's body ran.
+            System.err.println(
+                if (config.compileOnly) {
+                    "VALIDATION SUCCESSFUL (${ScriptTrust.COMPILE_ONLY_NOTE})"
+                } else {
+                    "VALIDATION SUCCESSFUL"
+                },
+            )
         }
         return
     }

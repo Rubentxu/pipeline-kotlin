@@ -139,8 +139,9 @@ data class ShOptions(
          * That last sentence is why the creation is lazy and not eager: a JVM
          * killed with SIGKILL never runs its shutdown hook, so a temporary that
          * nobody asked for is a permanent leftover on the machine. The CLI
-         * passes its own workspace root and never touches this default, and
-         * the scenarios that crash a run kill it on purpose.
+         * passes its own workspace root and never touches this default, so only
+         * the callers that ask for it — the tests and the legacy factory —
+         * create it.
 */
         private val sharedWorkspace: Path by lazy {
             val dir = java.nio.file.Files.createTempDirectory("shoptions-shared")

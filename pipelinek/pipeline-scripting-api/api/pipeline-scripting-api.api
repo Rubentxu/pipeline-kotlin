@@ -1108,6 +1108,7 @@ public abstract interface class dev/rubentxu/pipeline/v2/scripting/CompiledScrip
 public final class dev/rubentxu/pipeline/v2/scripting/ReturnStatus {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/ReturnStatus;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReturnMode ()Ldev/rubentxu/pipeline/v2/domain/ShellReturnMode;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -1115,6 +1116,7 @@ public final class dev/rubentxu/pipeline/v2/scripting/ReturnStatus {
 public final class dev/rubentxu/pipeline/v2/scripting/ReturnStdout {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/ReturnStdout;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReturnMode ()Ldev/rubentxu/pipeline/v2/domain/ShellReturnMode;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -1269,6 +1271,22 @@ public final class dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$Uni
 	public fun getValue ()Ljava/lang/Void;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptOrigin : java/lang/Enum {
+	public static final field COMPILED Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
+	public static final field Companion Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin$Companion;
+	public static final field REUSED Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
+	public static final field UNKNOWN Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptOrigin$Companion {
+	public final fun getSupportedTokens ()Ljava/util/Set;
+	public final fun parse (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
+	public final fun parseOrUnknown (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptOrigin;
 }
 
 public final class dev/rubentxu/pipeline/v2/scripting/ScriptedArtifactIdentity {

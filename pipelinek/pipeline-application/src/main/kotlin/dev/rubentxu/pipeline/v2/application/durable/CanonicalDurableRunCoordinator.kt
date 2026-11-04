@@ -289,7 +289,6 @@ internal class CanonicalDurableRunCoordinator(
     private val bodyExecutionEngine = BodyExecutionEngine(
         eventSink,
         clock,
-        bodyInvokerAdapter,
         telemetry,
         retryControlJournal,
         waitUntilControlJournal,

@@ -49,12 +49,11 @@ class DeleteDirExecutor(
      * Executes a [StepSpec.DeleteDir] step.
      * @param stageName The stage name
      * @param stageIndex The stage index
-     * @param stepIndex The step index (unused — event emission deferred to dispatcher)
      * @param spec The deleteDir step specification
      * @return [DeleteDirResult]
      * @throws IllegalArgumentException if path escapes workspace root
 */
-    fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.DeleteDir): DeleteDirResult {
+    fun execute(stageName: String, stageIndex: Int, spec: StepSpec.DeleteDir): DeleteDirResult {
         val workspace = workspaceResolver(stageName, stageIndex)
 
         // Resolve the REAL path before any decision about it. `normalize()`

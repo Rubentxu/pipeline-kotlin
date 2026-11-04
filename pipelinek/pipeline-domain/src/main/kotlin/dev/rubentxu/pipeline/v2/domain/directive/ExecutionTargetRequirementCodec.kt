@@ -187,7 +187,7 @@ object ExecutionTargetRequirementCodec {
      * there is no scan for a delimiter that content could contain. A
      * mis-declared length is a typed failure, never a silently shortened string.
 */
-    private class ByteCursor(private val source: String) {
+    private class ByteCursor(source: String) {
         private val bytes = source.toByteArray(Charsets.UTF_8)
         private var index = 0
 

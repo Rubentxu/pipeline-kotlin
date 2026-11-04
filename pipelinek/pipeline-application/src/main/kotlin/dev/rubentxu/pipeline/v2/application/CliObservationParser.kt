@@ -35,7 +35,8 @@ internal object CliObservationParser {
      * ## Why execution options are refused rather than ignored
      *
      * `--resume` and `--rerun` decide which run exists; `--sandbox-profile` and `--allow-network`
-     * decide what a run may do. None of them means anything to a reader, and an option that is
+     * decide what a run may do; `--compile-only` asks a VALIDATION not to run the author's body.
+     * None of them means anything to a reader, and an option that is
      * silently dropped is an option the user believed in. They are rejected by name, so
      * `observe --resume RUN` says so instead of replaying a different run than the one asked for.
     */
@@ -45,7 +46,7 @@ internal object CliObservationParser {
         var index = 0
         while (index < args.size) {
             val arg = args[index]
-            if (arg in EXECUTION_ONLY_OPTIONS) {
+            if (arg in EXECUTION_ONLY_OPTIONS || arg in VALIDATION_ONLY_OPTIONS) {
                 return ObservationParseResult.Rejected(CliError.OptionNotReadable(arg))
             }
             if (!arg.startsWith("--")) {

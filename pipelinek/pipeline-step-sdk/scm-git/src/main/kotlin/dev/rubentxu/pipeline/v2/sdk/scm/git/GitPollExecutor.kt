@@ -24,7 +24,7 @@ class GitPollExecutor(
     private val timeoutSeconds: Long = 30,
     private val taskRuntime: DurableTaskRuntime? = null,
     private val controlRoot: Path = Files.createTempDirectory("git-poll-tasks"),
-) {
+) : AutoCloseable {
     private val runtimeInstance: DurableTaskRuntime by lazy {
         taskRuntime ?: ProcessDurableTaskRuntime(
             controlRoot,
@@ -49,7 +49,11 @@ class GitPollExecutor(
         transcript: GitTranscript? = null,
     ): Result<String> {
         return try {
-            val args = listOf("git", "ls-remote", url, branch)
+            // `--` before the positionals: git stops reading options there, so a remote or
+            // a branch that looks like an option is a VALUE and never an instruction.
+            // The credential rule is checked over the very same argv, where it is built.
+            val args = lsRemoteArgv(url, branch)
+            GitCredentialsApplier.guardProcessBuilderArgs(args)
             // ls-remote historically used redirectErrorStream(true); emulate
             // by passing both streams into the captured run and joining for
             // failure classification.
@@ -102,5 +106,34 @@ class GitPollExecutor(
             }
             else -> IllegalStateException("git ls-remote failed (exit $exitCode): ${output.take(256)}")
         }
+    }
+
+    /**
+     * Removes the control root this executor opened.
+     *
+     * The root holds what the durable task runtime writes while it runs git, and
+     * nothing in it is worth keeping after the checkout is over. A poll executor
+     * that nobody closes leaves a directory in the system temporary area for as
+     * long as the machine keeps it.
+     */
+    override fun close() {
+        GitTempRoot.deleteRecursively(controlRoot)
+    }
+
+    /**
+     * The argv `git ls-remote` is run with.
+     *
+     * ONE authority for the command line: the poll runs this list, and the checkout
+     * GUARDS this list. A guard that checks a hand-built argv is a guard over a
+     * question nobody asked — the moment the two lists differ, the check and the
+     * command have stopped talking to each other, and the check passes for a command
+     * that was never examined.
+     *
+     * The `--` is part of the list, not a decoration of it: it is what tells git that
+     * the remote and the branch are values.
+     */
+    companion object {
+        fun lsRemoteArgv(url: String, branch: String): List<String> =
+            listOf("git", "ls-remote", "--", url, branch)
     }
 }

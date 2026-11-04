@@ -3,7 +3,6 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>MaxLineLength:EventFollower.kt:EventFollowHandle$*</ID>
-    <ID>UnusedPrivateProperty:PipelineEventEnvelope.kt:PipelineEventEnvelopeSerializer$private val refSerializer = ResourceRefSerializer</ID>
     <ID>UseOrEmpty:EnvelopeProjector.kt:EnvelopeProjector$plugin.segments.firstOrNull() ?: ""</ID>
   </CurrentIssues>
 </SmellBaseline>

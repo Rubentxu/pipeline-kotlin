@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlRow
 import dev.rubentxu.pipeline.v2.domain.step.AdmittedPlugin
+import dev.rubentxu.pipeline.v2.domain.step.AdmissionRefusal
 import dev.rubentxu.pipeline.v2.domain.step.AdmissionRejection
 import dev.rubentxu.pipeline.v2.domain.step.ArtifactOrigin
 import dev.rubentxu.pipeline.v2.domain.step.Digest
@@ -14,6 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import java.io.IOException
+import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.jar.JarFile
@@ -90,6 +92,30 @@ object PreLoadPluginAdmission {
         runtimeVersion: SemVer,
         trust: PluginTrustPolicy? = null,
         journal: AdmissionControlJournal? = null,
+        /**
+         * The digests of the artifacts the OPERATOR brought, lowercased.
+         *
+         * By BYTES and not by path: an operator may name a plugin by any path, and the same
+         * bytes under two names are one artifact. The set is what says "this one is the
+         * operator's", and it is the same set the trust policy covers.
+         */
+        operatorDigests: Set<String> = emptySet(),
+        /**
+         * Whether an artifact the operator brought that carries no trust decision may be
+         * loaded at all.
+         *
+         * FALSE by default: the policy is opt-in, and a run that names no plugin has nothing
+         * to verify. TRUE is the operator saying that silence is not an answer: an unverified
+         * plugin is refused, and the refusal names the artifact.
+         */
+        requireTrust: Boolean = false,
+        /**
+         * Where the admission's report goes.
+         *
+         * The destination is a PARAMETER and not a global: the caller owns the stream,
+         * and a reader of this report is entitled to know which one it is reading.
+         */
+        err: PrintStream = System.err,
     ): AdmittedArtifacts {
         val admitted = mutableListOf<AdmittedArtifact>()
         val alreadyAdmitted = mutableSetOf<String>()
@@ -130,9 +156,9 @@ object PreLoadPluginAdmission {
             // digest of the plugin's PAYLOAD; the runtime measures a digest of the FILE that
             // carries it. Those are two different magnitudes, they never agree, and comparing
             // them would report every plugin as lying about itself. The bytes of the artifact
-            // are measured where they CAN be compared with something else: against themselves,
-            // before and after admission, in `PluginArtifactIntegrity`, and against the
-            // operator's pin, in the trust decision below.
+            // are measured where they CAN be compared with something else: against the
+            // operator's pin, in the trust decision below, and against the copy the runtime
+            // loads, in `PrivatePluginArtifacts`.
             val identity = PluginManifestResourceReader.declaredIdentity(
                 declaredDigest = manifest.release.digest,
                 origin = origin,
@@ -141,69 +167,36 @@ object PreLoadPluginAdmission {
             // The operator's trust decision, taken over the bytes the runtime measured. It runs
             // BEFORE the manifest is admitted and long before a class is linked, so a refusal
             // here means nothing of the artifact ever ran.
-            var trusted: PluginTrustDecision.Trusted? = null
-            if (trust != null) {
-                if (measuredDigest == null) {
-                    val refusal = PluginManifestRejection.ArtifactNotMeasurable(
-                        artifact = artifact.toString(),
-                        detail = "the artifact's bytes were not measured, so the operator's trust " +
-                            "policy cannot be applied to it; an artifact whose bytes are unknown is " +
-                            "not one that may be loaded",
-                    )
-                    journal?.record(
-                        AdmissionControlRow.compose(
-                            pluginId = manifest.plugin.canonicalText(),
-                            origin = origin,
-                            declaredDigest = manifest.release.digest,
-                            measuredDigest = null,
-                            verdict = TrustMetadata.Unverified(
-                                reason = TrustMetadata.UnverifiedReason.ArtifactNotMeasurable,
-                                origin = origin,
-                            ),
-                            rejection = refusal,
-                        ),
-                    )
-                    return AdmittedArtifacts.Refused(artifact, refusal)
-                }
+            val trusted = when (
+                val outcome = decideTrust(artifact, manifest, origin, measuredDigest, trust, journal)
+            ) {
+                is TrustOutcome.Approved -> outcome.decision
+                is TrustOutcome.Refused -> return AdmittedArtifacts.Refused(
+                    artifact = artifact,
+                    rejection = outcome.rejection,
+                    detail = outcome.detail,
+                )
+                TrustOutcome.Absent -> null
+            }
 
-                if (trust.covers(measuredDigest)) {
-                    when (val decision = trust.evaluate(artifact, manifest, measuredDigest)) {
-                        is PluginTrustDecision.Refused -> {
-                            journal?.record(
-                                AdmissionControlRow.compose(
-                                    pluginId = manifest.plugin.canonicalText(),
-                                    origin = origin,
-                                    declaredDigest = manifest.release.digest,
-                                    measuredDigest = measuredDigest,
-                                    verdict = decision.failure.refusal.trustVerdict(origin),
-                                    rejection = decision.failure.refusal,
-                                ),
-                            )
-                            return AdmittedArtifacts.Refused(
-                                artifact = artifact,
-                                rejection = decision.failure.refusal,
-                                detail = decision.failure.detail,
-                            )
-                        }
-
-                        is PluginTrustDecision.Trusted -> {
-                            journal?.record(
-                                AdmissionControlRow.compose(
-                                    pluginId = manifest.plugin.canonicalText(),
-                                    origin = origin,
-                                    declaredDigest = manifest.release.digest,
-                                    measuredDigest = measuredDigest,
-                                    verdict = TrustMetadata.Verified(
-                                        digest = decision.digest,
-                                        origin = origin,
-                                    ),
-                                    rejection = null,
-                                ),
-                            )
-                            trusted = decision
-                        }
-                    }
-                }
+            // The operator asked for verification and this artifact carries none. The
+            // refusal is the SAME one the policy produces when it has no row for the
+            // plugin: the operator has not pinned these bytes, so they are not approved by
+            // anybody. The detail says which of the two facts produced it, because an
+            // operator who is told only the kind has to go and read the code to find out
+            // which one they hit.
+            val operatorNamed = measuredDigest != null &&
+                operatorDigests.contains(measuredDigest.value.lowercase())
+            if (requireTrust && operatorNamed && trusted == null) {
+                return AdmittedArtifacts.Refused(
+                    artifact = artifact,
+                    rejection = AdmissionRefusal.RefusedUntrustedIdentity(
+                        identity = manifest.plugin.canonicalText(),
+                        reason = TrustMetadata.UnverifiedReason.NoTrustedDigestAvailable,
+                    ),
+                    detail = "the operator required every plugin they brought to be verified, " +
+                        "and $artifact carries no trust decision",
+                )
             }
 
             val result = PluginAdmission.admit(
@@ -222,12 +215,157 @@ object PreLoadPluginAdmission {
                 is PluginAdmissionResult.Admitted -> {
                     alreadyAdmitted.add(result.plugin.pluginId)
                     admittedByIdentity[result.plugin.pluginId] = artifact
-                    admitted.add(AdmittedArtifact(artifact, result.plugin, trusted))
+                    val admittedArtifact = AdmittedArtifact(artifact, result.plugin, trusted, operatorNamed)
+                    admitted.add(admittedArtifact)
+                    reportTrustDecision(admittedArtifact, err)
                 }
             }
         }
 
         return AdmittedArtifacts.Admitted(admitted)
+    }
+
+    /**
+     * The operator's trust decision over ONE artifact, or the absence of one.
+     *
+     * ## Why the absence is a case and not a null
+     * Three things can happen and the caller has to act on each of them differently: the
+     * policy APPROVED the artifact, the policy REFUSED it, or there is no decision to apply
+     * because no policy is in force or because the policy does not cover these bytes. A
+     * nullable decision would make the third case look like the first.
+     *
+     * ## Why the decision is taken here and not in the caller
+     * The decision is taken over the bytes the runtime measured, BEFORE the manifest is
+     * admitted and long before a class is linked, so a refusal here means nothing of the
+     * artifact ever ran.
+     */
+    private sealed interface TrustOutcome {
+
+        /** The policy approved these bytes. */
+        data class Approved(val decision: PluginTrustDecision.Trusted) : TrustOutcome
+
+        /** The policy refused these bytes. */
+        data class Refused(
+            val rejection: AdmissionRejection,
+            val detail: String?,
+        ) : TrustOutcome
+
+        /** No policy applies to these bytes. */
+        data object Absent : TrustOutcome
+    }
+
+    /**
+     * The operator's trust decision over one artifact, and the row that records it.
+     *
+     * The row is written BEFORE the decision returns, so a refusal leaves evidence the
+     * operator can read without re-running anything.
+     */
+    private fun decideTrust(
+        artifact: Path,
+        manifest: dev.rubentxu.pipeline.v2.domain.step.PluginManifest,
+        origin: ArtifactOrigin,
+        measuredDigest: Digest?,
+        trust: PluginTrustPolicy?,
+        journal: AdmissionControlJournal?,
+    ): TrustOutcome {
+        if (trust == null) return TrustOutcome.Absent
+
+        if (measuredDigest == null) {
+            val refusal = PluginManifestRejection.ArtifactNotMeasurable(
+                artifact = artifact.toString(),
+                detail = "the artifact's bytes were not measured, so the operator's trust " +
+                    "policy cannot be applied to it; an artifact whose bytes are unknown is " +
+                    "not one that may be loaded",
+            )
+            journal?.record(
+                AdmissionControlRow.compose(
+                    pluginId = manifest.plugin.canonicalText(),
+                    origin = origin,
+                    declaredDigest = manifest.release.digest,
+                    measuredDigest = null,
+                    verdict = TrustMetadata.Unverified(
+                        reason = TrustMetadata.UnverifiedReason.ArtifactNotMeasurable,
+                        origin = origin,
+                    ),
+                    rejection = refusal,
+                ),
+            )
+            return TrustOutcome.Refused(refusal, null)
+        }
+
+        if (!trust.covers(measuredDigest)) return TrustOutcome.Absent
+
+        return when (val decision = trust.evaluate(artifact, manifest, measuredDigest)) {
+            is PluginTrustDecision.Refused -> {
+                journal?.record(
+                    AdmissionControlRow.compose(
+                        pluginId = manifest.plugin.canonicalText(),
+                        origin = origin,
+                        declaredDigest = manifest.release.digest,
+                        measuredDigest = measuredDigest,
+                        verdict = decision.failure.refusal.trustVerdict(origin),
+                        rejection = decision.failure.refusal,
+                    ),
+                )
+                TrustOutcome.Refused(decision.failure.refusal, decision.failure.detail)
+            }
+
+            is PluginTrustDecision.Trusted -> {
+                journal?.record(
+                    AdmissionControlRow.compose(
+                        pluginId = manifest.plugin.canonicalText(),
+                        origin = origin,
+                        declaredDigest = manifest.release.digest,
+                        measuredDigest = measuredDigest,
+                        verdict = TrustMetadata.Verified(
+                            digest = decision.digest,
+                            origin = origin,
+                        ),
+                        rejection = null,
+                    ),
+                )
+                TrustOutcome.Approved(decision)
+            }
+        }
+    }
+
+    /**
+     * Tell the operator what the admission decided about ONE artifact.
+     *
+     * ## Why the admission speaks
+     * Both facts reported here are decided HERE and nowhere else: whether a trust decision
+     * approved these bytes, and whether the OPERATOR brought this artifact at all. A caller
+     * that rendered them would have to re-derive both, and two readers of one fact drift.
+     *
+     * ## Why the report is unconditional
+     * The report is printed when the artifact is ADMITTED, not when the composition
+     * succeeds. An operator whose jar carries no trust decision has to be told that even if
+     * the run is refused later for an unrelated reason: the refusal answers "why did this
+     * not run", and this answers "what was going to run, and who vouches for it".
+     *
+     * ## What it does not say
+     * It does not say the artifact is SAFE. Nothing here decides that: the report says
+     * what was decided about the artifact's verification, and the absence of a decision is
+     * exactly what the operator has to read.
+     */
+    private fun reportTrustDecision(artifact: AdmittedArtifact, err: PrintStream) {
+        val approval = artifact.trust
+        when {
+            approval != null -> err.println(
+                "Plugin ${artifact.plugin.pluginId} admitted under the operator's trust " +
+                    "policy: bytes ${approval.digest.value}, publisher ${approval.publisher}, " +
+                    "key ${approval.keyId}",
+            )
+
+            // The operator brought this one and NO trust decision approved it. It is
+            // loaded, and the operator is told: a plugin that arrives without a word about
+            // its verification is a plugin the operator cannot tell apart from one the
+            // policy approved.
+            artifact.operatorNamed -> err.println(
+                "Plugin ${artifact.plugin.pluginId} was loaded WITHOUT a trust decision: " +
+                    "no trust file covers it, so nothing vouches for its bytes",
+            )
+        }
     }
 
     /**
@@ -341,6 +479,16 @@ data class AdmittedArtifact(
     val path: Path,
     val plugin: AdmittedPlugin,
     val trust: PluginTrustDecision.Trusted? = null,
+    /**
+     * Whether the OPERATOR brought this artifact, and therefore whether its verification is
+     * their business.
+     *
+     * The plugins bundled with the installation are not the operator's: they ship inside the
+     * distribution the operator installed, and their integrity is that distribution's concern.
+     * An artifact the operator named with `--plugin-jar` is theirs, and a run that loads it
+     * without saying so has told the operator nothing about what they brought.
+     */
+    val operatorNamed: Boolean = false,
 )
 
 /**

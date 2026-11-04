@@ -5,21 +5,18 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 
 /**
  * The body a Step kind declares, as ONE coherent value
- * ## Why the independent fields collapsed into an ADT
- * Until a descriptor carried the body metadata as independent properties
- * (`takesBody`, `bodyInvocations`, `introducesContext`, `catchesInterruptions`,
- * `bodyExecutionPolicy`, `bodyExecutionOwner`). Every combination was constructible, so
- * the model could express states that have no meaning:
+ * ## Why the body metadata is an ADT
+ * A descriptor states the body metadata as ONE value, so that not every combination is
+ * constructible and the model cannot express states that have no meaning:
  * ```text
- * takesBody = false + bodyExecutionPolicy = Scoped(Environment)      // now unrepresentable
- * takesBody = false + introducesContext   = CWD                      // now unrepresentable
- * takesBody = true  + owner/policy omitted -> implicit defaults      // now unrepresentable
+ * no body + a body shape                    // unrepresentable
+ * no body + a context kind introduced       // unrepresentable
+ * body + owner or shape omitted             // unrepresentable
  * ```
- * The third line is what was chartered to close: `bodyExecutionOwner` defaulted to
- * [BodyExecutionOwner.CANONICAL_ENGINE], so a new body Step that simply forgot to state
- * its ownership silently acquired canonical semantics without demonstrating them. A body
- * Step now has to SAY who executes its body and WHAT shape that body has, so there is no
- * spelling of "this Step takes a body and nobody owns it".
+ * A body Step has to SAY who executes its body and WHAT shape that body has, so there is
+ * no spelling of "this Step takes a body and nobody owns it", and none of "this Step
+ * takes no body and still declares a body shape". A Step that states no ownership owns
+ * no body at all, and the run says exactly that.
  * ## What the ADT does and does not guarantee
  * Represented here: presence of a body, its declared cardinality, its execution owner and
  * shape, the context kind it introduces, and its interruption policy.

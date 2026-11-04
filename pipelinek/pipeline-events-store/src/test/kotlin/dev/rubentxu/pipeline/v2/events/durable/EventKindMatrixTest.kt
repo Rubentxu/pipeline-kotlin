@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.WorkflowLoaded
+import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -278,6 +279,7 @@ class EventKindMatrixTest {
         runId = "run-42",
         sequence = 7L,
         occurredAt = occurredAt,
+        origin = ScriptOrigin.COMPILED,
     )
 
     private fun workflowLoaded() = WorkflowLoaded(

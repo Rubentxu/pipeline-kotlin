@@ -84,7 +84,7 @@ object EventHarness {
      * PipelineOutcome (RunFinished.outcome) is OBSERVED here, never mutated.
 */
     fun accept(history: List<TypedEvent>, contract: EventContract, scope: Scope = Scope.WHOLE): AcceptanceOutcome =
-        when (val r = verify(history, contract, scope)) {
+        when (verify(history, contract, scope)) {
             is VerificationResult.Invalid -> AcceptanceOutcome.FAILED
             VerificationResult.Valid -> AcceptanceOutcome.PASSED
         }

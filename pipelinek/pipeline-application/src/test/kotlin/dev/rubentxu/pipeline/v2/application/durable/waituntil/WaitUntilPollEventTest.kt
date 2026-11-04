@@ -7,9 +7,7 @@ import dev.rubentxu.pipeline.v2.application.durable.WaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilControlState
 import dev.rubentxu.pipeline.v2.application.observation.HumanConsoleRenderer
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
-import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
@@ -77,15 +75,12 @@ class WaitUntilPollEventTest {
             eventSink = sink,
             bodyInvoker = SatisfyingBodyInvoker(),
             controlOpId = "wait-until-op",
-            parentBodyPath = emptyList(),
             fingerprint = fingerprint,
             initialRecurrencePeriodMs = 1_000L,
             maxBackoffMs = 60_000L,
             runId = RunId("run-1"),
             stageIndex = 0,
             stepIndex = 0,
-            blockId = StepId("step-1"),
-            blockPluginStepId = PluginStepId("core.waitUntil"),
             telemetry = NoopPipelineTelemetry,
         )
 

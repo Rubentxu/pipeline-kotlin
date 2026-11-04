@@ -43,11 +43,7 @@ import java.util.UUID
 class CleanWsOperationsAdapter(
     private val runIdString: String,
     private val stageIdentity: StageIdentity,
-    private val stepIndex: Int,
-    private val controlDirRoot: java.nio.file.Path,
     private val eventSink: EventSink,
-    /** Optional project-workspace override (--workspace). */
-    private val workspaceBase: java.nio.file.Path? = null,
     /**
      * The typed workspace lease for this step.
      * Additive and optional. When supplied, ownership of the root is read from
@@ -99,7 +95,6 @@ class CleanWsOperationsAdapter(
         val execResult = executor.execute(
             stageName = stageIdentity.name,
             stageIndex = stageIdentity.index,
-            stepIndex = stepIndex,
             spec = StepSpec.CleanWs(
                 deleteDirs = input.deleteDirs,
                 patterns = input.patterns,

@@ -30,9 +30,9 @@ dependencies {
 // for `execute()`.
 // It does not reach `antPatternToRegex`, which is a pure String -> String compiler with its own
 // written contract in the class KDoc: "`**` matches any path segment (including zero)". A defect
-// in that compiler is invisible to an E2E pipeline in the worst possible way — it deletes the
-// WRONG tree and returns a plausible file count — and it is exactly the kind of decision that
-// becomes testable by being named separately from the I/O that consumes it.
+// in that compiler deletes the WRONG tree and returns a plausible file count, and it is exactly
+// the kind of decision that becomes testable by being named separately from the I/O that consumes
+// it.
 // So the test covers the compiler, and nothing here claims the deletion itself is unit-tested.
 tasks.test {
     // Load-bearing. Without it Gradle defaults to the JUnit 4 runner, discovers zero JUnit 5

@@ -33,13 +33,13 @@ import java.nio.file.Path
  * in-memory fake, so the cheapest instrument that can fail is a call to each of them. A test that
  * created a real control directory and looked at what survived it would touch the filesystem,
  * which a unit test may not do, and would say the same thing at a higher cost. What is checked
- * here is the verdict those facts feed; the walk that carries it out is observed where it runs,
- * in the scenarios that reconcile a failed run and that stream a successful run's transcript.
+ * here is the verdict those facts feed; the walk that carries it out is not observed by any test
+ * in this repository: it is a declared gap.
  *
  * **What this does not freeze.** That the walk deletes what the rules say it deletes, that the
  * filesystem agrees, and that the ingest agent sees the EOF it waits for: those are the imperative
- * half, and they are observed where they happen, not here. What is checked here is the rule the
- * imperative half applies, which is the part that can be wrong while every observation succeeds.
+ * half, and this file does not observe them. What is checked here is the rule the
+ * imperative half applies, which is the part that can be wrong while the imperative half succeeds.
  */
 class ShellResourceCleanupTest {
 

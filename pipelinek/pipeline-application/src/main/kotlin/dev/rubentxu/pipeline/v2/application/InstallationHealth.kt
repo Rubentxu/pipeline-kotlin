@@ -60,8 +60,8 @@ object InstallationHealth {
      * written here: a defect in the installation is a request this build
      * cannot serve as it stands, which is the case the CLI already has.
      *
-     * The case is the one whose code the doctor has always answered with, and
-     * the code is observed: the E2E example reads it. A case that carried a
+     * The case is the one whose code the doctor answers with, and the code is
+     * observed: `InstallationHealthTest` asserts it. A case that carried a
      * different number would change what an operator's script sees, so the
      * case was chosen to keep the number and drop the literal.
      */

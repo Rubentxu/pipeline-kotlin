@@ -3,6 +3,5 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>RedundantSuspendModifier:WithCredentialsExecutor.kt:WithCredentialsExecutor$suspend</ID>
-    <ID>UnusedPrivateProperty:BasicCredentialsCapabilityContributor.kt:BasicCredentialsCapabilityContributor$private val provider: CredentialProvider?</ID>
   </CurrentIssues>
 </SmellBaseline>

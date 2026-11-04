@@ -4,8 +4,10 @@ import kotlin.script.experimental.api.EvaluationResult
 import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.ScriptEvaluationConfiguration
+import kotlin.script.experimental.api.ScriptEvaluator
 import kotlin.script.experimental.api.SourceCode
 import kotlin.script.experimental.api.plus
+import kotlin.script.experimental.jvm.BasicJvmScriptEvaluator
 import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
 
 /**
@@ -61,6 +63,23 @@ import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
  * @param cache where to look and to store; [CompiledScriptCache.Disabled] to
  *   keep the uncached behaviour.
  * @param cacheKey the identity of the one compilation this host exists to run.
+ * @param lookup the ANSWER to the cache question, resolved by the caller.
+ *   The lookup is not performed here: the owner of the compilation
+ *   ([Kotlin24ScriptingHost]) already knows the key, already asks the store
+ *   once, and has to publish what it found before the compilation starts — the
+ *   console says "reusing compiled pipeline" or "compiling pipeline" from that
+ *   answer. Asking the store again here would be a second answer to one
+ *   question, and the two could disagree: the console would announce a reuse
+ *   while this host compiled, or the reverse.
+ * @param evaluator the step that RUNS the compiled script.
+ *   It is a constructor argument because the compilation and the evaluation are
+ *   two different promises, and only one of them is always kept. The default is
+ *   upstream's own evaluator — the one the superclass would have used — so a
+ *   host that says nothing about it behaves exactly as it did before. A host
+ *   that is handed a different evaluator compiles the SAME way and evaluates
+ *   differently, and that is the only difference the swap makes: the
+ *   compilation configuration, the classpath, the default imports and the
+ *   compiler options are all built by the superclass either way.
 */
 /**
  * Why an evaluation of a cache-loaded artifact threw.
@@ -131,7 +150,27 @@ fun classifyEvaluationFailure(throwable: Throwable): EvaluationFailure {
 class CachingJvmScriptingHost(
     private val cache: CompiledScriptCache,
     private val cacheKey: CacheKey,
-) : BasicJvmScriptingHost() {
+    private val lookup: CacheLookup,
+    evaluator: ScriptEvaluator = BasicJvmScriptEvaluator(),
+) : BasicJvmScriptingHost(evaluator = evaluator) {
+
+    /**
+     * Where the artifact this host ENDED UP with came from.
+     *
+     * It is written during the one compilation this host exists for, and
+     * it is the outcome rather than the decision: a hit that serves the run is
+     * [ScriptOrigin.REUSED], and anything that compiles is [ScriptOrigin.COMPILED].
+     * The decision (the lookup) is known before the compilation starts and
+     * belongs to the caller; this field answers the question the caller could
+     * not answer before the fact existed — "did the cache actually serve this
+     * run?" — and the caller reads it after the evaluation returns.
+     *
+     * The state is per-compilation and never crosses one: the host is created
+     * for a single compilation and dropped when it ends, so nothing here can
+     * leak into a later run.
+     */
+    var effectiveOrigin: ScriptOrigin = ScriptOrigin.UNKNOWN
+        private set
 
     override fun eval(
         script: SourceCode,
@@ -142,8 +181,14 @@ class CachingJvmScriptingHost(
         // does not. The superclass resolves the null to the default, and this
         // override has to do the same or the two paths would differ.
         val evaluationConfig = evaluationConfiguration ?: ScriptEvaluationConfiguration.Default
-        return when (val lookup = cache.load(cacheKey)) {
+        return when (lookup) {
             is CacheLookup.Hit -> try {
+                // The stored artifact is about to serve the run: nothing will be
+                // compiled. The origin is claimed BEFORE the evaluation, because
+                // a script whose own body throws was still served by the stored
+                // artifact — and the recovery below overwrites the claim when
+                // the artifact turns out to be unusable.
+                effectiveOrigin = ScriptOrigin.REUSED
                 runInCoroutineContext { evaluator.invoke(lookup.script, evaluationConfig) }
             } catch (failure: RuntimeException) {
                 when (classifyEvaluationFailure(failure)) {
@@ -174,8 +219,11 @@ class CachingJvmScriptingHost(
         script: SourceCode,
         compilationConfiguration: ScriptCompilationConfiguration,
         evaluationConfig: ScriptEvaluationConfiguration,
-    ): ResultWithDiagnostics<EvaluationResult> =
-        runInCoroutineContext {
+    ): ResultWithDiagnostics<EvaluationResult> {
+        // A compilation is about to run: whatever the lookup said, the artifact
+        // this run ends up with is one the compiler produced.
+        effectiveOrigin = ScriptOrigin.COMPILED
+        return runInCoroutineContext {
             when (val compiled = compiler.invoke(script, compilationConfiguration)) {
                 is ResultWithDiagnostics.Failure -> compiled
                 is ResultWithDiagnostics.Success -> {
@@ -186,4 +234,5 @@ class CachingJvmScriptingHost(
                 }
             }
         }
+    }
 }

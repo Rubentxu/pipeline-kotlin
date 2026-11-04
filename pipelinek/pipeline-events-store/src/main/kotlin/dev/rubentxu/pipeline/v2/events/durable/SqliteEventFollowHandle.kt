@@ -131,9 +131,6 @@ internal class SqliteEventFollowHandle(
     /** One-shot flag for the [EventFollowState.RunFinished] + [EventFollowEvent.Completed] end of a sealed run. */
     private var runFinishedEmitted = false
 
-    /** One-shot flag for the [EventFollowEvent.Completed] end of the natural-tail / until-condition path. */
-    private var completedEmitted = false
-
     /** The follow reached its end; the iterator returns `false` from [FollowIterator.hasNext]. */
     private var terminated = false
 

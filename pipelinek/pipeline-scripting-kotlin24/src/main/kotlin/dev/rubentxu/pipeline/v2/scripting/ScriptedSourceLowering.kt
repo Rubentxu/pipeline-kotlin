@@ -66,7 +66,14 @@ object ScriptedSourceLowering {
                     facadeSchemaDigest = facadeSchemaVersion,
                 )
                 LoweringResult.Generated(
-                    source = generatedSource(sourceId, rewritten.text),
+                    // The generated source carries THIS identity, the one computed
+                    // here. It used to carry a digest of its own rewritten body
+                    // instead, which is a SECOND derivation of the same fact and
+                    // disagreed with this one: the runtime compares the identity
+                    // the compiled entry point declares against the identity the
+                    // lowering published, and two derivations meant the comparison
+                    // could never succeed. One owner, one value, one comparison.
+                    source = generatedSource(sourceId, rewritten.text, artifact),
                     artifact = artifact,
                     mappedCalls = mapping.calls,
                 )
@@ -242,15 +249,26 @@ object ScriptedSourceLowering {
         return if (start in 0..text.length) start else -1
     }
 
-    private fun generatedSource(sourceId: ScriptedSourceId, body: String): String = """
+    /**
+     * The generated program, carrying the identity the lowering published.
+     *
+     * The identity is passed IN rather than recomputed here: it is one fact
+     * with one owner, and a second derivation of it is a second answer to the
+     * question "which source is this artifact".
+     */
+    private fun generatedSource(
+        sourceId: ScriptedSourceId,
+        body: String,
+        identity: ScriptedArtifactIdentity,
+    ): String = """
         object : CompiledScriptedEntryPoint {
             override val artifact = ScriptedArtifactIdentity(
-                sourceDigest = "${sha256(body)}",
-                dslApiVersion = "$DSL_API_VERSION",
-                compilerAdapterVersion = "$COMPILER_ADAPTER_VERSION",
-                runtimeCompatibilityVersion = "$RUNTIME_COMPATIBILITY_VERSION",
-                pluginLockDigest = "$PLUGIN_LOCK_DIGEST",
-                facadeSchemaDigest = "$FACADE_SCHEMA_VERSION",
+                sourceDigest = "${identity.sourceDigest}",
+                dslApiVersion = "${identity.dslApiVersion}",
+                compilerAdapterVersion = "${identity.compilerAdapterVersion}",
+                runtimeCompatibilityVersion = "${identity.runtimeCompatibilityVersion}",
+                pluginLockDigest = "${identity.pluginLockDigest}",
+                facadeSchemaDigest = "${identity.facadeSchemaDigest}",
             )
             override val entryPointId = "${sourceId.value}"
 

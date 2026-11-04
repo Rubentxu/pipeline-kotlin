@@ -38,13 +38,13 @@ import org.junit.jupiter.api.Test
  * sondeaba para siempre sobre un run que había acabado hacía minutos. Medido contra la
  * distribución: `exit 124`; el mismo follow sin filtro salía con 0 enseguida.
  *
- * ## Por qué esto NO lo puede observar la capa ejecutable
- * El verbo `events` imprime los hechos en `stdout` y el cursor en `stderr`. El lanzador de
- * ejemplos lee el código de salida, y un follow que no termina se ve como un timeout: se puede
- * observar, pero sólo como un «no terminó», sin poder distinguir por qué. La garantía de QUÉ
- *rows se miraron para decidir está en un canal que la capa ejecutable no lee, y por eso necesita
- * un instrumento que sí lo lea: un doble en memoria del puerto de lectura, que deja construir la
- * historia que hace falta.
+ * ## Por qué esto NO lo puede observar un test que sólo mire la salida
+ * El verbo `events` imprime los hechos en `stdout` y el cursor en `stderr`. Un test que sólo
+ * mire el código de salida ve un follow que no termina como un timeout: se puede observar, pero
+ * sólo como un «no terminó», sin poder distinguir por qué. La garantía de QUÉ rows se miraron
+ * para decidir está en un canal que ese test no lee, y por eso necesita un instrumento que sí
+ * lo lea: un doble en memoria del puerto de lectura, que deja construir la historia que hace
+ * falta.
  */
 class RunTerminalFactTest {
 

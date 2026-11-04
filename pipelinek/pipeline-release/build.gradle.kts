@@ -93,6 +93,40 @@ tasks.register<JavaExec>("candidateAdmission") {
     val distDir = project(":pipeline-application").layout.buildDirectory.dir("distributions")
     val outDir = layout.buildDirectory.dir("candidate")
 
+    // The values the action below needs, taken HERE, while the build is
+    // configured, so that the action carries the VALUES and not the script
+    // that owns them. An action that reaches into the script it was declared
+    // in cannot be stored in the configuration cache: the cache refuses to
+    // serialize a reference to a build script, and the task then runs against
+    // a script that is not there.
+    //
+    // `project` is read here for the same reason. It is not only the action
+    // that reads it: the `map { }` below is evaluated when Gradle resolves the
+    // output, which is at execution time, and a `project` read then is
+    // unsupported ("invocation of 'Task.project' at execution time is
+    // unsupported"). The version below is a plain String, and a String is
+    // something the cache can store.
+    val version = project.version.toString()
+    val repoRoot = rootProject.projectDir.parentFile
+
+    // The BOM the cyclonedx plugin produces. The path is taken HERE for the
+    // same reason the version is: a `project` read while the task RUNS is
+    // unsupported under the configuration cache, and a Provider is a value
+    // the cache can store.
+    val bomSource = project(":pipeline-application").layout.buildDirectory
+        .file("reports/bom.json")
+
+    // The marker the build's own resolver writes: its CONTENT is the commit
+    // of the tree. It is written when the build RUNS, and it is read when the
+    // admission RUNS, so a build that reuses a configuration cache entry still
+    // records the commit of the tree it is admitting. It is also an INPUT, so
+    // a commit that moved re-runs the admission instead of certifying the
+    // previous one.
+    val commitMarker = project(":pipeline-application").layout.buildDirectory
+        .file("tmp/build-commit.txt")
+    dependsOn(":pipeline-application:resolveBuildCommit")
+    inputs.files(commitMarker)
+
     // Declared at configuration time: Gradle rejects an outputs mutation once
     // a task has started. Registering the directory here also gives the task a
     // real output, so it re-runs when the emitted material changes.
@@ -118,19 +152,18 @@ tasks.register<JavaExec>("candidateAdmission") {
     // would vouch for assets that are not the ones published. Declaring them
     // as inputs is what makes the receipt and the digest authority describe
     // the bytes that are on disk.
-    inputs.files(distDir.map { it.file("pipelinek-${project.version}.zip") })
-    inputs.files(distDir.map { it.file("pipelinek-${project.version}.sbom.json") })
-    inputs.files(distDir.map { it.file("pipelinek-${project.version}.sdk.zip") })
-    inputs.files(distDir.map { it.file("pipelinek-bom-${project.version}.json") })
+    inputs.files(distDir.map { it.file("pipelinek-$version.zip") })
+    inputs.files(distDir.map { it.file("pipelinek-$version.sbom.json") })
+    inputs.files(distDir.map { it.file("pipelinek-$version.sdk.zip") })
+    inputs.files(distDir.map { it.file("pipelinek-bom-$version.json") })
 
-    inputs.property("productVersion", project.version.toString())
+    inputs.property("productVersion", version)
     inputs.property("candidateSequence", candidateSequence)
 
     // Resolved lazily inside doFirst: the ZIP does not exist at configuration
     // time, and a configuration-time existence check would fail the build for
     // the wrong reason.
     doFirst {
-        val version = project.version.toString()
         val dist = distDir.get().asFile
         val zip = dist.resolve("pipelinek-$version.zip")
         if (!zip.isFile) {
@@ -147,18 +180,17 @@ tasks.register<JavaExec>("candidateAdmission") {
         // `:pipeline-application:cyclonedxBom`; it does not promise the task emitted a
         // file, and a task that ran and wrote nothing looks exactly like one that was
         // never declared.
-        val bomSource = project(":pipeline-application").layout.buildDirectory
-            .file("reports/bom.json").get().asFile
-        if (!bomSource.isFile) {
+        val bomSourceFile = bomSource.get().asFile
+        if (!bomSourceFile.isFile) {
             throw GradleException(
                 "the cyclonedxBom is a declared dependency of " +
-                    "this task but produced no $bomSource. Refusing to admit a candidate whose " +
+                    "this task but produced no $bomSourceFile. Refusing to admit a candidate whose " +
                     "SBOM is absent: the release policy lists " +
                     "pipelinek-$version.sbom.json as a required asset, and an asset set with a " +
                     "hole in it is not a smaller candidate, it is a different product.",
             )
         }
-        bomSource.copyTo(dist.resolve("pipelinek-$version.sbom.json"), overwrite = true)
+        bomSourceFile.copyTo(dist.resolve("pipelinek-$version.sbom.json"), overwrite = true)
 
         val sbom = dist.resolve("pipelinek-$version.sbom.json")
 
@@ -219,10 +251,40 @@ tasks.register<JavaExec>("candidateAdmission") {
             bomJson,
         )
 
+        // The commit the candidate's bytes are from, read from the marker the
+        // build's own resolver wrote. Two things are avoided here, and both were
+        // measured on this build.
+        //
+        // The first: reading git from this script. The commit would then come
+        // from a SECOND implementation of a rule that already has one home, and
+        // two implementations of the same fact are free to disagree about it.
+        // The marker is written by the build's single resolver.
+        //
+        // The second: reading the commit while the build is CONFIGURED. With the
+        // configuration cache enabled that read happens once, while the entry
+        // is stored, and its value is frozen into that entry: a build that
+        // reused the entry would record the commit of the tree as it was when
+        // the entry was stored, which is not the tree the candidate was built
+        // from.
+        //
+        // This value alone does NOT establish provenance. It is the commit of the
+        // working tree, so a dirty tree would make it a false address. The
+        // build's real guarantee is the clean-tree law in `SourceProvenance`,
+        // enforced by this task; this value only supplies the address to be
+        // verified. It is never an empty string: the manifest records
+        // provenance, and an empty commit would be a claim about a build nobody
+        // can trace.
+        val commit = commitMarker.get().asFile
+            .takeIf { it.exists() }
+            ?.readText(Charsets.UTF_8)
+            ?.trim()
+            .orEmpty()
+            .ifEmpty { "unknown" }
+
         args = listOf(
             zip.absolutePath,
             version,
-            gitCommitOf(rootProject),
+            commit,
             outDir.get().asFile.absolutePath,
             candidateTag,
             candidateSequence,
@@ -232,7 +294,7 @@ tasks.register<JavaExec>("candidateAdmission") {
             // The repository whose version control state defines this
             // candidate's provenance. RootProject lives in the build root, whose parent
             // holds.git directory.
-            rootProject.projectDir.parentFile.absolutePath,
+            repoRoot.absolutePath,
             covered.joinToString(";") { it.absolutePath },
         )
     }
@@ -280,7 +342,7 @@ tasks.register<JavaExec>("publishedApiCompatibility") {
     val versions: Map<String, String?> = (rootProject.extra["publishedApiVersions"] as Map<*, *>)
         .map { (side, version) -> side.toString() to version?.toString() }
         .toMap()
-    val modules: List<String> = (rootProject.extra["publishedApiModules"] as List<*>)
+    val modules: List<String> = (rootProject.extra["abiComparedModules"] as List<*>)
         .map { it.toString() }
     val ledger = rootProject.file("contract/published-contract-exceptions.json")
 
@@ -407,6 +469,14 @@ tasks.register<JavaExec>("sdkZip") {
     val distDir = project(":pipeline-application").layout.buildDirectory.dir("distributions")
     val sdkRepo = rootProject.layout.buildDirectory.dir("sdk-repo")
 
+    // The version is taken HERE, while the build is configured, so that the
+    // action below carries the VALUE and not the script that owns it. An
+    // action that reaches into the script it was declared in cannot be stored
+    // in the configuration cache, and `project` read at execution time is
+    // unsupported: the version would arrive as "unspecified", and the builder
+    // refuses to package a release of no version.
+    val version = project.version.toString()
+
     // Declared at configuration time so the task is a real producer in
     // the dependency graph; `candidateAdmission` reads the artifacts
     // from `distDir` after this task has written them.
@@ -418,10 +488,10 @@ tasks.register<JavaExec>("sdkZip") {
     // members of it: Gradle sees two producers of one output and refuses the
     // build for a reason nobody can read.
     outputs.files(
-        distDir.map { it.file("pipelinek-${project.version}.sdk.zip") },
-        distDir.map { it.file("pipelinek-bom-${project.version}.json") },
+        distDir.map { it.file("pipelinek-$version.sdk.zip") },
+        distDir.map { it.file("pipelinek-bom-$version.json") },
     )
-    inputs.property("productVersion", project.version.toString())
+    inputs.property("productVersion", version)
     // The SDK repository this task packages is its INPUT, and it was not
     // declared as one. The consequence was measured, not predicted: a change to
     // a published contract rewrote the jar in `build/sdk-repo/` and left the
@@ -451,7 +521,6 @@ tasks.register<JavaExec>("sdkZip") {
     )
 
     doFirst {
-        val version = project.version.toString()
         val sdkRepoDir = sdkRepo.get().asFile
         if (!sdkRepoDir.isDirectory) {
             throw GradleException(
@@ -470,25 +539,6 @@ tasks.register<JavaExec>("sdkZip") {
 }
 
 
-/**
- * The commit the candidate was built from, or an explicit marker when git is
- * unavailable (an exported source tree, for example). Never an empty string:
- * the manifest records provenance, and an empty commit would be a claim about
- * a build nobody can trace.
- * This value alone does NOT establish provenance. It is git HEAD
- * while the ZIP is compiled from the working tree, so a dirty tree would make
- * it a false address. The build's real guarantee is the clean-tree law in
- * `SourceProvenance`, enforced by the `candidateAdmission` task; this function
- * only supplies the address to be verified.
-*/
-fun gitCommitOf(root: Project): String = try {
-    providers.exec {
-        workingDir(root.projectDir.parentFile)
-        commandLine("git", "rev-parse", "HEAD")
-    }.standardOutput.asText.get().trim().ifEmpty { "unknown" }
-} catch (_: Exception) {
-    "unknown"
-}
 
 // ----------------------------------------------------------------------------
 // The release gate.
@@ -520,8 +570,8 @@ tasks.register("releaseGate") {
     // (7 plugins) whose failure-on-unset-`PIPELINEK_DIST_ZIP` was the gate's hard-red path for a
     // missing distribution. All three read a JUnit source set that is empty. Naming them would
     // have been the exact false compliance this removal exists to end: a task description is read
-    // as a claim about what ran. The distribution is now exercised by `scripts/verify-all.sh`
-    // and `examples/run.sh`, which run the real binary.
+    // as a claim about what ran. The distribution is now exercised by `scripts/verify-all.sh`,
+    // which builds it and runs the gate against it.
 
     dependsOn(
         ":pipeline-application:distZip",
@@ -537,6 +587,14 @@ tasks.register("releaseGate") {
         ":buildExamplePlugins",
     )
 
+    // The path is taken HERE, while the build is configured, for the same
+    // reason the other tasks in this file take their values there: an action
+    // that reaches into the script it was declared in cannot be stored in the
+    // configuration cache, and `project` read at execution time is unsupported.
+    val version = project.version.toString()
+    val distZipFile = project(":pipeline-application").layout.buildDirectory
+        .file("distributions/pipelinek-$version.zip")
+
     // Previously this doFirst
     // called `testTask.environment("PIPELINEK_DIST_ZIP", ...)`. That
     // arrived too late — by the time releaseGate's doFirst ran, the
@@ -550,8 +608,7 @@ tasks.register("releaseGate") {
     // (cleaning the build dir mid-run, for instance) we want a hard
     // error rather than a confusing "zip not found" deep in the test.
     doFirst {
-        val distZip = project(":pipeline-application").layout.buildDirectory
-            .file("distributions/pipelinek-${project.version}.zip").get().asFile
+        val distZip = distZipFile.get().asFile
         if (!distZip.isFile) {
             throw GradleException(
                 "releaseGate: expected distribution ZIP at $distZip but it does not " +
@@ -577,9 +634,7 @@ tasks.register("releaseGate") {
 // strings, with no ZIP and no SBOM. The clause above used to read "is empty here" in the
 // present tense, and it stopped being true when the first of those landed. A comment that
 // asserts a property of the build outlives the state it described unless someone edits it.
-// Its replacement is the executable E2E layer: `scripts/verify-all.sh` stages the distribution
-// once (`:pipeline-application:installDist`) and `examples/run.sh` runs the real binary
-// against the `.pipeline.kts` pipelines. An earlier version of this comment named a single
-// script, `scripts/run-e2e-pipelines.sh`, which does not exist in this tree and never staged
-// anything. That path executes the shipped bytes, so it certifies the artifact instead of
-// asserting a tag over an empty classpath.
+// Its replacement is the gate: `scripts/verify-all.sh` stages the distribution once
+// (`:pipeline-application:installDist`) and then runs the unit tests, the integration tests and
+// the mutants against it. That path executes the shipped bytes, so it certifies the artifact
+// instead of asserting a tag over an empty classpath.

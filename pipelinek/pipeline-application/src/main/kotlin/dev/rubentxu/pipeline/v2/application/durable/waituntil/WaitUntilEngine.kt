@@ -9,12 +9,10 @@ import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.liveStatusOfStepOutcome
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilReconciliationDriver
-import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
@@ -76,15 +74,12 @@ internal class WaitUntilEngine(
     private val eventSink: EventSink,
     private val bodyInvoker: BodyInvoker,
     private val controlOpId: String,
-    private val parentBodyPath: List<BlockSegment>,
     private val fingerprint: Fingerprint,
     private val initialRecurrencePeriodMs: Long,
     private val maxBackoffMs: Long,
     private val runId: RunId,
     private val stageIndex: Int,
     private val stepIndex: Int,
-    private val blockId: StepId,
-    private val blockPluginStepId: PluginStepId,
     private val telemetry: PipelineTelemetry,
 ) {
 

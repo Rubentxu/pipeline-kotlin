@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.CredentialsRef
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
+import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
 import java.time.Instant
 
@@ -63,18 +64,33 @@ data class RunCorrelated(
 
 /**
  * Emitted when script compilation starts.
+ *
+ * @property origin what the host decided to do with the artifact: compile it
+ *   from the source, or reuse the one a store already holds. It is the DECISION
+ *   and it is known when the phase opens, because the cache is consulted before
+ *   anything is compiled. The outcome of the attempt travels in
+ *   [CompilationFinished.origin], and the two differ only when a stored artifact
+ *   turns out to be unusable and the run has to compile after all.
 */
 data class CompilationStarted(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
     override val occurredAt: Instant,
+    val origin: ScriptOrigin,
 ) : DomainEvent {
     override val kind: String get() = "CompilationStarted"
 }
 
 /**
  * Emitted when script compilation finishes (success or failure).
+ *
+ * @property origin where the artifact this compilation ENDED UP with came from.
+ *   Unlike [CompilationStarted.origin] this is not a decision: it is what
+ *   happened. The two differ in exactly one case — a stored artifact that
+ *   loaded but could not be evaluated, which makes the run compile after all —
+ *   and a consumer that needs to know whether the cache actually served the run
+ *   reads THIS one.
 */
 data class CompilationFinished(
     override val eventId: String,
@@ -83,6 +99,7 @@ data class CompilationFinished(
     override val occurredAt: Instant,
     val cacheKey: CacheKey,
     val diagnostics: List<ScriptingDiagnostic>,
+    val origin: ScriptOrigin,
 ) : DomainEvent {
     override val kind: String get() = "CompilationFinished"
 }
@@ -227,7 +244,7 @@ data class StepFinished(
  *   exist. `LocalAny` has no label, and a `CapabilitySet` requirement is not a
  *   label at all — the only way to emit this event for those would be to
  *   invent a label, which is precisely the "metadata accepted but never
- *   interpreted" shape the Semantic Conservation Law forbids.
+ *   interpreted" shape the contract forbids.
  *   [ExecutionTargetResolved] carries the declared requirement and the granted
  *   target instead, so every case of the requirement hierarchy is
  *   representable and an observer can tell a satisfied requirement from an

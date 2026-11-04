@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>UnusedVariable:RuntimeIntrospectionPortStoreAdapter.kt:RuntimeIntrospectionPortStoreAdapter$val cursor = try { cursors.load(runId) } catch (e: Exception) { return RuntimeIntrospectionResult.Refused( IntrospectionRefusal.StorageError(e.shortDiagnostic()), ) }</ID>
     <ID>UseOrEmpty:RecoverAdapters.kt:RuntimeRecoverPortStoreAdapter$it.lastOpId ?: ""</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -271,11 +271,11 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
      * generated call is then `steps.sh(callSite, command, null, null)`, valid
      * Kotlin that resolves the same value at run time.
      * Returns `null` when there is no `script` argument at all, so the
-     * caller can reject the call. The previous version searched only positional
-     * arguments and substituted an empty string for anything else, so the
-     * NAMED form silently became a shell command running nothing and reported
-     * success — the silent placeholder the Semantic Constitution forbids. A test
-     * fixture using `sh(script = ...)` had been passing on that behaviour.
+     * caller can reject the call. Searching only positional arguments and
+     * substituting an empty string for anything else would turn the NAMED form
+     * into a shell command running nothing that reports success — the silent
+     * placeholder this contract forbids: the argument the author wrote is
+     * either carried or the call is refused, never replaced by an empty one.
 */
     private fun KtCallExpression.scriptTextOrNull(): String? =
         valueArguments
@@ -293,14 +293,15 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
      * expression the arguments actually belong to — not in the lowering, which never
      * sees the arguments:
      *  - exactly the one path argument, positional or named: mapped, carrying its text;
-     *  - no argument at all: **rejected**. The previous `valueArguments.isNotEmpty()`
-     *    guard meant such a call was not mapped, and an unmapped call is still a call
-     *    the author wrote — it would have survived into the generated Kotlin as a bare
-     *    `readFile` and failed with `Unresolved reference`. That is a fail-open, not a
-     *    validation.
+     *  - no argument at all: **rejected**. Accepting such a call on the strength of a
+     *    `valueArguments.isNotEmpty()` guard would leave it unmapped, and an unmapped call
+     *    is still a call the author wrote — it would survive into the generated Kotlin as
+     *    a bare `readFile` and fail with `Unresolved reference`. That is a fail-open, not
+     *    a validation.
      *  - more than the one argument: **rejected**. `readFile("a", "b")` has no meaning;
      *    the lowering emits a two-argument façade call, so a second argument would be
-     *    dropped in silence — a semantic drop, which the Semantic Constitution forbids.
+     *    dropped in silence — a semantic drop, which this contract forbids: an argument
+     *    the author wrote must never disappear unnoticed.
 */
     private fun recordPathArgument(
         source: ScriptedSource,

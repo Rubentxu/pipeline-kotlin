@@ -11,10 +11,12 @@ import java.util.UUID
 import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.api.ResultValue
 import kotlin.script.experimental.api.ScriptDiagnostic
+import kotlin.script.experimental.api.ScriptEvaluator
 import kotlin.script.experimental.api.SourceCode
 import kotlin.script.experimental.api.defaultImports
 import kotlin.script.experimental.api.compilerOptions
 import kotlin.script.experimental.host.StringScriptSource
+import kotlin.script.experimental.jvm.BasicJvmScriptEvaluator
 import kotlin.script.experimental.jvm.dependenciesFromCurrentContext
 import kotlin.script.experimental.jvm.jvm
 import kotlin.script.experimental.jvm.updateClasspath
@@ -41,8 +43,8 @@ import kotlin.script.experimental.jvm.updateClasspath
  *    through `jvm { updateClasspath(files) }` inside the eval body.
  *  - Returns a stable [ScriptCompilationResult.cacheKey] computed from
  *    sha256(scriptText | sortedClasspath | kotlinVersion | hostVersion).
- *  - Maps [ScriptDiagnostic] fields 1:1 to [ScriptingDiagnostic] so the
- *    editor/UAT harness can render source-mapped errors.
+ *  - Maps [ScriptDiagnostic] fields 1:1 to [ScriptingDiagnostic] so an
+ *    editor can render source-mapped errors.
 */
 class Kotlin24ScriptingHost(
     private val eventSink: EventSink = NullEventSink,
@@ -97,20 +99,71 @@ class Kotlin24ScriptingHost(
         "-Xuse-fast-jar-file-system=false",
     )
 
-    override fun compile(definition: ScriptDefinition): ScriptCompilationResult {
+    /**
+     * Compile the definition AND RUN it.
+     *
+     * The two happen together because the script's body is what builds the
+     * pipeline: a `.pipeline.kts` that calls the eager DSL produces its
+     * [dev.rubentxu.pipeline.v2.dsl.PipelineSpec] while it runs, so a
+     * compilation that does not evaluate the body produces no pipeline at all.
+     *
+     * What this does with the author's BODY is the trust model of the
+     * product, and it is stated once, where an operator reads it — not here.
+     */
+    override fun compile(definition: ScriptDefinition): ScriptCompilationResult =
+        compileScript(definition, BasicJvmScriptEvaluator())
+
+    /**
+     * Compile the definition and DO NOT RUN IT.
+     *
+     * ## What is swapped and what is not
+     *
+     * The EVALUATOR is the only thing that changes: [CompileOnlyEvaluator]
+     * answers "compiled, not evaluated" instead of running the author's body.
+     * The COMPILATION is the same one [compile] performs — same source, same
+     * default imports, same per-call classpath, same compiler options, same
+     * cache identity — because the compilation configuration is built by
+     * `evalWithTemplate` and that call is shared by both paths.
+     *
+     * A second compilation, done differently, would answer a different
+     * question: "does a program that resembles the script compile?" instead of
+     * "does this script compile?". Only the first question is worth asking,
+     * and only the second can be asked about the script the author wrote.
+     *
+     * ## What it answers
+     *
+     * The result carries the compiler's diagnostics and nothing else. There is
+     * no script instance, because nothing was evaluated to produce one, and
+     * [ScriptCompilationResult.Success.scriptInstance] is therefore null. A
+     * caller that needs a pipeline cannot have one from this path — and that is
+     * the point: a compile-only validation promises that the body did not run.
+     */
+    fun compileOnly(definition: ScriptDefinition): ScriptCompilationResult =
+        compileScript(definition, CompileOnlyEvaluator())
+
+    /**
+     * The ONE compilation body, with the evaluator as the only difference.
+     *
+     * Everything that decides HOW a `.pipeline.kts` is compiled lives here:
+     * the escaping, the source, the classpath, the cache identity, the single
+     * lookup, the event pair and the compilation configuration. [compile] and
+     * [compileOnly] are two calls to it with two evaluators, so the two paths
+     * cannot drift apart in the part that decides whether a script compiles.
+     */
+    private fun compileScript(
+        definition: ScriptDefinition,
+        evaluator: ScriptEvaluator,
+    ): ScriptCompilationResult {
         val effectiveRunId = runId ?: definition.sourcePath?.fileName?.toString() ?: UUID.randomUUID().toString()
         val compilationStartedId = UUID.randomUUID().toString()
         val compilationFinishedId = UUID.randomUUID().toString()
+        // The phase starts HERE, before anything is read, so the duration the
+        // telemetry measures is the whole phase and not the part of it that
+        // happens after the cache was consulted. The event that announces the
+        // phase is published a little later, once the cache has answered: the
+        // console has to say whether the script is being COMPILED or REUSED,
+        // and that answer does not exist before the lookup.
         val compilationStartedAt = Instant.now()
-
-        eventSink.append(
-            CompilationStarted(
-                eventId = compilationStartedId,
-                runId = effectiveRunId,
-                sequence = 0L,
-                occurredAt = compilationStartedAt,
-            )
-        )
 
         // Extract env vars from the original script text before any escaping.
         // This must happen before creating `source` so we pass escaped text to the compiler.
@@ -176,9 +229,36 @@ class Kotlin24ScriptingHost(
         val cacheForThisCompilation =
             if (identity is CacheIdentity.Verified) cache else CompiledScriptCache.Disabled
 
+        // The ONE lookup of this compilation. The owner of the compilation asks
+        // the store once and keeps the answer: the event published below and
+        // the line the console prints both read it. Asking the store a second
+        // time — once here to know what to announce and once inside the
+        // caching host to know what to run — would be two answers to one
+        // question, and the two could disagree: the console would announce a
+        // reuse the run does not perform.
+        val lookup = cacheForThisCompilation.load(cacheKey)
+        val plannedOrigin = when (lookup) {
+            is CacheLookup.Hit -> ScriptOrigin.REUSED
+            is CacheLookup.Miss -> ScriptOrigin.COMPILED
+        }
+
+        eventSink.append(
+            CompilationStarted(
+                eventId = compilationStartedId,
+                runId = effectiveRunId,
+                sequence = 0L,
+                occurredAt = compilationStartedAt,
+                origin = plannedOrigin,
+            )
+        )
+
         // A fresh host per compilation: the cache key is fixed data for this one
         // compilation, so this object carries no mutable state across compiles.
-        val host = CachingJvmScriptingHost(cacheForThisCompilation, cacheKey)
+        // The lookup travels with it, already resolved, and so does the
+        // evaluator: the host compiles the same way either way, and the
+        // evaluator is the only thing that decides whether the author's body
+        // runs.
+        val host = CachingJvmScriptingHost(cacheForThisCompilation, cacheKey, lookup, evaluator)
 
         val rwd: ResultWithDiagnostics<*> = try {
             host.evalWithTemplate<Any>(
@@ -225,7 +305,10 @@ class Kotlin24ScriptingHost(
             {},
         )
         } catch (t: Throwable) {
-            return compilationFailure(t, effectiveRunId, identity, definition)
+            // The host has already recorded how this run obtained its artifact,
+            // even though the compilation blew up: a throwable that escaped the
+            // evaluation carries the origin the host had reached.
+            return compilationFailure(t, effectiveRunId, identity, definition, host.effectiveOrigin)
         }
 
         val compilationFinishedAt = Instant.now()
@@ -281,6 +364,11 @@ class Kotlin24ScriptingHost(
                 occurredAt = compilationFinishedAt,
                 cacheKey = cacheKey,
                 diagnostics = diagnostics,
+                // The OUTCOME, not the decision: the host reports what this
+                // run really did. It differs from the announced origin in
+                // exactly one case — a stored artifact that loads but cannot
+                // be evaluated, which makes the run compile after all.
+                origin = host.effectiveOrigin,
             )
         )
 
@@ -307,6 +395,7 @@ class Kotlin24ScriptingHost(
         effectiveRunId: String,
         identity: CacheIdentity,
         definition: ScriptDefinition,
+        origin: ScriptOrigin,
     ): ScriptCompilationResult.Failure {
         val diag = ScriptingDiagnostic(
             severity = ScriptDiagnosticSeverity.ERROR,
@@ -327,6 +416,7 @@ class Kotlin24ScriptingHost(
                 occurredAt = Instant.now(),
                 cacheKey = cacheKey,
                 diagnostics = listOf(diag),
+                origin = origin,
             )
         )
         return ScriptCompilationResult.Failure(

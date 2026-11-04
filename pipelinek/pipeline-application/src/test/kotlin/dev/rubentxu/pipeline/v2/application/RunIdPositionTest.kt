@@ -67,9 +67,9 @@ import java.io.PrintStream
  * It cannot see that the verb went on to USE the run id it read: every row
  * stops at the refusal that comes before the store is opened, because a unit
  * test in this tree does not touch the filesystem. That the run id read from
- * the trailing position is the one the verb acts upon is covered by the E2E
- * scenario, which writes the run id after the options in four invocations and
- * reads real runs.
+ * the trailing position is the one the verb acts upon is a declared gap: no
+ * test in this tree writes the run id after the options and then reads a real
+ * run.
  */
 class RunIdPositionTest {
 

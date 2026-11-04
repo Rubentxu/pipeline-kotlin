@@ -125,7 +125,7 @@ object MainEventsCli {
         val out = mutableListOf<EventsInspectionFlag>()
         var i = 0
         while (i < args.size) {
-            when (val a = args[i]) {
+            when (args[i]) {
                 "--follow" -> {
                     out.add(EventsInspectionFlag.Follow)
                     i++

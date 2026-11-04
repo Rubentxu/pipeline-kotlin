@@ -77,7 +77,11 @@ object MainEventsVerifyCli {
         val accepted = when (admission) {
             is CliAdmission.Rejected -> {
                 refuse(admission.error.refusalLines("events verify").joinToString("\n"), err)
-                return CliExit.INVALID_ARGUMENT.code
+                // The code comes from the taxonomy's own mapping of the error,
+                // and not from a literal written here: a verb that answers a
+                // number of its own carries a second copy of what the taxonomy
+                // already says, and the two are free to disagree.
+                return admission.error.toCliExit().code
             }
             is CliAdmission.Admitted -> admission
         }

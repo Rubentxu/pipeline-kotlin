@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetrySignal
+import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryTrace
 import io.opentelemetry.exporter.internal.otlp.traces.TraceRequestMarshaler
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest
@@ -48,10 +49,11 @@ class RunTelemetryTest {
     private fun runFinish(outcome: String, at: Long) =
         RunFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), outcome, emptyList())
 
-    private fun compileStart(at: Long) = CompilationStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at))
+    private fun compileStart(at: Long) =
+        CompilationStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), ScriptOrigin.COMPILED)
 
     private fun compileFinish(at: Long) =
-        CompilationFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), cacheKey(), emptyList())
+        CompilationFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), cacheKey(), emptyList(), ScriptOrigin.COMPILED)
 
     private fun cacheKey() = dev.rubentxu.pipeline.v2.scripting.CacheKey("hash", dev.rubentxu.pipeline.v2.scripting.CacheKey.V3)
 

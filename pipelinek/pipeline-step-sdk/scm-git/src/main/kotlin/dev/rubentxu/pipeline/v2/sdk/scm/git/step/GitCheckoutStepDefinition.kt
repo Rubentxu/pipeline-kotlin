@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
+import dev.rubentxu.pipeline.v2.domain.scm.GitRemotePolicy
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
@@ -57,7 +58,7 @@ val SCM_GIT_OPERATIONS_CAPABILITY: StepCapability = StepCapability("scm-git.oper
  * (the default) it is resolved against the typed workspace root.
 */
 class GitCheckoutStepDefinition(
-    private val executorFactory: (workspaceRoot: Path, transcript: GitTranscript?) -> GitCheckoutExecutor =
+    executorFactory: (workspaceRoot: Path, transcript: GitTranscript?) -> GitCheckoutExecutor =
         { workspaceRoot, transcript ->
             GitCheckoutExecutor(
                 poll = GitPollExecutor(),
@@ -177,7 +178,6 @@ class GitCheckoutStepDefinition(
         // that there is one. The admission is fail-closed, so a Step admitted without the
         // destination never reaches this line.
         val transcript: GitTranscript = ctx.capabilities.get(SCM_GIT_TRANSCRIPT_CAPABILITY, GitTranscript::class)
-        val executor = executorFactory(workspaceRoot, transcript)
         val spec = CheckoutSpec(
             scm = GitScm(
                 url = input.url,
@@ -188,36 +188,43 @@ class GitCheckoutStepDefinition(
                 relativeTargetDir = input.relativeTargetDir,
             ),
         )
-        val sink: EventSink = eventSink ?: NullEventSink
-        val resolved = executor.execute(
-            GitCheckoutRequest(
-                spec = spec,
-                runId = ctx.runId.value,
-                workspaceRoot = workspaceRoot,
-                eventSink = sink,
-                clock = clock,
-                secretStore = secretStore,
-                stepIndex = ctx.stepIndex,
-                previousRemoteSha = null,
-            ),
-        ).getOrElse { throwable ->
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = classifyFailureKind(throwable),
-                    message = throwable.message ?: "scm-git checkout failed",
+        val sink: EventSink = this.eventSink ?: NullEventSink
+        // The executor owns the temporary roots: the credential directory (the SSH key,
+        // the answer file, the helper scripts) and the control roots of the poll
+        // executor and of the changelog writer. `use` closes it when the step ends —
+        // on the failure path too — so a checkout that failed halfway does not leave a
+        // private key and a token in the system temporary area.
+        executorFactory(workspaceRoot, transcript).use { executor ->
+            val resolved = executor.execute(
+                GitCheckoutRequest(
+                    spec = spec,
+                    runId = ctx.runId.value,
+                    workspaceRoot = workspaceRoot,
+                    eventSink = sink,
+                    clock = this.clock,
+                    secretStore = this.secretStore,
+                    stepIndex = ctx.stepIndex,
+                    previousRemoteSha = null,
                 ),
+            ).getOrElse { throwable ->
+                throw PluginStepException(
+                    failure = PipelineFailure(
+                        kind = classifyFailureKind(throwable),
+                        message = throwable.message ?: "scm-git checkout failed",
+                    ),
+                )
+            }
+            GitCheckoutOutput(
+                resolvedSha = resolved.sha,
+                localPath = WorkspacePathAnchors.currentDirectory(
+                    location = location,
+                    stepKey = ScmGitCheckoutKey.VALUE.value,
+                    userPath = input.relativeTargetDir,
+                ).toString(),
+                wasCloned = resolved.classification == "clone",
+                credentialApplied = resolved.credentialsFilePath != null || resolved.gitConfigFilePath != null,
             )
         }
-        GitCheckoutOutput(
-            resolvedSha = resolved.sha,
-            localPath = WorkspacePathAnchors.currentDirectory(
-                location = location,
-                stepKey = ScmGitCheckoutKey.VALUE.value,
-                userPath = input.relativeTargetDir,
-            ).toString(),
-            wasCloned = resolved.classification == "clone",
-            credentialApplied = resolved.credentialsFilePath != null || resolved.gitConfigFilePath != null,
-        )
     }
 
     /**
@@ -234,6 +241,10 @@ class GitCheckoutStepDefinition(
         // command said, and reading the message here would let a word in the
         // command's output decide the kind.
         throwable is GitTranscriptRefused -> FailureKind.INFRASTRUCTURE
+        // The remote was refused by the policy. It is USER by TYPE: the author wrote a
+        // remote that may not be used, and nothing about the machine or the network
+        // decides it. Reading the message here would be wrong for the same reason.
+        throwable is GitRemotePolicy.GitRemoteRefused -> FailureKind.USER
         // Heuristic: the SCM/Git executor wraps auth failures in a
         // dedicated exception type. Until the SCM domain grows a typed
         // FailureKind, we use the throwable message prefix as a

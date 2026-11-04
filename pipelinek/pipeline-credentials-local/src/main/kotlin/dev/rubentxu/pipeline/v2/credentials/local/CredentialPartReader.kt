@@ -76,7 +76,7 @@ internal object CredentialPartReader {
     fun readLinkedRefPart(buf: ByteBuffer, credentialLabel: String): CredentialsId? {
         val nameLen = buf.get().toInt() and 0xFF
         buf.position(buf.position() + nameLen)
-        return when (val marker = buf.int) {
+        return when (buf.int) {
             LINKED_REF_MARKER -> {
                 val refIdLen = buf.int
                 val refIdBytes = ByteArray(refIdLen)

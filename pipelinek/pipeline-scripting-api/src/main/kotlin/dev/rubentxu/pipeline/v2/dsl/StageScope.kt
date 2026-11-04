@@ -399,9 +399,9 @@ class StageScope(
      * Jenkins also carries a `quiet: Boolean = false`. It is NOT accepted here: this engine's
      * `waitUntil` narration already renders at `Family.NOTE`, and `ObservationView.NORMAL`
      * hides that family, so a `quiet` flag had nothing left to silence in the default view.
-     * Accepting it and discarding it would be the `SEMANTIC CONSTITUTION` section 2 defect
-     * "metadata accepted but never interpreted"; omitting it makes `waitUntil(quiet = true)`
-     * fail at compile time instead of compiling into nothing. Polling narration stays visible
+     * Accepting it and discarding it would be the metadata-accepted-but-never-interpreted
+     * defect; omitting it makes `waitUntil(quiet = true)` fail at compile time instead of
+     * compiling into nothing. Polling narration stays visible
      * under `--view events`, which is where a caller who wants to watch it looks.
      * Body is the inner StepSpec list captured at construction time.
      * **Construction-time body execution (finding).** The body
@@ -718,29 +718,28 @@ class StageScope(
         scope.block()
         // ACCUMULATE, do not assign. Two paths declare stage directives
         // (`directives { }` and the typed `when*` helpers) and both may be
-        // used in the same stage. Assigning here silently discarded a `when`
-        // declared earlier in the stage body, which would have run the stage
-        // unconditionally while the script clearly meant to gate it — a
+        // used in the same stage. Assigning here would silently discard a `when`
+        // declared earlier in the stage body, running the stage unconditionally
+        // while the script clearly meant to gate it — a
         // fail-OPEN defect, the worst possible direction for a gate.
         stageDirectives = stageDirectives + scope.build()
     }
 
     /**
-     * Conditional stage execution, now REAL.
-     * Previously `whenCondition("1 == 2")` was rejected outright, because a
-     * `String` cannot carry semantics into the IR: the expression would have
-     * to be re-parsed at runtime by an interpreter that did not exist, and the
-     * only honest outcome was to refuse. Observed on the installed
-     * distribution: a body guarded by `whenCondition` still ran and the run
-     * reported success, so the predicate was silently discarded while the
-     * script believed it was gating execution.
-     * Now the predicate is a VALUE, not text. These helpers construct a typed
+     * Conditional stage execution. The gate is REAL: the predicate is a VALUE, not text.
+     * These helpers construct a typed
      * [dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate] and append a
      * `core.when` stage directive carrying its encoded form. Nothing is
      * evaluated here: the gate runs in the durable coordinator before the stage
      * body, and its verdict is observable.
-     * PURE by construction (Semantic Conservation Law): no I/O, no process
-     * execution, no clock read, and no placeholder runtime value.
+     * A textual predicate such as `whenCondition("1 == 2")` is not accepted,
+     * because a `String` cannot carry semantics into the IR: it would have to
+     * be re-parsed at run time by an interpreter that does not exist, and the
+     * only honest outcome would be a silent no-op — the body would run and the
+     * run would report success while the script believed it was gating
+     * execution.
+     * PURE by construction (the purity rule: no I/O, no process
+     * execution, no clock read, and no placeholder runtime value).
      * `whenEnvIs("DEPLOY_ENV", "prod")` stores the NAME and the EXPECTED STRING;
      * it never pretends to know what the variable currently holds.
      * They APPEND rather than replace, so a `directives { }` block and these
@@ -752,17 +751,16 @@ class StageScope(
 
     /**
      * Declare the execution target this stage requires (Jenkins-familiar `agent`).
-     * This call used to be a stub that always threw, and the reason it had to
-     * throw is the reason it now exists: the old `agent(label)` stored a label
-     * that no runtime component ever read, which is metadata without an
-     * interpreter and therefore a silent lie. There is now an interpreter — the
-     * resolver seam in the BEFORE_STAGE directive engine — so the declaration
-     * has both a carrier and a consumer, and the stub is retired rather than
-     * left to rot beside a working alternative.
+     * The declaration is honoured because it has both a carrier and a consumer:
+     * the resolver seam in the BEFORE_STAGE directive engine reads it. A label
+     * that no runtime component reads would be metadata without an interpreter
+     * and therefore a silent lie, so the surface accepts only requirements that
+     * something resolves, and it is that resolver — not a stub — which makes the
+     * call meaningful.
      * This is a PURE builder. It encodes a declared requirement and appends a
      * directive; it performs no effect, reads no clock and manufactures no
-     * runtime value, which is what Semantic Constitution law 3 requires of a
-     * builder. It enforces that structurally: it appends a directive and returns.
+     * runtime value, which is what the purity rule requires of a builder. It
+     * enforces that structurally: it appends a directive and returns.
      * A [label] becomes `LocalLabels`; a [remoteUri] becomes `Remote`, which is
      * CARRIED AND DECODED but refused at resolution, because this runtime has no
      * Remote allocator until. That refusal is the honest outcome: the stage

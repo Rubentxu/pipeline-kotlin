@@ -100,6 +100,15 @@ data class CliFlags(
      */
     val pluginTrust: String? = null,
     /**
+     * Whether every plugin the operator brought has to carry a trust decision.
+     *
+     * FALSE by default: without the flag, a plugin that no trust decision approved is
+     * loaded and the operator is told so on stderr. TRUE turns that warning into a
+     * refusal: an operator who asked for verification and got a loaded plugin has been
+     * told nothing.
+     */
+    val requirePluginTrust: Boolean = false,
+    /**
      * External invoker correlation token. When
      * supplied, the runtime binds it to the [RunId] in durable state
      * and emits it on the [dev.rubentxu.pipeline.v2.events.RunCorrelated]
@@ -155,6 +164,19 @@ data class CliFlags(
      * channel to carry.
 */
     val query: ObservationQuery = ObservationQuery(),
+    /**
+     * `--compile-only`: the validation compiles the script and does NOT run it.
+     *
+     * FALSE by default, which means the validation does what it always did:
+     * it compiles the script AND evaluates it, so the author's top-level body
+     * runs inside the validating process. The model that says so is owned by
+     * [ScriptTrust] and rendered by the help.
+     *
+     * TRUE only for `validate`: `run` executes the script, so "compile it
+     * without running it" is not a run the operator can ask for, and the parser
+     * refuses the flag there by naming the verb that owns it.
+     */
+    val compileOnly: Boolean = false,
 )
 
 /**

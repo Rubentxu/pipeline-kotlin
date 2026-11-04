@@ -76,8 +76,8 @@ dependencies {
     // The store-backed half of this module is NOT unit-tested, and does not
     // pretend to be: an adapter that reads a lease, writes a journal and
     // appends an event needs a real lease, a real journal and a real event
-    // store, which is what the executable E2E under `examples/` is for. A
-    // JUnit class that faked those would be a harness, and harnesses are not
+    // store, which is what the integration lane composes. A JUnit class that
+    // faked the modules under test would be a harness, and harnesses are not
     // what this repository buys.
     //
     // What turns a missing observer into a failure lives outside Gradle:
@@ -112,7 +112,7 @@ dependencies {
 
 // Unit-test wiring, because `src/test/kotlin` is not empty.
 // The subjects of those tests, and why the store-backed half of this module is
-// left to the executable E2E, are stated with the dependencies it belongs to.
+// left to the integration lane, are stated with the dependencies it belongs to.
 tasks.test {
     useJUnitPlatform()
 }

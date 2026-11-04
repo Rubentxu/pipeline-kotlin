@@ -66,7 +66,8 @@ internal class ScriptedStageExecution(
 
         /**
          * The body could not run. A refusal, not an empty success: a scripted stage that silently
-         * became "nothing to do" is the silent no-op the semantic constitution forbids.
+         * became "nothing to do" is the silent no-op the contract forbids: a stage that ran
+         * nothing must say why.
 */
         data class Refused(val reason: Refusal) : Verdict
     }

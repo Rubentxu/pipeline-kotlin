@@ -280,6 +280,72 @@ download_published_sdk() {
     printf '%s' "$dest/repo"
 }
 
+# The previous release's DISTRIBUTION.
+#
+# The SDK archive carries the PUBLISHED contracts. The distribution carries the product
+# itself, and with it every module the product runs with — including the modules whose
+# ABI is guarded but that are NOT published as a Maven coordinate. For those, the bytes
+# the previous release published are the JARs inside this archive, and the comparison
+# against the previously published surface reads them from here.
+#
+# Prints the path of the verified archive. Fails when the release cannot be reached or
+# when the archive does not match the digest that release published.
+download_published_distribution() {
+    # $1 = release tag, $2 = destination directory.
+    local tag="$1" dest="$2"
+    local archive sums expected actual
+
+    mkdir -p "$dest"
+    if ! gh release download "$tag" --pattern 'pipelinek-*.zip' --dir "$dest" --clobber \
+        >"$dest/download.log" 2>&1; then
+        printf 'verify-external-compatibility: could not download the distribution of %s\n' "$tag" >&2
+        sed 's/^/    /' "$dest/download.log" >&2
+        return 1
+    fi
+    # The SDK archive matches the same glob and is NOT the distribution: it is named
+    # `pipelinek-<v>.sdk.zip`. Picking the wrong one would compare the candidate
+    # against the SDK of the previous release and call it the distribution.
+    archive="$(find "$dest" -maxdepth 1 -name 'pipelinek-*.zip' ! -name '*.sdk.zip' | head -1)"
+    if [[ -z "$archive" ]]; then
+        printf 'verify-external-compatibility: %s published no distribution archive\n' "$tag" >&2
+        return 1
+    fi
+
+    if ! gh release download "$tag" --pattern 'SHA256SUMS' --dir "$dest" --clobber \
+        >>"$dest/download.log" 2>&1; then
+        printf 'verify-external-compatibility: %s published no SHA256SUMS to verify the distribution against\n' \
+            "$tag" >&2
+        return 1
+    fi
+    sums="$dest/SHA256SUMS"
+
+    expected="$(awk -v name="$(basename "$archive")" '$2 == name { print $1 }' "$sums")"
+    actual="$(sha256sum "$archive" | awk '{ print $1 }')"
+    if [[ -z "$expected" ]]; then
+        printf 'verify-external-compatibility: the published digest authority of %s does not cover %s\n' \
+            "$tag" "$(basename "$archive")" >&2
+        return 1
+    fi
+    if [[ "$expected" != "$actual" ]]; then
+        printf 'verify-external-compatibility: %s has digest %s but %s published %s\n' \
+            "$(basename "$archive")" "$actual" "$tag" "$expected" >&2
+        return 1
+    fi
+    printf '%s' "$archive"
+}
+
+# The breaks the door approved, in the door's own words.
+#
+# A row that says "compatible" without naming what the candidate stopped publishing
+# hides the one fact a consumer of the release has to read. The door prints one line
+# per break it approved, and those lines are what the release note carries.
+approved_breaks_from_log() {
+    grep -E '^\[release\] +\- ' "$1" 2>/dev/null \
+        | sed -e 's/^\[release\] *- //' -e 's/ \[key: .*//' \
+        | paste -sd ';' - \
+        | sed -e 's/;$//'
+}
+
 # ----------------------------------------------------------------------------
 # 3. The rows.
 # ----------------------------------------------------------------------------
@@ -662,49 +728,70 @@ else
             # failure. The task writes the code where this script can read it.
             ROW_E_VERDICT_FILE="$WORK/row-e-exit-code.txt"
             ROW_E_STATUS=0
-            "$repo_root/pipelinek/gradlew" --no-daemon -p "$repo_root/pipelinek" \
-                :pipeline-release:publishedApiCompatibility \
-                "-PcandidateArtifactRepo=$CANDIDATE_SDK_REPO" \
-                "-PcandidateArtifactVersion=$CANDIDATE_SDK_VERSION" \
-                "-PpreviousArtifactRepo=$PREVIOUS_SDK_REPO" \
-                "-PpreviousArtifactVersion=$PREVIOUS_SDK_VERSION" \
-                "-PpublishedApiVerdictFile=$ROW_E_VERDICT_FILE" \
-                > "$WORK/row-e.log" 2>&1 || ROW_E_STATUS=$?
-            if [[ ! -f "$ROW_E_VERDICT_FILE" ]]; then
-                # No verdict at all. The comparison did not happen, and a
-                # comparison that did not happen certifies nothing: this is a
-                # broken instrument, not a compatible candidate.
+            # The previous release's distribution, which carries the previously
+            # published bytes of the modules that are guarded but NOT published. The
+            # comparison reads them from there; without the archive the previous side
+            # of those modules cannot be read, and a comparison that did not happen
+            # certifies nothing.
+            PREVIOUS_DISTRIBUTION_ZIP="$(download_published_distribution "$PREVIOUS_TAG" "$WORK/dist-previous" || true)"
+            if [[ -z "$PREVIOUS_DISTRIBUTION_ZIP" ]]; then
                 ROW_VERDICTS+=("FAIL")
-                ROW_DETAILS+=("the published-surface comparison produced no verdict: $(tail_reason "$WORK/row-e.log")")
+                ROW_DETAILS+=("the distribution of $PREVIOUS_TAG could not be downloaded or verified, so the previously published bytes of the modules that are guarded but not published cannot be read")
             else
-                ROW_E_EXIT="$(tr -d '[:space:]' < "$ROW_E_VERDICT_FILE")"
-                case "$ROW_E_EXIT" in
-                    0)
-                        if [[ "$ROW_E_STATUS" == "0" ]]; then
-                            ROW_VERDICTS+=("PASS")
-                            ROW_DETAILS+=("the published surface carries everything $PREVIOUS_TAG published")
-                        else
-                            # The comparison certified the candidate and the
-                            # build still failed. The two facts do not cancel
-                            # each other: a green comparison inside a red build
-                            # is not a green candidate.
+                "$repo_root/pipelinek/gradlew" --no-daemon -p "$repo_root/pipelinek" \
+                    :pipeline-release:publishedApiCompatibility \
+                    "-PcandidateArtifactRepo=$CANDIDATE_SDK_REPO" \
+                    "-PcandidateArtifactVersion=$CANDIDATE_SDK_VERSION" \
+                    "-PpreviousArtifactRepo=$PREVIOUS_SDK_REPO" \
+                    "-PpreviousArtifactVersion=$PREVIOUS_SDK_VERSION" \
+                    "-PpreviousDistributionZip=$PREVIOUS_DISTRIBUTION_ZIP" \
+                    "-PpublishedApiVerdictFile=$ROW_E_VERDICT_FILE" \
+                    > "$WORK/row-e.log" 2>&1 || ROW_E_STATUS=$?
+                if [[ ! -f "$ROW_E_VERDICT_FILE" ]]; then
+                    # No verdict at all. The comparison did not happen, and a
+                    # comparison that did not happen certifies nothing: this is a
+                    # broken instrument, not a compatible candidate.
+                    ROW_VERDICTS+=("FAIL")
+                    ROW_DETAILS+=("the published-surface comparison produced no verdict: $(tail_reason "$WORK/row-e.log")")
+                else
+                    ROW_E_EXIT="$(tr -d '[:space:]' < "$ROW_E_VERDICT_FILE")"
+                    case "$ROW_E_EXIT" in
+                        0)
+                            if [[ "$ROW_E_STATUS" == "0" ]]; then
+                                ROW_VERDICTS+=("PASS")
+                                # The breaks the ledger approved are named, because
+                                # "compatible" is not the whole truth: what the
+                                # candidate stopped publishing is the fact a
+                                # consumer of this release has to read.
+                                APPROVED_BREAKS="$(approved_breaks_from_log "$WORK/row-e.log")"
+                                if [[ -z "$APPROVED_BREAKS" ]]; then
+                                    ROW_DETAILS+=("the published surface carries everything $PREVIOUS_TAG published")
+                                else
+                                    ROW_DETAILS+=("the published surface carries everything $PREVIOUS_TAG published, except the breaks the ledger approves: $APPROVED_BREAKS")
+                                fi
+                            else
+                                # The comparison certified the candidate and the
+                                # build still failed. The two facts do not cancel
+                                # each other: a green comparison inside a red build
+                                # is not a green candidate.
+                                ROW_VERDICTS+=("FAIL")
+                                ROW_DETAILS+=("the comparison reported a compatible surface but the build failed: $(tail_reason "$WORK/row-e.log")")
+                            fi
+                            ;;
+                        1)
                             ROW_VERDICTS+=("FAIL")
-                            ROW_DETAILS+=("the comparison reported a compatible surface but the build failed: $(tail_reason "$WORK/row-e.log")")
-                        fi
-                        ;;
-                    1)
-                        ROW_VERDICTS+=("FAIL")
-                        ROW_DETAILS+=("the published surface breaks something $PREVIOUS_TAG published and no ledger entry approves it: $(tail_reason "$WORK/row-e.log")")
-                        ;;
-                    2)
-                        ROW_VERDICTS+=("FAIL")
-                        ROW_DETAILS+=("the two published surfaces could not be compared: $(tail_reason "$WORK/row-e.log")")
-                        ;;
-                    *)
-                        ROW_VERDICTS+=("FAIL")
-                        ROW_DETAILS+=("the published-surface comparison produced the unreadable verdict '$ROW_E_EXIT': $(tail_reason "$WORK/row-e.log")")
-                        ;;
-                esac
+                            ROW_DETAILS+=("the published surface breaks something $PREVIOUS_TAG published and no ledger entry approves it: $(tail_reason "$WORK/row-e.log")")
+                            ;;
+                        2)
+                            ROW_VERDICTS+=("FAIL")
+                            ROW_DETAILS+=("the two published surfaces could not be compared: $(tail_reason "$WORK/row-e.log")")
+                            ;;
+                        *)
+                            ROW_VERDICTS+=("FAIL")
+                            ROW_DETAILS+=("the published-surface comparison produced the unreadable verdict '$ROW_E_EXIT': $(tail_reason "$WORK/row-e.log")")
+                            ;;
+                    esac
+                fi
             fi
         fi
     fi

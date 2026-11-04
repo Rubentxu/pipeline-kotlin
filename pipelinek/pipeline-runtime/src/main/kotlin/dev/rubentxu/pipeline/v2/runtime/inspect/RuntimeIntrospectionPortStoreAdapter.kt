@@ -96,7 +96,10 @@ class RuntimeIntrospectionPortStoreAdapter(
                     IntrospectionRefusal.StorageError(e.shortDiagnostic()),
                 )
             }
-            val cursor = try {
+            // The durable cursor is read so that a cursor store that cannot
+            // answer is reported as a storage error rather than answered as an
+            // empty run. The cursor itself is not part of this projection.
+            try {
                 cursors.load(runId)
             } catch (e: Exception) {
                 return RuntimeIntrospectionResult.Refused(

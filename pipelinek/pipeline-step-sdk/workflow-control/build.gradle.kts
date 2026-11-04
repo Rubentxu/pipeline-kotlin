@@ -21,10 +21,9 @@ dependencies {
 }
 
 // Unit-test wiring RESTORED.
-// The RESET removed it with this reasoning: "This module carries no unit tests:
-// it is a workflow-control STEP whose subject is multi-step pipeline execution. Its
-// verification is the executable E2E layer."
-// That reasoning was correct about `execute()` and wrong about the module. `resolveTargetPath`
+// The subject of this module is multi-step pipeline execution, and AGENTS.md
+// section 2 keeps the filesystem out of unit tests, so `execute()` belongs to the
+// integration lane. `resolveTargetPath`
 // is pure arithmetic on `java.nio.file.Path` -- no filesystem, no clock, no subprocess -- and it
 // is the confinement guard that decides whether a `dir(...)` scope may leave the workspace. It
 // was therefore sitting untested behind a claim about a different function, and it was wrong:

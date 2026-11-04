@@ -186,13 +186,19 @@ internal fun admitPluginsForRun(
     telemetry: PipelineTelemetry,
 ): PluginAdmission =
     admitThenCompose(
-        config.pluginJars,
+        pluginJars = config.pluginJars,
         // The policy is OPT-IN: without the file the runtime admits plugins as it always has.
-        pluginTrustSource(config.pluginTrust),
+        trust = pluginTrustSource(config.pluginTrust),
         // The row is written before the decision returns, which is what makes the journal an
         // audit trail rather than a log.
-        AdmissionControlJournal(controlDirRoot),
-        telemetry,
+        journal = AdmissionControlJournal(controlDirRoot),
+        telemetry = telemetry,
+        // Whether an unverified plugin the operator brought is a refusal instead of a
+        // warning. FALSE by default: the policy is opt-in.
+        requireTrust = config.requirePluginTrust,
+        // The private copies of the artifacts, inside the run's OWN control root. The
+        // copies are what the run loads, and the control root is the place the run owns.
+        copyRoot = controlDirRoot.resolve("plugin-copies"),
     )
 
 /**
@@ -238,30 +244,31 @@ internal fun admitThenCompose(
     trust: PluginTrustSource? = null,
     journal: AdmissionControlJournal? = null,
     telemetry: PipelineTelemetry,
+    requireTrust: Boolean = false,
     err: PrintStream = System.err,
+    copyRoot: Path? = null,
 ): PluginAdmission {
     val span = LiveSpans.open(
         telemetry = telemetry,
         name = LiveSpanNames.ADMISSION,
         parent = telemetry.sessionParent,
     )
-    val admission = when (val outcome = PluginCompositionAdmitter.admitThenCompose(pluginJars, trust, journal)) {
+    val admission = when (
+        val outcome = PluginCompositionAdmitter.admitThenCompose(
+            pluginJars,
+            trust,
+            journal,
+            requireTrust,
+            err,
+            copyRoot,
+        )
+    ) {
         is CompositionOutcome.Composed -> {
             outcome.composition.also { composition ->
-                // The trust decision is reported BEFORE the composition, because admission comes
-                // first: an operator reading the report has to see which of their plugins the
-                // policy approved, and on what evidence, before the list of what the plugins
-                // contribute.
-                outcome.admitted.forEach { artifact ->
-                    val approval = artifact.trust
-                    if (approval != null) {
-                        err.println(
-                            "Plugin ${artifact.plugin.pluginId} admitted under the operator's trust " +
-                                "policy: bytes ${approval.digest.value}, publisher ${approval.publisher}, " +
-                                "key ${approval.keyId}",
-                        )
-                    }
-                }
+                // The TRUST report was already printed, by the admission that decided it: it
+                // knows which of the operator's artifacts carry a trust decision and which
+                // carry none, and it says so before this point. What is left to report here
+                // is what the COMPOSITION resolved, and that is what this prints.
                 if (outcome.admitted.isNotEmpty()) {
                     composition.reportTo { line -> err.println(line) }
                 }

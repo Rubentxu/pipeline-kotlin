@@ -34,7 +34,7 @@ class CachingJvmScriptingHostTest {
      * was asked to store. The count is the fact that matters: a store that
      * was written is a cache that was healed.
      */
-    private class CountingCache(private val artifact: CompiledScript) : CompiledScriptCache {
+    private class CountingCache(val artifact: CompiledScript) : CompiledScriptCache {
         var stored: Int = 0
             private set
 
@@ -60,8 +60,13 @@ class CachingJvmScriptingHostTest {
         ): ResultWithDiagnostics<KClass<*>> = throw failure
     }
 
-    private fun host(cache: CompiledScriptCache): CachingJvmScriptingHost =
-        CachingJvmScriptingHost(cache, CacheKey("0000", CacheKey.V3))
+    /**
+     * The host receives the ANSWER to the cache question, not the question:
+     * the owner of the compilation asks the store once and hands the answer
+     * down. These tests therefore say which answer they are exercising.
+     */
+    private fun host(cache: CompiledScriptCache, lookup: CacheLookup): CachingJvmScriptingHost =
+        CachingJvmScriptingHost(cache, CacheKey("0000", CacheKey.V3), lookup)
 
     private fun source(text: String) = StringScriptSource(text, name = "probe.kts", locationId = "probe.kts")
 
@@ -74,7 +79,7 @@ class CachingJvmScriptingHostTest {
         val cache = CountingCache(UnreadableSourceLocation(boom))
 
         val thrown = assertThrows(RuntimeException::class.java) {
-            host(cache).eval(
+            host(cache, CacheLookup.Hit(cache.artifact)).eval(
                 source("1 + 1"),
                 ScriptCompilationConfiguration.Default,
                 ScriptEvaluationConfiguration.Default,
@@ -101,7 +106,7 @@ class CachingJvmScriptingHostTest {
 
         val cache = CountingCache(broken)
 
-        val result = host(cache).eval(
+        val result = host(cache, CacheLookup.Hit(broken)).eval(
             source("1 + 1"),
             ScriptCompilationConfiguration.Default,
             ScriptEvaluationConfiguration.Default,
@@ -112,6 +117,75 @@ class CachingJvmScriptingHostTest {
         assertEquals(2, (evaluation.returnValue as ResultValue.Value).value)
         // And the damaged entry was replaced, so the next run starts from a
         // healthy artifact instead of serving the same failure forever.
+        assertEquals(1, cache.stored)
+    }
+
+    /**
+     * The origin is the OUTCOME, and the two differ in exactly one case: the
+     * store answered "hit", the artifact was unusable, and the run compiled
+     * after all. A record that only carried the decision would say "reused"
+     * for a run that compiled, and the console would announce a reuse the run
+     * did not perform.
+     */
+    @Test
+    fun `an unusable stored artifact makes the run compile, and the origin says so`() {
+        val loader = Class.forName("kotlin.script.experimental.jvmhost.KJvmCompiledScriptLazilyLoadedFromClasspath")
+        val broken = loader.getDeclaredConstructor(String::class.java, List::class.java)
+            .apply { isAccessible = true }
+            .newInstance("com.example.NeverCompiled", emptyList<File>()) as CompiledScript
+
+        val cache = CountingCache(broken)
+        val host = host(cache, CacheLookup.Hit(broken))
+
+        host.eval(
+            source("1 + 1"),
+            ScriptCompilationConfiguration.Default,
+            ScriptEvaluationConfiguration.Default,
+        )
+
+        // The announced answer was "reused"; what actually happened was a
+        // compilation. The host reports the second.
+        assertEquals(ScriptOrigin.COMPILED, host.effectiveOrigin)
+    }
+
+    /**
+     * A hit that serves the run is a reuse, even when the script's own body
+     * throws: the artifact WAS reused, and the failure is the script's, not
+     * the cache's.
+     */
+    @Test
+    fun `a hit that serves the run is reported as reused`() {
+        val boom = RuntimeException("Compiled script is not loaded yet")
+        val cache = CountingCache(UnreadableSourceLocation(boom))
+        val host = host(cache, CacheLookup.Hit(cache.artifact))
+
+        assertThrows(RuntimeException::class.java) {
+            host.eval(
+                source("1 + 1"),
+                ScriptCompilationConfiguration.Default,
+                ScriptEvaluationConfiguration.Default,
+            )
+        }
+
+        assertEquals(ScriptOrigin.REUSED, host.effectiveOrigin)
+    }
+
+    /**
+     * A miss is a compilation, and the store is handed the artifact so the
+     * next run can reuse it.
+     */
+    @Test
+    fun `a miss compiles and is reported as compiled`() {
+        val cache = CountingCache(UnreadableSourceLocation(RuntimeException("unused")))
+        val host = host(cache, CacheLookup.Miss(CacheMissReason.ABSENT))
+
+        host.eval(
+            source("1 + 1"),
+            ScriptCompilationConfiguration.Default,
+            ScriptEvaluationConfiguration.Default,
+        )
+
+        assertEquals(ScriptOrigin.COMPILED, host.effectiveOrigin)
         assertEquals(1, cache.stored)
     }
 }

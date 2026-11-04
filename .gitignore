@@ -95,9 +95,6 @@ artifacts/*
 ### Gradle cache (when scoped to project-local path) ###
 .gradle-cache/
 
-### Generated UAT reports ###
-uat-report-*.yaml
-
 ### Python ###
 __pycache__/
 *.pyc
@@ -110,10 +107,6 @@ __pycache__/
 # Standing constraint: .agent/HANDOFF-S1-TRAIN-20260929.md ("do not
 # commit/delete"). Ignored rather than deleted so the file stays on disk.
 BACKLOG.md
-
-# Runtime-only E2E/UAT/AAT cycles: no scripts, fixtures or evidence checked in
-/.verification-cycles/
-/.verification-results/
 
 # No build or evidence output under examples
 /examples/**/.pipelinek/

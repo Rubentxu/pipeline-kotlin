@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.scripting
 
+import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
+
 /** Stable source identity emitted for one effectful scripted call. */
 @JvmInline
 value class ScriptedCallSiteId(val value: String) {
@@ -52,9 +54,8 @@ data class ScriptedSourceLocation(
      * three shapes.
      * The shape is part of the identity because two `sh` calls at the same
      * source position with different return modes have different semantics and
-     * different outputs. A previously separate `shReturnStdoutCallSite` carried
-     * the `:ro` suffix; the mode now carries it directly, so the identity has one
-     * place to be wrong instead of two.
+     * different outputs. The return mode carries the suffix directly, so the identity
+     * has one place to be wrong instead of two.
 */
     fun shellCallSite(returnMode: ScriptedShellReturnMode = ScriptedShellReturnMode.NONE): ScriptedCallSiteId =
         ScriptedCallSiteId(
@@ -351,11 +352,29 @@ data class ScriptedSourceDiagnostic(
     }
 }
 
-/** Type marker selecting Jenkins-compatible stdout return semantics. */
-data object ReturnStdout
+/**
+ * Type marker selecting Jenkins-compatible stdout return semantics.
+ *
+ * The marker carries the mode it selects, so the runtime does not repeat the
+ * decision: a call that asks for stdout runs as [ShellReturnMode.STDOUT]
+ * because the marker says so, not because the caller of the runtime happened
+ * to write the same mode a third time.
+*/
+data object ReturnStdout {
+    /** The shell return mode this marker selects. */
+    val returnMode: ShellReturnMode = ShellReturnMode.STDOUT
+}
 
-/** Type marker selecting Jenkins-compatible exit-status return semantics. */
-data object ReturnStatus
+/**
+ * Type marker selecting Jenkins-compatible exit-status return semantics.
+ *
+ * The marker carries the mode it selects, for the same reason [ReturnStdout]
+ * does: one authority per behaviour.
+*/
+data object ReturnStatus {
+    /** The shell return mode this marker selects. */
+    val returnMode: ShellReturnMode = ShellReturnMode.STATUS
+}
 
 /** Immutable compatibility identity of one compiled scripted artifact. */
 data class ScriptedArtifactIdentity(

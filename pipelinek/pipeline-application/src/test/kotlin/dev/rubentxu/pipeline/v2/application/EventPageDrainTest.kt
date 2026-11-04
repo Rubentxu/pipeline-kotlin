@@ -36,12 +36,12 @@ import org.junit.jupiter.api.Test
  * y la siguiente **no se salta ningún hecho y no se repite ninguno**. El cursor es la posición
  * del cliente, y la posición del cliente sólo sirve si el store no la adelanta.
  *
- * ## Por qué esto NO lo puede observar la capa ejecutable
- * El verbo `events` escribe los hechos en `stdout` y el cursor en `stderr`. El lanzador de
- * ejemplos lee el código de salida y, como mucho, una subcadena de `stderr`: no abre `stdout`,
- * así que no puede contar hechos ni compararlos entre dos invocaciones. La garantía vive en un
- * canal que la capa ejecutable no mira, y por eso necesita un instrumento que sí lo mire: un
- * doble en memoria del puerto de lectura, que deja construir la historia que hace falta.
+ * ## Por qué esto NO lo puede observar un test que sólo mire la salida
+ * El verbo `events` escribe los hechos en `stdout` y el cursor en `stderr`. Un test que sólo
+ * mire el código de salida y, como mucho, una subcadena de `stderr` no abre `stdout`, así que no
+ * puede contar hechos ni compararlos entre dos invocaciones. La garantía vive en un canal que
+ * ese test no mira, y por eso necesita un instrumento que sí lo mire: un doble en memoria del
+ * puerto de lectura, que deja construir la historia que hace falta.
  *
  * ## La asimetría que esta historia expone
  * La página del almacén está limitada por **filas**, y el límite del verbo cuenta **hechos que
@@ -473,10 +473,10 @@ class EventPageDrainTest {
      * Un rechazo puede informarse **cuando no hay ningún hecho coincidente sin entregar por
      * delante de él**. Entonces, y sólo entonces, el cursor puede cubrirlo: nadie queda detrás.
      *
-     * ## Por qué esto NO lo puede observar la capa ejecutable
+     * ## Por qué esto NO lo puede observar un test que sólo mire la salida
      * El CLI informa los rechazos por `stderr` una línea por rechazo, y una fila ilegible sólo
-     * existe si alguien la escribió: no hay verbo que produzca una. Un escenario de ejemplos
-     * que fabricase esa fila estaría probando su propio generador, no el producto. La garantía
+     * existe si alguien la escribió: no hay verbo que produzca una. Un test que fabricase esa
+     * fila por el CLI estaría probando su propio generador, no el producto. La garantía
      * necesita un instrumento que la pueda construir: un doble del puerto de lectura.
      */
     @Test
@@ -629,10 +629,10 @@ class EventPageDrainTest {
      * El drenador que, en cambio, la trata como trabajo pendiente sigue pidiendo páginas hasta
      * que el almacén dice que no hay más, y entonces informa todos los rechazos.
      *
-     * ## Por qué esto NO lo puede observar la capa ejecutable
+     * ## Por qué esto NO lo puede observar un test que sólo mire la salida
      * Ningún verbo escribe una fila ilegible: el almacén en disco sólo la tiene si otro proceso
-     * escribió un tipo de evento que este binario no conoce. Un escenario de ejemplos que la
-     * fabricase probaría su propio generador, no el producto. La garantía necesita un
+     * escribió un tipo de evento que este binario no conoce. Un test que la fabricase por el
+     * CLI probaría su propio generador, no el producto. La garantía necesita un
      * instrumento que sepa construir la fila, que es el doble del puerto de lectura.
      */
     @Test
@@ -733,7 +733,7 @@ class EventPageDrainTest {
      * drenador se declara atascado, dice en qué posición se quedó y deja la bandera en alto para
      * que el cliente sepa que puede reintentar.
      *
-     * ## Por qué esto NO lo puede observar la capa ejecutable
+     * ## Por qué esto NO lo puede observar un test que sólo mire la salida
      * Los dos almacenes que hay nunca hacen esto: el corte avanza con la última fila leída o el
      * almacén dice que no queda nada. Un almacén atascado es una avería de un tercero, y aquí la
      * garantía se ejerce contra un doble que la provoca a propósito.
@@ -822,12 +822,12 @@ class EventPageDrainTest {
      * esa ceguera: cualquier divergencia se ve como una diferencia, y la comparación es tan
      * fuerte como la más débil de las dos.
      *
-     * ## Por qué esto NO lo puede observar la capa ejecutable
+     * ## Por qué esto NO lo puede observar un test que sólo mire la salida
      * El verbo `events` elige una proyección u otra según una opción, y cada una produce hechos
-     * con forma distinta en `stdout`. Un escenario de ejemplos que ejecutara las dos y las
-     * comparara tendría que detectar que dos filas de hechos son el mismo hecho, y eso es un
-     * problema de formato, no de comportamiento. La garantía necesita un instrumento que monte
-     * la historia y lea las dos respuestas del drenador.
+     * con forma distinta en `stdout`. Un test que ejecutara las dos por el CLI y las comparara
+     * tendría que detectar que dos filas de hechos son el mismo hecho, y eso es un problema de
+     * formato, no de comportamiento. La garantía necesita un instrumento que monte la historia y
+     * lea las dos respuestas del drenador.
      */
     @Test
     @DisplayName("las dos proyecciones deciden lo mismo sobre la misma historia")

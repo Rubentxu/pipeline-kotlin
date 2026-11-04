@@ -24,7 +24,7 @@ data class UppercaseApplied(val inputLength: Int, val outputLength: Int)
  * every run, or a replayed event would decode into something the original run never said. The
  * version check returns [PayloadDecode.UnknownSchemaVersion] rather than guessing, because a
  * reader that treats an unrecognised shape as "probably fine" is the semantic drop the
- * Constitution forbids.
+ * typed-failure rule forbids: an unrecognised schema is reported, never guessed.
 */
 object UppercaseAppliedCodec : EventPayloadCodec<UppercaseApplied> {
     private const val V1 = 1

@@ -6,12 +6,8 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
 
 /**
  * Typed input of `http.request`, owned by the HTTP
- * OFFICIAL_PLUGIN rather than by core.
- * Derived from the official `httpRequest` reference
- * Which is NOT `durable-task-step`:
- * the step was extracted to its own plugin, and the parameter list that used to
- * circulate for it (`failOnStatusCode`, `customBands`, `responseCode`, `sslVerify`,
- * `retry`, `retryableStatusCodes`) belongs to a surface that no longer exists.
+ * OFFICIAL_PLUGIN rather than by core, and derived from the official
+ * `httpRequest` reference.
  * Everything here is DECLARATION. Nothing in this file performs I/O, resolves a
  * credential or decides whether the network is allowed — those are the handler's
  * job, behind declared capabilities.

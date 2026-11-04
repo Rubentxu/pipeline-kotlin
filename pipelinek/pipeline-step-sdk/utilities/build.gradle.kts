@@ -1,6 +1,5 @@
 import dev.rubentxu.pipeline.build.PluginCompatibilityPolicy
 import dev.rubentxu.pipeline.build.ProvenanceDigest
-import java.io.ByteArrayOutputStream
 
 plugins {
     kotlin("jvm")
@@ -80,6 +79,16 @@ val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
     val publisher = utilitiesPublisher
     val namespace = utilitiesNamespace
     val ver = utilitiesVersion
+    // The paths and the exclusion set are taken HERE, while the build is
+    // configured, so that the action below carries the VALUES and not the
+    // script that owns them. An action that reaches into the script it was
+    // declared in cannot be stored in the configuration cache: the cache
+    // refuses to serialize a reference to a build script, and the task then
+    // runs against a script that is not there.
+    val classesDir = utilitiesClassesDir
+    val resourcesDir = utilitiesResourcesDir
+    val releaseProps = utilitiesReleaseProps
+    val excludedResourcePaths = utilitiesExcludedResourcePaths.toList()
 
     outputs.file(utilitiesReleaseProps)
     dependsOn("compileKotlin", "processResources", "generatePluginCompatibilityMetadata")
@@ -99,17 +108,17 @@ val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
     // PRINTS THE FILENAME IT WAS GIVEN. The shared ProvenanceDigest frames only the root name and
     // the relative path, so two checkouts of identical bytes hash identically.
     doLast {
-        val classesDir = utilitiesClassesDir.get().asFile
-        require(classesDir.exists()) { "classes/kotlin/main does not exist: run compileKotlin first" }
-        val resourcesDir = utilitiesResourcesDir.get().asFile
-        val out = utilitiesReleaseProps.get().asFile
+        val classesDirFile = classesDir.get().asFile
+               require(classesDirFile.exists()) { "classes/kotlin/main does not exist: run compileKotlin first" }
+        val resourcesDirFile = resourcesDir.get().asFile
+        val out = releaseProps.get().asFile
         out.parentFile.mkdirs()
         val hex = ProvenanceDigest.computeDigestHex(
             listOf(
-                ProvenanceDigest.Root("classes", classesDir.toPath()),
-                ProvenanceDigest.Root("resources", resourcesDir.toPath()),
+                ProvenanceDigest.Root("classes", classesDirFile.toPath()),
+                ProvenanceDigest.Root("resources", resourcesDirFile.toPath()),
             ),
-            utilitiesExcludedResourcePaths.mapTo(linkedSetOf()) { "resources/$it" },
+            excludedResourcePaths.mapTo(linkedSetOf()) { "resources/$it" },
         )
         require(hex.length == 64) { "Expected 64-hex SHA-256, got '${hex.take(80)}'" }
         val digest = "sha256:$hex"
@@ -149,12 +158,21 @@ val generateUtilitiesPluginCompatibility = tasks.register("generatePluginCompati
     group = "utilities"
     description = "Emit the policy-derived compatibility resource for the artifact."
 
-    inputs.property("productVersion", rootProject.version.toString())
-    outputs.file(utilitiesCompatibilityResource)
+    // The version and the destination are read HERE, while the build is
+    // configured, so that the action below carries the VALUES and not the
+    // script that owns them. An action that reaches into the script it was
+    // declared in cannot be stored in the configuration cache: the cache
+    // refuses to serialize a reference to a build script, and the task then
+    // runs against a script that is not there.
+    val productVersion = rootProject.version.toString()
+    val compatibilityResource = utilitiesCompatibilityResource
+
+    inputs.property("productVersion", productVersion)
+    outputs.file(compatibilityResource)
 
     doLast {
-        val policy = PluginCompatibilityPolicy(rootProject.version.toString())
-        val out = utilitiesCompatibilityResource.get().asFile
+        val policy = PluginCompatibilityPolicy(productVersion)
+        val out = compatibilityResource.get().asFile
         out.parentFile.mkdirs()
         out.writeText(policy.toJson())
         println("utilities: compatibility metadata emitted to $out (apiRange=${policy.apiRange()})")
@@ -179,25 +197,32 @@ val emitUtilitiesManifest = tasks.register<JavaExec>("emitUtilitiesManifest") {
     inputs.files(utilitiesCompatibilityResource)
     outputs.file(utilitiesManifest)
 
-    // Captured into a buffer rather than stdout: Gradle prints task output to the console,
-    // and the document must land in a file with no shell quoting in between.
-    // The buffer is created at CONFIGURATION time, outside `providers`: inside that lambda
-    // the identifier `java` resolves to Gradle's own JavaPluginExtension, not the java.io
-    // package, and the DSL stops compiling.
     val out = utilitiesManifest
-    val captured = ByteArrayOutputStream()
-    standardOutput = captured
+    // The declaration prints the manifest on its standard output, and the task has to
+    // keep those bytes: Gradle prints task output to the console, and the document
+    // must land in a file with no shell quoting in between. The bytes are kept in a
+    // FILE, not in a stream held in memory: a stream is part of the task's own state,
+    // and the configuration cache refuses to store a task that owns one ("cannot
+    // serialize object of type 'java.io.ByteArrayOutputStream'"). The file is opened
+    // when the task RUNS, so the stored task state carries no stream at all.
+    val captureFile = layout.buildDirectory.file("tmp/emitUtilitiesManifest.out")
 
     doFirst {
         out.get().asFile.parentFile.mkdirs()
-        // The buffer lives for the whole configuration, so a second execution in the same build
-        // would APPEND to the first document and emit concatenated JSON. Resetting here keeps
-        // the output a function of the current inputs rather than of how many times the task ran.
-        captured.reset()
+        val capture = captureFile.get().asFile
+        capture.parentFile.mkdirs()
+        // `standardOutput` only accepts System.out or System.err while the task is
+        // being configured, so it is assigned here, when the task runs.
+        (this as JavaExec).standardOutput = capture.outputStream()
     }
 
     doLast {
-        val text = captured.toString(Charsets.UTF_8)
+        val exec = this as JavaExec
+        val stream = exec.standardOutput
+        if (stream !== System.out && stream !== System.err) {
+            (stream as? java.io.Closeable)?.close()
+        }
+        val text = captureFile.get().asFile.readText(Charsets.UTF_8)
         if (text.isBlank()) {
             throw GradleException(
                 "Manifest emission produced no output. The utilities OFFICIAL_PLUGIN would ship " +
@@ -255,12 +280,12 @@ tasks.withType<Test>().configureEach {
 // Unit-test wiring, and what it does NOT cover.
 // This module is the `readJson`/`writeJson`/`sha256`/`findFiles` STEPs. Their guarantee is that a
 // pipeline calls them on real input, and AGENTS.md section 2 keeps a filesystem out of unit tests
-// -- so the walk, the encode/decode of a real file, and the 100_000 cap stay with the executable
-// E2E layer (`.pipeline.kts` under `examples/`, driven by `examples/run.sh`).
+// -- so the walk, the encode/decode of a real file, and the 100_000 cap stay with the integration
+// lane.
 // That reasoning does not reach `CoreUtilsFindFilesStepDefinition.buildMatcher`, a pure
 // String -> PathMatcher whose whole job is a written contract: a leading `**` means any depth
-// INCLUDING ZERO, which Java NIO's own `glob:` does not do. A defect there is invisible to the
-// E2E layer in the worst possible way -- `findFiles` returns `Unit`, so the scenario can only
+// INCLUDING ZERO, which Java NIO's own `glob:` does not do. A defect there shows up in the worst
+// possible way -- `findFiles` returns `Unit`, so a caller can only
 // read an exit code, and a wrong matcher and a right one both produce 0. Same shape and same
 // exception as `pipeline-step-sdk/files`, which tests its `antPatternToRegex` for exactly this
 // reason and says so in its own build file.

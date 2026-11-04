@@ -28,13 +28,6 @@ import dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationStore
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
-import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
-import dev.rubentxu.pipeline.v2.scripting.KotlinScriptedSourceMapper
-import dev.rubentxu.pipeline.v2.scripting.ScriptedFrontendForm
-import dev.rubentxu.pipeline.v2.scripting.ScriptedSource
-import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceId
-import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering
-import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering.LoweringResult
 import kotlinx.serialization.json.Json
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -369,19 +362,6 @@ private fun runDurablePipelineOwned(
 }
 
 /**
- * The source of a durable run, compiled and classified.
- *
- * The DEFINITION is compiled BEFORE the composition is admitted — the order the durable
- * branch has always had. A definition the runtime refuses must not first print the
- * plugin-discovery lines: the operator has to read the refusal, not a preamble.
- */
-private data class DurableScript(
-    val compilation: ScriptCompilation,
-    val scripted: ScriptedFrontend,
-    val pipeline: dev.rubentxu.pipeline.v2.domain.CompiledPipeline?,
-)
-
-/**
  * The events a receipt publishes, when one was asked for.
  *
  * The walk happens ONLY when a receipt was asked for: the walk that publishes the
@@ -395,39 +375,6 @@ private fun receiptEventsOf(
     runId: String,
 ): List<DomainEvent>? =
     config.receiptPath?.let { eventStore.eventsFor(runId).toList() }
-
-private fun compileDurableScript(
-    eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
-    runId: String,
-    scriptPath: Path,
-    scriptContent: String,
-    pluginJars: List<String>,
-    telemetry: PipelineTelemetry,
-): DurableScript {
-    val compilation = compileScriptForRun(
-        eventStore = eventStore,
-        runId = runId,
-        scriptPath = scriptPath,
-        pluginJars = pluginJars,
-        telemetry = telemetry,
-    )
-    val scripted = resolveScriptedFrontend(
-        compilation = compilation,
-        scriptPath = scriptPath,
-        scriptContent = scriptContent,
-        pluginJars = pluginJars,
-        eventSink = eventStore,
-        runId = runId,
-    )
-    val pipeline = compilation.pipelineSpec?.let { spec ->
-        compileOrRefuse(
-            spec = spec,
-            sourcePath = scriptPath.toString(),
-            sourceContent = scriptContent,
-        )
-    }
-    return DurableScript(compilation = compilation, scripted = scripted, pipeline = pipeline)
-}
 
 /**
  * The end of a durable run: what reaches stdout, and the two facts the verdict is made of.
@@ -738,90 +685,3 @@ private fun acquireDurableOwnership(
     return DurableOwnership(runId = runId, lease = lease)
 }
 
-/**
- * The scripted frontend of a durable run, when the source is generator-level.
- *
- * frontend FORM selection. The compiler-backed mapping decides
- * whether this source contains runtime-effectful scripted calls; the CLI only
- * picks the closed artifact FORM, never an execution authority and never a
- * concrete Step (the CLI may choose the frontend, never the backend).
- */
-private data class ScriptedFrontend(
-    val artifact: dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.EntryPointArtifact?,
-    val entryPoint: dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint?,
-)
-
-private fun resolveScriptedFrontend(
-    compilation: ScriptCompilation,
-    scriptPath: Path,
-    scriptContent: String,
-    pluginJars: List<String>,
-    eventSink: dev.rubentxu.pipeline.v2.events.EventSink,
-    runId: String,
-): ScriptedFrontend {
-    val result = compilation.result
-    val artifact: dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.EntryPointArtifact? =
-        if (result.isSuccess) {
-            // The R3 lowering emits a generator-level entry-point body only. A
-            // `pipeline { stages { stage { ... } } }` structure keeps the eager
-            // PipelineSpec frontend as-is (no DSL-body migration). Frontend FORM
-            // selection, never an execution-authority switch.
-            //
-            // The FORM is read from the STRUCTURE the compiler already parsed
-            // — does the source CALL the eager DSL's entry point? — and never
-            // from a match over the script's text: a comment or a string that
-            // mentions `pipeline {` is prose, and prose does not decide which
-            // frontend runs.
-            val isGeneratorLevelSource = ScriptedFrontendForm.select(
-                ScriptedSource(ScriptedSourceId(scriptPath.fileName.toString()), scriptContent),
-            ) == ScriptedFrontendForm.Form.GENERATOR_LEVEL
-            if (isGeneratorLevelSource) {
-                when (val lowered = ScriptedSourceLowering.lower(
-                    sourceId = ScriptedSourceId(scriptPath.fileName.toString()),
-                    sourceText = scriptContent,
-                    mapper = KotlinScriptedSourceMapper(),
-                    facadeSchemaVersion = ScriptedSourceLowering.FACADE_SCHEMA_VERSION,
-                )) {
-                    is LoweringResult.Generated -> dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.EntryPointArtifact(
-                        loweredSource = lowered.source,
-                        identity = lowered.artifact,
-                    )
-                    is LoweringResult.InvalidSyntax -> {
-                        // The source already compiled (host), so this is an internal
-                        // invariant violation: fail closed, never fall back to eager.
-                        System.err.println("Error: scripted source lowering failed: ${lowered.diagnostics}")
-                        throw CommandRefused(CliExit.InvalidArgument(message = "the scripted source could not be lowered"))
-                    }
-                }
-            } else null
-        } else null
-
-    val entryPoint: dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint? =
-        artifact?.let { artifactValue ->
-            val definitionScript = """
-                ${artifactValue.loweredSource}
-            """.trimIndent()
-            val scriptedDefinition = dev.rubentxu.pipeline.v2.scripting.ScriptDefinition.inline(
-                text = definitionScript,
-                classpath = computeScriptClasspath(pluginJars),
-            )
-            // Compiled WITHOUT the eager RuntimeConfig injection: a runtime-returned
-            // body must never observe the platform through the eager DSL port.
-            val host = Kotlin24ScriptingHost(eventSink, runId)
-            val scriptedResult = host.compile(scriptedDefinition)
-            when {
-                scriptedResult is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure -> {
-                    System.err.println("Error: scripted frontend compilation failed: ${scriptedResult.diagnostics}")
-                    throw CommandRefused(CliExit.InvalidArgument(message = "the scripted frontend did not compile"))
-                }
-                else -> when (val out = (scriptedResult as dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Success).output) {
-                    is dev.rubentxu.pipeline.v2.scripting.ScriptEvaluationOutput.CompiledEntryPoint -> out.entryPoint
-                    else -> {
-                        System.err.println("Error: scripted frontend did not produce a compiled entry point")
-                        throw CommandRefused(CliExit.InvalidArgument(message = "the scripted frontend did not produce a compiled entry point"))
-                    }
-                }
-            }
-        }
-    return ScriptedFrontend(artifact = artifact, entryPoint = entryPoint)
-}

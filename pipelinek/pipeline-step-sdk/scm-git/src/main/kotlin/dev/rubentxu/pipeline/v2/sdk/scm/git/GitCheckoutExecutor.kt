@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
+import dev.rubentxu.pipeline.v2.domain.scm.GitRemotePolicy
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
 import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
@@ -133,8 +134,35 @@ open class GitCheckoutExecutor(
         val workspace = req.workspaceRoot.resolve(spec.relativeTargetDir)
         val gitDir = workspace.resolve(".git")
 
-        // Guard argv
-        guardProcessBuilderArgs(listOf("git", "ls-remote", spec.url, spec.branch))
+        // The remote is refused BEFORE the run is told a checkout started, before any
+        // credential is applied, and before any process is spawned. git reads an argument
+        // that starts with `-` as an OPTION, so a remote shaped like `--upload-pack=…` is
+        // not a repository but an instruction to run a program of the author's choosing —
+        // and with a `file://` remote that program runs on THIS machine. The refusal has
+        // to arrive before the program could.
+        //
+        // It is a typed refusal, not an exception: the caller classifies the failure by
+        // its type, and a remote the author wrote is the author's mistake (USER), not a
+        // broken infrastructure.
+        GitRemotePolicy.refusalFor(spec.url, spec.branch)?.let { refusal ->
+            return Result.failure(GitRemotePolicy.GitRemoteRefused(refusal))
+        }
+
+        // Guard argv: the credential rule, over the arguments the poll is GOING TO RUN.
+        //
+        // The list is the poll's own (`GitPollExecutor.lsRemoteArgv`), not a copy of it:
+        // a guard over a hand-built argv checks a command that was never examined, and
+        // the two lists are free to drift apart the day somebody edits one of them.
+        //
+        // A refusal here is a FAILURE of the checkout, not a crash of the run: the
+        // remote carries a credential in a place git would publish it to the whole
+        // machine, and the checkout must say so and stop. It travels as a typed
+        // failure so the caller classifies it by type, like every other refusal.
+        try {
+            guardProcessBuilderArgs(GitPollExecutor.lsRemoteArgv(spec.url, spec.branch))
+        } catch (refused: IllegalArgumentException) {
+            return Result.failure(refused)
+        }
 
         // Emit GitCheckoutStarted
         try {
@@ -218,7 +246,6 @@ open class GitCheckoutExecutor(
             executeInternal(req, spec, workspace, gitDir, startMs, req.previousRemoteSha, env)
                 .map { it.copy(credentialsFilePath = credentialsFilePath, gitConfigFilePath = gitConfigFilePath) }
         } catch (e: Exception) {
-            val durationMs = System.currentTimeMillis() - startMs
             // GitCheckoutFailed.reason must be scrubbed before emission.
             // Scrub removes registered secret patterns (canaries + real credentials).
             val rawReason = e.message?.take(256) ?: "Unknown error"
@@ -262,7 +289,6 @@ open class GitCheckoutExecutor(
         // Step 2: ls-remote to get remote SHA (with buildEnv wired into ProcessBuilder)
         val remoteShaResult = poll.execute(url, branch, credentialsApplier, transcript)
         if (remoteShaResult.isFailure) {
-            val durationMs = System.currentTimeMillis() - startMs
             val errorMsg = remoteShaResult.exceptionOrNull()?.message ?: "Unknown"
             emitEvent(req, GitCheckoutFailed(
                 eventId = newEventId(),
@@ -316,7 +342,6 @@ open class GitCheckoutExecutor(
             // SHA different - fetch and reset
             val fetchResult = gitFetch(workspace, env)
             if (fetchResult.isFailure) {
-                val durationMs = System.currentTimeMillis() - startMs
                 emitEvent(req, GitCheckoutFailed(
                     eventId = newEventId(),
                     runId = req.runId,
@@ -332,7 +357,6 @@ open class GitCheckoutExecutor(
 
             val resetResult = gitResetHard(workspace, remoteSha, env)
             if (resetResult.isFailure) {
-                val durationMs = System.currentTimeMillis() - startMs
                 emitEvent(req, GitCheckoutFailed(
                     eventId = newEventId(),
                     runId = req.runId,
@@ -370,7 +394,6 @@ open class GitCheckoutExecutor(
         Files.createDirectories(workspace)
         val cloneResult = gitClone(url, branch, workspace, env)
         if (cloneResult.isFailure) {
-            val durationMs = System.currentTimeMillis() - startMs
             emitEvent(req, GitCheckoutFailed(
                 eventId = newEventId(),
                 runId = req.runId,
@@ -542,7 +565,11 @@ open class GitCheckoutExecutor(
 
     private fun gitClone(url: String, branch: String, workspace: Path, env: Map<String, String>): Result<Unit> {
         return try {
-            val args = listOf("git", "clone", "--branch", branch, url, workspace.toString())
+            // `--` before the positionals: git stops reading options there, so a remote
+            // or a branch that looks like an option is a VALUE and never an instruction.
+            // The remote is refused earlier (see `execute`), so this is the second line of
+            // the same defence, not the only one.
+            val args = listOf("git", "clone", "--branch", branch, "--", url, workspace.toString())
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 2 * 1000)
             if (captured.succeeded) Result.success(Unit)
             else Result.failure(IllegalStateException("git clone failed${captured.stderr.prependIndent()}"))
@@ -554,12 +581,12 @@ open class GitCheckoutExecutor(
     /**
      * Emits a SEMANTIC event about what the checkout did.
      * ## Why git's own stdout does not come through here
-     * This used to have a sibling, `emitEcho`, which pushed `git`'s stdout and stderr into
-     * `EchoOutputCaptured`. That was a second authority over process bytes: the event log
-     * carried process output, and the Output Plane — where process output belongs — was
-     * unreachable from this module. So `scm.git` kept the transcript alive in the event log
-     * as a side effect of having an `EventSink`.
-     * Removing it loses nothing a caller could act on:
+     * The event plane carries SEMANTIC facts, and process bytes are not one of them. Pushing
+     * `git`'s stdout and stderr into `EchoOutputCaptured` would be a second authority over
+     * process bytes: the event log would carry process output, and the Output Plane — where
+     * process output belongs — would be unreachable from this module. So `scm.git` would keep
+     * the transcript alive in the event log as a side effect of having an `EventSink`.
+     * A caller loses nothing it could act on:
      *  - **Failures** already carry their stderr, in the typed failure itself
      *    (`"git clone failed${captured.stderr.prependIndent()}"`).
      *  - **Progress** lines like `Cloning into '…'` are process logging, not a semantic fact, and
@@ -571,9 +598,9 @@ open class GitCheckoutExecutor(
      * authorities over two different questions, with no overlap between them.
      * ## A record that cannot be written is not a warning
      * The sink is where the run's memory of the checkout lives, so a write it refuses takes the
-     * fact away. This used to print a warning on stderr and let the checkout carry on: the
-     * checkout went on to do work, reported success, and the run's record said nothing about any
-     * of it. The refusal now travels as [CheckoutRecordRefused] and the checkout ends in failure,
+     * fact away. Printing a warning on stderr and letting the checkout carry on would let the
+     * checkout go on to do work, report success, and leave the run's record saying nothing about
+     * any of it. The refusal travels as [CheckoutRecordRefused] and the checkout ends in failure,
      * which is the only honest outcome when the fact is gone.
 */
     private fun emitEvent(req: GitCheckoutRequest, event: dev.rubentxu.pipeline.v2.events.DomainEvent) {
@@ -595,11 +622,20 @@ open class GitCheckoutExecutor(
     private fun newEventId(): String = java.util.UUID.randomUUID().toString()
 
     override fun close() {
-        // Wipe credentials files AFTER execute completes.
-        // This ensures the credentials file persists through execute and
-        // is available for verification by callers after execute returns.
+        // The credentials files are wiped AFTER execute completes, so they persist through
+        // the checkout and are available for verification by callers after execute returns.
         // A composition with no applier has no file to wipe.
+        //
+        // Every temporary root this checkout opened goes away with it: the applier's
+        // directory (which holds the SSH key and the answer file), the executor's own
+        // control root, and the control roots of the poll executor and of the changelog
+        // writer. Leaving them behind put a private key and a token in the system
+        // temporary area for as long as the machine kept them, and nobody was looking
+        // after them.
         credentialsApplier?.close()
+        poll.close()
+        changelog.close()
+        GitTempRoot.deleteRecursively(gitControlRoot)
     }
 }
 

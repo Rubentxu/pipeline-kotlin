@@ -1,3 +1,0 @@
-# ContributedBindingFactory SPI registration
-# Each line is a fully-qualified class name of a ContributedBindingFactory implementation
-dev.rubentxu.pipeline.v2.binding.DefaultBindingFactory

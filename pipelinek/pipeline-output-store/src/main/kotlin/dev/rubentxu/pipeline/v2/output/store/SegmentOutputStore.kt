@@ -511,7 +511,7 @@ class SegmentOutputStore(
             entries.asSequence()
                 .filter { Files.isDirectory(it) }
                 .filter { dir ->
-                    when (val owner = declaredTo[dir.fileName.toString()]) {
+                    when (declaredTo[dir.fileName.toString()]) {
                         runId -> true
                         null -> dir.fileName.toString().startsWith(prefix)
                         else -> false

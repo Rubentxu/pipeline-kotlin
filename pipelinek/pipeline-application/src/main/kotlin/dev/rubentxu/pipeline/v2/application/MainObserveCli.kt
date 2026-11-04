@@ -84,7 +84,12 @@ object MainObserveCli {
                 // which is not what the operator asked to read.
                 err.println(result.error.refusalLines("observe").joinToString("\n"))
                 err.println(USAGE)
-                return CliExit.INVALID_ARGUMENT.code
+                // The CODE comes from the same mapping the sentence came from.
+                // A view this build cannot deliver is not a request that was
+                // misunderstood: the taxonomy has a case for it
+                // (RuntimeNotAvailable), and answering 2 here threw that case
+                // away and told the operator that it was their spelling.
+                return result.error.toCliExit().code
             }
         }
 
@@ -495,7 +500,7 @@ interface ObserveLanes : AutoCloseable {
      * substitute for it. A run that finished writing nothing owns no stream and no frame, so
      * [outputTailsOf] answers an empty list for it — and so it answers the same empty list for a run
      * that has not started. A follower that read termination off that list would hang on
-     * `sh("true")` forever, which is precisely the UAT row.
+     * `sh("true")` forever, which is precisely the row `FollowDecisionTest` pins.
      *
      * It is consulted ONLY when the tail list is empty. A non-empty sealed tail is the output lane's
      * own authority and needs no corroboration; requiring the run to have finished as well would make
@@ -719,4 +724,3 @@ private val EventLane.storeOrNull: SqliteEventStore?
         EventLane.NotNamed -> null
     }
 
-private fun ObservationParseResult.Parsed.controlRootOrNull(): String? = this.controlRoot

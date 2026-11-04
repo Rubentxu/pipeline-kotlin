@@ -57,9 +57,9 @@ dependencies {
     // quietly loses a fact could hide: a decoder that read every `compensatedActions` as empty
     // would leave a law that can never fire.
     //
-    // It used to carry this edge for `RealHistoryParityTest` and
-    // `FArch020EventHarnessIsolationTest`, both deleted by the RESET; it came back when the
-    // captured plane had a law to answer for.
+    // The edge is here for as long as the captured plane has a law to answer for: the
+    // consumer that reads captured planes and the decoder that produces them meet in this
+    // module, and nowhere else.
     //
     // `:pipeline-event-harness` itself is NOT dead: `:pipeline-application` depends on it because
     // it backs the `pipeline events verify` product command. This edge was the only other one.

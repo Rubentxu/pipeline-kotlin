@@ -67,7 +67,6 @@ internal fun interface BodyChildDispatcher {
 internal class BodyExecutionEngine(
     private val eventSink: EventSink,
     private val clock: Clock,
-    private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter,
     private val telemetry: PipelineTelemetry,
     private val retryControlJournal: FileBasedRetryControlJournal? = null,
     private val waitUntilControlJournal: WaitUntilControlJournal? = null,
@@ -485,15 +484,12 @@ internal class BodyExecutionEngine(
                         eventSink = eventSink,
                         bodyInvoker = bodyInvokerAdapter,
                         controlOpId = waitUntilControlOpId,
-                        parentBodyPath = parentBodyPath,
                         fingerprint = waitUntilFingerprint,
                         initialRecurrencePeriodMs = scope.initialRecurrencePeriod,
                         maxBackoffMs = scope.maxBackoffMs,
                         runId = runId,
                         stageIndex = stageIndex,
                         stepIndex = stepIndex,
-                        blockId = block.id,
-                        blockPluginStepId = block.pluginStepId,
                         telemetry = telemetry,
                     )
                 outcome = waitUntilEngine.execute(bodyRef, scopeInBody.parent)
@@ -641,7 +637,6 @@ internal class BodyExecutionEngine(
             }
         }
 
-        return outcome
         return outcome
     }
 

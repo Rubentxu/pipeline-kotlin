@@ -57,6 +57,56 @@ WHAT COUNTS AS PROVENANCE
   matches `v2`, which is this product's own version, and a rule that knew
   every token would be the plan wearing the guard's clothes.
 
+WHAT ELSE COUNTS AS PROVENANCE
+  The shapes above are the ones a comment can carry without saying anything
+  useful. Five more were added once the tree was MEASURED instead of guessed
+  at, and each one is a closed vocabulary with its exceptions written down:
+
+  A working document that does not travel: the names this project's own
+  governance carried -- the several `Constitution` documents, the Semantic
+  Conservation Law, the Semantic Honesty Gate, the Runtime Observation
+  Contract Closure. A reader of the tree cannot open any of them, so the rule
+  they state has to be stated in the comment itself. Exceptions: none. The
+  measured false positives over the tree are zero, so there is nothing to
+  excuse and nothing to narrow.
+
+  A plan coordinate in the `R<n>` alphabet: that is how the audit findings are
+  numbered, and a reader cannot walk to them. ONE file is exempt: the
+  git-transcript test numbers its own four rows `R1`..`R4`, and that
+  vocabulary is the test's own, not the plan's.
+
+  A reference to something outside the tree: an issue, a pull request, a merge
+  request, a `gh-` number. The reader has no way to open it, so the fact has
+  to be in the comment. A bare `#12` is NOT a reference: this tree numbers its
+  own steps and cases that way, and those numbers are part of the contract.
+  Exceptions: none; the measured false positives are zero.
+
+  A narration of a past implementation: a comment that says "this used to be"
+  AND names, in backticks, a symbol of this codebase the tree no longer
+  contains. BOTH halves are required, and that is what makes the rule
+  discriminate. The narration alone has no stable shape: the tree carries
+  hundreds of past-tense sentences that are not provenance at all, and a rule
+  that fired on those would flag ordinary prose. The dead name is the
+  discriminator -- a reader who follows `SomeType` finds nothing there, so
+  the comment points at nothing. A symbol of this codebase is a type-like name
+  (an upper-case letter followed by a lower-case one) or a function-like name
+  (a lower-case letter with a capital inside it, as in
+  `emitStageFinished`); that leaves SCREAMING_CASE constants and ordinary
+  words out of the rule. The marks are verbs that cannot also be present
+  tense, so the sentence they sit in is about something that stopped being
+  true.
+  Exceptions: the names of the Gradle and Reactor vocabularies, which this
+  tree's comments use but its code never declares. Their absence proves
+  nothing, because the reader can open them in the library they belong to.
+  The measured false positives over the tree are zero.
+
+  An attribution to a person: an explicit credit (`thanks to X`, `authored by
+  X`) or the first person in the past (`I decided`, `we chose`). A first
+  person inside a quotation is a quoted sentence rather than an attribution,
+  and a negated first person ("I did not touch them") is the subject of the
+  code talking, not the author talking.
+  Exceptions: none; the measured false positives are zero.
+
 WHAT IS DELIBERATELY NOT PROVENANCE
   Published vulnerability identifiers such as CVE-2023-32981. They name a real
   defect in the world and they are the reason the code they sit next to
@@ -126,7 +176,90 @@ PLAN = re.compile(
     r"|\ba[0-9]\b"
     r"|\b[Ss]lice\s+[0-9A-Z]\b"
     r"|\bBLOCK\s+[0-9]\b"
+    r"|\bR\d{1,3}\b"
 )
+
+# The one file whose `R1`..`R4` are its own vocabulary and not plan
+# coordinates: the git-transcript test names the four distinguishable ways its
+# guarantee can break. Excused by name, with this reason.
+PLAN_EXEMPT_FILES = ("GitTranscriptTest.kt",)
+
+# The name of a working document that decides the work and does not travel with
+# the tree: the several `Constitution` documents, the Semantic Conservation Law,
+# the Semantic Honesty Gate and the Runtime Observation Contract Closure. A
+# reader of the tree cannot open any of them, so the rule they state has to be
+# stated in the comment itself. `semantic constitution` is matched in any case,
+# because the tree writes it both as a title and inside running prose.
+WORKING_DOCUMENT = re.compile(
+    r"\bConstitution\b"
+    r"|(?i:\bsemantic\s+constitution\b)"
+    r"|\bSemantic\s+Conservation\s+Law\b"
+    r"|\bSemantic\s+Honesty\s+Gate\b"
+    r"|\bRuntime\s+Observation\s+Contract\s+Closure\b",
+)
+
+# A reference to something outside the tree: an issue, a pull request, a merge
+# request, a `gh-` number. A bare `#12` is NOT one of these -- this tree
+# numbers its own steps and cases that way, and those numbers are contract.
+EXTERNAL_REFERENCE = re.compile(
+    r"\b(?:pull[ -]request|merge[ -]request|issues?|PR|MR)\s*[#!]?\s*\d{1,6}\b"
+    r"|\bgh-\d{1,6}\b"
+    r"|\b(?:fixes|closes|resolves)\s+#\d{1,6}\b",
+)
+
+# The words that mark a narration of a past implementation. The mark alone is
+# NOT the rule: the rule needs the mark AND a name that is gone.
+#
+# Every mark here is a verb in the past tense that CANNOT also be a present
+# tense verb, so a sentence that carries one is a sentence about something
+# that stopped being true. The vocabulary is closed on purpose, and two
+# candidates were measured and REJECTED because they break that property:
+# "read" is a present tense word as well ("pins the read to the plugin's
+# directory") and "emitted" appears in the present passive ("is emitted as a
+# public static final field"). The comparison ignores case, because a
+# sentence may open with the verb.
+NARRATION_MARK = re.compile(
+    r"\bused to\b|\bno longer\b|\bformerly\b|\bpreviously\b|\bhistorically\b"
+    r"|\bbefore the fix\b|\bRETIRED\b|\bwas removed\b|\bwere removed\b"
+    r"|\bhas been removed\b|\bdefaulted\b|\bcomposed\b|\bcarried\b",
+    re.IGNORECASE,
+)
+
+# A name written between backticks that names a member of a codebase: a
+# type-like name (an upper-case letter followed by a lower-case one) or a
+# function-like name (a lower-case letter with a capital inside it, as in
+# `emitStageFinished`). SCREAMING_CASE constants and all-lower-case words
+# stay out of the rule.
+TYPE_NAME = re.compile(r"`([A-Z][a-z][A-Za-z0-9]*)`")
+FUNCTION_NAME = re.compile(r"`([a-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*)`")
+
+# The same shapes, matched in the CODE, to know which names still exist.
+IDENTIFIER_IN_CODE = re.compile(r"\b[a-zA-Z][A-Za-z0-9]*\b")
+
+# Names that come from OUTSIDE this tree. The tree's comments use them, the
+# tree's code never declares them, and their absence therefore proves
+# nothing: a reader CAN open `mustRunAfter` in the Gradle documentation.
+# Each entry says where the name comes from, so that adding one is a
+# statement about the world and not a way of hiding a finding.
+FOREIGN_NAMES = {
+    # Gradle's own task and configuration vocabulary.
+    "failOnNoDiscoveredTests", "forkEveryPerClass", "skipWhenEmpty",
+    "inputDependencies", "artifactId", "mustRunAfter",
+    # Reactor's own publisher vocabulary.
+    "ofSubscriber",
+}
+
+# An attribution to a person: an explicit credit, or the first person in the
+# past. A quotation and a negation are excluded when scanning, not here.
+PERSON_ATTRIBUTION = re.compile(
+    r"\b(?:thanks to|thank you to|credits? to|co-authored by|authored by"
+    r"|written by|reviewed by|suggested by|reported by)\s+[A-Z][a-z]+\b"
+)
+FIRST_PERSON_PAST = re.compile(
+    r"\b(?:I|we)\s+(?:did|made|chose|wrote|built|added|removed|replaced|fixed"
+    r"|introduced|decided|implemented|refactored)\b"
+)
+NEGATION = re.compile(r"\b(?:not|never)\b|n't\b", re.IGNORECASE)
 
 ALLOWED = {
     "SHA-1", "SHA-224", "SHA-256", "SHA-384", "SHA-512",
@@ -276,8 +409,38 @@ def looks_like_hash(token: str) -> bool:
     return any(c in "abcdef" for c in token) and any(c.isdigit() for c in token)
 
 
-def scan(text: str, spans):
+def narrated_dead_names(block: str, index) -> list:
+    """The names a narration points at and the tree no longer holds.
+
+    Both halves are required: the sentence carries a narration mark AND a
+    backticked name. A name the code still declares is not provenance -- the
+    reader can open it. A name that comes from outside the tree is not
+    provenance either -- the reader can open it in the library it belongs to.
+    """
+    dead = []
+    for sentence in re.split(r"(?<=[.;:!?])\s+|\n", block):
+        if not NARRATION_MARK.search(sentence):
+            continue
+        names = TYPE_NAME.findall(sentence) + FUNCTION_NAME.findall(sentence)
+        for name in names:
+            if name in index or name in FOREIGN_NAMES or name in dead:
+                continue
+            dead.append(name)
+    return dead
+
+
+def inside_a_quotation(block: str, at: int) -> bool:
+    """True when the offset falls inside a double-quoted span of the block.
+
+    A first person inside a quotation belongs to whoever is being quoted; it is
+    not the author of the comment attributing the work to themselves.
+    """
+    return block.count('"', 0, at) % 2 == 1
+
+
+def scan(rel: str, text: str, spans, index):
     found = []
+    plan_exempt = rel.endswith(PLAN_EXEMPT_FILES)
     for start, end in spans:
         block = text[start:end]
         line_no = text.count("\n", 0, start) + 1
@@ -299,9 +462,28 @@ def scan(text: str, spans):
         labels = sorted({label for label in LABEL.findall(block)})
         if labels:
             reasons.append("etiqueta " + ",".join(labels[:4]))
-        plans = sorted({plan for plan in PLAN.findall(block)})
-        if plans:
-            reasons.append("plan " + ",".join(plans[:4]))
+        if not plan_exempt:
+            plans = sorted({plan for plan in PLAN.findall(block)})
+            if plans:
+                reasons.append("plan " + ",".join(plans[:4]))
+        working = sorted(set(WORKING_DOCUMENT.findall(block)))
+        if working:
+            reasons.append("documento-que-no-viaja " + ",".join(working[:4]))
+        references = sorted({m.group(0) for m in EXTERNAL_REFERENCE.finditer(block)})
+        if references:
+            reasons.append("referencia-externa " + ",".join(references[:4]))
+        dead = narrated_dead_names(block, index)
+        if dead:
+            reasons.append("narracion " + ",".join(dead[:4]))
+        people = [m.group(0) for m in PERSON_ATTRIBUTION.finditer(block)]
+        for match in FIRST_PERSON_PAST.finditer(block):
+            if inside_a_quotation(block, match.start()):
+                continue
+            if NEGATION.match(block[match.end():].lstrip()):
+                continue
+            people.append(match.group(0))
+        if people:
+            reasons.append("persona " + ",".join(sorted(set(people))[:4]))
         if reasons:
             found.append((line_no, "; ".join(reasons), block.strip().splitlines()[0][:96]))
     return found
@@ -314,17 +496,52 @@ def tracked_files(repo: Path):
     return [rel for rel in listed if rel.endswith(SUFFIXES)]
 
 
+def read_source(repo: Path, rel: str):
+    path = repo / rel
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def comment_spans(rel: str, text: str):
+    return shell_comment_spans(text) if rel.endswith(".sh") else kotlin_comment_spans(text)
+
+
+def code_identifiers(text: str, spans) -> set:
+    """The identifiers the CODE declares. The comments do not count.
+
+    A name that only a comment mentions is not a name the tree holds, which is
+    exactly what makes a narration that points at one a pointer to nothing.
+    Every shape of identifier is collected, so that a type-like name and a
+    function-like name are judged by the same evidence.
+    """
+    code = text
+    for start, end in sorted(spans, reverse=True):
+        code = code[:start] + " " * (end - start) + code[end:]
+    return set(IDENTIFIER_IN_CODE.findall(code))
+
+
 def main() -> int:
     repo = Path(__file__).resolve().parent.parent
-    offenders = []
-    for rel in tracked_files(repo):
-        path = repo / rel
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+    files = tracked_files(repo)
+
+    # First pass: which names does the code still hold?
+    index = set()
+    for rel in files:
+        text = read_source(repo, rel)
+        if text is None:
             continue
-        spans = shell_comment_spans(text) if rel.endswith(".sh") else kotlin_comment_spans(text)
-        for line_no, why, snippet in scan(text, spans):
+        index |= code_identifiers(text, comment_spans(rel, text))
+
+    # Second pass: what do the comments point at?
+    offenders = []
+    for rel in files:
+        text = read_source(repo, rel)
+        if text is None:
+            continue
+        spans = comment_spans(rel, text)
+        for line_no, why, snippet in scan(rel, text, spans, index):
             offenders.append((rel, line_no, why, snippet))
     total = len(offenders)
     for rel, line_no, why, snippet in offenders[:80]:
@@ -335,7 +552,8 @@ def main() -> int:
         print(f"\nCOMENTARIOS CON PROCEDENCIA: {total}")
         print("Un comentario explica que hace el codigo. Quien lo pidio lo dice la historia.")
         return 1
-    print("OK: ningun comentario nombra un encargo, un documento de trabajo, una etiqueta administrativa o un commit")
+    print("OK: ningun comentario nombra un encargo, un documento de trabajo, una etiqueta "
+          "administrativa, un commit, una referencia externa, una persona ni una narracion del pasado")
     return 0
 
 

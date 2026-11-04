@@ -56,8 +56,8 @@ import java.time.Instant
  * A real file would have made this a test about the FILE as well. The durability of the
  * promises is guarded elsewhere and better: `SqliteSagaObligationStoreTest` pins the durable
  * store's own answers, `SagaObligationStoreContractTest` pins that the durable and the
- * volatile answers AGREE, and the durable scenarios in `examples/durable/` exercise the whole
- * flow against a real database. What this test guards is the LOOP.
+ * volatile answers AGREE. The LOOP running against a real database is not observed by any test in
+ * this repository: it is a declared gap. What this test guards is the LOOP.
  */
 class SagaCompensationInterpreterTest {
 

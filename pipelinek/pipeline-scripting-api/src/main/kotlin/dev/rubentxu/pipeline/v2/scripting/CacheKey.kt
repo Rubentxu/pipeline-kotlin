@@ -144,9 +144,10 @@ data class CacheKey(
  * transposed by a reader and by an IDE without complaint, and a transposed `kotlinVersion` /
  * `hostVersion` produces a plausible key for the wrong compilation. Naming them makes the
  * transposition a compile error.
- * Every field is something the caller actually holds. A field that had to be invented to fill
- * the identity's seven-row table would be a fabricated dimension: it would look like coverage and change no
- * behaviour, which is the "dead semantic parameter" the Semantic Constitution forbids.
+ * Every field is something the caller actually holds. A field that must be invented to fill
+ * the identity's seven-row table is a fabricated dimension: it looks like coverage and changes no
+ * behaviour, which is exactly the "dead semantic parameter" this contract forbids — a declared,
+ * documented field that nothing consumes.
 */
 data class CompilationIdentity(
     /** The script source text. Identity dimension: `pipelineSourceDigest`. */

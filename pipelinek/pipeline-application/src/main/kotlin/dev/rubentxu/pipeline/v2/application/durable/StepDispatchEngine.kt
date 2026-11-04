@@ -31,9 +31,8 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 /**
  * The step-execution spine, out of the run loop.
  *
- * What used to be one class carrying two unrelated jobs is split along the line the
- * coordinator could never draw itself: the run's control flow stays in the coordinator,
- * and "take this Step and make it happen" moves here.
+ * The run's control flow stays in the coordinator, and "take this Step and make it
+ * happen" lives here.
  *
  * The unit of cohesion is the RECURSION. [dispatch] hands a body-bearing Step's body to
  * [CanonicalBodyDispatch] with [dispatchChild] as the single re-entry reference — the same
@@ -46,7 +45,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  *
  * ## What decides, and where
  *
- * Every decision this class used to make now has a declared owner. The engine keeps the
+ * Every decision this class makes has a declared owner. The engine keeps the
  * ORDER and performs the effects; it observes the answers.
  *
  * | decision | owner |
@@ -67,12 +66,11 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  *
  * ## The engine holds no journal
  *
- * It used to hold the journal port to read the row of the invocation it was about to
- * reconcile, and to write the terminal row of a schema rejection. Both of those are now
- * somebody else's job — the row is read by the resolver that DECIDES about it, and written by
- * [DurableInvocationRecord]. What the engine keeps is the ORDER, and the one thing it still
- * owns on this path: the shape of a schema rejection, which is a terminal SCHEMA outcome in
- * the context the Step left behind.
+ * The row of the invocation it reconciles is read by the resolver that DECIDES about it,
+ * and the terminal row of a schema rejection is written by [DurableInvocationRecord].
+ * What the engine keeps is the ORDER, and the one thing it owns on this path: the shape
+ * of a schema rejection, which is a terminal SCHEMA outcome in the context the Step
+ * left behind.
  *
  * The coordinator keeps only what it alone can do: the run's bookends, the stage loop and
  * the stage-level finalizers.
@@ -136,7 +134,7 @@ internal class StepDispatchEngine(
     /**
      * SAGA: a slot the handler asked for and the engine cannot honour.
      *
-     * The slot seam has ONE owner ([SagaSlotDispatcher]), and this engine no longer decides
+     * The slot seam has ONE owner ([SagaSlotDispatcher]), and this engine does not decide
      * what a missing or ambiguous slot answers: the dispatcher owns that answer, because it
      * owns the resolution of the address. What the engine owns is the OTHER half — the single
      * re-entry reference the dispatcher walks the child through — so the slot's child travels
@@ -198,22 +196,20 @@ internal class StepDispatchEngine(
         try {
             // a body-bearing Step is routed by its DECLARED owner, never by its key.
             //
-            //   CANONICAL_ENGINE     the engine decides when to run the body. Unchanged since
-            // the decoder is bypassed and dispatchBody runs the
-            //                         children directly.
+            //   CANONICAL_ENGINE     the engine decides when to run the body. The decoder is
+            //                         bypassed and dispatchBody runs the children directly.
             //   HANDLER_CONTINUATION the registered handler runs on the durable spine below
             //                         and reaches the body only through the bound continuation.
             //   LEGACY_LINEAR        refused by the policy resolver inside dispatchBody.
             //
-            // Only the first keeps the historical short-circuit. The second deliberately FALLS
+            // Only the first takes the short-circuit. The second deliberately FALLS
             // THROUGH into the registry path, so typed decode, capability admission,
             // StepStarted/StepFinished, typed output, FailureKind, journal, replay and the
             // single execution boundary all come from the existing machinery. There is
             // deliberately no second block-handler execution boundary.
             //
-            // An unknown key (owner unresolved) keeps the historical path on purpose: the
-            // rejection then comes from the policy resolver inside dispatchBody, exactly as
-            // before, rather than from a new check here.
+            // An unknown key (owner unresolved) is refused by the policy resolver inside
+            // dispatchBody, rather than by a new check here.
             val bodyContinuation: dev.rubentxu.pipeline.v2.domain.step.BodyContinuation? =
                 if (step is BlockStepNode && declaredBodyOwnerOf(step) ==
                     dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner.HANDLER_CONTINUATION
@@ -265,7 +261,7 @@ internal class StepDispatchEngine(
                             innerScope,
                             childReentry,
                         )
-                        // R14: a body-only dispatch has no typed value of its own, so the carrier is
+                        // A body-only dispatch has no typed value of its own, so the carrier is
                         // built explicitly with a null encoded output rather than narrowed from one.
                         return terminal(DispatchedStep(CommonExecutionResult(outcome = body), innerScope.ambient))
                     }
@@ -344,7 +340,7 @@ internal class StepDispatchEngine(
                 hasBodyContinuation = bodyContinuation != null,
             )
             val ready = when (preparation) {
-                // Terminal SCHEMA rejection (C3/C5): the effective executor is never invoked.
+                // Terminal SCHEMA rejection: the effective executor is never invoked.
                 is DispatchPreparation.Rejected -> return refuse(
                     schemaRejection(
                         operationId = preparation.operationId,
@@ -405,16 +401,16 @@ internal class StepDispatchEngine(
             )
             when (interpretation) {
                 is RecoveryInterpretationEngine.RecoveryInterpretation.Settled -> {
-                    // D7: a recovered success advances the run cursor, and only a recovered
-                    // success does. The predicate is `is Success`, NOT `advancesCanonicalCursor()`:
-                    // recovery has always been stricter than execution about Unstable, and D7
-                    // relocated the cursor without being licensed to change what advances.
+                    // A recovered success advances the run cursor, and only a recovered success
+                    // does. The predicate is `is Success`, NOT `advancesCanonicalCursor()`:
+                    // recovery is stricter than execution about Unstable, and this branch does
+                    // not widen what the cursor advance accepts.
                     //
-                    // the projection is now WRITTEN OUT rather than pre-applied by
-                    // the engine. The interpretation hands back the whole `CommonExecutionResult`, and
+                    // the projection is WRITTEN OUT by the engine rather than pre-applied inside
+                    // it. The interpretation hands back the whole `CommonExecutionResult`, and
                     // this consumer asks for the one field it actually needs. That visibility is the
-                    // point — a consumer that needs `encodedOutput` downstream must be able to see that
-                    // the carrier carried it, instead of trusting that a bare outcome could not have
+                    // point — a consumer that needs `encodedOutput` downstream reads the value out
+                    // of the carrier itself, instead of trusting that a bare outcome could not have
                     // dropped it on the way out.
                     //
                     // the RULE of what advances belongs to [CanonicalCursorAdvance]; the engine asks
@@ -484,11 +480,11 @@ internal class StepDispatchEngine(
                 is DurableTypedInputPreparation.TypedPreparation.Ready -> typed.prepared
             }
 
-            // effective execution + durable folding extracted to DurableStepExecutor.
-            // The carrier survives the boundary (D5): `encodedOutput` is persisted by
-            // the executor AND returned, so no consumer has to re-derive the typed value.
+            // The effective execution and the durable folding live in DurableStepExecutor.
+            // The carrier survives the boundary whole: `encodedOutput` is persisted by the
+            // executor AND returned, so no consumer has to re-derive the typed value.
             //
-            // D7: the cursor advance lives HERE, after the terminal journal append the executor
+            // The cursor advance lives HERE, after the terminal journal append the executor
             // has already returned from. That ordering is the ReplayCursorStore mitigation
             // and it is structural, not incidental: the append is inside executeAndJournal, the
             // advance is after it returns.
@@ -512,9 +508,8 @@ internal class StepDispatchEngine(
                     outcome = execution.outcome,
                 ),
             )
-            // R14: `executeAndJournal` already returns the atomic carrier, so this is a COMPOSITION.
-            // It used to be `Dispatched(execution.outcome, ...)`, which is the narrowing this whole
-            // slice exists to remove: a recovered or a fresh encoded value died at this line.
+            // `executeAndJournal` already returns the atomic carrier, so this is a COMPOSITION:
+            // the carrier crosses this line whole, without narrowing it to the outcome alone.
             return terminal(DispatchedStep(execution, innerScope.ambient))
         } finally {
             // The span is closed HERE and only here, so a dispatch that threw
@@ -602,8 +597,8 @@ internal class StepDispatchEngine(
      * A pure read of the open registry, never a switch on the key: the routing decision above
      * is driven by what a Step declares about itself, which is the only way an external plugin
      * can obtain a body-bearing route without a core change. `null` means "no declaration to
-     * honour", and the caller keeps the historical path so the policy resolver reports the
-     * unknown key exactly as it did before.
+     * honour", and the rejection of an unknown key comes from the policy resolver inside
+     * dispatchBody.
      */
     private fun declaredBodyOwnerOf(block: BlockStepNode): BodyExecutionOwner? =
         stepRegistry

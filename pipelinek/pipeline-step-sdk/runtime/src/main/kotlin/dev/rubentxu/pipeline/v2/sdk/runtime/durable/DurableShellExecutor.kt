@@ -1,86 +1,17 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
-import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * State machine for a durable shell execution.
- * Valid transitions:
- * ```
- * LAUNCHING → RUNNING → COMPLETE | LOST | LAUNCH_FAILED | TIMED_OUT
- * ```
- * ## State Descriptions
- * - **LAUNCHING**: ProcessHandle acquired but not yet confirmed detached.
- *                  Wrapper may still fork; we're in a race window.
- * - **RUNNING**: Wrapper confirmed detached, cookie file exists.
- *                Process is alive and logging to jenkins-log.txt.
- * - **COMPLETE**: result.txt written and read successfully.
- *                 Exit code captured; final state.
- * - **LOST**: result.txt missing AND heartbeat is stale (> checkInterval + minimumDelta).
- * Worker died; outcome unknown. Fail-closed
- * - **LAUNCH_FAILED**: Failed to acquire ProcessHandle or fork wrapper.
- *                      Immediate failure; no recovery possible.
- * - **TIMED_OUT**: Watchdog killed the process via timeout.flag + SIGKILL.
- * Per: timeout.flag written BEFORE kill
-*/
-@Deprecated(
-    message = "Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; this projection is on its way out.",
-)
-enum class DurableShellState {
-    /** ProcessHandle acquired but not yet confirmed detached. */
-    LAUNCHING,
-
-    /** Wrapper confirmed detached; cookie file exists. */
-    RUNNING,
-
-    /** result.txt written and read successfully. */
-    COMPLETE,
-
-    /**
-     * result.txt missing AND heartbeat is stale.
-     * Fail-closed: LOST never implies success
-*/
-    LOST,
-
-    /** Failed to acquire ProcessHandle or fork wrapper. */
-    LAUNCH_FAILED,
-
-    /**
-     * Watchdog killed the process tree via timeout.flag + SIGKILL.
-     * Per: timeout.flag written BEFORE kill to ensure
-     * the reconciler can distinguish this from LOST.
-*/
-    TIMED_OUT,
-}
-
-/**
- * Result of a durable shell execution.
- * @property state The final state (COMPLETE, LOST, LAUNCH_FAILED, or TIMED_OUT).
- * @property exitCode The exit code (0 for LOST/LAUNCH_FAILED - unknown/unavailable).
- * @property controlDir The control directory path.
- * @property capturedStdout The captured stdout if returnStdout was enabled, or null.
-*/
-@Deprecated(
-    message = "Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; this projection is on its way out.",
-)
-data class DurableShellResult(
-    val state: DurableShellState,
-    val exitCode: Int,
-    val controlDir: Path,
-    val capturedStdout: String? = null,
-)
-
-/**
  * The durable shell, using ProcessBuilder + setsid.
  *
- * It used to implement a `DurableShellLaunching` interface that promised fake
- * implementations for unit testing. There were none, and there was no other
- * implementation and no other caller: the interface was a seam with one side
- * of it missing. The executor is now the seam, and a launch returns what it
- * produced ([LaunchedShell]) instead of leaving it in fields for a later,
- * separate step to read back.
+ * The executor is the seam, and a launch returns what it produced ([LaunchedShell])
+ * instead of leaving it in fields for a later,
+ * separate step to read back. A seam needs both sides, so there is no separate
+ * launch contract that a unit-test double could implement: the class that
+ * launches is the class that owns it.
  * ## State Machine
  * LAUNCHING → RUNNING → COMPLETE | LOST | LAUNCH_FAILED | TIMED_OUT
  * ## Control Directory Layout
@@ -161,39 +92,6 @@ class DurableShellExecutor {
         },
     )
 
-
-    /**
-     * Checks if the given PID is a session leader (PID == PGID == SID).
-     * Used for post-launch verification of the Jenkins-faithful launch pattern.
-     * @param pid The process ID to check.
-     * @return true if the process is a session leader.
-*/
-    private fun isSessionLeader(pid: Long): Boolean {
-        return try {
-            val statFile = java.io.File("/proc/$pid/stat")
-            if (!statFile.exists()) return false
-            val content = statFile.readText()
-            // stat format: pid (comm) state ppid pgrp session tpgid...
-            // Extract ppid (field 4), session (field 5), pgrp (field 6)
-            // We need PID == PGID == SID
-            val pidLong = pid
-            // Parse the stat content - comm is in parentheses and may contain spaces
-            val lastParen = content.lastIndexOf(')')
-            if (lastParen < 0) return false
-            val afterComm = content.substring(lastParen + 1).trim()
-            val fields = afterComm.split(Regex("\\s+"))
-            if (fields.size < 6) return false
-            val ppid = fields[1].toLong()
-            val session = fields[2].toLong()
-            val pgrp = fields[3].toLong()
-            // Session leader: PID == Session == PGID
-            // But we only have PID, and we know from /proc/<pid>/stat that:
-            // field 5 (session) should equal field 6 (pgrp) for a session leader
-            session == pgrp && session == pidLong
-        } catch (_: Exception) {
-            false
-        }
-    }
 
     fun pollResult(controlDir: Path, timeoutMs: Long): Int? {
         val resultFile = ShellProtocolLayout(controlDir).resultFile
@@ -305,32 +203,6 @@ class DurableShellExecutor {
     }
 
     /**
-     * Executes a durable shell step with timeout watchdog support.
-     * This is an extended version of [executeDurableShell] that accepts timeout
-     * and stdout capture options via [ShOptions].
-     * @param controlDir The control directory path.
-     * @param scriptContent The user's shell script.
-     * @param opId The operation ID.
-     * @param shOptions Shell execution options including timeout and capture settings.
-     * @return The execution result with optional captured stdout.
-*/
-    @Deprecated(
-        message = "Legacy durable-shell projection. Use executeTerminal() and consume DurableTaskTerminal; this projection is on its way out.",
-        replaceWith = ReplaceWith("executeTerminal(controlDir, scriptContent, opId, shOptions)"),
-    )
-    fun execute(
-        controlDir: Path,
-        scriptContent: String,
-        opId: String,
-        shOptions: ShOptions,
-    ): DurableShellResult = executeTerminal(
-        controlDir = controlDir,
-        scriptContent = scriptContent,
-        opId = opId,
-        shOptions = shOptions,
-    ).toLegacyShellResult(controlDir)
-
-    /**
      * Canonical durable-shell execution seam. The closed return type permits
      * only terminal outcomes; lifecycle snapshots never escape this module.
 */
@@ -363,36 +235,6 @@ class DurableShellExecutor {
             timeoutCompletion = DurableShellTimeoutCompletion.KILL_RESULT,
         ),
     )
-
-    /**
-     * Compatibility implementation detail retained while [PipelineRun] still
-     * consumes the previous string/status flow. It projects the typed terminal
-     * produced by the same core while retaining the legacy watchdog policy.
-*/
-    internal fun executeLegacyProjection(
-        controlDir: Path,
-        scriptContent: String,
-        opId: String,
-        config: DurableShConfig,
-        timeoutMs: Long,
-        env: Map<String, SecretHandle>,
-        sandbox: SandboxConfig,
-        workspaceRoot: Path?,
-    ): DurableShellResult = executeCore(
-        controlDir = controlDir,
-        scriptContent = scriptContent,
-        opId = opId,
-        config = config,
-        request = DurableShellExecutionRequest(
-            timeoutMs = timeoutMs,
-            env = env,
-            sandbox = sandbox,
-            workspaceRoot = workspaceRoot,
-            captureStdout = false,
-            outputProjection = DurableShellOutputProjection.JENKINS_LOG,
-            timeoutCompletion = DurableShellTimeoutCompletion.WATCHDOG_ATTEMPT,
-        ),
-    ).toLegacyShellResult(controlDir)
 
     private fun executeCore(
         controlDir: Path,
@@ -577,58 +419,5 @@ class DurableShellExecutor {
         }
     }
 
-}
-
-/**
- * Executes a durable shell step with full state machine.
- * ## Crash-Safe Order
- * The crash-safe execution order is:
- * 1. begin → journal RUNNING
- * 2. create → control dir + script.sh
- * 3. launch → ProcessHandle acquired, wrapper forked
- * 4. poll → wait for result.txt (100ms polling)
- * 5. append → journal COMPLETE/LOST
- * 6. cleanup → delete control dir (unless retainOnFailure)
- * This order ensures that:
- * - On crash after step 1-2: LOST on resume (no result.txt)
- * - On crash after step 3-4: LOST on resume (no result.txt, stale heartbeat)
- * - On crash after step 5: COMPLETE on resume (result.txt exists)
- * @param controlDir The control directory root.
- * @param scriptContent The user's shell script.
- * @param opId The operation ID.
- * @param config The durable shell configuration.
- * @param timeoutMs Timeout in milliseconds (0 = no timeout,)
- * @param env Environment variables to inject via pb.environment.putAll (env via env map, NOT argv)
- * @param sandbox Sandbox profile for cwd flip and env filtering.
- * @param workspaceRoot Root directory for the stage workspace (cwd flip). If null, defaults to controlDir
- * @return The execution result.
-*/
-@Deprecated(
-    message = "Legacy String status flow. Use DurableShellExecutor.executeTerminal and consume the typed terminal result.",
-    replaceWith = ReplaceWith(
-        "DurableShellExecutor().executeTerminal(controlDir, scriptContent, opId, ShOptions(timeoutMs = timeoutMs, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot ?: controlDir))",
-    ),
-)
-fun executeDurableShell(
-    controlDir: Path,
-    scriptContent: String,
-    opId: String,
-    config: DurableShConfig = DurableShConfig.fromSystemProperties(),
-    timeoutMs: Long = 0L,
-    env: Map<String, SecretHandle> = emptyMap(),
-    sandbox: SandboxConfig = SandboxConfig.NONE,
-    workspaceRoot: Path? = null,
-): DurableShellResult {
-    val executor = DurableShellExecutor()
-    return executor.executeLegacyProjection(
-        controlDir = controlDir,
-        scriptContent = scriptContent,
-        opId = opId,
-        config = config,
-        timeoutMs = timeoutMs,
-        env = env,
-        sandbox = sandbox,
-        workspaceRoot = workspaceRoot,
-    )
 }
 

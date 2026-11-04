@@ -35,9 +35,9 @@ internal sealed interface ApplyOutcome {
  * Mutable accumulator threaded through [applyOption].
  *
  * One constructor argument and the rest of the shape in the body: the state
- * carries twenty-three fields, and a constructor with twenty-four parameters
- * is a list of things a reader has to hold in the head to know what the
- * parser is tracking.
+ * carries many fields, and a constructor with that many parameters is a list
+ * of things a reader has to hold in the head to know what the parser is
+ * tracking.
  */
 internal class ParseState(
     /**
@@ -68,6 +68,16 @@ internal class ParseState(
      * trust policy on for this run.
      */
     var pluginTrust: String? = null
+    /**
+     * `--require-plugin-trust` turns the trust policy from OPT-IN into MANDATORY: a plugin the
+     * operator brought that no trust decision approved is refused instead of loaded with a
+     * warning.
+     *
+     * FALSE by default, because the policy is opt-in and a run that names no plugin and no trust
+     * file has nothing to verify. Naming the flag is what makes the absence of a decision a
+     * refusal: an operator who asks for verification and gets silence has been told nothing.
+     */
+    var requirePluginTrust: Boolean = false
     /**
      * External invoker correlation token, set by
      * `--correlation-id <uuid>`. The raw string lives here; conversion
@@ -119,6 +129,14 @@ internal class ParseState(
      * still decides the lane.
      */
     var follow: Boolean = false
+    /**
+     * `--compile-only`. The validation compiles the script and does NOT run it.
+     *
+     * It belongs to `validate` and to nothing else: `run` executes the script,
+     * so "compile it without running it" is not a run the operator can ask for.
+     * The parser refuses it on `run` by naming the verb that owns it.
+     */
+    var compileOnly: Boolean = false
     /** `--format`. JSON/JSONL are opt-in; text is the default */
     var format: ObservationFormat = ObservationFormat.TEXT
     /**
@@ -245,7 +263,16 @@ internal fun readOptionValue(
 
 /** The execution-only half of each table. Split by arity because the two enums are distinct types. */
 private val EXECUTION_ONLY_FLAGS: List<FlagOption> =
-    listOf(FlagOption.RESUME, FlagOption.RERUN, FlagOption.ISOLATED, FlagOption.ALLOW_NETWORK)
+    listOf(
+        FlagOption.RESUME,
+        FlagOption.RERUN,
+        FlagOption.ISOLATED,
+        FlagOption.ALLOW_NETWORK,
+        // The operator's demand that every plugin they brought carries a trust decision. A
+        // reader loads no plugin, so the demand means nothing to it: refused by name rather
+        // than accepted and dropped.
+        FlagOption.REQUIRE_PLUGIN_TRUST,
+    )
 
 private val EXECUTION_ONLY_VALUED: List<ValuedOption> =
     listOf(
@@ -259,6 +286,23 @@ private val EXECUTION_ONLY_VALUED: List<ValuedOption> =
 
 internal val EXECUTION_ONLY_OPTIONS: Set<String> =
     (EXECUTION_ONLY_FLAGS.map { it.token } + EXECUTION_ONLY_VALUED.map { it.token }).toSet()
+
+/**
+ * The validation-only half of each table.
+ *
+ * `--compile-only` asks a validation to compile the script WITHOUT running the
+ * author's body. A reader cannot honour it — there is no script to compile —
+ * so the reader refuses it by name rather than dropping it: an option that is
+ * silently ignored is an option the operator believed in.
+ *
+ * It is a set of its own and not a member of [EXECUTION_ONLY_OPTIONS] because
+ * that name says what it is: the options only a verb that RUNS may carry, and
+ * this one belongs to the verb that VALIDATES.
+ */
+private val VALIDATION_ONLY_FLAGS: List<FlagOption> = listOf(FlagOption.COMPILE_ONLY)
+
+internal val VALIDATION_ONLY_OPTIONS: Set<String> =
+    VALIDATION_ONLY_FLAGS.map { it.token }.toSet()
 
 /**
  * The whole option surface of this CLI, in one table.
@@ -283,6 +327,25 @@ private enum class FlagOption(val token: String) {
     ALLOW_NETWORK("--allow-network"),
     GREP_INVERT("--grep-invert"),
     FOLLOW("--follow"),
+
+    /**
+     * Compile the script and do NOT run it.
+     *
+     * A BOOLEAN with no value, like the other flags: the only question is
+     * whether this validation evaluates the author's body, and a
+     * `--compile-only=<something>` spelling would invite a mode this runtime
+     * does not implement.
+     */
+    COMPILE_ONLY("--compile-only"),
+
+    /**
+     * Every plugin the operator brought has to carry a trust decision.
+     *
+     * A BOOLEAN with no value, like the other flags: the question is whether an
+     * unverified plugin may be loaded at all, and a spelling that took a value would
+     * invite a per-plugin policy this runtime does not implement.
+     */
+    REQUIRE_PLUGIN_TRUST("--require-plugin-trust"),
     ;
 
     companion object {
@@ -367,6 +430,8 @@ private object FlagOptions {
         FlagOption.ALLOW_NETWORK -> flag(index) { state.allowNetwork = true }
         FlagOption.GREP_INVERT -> flag(index) { state.grepInvert = true }
         FlagOption.FOLLOW -> flag(index) { state.follow = true }
+        FlagOption.COMPILE_ONLY -> flag(index) { state.compileOnly = true }
+        FlagOption.REQUIRE_PLUGIN_TRUST -> flag(index) { state.requirePluginTrust = true }
     }
 
     /** A flag occupies exactly one position, so its outcome never depends on what follows it. */

@@ -442,10 +442,15 @@ subprojects {
 // was false, and it was the same defect this session already paid for once in the KSP: a written
 // claim that no evidence backs, pointing a future reader at a consumer program that does not exist.
 // It also called this a four-module list while the set below has carried seven since the publication split.
-// The consequence for a break: a BCV-only module gets no maturity classification and no exception
-// receipt, because it has no consumer program that could break silently. Its internal callers are
-// inside this build, so a removed public type fails `compileKotlin` immediately and loudly. What
-// the dump buys is the review — a diff nobody has to be shown.
+// The consequence for a break depends on whether the module's bytes TRAVEL with the release.
+// A BCV-only module that nothing ships gets no maturity classification and no exception receipt,
+// because it has no consumer program that could break silently: its internal callers are inside
+// this build, so a removed public type fails `compileKotlin` immediately and loudly. What the dump
+// buys there is the review — a diff nobody has to be shown.
+// A BCV-only module whose JAR travels inside the distribution IS a published surface, even though
+// it resolves from no Maven coordinate: the ABI door compares it against the JAR that the previous
+// distribution shipped, so a break of it is named by the instrument, it carries a maturity
+// classification, and it needs an exception receipt like any other published break.
 // Adding a new module to BCV requires two steps: (1) append its name to
 // `bcvModules` below; (2) run `:pipeline-<x>:apiDump` to materialise the
 // baseline, then commit.api file alongside the build change.
@@ -652,8 +657,13 @@ val publishedApiDumpDirs: Map<String, String> = publishedApiCoordinates.mapValue
  * (`-PpreviousArtifactVersion`) and the ZIP that carries it by
  * `-PpreviousDistributionZip`. Without both, the previous side is SKIPPED and not
  * empty: an empty dump would read as a total removal of the module's ABI.
+ *
+ * The list names the guarded modules whose JAR travels inside the distribution.
+ * A module that nothing ships is NOT here: with no published bytes to compare
+ * against, the second reading would have nothing to say, and the guard it does
+ * have is the review of the committed baseline.
  */
-val guardedUnpublishedModules = listOf("pipeline-credentials-api")
+val guardedUnpublishedModules = listOf("pipeline-credentials-api", "pipeline-step-sdk:api")
 
 // The geometry of the comparison, handed to `:pipeline-release` — the module
 // that decides — so that the build script and the decision agree on which
@@ -735,6 +745,10 @@ subprojects {
             val previousZip = providers.gradleProperty("previousDistributionZip")
             val previousVersion = providers.gradleProperty("previousArtifactVersion")
             val extracted = layout.buildDirectory.file("previous-published/$guardedModule.jar")
+            // The name the ARTIFACT carries, which is not always the name of the
+            // project: the distribution names the JAR of a nested module by the
+            // module's own name, not by the path that leads to it.
+            val archiveBaseName = jarTask.flatMap { it.archiveBaseName }
 
             // The JAR the previous release's distribution shipped, taken OUT of that
             // distribution. It is not rebuilt from a tag: the bytes that were published
@@ -762,7 +776,7 @@ subprojects {
                                 "inside the previous distribution",
                         )
                     }
-                    val entrySuffix = "lib/$guardedModule-$version.jar"
+                    val entrySuffix = "lib/${archiveBaseName.get()}-$version.jar"
                     java.util.zip.ZipFile(zipFile).use { zip ->
                         // The distribution carries its payload under a top-level directory
                         // that carries the version, so the entry is matched by its END and

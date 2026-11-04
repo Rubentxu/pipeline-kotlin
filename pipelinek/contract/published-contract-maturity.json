@@ -51,7 +51,8 @@
     "pipeline-scripting-api": "EXPERIMENTAL",
     "pipeline-events": "EXPERIMENTAL",
     "pipeline-output": "EXPERIMENTAL",
-    "pipeline-runtime-api": "EXPERIMENTAL"
+    "pipeline-runtime-api": "EXPERIMENTAL",
+    "pipeline-credentials-api": "EXPERIMENTAL"
   },
   "rationale": {
     "pipeline-domain": [
@@ -98,6 +99,26 @@
       "EXPERIMENTAL to PUBLISHED at the candidate boundary the publication plan §2.1 documents,",
       "and a deliberate breaking change would be recorded in the sibling",
       "published-contract-exceptions.json (per this file's own _comment, rule 3)."
+    ],
+    "pipeline-credentials-api": [
+      "EXPERIMENTAL, and the reason is specific rather than convenient: this module is NOT",
+      "published as a Maven coordinate - it resolves from no repository, and it is absent from",
+      "the published SDK - but its bytes DO travel with every release, inside the product's",
+      "own distribution ZIP, as lib/pipeline-credentials-api-<version>.jar. A module whose",
+      "bytes are published is a published surface even when it is not a resolvable",
+      "coordinate, so the rule that decides a break of it is the same rule that decides a",
+      "break of a contract: EXPERIMENTAL, breaking allowed under a recorded decision with a",
+      "stated boundary.",
+      "The second reading of the ABI compares this module against the JAR that the previous",
+      "distribution shipped, so a break of it is a fact the door can name instead of a fact",
+      "only the tree's own committed baseline can see. The receipt for such a break is an",
+      "entry of published-contract-exceptions.json, and it carries the census that shows",
+      "who was reachable: the module has no consumer outside this repository, because no",
+      "external consumer resolves it and the examples resolve only the published SDK.",
+      "What this classification does NOT do is promote the module: it does not add it to the",
+      "SDK, and it does not make its ABI a promise to a consumer that does not exist. It says",
+      "that the bytes travel, and therefore that changing them is a versioned break that has",
+      "to be recorded rather than a quiet edit."
     ]
   },
   "surfaces": {

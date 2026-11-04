@@ -155,63 +155,66 @@ that implements each flag:
 
 ## Examples
 
-The [`examples/`](examples/) directory holds runnable pipelines that exercise
-the real CLI, grouped by what they cover:
+The [`examples/`](examples/) directory holds the external example plugins.
+They are **product**, not tests: each one is an independent Gradle build that
+compiles against the published SDK alone, and the distribution ships their
+JARs as bundled plugins. Building them is what proves the plugin contract is
+reachable from outside this build.
 
-| Category | What it covers |
+| Plugin | What it proves |
 |---|---|
-| `smoke/` | The shortest path through the DSL: the environment, `sh` then `echo`, and a checkout → build → archive round trip |
-| `steps/` | One scenario per step: `withEnv`, the workspace helpers, `sleep`, `writeFile`, `cleanWs`, `findFiles` |
-| `control-flow/` | Kotlin control flow inside a compiled script, and workflow control |
-| `durable/` | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash`, the replay guarantee, closing a run whose writer was killed, and the Saga scenarios — compensation, intervention, a crash mid-effect and its reconciliation |
-| `security/` | Credential bindings, and a ZIP-slip path-traversal defence |
-| `output/` | The output plane: file reads, a utilities round trip, ZIP/unzip, cross-step artifact queries, HTML publishing, and the live output of a process |
-| `events/` | The event lane read by an external client: it reads by cursor, disconnects, and resumes without skipping or repeating a fact; it reads a step's **verdict** out of the event that ends the step; it reads the **stage** a failure belongs to out of the failure event itself — never joining two events; and it **follows** a finished run with a filter and is released when the run ends, because the filter says what the client is handed, not whether the run is over |
-| `negative/` | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read, a plugin whose bytes are not the ones the operator approved, and two reads of the event lane that must say **why** they cannot be served — an unknown run and a cursor past the tail |
-| `plugins/` | The external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, a contributed directive, and the Saga consumer — plus a plugin admitted under the operator's trust policy |
+| `example-uppercase-plugin` | The plugin contract is reachable at all from outside the build |
+| `example-directive-plugin` | The directive kernel is open by key from outside the build |
+| `example-block-plugin` | A handler drives its own body through the bound continuation, compiled against the public SDK only |
+| `example-saga-plugin` | The Saga contract is reachable through the published capabilities, with the engine owning the state |
 
-Each scenario runs **twice** — once with a private journal database, which is
-how a CI runs a pipeline, and once without one, which is the default for a
-local run — and both executions have to meet the same expectations. The two
-execution paths are the same product answering the same question, and a
-difference between them is a defect.
+Each one is the ROOT of its own Gradle build, on purpose: a plugin that needed
+anything from `pipeline-application` would make the open-world claim it proves
+false. The four are built by ONE task in the root build script, which forks a
+single Gradle invocation over the composite in `examples/example-plugins` so
+they build concurrently.
 
-A scenario that declares a durable directive is about the journal, so it runs
-only on the journalled path: with no journal there is nothing to resume and
-nothing to compensate, and the marker such a scenario writes would be found by
-the second execution and read as a repeat.
+## Verification
 
-The scenarios live in this repository, not in the released ZIP: the ZIP ships
-the distribution alone. From an installed distribution you run your own
-`.pipeline.kts`; from a clone, build the local distribution once and let
-[`examples/run.sh`](examples/run.sh) run the whole set:
+The verification of this repository is `scripts/verify-all.sh`, and it runs
+three legs:
 
 ```bash
-cd pipelinek && ./gradlew :pipeline-application:installDist
-cd .. && examples/run.sh
+scripts/verify-all.sh
 ```
 
-The launcher gives each scenario a private control root, a private working
-directory and a private credential store, runs it on both execution paths,
-and judges each execution on its exit code and on the text the scenario asked
-for. What a scenario may ask for is a short vocabulary of `//@` directives,
-and it is written down where it is kept true: in the header of
-[`examples/run.sh`](examples/run.sh). The launcher is not a framework: it has
-no registry, no fixtures and no assertions of its own.
+1. **Unit tests** — one pure domain rule or isolated application decision
+   per test, in each module's `src/test/kotlin`.
+2. **Integration tests with mocks** — two or more real modules composed as
+   the product wires them, with every effect that would reach outside the
+   process (the filesystem, a subprocess, the clock, the network) replaced by
+   a fake the test owns. They live in each module's `src/integrationTest/kotlin`.
+3. **Mutants** — `pitest` over the seams the mutated modules declare. A
+   surviving mutant is a hole in the test that was supposed to kill it, not a
+   defect in the product.
 
-Every scenario runs under a ceiling: `PIPELINEK_E2E_SCENARIO_TIMEOUT_SECONDS`
-seconds, 120 by default, and there is no "disable" mode — a value that is not
-a positive number of seconds makes that scenario FAIL rather than run
-unbounded. A scenario that needs more time asks for it with its own
-`//@ timeout <seconds>` directive.
+There is no end-to-end layer: no scenario suite, no acceptance harness, no
+launcher. A behaviour that neither a unit test nor a mocked integration test
+can observe is stated as an honest gap in the change that introduces it.
 
-`//@` is an ordinary Kotlin comment rather than a `#!` line, and that
-is deliberate. `#!` only ever worked by accident: the script compiler
-strips a shebang from the *first* line of a file, so a second `#!` line
-became a syntax error and the scenario failed to compile instead of
-failing for its own reason. The `@` then keeps a directive from matching
-prose, since real scenarios already carry comments like
-`// durable execution over the journal`.
+The gate also reads the tree before it builds anything, and it refuses a green
+over nothing: a module that has a test source and produces no JUnit report
+fails the run, because Gradle reports SUCCESS over an empty result set.
+
+The gate certifies a **batch of ten tasks** from the backlog board, not every
+change: the board is the unit of delivery, and between two batches the loop is
+the scoped run of the module that changed. The gate does not re-run what
+Gradle already knows is unchanged — the verdict says which reports it wrote
+and which it read from disk — so a batch costs what the batch changed and no
+more.
+
+For the inner loop, the gate takes filters — `--module` and `--test` — and a
+filtered run says `PASS (subset)`, because it measured less than the whole:
+
+```bash
+scripts/verify-all.sh --stage 3 --module ':pipeline-domain' --test '*ResolveTest'
+scripts/verify-all.sh --list
+```
 
 ## Capabilities
 

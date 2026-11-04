@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationBodyDigest
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligation
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPromiseOrigin
-import dev.rubentxu.pipeline.v2.events.durable.SagaObligationRow
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationRow
 
 /**
  * The mapping between a durable row and the domain value that crosses into plugin hands.

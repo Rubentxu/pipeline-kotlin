@@ -2,6 +2,10 @@ package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame
+import dev.rubentxu.pipeline.v2.runtime.durable.BranchExecutionResult
+import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursor
+import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
+import dev.rubentxu.pipeline.v2.runtime.durable.StageIndex
 
 /**
  * In-memory [ReplayCursorStore]: the storage-free counterpart of

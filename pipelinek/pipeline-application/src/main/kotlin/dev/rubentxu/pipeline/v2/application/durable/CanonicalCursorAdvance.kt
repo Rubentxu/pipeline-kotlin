@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
-import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
+import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
 
 /**
  * Whether the canonical cursor of a run moves forward, and to where.

@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.events.durable
+package dev.rubentxu.pipeline.v2.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.RunId
 
@@ -265,9 +265,9 @@ object RunExecutionLease {
             return LeaseAcquisition.Reentered(current, current.fencingToken)
         }
 
-        val previousStillLive = current.ownerId != null && current.ownerAlive == true
-        if (previousStillLive) {
-            return LeaseAcquisition.AlreadyOwned(current, current.ownerId!!, current.fencingToken)
+        val owner = current.ownerId
+        if (owner != null && current.ownerAlive == true) {
+            return LeaseAcquisition.AlreadyOwned(current, owner, current.fencingToken)
         }
 
         // The previous owner released, died, or is unknown-but-not-confirmed-live.

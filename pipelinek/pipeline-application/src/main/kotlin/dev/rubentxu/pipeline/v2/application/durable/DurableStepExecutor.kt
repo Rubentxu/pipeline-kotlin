@@ -9,10 +9,11 @@ import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.liveStatusOfStepOutcome
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
-import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
+import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
@@ -24,7 +25,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * The cursor advance decision does NOT live here: it belongs to [CanonicalCursorAdvance],
  * which is the single authority for what advances and for the write that advances it.
  * This class is FRONTEND-NEUTRAL and does not own the replay cursor
- * It once took a [dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore] and advanced
+ * It once took a [dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore] and advanced
  * it, which made it un-enterable by any caller that does not own a canonical stage
  * position — and that is every frontend except the canonical traversal. The scripted
  * frontend was the concrete instance: `MainScriptedSupport` does not pass a

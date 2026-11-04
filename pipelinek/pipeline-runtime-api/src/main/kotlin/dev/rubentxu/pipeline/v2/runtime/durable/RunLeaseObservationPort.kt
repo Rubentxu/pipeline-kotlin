@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.events.durable
+package dev.rubentxu.pipeline.v2.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.RunId
 
@@ -7,8 +7,8 @@ import dev.rubentxu.pipeline.v2.domain.RunId
  * nothing else.
  *
  * ## Why this port exists
- * [FileBackedRunExecutionLeaseStore] is a cross-process lease store: it opens
- * an OS file lock, it writes a lease record, it hands out fencing tokens. A
+ * The lease store is a cross-process lease store: it opens an OS file lock, it
+ * writes a lease record, it hands out fencing tokens. A
  * reader that only wants to LOOK — does this run exist, and who held it — has
  * no business depending on a class whose whole purpose is to MUTATE that
  * lease, and whose storage is a directory of lock files.

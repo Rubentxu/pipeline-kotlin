@@ -39,15 +39,14 @@ dependencies {
     // `api(:pipeline-runtime-api)` would still leave the contracts transitive.
     api(project(":pipeline-events"))
     api(project(":pipeline-output"))
-    // `implementation`: the adapters compose internal stores (the SQLite
-    // event store, the file-backed lease, the operation journal, the segment
-    // output follower). The public ABI does not name any of these types, so
-    // they belong at `implementation` scope: a consumer that pulls in
-    // `:pipeline-runtime` does not transitively pull in JDBC drivers or the
-    // file-backed lease lock. This module is NOT in `publishedContractModules`,
-    // so the `implementation` scope is the strong barrier; the `:pipeline-runtime-api`
-    // module is the same but with zero store deps in its POM.
-    implementation(project(":pipeline-events-store"))
+    // `testImplementation`, not `implementation`: this module's PRODUCTION code no longer
+    // names any store. Its adapters hold the PORTS — the journal, the cursor, the lease —
+    // and those ports live in `:pipeline-runtime-api`, which is declared above as `api`.
+    // What is left of `:pipeline-events-store` here is the in-memory implementation of the
+    // journal and the cursor, and it is there for the unit tests, which need a store that
+    // answers without a database. The edge is a TEST edge: the production classpath of this
+    // module reaches the ports and the adapters, and nothing else.
+    testImplementation(project(":pipeline-events-store"))
     implementation(project(":pipeline-output-store"))
     implementation(libs.kotlin.stdlib)
 

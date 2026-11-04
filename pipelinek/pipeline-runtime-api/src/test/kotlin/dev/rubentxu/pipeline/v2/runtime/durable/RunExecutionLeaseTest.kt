@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.events.durable
+package dev.rubentxu.pipeline.v2.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.RunId
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -25,6 +25,14 @@ import org.junit.jupiter.api.Test
  * Every function here is pure and total, so each test states the whole law and
  * needs no store, no clock and no process. The order of the branches in
  * `acquire` IS the policy, and each rule below is one branch of it.
+ *
+ * ## Why this test lives beside the decider
+ *
+ * The decider decides about ownership and says nothing about how a lease is
+ * stored, so exercising it needs neither a filesystem nor a database. The
+ * instrument that would make those available is the ADAPTER, and depending on
+ * it to test a pure decision would make the adapter a precondition of the
+ * guarantee it has nothing to do with.
  */
 class RunExecutionLeaseTest {
 

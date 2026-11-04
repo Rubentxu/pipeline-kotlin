@@ -5,28 +5,25 @@ import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter
-import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
-import kotlinx.coroutines.runBlocking
+import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventRecordReadPortStoreAdapter
-import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
-import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
-import dev.rubentxu.pipeline.v2.events.durable.SqliteOperationJournalImpl
-import dev.rubentxu.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
 import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPort
 import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPortStoreAdapter
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPortStoreAdapter
 import dev.rubentxu.pipeline.v2.runtime.recover.LeaseAsAcquired
 import dev.rubentxu.pipeline.v2.runtime.recover.RuntimeRecoverPort
 import dev.rubentxu.pipeline.v2.runtime.recover.RuntimeRecoverPortStoreAdapter
-import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
-import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
-import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import java.nio.file.Path
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.runBlocking
 
 /**
  * The ONE place a pipeline is run.
@@ -188,13 +185,9 @@ internal fun composeRuntimeControlPort(
     controlRoot: Path,
     clock: Clock,
 ): RuntimeControlPort {
-    val journal = SqliteOperationJournalImpl(
-        connectionFactory = eventStore.underlyingConnectionFactory(),
-        clock = clock,
-        json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
-        dbPath = eventStore.databasePath(),
-    )
-    val lease = FileBackedRunExecutionLeaseStore(controlRoot.resolve("leases"))
+    val stores = DurableStores.open(eventStore, controlRoot, clock)
+    val journal = stores.journal
+    val lease = stores.lease
     val output = OutputPlaneProvider.storeForWriting(controlRoot)
     val events = RedactingEventSink(eventStore, SecretPatternRegistry())
     val eventReader = EventRecordReadPortStoreAdapter(
@@ -249,14 +242,10 @@ internal fun composeRuntimeIntrospectionPort(
     controlRoot: Path,
     clock: Clock,
 ): RuntimeIntrospectionPort {
-    val journal = SqliteOperationJournalImpl(
-        connectionFactory = eventStore.underlyingConnectionFactory(),
-        clock = clock,
-        json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
-        dbPath = eventStore.databasePath(),
-    )
-    val cursors = SqliteReplayCursorStoreImpl(eventStore.underlyingConnectionFactory(), clock)
-    val lease = FileBackedRunExecutionLeaseStore(controlRoot.resolve("leases"))
+    val stores = DurableStores.open(eventStore, controlRoot, clock)
+    val journal = stores.journal
+    val cursors = stores.cursors
+    val lease = stores.lease
     val output = OutputPlaneProvider.storeForReading(controlRoot)
     val eventReader = EventRecordReadPortStoreAdapter(
         store = eventStore,
@@ -326,14 +315,10 @@ internal fun composeRuntimeRecoverPort(
     clock: Clock,
     dryRun: Boolean = false,
 ): RuntimeRecoverPort {
-    val journal = SqliteOperationJournalImpl(
-        connectionFactory = eventStore.underlyingConnectionFactory(),
-        clock = clock,
-        json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
-        dbPath = eventStore.databasePath(),
-    )
-    val cursors = SqliteReplayCursorStoreImpl(eventStore.underlyingConnectionFactory(), clock)
-    val lease = FileBackedRunExecutionLeaseStore(controlRoot.resolve("leases"))
+    val stores = DurableStores.open(eventStore, controlRoot, clock)
+    val journal = stores.journal
+    val cursors = stores.cursors
+    val lease = stores.lease
     val output = if (dryRun) {
         OutputPlaneProvider.storeForReading(controlRoot)
     } else {

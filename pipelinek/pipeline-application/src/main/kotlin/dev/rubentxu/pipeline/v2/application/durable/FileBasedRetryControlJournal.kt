@@ -1,11 +1,16 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RetryChildRowSnapshot
 import dev.rubentxu.pipeline.v2.domain.durable.RetryControlRowSnapshot
+import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonArray
@@ -15,10 +20,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 
 /**
  * Single-writer durable store for retry control rows.
@@ -41,7 +42,7 @@ import java.nio.file.StandardCopyOption
  * ## Read shape
  * [readState] returns the persisted control rows for the given retry,
  * supplemented (when a [ChildRowReader] is bound) by per-attempt child rows
- * read from the canonical [dev.rubentxu.pipeline.v2.events.durable.OperationJournal].
+ * read from the canonical [dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal].
  * Those without an associated control row —
  * are routed through [readState]'s [RetryControlState.preControlChildren]
  * bucket so the Reconciler can apply the legacy compat policy.
@@ -327,7 +328,7 @@ class RetryControlJournalDivergenceException(message: String) : IllegalStateExce
 
 /**
  * Reads per-attempt child rows for a retry. Implementations look up rows
- * in the canonical [dev.rubentxu.pipeline.v2.events.durable.OperationJournal]
+ * in the canonical [dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal]
  * by opId pattern (or, in the absence of a richer query API, by runId
  * scan + filter).
  * The contract returns the merged (legacy + current-format) child view so

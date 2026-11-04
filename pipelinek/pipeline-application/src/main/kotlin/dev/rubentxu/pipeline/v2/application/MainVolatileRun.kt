@@ -13,7 +13,9 @@ import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemorySagaObligationStore
-import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import java.nio.file.Files
 import java.nio.file.Path
@@ -116,9 +118,9 @@ private fun runVolatilePipelineOwned(
     )
 
     val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
-    val journal: dev.rubentxu.pipeline.v2.events.durable.OperationJournal =
+    val journal: dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal =
         InMemoryOperationJournal(clock)
-    val cursorStore: dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore =
+    val cursorStore: dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore =
         InMemoryReplayCursorStore(clock)
 
     val compiledPipeline = compilation.pipelineSpec?.let { spec ->

@@ -8,9 +8,9 @@ import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligationStatus
 import dev.rubentxu.pipeline.v2.domain.saga.EffectReceiptRef
 import dev.rubentxu.pipeline.v2.domain.saga.InterventionReason
 import dev.rubentxu.pipeline.v2.domain.saga.ResourceRef
+import dev.rubentxu.pipeline.v2.domain.saga.SagaActionError
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionPhase
-import dev.rubentxu.pipeline.v2.domain.saga.SagaActionError
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaIntentContract
 import dev.rubentxu.pipeline.v2.domain.saga.SagaNextAction
@@ -19,6 +19,13 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
 import dev.rubentxu.pipeline.v2.events.CompensationArmed
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationRow
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationUpdate
+import java.nio.file.Path
+import java.security.MessageDigest
+import java.sql.SQLException
+import java.time.Instant
+import java.util.Locale
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -26,11 +33,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertInstanceOf
 import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
-import java.security.MessageDigest
-import java.sql.SQLException
-import java.util.Locale
-import java.time.Instant
 
 /**
  * What an operator is told about a run, read from the state a REAL run left behind.

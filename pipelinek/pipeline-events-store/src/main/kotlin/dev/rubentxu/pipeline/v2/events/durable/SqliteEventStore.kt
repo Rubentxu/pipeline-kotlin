@@ -2,6 +2,8 @@ package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
 import java.sql.Connection
 
 /**

@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.runtime.inspect
 
-import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
@@ -12,9 +12,9 @@ import dev.rubentxu.pipeline.v2.events.EventRecordSlice
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
-import dev.rubentxu.pipeline.v2.events.durable.LeaseRecord
-import dev.rubentxu.pipeline.v2.events.durable.RunLeaseObservationPort
-import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRecord
+import dev.rubentxu.pipeline.v2.runtime.durable.RunLeaseObservationPort
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import dev.rubentxu.pipeline.v2.events.identity.EventQuery
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
@@ -25,12 +25,13 @@ import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.OutputTailPort
 import dev.rubentxu.pipeline.v2.output.OutputTailState
+import dev.rubentxu.pipeline.v2.runtime.durable.FencingToken
+import java.time.Instant
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.time.Instant
 
 /**
  * What the introspection plane is allowed to say about a run.
@@ -458,7 +459,7 @@ class RuntimeIntrospectionPortStoreAdapterTest {
         override fun observe(runId: RunId): LeaseRecord = LeaseRecord(
             runId = runId,
             ownerId = RunOwnerId.of("another-process"),
-            fencingToken = dev.rubentxu.pipeline.v2.events.durable.FencingToken.of(7L),
+            fencingToken = dev.rubentxu.pipeline.v2.runtime.durable.FencingToken.of(7L),
             ownerAlive = true,
         )
     }

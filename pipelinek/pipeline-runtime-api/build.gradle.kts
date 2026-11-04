@@ -1,5 +1,13 @@
 plugins {
     kotlin("jvm")
+    // The durable vocabulary carries `@Serializable` types (`ReplayCursor`), and the
+    // serialization PLUGIN is what generates their serializers. The serialization
+    // RUNTIME is already on this module's compile classpath and in its POM:
+    // `:pipeline-domain` declares it as `api`, and this module depends on the domain
+    // as `api`. Adding the plugin therefore changes no dependency and no published
+    // coordinate — it only lets the types this module publishes stay the same types
+    // they were.
+    kotlin("plugin.serialization")
     `maven-publish`
 }
 

@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaIntentContract
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationRow
 import java.sql.ResultSet
 
 /**

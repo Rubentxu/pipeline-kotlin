@@ -217,6 +217,11 @@ dependencies {
     // runtime is the only thing that should be able to name OperationJournal, ReplayCursorStore or
     // SqliteEventStore, and this is the module that does.
     implementation(project(":pipeline-events-store"))
+    // The durable PORTS (the journal, the cursor, the saga obligations and the lease) live in
+    // `:pipeline-runtime-api`, which is the published contract. This module depends on the ports
+    // DIRECTLY and not only through the adapters: a consumer that holds a journal has to be
+    // able to name the port it holds.
+    implementation(project(":pipeline-runtime-api"))
     // The Output Plane. Process transcript bytes are written here and nowhere else, and no
     // console event carries them. The dependency points ONE WAY - :pipeline-output depends on
     // neither :pipeline-events nor :pipeline-domain, so the event plane cannot reach back into the

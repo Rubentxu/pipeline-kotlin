@@ -11,10 +11,8 @@
     <ID>LongMethod:DomainEventJsonDecoder.kt:DomainEventJsonDecoder$fun decode: EventDecodeOutcome</ID>
     <ID>LongMethod:EventJsonWriter.kt:EventJsonWriter$fun encodeEvent: String</ID>
     <ID>LongParameterList:InMemoryOperationJournal.kt:InMemoryOperationJournal.Row</ID>
-    <ID>UnnecessaryNotNullOperator:RunExecutionLease.kt:RunExecutionLease$current.ownerId!!</ID>
     <ID>UnsafeCallOnNullableType:FileBackedRunExecutionLeaseStore.kt:FileBackedRunExecutionLeaseStore.Companion$RunOwnerId.of("unknown-owner")!!</ID>
     <ID>UseCheckOrError:InMemoryOperationJournal.kt:InMemoryOperationJournal$throw IllegalStateException("Operation $opId attempt $attempt already journaled")</ID>
-    <ID>UseCheckOrError:OperationJournal.kt:SqliteOperationJournalImpl$throw IllegalStateException( "Operation $opId attempt $attempt already journaled" )</ID>
     <ID>UseIsNullOrEmpty:JsonEventLog.kt:JsonEventLog$rowKind == null || rowKind.isEmpty()</ID>
     <ID>UseOrEmpty:DomainEventJsonDecoder.kt:DomainEventJsonDecoder$EventJsonFields.stringField(s, "accepted") ?: ""</ID>
     <ID>UseOrEmpty:DomainEventJsonDecoder.kt:DomainEventJsonDecoder$EventJsonFields.stringField(s, "agentLabel") ?: ""</ID>

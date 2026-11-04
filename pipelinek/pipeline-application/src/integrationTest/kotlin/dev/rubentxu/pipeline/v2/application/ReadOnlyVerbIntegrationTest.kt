@@ -4,9 +4,9 @@ import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
+import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
-import dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationStore
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -145,13 +145,15 @@ class ReadOnlyVerbIntegrationTest {
         // The writer is asynchronous: a reader that opened the store now would
         // find a run whose last event had not landed yet.
         store.flush()
-        val connectionFactory = store.underlyingConnectionFactory()
-        store.close()
-        // The saga promise table is created by the product's own saga store,
+        // The saga promise table is created by the product's own durable stores,
         // the way a durable run creates it. A store without that table cannot
         // say what any saga owes, and the verb that reads it would answer a
         // refusal about a table the product had never been asked about.
-        SqliteSagaObligationStore(connectionFactory, db.toString())
+        //
+        // They are opened through the one factory that opens them, so this test
+        // exercises the composition a durable run uses and not a private path.
+        DurableStores.open(store, root, SystemClock())
+        store.close()
     }
 
     @Test

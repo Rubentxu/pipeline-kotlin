@@ -1,10 +1,10 @@
 package dev.rubentxu.pipeline.v2.runtime.recover
 
 import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.events.durable.FencingToken
-import dev.rubentxu.pipeline.v2.events.durable.LeaseRecord
-import dev.rubentxu.pipeline.v2.events.durable.RunLeaseObservationPort
-import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.runtime.durable.FencingToken
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRecord
+import dev.rubentxu.pipeline.v2.runtime.durable.RunLeaseObservationPort
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

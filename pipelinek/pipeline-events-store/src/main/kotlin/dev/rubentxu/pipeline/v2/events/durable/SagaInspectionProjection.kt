@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaPromiseOrigin
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRunView
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.identity.RunPresentationProjection
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationRow
 
 /**
  * Where one promise comes from.

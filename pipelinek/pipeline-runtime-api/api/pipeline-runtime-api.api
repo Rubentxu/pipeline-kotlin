@@ -141,6 +141,534 @@ public abstract interface class dev/rubentxu/pipeline/v2/runtime/control/Runtime
 	public abstract fun cancel (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/control/CancelReason;)Ldev/rubentxu/pipeline/v2/runtime/control/CancelOutcome;
 }
 
+public final class dev/rubentxu/pipeline/v2/runtime/durable/BranchExecutionResult {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Ldev/rubentxu/pipeline/v2/runtime/durable/BranchExecutionResult;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/BranchExecutionResult;IIILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/BranchExecutionResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBranchIndex ()I
+	public final fun getStageIndex ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/FencingToken {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/durable/FencingToken$Companion;
+	public static final synthetic fun box-impl (J)Ldev/rubentxu/pipeline/v2/runtime/durable/FencingToken;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (JLjava/lang/Object;)Z
+	public static final fun equals-impl0 (JJ)Z
+	public final fun getValue ()J
+	public fun hashCode ()I
+	public static fun hashCode-impl (J)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (J)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()J
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/FencingToken$Companion {
+	public final fun getFIRST-5lrvBks ()J
+	public final fun getUNISSUED-5lrvBks ()J
+	public final fun of-DzsW4DY (J)J
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition {
+	public abstract fun render ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Acquired : dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition {
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+	public final fun component2-5lrvBks ()J
+	public final fun copy-FnYm1vM (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;J)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Acquired;
+	public static synthetic fun copy-FnYm1vM$default (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Acquired;Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Acquired;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFencingToken-5lrvBks ()J
+	public final fun getRecord ()Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+	public fun hashCode ()I
+	public fun render ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$AlreadyOwned : dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition {
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;Ljava/lang/String;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+	public final fun component2-Tpm2CBU ()Ljava/lang/String;
+	public final fun component3-5lrvBks ()J
+	public final fun copy-bDk7MSk (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$AlreadyOwned;
+	public static synthetic fun copy-bDk7MSk$default (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$AlreadyOwned;Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$AlreadyOwned;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFencingToken-5lrvBks ()J
+	public final fun getHeldBy-Tpm2CBU ()Ljava/lang/String;
+	public final fun getRecord ()Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+	public fun hashCode ()I
+	public fun render ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$DefaultImpls {
+	public static fun render (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Reentered : dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition {
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+	public final fun component2-5lrvBks ()J
+	public final fun copy-FnYm1vM (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;J)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Reentered;
+	public static synthetic fun copy-FnYm1vM$default (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Reentered;Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Reentered;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFencingToken-5lrvBks ()J
+	public final fun getRecord ()Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+	public fun hashCode ()I
+	public fun render ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$TakenOver : dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition {
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;JLjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+	public final fun component2-5lrvBks ()J
+	public final fun component3-Mh1WmVk ()Ljava/lang/String;
+	public final fun copy-jV_PXgM (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;JLjava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$TakenOver;
+	public static synthetic fun copy-jV_PXgM$default (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$TakenOver;Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;JLjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$TakenOver;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFencingToken-5lrvBks ()J
+	public final fun getPreviousOwner-Mh1WmVk ()Ljava/lang/String;
+	public final fun getRecord ()Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+	public fun hashCode ()I
+	public fun render ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Unverifiable : dev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Unverifiable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Unverifiable;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition$Unverifiable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun render ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness$Free : dev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness$Free;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness$Held : dev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Tpm2CBU ()Ljava/lang/String;
+	public final fun copy-TQtEyeA (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness$Held;
+	public static synthetic fun copy-TQtEyeA$default (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness$Held;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness$Held;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeldBy-Tpm2CBU ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness$Unverifiable : dev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness$Unverifiable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness$Unverifiable;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness$Unverifiable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Boolean;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Boolean;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-dSDXgeU ()Ljava/lang/String;
+	public final fun component2-Mh1WmVk ()Ljava/lang/String;
+	public final fun component3-5lrvBks ()J
+	public final fun component4 ()Ljava/lang/Boolean;
+	public final fun copy-W6J0hHc (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Boolean;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+	public static synthetic fun copy-W6J0hHc$default (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;Ljava/lang/String;Ljava/lang/String;JLjava/lang/Boolean;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFencingToken-5lrvBks ()J
+	public final fun getOwnerAlive ()Ljava/lang/Boolean;
+	public final fun getOwnerId-Mh1WmVk ()Ljava/lang/String;
+	public final fun getRunId-dSDXgeU ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/LeaseRequest {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-dSDXgeU ()Ljava/lang/String;
+	public final fun component2-Tpm2CBU ()Ljava/lang/String;
+	public final fun copy-lIlcfGM (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRequest;
+	public static synthetic fun copy-lIlcfGM$default (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRequest;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOwnerId-Tpm2CBU ()Ljava/lang/String;
+	public final fun getRunId-dSDXgeU ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/OperationJournal {
+	public abstract fun append (Ldev/rubentxu/pipeline/v2/domain/durable/DurableOperation;Ljava/lang/Long;)V
+	public abstract fun beginOperation (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/Long;)V
+	public abstract fun get (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/durable/DurableOperation;
+	public abstract fun get (Ljava/lang/String;I)Ldev/rubentxu/pipeline/v2/domain/durable/DurableOperation;
+	public abstract fun getDeadlineMs (Ljava/lang/String;I)Ljava/lang/Long;
+	public abstract fun getEndedAt (Ljava/lang/String;I)Ljava/lang/Long;
+	public abstract fun getStartedAt (Ljava/lang/String;I)Ljava/lang/Long;
+	public abstract fun listForRun (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/OperationJournal$DefaultImpls {
+	public static synthetic fun append$default (Ldev/rubentxu/pipeline/v2/runtime/durable/OperationJournal;Ldev/rubentxu/pipeline/v2/domain/durable/DurableOperation;Ljava/lang/Long;ILjava/lang/Object;)V
+	public static synthetic fun beginOperation$default (Ldev/rubentxu/pipeline/v2/runtime/durable/OperationJournal;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/Long;ILjava/lang/Object;)V
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority {
+	public abstract fun render ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Authorised : dev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority {
+	public synthetic fun <init> (JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-5lrvBks ()J
+	public final fun copy-YBlTvfE (J)Ldev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Authorised;
+	public static synthetic fun copy-YBlTvfE$default (Ldev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Authorised;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Authorised;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeld-5lrvBks ()J
+	public fun hashCode ()I
+	public fun render ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$DefaultImpls {
+	public static fun render (Ldev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Superseded : dev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority {
+	public synthetic fun <init> (JJLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-5lrvBks ()J
+	public final fun component2-5lrvBks ()J
+	public final fun copy-k7Tvjps (JJ)Ldev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Superseded;
+	public static synthetic fun copy-k7Tvjps$default (Ldev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Superseded;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Superseded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCurrent-5lrvBks ()J
+	public final fun getHeld-5lrvBks ()J
+	public fun hashCode ()I
+	public fun render ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Unverifiable : dev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Unverifiable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Unverifiable;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority$Unverifiable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun render ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/ReplayCursor {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/durable/ReplayCursor$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;IJ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun component4 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;IJ)Ldev/rubentxu/pipeline/v2/runtime/durable/ReplayCursor;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/ReplayCursor;Ljava/lang/String;Ljava/lang/String;IJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/ReplayCursor;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLastOpId ()Ljava/lang/String;
+	public final fun getRunId ()Ljava/lang/String;
+	public final fun getSavedAt ()J
+	public final fun getStageIndex ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/runtime/durable/ReplayCursor$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/durable/ReplayCursor$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/runtime/durable/ReplayCursor;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/runtime/durable/ReplayCursor;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/ReplayCursor$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/ReplayCursorStore {
+	public abstract fun advance (Ljava/lang/String;Ljava/lang/String;I)V
+	public abstract fun advancePastParallelFrame-pQARyeI (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/durable/ParallelFrame;Ljava/util/List;Ljava/lang/Integer;)I
+	public abstract fun load (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/ReplayCursor;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/ReplayCursorStore$DefaultImpls {
+	public static synthetic fun advancePastParallelFrame-pQARyeI$default (Ldev/rubentxu/pipeline/v2/runtime/durable/ReplayCursorStore;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/durable/ParallelFrame;Ljava/util/List;Ljava/lang/Integer;ILjava/lang/Object;)I
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/RunExecutionLease {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/durable/RunExecutionLease;
+	public final fun acquire (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRequest;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition;
+	public final fun authorisePublish-FnYm1vM (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;J)Ldev/rubentxu/pipeline/v2/runtime/durable/PublishAuthority;
+	public final fun release-BGboAaU (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/RunLeaseObservationPort {
+	public abstract fun isKnown-J-qo2Tc (Ljava/lang/String;)Z
+	public abstract fun observe-J-qo2Tc (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRecord;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/RunLeasePort : dev/rubentxu/pipeline/v2/runtime/durable/RunLeaseObservationPort {
+	public abstract fun acquire (Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseRequest;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseAcquisition;
+	public abstract fun liveness-J-qo2Tc (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/LeaseLiveness;
+	public abstract fun release-TQtEyeA (Ljava/lang/String;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/RunOwnerId {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/durable/RunOwnerId$Companion;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/RunOwnerId;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/RunOwnerId$Companion {
+	public final fun of-1GswC0Q (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Existing : dev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Existing;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Existing;Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Existing;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRow ()Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Fenced : dev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Fenced;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Fenced;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Fenced;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCurrentEpoch ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Inserted : dev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Inserted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Inserted;Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence$Inserted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRow ()Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$Applied : dev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$Applied;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$Applied;IIILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$Applied;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMoved ()I
+	public final fun getRemaining ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$Fenced : dev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$Fenced;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$Fenced;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$Fenced;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCurrentEpoch ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$ForeignOwner : dev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$ForeignOwner;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$ForeignOwner;Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove$ForeignOwner;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRow ()Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationBodyDigest;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationBodyDigest;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Ljava/lang/String;
+	public final fun component11 ()Ljava/lang/String;
+	public final fun component12 ()J
+	public final fun component13 ()J
+	public final fun component14 ()J
+	public final fun component15-dDJaR2s ()Ljava/lang/String;
+	public final fun component16 ()Ljava/lang/String;
+	public final fun component17 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationBodyDigest;
+	public final fun component2-YTsXdgg ()Ljava/lang/String;
+	public final fun component3-l_DKfx8 ()Ljava/lang/String;
+	public final fun component4--p2rSqk ()Ljava/lang/String;
+	public final fun component5 ()I
+	public final fun component6-EgDSVYM ()Ljava/lang/String;
+	public final fun component7-9W-23fU ()Ljava/lang/String;
+	public final fun component8 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public final fun component9 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public final fun copy-tCO-2zk (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationBodyDigest;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public static synthetic fun copy-tCO-2zk$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationBodyDigest;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActionId-l_DKfx8 ()Ljava/lang/String;
+	public final fun getBodyDigest ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationBodyDigest;
+	public final fun getCompensationId--p2rSqk ()Ljava/lang/String;
+	public final fun getCompensationOpId ()Ljava/lang/String;
+	public final fun getCreatedAtMs ()J
+	public final fun getForwardOpId ()Ljava/lang/String;
+	public final fun getIntentVersion ()I
+	public final fun getKind ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public final fun getLeaseEpoch ()J
+	public final fun getOwnerPluginId ()Ljava/lang/String;
+	public final fun getPlanFingerprint-EgDSVYM ()Ljava/lang/String;
+	public final fun getReceiptRef-dDJaR2s ()Ljava/lang/String;
+	public final fun getResourceRef-9W-23fU ()Ljava/lang/String;
+	public final fun getRunId ()Ljava/lang/String;
+	public final fun getSagaId-YTsXdgg ()Ljava/lang/String;
+	public final fun getStatus ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public final fun getUpdatedAtMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/SagaObligationStore {
+	public abstract fun arm (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaArmPersistence;
+	public abstract fun find (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public abstract fun listForRun (Ljava/lang/String;)Ljava/util/List;
+	public abstract fun moveAll-rHdRiPg (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;JJLjava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove;
+	public abstract fun updateOutcome (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationUpdate;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaObligationStore$DefaultImpls {
+	public static synthetic fun moveAll-rHdRiPg$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationStore;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;JJLjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaBulkMove;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaObligationUpdate {
+	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;Ljava/lang/String;JJLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;Ljava/lang/String;JJLjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public final fun component4-dDJaR2s ()Ljava/lang/String;
+	public final fun component5 ()J
+	public final fun component6 ()J
+	public final fun component7 ()Ljava/lang/String;
+	public final fun copy-O7GC9rI (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;Ljava/lang/String;JJLjava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationUpdate;
+	public static synthetic fun copy-O7GC9rI$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationUpdate;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;Ljava/lang/String;JJLjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationUpdate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKey ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;
+	public final fun getLeaseEpoch ()J
+	public final fun getOwnerPluginId ()Ljava/lang/String;
+	public final fun getReceiptRef-dDJaR2s ()Ljava/lang/String;
+	public final fun getRunId ()Ljava/lang/String;
+	public final fun getStatus ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public final fun getUpdatedAtMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$Fenced : dev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$Fenced;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$Fenced;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$Fenced;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCurrentEpoch ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$ForeignOwner : dev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$ForeignOwner;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$ForeignOwner;Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$ForeignOwner;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRow ()Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$NotFound : dev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$NotFound;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$Updated : dev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$Updated;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$Updated;Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/SagaUpdatePersistence$Updated;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRow ()Ldev/rubentxu/pipeline/v2/runtime/durable/SagaObligationRow;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/StageIndex {
+	public static final synthetic fun box-impl (I)Ldev/rubentxu/pipeline/v2/runtime/durable/StageIndex;
+	public static fun constructor-impl (I)I
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (ILjava/lang/Object;)Z
+	public static final fun equals-impl0 (II)Z
+	public final fun getValue ()I
+	public fun hashCode ()I
+	public static fun hashCode-impl (I)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (I)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()I
+}
+
 public final class dev/rubentxu/pipeline/v2/runtime/explain/Completeness {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness$Companion;
 	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;)V

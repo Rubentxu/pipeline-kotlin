@@ -13,22 +13,20 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.SagaTerminal
+import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
-import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
-import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
-import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
-import dev.rubentxu.pipeline.v2.events.durable.RunLeasePort
-import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
-import dev.rubentxu.pipeline.v2.events.durable.SqliteOperationJournalImpl
-import dev.rubentxu.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
-import dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationStore
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseAcquisition
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRequest
+import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
+import dev.rubentxu.pipeline.v2.runtime.durable.RunLeasePort
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
-import kotlinx.serialization.json.Json
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -62,7 +60,7 @@ private fun durableRunState(
     journal: OperationJournal,
     cursorStore: ReplayCursorStore,
     eventSink: dev.rubentxu.pipeline.v2.events.EventSink,
-    sagaObligationStore: SqliteSagaObligationStore,
+    sagaObligationStore: SagaObligationStore,
     lease: DurableLease,
     outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal,
 ): CanonicalRunState = CanonicalRunState(
@@ -139,6 +137,11 @@ private fun runDurablePipelineOwned(
     // whether its persisted RunId is reused or intentionally replaced.
     val definition = readDefinitionSource(scriptPath)
     val controlDirRoot = resolveDurableControlRoot(config, dbPath)
+    // The durable stores of this run, opened ONCE over the run's own database. The journal, the
+    // cursor, the Saga obligations and the lease share the database, the connection factory and
+    // the clock, so they are built together and nowhere else.
+    val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
+    val durableStores = DurableStores.open(rawEventStore, controlDirRoot, clock)
     // the canonical engine threads `workspaceBase` through
     // `CanonicalRuntimeContext.workspaceBase`; the capability bridge
     // populates `WORKSPACE_IDENTITY_CAPABILITY` from
@@ -155,6 +158,7 @@ private fun runDurablePipelineOwned(
         controlDirRoot = controlDirRoot,
         eventStore = eventStore,
         definitionId = definition.definitionId,
+        leaseStore = durableStores.lease,
     )
     val runId = ownership.runId
     val lease = ownership.lease
@@ -168,21 +172,12 @@ private fun runDurablePipelineOwned(
     )
 
     // Build orchestrator with all durable dependencies
-    val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
-    val journal: OperationJournal = SqliteOperationJournalImpl(
-        store.factory,
-        clock,
-        Json { ignoreUnknownKeys = true; encodeDefaults = true },
-        store.dbPathStr,
-    )
     // SAGA / durable run: the durable Saga obligations live in the SAME database as the journal and
     // the event log, through the same connection factory. One authority for the run's durable
     // state, not a second store with its own lifecycle.
-    val sagaObligationStore = SqliteSagaObligationStore(
-        connectionFactory = store.factory,
-        dbPath = store.dbPathStr,
-    )
-    val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(store.factory, clock)
+    val journal: OperationJournal = durableStores.journal
+    val sagaObligationStore = durableStores.sagaObligations
+    val cursorStore: ReplayCursorStore = durableStores.cursors
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
     // The need for the secret store is a fact about this RUN, and the run knows
     // it: the compiled script says, in its own declaration, whether it binds a
@@ -546,8 +541,8 @@ internal data class DurableLease(
 
 private fun acquireDurableLease(
     scope: ResourceScope,
-    controlDirRoot: Path,
     runId: String,
+    leaseStore: FileBackedRunExecutionLeaseStore,
 ): DurableLease = acquireDurableLease(
     scope = scope,
     runId = runId,
@@ -555,7 +550,7 @@ private fun acquireDurableLease(
         RunOwnerId.of("cli-" + ProcessHandle.current().pid() + "-" +
             java.util.UUID.randomUUID().toString().take(8)),
     ) { "the run owner id must build" },
-    leaseStore = FileBackedRunExecutionLeaseStore(controlDirRoot.resolve("leases")),
+    leaseStore = leaseStore,
 )
 
 /**
@@ -659,6 +654,7 @@ private fun acquireDurableOwnership(
     controlDirRoot: Path,
     eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
     definitionId: dev.rubentxu.pipeline.v2.domain.DefinitionId,
+    leaseStore: FileBackedRunExecutionLeaseStore,
 ): DurableOwnership {
     val identity = selectDurableRunIdentity(
         config = config,
@@ -666,7 +662,7 @@ private fun acquireDurableOwnership(
         definitionId = definitionId,
     )
     val runId = identity.runId
-    val lease = acquireDurableLease(scope, controlDirRoot, runId)
+    val lease = acquireDurableLease(scope, runId, leaseStore)
     // lease is held; emit the RunCorrelated
     // event on the durable event sink and the LaunchReceipt on stdout.
     // The owner is the lease-acquired runOwner.

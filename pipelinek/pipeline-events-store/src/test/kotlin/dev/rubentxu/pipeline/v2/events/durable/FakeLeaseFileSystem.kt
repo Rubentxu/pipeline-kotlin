@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRecord
 import java.io.IOException
 import java.nio.file.Path
 

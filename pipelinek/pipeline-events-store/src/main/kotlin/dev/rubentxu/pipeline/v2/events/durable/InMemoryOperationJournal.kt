@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
+import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 import kotlinx.serialization.json.Json
 
 /**

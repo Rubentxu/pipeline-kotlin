@@ -10,13 +10,18 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaIntentContract
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaArmPersistence
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaBulkMove
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationRow
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationUpdate
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaUpdatePersistence
+import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertInstanceOf
 import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
 
 /**
  * The durable Saga obligations, exercised against a real SQLite file.

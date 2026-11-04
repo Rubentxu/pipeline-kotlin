@@ -95,7 +95,7 @@ public object OptionalStringWireSerializer : KSerializer<String?> {
             .nullable
 
     override fun serialize(encoder: Encoder, value: String?) {
-        encoder.encodeString(value ?: "")
+        encoder.encodeString(value.orEmpty())
     }
 
     override fun deserialize(decoder: Decoder): String? = decoder.decodeString().takeIf { it.isNotEmpty() }
@@ -136,7 +136,7 @@ public object OptionalBuildResultWireSerializer : KSerializer<CatchErrorBuildRes
         ).nullable
 
     override fun serialize(encoder: Encoder, value: CatchErrorBuildResult?) {
-        encoder.encodeString(value?.wireToken ?: "")
+        encoder.encodeString(value?.wireToken.orEmpty())
     }
 
     override fun deserialize(decoder: Decoder): CatchErrorBuildResult? {

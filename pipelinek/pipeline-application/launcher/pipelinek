@@ -1,0 +1,456 @@
+#!/usr/bin/env bash
+# pipelinek — the launcher of the PipelineK distribution.
+#
+# WHY THIS SCRIPT EXISTS INSTEAD OF THE ONE THE `application` PLUGIN GENERATES
+#
+# The generated start script knows how to find a JVM and how to spell a
+# classpath, and nothing else. Everything the product needs to know about its
+# own distribution — where it is installed, which JVM is running it, whether the
+# jars it was built with are still the jars on disk — is decided here, in the
+# place that is about to run the JVM.
+#
+# THE SHARED CLASS ARCHIVE
+#
+# A JVM loads the same classes on every start, and it loads them from disk
+# every time. A shared class archive (AppCDS) is a file with those classes
+# already in the shape the loader wants, and pointing the JVM at it takes that
+# work off the start. Measured on the reference host, for the same command:
+# 261 ms without the archive, 189 ms with it.
+#
+# The archive lives in the DISTRIBUTION, next to the jars it was built from
+# (lib/), and never in the user's HOME: the product does not leave artefacts in
+# a directory it does not own, and deleting the installation deletes the
+# archive with it.
+#
+# The archive's NAME carries the JVM's major version (pipelinek-cds-21.jsa).
+# A shared archive is only valid for the JVM that wrote it: a JVM that finds an
+# archive from another version ignores it and says so on stderr, which is a
+# failure the operator cannot act on. With the version in the name, a different
+# JDK asks for a different file, and the cold case simply writes it.
+#
+# THE ARCHIVE IS ONLY VALID FOR THE JARS IT WAS BUILT FROM
+#
+# The JVM does NOT check the contents of the jars it finds: an archive written
+# against yesterday's jars is used against today's jars, and the product runs
+# yesterday's classes. That is not a performance detail, it is a correctness
+# one, and it is why this launcher fingerprints the classpath itself and
+# rewrites the archive when the jars change. The fingerprint is the size and
+# the modification time of every jar, which is the identity a build compares to
+# say that an artefact is the one it produced before.
+#
+# THE LAUNCHER COSTS A PROCESS, NOT TEN
+#
+# Everything the launcher has to know is asked ONCE per start, and the answer
+# is read with the shell's own reading. A launcher that spends the saving it
+# was built to win is a launcher that gave the saving back: the measurement
+# that matters is the whole start, not the JVM's part of it.
+#
+# NOTHING HERE CAN PREVENT THE PRODUCT FROM STARTING
+#
+# Every step of the archive logic is optional. If the archive cannot be read,
+# cannot be written, or does not fit this JVM, the product starts without it
+# and the launcher says nothing: a launcher that can refuse to start is a
+# launcher that can break the product.
+
+set -u
+
+# --- where this distribution is -----------------------------------------------
+
+# The home of the distribution is derived from the path of this script, so an
+# installation that is moved keeps working and the archive keeps its place.
+# Symlinks are followed first: the script may be reached through a link, and
+# the link's directory is not the distribution.
+script_path="${BASH_SOURCE[0]}"
+while [ -L "$script_path" ]; do
+    link_target="$(readlink "$script_path")"
+    case "$link_target" in
+        /*) script_path="$link_target" ;;
+        *)
+            case "$script_path" in
+                */*) script_path="${script_path%/*}/$link_target" ;;
+                *) script_path="$link_target" ;;
+            esac
+            ;;
+    esac
+done
+case "$script_path" in
+    */*) script_dir="${script_path%/*}" ;;
+    *) script_dir="." ;;
+esac
+case "$script_dir" in
+    */*) APP_HOME="${script_dir%/*}" ;;
+    *) APP_HOME="." ;;
+esac
+LIB_DIR="$APP_HOME/lib"
+
+# The class the product starts from, the JVM options it always needs, and the
+# classpath of the distribution's own jars. All three are written by the build,
+# from the same values the application plugin uses, so there is one authority
+# for them and not two: the launcher does not decide what the product is made
+# of, it reads what the build decided.
+MAIN_CLASS="@MAIN_CLASS@"
+DEFAULT_JVM_OPTS="@DEFAULT_JVM_OPTS@"
+CLASSPATH="@CLASSPATH@"
+
+# The archive, and the state that says what the archive was written from.
+ARCHIVE_PREFIX="pipelinek-cds-"
+ARCHIVE_SUFFIX=".jsa"
+STATE_FILE="$LIB_DIR/pipelinek-cds.state"
+
+# How long the answer to "which JVM is this" is trusted without asking again.
+# The answer has to be asked of the JVM itself when the JVM cannot be read
+# from disk, and asking costs a JVM start; a version manager can change the
+# JDK under the same command, so the answer is asked again, and the change is
+# noticed within this window.
+VERSION_TRUST_SECONDS=600
+
+# How long the launcher waits before writing the archive again after a write
+# that produced nothing. The write is the JVM's, at the end of the run, and a
+# run that leaves no archive behind is a run whose archive could not be
+# written: asking again on every start would pay for the same failure over
+# and over.
+ARCHIVE_RETRY_SECONDS=600
+
+# The current time, in seconds. The shell knows it without starting anything.
+NOW="$(printf '%(%s)T' -1)"
+
+# --- the JVM ------------------------------------------------------------------
+
+# JAVA_HOME wins when it names a JVM that can be run; otherwise the JVM on the
+# PATH is the one. A JAVA_HOME that points nowhere is ignored rather than
+# obeyed: the product has a JVM either way.
+if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    JAVACMD="$JAVA_HOME/bin/java"
+else
+    JAVACMD="$(command -v java 2>/dev/null || true)"
+fi
+if [ -z "$JAVACMD" ]; then
+    echo "pipelinek: no JVM found. Set JAVA_HOME or put java on the PATH." >&2
+    exit 1
+fi
+
+# --- the state ----------------------------------------------------------------
+
+# The state is what the launcher remembers between starts: which JVM it asked
+# about, what it answered, and which jars the archive on disk was built from.
+# It is read with the shell's own reading: a file read per start is a
+# process, and a process is a few milliseconds the product does not have.
+STATE_MAJOR=""
+STATE_JVM_COMMAND=""
+STATE_ASKED_AT=0
+STATE_ATTEMPTED=""
+STATE_FAILED_AT=0
+STATE_FINGERPRINT=""
+
+read_state() {
+    local line value
+    [ -r "$STATE_FILE" ] || return 1
+    while IFS= read -r line; do
+        case "$line" in
+            major=*) STATE_MAJOR="${line#major=}" ;;
+            jvm_command=*) STATE_JVM_COMMAND="${line#jvm_command=}" ;;
+            asked_at=*)
+                value="${line#asked_at=}"
+                case "$value" in
+                    ''|*[!0-9]*) STATE_ASKED_AT=0 ;;
+                    *) STATE_ASKED_AT="$value" ;;
+                esac
+                ;;
+            attempted=*) STATE_ATTEMPTED="${line#attempted=}" ;;
+            failed_at=*)
+                value="${line#failed_at=}"
+                case "$value" in
+                    ''|*[!0-9]*) STATE_FAILED_AT=0 ;;
+                    *) STATE_FAILED_AT="$value" ;;
+                esac
+                ;;
+            fingerprint=*) STATE_FINGERPRINT="${line#fingerprint=}" ;;
+        esac
+    done < "$STATE_FILE"
+    return 0
+}
+
+# --- the fingerprint of the classpath -----------------------------------------
+
+# Every jar of the distribution with its size and its modification time, in ONE
+# call: one call per jar is thirty processes on every start. The values are
+# what a build compares to decide that an artefact is the same one it
+# produced before.
+FINGERPRINT=""
+JVM_COMMAND_IDENTITY=""
+
+# The size and the modification time of every file asked about, one per line,
+# in the order the files were asked about. GNU coreutils and the BSD tools
+# that macOS ships spell the same question differently, and the first one that
+# answers wins.
+fingerprint_lines() {
+    if stat -c '%s %Y' "$LIB_DIR"/*.jar "$JAVACMD" 2>/dev/null; then
+        return 0
+    fi
+    stat -f '%z %m' "$LIB_DIR"/*.jar "$JAVACMD" 2>/dev/null
+}
+
+read_classpath_fingerprint() {
+    local line pending size epoch
+    pending=""
+    while IFS= read -r line; do
+        if [ -n "$pending" ]; then
+            FINGERPRINT="$FINGERPRINT $pending"
+        fi
+        pending="$line"
+    done < <(fingerprint_lines)
+    # The last line is the JVM command's, because the command is asked about
+    # last. Its size and modification time are the identity of that command: a
+    # different file, or the same file changed, is a different JVM to ask.
+    if [ -n "$pending" ]; then
+        size="${pending%% *}"
+        epoch="${pending#* }"
+        epoch="${epoch%% *}"
+        JVM_COMMAND_IDENTITY="$JAVACMD $size $epoch"
+    fi
+    FINGERPRINT="${FINGERPRINT# }"
+}
+
+# --- the JVM's version --------------------------------------------------------
+
+# The major version of a JDK, read from the release file the JDK ships. The
+# file names the version of the JDK that is installed, which is the version
+# that will run this script.
+# $1: the home of a JDK to read.
+JDK_MAJOR=""
+
+jdk_major() {
+    local release_file="$1/release" line version
+    JDK_MAJOR=""
+    [ -r "$release_file" ] || return 1
+    while IFS= read -r line; do
+        case "$line" in
+            JAVA_VERSION=*)
+                version="${line#JAVA_VERSION=}"
+                version="${version%\"}"
+                version="${version#\"}"
+                [ -n "$version" ] || continue
+                JDK_MAJOR="${version%%.*}"
+                return 0
+                ;;
+        esac
+    done < "$release_file"
+    return 1
+}
+
+# The home of the JDK the given JVM command belongs to, when it can be told
+# without running anything: the real path of the command, two levels up. A
+# JVM reached through a wrapper (a version manager's shim) is not a file under
+# a `bin` directory, and there is no home to read.
+# $1: the JVM command to resolve.
+JDK_HOME=""
+
+jdk_home_of() {
+    local resolved
+    resolved="$(readlink -f "$1" 2>/dev/null || printf '%s' "$1")"
+    case "$resolved" in
+        */bin/java) JDK_HOME="${resolved%/bin/java}" ;;
+        *) JDK_HOME="" ;;
+    esac
+}
+
+# The version the JVM reports about itself. This is the last resort and it is
+# a process, so the answer is remembered in the state file and read from
+# there next time.
+ASKED_VERSION=""
+
+ask_the_jvm() {
+    local properties line version
+    # The JVM prints its settings on STDERR, next to the version banner.
+    properties="$("$JAVACMD" -XshowSettings:properties -version 2>&1 || true)"
+    version=""
+    while IFS= read -r line; do
+        case "$line" in
+            *"java.specification.version = "*) version="${line#* = }" ;;
+        esac
+    done <<< "$properties"
+    [ -n "$version" ] || return 1
+    ASKED_VERSION="${version%%.*}"
+    return 0
+}
+
+# The major version of the JVM that is about to run, or nothing when it cannot
+# be known. The sources, in the order that costs the least: the JDK the
+# operator pointed at, the answer this distribution remembers, the JDK the JVM
+# on the PATH belongs to, and finally the JVM itself.
+RESOLVED_MAJOR=""
+STATE_DIRTY=0
+
+resolve_version() {
+    RESOLVED_MAJOR=""
+
+    if [ -n "${JAVA_HOME:-}" ]; then
+        jdk_major "$JAVA_HOME" || true
+        if [ -n "$JDK_MAJOR" ]; then
+            RESOLVED_MAJOR="$JDK_MAJOR"
+            return 0
+        fi
+    fi
+
+    # The answer this distribution remembers. It is trusted only while the JVM
+    # command is the same one it was asked about, and only while it is young:
+    # a version manager can change the JDK under the same command, and the
+    # answer that describes the old JDK would name the wrong archive.
+    if [ -n "$STATE_MAJOR" ] && [ "$STATE_JVM_COMMAND" = "$JVM_COMMAND_IDENTITY" ] &&
+        [ "$NOW" -lt $(( STATE_ASKED_AT + VERSION_TRUST_SECONDS )) ]; then
+        RESOLVED_MAJOR="$STATE_MAJOR"
+        return 0
+    fi
+
+    jdk_home_of "$JAVACMD"
+    if [ -n "$JDK_HOME" ]; then
+        jdk_major "$JDK_HOME" || true
+        if [ -n "$JDK_MAJOR" ]; then
+            RESOLVED_MAJOR="$JDK_MAJOR"
+            return 0
+        fi
+    fi
+
+    if ask_the_jvm; then
+        RESOLVED_MAJOR="$ASKED_VERSION"
+        STATE_ASKED_AT="$NOW"
+        STATE_DIRTY=1
+        return 0
+    fi
+
+    # The version of the JVM is unknown, so the archive cannot be named. The
+    # product starts without it: a slow start is a nuisance, and a broken one
+    # is a defect.
+    return 1
+}
+
+# --- the archive --------------------------------------------------------------
+
+ARCHIVE_FILE=""
+ARCHIVE_FLAGS=""
+REBUILD_ARCHIVE=0
+
+# Whether the archive on disk is the archive for the jars on disk, and for the
+# JVM that is about to run.
+archive_is_usable() {
+    [ -n "$FINGERPRINT" ] || return 1
+    [ -f "$ARCHIVE_FILE" ] || return 1
+    # An archive of no size is an archive that was not written.
+    [ -s "$ARCHIVE_FILE" ] || return 1
+    [ "$STATE_FINGERPRINT" = "$FINGERPRINT" ] || return 1
+    [ "$STATE_JVM_COMMAND" = "$JVM_COMMAND_IDENTITY" ] || return 1
+    return 0
+}
+
+# Whether the archive should be written again after a write that produced
+# nothing. The write is remembered with the archive it was for and the jars it
+# was for, so that a different archive is not blocked by the failure of
+# another one.
+archive_write_failed_recently() {
+    [ "$STATE_ATTEMPTED" = "$RESOLVED_MAJOR:$FINGERPRINT" ] || return 1
+    [ "$STATE_FAILED_AT" -gt 0 ] || return 1
+    [ "$NOW" -lt $(( STATE_FAILED_AT + ARCHIVE_RETRY_SECONDS )) ] || return 1
+    return 0
+}
+
+prepare_archive() {
+    # Without a writable directory there is no archive to name, and asking the
+    # JVM which version it is would be a question with nowhere to answer.
+    [ -w "$LIB_DIR" ] || return 0
+    resolve_version || return 0
+    [ -n "$RESOLVED_MAJOR" ] || return 0
+    ARCHIVE_FILE="$LIB_DIR/$ARCHIVE_PREFIX$RESOLVED_MAJOR$ARCHIVE_SUFFIX"
+
+    if archive_is_usable; then
+        ARCHIVE_FLAGS="-XX:SharedArchiveFile=$ARCHIVE_FILE"
+        return 0
+    fi
+
+    # An archive that was written and is not there was a write that failed:
+    # the launcher remembers that, and does not ask the JVM for the same file
+    # on every start while the reason lasts.
+    if [ "$STATE_ATTEMPTED" = "$RESOLVED_MAJOR:$FINGERPRINT" ] && [ "$STATE_FAILED_AT" -eq 0 ] &&
+        [ ! -s "$ARCHIVE_FILE" ]; then
+        STATE_FAILED_AT="$NOW"
+        STATE_DIRTY=1
+    fi
+
+    # The archive is missing or stale: this run writes the new one. The JVM
+    # does it at exit, from the classes it loaded, so there is no training run
+    # and no second command to explain.
+    #
+    # The JVM refuses to start when it cannot write the archive, so the file is
+    # created here first: a launcher that cannot write it does not ask the JVM
+    # to write it, and the product starts without an archive.
+    #
+    # The file the JVM wrote is left read-only, and a read-only file cannot be
+    # written again: it is removed first, which the directory allows even when
+    # the file itself does not.
+    if archive_write_failed_recently; then
+        return 0
+    fi
+    rm -f "$ARCHIVE_FILE" 2>/dev/null || true
+    if : 2>/dev/null > "$ARCHIVE_FILE"; then
+        ARCHIVE_FLAGS="-Xlog:cds=off -XX:ArchiveClassesAtExit=$ARCHIVE_FILE"
+        REBUILD_ARCHIVE=1
+        STATE_ATTEMPTED="$RESOLVED_MAJOR:$FINGERPRINT"
+        STATE_DIRTY=1
+    fi
+    return 0
+}
+
+# The state is written before the run, and the archive it describes is written
+# by the JVM at the end of it. If the run fails, the archive is not there, and
+# the next run sees an archive that does not exist and writes it again.
+#
+# The fingerprint is the one of the archive that EXISTS: when the archive is
+# being rewritten, it is the current one; when it is being used, it is the one
+# it was written with, which is the one the check above compared against.
+write_state() {
+    [ -w "$LIB_DIR" ] || return 0
+    [ "$STATE_DIRTY" -eq 1 ] || return 0
+    local fingerprint
+    if [ "$REBUILD_ARCHIVE" -eq 1 ]; then
+        fingerprint="$FINGERPRINT"
+    else
+        fingerprint="$STATE_FINGERPRINT"
+    fi
+    {
+        printf 'major=%s\n' "$RESOLVED_MAJOR"
+        printf 'jvm_command=%s\n' "$JVM_COMMAND_IDENTITY"
+        printf 'asked_at=%s\n' "$STATE_ASKED_AT"
+        printf 'attempted=%s\n' "$STATE_ATTEMPTED"
+        printf 'failed_at=%s\n' "$STATE_FAILED_AT"
+        printf 'fingerprint=%s\n' "$fingerprint"
+    } > "$STATE_FILE" 2>/dev/null || true
+}
+
+# The archives of other JVM versions are dead weight: the JVM that wrote them
+# is not the JVM that reads them, and nobody knows why they are there.
+remove_other_archives() {
+    local candidate
+    [ -n "$ARCHIVE_FILE" ] || return 0
+    for candidate in "$LIB_DIR"/"$ARCHIVE_PREFIX"*"$ARCHIVE_SUFFIX"; do
+        [ -e "$candidate" ] || continue
+        [ "$candidate" = "$ARCHIVE_FILE" ] && continue
+        rm -f "$candidate" 2>/dev/null || true
+    done
+}
+
+read_state
+read_classpath_fingerprint
+prepare_archive
+write_state
+remove_other_archives
+
+# --- run ---------------------------------------------------------------------
+
+# `exec` so the product's exit code and its signals are the ones the operator
+# sees, and the JVM is the process, not a child of the launcher.
+exec "$JAVACMD" \
+    $DEFAULT_JVM_OPTS \
+    $ARCHIVE_FLAGS \
+    ${JAVA_OPTS:-} \
+    -classpath "$CLASSPATH" \
+    "$MAIN_CLASS" \
+    "$@"

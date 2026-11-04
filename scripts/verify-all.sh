@@ -70,6 +70,12 @@
 # census, and the only one that refuses a run that executed no test. The
 # change and milestone levels VERIFY: a part they did not measure is named in
 # the report, not failed, because they were never asked to measure it.
+# The level also moves the STATIC work. The static analysis and the guard of
+# the words the comments use belong to the certification, because the
+# certification is the run that certifies the style and the words of the
+# source. The calibration of the product belongs to the milestone and to the
+# certification: what a consumer waits for is a milestone datum, not a cost
+# that every change has to pay. Every skip says WHAT it did not run and WHY.
 # The gate has four stages, and a stage number that names a fifth is a typo: a
 # typo that selected nothing would run nothing and print a clean verdict, which
 # is the same silent green this script refuses everywhere else.
@@ -416,6 +422,20 @@ esac
 full_certification=0
 if [[ "$subset" == 0 && "$level" == "certificacion" ]]; then
     full_certification=1
+fi
+
+# Whether this run CALIBRATES the product: it measures what a consumer waits
+# for. The change level does not: that latency is a milestone datum, not a
+# per-change cost, and paying for it on every change buys a number that
+# belongs to another level. The milestone and the certification do.
+#
+# This is a DIFFERENT question from the one `full_certification` answers, and
+# so it is a different indicator: the certification is the only run that
+# CERTIFIES, and the milestone is a run that MEASURES the cost of the product
+# without certifying it. One question, one indicator.
+measure_product=1
+if [[ "$level" == "cambio" ]]; then
+    measure_product=0
 fi
 
 # The gate has four stages. A number that names a fifth is a typo, and a typo
@@ -771,6 +791,37 @@ relocation_probe="$repo_root/scripts/gate-tmpdir-relocation.init.gradle"
 require_relocation_probe() {
     if [[ ! -f "$relocation_probe" ]]; then
         fail "the relocation of the temporaries of the test workers is missing: $relocation_probe"
+    fi
+}
+
+# The proof that the product's temporaries land in THIS run's own temporary
+# directory. The JVM prints its effective system properties when it is asked,
+# and java.io.tmpdir is the property that decides where the product creates
+# its temporaries. Asking the product's OWN JVM is what turns "the launcher
+# passes JAVA_OPTS" from an assumption into a measurement of THIS run.
+#
+# Without this proof the residue census cannot tell this run's temporaries
+# from a neighbour's: both carry the same prefixes, and a census of names
+# once blamed the gate for a stale copy of the product running another
+# project's pipeline, which turned a green run into a red one for something
+# the run never did. The proof is what makes the attribution a fact of this
+# run instead of an assumption about the machine.
+#
+# It is NOT part of the calibration of the product: it is a property of the
+# product's JVM, not a measurement of the product's cost. A level that does
+# not calibrate the product still has to attribute its residue, so the proof
+# is called from both paths and the label says which stage is waiting for it.
+prove_product_temporaries() {
+    local proof_log="$1" label="$2" product_tmpdir
+    JAVA_OPTS="${JAVA_OPTS:-} -XshowSettings:properties" "$dist_bin" version \
+        > "$proof_log" 2>&1 \
+        || { tail -20 "$proof_log" >&2; fail "$label: the product did not report its version while proving its temporary directory"; }
+    product_tmpdir="$(LC_ALL=C awk -F' = ' '/^[[:space:]]*java\.io\.tmpdir = /{ print $2; exit }' "$proof_log")"
+    if [[ "$product_tmpdir" == "$cycle_dir/tmp" ]]; then
+        relocation_proved=1
+    else
+        printf "    the product's JVM reports java.io.tmpdir=%s, not %s\n" \
+            "${product_tmpdir:-UNKNOWN}" "$cycle_dir/tmp" >&2
     fi
 }
 
@@ -1190,6 +1241,9 @@ print_level_meaning() {
             echo "      cost of this gate."
             echo "      it does NOT owe the certification's line base; the census names"
             echo "      the parts of it that this run did not measure."
+            echo "      it did NOT run the static analysis (detekt) nor the guard of the"
+            echo "      words the comments use, and it did NOT calibrate the product:"
+            echo "      those are the certification's and the milestone's work."
             ;;
         milestone)
             echo "      this run is a MILESTONE run: it is not a certification, and its"
@@ -1202,6 +1256,9 @@ print_level_meaning() {
             echo "      cost of this gate."
             echo "      it does NOT owe the certification's line base; the census names"
             echo "      the parts of it that this run did not measure."
+            echo "      it did NOT run the static analysis (detekt) nor the guard of the"
+            echo "      words the comments use: those belong to the certification. It DID"
+            echo "      calibrate the product: that is a milestone datum."
             ;;
     esac
 }
@@ -1805,6 +1862,10 @@ guard_failures=()
 guard_launched_ms=()
 guard_pids=()
 declare -A guard_index=()
+# The guards that this level does NOT run, and why. The reason is not
+# decoration: a guard that disappears without saying so is a green that hides
+# what it did not check.
+declare -A guard_skip_reason=()
 stop_pending_guards() {
     local pid
     for pid in "${guard_pids[@]:-}"; do
@@ -2050,8 +2111,17 @@ if want_stage 1; then
     # budget is a contract, and the guard is a check on the words the source
     # says. Skipping it because the operator did not want the census of lines
     # would be the wrong reason to stop saying what the code does.
-    launch_guard "1c" "comment provenance" scripts/check-comment-provenance.py \
-        "$log_dir/comment.out" "stage 1c: comment provenance"
+    #
+    # The LEVEL, on the other hand, does skip it: the certification is the run
+    # that certifies what the comments say, and the review covers the rest.
+    # The reason travels with the skip, because a guard that vanishes without
+    # saying why is a green that hides what it did not check.
+    if [[ "$full_certification" == 1 ]]; then
+        launch_guard "1c" "comment provenance" scripts/check-comment-provenance.py \
+            "$log_dir/comment.out" "stage 1c: comment provenance"
+    else
+        guard_skip_reason["1c"]="comment provenance SKIPPED (level=$level does not run this guard: the certification is the level that certifies what the comments say, and the review covers the rest)"
+    fi
 
     # --- Stage 1d: only the entry point may end the process ------------------
     # A helper that ends the process takes a decision that belongs to somebody
@@ -2144,6 +2214,11 @@ if want_stage 1; then
         fi
         guard_slot="${guard_index[$guard_id]:-}"
         if [[ -z "$guard_slot" ]]; then
+            # A guard that this level does not run. It says so, and it says
+            # why, in the place where the reader looks for the guards.
+            if [[ -n "${guard_skip_reason[$guard_id]+x}" ]]; then
+                log "stage $guard_id/4  ${guard_skip_reason[$guard_id]}"
+            fi
             continue
         fi
         guard_out="${guard_outs[$guard_slot]}"
@@ -2170,8 +2245,18 @@ if want_stage 1; then
     # The clock of the block itself, which is what the acceptance criterion
     # talks about: the sum of five clocks in series, or the clock of the
     # slowest of the five run together.
-    printf '    the five guards together: %d ms\n' \
-        $(( guard_block_ended_ms - guard_block_started_ms ))
+    #
+    # HOW MANY ran is said too, because the block is not always five: a level
+    # that does not run one of them pays for the slowest of the rest. A line
+    # that says "five" when four ran is a small lie, and this gate does not
+    # print small lies about counts. The word is kept for five so that the
+    # certification's line does not change shape.
+    guard_block_ms=$(( guard_block_ended_ms - guard_block_started_ms ))
+    if (( ${#guard_ids[@]} == 5 )); then
+        printf '    the five guards together: %d ms\n' "$guard_block_ms"
+    else
+        printf '    the %d guards together: %d ms\n' "${#guard_ids[@]}" "$guard_block_ms"
+    fi
 
     # --- Stage 1g: the identity of what THIS run verifies --------------------
     # The verdict is evidence about a commit, so the identifier it prints has
@@ -2346,15 +2431,32 @@ JSON
     # The clock of that work is ONE clock, and it is the invocation's. The
     # stages do not have two: the invocation's clock is printed on its own
     # line, and the stage that holds it prints only its own work.
+    # The static analysis is the CERTIFICATION's work: it is the level that
+    # certifies the style, and a level that certifies nothing about the style
+    # should not pay for the analysis.
+    #
+    # The list of tasks and the sentence that names it are BUILT together, in
+    # one decision: two places that asked the same question separately would
+    # one day answer it differently, and the difference would be a header that
+    # promises a task the command does not ask for.
+    gradle_tasks_description="compile + apiCheck + installDist"
     gradle_build_tasks=(
-        detektMain
-        detektTest
         apiCheck
         :pipeline-runtime:compileKotlin
         :pipeline-application:installDist
     )
+    if [[ "$full_certification" == 1 ]]; then
+        gradle_tasks_description="compile + detekt + detektTest + apiCheck + installDist"
+        gradle_build_tasks=(
+            detektMain
+            detektTest
+            apiCheck
+            :pipeline-runtime:compileKotlin
+            :pipeline-application:installDist
+        )
+    fi
     if want_stage 2; then
-        log "stage 1h+2/4  ONE Gradle invocation: compile + detekt + detektTest + apiCheck + installDist + the permanent unit tests"
+        log "stage 1h+2/4  ONE Gradle invocation: ${gradle_tasks_description} + the permanent unit tests"
         discover_unit_tasks
         gradle_build_tasks+=("${gradle_args[@]}")
         gradle_invocation_label="stage 1h+2"
@@ -2377,8 +2479,11 @@ JSON
         test_run_started_ms=$(date +%s%3N)
         test_run_started_s=$(date +%s)
     else
-        log "stage 1h/4  compile + detekt + detektTest + apiCheck + installDist"
+        log "stage 1h/4  ${gradle_tasks_description}"
         gradle_invocation_label="stage 1h"
+    fi
+    if [[ "$full_certification" != 1 ]]; then
+        log "${gradle_invocation_label}/4  detekt SKIPPED (level=$level does not run the static analysis: the certification is the level that certifies the style)"
     fi
     stage_started_at=$(date +%s)
     # The per-task clock rides along with the build. Without it this stage has
@@ -2418,126 +2523,125 @@ JSON
     # and it is invisible unless BOTH are measured. The third number is the
     # price of starting the product at all, which every invocation pays and
     # which no other number in this report contains.
-    log "stage 1i/4  product calibration (cold script, warm script, startup)"
-    stage_started_at=$(date +%s)
-    calib_dir="$cycle_dir/calibration"
-    mkdir -p "$calib_dir"
-    cat > "$calib_dir/calibration.pipeline.kts" <<'CALIBRATION_SCRIPT'
-pipeline {
-    stages {
-        stage("noop") {
-            echo("cost baseline")
+    #
+    # It is a MILESTONE datum and not a per-change cost: the change level does
+    # not pay for it, and the milestone and the certification do. The number
+    # does not change with the change, so asking for it on every change buys
+    # the same number again.
+    #
+    # The distribution that stage 1h just assembled. The calibration measures it
+    # and the attribution of the residue proves where its temporaries go, so it
+    # is named here, next to the build that produced it.
+    dist_bin="$repo_root/pipelinek/pipeline-application/build/install/pipelinek/bin/pipelinek"
+    if [[ "$measure_product" == 1 ]]; then
+        log "stage 1i/4  product calibration (cold script, warm script, startup)"
+        stage_started_at=$(date +%s)
+        calib_dir="$cycle_dir/calibration"
+        mkdir -p "$calib_dir"
+        cat > "$calib_dir/calibration.pipeline.kts" <<'CALIBRATION_SCRIPT'
+    pipeline {
+        stages {
+            stage("noop") {
+                echo("cost baseline")
+            }
         }
     }
-}
 CALIBRATION_SCRIPT
-    dist_bin="$repo_root/pipelinek/pipeline-application/build/install/pipelinek/bin/pipelinek"
-    if [[ ! -x "$dist_bin" ]]; then
-        fail "stage 1i: the distribution this gate just assembled is not there: $dist_bin"
-    fi
-    # The script cache is ON by default, and the default is where the base
-    # directory specification says it is. The calibration therefore measures
-    # the DEFAULT: no variable naming the cache, and the cache home pointed
-    # at this run's own directory, so the measurement neither pollutes the
-    # user's cache nor depends on what it happens to hold. Two passes are
-    # what makes the numbers comparable: the first one has to compile, and
-    # the second one has to find the compiled bytes the first one left behind.
-    had_cache_dir=0
-    saved_cache_dir="${PIPELINEK_SCRIPT_CACHE_DIR-}"
-    if [[ -n "${PIPELINEK_SCRIPT_CACHE_DIR+x}" ]]; then
-        had_cache_dir=1
-    fi
-    had_xdg_cache_home=0
-    saved_xdg_cache_home="${XDG_CACHE_HOME-}"
-    if [[ -n "${XDG_CACHE_HOME+x}" ]]; then
-        had_xdg_cache_home=1
-    fi
-    unset PIPELINEK_SCRIPT_CACHE_DIR
-    export XDG_CACHE_HOME="$calib_dir/xdg-cache"
-    default_cache_dir="$calib_dir/xdg-cache/pipelinek/script-cache"
-
-    cold_started_ms=$(now_ms)
-    "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/cold.log" 2>&1 \
-        || { tail -20 "$calib_dir/cold.log" >&2; fail "stage 1i: the first compilation of a script did not succeed"; }
-    cold_ms=$(( $(now_ms) - cold_started_ms ))
-
-    # The second pass is only warm if it did NOT compile the script again. The
-    # product names the compiled bytes after the CONTENT of the script, so the
-    # file that was there before the pass has to be the file that is there
-    # after it: same name, same size, same moment. A second pass that rewrote
-    # it would be a second cold pass wearing a warm name.
-    if [[ -z "$(find "$default_cache_dir" -type f -print -quit 2>/dev/null)" ]]; then
-        fail "stage 1i: the first pass left no compiled bytes, so there is nothing for a second pass to reuse"
-    fi
-    cache_before="$(find "$default_cache_dir" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
-    warm_started_ms=$(now_ms)
-    "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/warm.log" 2>&1 \
-        || { tail -20 "$calib_dir/warm.log" >&2; fail "stage 1i: the second compilation of a script did not succeed"; }
-    warm_ms=$(( $(now_ms) - warm_started_ms ))
-    cache_after="$(find "$default_cache_dir" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
-    if [[ "$cache_before" != "$cache_after" ]]; then
-        fail "stage 1i: the second pass rewrote the compiled bytes, so it was not a warm pass"
-    fi
-
-    # The price of starting the product. Three runs, and the MEDIAN, because
-    # the first one pays for the page cache and the last one does not: the
-    # MEAN of three would charge the product for a warm file system it does
-    # not always meet. The median is the number a consumer actually meets.
-    startup_runs=()
-    for startup_index in 1 2 3; do
-        startup_started_ms=$(now_ms)
-        "$dist_bin" version > "$calib_dir/version-$startup_index.log" 2>&1 \
-            || fail "stage 1i: the product did not report its version"
-        startup_runs+=("$(( $(now_ms) - startup_started_ms ))")
-    done
-    startup_median="$(printf '%s\n' "${startup_runs[@]}" | sort -n | sed -n '2p')"
-
-    # The proof that the product's temporaries land in THIS run's own temporary
-    # directory. The JVM prints its effective system properties when it is
-    # asked, and java.io.tmpdir is the property that decides where the product
-    # creates its temporaries. Asking the product's OWN JVM is what turns "the
-    # launcher passes JAVA_OPTS" from an assumption into a measurement of THIS
-    # run.
-    #
-    # Without this proof the residue census cannot tell this run's temporaries
-    # from a neighbour's: both carry the same prefixes, and a census of names
-    # once blamed the gate for a stale copy of the product running another
-    # project's pipeline, which turned a green run into a red one for something
-    # the run never did. The proof is what makes the attribution a fact of this
-    # run instead of an assumption about the machine.
-    proof_log="$calib_dir/tmpdir-proof.log"
-    JAVA_OPTS="${JAVA_OPTS:-} -XshowSettings:properties" "$dist_bin" version \
-        > "$proof_log" 2>&1 \
-        || { tail -20 "$proof_log" >&2; fail "stage 1i: the product did not report its version while proving its temporary directory"; }
-    product_tmpdir="$(LC_ALL=C awk -F' = ' '/^[[:space:]]*java\.io\.tmpdir = /{ print $2; exit }' "$proof_log")"
-    if [[ "$product_tmpdir" == "$cycle_dir/tmp" ]]; then
-        relocation_proved=1
-    else
-        printf "    the product's JVM reports java.io.tmpdir=%s, not %s\n" \
-            "${product_tmpdir:-UNKNOWN}" "$cycle_dir/tmp" >&2
-    fi
-
-    # The cache home goes back the way it was, so the scenarios of the next
-    # stage keep the persistent cache they had: a gate that left the cache
-    # home pointing at its own cycle would make every scenario compile from
-    # scratch, and would charge the product for a cold cache it does not have.
-    if (( had_cache_dir == 1 )); then
-        export PIPELINEK_SCRIPT_CACHE_DIR="$saved_cache_dir"
-    else
+        if [[ ! -x "$dist_bin" ]]; then
+            fail "stage 1i: the distribution this gate just assembled is not there: $dist_bin"
+        fi
+        # The script cache is ON by default, and the default is where the base
+        # directory specification says it is. The calibration therefore measures
+        # the DEFAULT: no variable naming the cache, and the cache home pointed
+        # at this run's own directory, so the measurement neither pollutes the
+        # user's cache nor depends on what it happens to hold. Two passes are
+        # what makes the numbers comparable: the first one has to compile, and
+        # the second one has to find the compiled bytes the first one left behind.
+        had_cache_dir=0
+        saved_cache_dir="${PIPELINEK_SCRIPT_CACHE_DIR-}"
+        if [[ -n "${PIPELINEK_SCRIPT_CACHE_DIR+x}" ]]; then
+            had_cache_dir=1
+        fi
+        had_xdg_cache_home=0
+        saved_xdg_cache_home="${XDG_CACHE_HOME-}"
+        if [[ -n "${XDG_CACHE_HOME+x}" ]]; then
+            had_xdg_cache_home=1
+        fi
         unset PIPELINEK_SCRIPT_CACHE_DIR
-    fi
-    if (( had_xdg_cache_home == 1 )); then
-        export XDG_CACHE_HOME="$saved_xdg_cache_home"
-    else
-        unset XDG_CACHE_HOME
-    fi
+        export XDG_CACHE_HOME="$calib_dir/xdg-cache"
+        default_cache_dir="$calib_dir/xdg-cache/pipelinek/script-cache"
 
-    component_set "product:script_cold" "$cold_ms" "first compilation of a script"
-    component_set "product:script_warm" "$warm_ms" "second compilation, served from the script cache"
-    component_set "product:startup" "$startup_median" "median of three starts of the product"
-    printf '    cold %dms, warm %dms, startup %dms (the median of three)\n' \
-        "$cold_ms" "$warm_ms" "$startup_median"
-    echo "    ok in $(elapsed "$stage_started_at")s"
+        cold_started_ms=$(now_ms)
+        "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/cold.log" 2>&1 \
+            || { tail -20 "$calib_dir/cold.log" >&2; fail "stage 1i: the first compilation of a script did not succeed"; }
+        cold_ms=$(( $(now_ms) - cold_started_ms ))
+
+        # The second pass is only warm if it did NOT compile the script again. The
+        # product names the compiled bytes after the CONTENT of the script, so the
+        # file that was there before the pass has to be the file that is there
+        # after it: same name, same size, same moment. A second pass that rewrote
+        # it would be a second cold pass wearing a warm name.
+        if [[ -z "$(find "$default_cache_dir" -type f -print -quit 2>/dev/null)" ]]; then
+            fail "stage 1i: the first pass left no compiled bytes, so there is nothing for a second pass to reuse"
+        fi
+        cache_before="$(find "$default_cache_dir" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
+        warm_started_ms=$(now_ms)
+        "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/warm.log" 2>&1 \
+            || { tail -20 "$calib_dir/warm.log" >&2; fail "stage 1i: the second compilation of a script did not succeed"; }
+        warm_ms=$(( $(now_ms) - warm_started_ms ))
+        cache_after="$(find "$default_cache_dir" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
+        if [[ "$cache_before" != "$cache_after" ]]; then
+            fail "stage 1i: the second pass rewrote the compiled bytes, so it was not a warm pass"
+        fi
+
+        # The price of starting the product. Three runs, and the MEDIAN, because
+        # the first one pays for the page cache and the last one does not: the
+        # MEAN of three would charge the product for a warm file system it does
+        # not always meet. The median is the number a consumer actually meets.
+        startup_runs=()
+        for startup_index in 1 2 3; do
+            startup_started_ms=$(now_ms)
+            "$dist_bin" version > "$calib_dir/version-$startup_index.log" 2>&1 \
+                || fail "stage 1i: the product did not report its version"
+            startup_runs+=("$(( $(now_ms) - startup_started_ms ))")
+        done
+        startup_median="$(printf '%s\n' "${startup_runs[@]}" | sort -n | sed -n '2p')"
+
+            # The proof that the product's temporaries land in THIS run's own
+            # temporary directory is NOT part of the calibration: it is the
+            # attribution that lets the residue census tell this run from a
+            # neighbour, and it runs in both paths.
+            prove_product_temporaries "$calib_dir/tmpdir-proof.log" "stage 1i"
+
+        # The cache home goes back the way it was, so the scenarios of the next
+        # stage keep the persistent cache they had: a gate that left the cache
+        # home pointing at its own cycle would make every scenario compile from
+        # scratch, and would charge the product for a cold cache it does not have.
+        if (( had_cache_dir == 1 )); then
+            export PIPELINEK_SCRIPT_CACHE_DIR="$saved_cache_dir"
+        else
+            unset PIPELINEK_SCRIPT_CACHE_DIR
+        fi
+        if (( had_xdg_cache_home == 1 )); then
+            export XDG_CACHE_HOME="$saved_xdg_cache_home"
+        else
+            unset XDG_CACHE_HOME
+        fi
+
+        component_set "product:script_cold" "$cold_ms" "first compilation of a script"
+        component_set "product:script_warm" "$warm_ms" "second compilation, served from the script cache"
+        component_set "product:startup" "$startup_median" "median of three starts of the product"
+        printf '    cold %dms, warm %dms, startup %dms (the median of three)\n' \
+            "$cold_ms" "$warm_ms" "$startup_median"
+        echo "    ok in $(elapsed "$stage_started_at")s"
+    else
+        log "stage 1i/4  product calibration SKIPPED (level=$level does not calibrate the product: what a consumer waits for is a milestone datum, not a cost that every change has to pay)"
+        # The attribution of the residue is not part of the calibration, so it
+        # still happens here: the census of stage 4 has to tell this run's
+        # temporaries from a neighbour's, and that proof is a property of the
+        # product's JVM and not of the measurement.
+        prove_product_temporaries "$cycle_dir/tmpdir-proof.log" "stage 4"
+    fi
 else
   log "stage 1/4  SKIPPED by --stage"
 fi

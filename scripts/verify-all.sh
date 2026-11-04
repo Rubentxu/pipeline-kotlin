@@ -112,6 +112,12 @@ list_only=0
 stage_spec=""
 module_filter=""
 scenario_filter=""
+# The families this run will execute, and the filters that ask the launcher
+# for them. They stay empty until the map says which families the change can
+# break, and the map is checked before anything is planned.
+declare -a e2e_family_filters=()
+e2e_families_ran=""
+e2e_families_tree=0
 declare -a test_filters=()
 subset=0
 stage_given=0
@@ -1278,6 +1284,14 @@ print_level_meaning() {
             echo "      it did NOT run the static analysis (detekt) nor the guard of the"
             echo "      words the comments use, and it did NOT calibrate the product:"
             echo "      those are the certification's and the milestone's work."
+            if (( ${#e2e_family_filters[@]} > 0 )); then
+                echo "      it ran ONLY the E2E families the change can break: ${e2e_families_ran}."
+                echo "      the other families did NOT run: a change that cannot break them"
+                echo "      does not need them to be certified."
+            else
+                echo "      it ran EVERY E2E family: no family could be ruled out, so the"
+                echo "      run measured the whole inventory."
+            fi
             ;;
         milestone)
             echo "      this run is a MILESTONE run: it is not a certification, and its"
@@ -1367,6 +1381,12 @@ prepare_receipt() {
     # subset be quoted as the gate.
     if [[ "$subset" == 1 ]]; then
         e2e_scope="subset"
+    elif (( ${#e2e_family_filters[@]} > 0 )); then
+        # The change level ran the families the change can break, and the
+        # receipt says so: a receipt that says "full" about a run that
+        # measured two of the nine families would let a slice be quoted as
+        # the whole.
+        e2e_scope="families"
     else
         e2e_scope="full"
     fi
@@ -1449,118 +1469,6 @@ plan_modules() {
     [[ ${#keep[@]} -eq 0 ]] || printf '%s\n' "${keep[@]}"
 }
 
-plan_scenarios() {
-    local rel keep=()
-    while IFS= read -r rel; do
-        if [[ -z "$scenario_filter" ]]; then
-            keep+=("$rel")
-        else
-            # shellcheck disable=SC2254 # the pattern is a user-supplied glob on purpose
-            case "$rel" in $scenario_filter) keep+=("$rel") ;; esac
-        fi
-    done < <(find examples -name '*.pipeline.kts' -not -path '*/build/*' \
-             | LC_ALL=C sort | sed 's|^examples/||')
-    # `printf '%s\n' a b c` with no operands still prints one empty line, which
-    # the caller then reads back as one empty path. An empty result must print
-    # NOTHING, so the empty case is spelled out rather than left to printf.
-    [[ ${#keep[@]} -eq 0 ]] || printf '%s\n' "${keep[@]}"
-}
-
-print_plan() {
-    local s m sc
-    printf 'plan for sha %s\n' "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-    if [[ "$subset" == 0 ]]; then
-        printf '  prep      clean build outputs\n'
-    fi
-    for s in 1 2 3 4; do
-        want_stage "$s" || continue
-        case "$s" in
-            1)
-                printf '  stage 1  LOC budget census%s\n' \
-                    "$([[ "$skip_budget" == 1 ]] && printf ' (SKIPPED: --no-budget)' || printf '')"
-                printf '             forbidden Kotlin source sets\n'
-                printf '             comment provenance\n'
-                printf '             process exits\n'
-                printf '             detektMain detektTest apiCheck :pipeline-runtime:compileKotlin :pipeline-application:installDist\n'
-                ;;
-            2)
-                printf '  stage 2  unit tests\n'
-                planned_modules=0
-                while IFS= read -r m; do
-                    [[ -n "$m" ]] || continue
-                    planned_modules=$((planned_modules + 1))
-                    printf '             %s:test%s\n' "$m" \
-                        "$([[ ${#test_filters[@]} -gt 0 ]] && printf ' --tests %s' "$(IFS='|'; printf '%s' "${test_filters[*]}")")"
-                done < <(plan_modules)
-                if [[ "$planned_modules" -eq 0 ]]; then
-                    printf 'verify-all: --module %s matched no module with a unit test.\n' "'$module_filter'" >&2
-                    printf '  have one:\n' >&2
-                    plan_modules_all | sed 's/^/    /' >&2
-                    exit 2
-                fi
-                ;;
-            3)
-                printf '  stage 3  E2E scenarios\n'
-                planned_scenarios=0
-                while IFS= read -r sc; do
-                    [[ -n "$sc" ]] || continue
-                    planned_scenarios=$((planned_scenarios + 1))
-                    printf '             %s\n' "$sc"
-                done < <(plan_scenarios)
-                if [[ "$planned_scenarios" -eq 0 ]]; then
-                    printf 'verify-all: --scenario %s matched no scenario.\n' "'$scenario_filter'" >&2
-                    exit 2
-                fi
-                ;;
-            4) printf '  stage 4  wall clock%s\n' "$([[ "$subset" == 1 ]] && printf ' (reported, NOT compared to 900s: subset run)')" ;;
-        esac
-    done
-    [[ "$subset" == 1 ]] && printf 'SUBSET run: these stages are not the gate.\n'
-    return 0
-}
-
-if [[ "$list_only" == 1 ]]; then
-    print_plan
-    exit 0
-fi
-
-if [[ "$subset" == 1 ]]; then
-    printf 'SUBSET RUN -- filters in effect: stage=%s module=%s test=%s scenario=%s level=%s\n' \
-        "${stage_spec:-all}" "${module_filter:-all}" \
-        "$([[ ${#test_filters[@]} -gt 0 ]] && printf '%s ' "${test_filters[@]}" || printf 'all ')" \
-        "${scenario_filter:-all}" "$level"
-    printf 'This is NOT the AGENTS.md section 4 gate and its wall clock is not a gate measurement.\n\n'
-fi
-
-# --- The gate's own census of scenarios ---------------------------------------
-#
-# Two inventories of the E2E scenarios exist, and until now neither looked at
-# the other: the gate counted what the launcher said, and the launcher counted
-# what it found. A scenario that ended up unexecuted -- deleted, renamed,
-# moved, or simply never selected -- was invisible to both, because a count
-# that is only compared with itself is a transcription, not a measurement.
-#
-# The census is taken HERE, before any stage runs, and is compared with the
-# launcher's own report after stage 3. The order carries the guarantee: the
-# tree can change while the gate builds and the launcher reads the tree later,
-# so a census taken at the end would agree with the launcher by construction
-# and would never see the change.
-#
-# The two rules are deliberately NOT the same rule. The launcher asks for
-# regular files and leaves out the `example-*-plugin` fixtures; the gate asks
-# for the programs the tree holds. A gate that copied the launcher's rule
-# would be comparing the launcher with itself, and the copy would rot in
-# silence. When the two readings disagree, the disagreement is NAMED: a
-# criterion that differs is a fact about the project, and a fact that is
-# hidden behind a number that still adds up is exactly the hole this closes.
-gate_scenarios_census="$(plan_scenarios)"
-# How many scenarios that census holds, counted ONCE and here. The gate
-# PLANNED these before any stage ran, so a verdict line printed on the
-# way out of a failing run still says what the run was going to do. A
-# zero read at the end of the stage would say "the gate planned nothing",
-# which is a different thing entirely from "the comparison never ran".
-e2e_census_gate="$(printf '%s\n' "$gate_scenarios_census" | grep -c . || true)"
-
 # --- The map from a build module to the E2E families -------------------------
 #
 # The map answers ONE question: which E2E families can OBSERVE a change to a
@@ -1618,16 +1526,27 @@ e2e_family_of_path() {
     printf '%s' "$family"
 }
 
-# The families the tree holds: the family of every scenario the gate planned.
-# The census the gate took IS the source, so the families and the scenarios
-# can never disagree: they are the same reading.
+# Every scenario the TREE holds, with no filter at all.
+#
+# The families of the tree are a fact about the TREE, and a run that selected
+# a slice of it did not change the tree: a map checked against a filtered
+# tree would call every family it did not select a family that does not
+# exist, and the gate would refuse a map that is right.
+tree_scenarios() {
+    find examples -name '*.pipeline.kts' -not -path '*/build/*' \
+        | LC_ALL=C sort | sed 's|^examples/||'
+}
+
+# The families the tree holds: the family of every scenario the tree holds.
+# The tree's own census IS the source, so the families and the scenarios can
+# never disagree: they are the same reading.
 families_in_tree() {
     local scenario
     while IFS= read -r scenario; do
         [[ -n "$scenario" ]] || continue
         e2e_family_of_path "$scenario"
         printf '\n'
-    done <<< "$gate_scenarios_census" | LC_ALL=C sort -u
+    done <<< "$gate_tree_census" | LC_ALL=C sort -u
 }
 
 # The map, read once into two tables: the families of each module, and the
@@ -1740,10 +1659,16 @@ family_map_check() {
     if (( ${#declared_set[@]} == 0 )); then
         fail "the map of modules to E2E families: the modules the build declares could not be read"
     fi
+    gate_tree_census="$(tree_scenarios)"
     while IFS= read -r family; do
         [[ -n "$family" ]] || continue
         tree_family_set["$family"]=1
     done < <(families_in_tree)
+    e2e_families_tree=${#tree_family_set[@]}
+    e2e_census_tree="$(printf '%s\n' "$gate_tree_census" | grep -c . || true)"
+    # Until the change says otherwise, every family runs: a run that narrows
+    # the inventory has to say so, and the default is the whole thing.
+    e2e_families_ran="$(printf '%s\n' "${!tree_family_set[@]}" | LC_ALL=C sort | tr '\n' ',' | sed 's/,$//')"
 
     if (( ${#family_map_repeated[@]} > 0 )); then
         printf '    the map names the same module twice:\n' >&2
@@ -1805,7 +1730,7 @@ family_map_check() {
         fail "the map of modules to E2E families: ${#unmapped[@]} line(s) do not say why"
     fi
 
-    if [[ "$level" == "cambio" && "$subset" == 0 ]]; then
+    if [[ "$level" == "cambio" && -z "$scenario_filter" ]]; then
         while IFS= read -r path; do
             [[ -n "$path" ]] || continue
             if key="$(family_map_module_of_path "$path")"; then
@@ -1833,13 +1758,31 @@ family_map_check() {
             for family in "${!tree_family_set[@]}"; do observable_set["$family"]=1; done
         fi
         for family in "${!observable_set[@]}"; do observable+=("$family"); done
+
+        # The filters that ask the launcher for those families, and the names
+        # of the families themselves.
+        #
+        # The launcher knows about GLOBS over the path relative to examples/,
+        # and it does not know what a family is: the gate owns that
+        # translation, and a second owner of the notion would one day
+        # disagree with the first.
+        e2e_family_filters=()
+        if (( ${#observable[@]} < ${#tree_family_set[@]} )); then
+            for family in "${observable[@]}"; do
+                e2e_family_filters+=("$family/*")
+            done
+        fi
+        # When the selection is EVERY family, no filter is passed: that run is
+        # the whole inventory, and the launcher has checks for a whole
+        # inventory that a slice of it would lose.
+        e2e_families_ran="$(printf '%s\n' "${observable[@]}" | LC_ALL=C sort | tr '\n' ',' | sed 's/,$//')"
     fi
 
     printf '    the map of modules to E2E families:\n'
     printf '      %d module(s) the build declares, %d famil(ies) in the tree\n' \
         "${#declared_set[@]}" "${#tree_family_set[@]}"
     printf '      every declared module is in the map, and every family has a module\n'
-    if [[ "$level" == "cambio" && "$subset" == 0 ]]; then
+    if [[ "$level" == "cambio" && -z "$scenario_filter" ]]; then
         printf '      the change touches %d module(s)\n' "${#touched_set[@]}"
         for m in $(printf '%s\n' "${!touched_set[@]}" | LC_ALL=C sort); do printf '        %s\n' "$m"; done
         printf '      the families that can observe the change: %s\n' \
@@ -1854,6 +1797,123 @@ family_map_check() {
 # tree, and a tree with a broken map must not spend a build on the way to
 # saying so.
 family_map_check
+
+plan_scenarios() {
+    local rel pattern keep=()
+    while IFS= read -r rel; do
+        if [[ -z "$scenario_filter" && ${#e2e_family_filters[@]} -eq 0 ]]; then
+            keep+=("$rel")
+            continue
+        fi
+        if [[ -n "$scenario_filter" ]]; then
+            # shellcheck disable=SC2254 # the pattern is a user-supplied glob on purpose
+            case "$rel" in $scenario_filter) keep+=("$rel"); continue ;; esac
+        fi
+        for pattern in "${e2e_family_filters[@]}"; do
+            # shellcheck disable=SC2254 # the pattern is a user-supplied glob on purpose
+            case "$rel" in $pattern) keep+=("$rel"); break ;; esac
+        done
+    done < <(tree_scenarios)
+    # `printf '%s\n' a b c` with no operands still prints one empty line, which
+    # the caller then reads back as one empty path. An empty result must print
+    # NOTHING, so the empty case is spelled out rather than left to printf.
+    [[ ${#keep[@]} -eq 0 ]] || printf '%s\n' "${keep[@]}"
+}
+
+print_plan() {
+    local s m sc
+    printf 'plan for sha %s\n' "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    if [[ "$subset" == 0 ]]; then
+        printf '  prep      clean build outputs\n'
+    fi
+    for s in 1 2 3 4; do
+        want_stage "$s" || continue
+        case "$s" in
+            1)
+                printf '  stage 1  LOC budget census%s\n' \
+                    "$([[ "$skip_budget" == 1 ]] && printf ' (SKIPPED: --no-budget)' || printf '')"
+                printf '             forbidden Kotlin source sets\n'
+                printf '             comment provenance\n'
+                printf '             process exits\n'
+                printf '             detektMain detektTest apiCheck :pipeline-runtime:compileKotlin :pipeline-application:installDist\n'
+                ;;
+            2)
+                printf '  stage 2  unit tests\n'
+                planned_modules=0
+                while IFS= read -r m; do
+                    [[ -n "$m" ]] || continue
+                    planned_modules=$((planned_modules + 1))
+                    printf '             %s:test%s\n' "$m" \
+                        "$([[ ${#test_filters[@]} -gt 0 ]] && printf ' --tests %s' "$(IFS='|'; printf '%s' "${test_filters[*]}")")"
+                done < <(plan_modules)
+                if [[ "$planned_modules" -eq 0 ]]; then
+                    printf 'verify-all: --module %s matched no module with a unit test.\n' "'$module_filter'" >&2
+                    printf '  have one:\n' >&2
+                    plan_modules_all | sed 's/^/    /' >&2
+                    exit 2
+                fi
+                ;;
+            3)
+                printf '  stage 3  E2E scenarios\n'
+                planned_scenarios=0
+                while IFS= read -r sc; do
+                    [[ -n "$sc" ]] || continue
+                    planned_scenarios=$((planned_scenarios + 1))
+                    printf '             %s\n' "$sc"
+                done < <(plan_scenarios)
+                if [[ "$planned_scenarios" -eq 0 ]]; then
+                    printf 'verify-all: --scenario %s matched no scenario.\n' "'$scenario_filter'" >&2
+                    exit 2
+                fi
+                ;;
+            4) printf '  stage 4  wall clock%s\n' "$([[ "$subset" == 1 ]] && printf ' (reported, NOT compared to 900s: subset run)')" ;;
+        esac
+    done
+    [[ "$subset" == 1 ]] && printf 'SUBSET run: these stages are not the gate.\n'
+    return 0
+}
+
+if [[ "$list_only" == 1 ]]; then
+    print_plan
+    exit 0
+fi
+
+if [[ "$subset" == 1 ]]; then
+    printf 'SUBSET RUN -- filters in effect: stage=%s module=%s test=%s scenario=%s level=%s\n' \
+        "${stage_spec:-all}" "${module_filter:-all}" \
+        "$([[ ${#test_filters[@]} -gt 0 ]] && printf '%s ' "${test_filters[@]}" || printf 'all ')" \
+        "${scenario_filter:-all}" "$level"
+    printf 'This is NOT the AGENTS.md section 4 gate and its wall clock is not a gate measurement.\n\n'
+fi
+
+# --- The gate's own census of scenarios ---------------------------------------
+#
+# Two inventories of the E2E scenarios exist, and until now neither looked at
+# the other: the gate counted what the launcher said, and the launcher counted
+# what it found. A scenario that ended up unexecuted -- deleted, renamed,
+# moved, or simply never selected -- was invisible to both, because a count
+# that is only compared with itself is a transcription, not a measurement.
+#
+# The census is taken HERE, before any stage runs, and is compared with the
+# launcher's own report after stage 3. The order carries the guarantee: the
+# tree can change while the gate builds and the launcher reads the tree later,
+# so a census taken at the end would agree with the launcher by construction
+# and would never see the change.
+#
+# The two rules are deliberately NOT the same rule. The launcher asks for
+# regular files and leaves out the `example-*-plugin` fixtures; the gate asks
+# for the programs the tree holds. A gate that copied the launcher's rule
+# would be comparing the launcher with itself, and the copy would rot in
+# silence. When the two readings disagree, the disagreement is NAMED: a
+# criterion that differs is a fact about the project, and a fact that is
+# hidden behind a number that still adds up is exactly the hole this closes.
+gate_scenarios_census="$(plan_scenarios)"
+# How many scenarios that census holds, counted ONCE and here. The gate
+# PLANNED these before any stage ran, so a verdict line printed on the
+# way out of a failing run still says what the run was going to do. A
+# zero read at the end of the stage would say "the gate planned nothing",
+# which is a different thing entirely from "the comparison never ran".
+e2e_census_gate="$(printf '%s\n' "$gate_scenarios_census" | grep -c . || true)"
 
 # --- JDK resolution ----------------------------------------------------------
 # Prefer an explicit JAVA_HOME that already satisfies the requirement; then the
@@ -3343,10 +3403,24 @@ tests_suffix() {
 #   contrast            the verdict of comparing the last two, name by name.
 scenarios_suffix() {
     if [[ "$e2e_stage3_ran" == 1 && -n "$e2e_observed" ]]; then
-        printf '  scenarios=launcher_observed:%s launcher_executions:%s gate_planned:%s launcher_scenarios:%s contrast:%s' \
-            "$e2e_observed" "$e2e_executed" "$e2e_census_gate" "$e2e_census_launcher" "$e2e_census_contrast"
+        printf '  scenarios=launcher_observed:%s launcher_executions:%s gate_planned:%s launcher_scenarios:%s tree_scenarios:%s contrast:%s' \
+            "$e2e_observed" "$e2e_executed" "$e2e_census_gate" "$e2e_census_launcher" "$e2e_census_tree" "$e2e_census_contrast"
     else
         printf '  scenarios=NOT_RUN'
+    fi
+}
+
+# The families this run executed, and the families the tree holds.
+#
+# It travels with the verdict line for the same reason the scenario census
+# does. A run that executed two of the nine families is not the gate, and a
+# line that does not name the two reads like the one that executed all nine.
+# The names are the tree's, so a reader can see WHICH scenarios did not run.
+families_suffix() {
+    if [[ "$e2e_stage3_ran" == 1 ]]; then
+        printf '  families=ran:%s tree:%s' "${e2e_families_ran:-unknown}" "$e2e_families_tree"
+    else
+        printf '  families=NOT_RUN'
     fi
 }
 
@@ -3431,9 +3505,9 @@ jvm_suffix() {
 # unrepresentable -- one string, one `%s` -- and each field keeps saying NOT_RUN
 # rather than going quiet when its stage was skipped.
 evidence_suffixes() {
-    printf '%s%s%s%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
-        "$(jvm_suffix)" "$(receipt_suffix)" "$(residue_suffix)" "$(components_suffix)" \
-        "$(tasks_suffix)" "$(config_cache_suffix)"
+    printf '%s%s%s%s%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
+        "$(families_suffix)" "$(jvm_suffix)" "$(receipt_suffix)" "$(residue_suffix)" \
+        "$(components_suffix)" "$(tasks_suffix)" "$(config_cache_suffix)"
 }
 
 stage3_started_ms=$(now_ms)
@@ -3472,6 +3546,9 @@ prepare_receipt || fail "stage 3: the receipt could not be prepared"
 launcher_args=()
 if [[ -n "$scenario_filter" ]]; then
     launcher_args+=("$scenario_filter")
+fi
+if (( ${#e2e_family_filters[@]} > 0 )); then
+    launcher_args+=("${e2e_family_filters[@]}")
 fi
 launcher_args+=(--receipt "$receipt_file")
 if [[ "$diagnostics_local" == 1 ]]; then

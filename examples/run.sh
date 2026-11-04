@@ -222,16 +222,22 @@ set -Eeuo pipefail
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$here/.." && pwd)"
 
-# The launcher's own options, and the one positional argument.
+# The launcher's own options, and the positional filters.
 #
-# The filter stays positional: `run.sh 'control-flow/*'`. The options are
-# spelled out, and an option the launcher does not know is REFUSED rather
-# than taken for a filter: a typo in a flag that became a filter would run
-# nothing and report "no scenario matches", which reads like a choice.
+# The filters stay positional: `run.sh 'control-flow/*' 'negative/*'`. The
+# options are spelled out, and an option the launcher does not know is
+# REFUSED rather than taken for a filter: a typo in a flag that became a
+# filter would run nothing and report "no scenario matches", which reads like
+# a choice.
+#
+# SEVERAL filters are accepted, and a scenario runs when it matches ANY of
+# them. One was enough while the caller chose the slice; a gate that selects
+# the families a change can break has to name more than one, and a second
+# syntax for the same thing (a comma inside one filter, a flag that says
+# "families") would be a second way to be wrong.
 receipt_path="${PIPELINEK_E2E_RECEIPT:-}"
 keep_artifacts=0
-filter=""
-positional_taken=0
+declare -a filters=()
 while (( $# > 0 )); do
     case "$1" in
         --receipt)
@@ -263,12 +269,16 @@ while (( $# > 0 )); do
             echo "  the launcher takes --receipt <path> and --diagnostics local." >&2
             exit 2 ;;
         *)
-            if (( positional_taken == 1 )); then
-                echo "run.sh: only one scenario filter is accepted, got two: $1" >&2
-                exit 2
-            fi
-            filter="$1"; positional_taken=1; shift ;;
+            filters+=("$1"); shift ;;
     esac
+done
+# The filters as ONE string, for the receipt. The receipt says what the
+# caller asked for, and a reader that has to parse a list to learn it is a
+# reader that has to know the list's syntax.
+filter_list=""
+for pattern in "${filters[@]}"; do
+    if [[ -n "$filter_list" ]]; then filter_list="$filter_list, "; fi
+    filter_list="$filter_list$pattern"
 done
 if [[ -n "$receipt_path" && ! "$receipt_path" == /* ]]; then
     echo "run.sh: the receipt path must be absolute, got: $receipt_path" >&2
@@ -502,7 +512,7 @@ write_receipt() {
         PIPELINEK_RECEIPT_HOST="${PIPELINEK_E2E_HOST:-}" \
         PIPELINEK_RECEIPT_JDK="${PIPELINEK_E2E_JDK:-}" \
         PIPELINEK_RECEIPT_SCOPE="${PIPELINEK_E2E_SCOPE:-unknown}" \
-        PIPELINEK_RECEIPT_FILTER="${filter}" \
+        PIPELINEK_RECEIPT_FILTER="${filter_list}" \
         PIPELINEK_RECEIPT_GENERATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         PIPELINEK_RECEIPT_PASSED="${passed:-0}" \
         PIPELINEK_RECEIPT_FAILED="${failed:-0}" \
@@ -4986,9 +4996,13 @@ fi
 selected=()
 while IFS= read -r script; do
     rel="${script#"$here"/}"
-    if [[ -n "$filter" ]]; then
-        # shellcheck disable=SC2254 # the pattern is a caller-supplied glob on purpose
-        case "$rel" in $filter) selected+=("$script") ;; esac
+    if (( ${#filters[@]} > 0 )); then
+        matched=0
+        for pattern in "${filters[@]}"; do
+            # shellcheck disable=SC2254 # the pattern is a caller-supplied glob on purpose
+            case "$rel" in $pattern) matched=1; break ;; esac
+        done
+        if (( matched == 1 )); then selected+=("$script"); fi
     else
         selected+=("$script")
     fi
@@ -4996,8 +5010,8 @@ done < <(find "$here" -name '*.pipeline.kts' -type f -not -path '*/build/*' \
             -not -path '*/example-*-plugin/*' | LC_ALL=C sort)
 
 if (( ${#selected[@]} == 0 )); then
-    if [[ -n "$filter" ]]; then
-        printf 'run.sh: no scenario matches the pattern %s\n' "$filter" >&2
+    if (( ${#filters[@]} > 0 )); then
+        printf 'run.sh: no scenario matches the patterns: %s\n' "$(printf '%s ' "${filters[@]}")" >&2
         printf '  patterns are globs against the path relative to this directory,\n' >&2
         printf '  e.g. '\''control-flow/*'\'' or '\''*/11-*'\''.\n' >&2
         printf '  available:\n' >&2
@@ -5410,7 +5424,7 @@ fi
 # check is scoped to the unfiltered run on purpose: a `--scenario` filter is a
 # caller choosing which slice to run, and forcing durable coverage there would
 # punish the inner loop for using the filter at all.
-if [[ -z "$filter" ]] && (( durable_runs == 0 )); then
+if (( ${#filters[@]} == 0 )) && (( durable_runs == 0 )); then
     printf 'run.sh: no scenario declared "//@ durable", so the replay path was never executed.\n' >&2
     printf '  A green here would be the absence of the subject, not a passing check.\n' >&2
     exit 1

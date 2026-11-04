@@ -148,8 +148,21 @@ open class GitCheckoutExecutor(
             return Result.failure(GitRemotePolicy.GitRemoteRefused(refusal))
         }
 
-        // Guard argv: the credential rule, over the real arguments.
-        guardProcessBuilderArgs(listOf("git", "ls-remote", spec.url, spec.branch))
+        // Guard argv: the credential rule, over the arguments the poll is GOING TO RUN.
+        //
+        // The list is the poll's own (`GitPollExecutor.lsRemoteArgv`), not a copy of it:
+        // a guard over a hand-built argv checks a command that was never examined, and
+        // the two lists are free to drift apart the day somebody edits one of them.
+        //
+        // A refusal here is a FAILURE of the checkout, not a crash of the run: the
+        // remote carries a credential in a place git would publish it to the whole
+        // machine, and the checkout must say so and stop. It travels as a typed
+        // failure so the caller classifies it by type, like every other refusal.
+        try {
+            guardProcessBuilderArgs(GitPollExecutor.lsRemoteArgv(spec.url, spec.branch))
+        } catch (refused: IllegalArgumentException) {
+            return Result.failure(refused)
+        }
 
         // Emit GitCheckoutStarted
         try {

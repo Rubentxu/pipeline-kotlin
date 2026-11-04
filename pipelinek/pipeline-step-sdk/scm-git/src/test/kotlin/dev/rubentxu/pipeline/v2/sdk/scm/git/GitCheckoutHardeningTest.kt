@@ -13,6 +13,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.GitCheckoutStarted
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
@@ -28,9 +29,11 @@ import org.junit.jupiter.api.io.TempDir
  * The checkout that refuses to be tricked, and that leaves nothing behind.
  *
  * **The guarantee.** A remote that git would read as an option never becomes one,
- * the configuration the checkout hands to git is a configuration git accepts, the
- * ssh connection refuses a host whose key changed, and every temporary root the
- * checkout opened is gone when the checkout ends.
+ * a branch that git would read as an option is refused, a transport the product
+ * does not support is refused, a remote that carries a credential in its argv
+ * never reaches a process, the configuration the checkout hands to git is a
+ * configuration git accepts, the ssh connection refuses a host whose key changed,
+ * and every temporary root the checkout opened is gone when the checkout ends.
  *
  * **Why the argv is the place to look.** git reads every argument that starts with
  * `-` as an option. `--upload-pack=…` is not a repository: it is an instruction to
@@ -47,6 +50,16 @@ class GitCheckoutHardeningTest {
 
     @TempDir
     lateinit var temp: Path
+
+    /**
+     * How many credential directories this test has opened.
+     *
+     * The applier owns a directory it wipes when it closes, and a test that opens
+     * one never closes it. The directories live under the test's own temporary
+     * directory, which the framework deletes, so the counter only has to keep the
+     * names apart.
+     */
+    private var appliers = 0
 
     @Test
     fun `the ls-remote argv separates the positionals from the options`() {
@@ -100,6 +113,85 @@ class GitCheckoutHardeningTest {
         assertTrue(
             runtime.argvs.isEmpty(),
             "the checkout spawned a process before refusing the remote: ${runtime.argvs}",
+        )
+    }
+
+    @Test
+    fun `a branch that looks like an option is refused before any process is spawned`() {
+        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val executor = executor(runtime = runtime)
+
+        val result = executor.execute(
+            request("https://github.com/org/repo.git", branch = "--upload-pack=touch /tmp/pwned"),
+        )
+
+        assertTrue(
+            result.isFailure,
+            "the checkout accepted a branch that git would read as an option",
+        )
+        val message = result.exceptionOrNull()!!.message!!
+        assertTrue(
+            message.contains("branch"),
+            "the refusal must say that the BRANCH is the option; it said: $message",
+        )
+        assertFalse(
+            message.contains("touch /tmp/pwned"),
+            "the refusal repeated the command it refused to run; it said: $message",
+        )
+        assertTrue(
+            runtime.argvs.isEmpty(),
+            "the checkout spawned a process before refusing the branch: ${runtime.argvs}",
+        )
+    }
+
+    @Test
+    fun `a remote whose transport is not one of the three is refused before any process is spawned`() {
+        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val executor = executor(runtime = runtime)
+
+        val result = executor.execute(request("ftp://github.com/org/repo.git"))
+
+        assertTrue(
+            result.isFailure,
+            "the checkout accepted a transport it does not support",
+        )
+        val message = result.exceptionOrNull()!!.message!!
+        assertTrue(
+            message.contains("allowed transports"),
+            "the refusal must name the rule it applied; it said: $message",
+        )
+        assertTrue(
+            runtime.argvs.isEmpty(),
+            "the checkout spawned a process before refusing the transport: ${runtime.argvs}",
+        )
+    }
+
+    @Test
+    fun `a remote that carries a credential is refused before the checkout announces itself`() {
+        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val executor = executor(runtime = runtime)
+        val events = mutableListOf<DomainEvent>()
+
+        val result = executor.execute(
+            request("https://user:s3cr3t@github.com/org/repo.git", events = events),
+        )
+
+        assertTrue(
+            result.isFailure,
+            "the checkout accepted a remote that carries a credential in its argv",
+        )
+        val message = result.exceptionOrNull()!!.message!!
+        assertFalse(
+            message.contains("s3cr3t"),
+            "the refusal repeated the credential it refused to publish; it said: $message",
+        )
+        assertTrue(
+            runtime.argvs.isEmpty(),
+            "the checkout spawned a process with a credential in its argv: ${runtime.argvs}",
+        )
+        assertTrue(
+            events.none { it is GitCheckoutStarted },
+            "the checkout announced a checkout it then refused to perform: ${events.map { it.kind }}",
         )
     }
 
@@ -172,6 +264,29 @@ class GitCheckoutHardeningTest {
     }
 
     @Test
+    fun `the ssh connection records the host keys where the operator's own decisions already live`() {
+        val applier = applier()
+        applier.applySsh(SecretHandleRef(CredentialsId("ssh-key")), null, "ssh://git@github.com/org/repo.git")
+
+        val command = requireNotNull(applier.buildEnv()["GIT_SSH_COMMAND"]) {
+            "the ssh transport must put GIT_SSH_COMMAND in the environment it hands over"
+        }
+
+        // The file ssh records the keys in has to OUTLIVE the run: `accept-new` can
+        // only tell a first contact from a changed key if the file still holds the
+        // keys it has already seen. A file inside the checkout's own temporary
+        // directory starts empty every time, and a file that starts empty every
+        // time accepts every key every time.
+        val operatorKnownHosts = Path.of(System.getProperty("user.home"), ".ssh", "known_hosts")
+        assertTrue(
+            command.contains("UserKnownHostsFile=\"$operatorKnownHosts\""),
+            "with no known hosts file of its own, the checkout records the host keys in the " +
+                "operator's own file, which is the one that persists between runs; the command " +
+                "was: $command",
+        )
+    }
+
+    @Test
     fun `closing the checkout removes every temporary root it opened`() {
         val applierRoot = Files.createTempDirectory("scm-git-step")
         val pollRoot = Files.createTempDirectory("git-poll-tasks")
@@ -198,7 +313,7 @@ class GitCheckoutHardeningTest {
     }
 
     private fun applier(knownHosts: Path? = null): GitCredentialsApplier {
-        val root = Files.createTempDirectory("scm-git-step")
+        val root = Files.createDirectories(temp.resolve("applier-${appliers++}"))
         return GitCredentialsApplier(
             tempDir = root,
             credentials = GitCredentials(),
@@ -222,13 +337,20 @@ class GitCheckoutHardeningTest {
         gitControlRoot = temp.resolve("control"),
     )
 
-    private fun request(url: String) = GitCheckoutRequest(
-        spec = CheckoutSpec(GitScm(url = url, branch = "main")),
+    private fun request(
+        url: String,
+        branch: String = "main",
+        events: MutableList<DomainEvent> = mutableListOf(),
+    ) = GitCheckoutRequest(
+        spec = CheckoutSpec(GitScm(url = url, branch = branch)),
         runId = "run-1",
         workspaceRoot = temp.resolve("workspace"),
         eventSink = object : EventSink {
-            override fun append(event: DomainEvent) = Unit
-            override fun eventsFor(runId: String): Sequence<DomainEvent> = emptySequence()
+            override fun append(event: DomainEvent) {
+                events.add(event)
+            }
+
+            override fun eventsFor(runId: String): Sequence<DomainEvent> = events.asSequence()
         },
         clock = FIXED_CLOCK,
         secretStore = null,

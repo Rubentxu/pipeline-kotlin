@@ -52,7 +52,7 @@ class GitPollExecutor(
             // `--` before the positionals: git stops reading options there, so a remote or
             // a branch that looks like an option is a VALUE and never an instruction.
             // The credential rule is checked over the very same argv, where it is built.
-            val args = listOf("git", "ls-remote", "--", url, branch)
+            val args = lsRemoteArgv(url, branch)
             GitCredentialsApplier.guardProcessBuilderArgs(args)
             // ls-remote historically used redirectErrorStream(true); emulate
             // by passing both streams into the captured run and joining for
@@ -118,5 +118,22 @@ class GitPollExecutor(
      */
     override fun close() {
         GitTempRoot.deleteRecursively(controlRoot)
+    }
+
+    /**
+     * The argv `git ls-remote` is run with.
+     *
+     * ONE authority for the command line: the poll runs this list, and the checkout
+     * GUARDS this list. A guard that checks a hand-built argv is a guard over a
+     * question nobody asked — the moment the two lists differ, the check and the
+     * command have stopped talking to each other, and the check passes for a command
+     * that was never examined.
+     *
+     * The `--` is part of the list, not a decoration of it: it is what tells git that
+     * the remote and the branch are values.
+     */
+    companion object {
+        fun lsRemoteArgv(url: String, branch: String): List<String> =
+            listOf("git", "ls-remote", "--", url, branch)
     }
 }

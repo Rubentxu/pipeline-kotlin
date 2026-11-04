@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.events.durable
+package dev.rubentxu.pipeline.v2.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.RunId
 

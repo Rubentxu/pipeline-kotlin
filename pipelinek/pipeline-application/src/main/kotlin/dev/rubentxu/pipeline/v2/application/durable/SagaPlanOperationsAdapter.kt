@@ -14,9 +14,9 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordOutcome
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordRejection
 import dev.rubentxu.pipeline.v2.domain.saga.SagaSnapshot
-import dev.rubentxu.pipeline.v2.events.durable.SagaObligationStore
-import dev.rubentxu.pipeline.v2.events.durable.SagaObligationUpdate
-import dev.rubentxu.pipeline.v2.events.durable.SagaUpdatePersistence
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationStore
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationUpdate
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaUpdatePersistence
 
 /**
  * The runtime implementation of the Saga PLAN port.

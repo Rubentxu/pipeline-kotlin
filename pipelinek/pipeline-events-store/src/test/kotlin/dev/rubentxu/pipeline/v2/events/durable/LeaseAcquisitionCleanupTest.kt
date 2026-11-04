@@ -1,6 +1,13 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.runtime.durable.FencingToken
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseAcquisition
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRecord
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRequest
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
+import java.io.IOException
+import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -8,8 +15,6 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.io.IOException
-import java.nio.file.Path
 
 /**
  * The acquisition of a lease, and the resources it must never leave behind.

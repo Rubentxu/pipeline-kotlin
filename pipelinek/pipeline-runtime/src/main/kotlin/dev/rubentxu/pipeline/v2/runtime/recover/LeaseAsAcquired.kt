@@ -1,10 +1,10 @@
 package dev.rubentxu.pipeline.v2.runtime.recover
 
 import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.events.durable.FencingToken
-import dev.rubentxu.pipeline.v2.events.durable.LeaseRecord
-import dev.rubentxu.pipeline.v2.events.durable.RunLeaseObservationPort
-import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.runtime.durable.FencingToken
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRecord
+import dev.rubentxu.pipeline.v2.runtime.durable.RunLeaseObservationPort
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 
 /**
  * The run's lease as a recovery that has ALREADY taken it sees it.
@@ -43,7 +43,7 @@ import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
  * It is not a lease, and it grants nothing. It holds no lock, writes no record
  * and cannot fence anybody: it presents facts. The authority on whether a live
  * process holds the run is the lock, and it is asked of the kernel through
- * [dev.rubentxu.pipeline.v2.events.durable.RunLeasePort.liveness], not of this
+ * [dev.rubentxu.pipeline.v2.runtime.durable.RunLeasePort.liveness], not of this
  * class.
  */
 class LeaseAsAcquired(

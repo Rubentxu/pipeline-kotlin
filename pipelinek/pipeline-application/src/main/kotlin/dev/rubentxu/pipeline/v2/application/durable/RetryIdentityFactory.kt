@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 
 /**
  * Materializes the canonical retry identities used for durable journal
@@ -12,7 +13,7 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
  *    retry logical invocation. Used to persist per-attempt control rows
  *    (the durable record of the retry aggregate's state at attempt N).
  *    The (opId, attempt) pair locates a single row in
- *    [dev.rubentxu.pipeline.v2.events.durable.OperationJournal].
+ *    [dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal].
  *  - **Child identity**: unique per (retry, attempt, childIndex) triple.
  *    Used to persist the canonical child effect's durable facts; it is
  *    exactly the (runId, stageIndex, stepIndex, branchIndex=null,

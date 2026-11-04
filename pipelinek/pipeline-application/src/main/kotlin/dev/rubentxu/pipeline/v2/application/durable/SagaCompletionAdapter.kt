@@ -9,8 +9,8 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaCompletionReport
 import dev.rubentxu.pipeline.v2.domain.saga.SagaDecider
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaSnapshot
-import dev.rubentxu.pipeline.v2.events.durable.SagaObligationRow
-import dev.rubentxu.pipeline.v2.events.durable.SagaObligationStore
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationRow
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationStore
 
 /**
  * The engine's side of a Saga's COMPLETION.

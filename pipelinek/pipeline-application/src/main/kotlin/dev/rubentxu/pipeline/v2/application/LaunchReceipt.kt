@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject

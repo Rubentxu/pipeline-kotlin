@@ -20,8 +20,8 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaPromiseOwnership
 import dev.rubentxu.pipeline.v2.domain.saga.SagaDecision
 import dev.rubentxu.pipeline.v2.events.CompensationArmed
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.durable.SagaArmPersistence
-import dev.rubentxu.pipeline.v2.events.durable.SagaObligationStore
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaArmPersistence
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationStore
 import java.util.UUID
 
 /**

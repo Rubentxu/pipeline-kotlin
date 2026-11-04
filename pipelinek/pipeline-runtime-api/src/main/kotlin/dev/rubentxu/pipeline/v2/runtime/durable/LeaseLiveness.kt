@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.events.durable
+package dev.rubentxu.pipeline.v2.runtime.durable
 
 /**
  * Whether a LIVE process holds a run's lease right now.

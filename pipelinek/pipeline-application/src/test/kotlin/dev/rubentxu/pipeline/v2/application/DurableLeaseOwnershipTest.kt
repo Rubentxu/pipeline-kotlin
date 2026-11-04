@@ -1,13 +1,13 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.events.durable.FencingToken
-import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
-import dev.rubentxu.pipeline.v2.events.durable.LeaseLiveness
-import dev.rubentxu.pipeline.v2.events.durable.LeaseRecord
-import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
-import dev.rubentxu.pipeline.v2.events.durable.RunLeasePort
-import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.runtime.durable.FencingToken
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseAcquisition
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseLiveness
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRecord
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRequest
+import dev.rubentxu.pipeline.v2.runtime.durable.RunLeasePort
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.DisplayName

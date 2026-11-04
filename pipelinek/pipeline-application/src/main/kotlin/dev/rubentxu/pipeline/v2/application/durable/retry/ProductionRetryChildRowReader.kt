@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RetryChildRowSnapshot
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 
 /**
  * Production adapter for [ChildRowReader].

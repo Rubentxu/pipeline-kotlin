@@ -6,6 +6,12 @@ import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligationStatus
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaIntentContract
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaArmPersistence
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaBulkMove
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationRow
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationStore
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationUpdate
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaUpdatePersistence
 import java.sql.Connection
 import kotlin.concurrent.withLock
 
@@ -49,7 +55,7 @@ import kotlin.concurrent.withLock
  * applied. The lease FILE remains the authority on who owns the run; this guard is the durable
  * half of the same check, and it holds even if the file was replaced between the two.
  */
-class SqliteSagaObligationStore(
+internal class SqliteSagaObligationStore(
     private val connectionFactory: () -> Connection,
     private val dbPath: String,
 ) : SagaObligationStore {
@@ -92,10 +98,11 @@ class SqliteSagaObligationStore(
                     statement.setString(14, row.runId)
                     statement.setString(15, row.sagaId.value)
                     statement.setLong(16, row.updatedAtMs)
-                    if (row.receiptRef == null) {
+                    val receiptRef = row.receiptRef
+                    if (receiptRef == null) {
                         statement.setNull(17, java.sql.Types.VARCHAR)
                     } else {
-                        statement.setString(17, row.receiptRef.value)
+                        statement.setString(17, receiptRef.value)
                     }
                     // The plugin that armed this promise. It is what makes the promise
                     // recognisable as belonging to someone.
@@ -107,10 +114,11 @@ class SqliteSagaObligationStore(
                     // The shape of the body the promise is paid with. It is measured by the
                     // engine, not by the plugin: the plugin names the body, and the engine says
                     // what that body IS.
-                    if (row.bodyDigest == null) {
+                    val bodyDigest = row.bodyDigest
+                    if (bodyDigest == null) {
                         statement.setNull(19, java.sql.Types.VARCHAR)
                     } else {
-                        statement.setString(19, row.bodyDigest.hex)
+                        statement.setString(19, bodyDigest.hex)
                     }
                     // The guard's two parameters: the run whose high-water mark is read, and the
                     // epoch of this writer.
@@ -144,10 +152,11 @@ class SqliteSagaObligationStore(
             try {
                 val updated = connection.prepareStatement(UPDATE_OBLIGATION).use { statement ->
                     statement.setString(1, update.status.name)
-                    if (update.receiptRef == null) {
+                    val receiptRef = update.receiptRef
+                    if (receiptRef == null) {
                         statement.setNull(2, java.sql.Types.VARCHAR)
                     } else {
-                        statement.setString(2, update.receiptRef.value)
+                        statement.setString(2, receiptRef.value)
                     }
                     statement.setLong(3, update.updatedAtMs)
                     statement.setString(4, update.runId)

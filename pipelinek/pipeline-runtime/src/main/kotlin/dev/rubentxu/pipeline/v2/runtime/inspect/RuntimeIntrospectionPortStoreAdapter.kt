@@ -1,15 +1,15 @@
 package dev.rubentxu.pipeline.v2.runtime.inspect
 
 import dev.rubentxu.pipeline.v2.domain.AttemptId
-import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.events.RunFinished
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
-import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
-import dev.rubentxu.pipeline.v2.events.durable.RunExecutionLease
-import dev.rubentxu.pipeline.v2.events.durable.RunLeaseObservationPort
+import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
+import dev.rubentxu.pipeline.v2.runtime.durable.RunExecutionLease
+import dev.rubentxu.pipeline.v2.runtime.durable.RunLeaseObservationPort
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import dev.rubentxu.pipeline.v2.events.identity.EventQuery
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
@@ -19,6 +19,10 @@ import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.OutputTailPort
 import dev.rubentxu.pipeline.v2.output.OutputTailState
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseAcquisition
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRecord
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRequest
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 
 /**
  * Production [RuntimeIntrospectionPort] adapter backed by the existing
@@ -41,12 +45,12 @@ import dev.rubentxu.pipeline.v2.output.OutputTailState
  * ## Read-only by construction
  * The adapter MUST NOT mutate durable state. The only operations it calls are
  * SELECTs (the journal's [OperationJournal.listForRun] /
- * [dev.rubentxu.pipeline.v2.events.durable.OperationJournal.getEndedAt]), tail-
+ * [dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal.getEndedAt]), tail-
  * state queries ([OutputTailPort.tailState]), the read-page
  * ([EventRecordReadPort.readRecords]), the durable cursor
  * ([ReplayCursorStore.load]), the lease's read-only observation
  * ([RunLeaseObservationPort]) and the pure lease decider
- * ([RunExecutionLease.acquire]) with a synthetic [dev.rubentxu.pipeline.v2.events.durable.LeaseRequest].
+ * ([RunExecutionLease.acquire]) with a synthetic [dev.rubentxu.pipeline.v2.runtime.durable.LeaseRequest].
  * The `RuntimeIntrospectionPortStoreAdapterTest` unit test pins this: its
  * stores answer from memory and count the writes they were asked for.
 */
@@ -282,24 +286,24 @@ class RuntimeIntrospectionPortStoreAdapter(
      */
     private fun leaseAuthorityRefusal(
         identity: RunId?,
-        observedLease: dev.rubentxu.pipeline.v2.events.durable.LeaseRecord?,
+        observedLease: dev.rubentxu.pipeline.v2.runtime.durable.LeaseRecord?,
     ): IntrospectionRefusal? {
         if (identity == null) return null
-        val syntheticOwner: dev.rubentxu.pipeline.v2.events.durable.RunOwnerId =
-            dev.rubentxu.pipeline.v2.events.durable.RunOwnerId.of(syntheticObserverId)
+        val syntheticOwner: dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId =
+            dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId.of(syntheticObserverId)
                 ?: error("invalid syntheticObserverId $syntheticObserverId")
-        val syntheticRequest = dev.rubentxu.pipeline.v2.events.durable.LeaseRequest(
+        val syntheticRequest = dev.rubentxu.pipeline.v2.runtime.durable.LeaseRequest(
             runId = identity,
             ownerId = syntheticOwner,
         )
         val decision = RunExecutionLease.acquire(observedLease, syntheticRequest)
         return when (decision) {
-            is dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition.AlreadyOwned ->
+            is dev.rubentxu.pipeline.v2.runtime.durable.LeaseAcquisition.AlreadyOwned ->
                 IntrospectionRefusal.LeaseHeldByAnother(
                     heldBy = decision.heldBy.value,
                     fencingToken = decision.fencingToken.value,
                 )
-            is dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition.Unverifiable ->
+            is dev.rubentxu.pipeline.v2.runtime.durable.LeaseAcquisition.Unverifiable ->
                 IntrospectionRefusal.StorageError(decision.reason)
             // Acquired / Reentered / TakenOver → we conceptually observe
             // the run as running under `observedLease`. fall through.

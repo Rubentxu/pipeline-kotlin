@@ -18,7 +18,7 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions

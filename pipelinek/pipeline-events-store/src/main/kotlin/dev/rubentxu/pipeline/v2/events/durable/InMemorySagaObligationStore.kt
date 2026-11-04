@@ -4,6 +4,12 @@ import dev.rubentxu.pipeline.v2.domain.saga.CompensationKey
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligationStatus
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaIntentContract
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaArmPersistence
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaBulkMove
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationRow
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationStore
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationUpdate
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaUpdatePersistence
 
 /**
  * The VOLATILE store of Saga compensation obligations: the same port, held in memory.

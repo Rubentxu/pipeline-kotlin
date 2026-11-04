@@ -1,6 +1,15 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.runtime.durable.FencingToken
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseAcquisition
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseLiveness
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRecord
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRequest
+import dev.rubentxu.pipeline.v2.runtime.durable.PublishAuthority
+import dev.rubentxu.pipeline.v2.runtime.durable.RunExecutionLease
+import dev.rubentxu.pipeline.v2.runtime.durable.RunLeasePort
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import java.nio.file.Path
 
 /**
@@ -61,7 +70,7 @@ import java.nio.file.Path
  * real machine would fail at, and can then be asked whether the lock was given
  * back.
 */
-class FileBackedRunExecutionLeaseStore(
+class FileBackedRunExecutionLeaseStore internal constructor(
     private val leaseDir: Path,
     private val files: LeaseFileSystem = FileLeaseFileSystem(),
 ) : AutoCloseable, RunLeasePort {

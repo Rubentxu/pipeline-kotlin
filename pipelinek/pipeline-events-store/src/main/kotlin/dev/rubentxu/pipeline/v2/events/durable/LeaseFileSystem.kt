@@ -1,6 +1,10 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.runtime.durable.FencingToken
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRecord
+import dev.rubentxu.pipeline.v2.runtime.durable.RunExecutionLease
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.channels.FileLock

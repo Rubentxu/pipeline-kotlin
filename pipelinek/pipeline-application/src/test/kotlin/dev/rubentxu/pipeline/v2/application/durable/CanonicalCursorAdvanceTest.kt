@@ -6,10 +6,10 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame
-import dev.rubentxu.pipeline.v2.events.durable.BranchExecutionResult
-import dev.rubentxu.pipeline.v2.events.durable.ReplayCursor
-import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
-import dev.rubentxu.pipeline.v2.events.durable.StageIndex
+import dev.rubentxu.pipeline.v2.runtime.durable.BranchExecutionResult
+import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursor
+import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
+import dev.rubentxu.pipeline.v2.runtime.durable.StageIndex
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test

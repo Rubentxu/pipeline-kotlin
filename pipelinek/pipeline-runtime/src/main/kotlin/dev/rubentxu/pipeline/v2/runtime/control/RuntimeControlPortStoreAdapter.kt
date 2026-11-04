@@ -11,11 +11,11 @@ import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.RunFinished
-import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
-import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
-import dev.rubentxu.pipeline.v2.events.durable.RunLeasePort
-import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseAcquisition
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRequest
+import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.RunLeasePort
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import dev.rubentxu.pipeline.v2.events.identity.EventQuery
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort

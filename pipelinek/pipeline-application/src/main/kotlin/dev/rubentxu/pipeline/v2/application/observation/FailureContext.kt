@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.StepFailed
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.output.OutputReadPort
 import dev.rubentxu.pipeline.v2.output.OutputReadResult

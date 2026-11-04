@@ -34,7 +34,7 @@ sealed interface PipelineFrame
  * Represents a parallel execution frame containing multiple branches that
  * execute concurrently, joined by a [JoinPolicy].
  * This is a pure-domain type: it has no dependency on [OperationContext],
- * [ReplayCursor][dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore],
+ * [ReplayCursor][dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore],
  * or any other execution artifact.
  * @property branches The list of branch specifications to execute in parallel.
  * @property joinPolicy The policy determining when the parallel frame completes.

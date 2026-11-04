@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationRow
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths

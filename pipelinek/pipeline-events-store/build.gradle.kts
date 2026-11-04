@@ -40,6 +40,11 @@ dependencies {
     // module needs both on its compile classpath.
     api(project(":pipeline-events"))
     api(project(":pipeline-domain"))
+    // `api`: this module IMPLEMENTS the durable ports, and a consumer that holds one of those
+    // implementations must see the port it implements — the implementation's own signature
+    // names it. The ports live in `:pipeline-runtime-api` because they are the published
+    // contract; this module is the adapter that satisfies them.
+    api(project(":pipeline-runtime-api"))
     // `implementation`: the scripting vocabulary and the JSON codec are used inside the wire format
     // and never appear in a signature this module publishes.
     implementation(project(":pipeline-scripting-api"))

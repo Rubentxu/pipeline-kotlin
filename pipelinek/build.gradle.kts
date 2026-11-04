@@ -1,5 +1,6 @@
 import kotlinx.validation.KotlinApiBuildTask
 import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.jvm.tasks.Jar
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 plugins {
@@ -100,7 +101,15 @@ repositories {
 // artifact does is not what v0.91.0 did; the two artifacts do NOT behave
 // the same, and one version cannot carry both. The 0.92.0 train opens here
 // (ProductVersion 0.92.0) and its first candidate can be tagged v0.92.0-rc1.
-version = "0.92.0"
+// 2026-11-04: the 0.92.0 train closed at v0.92.0-rc1, and the law holds here
+// too: this tree has moved since that candidate. The published ABI of
+// :pipeline-credentials-api changed: the constructor of CredentialScope no
+// longer takes the list of the credentials that are active in the scope, a
+// parameter the scope never read. A consumer that built a scope has to build
+// it differently, so the two artifacts do NOT behave the same and one version
+// cannot carry both. The 0.93.0 train opens here (ProductVersion 0.93.0) and
+// its first candidate can be tagged v0.93.0-rc1.
+version = "0.93.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
@@ -627,6 +636,25 @@ val publishedApiDumpDirs: Map<String, String> = publishedApiCoordinates.mapValue
     layout.buildDirectory.dir("api-artifacts/$name").get().asFile.absolutePath
 }
 
+/**
+ * The modules whose ABI is guarded but whose artifact is NOT published as a Maven
+ * coordinate.
+ *
+ * For a published module the previously published artifact is an artifact in a Maven
+ * repository, and the second reading finds it there. For a guarded module that is not
+ * published, the previously published bytes are the JAR the previous release's
+ * DISTRIBUTION shipped: the product's own ZIP carries every module it runs with, so
+ * the last published bytes of such a module live inside the last published ZIP. The
+ * comparison is the same one and the engine is the same one on both sides; only the
+ * place the previous artifact comes from differs.
+ *
+ * The previous artifact is named by the same property the published modules use
+ * (`-PpreviousArtifactVersion`) and the ZIP that carries it by
+ * `-PpreviousDistributionZip`. Without both, the previous side is SKIPPED and not
+ * empty: an empty dump would read as a total removal of the module's ABI.
+ */
+val guardedUnpublishedModules = listOf("pipeline-credentials-api")
+
 // The geometry of the comparison, handed to `:pipeline-release` — the module
 // that decides — so that the build script and the decision agree on which
 // artifacts, which versions and which modules are being compared. The
@@ -634,7 +662,7 @@ val publishedApiDumpDirs: Map<String, String> = publishedApiCoordinates.mapValue
 // exists to remove.
 extra["publishedApiDumpDirs"] = publishedApiDumpDirs
 extra["publishedApiVersions"] = publishedApiCoordinates.mapValues { it.value.second }
-extra["publishedApiModules"] = publishedContractModules
+extra["abiComparedModules"] = publishedContractModules + guardedUnpublishedModules
 
 subprojects {
     val publishedModule = publishedContractModules.firstOrNull { ":$it" == project.path }
@@ -668,6 +696,115 @@ subprojects {
                         // empty dump would read as a total removal of the module's ABI.
                         enabled = false
                     }
+                }
+            }
+        }
+    }
+}
+
+// The two sides of the comparison for a module that is GUARDED but not published.
+//
+// The published modules take their previous artifact from a Maven repository, because
+// that is where their previous release put it. A guarded module that is not published
+// has no Maven coordinate, so its previously published bytes are the JAR the previous
+// release's DISTRIBUTION shipped: the product's own ZIP carries every module it runs
+// with. Same comparison, same engine, different place the previous artifact comes from.
+subprojects {
+    val guardedModule = guardedUnpublishedModules.firstOrNull { ":$it" == project.path }
+    if (guardedModule != null) {
+        pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+            // The engine that produced this tree's committed baseline. Copying its
+            // worker classpath is what makes the two sides comparable: the same
+            // renderer, in the same build.
+            val apiBuildTask = tasks.named<KotlinApiBuildTask>("apiBuild")
+            val jarTask = tasks.named<Jar>("jar")
+
+            // The CANDIDATE side: the bytes this tree builds.
+            tasks.register<KotlinApiBuildTask>("candidateArtifactApiDump") {
+                group = "verification"
+                description =
+                    "Dump the public API surface of the candidate artifact of $guardedModule."
+                runtimeClasspath.setFrom(apiBuildTask.map { it.runtimeClasspath })
+                inputJar.set(jarTask.flatMap { it.archiveFile })
+                outputApiFile.set(
+                    File(publishedApiDumpDirs.getValue("candidate"), "$guardedModule.api"),
+                )
+                dependsOn(jarTask)
+            }
+
+            val previousZip = providers.gradleProperty("previousDistributionZip")
+            val previousVersion = providers.gradleProperty("previousArtifactVersion")
+            val extracted = layout.buildDirectory.file("previous-published/$guardedModule.jar")
+
+            // The JAR the previous release's distribution shipped, taken OUT of that
+            // distribution. It is not rebuilt from a tag: the bytes that were published
+            // are the bytes the comparison has to read.
+            tasks.register("extractPreviousPublishedJar") {
+                group = "verification"
+                description =
+                    "Extract the $guardedModule JAR the previous release's distribution shipped."
+                inputs.property("previousDistributionZip", previousZip)
+                inputs.property("previousArtifactVersion", previousVersion)
+                outputs.file(extracted)
+                doLast {
+                    val zipFile = File(previousZip.orNull ?: "")
+                    val version = previousVersion.orNull
+                    if (!zipFile.isFile) {
+                        throw GradleException(
+                            "the previous distribution named by -PpreviousDistributionZip does not " +
+                                "exist at $zipFile, so the previously published surface of " +
+                                "$guardedModule cannot be read",
+                        )
+                    }
+                    if (version.isNullOrBlank()) {
+                        throw GradleException(
+                            "-PpreviousArtifactVersion is required to name the $guardedModule JAR " +
+                                "inside the previous distribution",
+                        )
+                    }
+                    val entrySuffix = "lib/$guardedModule-$version.jar"
+                    java.util.zip.ZipFile(zipFile).use { zip ->
+                        // The distribution carries its payload under a top-level directory
+                        // that carries the version, so the entry is matched by its END and
+                        // not by its whole name. Exactly one entry has to match: none means
+                        // the artifact is not in there, and more than one means the
+                        // distribution carries two candidates for it.
+                        val matches = zip.entries().asSequence()
+                            .filter { it.name.endsWith(entrySuffix) }
+                            .toList()
+                        if (matches.size != 1) {
+                            throw GradleException(
+                                "the previous distribution carries ${matches.size} entries ending in " +
+                                    "'$entrySuffix': the published artifact of $guardedModule at " +
+                                    "version $version is not exactly there",
+                            )
+                        }
+                        val entry = matches.single()
+                        val target = extracted.get().asFile
+                        target.parentFile.mkdirs()
+                        zip.getInputStream(entry).use { input ->
+                            target.outputStream().use { output -> input.copyTo(output) }
+                        }
+                    }
+                }
+            }
+
+            // The PREVIOUS side: the JAR the previous release's distribution shipped.
+            tasks.register<KotlinApiBuildTask>("previousArtifactApiDump") {
+                group = "verification"
+                description =
+                    "Dump the public API surface of the previously published artifact of $guardedModule."
+                runtimeClasspath.setFrom(apiBuildTask.map { it.runtimeClasspath })
+                if (previousZip.isPresent && previousVersion.isPresent) {
+                    dependsOn("extractPreviousPublishedJar")
+                    inputJar.set(extracted)
+                    outputApiFile.set(
+                        File(publishedApiDumpDirs.getValue("previous"), "$guardedModule.api"),
+                    )
+                } else {
+                    // There is no artifact to read on this side. Skipped, not empty: an
+                    // empty dump would read as a total removal of the module's ABI.
+                    enabled = false
                 }
             }
         }

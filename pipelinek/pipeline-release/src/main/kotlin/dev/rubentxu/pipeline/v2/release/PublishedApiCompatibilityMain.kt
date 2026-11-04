@@ -99,12 +99,20 @@ fun main(args: Array<String>) {
                             },
                     )
 
-                is PublishedApiModuleVerdict.ApprovedBreaks ->
+                is PublishedApiModuleVerdict.ApprovedBreaks -> {
                     println(
                         "[release] $module: COMPATIBLE WITH APPROVED BREAKS — " +
                             "${verdict.authorized.size} break(s), each approved by an entry of the " +
                             "exception ledger that names its version and its evidence.",
                     )
+                    // The approved breaks are NAMED, not counted. A verdict that says "a
+                    // break was approved" without saying which signature changed leaves
+                    // the reader of the release to find out what moved, and the release
+                    // note is written from this verdict.
+                    verdict.authorized.forEach {
+                        println("[release]   - ${it.describe()} [key: ${it.removalKey}]")
+                    }
+                }
 
                 is PublishedApiModuleVerdict.UnauthorizedBreaks -> {
                     unauthorized += verdict.unauthorized.size

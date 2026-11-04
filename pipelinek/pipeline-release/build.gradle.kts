@@ -342,7 +342,7 @@ tasks.register<JavaExec>("publishedApiCompatibility") {
     val versions: Map<String, String?> = (rootProject.extra["publishedApiVersions"] as Map<*, *>)
         .map { (side, version) -> side.toString() to version?.toString() }
         .toMap()
-    val modules: List<String> = (rootProject.extra["publishedApiModules"] as List<*>)
+    val modules: List<String> = (rootProject.extra["abiComparedModules"] as List<*>)
         .map { it.toString() }
     val ledger = rootProject.file("contract/published-contract-exceptions.json")
 

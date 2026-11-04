@@ -3,6 +3,8 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.ObservedOutcome
+import dev.rubentxu.pipeline.v2.domain.isolation.DenialReason
+import dev.rubentxu.pipeline.v2.domain.isolation.IsolationCapability
 import dev.rubentxu.pipeline.v2.output.OutputChannel
 import java.io.PrintStream
 
@@ -67,6 +69,7 @@ fun CliError.toCliExit(): CliExit = when (this) {
         message = "sandbox profile not supported in this build: $value",
         hint = "use 'none' or 'local' instead, or rebuild the runtime with the requested profile enabled",
     )
+    is CliError.IsolationRequestRefused -> isolationRefusalExit(reason, required)
     is CliError.UnknownOption -> CliExit.InvalidArgument(
         message = "unknown option: $value",
     )
@@ -155,6 +158,59 @@ fun CliError.toCliExit(): CliExit = when (this) {
         message = "run id '$runId' cannot name a durable directory",
         hint = "a run id may contain only letters, digits, '.', '_' and '-'",
     )
+}
+
+/**
+ * The exit a refusal from the admission core becomes.
+ *
+ * It is the runtime-not-available case: the request asked for a boundary this
+ * build cannot host, and that is a fact about the host, not about the word the
+ * operator typed. The hint names the two postures this build DOES serve, so the
+ * operator has something to act on.
+ */
+private fun isolationRefusalExit(
+    reason: DenialReason,
+    required: List<IsolationCapability>,
+): CliExit = CliExit.RuntimeNotAvailable(
+    message = isolationRefusalMessage(reason, required),
+    hint = "use 'none' or 'local' for the trusted single-tenant posture, or rebuild the runtime " +
+        "with an isolation provider enabled",
+)
+
+/**
+ * The sentence a refusal from the admission core becomes.
+ *
+ * ## Why the required capabilities are named
+ *
+ * The refusal used to say which WORD was refused and nothing else, so an
+ * operator could not learn what the word asks for. The core knows both halves
+ * of the answer: why the host cannot serve the request, and which capabilities
+ * the request would have required. A refusal that names only the cause leaves
+ * the operator to guess the size of the gap; one that names both answers the
+ * question the operator actually asked.
+ *
+ * ## Why an empty set says nothing about capabilities
+ *
+ * The demanded set is empty only when the request demands nothing beyond the
+ * legacy behaviour, and such a request is not refused for its capabilities: it
+ * is refused for a conflict of the request itself or for an artifact. Naming
+ * capabilities there would name a demand that was never made.
+ */
+private fun isolationRefusalMessage(reason: DenialReason, required: List<IsolationCapability>): String {
+    val cause = when (reason) {
+        is DenialReason.MissingAttestation -> reason.detail
+        is DenialReason.UnsupportedCapability ->
+            "this build proves none of the capabilities the request demands"
+        is DenialReason.PolicyConflict -> reason.detail
+        is DenialReason.UntrustedPlugin ->
+            "the artifacts the run would load have no attested provenance: ${reason.artifacts.joinToString(", ")}"
+    }
+    val demands = if (required.isEmpty()) {
+        ""
+    } else {
+        "; the request would require a provider that proves ${required.joinToString(", ")}"
+    }
+    return "$cause$demands"
 }
 
 /**

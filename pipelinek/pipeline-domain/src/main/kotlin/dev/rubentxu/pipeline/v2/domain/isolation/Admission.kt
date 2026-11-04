@@ -66,6 +66,28 @@ sealed interface PluginAdmissionFact {
 
     /** At least one artifact was admitted on its manifest alone, with no attested publisher. */
     data class Unattested(val artifacts: List<String>) : PluginAdmissionFact
+
+    /**
+     * The artifacts' provenance is NOT part of this decision.
+     *
+     * The caller is deciding the run's POSTURE — whether this host can honour
+     * the request — and the artifacts are admitted by the product's own
+     * admission, which owns that question and answers it on its own terms. A
+     * caller that HAS the provenance says [Attested] or [Unattested], and the
+     * core refuses the untrusted combination. A caller that does not have it
+     * says this, and the core answers the posture.
+     *
+     * ## Why the case exists
+     *
+     * The admission of an execution is decided BEFORE the artifacts are
+     * admitted: the request has to be answered before any untrusted code is
+     * loaded, and an artifact's provenance is only known once the product's own
+     * admission has run. A caller in that position has no fact to report, and
+     * the two facts it could report instead would both be false: [NoPlugins]
+     * would claim that the run loads nothing, and [Unattested] would report a
+     * verdict the caller never took.
+     */
+    data object OutOfScope : PluginAdmissionFact
 }
 
 /**
@@ -95,7 +117,9 @@ data class AdmissionQuery(
  *  2. **Are the artifacts attested?** An artifact with no attested provenance
  *     cannot be loaded into a boundary the operator believes is closed. This
  *     comes before the capability proof because the artifact is a fact already in
- *     hand, while the proof is a question about the host.
+ *     hand, while the proof is a question about the host. A caller whose
+ *     decision is NOT about the artifacts says [PluginAdmissionFact.OutOfScope],
+ *     and the core answers the posture.
  *  3. **What does the request demand?** Nothing beyond the legacy behaviour
  *     means the legacy posture is enough, and the run is admitted on the
  *     posture's own identity — which is the path every existing run takes, and

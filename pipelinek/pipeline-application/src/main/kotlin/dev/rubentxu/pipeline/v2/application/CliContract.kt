@@ -10,6 +10,8 @@ import dev.rubentxu.pipeline.v2.application.observation.TextSelector
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.isolation.DenialReason
+import dev.rubentxu.pipeline.v2.domain.isolation.IsolationCapability
 import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.events.identity.EventField
@@ -215,6 +217,23 @@ sealed interface CliError {
      * [toCliExit], which is the one place a [CliError] becomes words.
      */
     data class UnsupportedSandboxProfile(val value: String) : CliError
+
+    /**
+     * The admission core refused the request the operator made.
+     *
+     * The verdict is a VALUE and this case carries it as such: the reason the
+     * core gave and the capabilities the request would have required. The words
+     * the operator reads are rendered by [toCliExit], the one place a
+     * [CliError] becomes a sentence.
+     *
+     * @property reason why the core refused the request.
+     * @property required the capabilities the request would have required, in
+     *   the order the domain declares them.
+     */
+    data class IsolationRequestRefused(
+        val reason: DenialReason,
+        val required: List<IsolationCapability>,
+    ) : CliError
     data class UnknownOption(val value: String) : CliError
     data object MissingScriptPath : CliError
 

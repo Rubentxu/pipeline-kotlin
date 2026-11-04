@@ -5439,6 +5439,13 @@ public final class dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$OutOfScope : dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$OutOfScope;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$Unattested : dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact {
 	public fun <init> (Ljava/util/List;)V
 	public final fun component1 ()Ljava/util/List;

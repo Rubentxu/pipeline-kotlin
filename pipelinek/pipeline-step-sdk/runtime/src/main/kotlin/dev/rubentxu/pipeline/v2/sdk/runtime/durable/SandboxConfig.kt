@@ -23,6 +23,28 @@ data class SandboxConfig(
     val allowExtra: Set<String> = emptySet(),
     val pathKeep: Set<String> = emptySet(),
 ) {
+    init {
+        // The posture this runtime runs under is the trusted single-tenant one, and it admits only
+        // the profiles it can HONOUR. A profile outside that set has no behaviour here: the
+        // confinement the local profile applies is the confinement of the local profile, so a run
+        // under an unknown profile would execute with the behaviour of a profile that confines
+        // NOTHING, and it would do it silently.
+        //
+        // The declaration that says which profiles the posture admits is
+        // [RunnerTrustProfile.allowedSandboxProfiles], and it is read HERE: at the one place where
+        // the configuration is built, so no path can carry a profile this runtime cannot honour.
+        if (profile !in RunnerTrustProfile.TrustedSingleTenant.allowedSandboxProfiles) {
+            throw SandboxProfileUnsupportedException(
+                "sandbox profile '${profile.name.lowercase()}' is not available in this build: the " +
+                    "trusted single-tenant posture admits only " +
+                    RunnerTrustProfile.TrustedSingleTenant.allowedSandboxProfiles.joinToString(", ") {
+                        it.name.lowercase()
+                    } +
+                    ", and this build ships no provider that could confine the run",
+            )
+        }
+    }
+
     companion object {
         /** Back-compat sentinel: no sandboxing, no allowExtra, no pathKeep. */
         val NONE: SandboxConfig = SandboxConfig(SandboxProfile.NONE)

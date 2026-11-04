@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.application.observation.TextSelector
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.ViewParseResult
 import dev.rubentxu.pipeline.v2.application.observation.resolveView
+import dev.rubentxu.pipeline.v2.domain.isolation.Admission
 import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 
@@ -533,14 +534,35 @@ private object ValuedOptions {
  * is the caller's typo, and answering it with something plausible is how `--limit abc` became 100.
 */
 private object ClosedValueOptions {
+    /**
+     * The sandbox profile the operator named, and whether this build can serve it.
+     *
+     * The word is not the decision. The word says what the operator ASKS for,
+     * and the pure core says what can be done with it: the request for a real
+     * boundary is refused because this build ships no isolation provider, and
+     * the refusal names the capabilities that request would have required.
+     *
+     * The decision is asked HERE, while the request is being read, so a refusal
+     * has read no script, evaluated no Kotlin and started no child.
+     */
     fun applySandboxProfile(value: String, index: Int, state: ParseState): ApplyOutcome {
-        state.sandboxProfile = when (value) {
-            "none" -> SandboxProfile.NONE
-            "local" -> SandboxProfile.LOCAL
-            "os" -> return ApplyOutcome.Rejected(CliError.UnsupportedSandboxProfile(value))
-            else -> return ApplyOutcome.Rejected(CliError.InvalidSandboxProfile(value))
+        val asked = ExecutionAdmission.profileRequestFor(value)
+            ?: return ApplyOutcome.Rejected(CliError.InvalidSandboxProfile(value))
+        return when (val admission = ExecutionAdmission.decide(asked.request)) {
+            is Admission.Allowed -> {
+                // A request this build admits carries a runtime profile. A word
+                // without one has no way to run, and it is refused by name here
+                // instead of falling back to the profile that confines nothing:
+                // the request does not run unconfined.
+                val profile = asked.profile
+                    ?: return ApplyOutcome.Rejected(CliError.UnsupportedSandboxProfile(value))
+                state.sandboxProfile = profile
+                ApplyOutcome.Applied(index + 2)
+            }
+            is Admission.Denied -> ApplyOutcome.Rejected(
+                ExecutionAdmission.refusalFor(admission.reason, asked.request),
+            )
         }
-        return ApplyOutcome.Applied(index + 2)
     }
 
     fun applyView(value: String, index: Int, state: ParseState): ApplyOutcome =

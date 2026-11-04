@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.events.DomainEvent
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.MissingFieldException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -48,6 +49,7 @@ import java.time.format.DateTimeParseException
  * A kind this binary does not know is version skew and is reported as such, apart from a row
  * this binary knows and cannot read. The two are different facts and they stay different.
  */
+@OptIn(ExperimentalSerializationApi::class)
 internal object EventJsonCodec {
 
     /**
@@ -144,8 +146,9 @@ internal object EventJsonCodec {
         // The kind is resolved to the vocabulary BEFORE the payload is decoded: a kind this
         // binary does not know is refused with its own reason, and it is never read as a
         // payload of some kind it does know.
-        val kind = EventKindMatrix.fromWire(kindWire)
-            ?: return EventDecodeOutcome.Failed(EventDecodeFailure.UnknownEventKind(kindWire))
+        if (EventKindMatrix.fromWire(kindWire) == null) {
+            return EventDecodeOutcome.Failed(EventDecodeFailure.UnknownEventKind(kindWire))
+        }
 
         val event = try {
             json.decodeFromJsonElement(DomainEvent.serializer(), fields)
@@ -189,7 +192,7 @@ internal object EventJsonCodec {
      * is wrong, and an operator who knows the field can act on it.
      */
     private fun fieldNamedBy(failure: SerializationException): String? =
-        PATH_IN_MESSAGE.find(failure.message ?: "")?.groupValues?.getOrNull(1)
+        PATH_IN_MESSAGE.find(failure.message.orEmpty())?.groupValues?.getOrNull(1)
 
     private val PATH_IN_MESSAGE = Regex("""\$\.([A-Za-z][A-Za-z0-9]*)""")
 

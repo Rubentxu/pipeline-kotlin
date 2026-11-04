@@ -47,6 +47,7 @@ internal class ShellLaunchPreparation(
     private val opId: String,
     private val heartbeatCheckInterval: Long,
     private val pumpedViaAgent: Boolean,
+    private val confinement: SandboxConfinement? = null,
 ) {
 
     /**
@@ -92,7 +93,6 @@ internal class ShellLaunchPreparation(
         val logFileEscaped = escapeForShell(protocol.consoleLog.toString())
         val resultFileEscaped = escapeForShell(protocol.resultFile.toString())
         val resultTmpEscaped = escapeForShell(protocol.resultTmpFile.toString())
-        val scriptPathEscaped = escapeForShell(scriptPath.toString())
 
         // The child's descriptors are redirected by the LAUNCHER, not by the wrapper: the
         // launcher decides whether the bytes go to the value file, to the transcript or to a
@@ -129,7 +129,8 @@ internal class ShellLaunchPreparation(
             // kill at exit is a silenced no-op.
             append("HB_PID=\$!; ")
             // The user's script runs by path. Its content is never in the arguments.
-            append("'$scriptPathEscaped'; ")
+            append(scriptCommand(scriptPath))
+            append("; ")
             append("EXIT_CODE=\$?; ")
             // The exit code is published atomically: written to the temporary file, then renamed.
             append("echo \$EXIT_CODE > \"\$RESULT_TMP\"; ")
@@ -142,6 +143,22 @@ internal class ShellLaunchPreparation(
             append("kill \$HB_PID 2>/dev/null; ")
             append("exit \$EXIT_CODE")
         }
+    }
+
+    /**
+     * The command that runs the user's script, quoted for the shell.
+     *
+     * With a confinement, the script runs INSIDE it. The protocol — the cookie and
+     * the published exit code — is written by THIS wrapper, outside the boundary,
+     * so the directory of control stays read-only for the run and the only place
+     * of the operator's the run can write is the workspace.
+     *
+     * @param scriptPath The path of the user's script.
+     * @return The command, with every word quoted for the shell.
+     */
+    private fun scriptCommand(scriptPath: Path): String {
+        val command = confinement?.argv(listOf(scriptPath.toString())) ?: listOf(scriptPath.toString())
+        return command.joinToString(" ") { word -> "'${escapeForShell(word)}'" }
     }
 
     /**

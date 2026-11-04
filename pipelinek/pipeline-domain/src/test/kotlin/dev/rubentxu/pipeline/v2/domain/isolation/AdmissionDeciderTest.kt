@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.isolation.DenialReason.PolicyConflict
 import dev.rubentxu.pipeline.v2.domain.isolation.DenialReason.UnsupportedCapability
 import dev.rubentxu.pipeline.v2.domain.isolation.DenialReason.UntrustedPlugin
 import dev.rubentxu.pipeline.v2.domain.isolation.FilesystemAccess.ApprovedReadonly
+import dev.rubentxu.pipeline.v2.domain.isolation.FilesystemAccess.ConfinedWorkspace
 import dev.rubentxu.pipeline.v2.domain.isolation.FilesystemAccess.WorkspaceScoped
 import dev.rubentxu.pipeline.v2.domain.isolation.IsolationAttestation.Provider
 import dev.rubentxu.pipeline.v2.domain.isolation.IsolationAttestation.TrustedProfileOnly
@@ -16,6 +17,7 @@ import dev.rubentxu.pipeline.v2.domain.isolation.IsolationCapability.FilesystemC
 import dev.rubentxu.pipeline.v2.domain.isolation.IsolationCapability.NetworkConfinement
 import dev.rubentxu.pipeline.v2.domain.isolation.IsolationCapability.ResourceLimits
 import dev.rubentxu.pipeline.v2.domain.isolation.NetworkAccess.Allowlisted
+import dev.rubentxu.pipeline.v2.domain.isolation.NetworkAccess.Isolated
 import dev.rubentxu.pipeline.v2.domain.isolation.NetworkAccess.Denied as NetworkDenied
 import dev.rubentxu.pipeline.v2.domain.isolation.PluginAdmissionFact.Attested
 import dev.rubentxu.pipeline.v2.domain.isolation.PluginAdmissionFact.NoPlugins
@@ -214,6 +216,55 @@ class AdmissionDeciderTest {
             )
 
             assertTrue(required.isEmpty(), "the legacy behaviour demands no capability")
+        }
+
+        @Test
+        fun `a confined workspace demands a confined filesystem`() {
+            val required = AdmissionDecider.requiredCapabilities(
+                ExecutionRequirements(filesystem = ConfinedWorkspace),
+            )
+
+            assertEquals(setOf(FilesystemConfinement), required)
+        }
+
+        @Test
+        fun `an isolated network demands a confined network`() {
+            val required = AdmissionDecider.requiredCapabilities(
+                ExecutionRequirements(network = Isolated),
+            )
+
+            assertEquals(setOf(NetworkConfinement), required)
+        }
+
+        @Test
+        fun `a confined request met by a provider that proves both is admitted`() {
+            val admission = decide(
+                ExecutionRequirements(filesystem = ConfinedWorkspace, network = Isolated),
+                attestation = Provider(
+                    listOf(
+                        ProvenCapability(FilesystemConfinement, "read-only rootfs"),
+                        ProvenCapability(NetworkConfinement, "no egress"),
+                    ),
+                ),
+            )
+
+            val grant = assertInstanceOf<Allowed>(admission).grant
+            assertEquals(2, grant.proven.size, "the grant carries what the provider proved")
+        }
+
+        @Test
+        fun `a confined request met by a filesystem-only provider names the missing confinement`() {
+            val admission = decide(
+                ExecutionRequirements(filesystem = ConfinedWorkspace, network = Isolated),
+                attestation = Provider(
+                    listOf(ProvenCapability(FilesystemConfinement, "read-only rootfs")),
+                ),
+            )
+
+            assertEquals(
+                UnsupportedCapability(setOf(NetworkConfinement)),
+                deniedReason(admission),
+            )
         }
     }
 

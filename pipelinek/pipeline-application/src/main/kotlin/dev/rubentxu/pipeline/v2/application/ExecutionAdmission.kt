@@ -5,7 +5,9 @@ import dev.rubentxu.pipeline.v2.domain.isolation.AdmissionDecider
 import dev.rubentxu.pipeline.v2.domain.isolation.AdmissionQuery
 import dev.rubentxu.pipeline.v2.domain.isolation.DenialReason
 import dev.rubentxu.pipeline.v2.domain.isolation.ExecutionRequirements
+import dev.rubentxu.pipeline.v2.domain.isolation.FilesystemAccess
 import dev.rubentxu.pipeline.v2.domain.isolation.IsolationAttestation
+import dev.rubentxu.pipeline.v2.domain.isolation.NetworkAccess
 import dev.rubentxu.pipeline.v2.domain.isolation.PluginAdmissionFact
 import dev.rubentxu.pipeline.v2.domain.isolation.TrustIntent
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
@@ -37,8 +39,8 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
  *
  * The request is decided while the request is being read, before the flags are
  * built and before anything is opened: a refusal at this point has read no
- * script, evaluated no Kotlin and started no child. The order IS the contract
- * (RSO-04): the request is resolved and decided without executing anything.
+ * script, evaluated no Kotlin and started no child. The order IS the contract:
+ * the request is resolved and decided without executing anything.
  */
 internal object ExecutionAdmission {
 
@@ -66,6 +68,12 @@ internal object ExecutionAdmission {
      * it asks for the workspace and the environment deny-list, which confine
      * nothing, and the core says so by admitting it.
      *
+     * The word `confined` asks for a boundary the product can HONOUR: the
+     * workspace is the only place of the operator's the run can write, and
+     * nothing leaves it over the network. The author is still the operator, so
+     * the posture is the trusted one; what changes is the boundary, and the core
+     * decides it against what a provider PROVES.
+     *
      * The word `os` asks for a boundary: the run is code this product does not
      * trust with the machine. It has no runtime profile in this build, and the
      * request that states it is refused by the core rather than by the name.
@@ -73,25 +81,59 @@ internal object ExecutionAdmission {
     fun profileRequestFor(word: String): ProfileRequest? = when (word) {
         "none" -> ProfileRequest(LEGACY_REQUEST, SandboxProfile.NONE)
         "local" -> ProfileRequest(LEGACY_REQUEST, SandboxProfile.LOCAL)
+        "confined" -> ProfileRequest(CONFINED_REQUEST, SandboxProfile.CONFINED)
         "os" -> ProfileRequest(ISOLATED_REQUEST, null)
         else -> null
     }
 
     /**
+     * The attestation this build offers for the request [asked] expresses.
+     *
+     * ## Why a request with no profile is not measured
+     *
+     * The word `os` states a request that has no runtime profile in this build:
+     * there is nowhere for it to run. Measuring the host would start a child for a
+     * request that is going to be refused anyway, and a refusal that starts a child
+     * is a refusal with an effect. So the legacy posture answers it, and the
+     * refusal says what it has always said.
+     *
+     * ## Why a request that demands nothing is not measured
+     *
+     * The legacy words ask for the behaviour this product has always had. There is
+     * nothing to prove about a request that asks for no capability, so the host is
+     * not probed: no child, no read, no cost.
+     *
+     * @param asked the request the operator's word expresses.
+     * @param provider what measures what this host can confine.
+     * @return the attestation the core decides against.
+     */
+    fun attestationFor(asked: ProfileRequest, provider: IsolationProvider): IsolationAttestation {
+        if (asked.profile == null) return IsolationAttestation.TrustedProfileOnly
+        if (AdmissionDecider.requiredCapabilities(asked.request).isEmpty()) {
+            return IsolationAttestation.TrustedProfileOnly
+        }
+        return provider.attest(asked.request)
+    }
+
+    /**
      * The verdict the core gives for [request] on this build.
      *
-     * The attestation is this build's own: it ships no isolation provider, so
-     * the only environment it can attest is the legacy trusted posture. The
+     * The attestation is the one the caller measured: the legacy posture attests
+     * that it confines nothing, and a provider attests what it proved. The
      * artifacts are out of scope of this decision: they are admitted by the
      * product's own admission, which owns that question and answers it later.
+     *
+     * @param request the request to decide.
+     * @param attestation what this host can prove about it.
      */
-    fun decide(request: ExecutionRequirements): Admission = AdmissionDecider.decide(
-        AdmissionQuery(
-            requirements = request,
-            attestation = THIS_BUILD_ATTESTATION,
-            plugins = PluginAdmissionFact.OutOfScope,
-        ),
-    )
+    fun decide(request: ExecutionRequirements, attestation: IsolationAttestation): Admission =
+        AdmissionDecider.decide(
+            AdmissionQuery(
+                requirements = request,
+                attestation = attestation,
+                plugins = PluginAdmissionFact.OutOfScope,
+            ),
+        )
 
     /**
      * The refusal a denial becomes.
@@ -117,14 +159,17 @@ internal object ExecutionAdmission {
     private val LEGACY_REQUEST = ExecutionRequirements()
 
     /**
+     * The request for a boundary this product can honour: the run writes only
+     * inside its own workspace and has no network at all.
+     */
+    private val CONFINED_REQUEST = ExecutionRequirements(
+        filesystem = FilesystemAccess.ConfinedWorkspace,
+        network = NetworkAccess.Isolated,
+    )
+
+    /**
      * The request for a real boundary: the run is code this product does not
      * trust with the machine.
      */
     private val ISOLATED_REQUEST = ExecutionRequirements(trustIntent = TrustIntent.UntrustedIsolated)
-
-    /**
-     * This build ships no isolation provider, so the only environment it can
-     * attest is the legacy trusted posture, which proves no capability.
-     */
-    private val THIS_BUILD_ATTESTATION = IsolationAttestation.TrustedProfileOnly
 }

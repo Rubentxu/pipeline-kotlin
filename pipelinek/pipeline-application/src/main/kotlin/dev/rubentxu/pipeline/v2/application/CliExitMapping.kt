@@ -67,7 +67,8 @@ fun CliError.toCliExit(): CliExit = when (this) {
     )
     is CliError.UnsupportedSandboxProfile -> CliExit.RuntimeNotAvailable(
         message = "sandbox profile not supported in this build: $value",
-        hint = "use 'none' or 'local' instead, or rebuild the runtime with the requested profile enabled",
+        hint = "use 'none', 'local' or 'confined' instead, or rebuild the runtime with the requested " +
+            "profile enabled",
     )
     is CliError.IsolationRequestRefused -> isolationRefusalExit(reason, required)
     is CliError.UnknownOption -> CliExit.InvalidArgument(
@@ -173,9 +174,29 @@ private fun isolationRefusalExit(
     required: List<IsolationCapability>,
 ): CliExit = CliExit.RuntimeNotAvailable(
     message = isolationRefusalMessage(reason, required),
-    hint = "use 'none' or 'local' for the trusted single-tenant posture, or rebuild the runtime " +
-        "with an isolation provider enabled",
+    hint = isolationRefusalHint(reason),
 )
+
+/**
+ * The hint a refusal carries.
+ *
+ * The hint depends on WHY the request was refused, because the reasons call for
+ * different actions. A host that measured the boundary and could not prove all
+ * of it can serve a SMALLER request; a request that asks for the untrusted
+ * posture cannot be served by any word, because what it lacks is a provider
+ * that proves every capability at once.
+ */
+private fun isolationRefusalHint(reason: DenialReason): String = when (reason) {
+    is DenialReason.MissingAttestation ->
+        "the request asks for more than this host can prove; 'none' and 'local' are the " +
+            "postures this build has always served"
+    is DenialReason.UnsupportedCapability ->
+        "ask for less: this host proves a narrower boundary than the one requested"
+    is DenialReason.PolicyConflict ->
+        "the request asks for two things that cannot hold at once"
+    is DenialReason.UntrustedPlugin ->
+        "the artifacts the run would load need a trust decision"
+}
 
 /**
  * The sentence a refusal from the admission core becomes.
@@ -189,6 +210,15 @@ private fun isolationRefusalExit(
  * the operator to guess the size of the gap; one that names both answers the
  * question the operator actually asked.
  *
+ * ## Why the missing capability is named and not the whole set
+ *
+ * A host with a provider may prove SOME of what a request demands. Saying
+ * "this build proves none of the capabilities the request demands" would be
+ * false there, and a false sentence about a boundary is worse than no sentence:
+ * the operator would conclude that the host confines nothing when it confines
+ * most of it. So the refusal names the capability that is missing, and the
+ * demands clause names the whole set the request asked for.
+ *
  * ## Why an empty set says nothing about capabilities
  *
  * The demanded set is empty only when the request demands nothing beyond the
@@ -200,7 +230,7 @@ private fun isolationRefusalMessage(reason: DenialReason, required: List<Isolati
     val cause = when (reason) {
         is DenialReason.MissingAttestation -> reason.detail
         is DenialReason.UnsupportedCapability ->
-            "this build proves none of the capabilities the request demands"
+            "this host does not prove ${reason.missing.joinToString(", ")}"
         is DenialReason.PolicyConflict -> reason.detail
         is DenialReason.UntrustedPlugin ->
             "the artifacts the run would load have no attested provenance: ${reason.artifacts.joinToString(", ")}"

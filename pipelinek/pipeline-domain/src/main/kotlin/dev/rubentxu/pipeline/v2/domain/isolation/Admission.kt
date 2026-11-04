@@ -148,6 +148,12 @@ object AdmissionDecider {
      * the unbounded budget and the credential store are what a run already gets,
      * so asking for them is asking for nothing new.
      *
+     * A request that asks for a BOUNDARY is asking for something new even in the
+     * trusted posture, and it says which boundary: a confined workspace demands
+     * a confined filesystem, and an isolated network demands a confined network.
+     * The posture does not soften the demand — a trusted author may still want
+     * a step that cannot reach the rest of the machine.
+     *
      * In the untrusted posture the demanded set is EVERY capability: the point of
      * that posture is that the code is not trusted, and a boundary that leaves
      * any of these unproven is not a boundary. Which limits the request names is
@@ -157,10 +163,10 @@ object AdmissionDecider {
     fun requiredCapabilities(requirements: ExecutionRequirements): Set<IsolationCapability> =
         when (requirements.trustIntent) {
             TrustIntent.TrustedSingleTenant -> buildSet {
-                if (requirements.filesystem is FilesystemAccess.ApprovedReadonly) {
+                if (requirements.filesystem.demandsConfinement()) {
                     add(IsolationCapability.FilesystemConfinement)
                 }
-                if (requirements.network is NetworkAccess.Allowlisted) {
+                if (requirements.network.demandsConfinement()) {
                     add(IsolationCapability.NetworkConfinement)
                 }
                 if (requirements.resources is ResourceBudget.Bounded) {
@@ -264,6 +270,31 @@ object AdmissionDecider {
             "the request demands nothing beyond it"
 
     private const val NO_PROVIDER_DETAIL =
-        "this build ships no isolation provider, so nothing can attest the " +
-            "capabilities an untrusted run needs"
+        "the only environment offered here is the legacy trusted posture, which proves " +
+            "no capability: the evaluation of the script happens outside any boundary, so " +
+            "the capabilities an untrusted run needs cannot be attested"
 }
+
+/**
+ * Whether this filesystem posture demands a confined filesystem.
+ *
+ * The legacy workspace is not one: it is a rule about which paths the runtime
+ * hands to the step, and a process the step starts is not confined to them.
+ * The two postures that ARE boundaries — read-only named paths, and a workspace
+ * that is the only writable place — demand the capability of a provider that
+ * can confine the filesystem.
+ */
+private fun FilesystemAccess.demandsConfinement(): Boolean =
+    this is FilesystemAccess.ApprovedReadonly || this is FilesystemAccess.ConfinedWorkspace
+
+/**
+ * Whether this network posture demands a confined network.
+ *
+ * Denied is the legacy behaviour and it demands nothing: no step asked for the
+ * network, and that is a statement about the steps, not about the run. The two
+ * postures that constrain the run itself — an allowlist of destinations, and a
+ * run with no network at all — demand the capability of a provider that can
+ * confine it.
+ */
+private fun NetworkAccess.demandsConfinement(): Boolean =
+    this is NetworkAccess.Allowlisted || this is NetworkAccess.Isolated

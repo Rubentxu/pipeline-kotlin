@@ -14,7 +14,8 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * watchdog, FAILED_TIMEOUT determinism), time containment (deadline budgets
  * projected onto childShOptions.timeoutMs), secret redaction (typed
  * SecretHandle channel + chunk-boundary-safe transcript redaction, console and
- * at-rest). Sandbox profiles allowed: [SandboxProfile.NONE], [SandboxProfile.LOCAL].
+ * at-rest). Sandbox profiles allowed: [SandboxProfile.NONE], [SandboxProfile.LOCAL],
+ * [SandboxProfile.CONFINED].
  * [MultiTenantConstrained] — third-party scripts on a shared host. Requires
  * filesystem jail, CPU/memory limits and egress blocking. NONE of these exist
  * In; therefore this profile is not constructible and no run may claim it
@@ -32,7 +33,7 @@ sealed interface RunnerTrustProfile {
 */
     data object TrustedSingleTenant : RunnerTrustProfile {
         override val allowedSandboxProfiles: Set<SandboxProfile> =
-            setOf(SandboxProfile.NONE, SandboxProfile.LOCAL)
+            setOf(SandboxProfile.NONE, SandboxProfile.LOCAL, SandboxProfile.CONFINED)
     }
 
     /**

@@ -130,6 +130,7 @@ internal class ShellProcessLauncher(
             opId = opId,
             heartbeatCheckInterval = config.heartbeatCheckInterval,
             pumpedViaAgent = config.pumpedViaAgent,
+            confinement = confinementFor(request, controlDir),
         )
         preparation.materialise(scriptContent)
 
@@ -228,6 +229,44 @@ internal class ShellProcessLauncher(
             warmup.forEach { runCatching { it.close() } }
             throw IllegalStateException(launchRefusalMessage(opId), e)
         }
+    }
+
+    /**
+     * The confinement this request asks for, or null when it asks for none.
+     *
+     * The confined profile needs two things this host either has or does not: the tool
+     * that applies the boundary, and a workspace to confine. Both are checked HERE, at
+     * the one place where the launch is built, so a run that cannot be confined fails
+     * before the child exists instead of running unconfined.
+     *
+     * The control directory is part of the confinement, and it is part of it READ-ONLY:
+     * the script the run is about to execute lives there, and a run that cannot see it
+     * does not run at all. The exit code the run publishes is written by the wrapper,
+     * which runs OUTSIDE the boundary, so the run cannot forge its own verdict.
+     *
+     * The admission core has already refused a request this host cannot honour, so
+     * this is the second line and not the first: it exists so that a host that loses
+     * the tool between the decision and the launch fails closed.
+     */
+    private fun confinementFor(
+        request: DurableShellExecutionRequest,
+        controlDir: Path,
+    ): SandboxConfinement? {
+        if (request.sandbox.profile != SandboxProfile.CONFINED) return null
+        val workspace = request.workspaceRoot
+            ?: throw SandboxProfileUnsupportedException(
+                "the confined profile confines a workspace, and this run has none",
+            )
+        val binary = SandboxConfinement.locate()
+            ?: throw SandboxProfileUnsupportedException(
+                "the confined profile needs '${SandboxConfinement.TOOL}', " +
+                    "which this host does not have",
+            )
+        return SandboxConfinement(
+            binary = binary,
+            workspace = workspace,
+            readablePaths = listOf(controlDir),
+        )
     }
 
     /**

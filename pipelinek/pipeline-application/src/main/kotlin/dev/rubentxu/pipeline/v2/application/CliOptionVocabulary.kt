@@ -49,6 +49,17 @@ internal class ParseState(
      * where a flag's meaning is decided, which is how one flag ends up meaning two things.
      */
     val deliverableViews: Set<ObservationView> = ObservationView.EVENT_LANE_VIEWS,
+    /**
+     * What answers "what can this host prove about a run's confinement?".
+     *
+     * In the state so that every verb that reads the sandbox profile asks the same
+     * question of the same provider: a verb that answered with its own idea of what
+     * the host can confine would decide the same request two ways.
+     *
+     * The default is the provider that MEASURES the host. A test that must not
+     * depend on the host replaces it with one that answers from a fixture.
+     */
+    val provider: IsolationProvider = BwrapIsolationProvider,
 ) {
     var dbPath: String? = null
     var durableRunPolicy: DurableRunPolicy = DurableRunPolicy.ReusePriorRun
@@ -548,7 +559,15 @@ private object ClosedValueOptions {
     fun applySandboxProfile(value: String, index: Int, state: ParseState): ApplyOutcome {
         val asked = ExecutionAdmission.profileRequestFor(value)
             ?: return ApplyOutcome.Rejected(CliError.InvalidSandboxProfile(value))
-        return when (val admission = ExecutionAdmission.decide(asked.request)) {
+        // The provider is asked BEFORE the verdict, and it is asked only about a
+        // request this build could run and that demands a boundary: the legacy words
+        // demand nothing beyond the behaviour this product has always had, and the
+        // word 'os' has nowhere to run, so neither of them measures the host.
+        val admission = ExecutionAdmission.decide(
+            asked.request,
+            ExecutionAdmission.attestationFor(asked, state.provider),
+        )
+        return when (admission) {
             is Admission.Allowed -> {
                 // A request this build admits carries a runtime profile. A word
                 // without one has no way to run, and it is refused by name here

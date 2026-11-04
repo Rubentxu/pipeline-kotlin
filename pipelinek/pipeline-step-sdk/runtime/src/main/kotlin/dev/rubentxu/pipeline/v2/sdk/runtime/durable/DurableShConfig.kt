@@ -52,7 +52,7 @@ data class DurableShConfig(
      * When `true`, [dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.launch]
      * creates two FIFOs in `controlRoot/<runId>/fifos/`, redirects the
      * child's stdout/stderr to those FIFOs, and launches the production
-     * `dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent`
+     * `dev.rubentxu.pipeline.v2.runtime.durable.ingest.ObsPc2IngestAgent`
      * as a separate JVM that owns the read ends. The runtime does NOT
      * start its per-channel pump threads in this mode.
      * When `false` (the default), the existing in-JVM pump behaviour is

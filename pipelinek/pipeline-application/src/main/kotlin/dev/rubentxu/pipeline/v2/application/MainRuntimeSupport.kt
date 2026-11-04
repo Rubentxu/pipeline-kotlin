@@ -1,6 +1,16 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal
+import dev.rubentxu.pipeline.v2.runtime.CompositionOutcome
+import dev.rubentxu.pipeline.v2.runtime.FilePublisherKeyRing
+import dev.rubentxu.pipeline.v2.runtime.LiveSpanNames
+import dev.rubentxu.pipeline.v2.runtime.LiveSpanStatus
+import dev.rubentxu.pipeline.v2.runtime.LiveSpans
+import dev.rubentxu.pipeline.v2.runtime.LocalFileOperatorTrustDatabase
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.runtime.PluginCompositionAdmitter
+import dev.rubentxu.pipeline.v2.runtime.PluginTrustSource
+import dev.rubentxu.pipeline.v2.runtime.PreResolvedComposition
+import dev.rubentxu.pipeline.v2.runtime.durable.AdmissionControlJournal
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.application.observation.ConsolePrintingEventSink
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
@@ -265,6 +275,11 @@ internal fun admitThenCompose(
             requireTrust,
             err,
             copyRoot,
+            // The plugins the INSTALLATION bundles, and the loader they are
+            // loaded through. Both are decided here, because both are facts
+            // about this process's classpath and not about the engine.
+            bundledPlugins = computeBundledPlugins(),
+            classLoaderFor = ::pluginClassLoaderFor,
         )
     ) {
         is CompositionOutcome.Composed -> {

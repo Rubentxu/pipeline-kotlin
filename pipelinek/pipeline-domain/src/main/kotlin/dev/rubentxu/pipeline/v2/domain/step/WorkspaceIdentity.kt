@@ -7,13 +7,13 @@ import java.nio.file.Path
  * resolve workspace-relative paths without consulting process-global
  * state (the `pipeline.workspace.root` system property).
  * This value class was hoisted from
- * `dev.rubentxu.pipeline.v2.application.Capabilities.kt` so plugin
+ * `dev.rubentxu.pipeline.v2.runtime.Capabilities.kt` so plugin
  * handlers can declare `WORKSPACE_IDENTITY_CAPABILITY` in their
  * `StepContract.requiredCapabilities` and read the workspace root from
  * `StepHandlerContext.capabilities.get(KEY, Type::class)` instead of closing over
  * a `() -> Path` resolver that reads the launcher system property.
  * The capability is populated by
- * `dev.rubentxu.pipeline.v2.application.durable.RuntimeCapabilityAccess`
+ * `dev.rubentxu.pipeline.v2.runtime.durable.RuntimeCapabilityAccess`
  * from the per-invocation `RuntimeContext.shOptions.workspaceRoot`,
  * which the launcher threads into the canonical durable run. There is
  * NO shared mutable state: two plugin handlers in the same JVM can each

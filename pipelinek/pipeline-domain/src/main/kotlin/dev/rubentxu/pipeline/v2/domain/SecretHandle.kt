@@ -24,7 +24,7 @@ import java.nio.charset.StandardCharsets
  * pb.environment.putAll(env.mapValues { it.value.materialize })
  * ```
  * This happens in [dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.launch]
- * and [dev.rubentxu.pipeline.v2.application.durable.ShExecution.executeNonDurable].
+ * and [dev.rubentxu.pipeline.v2.runtime.durable.ShExecution.executeNonDurable].
  * ## Wipe Contract
  * When [close] is called, the internal byte array is filled with zeros.
  * The wiped array is observable: after [close],

@@ -1,0 +1,229 @@
+package dev.rubentxu.pipeline.v2.runtime
+
+import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
+import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
+import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepCodec
+import dev.rubentxu.pipeline.v2.domain.step.StepContract
+import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
+import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
+import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.PwdResolved
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.time.Instant
+import java.util.UUID
+
+/**
+ * Typed input payload of `core.pwd`
+ * The legacy wire payload for `core.pwd(false)` is `{"kind":"pwd"}` (compiler
+ * `encodePayload` else-branch); the `tmp` field defaults to `false`. The
+ * codec preserves the legacy envelope structure and decodes the `tmp` flag.
+ * `tmp=true` is the PWD_TMP_TRUE_DISPOSITION blocker: the candidate MUST
+ * reject it at decode time (fail-closed) so the StepKey authority cannot be
+ * flipped for `core.pwd` while `tmp=true` remains a pre-existing legacy-only
+ * branch with side effects and a non-deterministic timestamp path.
+*/
+data class PwdInput(
+    val tmp: Boolean = false,
+) {
+    init {
+        require(!tmp) {
+            "core.pwd tmp=true is unsupported in this registry candidate; " +
+                "see PWD_TMP_TRUE_DISPOSITION in S2-A6/G0 characterization receipt"
+        }
+    }
+}
+
+/**
+ * TYPED_RUNTIME_OUTPUT — APPROVED_ARCHITECTURAL_DELTA (/, decision)
+ * Legacy durable path produces NO typed output (`StepOutcome.Success` only; the
+ * path is observable solely through the `PwdResolved` event). The candidate
+ * deliberately exposes the resolved absolute path as a typed result because the
+ * product baseline requires `pwd` to be a runtime-valued Step (the eventual
+ * reconnection of `PipelineDsl.pwd` to a real canonical workspace observation
+ * depends on it).
+ * Durable law: fresh/rerun OBSERVE the canonical stage workspace;
+ * resume/reuse REPRODUCE the persisted observation (`PwdOutput` + original
+ * `PwdResolved`) without re-executing the handler or re-reading
+ * `WorkspaceIdentity`. A stale observation after a workspaceRoot change is
+ * correct durable semantics, not a bug — matches `core.isUnix` precedent
+ * (frozen at `{READ_ONLY} + MEMOIZED`)
+*/
+data class PwdOutput(
+    val path: String,
+) : TypedStepOutput {
+    override val outcome: StepOutcome get() = StepOutcome.Success
+}
+
+/**
+ * The production definition of `core.pwd`.
+ * It is registered through the SAME mechanism an external plugin uses
+ * ([CoreStepRegistryFactory]), and the registry is the only authority that resolves
+ * the key.
+ * The `tmp=false` truth is PATH_B verbatim: the resolved
+ * absolute path comes from `WorkspaceIdentity.workspaceRoot`, which the capability bridge
+ * populates from `context.shOptions.workspaceRoot` — the SAME source the
+ * legacy `pwdContext()` consumed.
+ * Capability separation (mirrors `core.isUnix` precedent):
+ * - [EXECUTION_LOCATION_CAPABILITY] owns the canonical workspace OBSERVATION
+ *   (`workspaceRoot: Path`); the bridge derives it from the runtime context,
+ *   the handler never reaches `user.dir` / `controlDirRoot` directly.
+ * - The Step owns the projection POLICY (absolute path string + sha256).
+ * - [EVENT_SINK_CAPABILITY] publishes the durable `PwdResolved` observation.
+ * Adjacent guarantees: input codec preserves the legacy `{"kind":"pwd"}`
+ * envelope; the handler is total (no exceptions as semantics outside the
+ * `tmp=true` rejection at decode); `PwdResolved` fields mirror the legacy
+ * dispatcher byte-for-byte (uuid eventId, sequence 0L, sha256 hex of path,
+ * `workspaceRoot` echoed alongside the resolved path).
+ * **Scope firewall**: `tmp=true` is rejected at decode (see [PwdInput.init])
+ * because the legacy `tmp=true` path mints a `tmp-pwd-<timestamp>` directory
+ * with non-deterministic naming — incompatible with `MEMOIZED` replay and
+ * with `READ_ONLY` effect classification. This is the
+ * PWD_TMP_TRUE_DISPOSITION blocker; the StepKey authority cannot be flipped
+ * for `core.pwd` until a separate disposition lands.
+*/
+object CorePwdStep {
+
+    val KEY: PluginStepId = PluginStepId("core.pwd")
+
+    private val inputCodec = object : StepCodec<PwdInput> {
+        override fun encode(value: PwdInput): EncodedStepValue =
+            EncodedStepValue(
+                Json.encodeToString(
+                    JsonObject.serializer(),
+                    buildJsonObject {
+                        put("kind", JsonPrimitive("pwd"))
+                        // tmp=true is rejected at PwdInput.init, so we always emit false here.
+                        put("tmp", JsonPrimitive(value.tmp))
+                    },
+                ),
+            )
+
+        override fun decode(encoded: EncodedStepValue): PwdInput {
+            val obj = Json.parseToJsonElement(encoded.value).jsonObject
+            require(obj["kind"]?.jsonPrimitive?.content == "pwd") {
+                "core.pwd payload kind must be 'pwd'"
+            }
+            val tmp = obj["tmp"]?.jsonPrimitive?.booleanOrNull ?: false
+            // Fail-closed at decode: tmp=true is the PWD_TMP_TRUE_DISPOSITION blocker.
+            require(!tmp) {
+                "core.pwd tmp=true is unsupported in this registry candidate; " +
+                    "see PWD_TMP_TRUE_DISPOSITION in S2-A6/G0 characterization receipt"
+            }
+            return PwdInput(tmp = false)
+        }
+    }
+
+    private val outputCodec = object : StepCodec<PwdOutput> {
+        override fun encode(value: PwdOutput): EncodedStepValue =
+            EncodedStepValue(
+                Json.encodeToString(
+                    JsonObject.serializer(),
+                    buildJsonObject {
+                        put("kind", JsonPrimitive("pwd"))
+                        put("path", JsonPrimitive(value.path))
+                    },
+                ),
+            )
+
+        override fun decode(encoded: EncodedStepValue): PwdOutput {
+            val obj = Json.parseToJsonElement(encoded.value).jsonObject
+            require(obj["kind"]?.jsonPrimitive?.content == "pwd") {
+                "core.pwd output payload kind must be 'pwd'"
+            }
+            return PwdOutput(obj.getValue("path").jsonPrimitive.content)
+        }
+    }
+
+    // The effects are {READ_ONLY} + MEMOIZED. `core.pwd` only READS the workspace
+    // root; the `tmp=true` variant, which CREATES a directory, is a DIFFERENT StepKey
+    // (`core.pwd.tmp`) with its own descriptor.
+    private val descriptor = StepDescriptor(
+        stepId = "core.pwd",
+        name = "pwd",
+        configRef = "",
+        executionLocation = ExecutionLocation.AGENT,
+        effects = listOf(Effect.READ_ONLY),
+        replayPolicy = ReplayPolicy.MEMOIZED,
+    )
+
+    /**
+     * `pwd` reports the current directory, not the workspace root.
+     * The legacy seam handed this handler a single `Path` built as
+     * `workingDirectory ?: workspaceRoot`, so a `dir` scope could not be
+     * distinguished from the run root: both `path` and `workspaceRoot` were
+     * Filled with the same collapsed value. requires `pwd()` to return
+     * `cwd`, and the two authorities to stay observably distinct, so this now
+     * reads the typed execution location and reports each authority from its own
+     * field.
+*/
+    private val capabilityRoutedHandler: StepHandler<PwdInput, PwdOutput> =
+        StepHandler { _, ctx ->
+            val location: ExecutionSite =
+                ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY, ExecutionSite::class)
+            val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY, EventSink::class)
+            val cwd = location.cwd.toAbsolutePath()
+            val root = location.workspace.root.toAbsolutePath()
+            val path = cwd.toString()
+            sink.append(
+                PwdResolved(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = ctx.runId.value,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    path = path,
+                    workspaceRoot = root.toString(),
+                    sha256 = sha256(path),
+                ),
+            )
+            PwdOutput(path = path)
+        }
+
+    /**
+     * The `core.pwd` payload digest, emitted in `PwdEntered.sha256`.
+     * Routed through [Sha256]. The bytes hashed are UNCHANGED on a platform, which
+     * Every supported toolchain is (JEP 400 made the default in JDK 18), so an existing
+     * observer comparing digests keeps matching. What changed is that the charset is now
+     * stated rather than inherited: the previous `input.toByteArray()` resolved to the platform
+     * default, so this value silently depended on the JVM's locale.
+*/
+    internal fun sha256(input: String): String = Sha256.ofText(input)
+
+    val definition: StepDefinition<PwdInput, PwdOutput> =
+        object : StepDefinition<PwdInput, PwdOutput> {
+            override val contract: StepContract<PwdInput, PwdOutput> = StepContract(
+                key = KEY,
+                descriptor = descriptor,
+                inputCodec = inputCodec,
+                outputCodec = outputCodec,
+                requiredCapabilities = setOf(
+                    EXECUTION_LOCATION_CAPABILITY,
+                    EVENT_SINK_CAPABILITY,
+                ) as Set<StepCapability>,
+            )
+
+            override val handler: StepHandler<PwdInput, PwdOutput> =
+                capabilityRoutedHandler
+        }
+
+    /** Registers the candidate through the same open registry seam as any external Step. */
+    fun registerInto(builder: StepRegistryBuilder) {
+        builder.add(definition)
+    }
+}

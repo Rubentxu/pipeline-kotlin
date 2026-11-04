@@ -2,7 +2,15 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
+import dev.rubentxu.pipeline.v2.runtime.CoreInputInput
+import dev.rubentxu.pipeline.v2.runtime.CoreInputWireCodec
+import dev.rubentxu.pipeline.v2.runtime.CoreLockInput
+import dev.rubentxu.pipeline.v2.runtime.CoreLockWireCodec
+import dev.rubentxu.pipeline.v2.runtime.CoreShellInput
+import dev.rubentxu.pipeline.v2.runtime.CoreShellWireCodec
+import dev.rubentxu.pipeline.v2.runtime.CoreWorkflowControlInput
+import dev.rubentxu.pipeline.v2.runtime.CoreWorkflowControlWireCodec
+import dev.rubentxu.pipeline.v2.runtime.durable.credentials.CredentialBindingsPayload
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.DefinitionIdentityInput

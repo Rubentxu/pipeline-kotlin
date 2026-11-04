@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
 import dev.rubentxu.pipeline.v2.output.store.UnnameableRunIdentity
+import dev.rubentxu.pipeline.v2.runtime.RuntimeApiVersion
 import dev.rubentxu.pipeline.v2.scripting.ScriptCacheInspection
 import dev.rubentxu.pipeline.v2.scripting.ScriptCacheState
 import dev.rubentxu.pipeline.v2.scripting.ScriptCacheStore
@@ -244,7 +245,7 @@ internal fun runDoctorVerb(args: Array<String>, out: PrintStream, err: PrintStre
         }
         is CliAdmission.Admitted -> Unit
     }
-    val runtimeConfig = dev.rubentxu.pipeline.v2.application.SystemRuntimeConfig()
+    val runtimeConfig = dev.rubentxu.pipeline.v2.runtime.SystemRuntimeConfig()
     val cwd = Paths.get("").toAbsolutePath()
     val writable = try {
         val probe = Files.createTempFile(cwd, "pipelinek-doctor-", ".probe")

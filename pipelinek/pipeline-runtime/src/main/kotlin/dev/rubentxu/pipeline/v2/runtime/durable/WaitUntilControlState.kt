@@ -1,0 +1,16 @@
+package dev.rubentxu.pipeline.v2.runtime.durable
+
+import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilControlRowSnapshot
+
+/**
+ * Pure snapshot returned by [FileBasedWaitUntilControlJournal.readState].
+ * Mirrors [RetryControlState] but for waitUntil's backoff-based
+ * polling model (no attempt budget, no child row tracking).
+*/
+data class WaitUntilControlState(
+    /**
+     * Persisted control rows for this waitUntil logical invocation, sorted by
+     * attempt ordinal ascending.
+*/
+    val controlRows: List<WaitUntilControlRowSnapshot>,
+)

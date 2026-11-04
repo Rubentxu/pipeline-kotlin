@@ -421,7 +421,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     /**
      * `lock(resource) { ... }` — hold a named resource while the enclosed body
      * runs. declarative structural IR only: the compiler
-     * lowers this variant through [dev.rubentxu.pipeline.v2.application.CoreLockInput]
+     * lowers this variant through [dev.rubentxu.pipeline.v2.runtime.CoreLockInput]
      * and the single wire authority `CoreLockWireCodec`; this type carries no
      * wire vocabulary of its own.
      *
@@ -479,7 +479,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * `input(message) { ... }` — ask a human and continue only if they say yes
      * . declarative structural IR only: the compiler lowers this
      * variant through
-     * [dev.rubentxu.pipeline.v2.application.CoreInputInput] and the single wire
+     * [dev.rubentxu.pipeline.v2.runtime.CoreInputInput] and the single wire
      * authority `CoreInputWireCodec`; this type carries no wire vocabulary of its
      * own.
      */

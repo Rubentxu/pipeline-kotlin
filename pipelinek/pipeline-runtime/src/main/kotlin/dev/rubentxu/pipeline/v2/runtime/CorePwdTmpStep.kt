@@ -1,0 +1,194 @@
+package dev.rubentxu.pipeline.v2.runtime
+
+import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepCodec
+import dev.rubentxu.pipeline.v2.domain.step.StepContract
+import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
+import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * Typed input payload of `core.pwd.tmp`
+ * The Step has no input parameters — the per-operation identity comes from the
+ * canonical [dev.rubentxu.pipeline.v2.runtime.durable.OpId.format] which the
+ * adapter receives from the runtime bridge (NOT from the Step contract). The
+ * legacy `tmp=true` input was a boolean discriminator; the registry path replaces
+ * it with the operation identity that the durable coordinator already owns, hidden
+ * behind the [TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] seam.
+*/
+data object PwdTmpInput
+
+/**
+ * Typed output payload of `core.pwd.tmp`
+ * Same typed output as `core.pwd`: `PwdOutput(path: String)` with `outcome = Success`.
+ * The output path is the absolute path of the deterministic temp workspace
+ * (sha256(opId) under `workspaceRoot`). Reuse of the typed shape keeps `core.pwd`
+ * and `core.pwd.tmp` consumable by the same downstream typed seams.
+*/
+typealias PwdTmpOutput = PwdOutput
+
+/**
+ * Registry candidate for `core.pwd.tmp`
+ * This Step is **pure policy**: it declares what the engine must do (capability
+ * admission + typed contract + canonical output envelope) and delegates ALL
+ * infrastructure (filesystem, event emission, opId-based identity derivation)
+ * to the [TemporaryWorkspaceOperations] typed seam, exposed through the
+ * [TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] token.
+ * ## What the handler DOES NOT touch
+ * ```text
+ * Files.*                    -> only TemporaryWorkspaceOperationsAdapter
+ * EventSink                  -> only TemporaryWorkspaceOperationsAdapter
+ * RuntimeContext    -> never
+ * OpId                       -> never
+ * sha256 / MessageDigest     -> never
+ * ```
+ * Concretely, the handler is:
+ * ```kotlin
+ * val ops: TemporaryWorkspaceOperations =
+ *     ctx.capabilities.get(TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY, TemporaryWorkspaceOperations::class)
+ * val result = ops.resolveOrCreate
+ * PwdTmpOutput(path = result.path)
+ * ```
+ * That's it. The deterministic `tmp-pwd-<sha256(opId.format())>` derivation
+ * ), the directory creation, and the `PwdResolved` event emission all
+ * live in [dev.rubentxu.pipeline.v2.runtime.durable.TemporaryWorkspaceOperationsAdapter].
+ * ## Why a single capability, not three
+ * AGENTS.md: a handler reaches a named port rather than effectful work itself,
+ * symmetric with
+ * `core.sh → ShellOperations`). Three capabilities on a single effectful Step
+ * leak the runtime concerns into the contract: the handler would re-derive
+ * `sha256` from `OpId`, manually call `Files.createDirectories`, and manually
+ * emit `PwdResolved` — all of which are runtime/bridge concerns, not Step
+ * policy. The post-correction design collapses these into one
+ * `TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY` and keeps the handler
+ * capability-only.
+ * Specifically, **`DURABLE_OPERATION_IDENTITY_CAPABILITY` is NOT part of this
+ * Step's contract** — the handler does not need the durable OpId to do its
+ * work; the bridge adapter does, and only there.
+ * ## Determinism laws (–, /)
+ * Lives in the adapter. The laws are: same OpId ⇒ same path; distinct
+ * stepIndex / branchIndex / bodyPath ⇒ distinct paths; path under workspaceRoot;
+ * 64 lowercase hex suffix; idempotent; one `PwdResolved` per fresh execution.
+ * Nothing enforces them mechanically today: the adapter derives the path from the
+ * OpId and the hash from those inputs, and a reader who assumes a boundary the
+ * code does not draw will not notice the day one is crossed.
+ * ## Capability-routed handler discipline
+ * - declared capability = used capability = `{TEMPORARY_WORKSPACE_OPERATIONS}`
+ * - no `RuntimeContext` reach
+ * - no coordinator / journal / event sink reach
+ * - the substrate (sha256 + Files + PwdResolved) is the adapter's responsibility
+ * ## Scope firewall
+ * - `core.pwd.tmp` is a registry Step like every other core Step: the registry
+ *   is the single production authority for its contract and its metadata.
+ * - the public DSL lowers to it directly: `pwd(tmp=true)` produces the
+ *   `core.pwd.tmp` registry candidate and `pwd(tmp=false)` produces `core.pwd`.
+ * - Lower-binding is / (runtime-return consumer).
+ * ## Replay law
+ * `Effect.WRITES_WORKSPACE` is declared; `ReplayPolicy.MEMOIZED` is declared
+ * too — fresh/rerun creates (idempotently) the temp workspace; resume/reuse
+ * reproduces the persisted observation (same path, no second directory).
+*/
+object CorePwdTmpStep {
+
+    val KEY: PluginStepId = PluginStepId("core.pwd.tmp")
+
+    private val inputCodec = object : StepCodec<PwdTmpInput> {
+        override fun encode(value: PwdTmpInput): EncodedStepValue =
+            EncodedStepValue(
+                Json.encodeToString(JsonObject.serializer(), buildJsonObject {}),
+            )
+
+        override fun decode(encoded: EncodedStepValue): PwdTmpInput {
+            // Envelope structure only: legacy-durable empty JSON object — same envelope
+            // shape as the empty `{}` we use for `core.isUnix`, by analogy. A future
+            // compiler/PSI lowering that wants to discriminate may write a richer
+            // envelope here; the unit shape is kept to match the legacy
+            // "no input parameters" semantics of pwd(tmp=true).
+            Json.parseToJsonElement(encoded.value).jsonObject
+            return PwdTmpInput
+        }
+    }
+
+    private val outputCodec = object : StepCodec<PwdTmpOutput> {
+        override fun encode(value: PwdTmpOutput): EncodedStepValue =
+            EncodedStepValue(
+                Json.encodeToString(
+                    JsonObject.serializer(),
+                    buildJsonObject {
+                        put("kind", JsonPrimitive("pwd.tmp"))
+                        put("path", JsonPrimitive(value.path))
+                    },
+                ),
+            )
+
+        override fun decode(encoded: EncodedStepValue): PwdTmpOutput {
+            val obj = Json.parseToJsonElement(encoded.value).jsonObject
+            require(obj["kind"]?.jsonPrimitive?.content == "pwd.tmp") {
+                "core.pwd.tmp output payload kind must be 'pwd.tmp'"
+            }
+            return PwdTmpOutput(obj.getValue("path").jsonPrimitive.content)
+        }
+    }
+
+    // Distinct from CorePwdStep (READ_ONLY + MEMOIZED): the tmp directory is
+    // physically created, so the effect class MUST reflect that. Replay law
+    // Idempotent mkdir on fresh/rerun,
+    // persisted observation on resume/reuse.
+    private val descriptor = StepDescriptor(
+        stepId = "core.pwd.tmp",
+        name = "pwd.tmp",
+        configRef = "",
+        executionLocation = ExecutionLocation.AGENT,
+        effects = listOf(Effect.WRITES_WORKSPACE),
+        replayPolicy = ReplayPolicy.MEMOIZED,
+    )
+
+    /**
+     * Pure policy handler — capability-only.
+     * No `Files`, no `EventSink`, no `OpId`, no `sha256`. The single capability
+     * read is the typed [TemporaryWorkspaceOperations] port, which the adapter
+     * binds to the runtime context.
+*/
+    private val capabilityRoutedHandler: StepHandler<PwdTmpInput, PwdTmpOutput> =
+        StepHandler { _, ctx ->
+            val ops: TemporaryWorkspaceOperations =
+                ctx.capabilities.get(TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY, TemporaryWorkspaceOperations::class)
+            val result: TempWorkspaceResult = ops.resolveOrCreate()
+            PwdTmpOutput(path = result.path)
+        }
+
+    val definition: StepDefinition<PwdTmpInput, PwdTmpOutput> =
+        object : StepDefinition<PwdTmpInput, PwdTmpOutput> {
+            override val contract: StepContract<PwdTmpInput, PwdTmpOutput> = StepContract(
+                key = KEY,
+                descriptor = descriptor,
+                inputCodec = inputCodec,
+                outputCodec = outputCodec,
+                requiredCapabilities = setOf(
+                    TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY,
+                ) as Set<StepCapability>,
+            )
+
+            override val handler: StepHandler<PwdTmpInput, PwdTmpOutput> =
+                capabilityRoutedHandler
+        }
+
+    /** Registers the candidate through the same open registry seam as any external Step. */
+    fun registerInto(builder: StepRegistryBuilder) {
+        builder.add(definition)
+    }
+}
+
+

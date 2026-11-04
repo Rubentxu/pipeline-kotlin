@@ -28,7 +28,7 @@ package dev.rubentxu.pipeline.v2.application
  * The old sentences are not quoted here on purpose: a copy of a false claim,
  * even a historical one, is a second copy of the claim, and this file is the
  * one place where the model lives. [ScriptTrustTest] requires the old wording
- * to appear in no source file of the module.
+ * to appear in no source file of the product.
  *
  * ## What is here instead
  *

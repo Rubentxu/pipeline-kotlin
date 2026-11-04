@@ -101,7 +101,7 @@ object JUnitReportSummaryCodec : StepCodec<JUnitReportSummary> {
  * JSON codec for [JUnitResultsOutput]
  * Mirrors `CoreShellOutput`'s shape in `CoreShellStep.kt`: the durable
  * payload is the carrier, not just the summary, so that the
- * [dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary]
+ * [dev.rubentxu.pipeline.v2.runtime.durable.RegistryExecutionBoundary]
  * can project `outcome` via `produced as? TypedStepOutput` without
  * ever inspecting a concrete StepKey. The boundary stays Step-agnostic.
  * On the wire:

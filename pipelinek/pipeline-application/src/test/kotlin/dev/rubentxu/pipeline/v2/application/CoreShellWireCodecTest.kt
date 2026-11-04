@@ -7,6 +7,9 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.StageSpec
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
+import dev.rubentxu.pipeline.v2.runtime.CoreShellCodecException
+import dev.rubentxu.pipeline.v2.runtime.CoreShellInput
+import dev.rubentxu.pipeline.v2.runtime.CoreShellWireCodec
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue

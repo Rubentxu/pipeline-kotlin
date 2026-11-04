@@ -27,15 +27,15 @@ import java.util.stream.Collectors
  * script AND evaluated it, so the author's body ran inside the validating
  * process.
  *
- * ## Why the instrument reads the module's own sources
+ * ## Why the instrument reads the product's own sources
  *
  * The guarantee is about WHERE the model lives, and no runtime observation can
  * answer that: a program that prints the model twice prints it twice whether
  * the second copy is in a source file or in a string built at runtime. The
  * only thing that can answer it is the source itself.
  *
- * So the instrument reads the module's own `.kt` files and asks two literal
- * questions:
+ * So the instrument reads the `.kt` files of BOTH modules the product is made
+ * of — the CLI and the engine — and asks two literal questions:
  *
  *  - does every sentence of the model appear in exactly ONE file, and is that
  *    file the one that declares its owner?
@@ -69,8 +69,8 @@ class ScriptTrustTest {
     }
 
     @Test
-    fun `the model is written in exactly one file of the module, and that file owns it`() {
-        val sources = moduleSources()
+    fun `the model is written in exactly one file of the product, and that file owns it`() {
+        val sources = productSources()
 
         (ScriptTrust.LINES + ScriptTrust.HEADING).forEach { sentence ->
             val owners = sources.filter { it.text.contains(sentence) }
@@ -89,8 +89,8 @@ class ScriptTrustTest {
     }
 
     @Test
-    fun `no source of the module promises that validate starts nothing`() {
-        val sources = moduleSources()
+    fun `no source of the product promises that validate starts nothing`() {
+        val sources = productSources()
 
         FORBIDDEN_PROMISES.forEach { promise ->
             val owners = sources.filter { it.text.contains(promise, ignoreCase = true) }
@@ -113,40 +113,55 @@ class ScriptTrustTest {
     }
 
     /**
-     * Every `.kt` file of this module's own sources.
+     * Every `.kt` file of the PRODUCT's own sources.
      *
-     * The module root is found by walking up from the working directory: the
+     * The guarantee is about the product, and the product is TWO modules: the
+     * CLI and the engine that moved out of it. A guard that read only the
+     * CLI's tree would have lost the engine without saying so, and a promise
+     * about the product that lives in the engine would have gone unnoticed.
+     *
+     * The roots are found by walking up from the working directory: the
      * sources may be reached from the module directory or from the repository
      * root, and a test that only worked from one of them would be a test that
      * only runs in one checkout.
      */
-    private fun moduleSources(): List<SourceFile> {
-        val sourceRoot = moduleSourceRoot()
-        return Files.walk(sourceRoot).use { paths ->
-            paths
-                .filter { it.fileName.toString().endsWith(".kt") }
-                .map { SourceFile(it, Files.readString(it)) }
-                .collect(Collectors.toList())
+    private fun productSources(): List<SourceFile> =
+        sourceRoots().flatMap { root ->
+            Files.walk(root).use { paths ->
+                paths
+                    .filter { it.fileName.toString().endsWith(".kt") }
+                    .map { SourceFile(it, Files.readString(it)) }
+                    .collect(Collectors.toList())
+            }
         }
-    }
 
     /**
-     * The root of this module's `src/main/kotlin`.
+     * The `src/main/kotlin` root of every module that carries the product.
      */
-    private fun moduleSourceRoot(): Path {
+    private fun sourceRoots(): List<Path> {
+        val found = mutableMapOf<Int, Path>()
         var candidate: Path? = Paths.get("").toAbsolutePath()
-        while (candidate != null) {
-            MODULE_RELATIVE_PATHS.forEach { relative ->
-                val packageDir = candidate.resolve(relative).resolve(PACKAGE_PATH)
-                if (Files.isDirectory(packageDir)) {
-                    return candidate.resolve(relative)
+        while (candidate != null && found.size < MODULE_ROOTS.size) {
+            MODULE_ROOTS.forEachIndexed { index, module ->
+                if (found.containsKey(index)) {
+                    return@forEachIndexed
+                }
+                module.relativePaths.forEach { relative ->
+                    val packageDir = candidate.resolve(relative).resolve(module.packagePath)
+                    if (Files.isDirectory(packageDir)) {
+                        found[index] = candidate.resolve(relative)
+                        return@forEach
+                    }
                 }
             }
             candidate = candidate.parent
         }
-        error(
-            "the sources of the application module were not found from '${Paths.get("").toAbsolutePath()}'",
-        )
+        val missing = MODULE_ROOTS.indices.filter { !found.containsKey(it) }
+        check(missing.isEmpty()) {
+            "the sources of the product were not found from '${Paths.get("").toAbsolutePath()}': " +
+                missing.joinToString { MODULE_ROOTS[it].packagePath }
+        }
+        return MODULE_ROOTS.indices.map { found.getValue(it) }
     }
 
     /**
@@ -155,17 +170,38 @@ class ScriptTrustTest {
     private data class SourceFile(val path: Path, val text: String)
 
     private companion object {
-        /** The package every file of this module lives under. */
-        const val PACKAGE_PATH = "dev/rubentxu/pipeline/v2/application"
+        /**
+         * One module of the product: the package its sources live under and
+         * where its `src/main/kotlin` sits, relative to a directory the test
+         * walks up from.
+         */
+        data class ModuleRoot(
+            val packagePath: String,
+            val relativePaths: List<String>,
+        )
 
         /**
-         * Where the module's `src/main/kotlin` sits, relative to a directory
-         * the test walks up from: inside the module directory itself, or
-         * inside the repository that holds it.
+         * The two modules the product is made of.
+         *
+         * The engine's root is reached as a SIBLING of the CLI's, because it
+         * is another module: the guarantee is about the product, not about one
+         * module's tree.
          */
-        val MODULE_RELATIVE_PATHS = listOf(
-            "src/main/kotlin",
-            "pipelinek/pipeline-application/src/main/kotlin",
+        val MODULE_ROOTS = listOf(
+            ModuleRoot(
+                packagePath = "dev/rubentxu/pipeline/v2/application",
+                relativePaths = listOf(
+                    "src/main/kotlin",
+                    "pipelinek/pipeline-application/src/main/kotlin",
+                ),
+            ),
+            ModuleRoot(
+                packagePath = "dev/rubentxu/pipeline/v2/runtime",
+                relativePaths = listOf(
+                    "../pipeline-runtime/src/main/kotlin",
+                    "pipelinek/pipeline-runtime/src/main/kotlin",
+                ),
+            ),
         )
 
         /**

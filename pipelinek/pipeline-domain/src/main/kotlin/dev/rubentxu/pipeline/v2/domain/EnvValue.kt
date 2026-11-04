@@ -44,7 +44,7 @@ sealed interface EnvValue {
  * is used only to reference a secret stored in the [dev.rubentxu.pipeline.v2.credentials.api.SecretStore],
  * never to carry the secret value itself.
  * The alias lives alongside [dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec]
- * and [dev.rubentxu.pipeline.v2.domain.SecretHandleRef] in the domain layer,
+ * and [dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef] in the domain layer,
  * each representing a different semantic role for credential identifiers.
  * @see CredentialsId for the underlying value class
  * @see EnvValue.Secret for the environment value that carries a secret reference

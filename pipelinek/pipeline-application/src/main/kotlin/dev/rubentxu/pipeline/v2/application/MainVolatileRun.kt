@@ -1,7 +1,11 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
-import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
+import dev.rubentxu.pipeline.v2.runtime.RunRequest
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.runtime.RunPolicy
+import dev.rubentxu.pipeline.v2.runtime.RunState
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaVerdict
+import dev.rubentxu.pipeline.v2.runtime.durable.analyzeCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
@@ -224,7 +228,7 @@ private fun runVolatilePipelineOwned(
                         // The epoch is 0 because a volatile run has no lease: there is no
                         // takeover to fence against, and one writer owns the run for as long as
                         // the process lives.
-                        sagaBinding = dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding(
+                        sagaBinding = dev.rubentxu.pipeline.v2.runtime.durable.SagaCompensationBinding(
                             store = InMemorySagaObligationStore(),
                             leaseEpoch = 0,
                         ),

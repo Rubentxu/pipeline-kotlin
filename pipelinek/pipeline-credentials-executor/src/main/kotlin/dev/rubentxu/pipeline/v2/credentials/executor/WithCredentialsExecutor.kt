@@ -454,7 +454,7 @@ class BoundCredentials(
 
     /**
      * Thrown when secure wipe fails. The application adapter maps this to
-     * [dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup.Failed].
+     * [dev.rubentxu.pipeline.v2.runtime.durable.credentials.CredentialScopeCleanup.Failed].
 */
     class CleanupException(
         val orphanPaths: List<java.nio.file.Path>,

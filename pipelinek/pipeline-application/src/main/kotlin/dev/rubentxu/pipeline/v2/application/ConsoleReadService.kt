@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
+import dev.rubentxu.pipeline.v2.runtime.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.output.OutputPage
 import dev.rubentxu.pipeline.v2.output.OutputReadResult

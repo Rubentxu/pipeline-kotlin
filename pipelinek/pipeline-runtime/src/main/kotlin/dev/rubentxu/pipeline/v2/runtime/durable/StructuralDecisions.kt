@@ -1,0 +1,633 @@
+package dev.rubentxu.pipeline.v2.runtime.durable
+
+import dev.rubentxu.pipeline.v2.runtime.CoreStepRegistryFactory
+import dev.rubentxu.pipeline.v2.runtime.CoreWorkflowControlInput
+import dev.rubentxu.pipeline.v2.runtime.CoreWorkflowControlWireCodec
+import dev.rubentxu.pipeline.v2.domain.StageOption
+import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicyShape
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
+import dev.rubentxu.pipeline.v2.domain.step.BodyOutcomeFold
+import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.WaitUntilShape
+import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
+import dev.rubentxu.pipeline.v2.runtime.durable.credentials.CredentialBindingsPayload
+// Durable waitUntil reconciliation driver and identity factory.
+
+// Control journal + reconciliation driver.
+import dev.rubentxu.pipeline.v2.domain.BlockStepNode
+import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
+import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
+import dev.rubentxu.pipeline.v2.domain.PipelineFailure
+import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StageBody
+import dev.rubentxu.pipeline.v2.domain.StageNode
+import dev.rubentxu.pipeline.v2.domain.StepNode
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
+import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
+import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.nio.file.Path
+
+internal val canonicalStepIds: Set<String> =
+        CoreStepRegistryFactory.registry().keys().map { it.value }.toSet()
+
+/**
+ * Block Step families whose body is executed by THIS engine
+ * Derived from the declared [StepDescriptor] metadata, never from a list of StepKeys: a
+ * Step is canonical-body-eligible when it declares a body row
+ * (`StepBody.Declared`) whose `BodyExecution.owner` is this engine. Since that row has
+ * no implicit owner, so a new body Step cannot become eligible by omission.
+ * `core.catchError` / `core.warnError` declare `CANONICAL_ENGINE` and a
+ * `BodyExecutionPolicy.Folding`: their semantics are the fold of the body's typed
+ * outcome, and the canonical engine is the one that performs it.
+ * Adding a body Step therefore takes ONE descriptor row and no engine change, and this
+ * engine cannot silently gain a body family it does not implement.
+*/
+internal val canonicalBodyStepIds: Set<PluginStepId> =
+    StepDescriptorRegistry.standard().bodyStepIds(BodyExecutionOwner.CANONICAL_ENGINE)
+
+/**
+ * Describes a non-canonical step detected during pipeline analysis.
+ * @property stageIndex Index of the stage containing the non-canonical step
+ * @property stepIndex Index of the step within the stage
+ * @property stepId Human-readable step ID (from the pipeline definition)
+ * @property pluginStepId The plugin step ID (e.g. "custom.step")
+ * @property reason Why the step is non-canonical (e.g. "not in canonical core step IDs")
+*/
+data class NonCanonicalStep(
+    val stageIndex: Int,
+    val stepIndex: Int,
+    val stepId: String,
+    val pluginStepId: String,
+    val reason: String,
+)
+
+/**
+ * Analyzes the compiled pipeline and returns the list of non-canonical steps.
+ * An empty list means the pipeline is fully canonical and eligible for canonical durable execution.
+*/
+fun CompiledPipeline.analyzeCanonicalDurableExecution(effectiveRegistry: StepRegistry? = null): List<NonCanonicalStep> {
+    // Eligibility is registry-derived. When the caller has already
+    // composed the production registry (core + external plugin contributions),
+    // its keys participate in the gate; when null, the default derivation (core
+    // metadata + the production core factory) applies — behaviour unchanged for
+    // callers that do not supply a registry.
+    val eligibleStepIds: Set<String> = if (effectiveRegistry != null) {
+        effectiveRegistry.keys().map { it.value }.toSet()
+    } else {
+        canonicalStepIds
+    }
+    // A block Step's canonical eligibility is its DECLARED body owner, resolved
+    // from the effective registry so an external HANDLER_CONTINUATION Step enters exactly
+    // like a core CANONICAL_ENGINE one. The static core derivation remains the fallback so
+    // the null-registry path behaves exactly as before.
+    val bodyOwnerOf: (PluginStepId) -> dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner? = { key ->
+        effectiveRegistry?.definition(key)?.contract?.descriptor?.body?.declared?.execution?.owner
+            ?: dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry.standard()
+                .get(key)?.body?.declared?.execution?.owner
+    }
+    val nonCanonical = mutableListOf<NonCanonicalStep>()
+    for ((stageIndex, stage) in stages.withIndex()) {
+        val steps = (stage.body as? StageBody.Steps)?.steps ?: continue
+        for ((stepIndex, step) in steps.withIndex()) {
+            val issue = step.checkCanonicalExecution(eligibleStepIds, bodyOwnerOf)
+            if (issue != null) {
+                nonCanonical.add(NonCanonicalStep(
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepId = step.id.value,
+                    pluginStepId = step.pluginStepId.value,
+                    reason = issue,
+                ))
+            }
+        }
+    }
+    return nonCanonical
+}
+
+/**
+ * Default body-owner resolver over the static core descriptor registry. Preserves the
+ * previous behaviour for callers that do not thread an effective registry: core
+ * CANONICAL_ENGINE rows are eligible, everything else is refused exactly as before.
+ *
+ * NOTE: `supportsCanonicalDurableExecution` — the boolean projection of
+ * [analyzeCanonicalDurableExecution] — was removed with it. The boolean was the
+ * durable world's gate, and the gate was the reason the durable world reduced the
+ * analysis to a yes/no and threw the reasons away: the operator was told their
+ * script used non-canonical plugins and not WHICH step did. The analysis is the
+ * decision, and a decision that has to be explained is kept whole.
+*/
+internal val standardBodyOwnerOf: (PluginStepId) -> dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner? =
+    { key ->
+        dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry.standard()
+            .get(key)?.body?.declared?.execution?.owner
+    }
+
+internal fun StepNode.checkCanonicalExecution(
+    eligibleStepIds: Set<String> = canonicalStepIds,
+    bodyOwnerOf: (PluginStepId) -> dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner? = standardBodyOwnerOf,
+): String? {
+    return when (this) {
+        is BlockStepNode -> {
+            // CANONICAL_ENGINE and HANDLER_CONTINUATION are both canonical-durable
+            // eligible — the first lets the engine run the body, the second lets the Step's
+            // own handler drive it through the bound continuation. Both execute on the same
+            // durable spine. LEGACY_LINEAR and unknown keys stay refused: their semantics are
+            // not implemented by this engine and must never run as an empty shell.
+            val owner = bodyOwnerOf(pluginStepId)
+            if (owner != dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner.CANONICAL_ENGINE &&
+                owner != dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner.HANDLER_CONTINUATION
+            ) {
+                "block step '${pluginStepId.value}' is not owned by the canonical body engine"
+            } else {
+                body.forEach { child ->
+                    val childIssue = child.checkCanonicalExecution(eligibleStepIds, bodyOwnerOf)
+                    if (childIssue != null) return childIssue
+                }
+                null
+            }
+        }
+        is OpaqueStepNode -> {
+            if (pluginStepId.value !in eligibleStepIds) {
+                "opaque step plugin not in canonical core step IDs"
+            } else {
+                null
+            }
+        }
+    }
+}
+
+internal sealed interface StageTimeoutProjection {
+    data object Absent : StageTimeoutProjection
+    data class Present(val milliseconds: Long) : StageTimeoutProjection
+}
+
+internal fun StageNode.projectShellOptions(base: ShOptions): ShOptions {
+    // Merge stage environment (EnvironmentSpec.values: Map<String, String>)
+    // into ShOptions.env (Map<String, SecretHandle>)
+    val stageEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle> =
+        environment.values
+            .mapValues { dev.rubentxu.pipeline.v2.domain.SecretHandle.plain(it.value) }
+    val mergedEnv = base.env + stageEnv
+
+    return when (val timeout = timeoutProjection()) {
+        StageTimeoutProjection.Absent -> base.copy(env = mergedEnv)
+        is StageTimeoutProjection.Present -> base.copy(
+            timeoutMs = base.timeoutMs ?: timeout.milliseconds,
+            env = mergedEnv,
+        )
+    }
+}
+
+internal fun StageNode.timeoutProjection(): StageTimeoutProjection {
+    // A CLOSED match over the typed carrier.
+    // The previous shape discriminated on a name string and re-parsed the value:
+    //     val timeoutOptions = options.filter { it.name == "timeout" }
+    //     require(timeoutOptions.size == 1) { "...multiple timeout options" }
+    //     val seconds = timeoutOptions.single.value?.toLongOrNull
+    //         ?: throw IllegalArgumentException("...invalid timeout option")
+    //     require(seconds > 0) { "...timeout must be positive" }
+    //     StageTimeoutProjection.Present(Math.multiplyExact(seconds, 1_000L))
+    // Five failure modes, all of them exceptions, all of them reachable from
+    // ordinary author input — and every one of them now impossible:
+    //   - "no timeout" is the EMPTY LIST, not a filter that matched nothing;
+    //   - "more than one timeout" is unrepresentable, because [StageOption] has
+    //     one case carrying the duration and the DSL has one `timeout` field;
+    //   - "unparseable" is unrepresentable, because the duration is a Long that
+    //     never becomes text;
+    //   - "non-positive" is rejected by [StageOption.Timeout]'s own invariant;
+    //   - "overflow" moved to the compiler, where `multiplyExact` can only be
+    //     reached by an author who wrote a timeout of ~292 million years.
+    // The `check` below is an INVARIANT assertion, not author input handling:
+    // two timeouts cannot be authored (one case, one payload, one DSL field), so
+    // seeing two means a compiler bug. `check` is the honest expression of that,
+    // and it keeps the guard out of the `when` so the interpretation below stays
+    // a closed match with no `else` to absorb the next case added to the ADT.
+    check(options.size <= 1) {
+        "Stage '$name' declared ${options.size} options, but StageOption has exactly one case " +
+            "carrying its whole payload, so duplicates cannot be authored. This is an invariant " +
+            "defect in the compiler, not an author mistake."
+    }
+    val option = options.singleOrNull() ?: return StageTimeoutProjection.Absent
+    return when (option) {
+        is StageOption.Timeout -> StageTimeoutProjection.Present(option.milliseconds)
+    }
+}
+
+internal fun StepOutcome.toOperationStatus(): OperationStatus = when (this) {
+    StepOutcome.Success -> OperationStatus.SUCCEEDED
+    StepOutcome.Unstable -> OperationStatus.UNSTABLE
+    is StepOutcome.Failure -> if (failure.kind == FailureKind.TIMEOUT) {
+        OperationStatus.FAILED_TIMEOUT
+    } else {
+        OperationStatus.FAILED
+    }
+}
+
+internal sealed interface StageContinuation {
+    data object Continue : StageContinuation
+    data object ContinueUnstable : StageContinuation
+    data class Abort(val failure: PipelineFailure) : StageContinuation
+}
+
+/**
+ * Whether the decision core considers recovery REQUIRED for this operation.
+ * `effects`, `replayPolicy` and `recoveryPolicy` come from the Step's descriptor,
+ * and no execution surface substitutes a literal for a declared one. This ADT is where the WHEN is
+ * decided, and it is a closed pair because the alternatives are exactly two — the declared policy
+ * does not ask for a subprocess observation, or it does and the row is in flight.
+ * It is declared here, beside [InvocationReconciliation], and NOT in the observer, because the
+ * Observer cannot see the declared policy. That asymmetry is the whole point: the spike
+ * measured that an observer asked to decide this question answered it by collapsing three distinct
+ * facts into one sentinel, and the third of them — required but unobservable — fell through to the
+ * replay kernel and re-executed an external effect of unknown prior state.
+*/
+internal sealed interface RecoveryRequirement {
+    /** No recovery is owed. The replay policy applies unchanged. */
+    data object NotApplicable : RecoveryRequirement
+
+    /** A subprocess observation is owed before any other decision may be taken. */
+    data object Required : RecoveryRequirement
+}
+
+/**
+ * Resolution of the durable replay/reconcile decision, derived from the real branches
+ * in `dispatch`: divergence detection, running-shell recovery and the effect-aware replay policy.
+ * These are genuinely distinct protocol states with distinct terminal semantics, so each carries only
+ * the data its own handling needs; incoherent combinations (e.g. a reuse that also re-executes) are not
+ * representable.
+ * @property operationId Reproduced for error messages only; no journal/cursor is touched by the resolver.
+*/
+internal sealed interface InvocationReconciliation {
+    /** Fingerprint divergence was detected; the invocation must fail closed without executing. */
+    data class Diverged(val operationId: String) : InvocationReconciliation
+
+    /**
+     * Recovery was REQUIRED and the substrate could not be inspected at all, so no conclusion is
+     * possible. The invocation fails closed WITHOUT appending a terminal row and WITHOUT advancing
+     * the cursor: the RUNNING row is left exactly as it is, because it is the only evidence a later,
+     * correctly configured run would need to reconcile this operation.
+     * This is the arm the `NotRunningShell` sentinel could not express. It is deliberately its own
+     * case rather than a `Diverged` with a different message: diverging is a statement about
+     * identity, being unable to look is a statement about observability, and a caller that has to
+     * ask which one it got has not been told anything it can act on.
+*/
+    data class RecoveryUnobservable(val operationId: String) : InvocationReconciliation
+
+    /**
+     * A RUNNING shell was recovered to a durable terminal without re-invoking it.
+     * Carries a [DurableTaskTerminal] and nothing else — no `StepOutcome`, no `OperationStatus`,
+     * and no `RecoveredTerminal` either. All three are projections: the outcome is the Step's, the
+     * status is the journal's, and the semantic terminal is whichever authority legitimately owns
+     * the one that applies. A caller that needs any of them asks [RecoveryInterpretationEngine],
+     * which is the single place that knows how to persist this decision.
+     * The payload was `RecoveredTerminal` (retired with the type itself), and that let
+     * the OBSERVER decide semantics —
+     * it answered a non-zero exit code with `Failed(FailureKind.SCRIPT)` without knowing the
+     * Invocation's `returnMode`. measured what that cost: `sh(returnStatus = true)` with exit
+     * 42 journalled FAILED, while the contract says `Status(42) · Success`. The exit code was
+     * observed. The carrier is now the substrate's own fact type, which the Step-owned projection
+     * already knows how to read.
+*/
+    data class RecoverRunning(val terminal: DurableTaskTerminal) : InvocationReconciliation
+
+    /** The journaled result is reusable; return the cached success without executing. */
+    data object ReuseCompleted : InvocationReconciliation
+
+    /** The replay policy rejected re-execution; the pipeline must abort via the lifecycle boundary. */
+    data class RejectedAbort(val operationId: String) : InvocationReconciliation
+
+    /** Fresh/re-run: the invocation is cleared to execute through the effective executor. */
+    data object Execute : InvocationReconciliation
+}
+
+/**
+ * The resolution of a reconciliation TOGETHER with the journaled row it was derived from.
+ *
+ * The row is a fact the resolver OBSERVED, and the resolution is what it DECIDED about that
+ * fact. Before this carrier existed, the two travelled apart: the reader of the row was not
+ * the decider of the resolution, so the caller that received a resolution had to go and read
+ * the row itself — and two callers read it with two different questions (the exact attempt,
+ * and the highest attempt), which is why the scripted surface could compare the fingerprint
+ * of attempt 1 against a row belonging to another attempt.
+ *
+ * The row travels as [DurableOperation], the journal's own type, because it IS the journal's
+ * row and nothing projects it. `null` means the invocation was never journalled, which is a
+ * fact too and not the absence of one: it is what makes [InvocationReconciliation.Execute]
+ * and [InvocationReconciliation.ReuseCompleted] distinguishable to the caller without a
+ * second read.
+ *
+ * @property resolution What the reconciliation decided.
+ * @property journaled The row this attempt had, or `null` when it had none.
+ */
+internal data class ReconciledInvocation(
+    val resolution: InvocationReconciliation,
+    val journaled: DurableOperation?,
+)
+
+sealed interface BlockShellScope {
+    data object None : BlockShellScope
+    data class Directory(val target: Path, val previous: Path) : BlockShellScope
+    data object TimestampsScope : BlockShellScope
+    data class EnvScope(val overrides: List<String>, val parentEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle>) : BlockShellScope
+
+    /**
+     * Body-deadline contract projected from the `core.timeout` payload.
+     * The deadline flows to child ShOptions as the certified per-invocation Sh
+     * watchdog budget (min of own and inherited remaining), so cancellation
+     * propagates to the child subprocess through the kill seam.
+*/
+    data class Timeout(val budgetMs: Long) : BlockShellScope
+
+    /**
+     * Body-attempt contract projected from the `core.retry` payload.
+     * The body is re-dispatched up to [maxAttempts] times; each attempt carries a
+     * deterministic journal identity (attempt BlockSegment appended to bodyPath),
+     * so restart/replay reconstructs attempt state from the journal, not memory.
+*/
+    data class Retry(val maxAttempts: Int) : BlockShellScope
+
+    /**
+     * Body-polling contract projected from the `core.waitUntil` payload.
+     * The body (a condition script) is re-dispatched until it succeeds (exit 0) or
+     * backoff exceeds MAX_BACKOFF_MS.  Each poll carries a deterministic journal identity
+     * so restart/replay reconstructs poll state from the journal, not memory.
+     * initialRecurrencePeriod: initial delay in ms before first poll
+     * maxBackoffMs: ceiling for exponential backoff, DECODED from the block payload
+     *   (see [projectWaitUntilScope]). Required rather than defaulted: an absent key means
+     *   [dev.rubentxu.pipeline.v2.domain.step.WaitUntilShape.maxBackoffMs], so a default here
+     *   would be a second authority for a value the projection always supplies explicitly.
+*/
+    data class WaitUntilScope(
+        val initialRecurrencePeriod: Long,
+        val maxBackoffMs: Long,
+    ) : BlockShellScope
+}
+
+/**
+ * How one body is executed, decided from its DECLARED policy
+ * Total over [BodyExecutionPolicy]: every declared shape either has an interpretation
+ * here or is named as rejected. No case carries a StepKey, and no case falls back to
+ * "run the children in sequence" — a shape without an interpretation is refused, so a
+ * body family can never be executed by an engine that does not implement it.
+*/
+internal sealed interface BodyExecutionProjection {
+
+    /** The generic body machinery runs this body with [scope] projected around it. */
+    data class Scope(val scope: BlockShellScope) : BodyExecutionProjection
+
+    /**
+     * The body runs in the caller's own context and its typed outcome is FOLDED
+     * by [BodyOutcomeFolder]: the scope's outcome is not the body's own.
+     *
+     * Carries the scope's DECLARED contract — the results the author declared
+     * and the message it wrote — because the fold needs them and the payload is
+     * decoded exactly once, here, in the pure projector. A malformed payload is
+     * a typed [InvalidInput] before any child runs.
+     *
+     * [fold] is the DECLARED fold and [contract.fold] is the fold the payload
+     * claims. They are two spellings of the same fact and the projector
+     * refuses a payload that disagrees with the declaration: a `catchError`
+     * carrying a `warnError` payload would otherwise be folded the wrong way
+     * while looking like a well-formed scope.
+     */
+    data class Folding(
+        val fold: BodyOutcomeFold,
+        val contract: CoreWorkflowControlInput,
+    ) : BodyExecutionProjection
+
+    /**
+     * The body runs under a bound credential lease (acquire -> environment overlay ->
+     * always close). Not a `BlockShellScope`: a lease is not a context dimension children
+     * inherit from [ShOptions], because its value only exists AFTER the acquisition effect.
+     * Carries the decoded bindings, so the payload is decoded exactly once, in the pure
+     * projector, and a malformed payload is a typed [InvalidInput] before any effect. Before
+     * this projection was a bare marker and the payload was decoded a second time inside
+     * the credential-specific execution path.
+*/
+    data class CredentialLease(
+        val bindings: List<CredentialBindingSpec>,
+    ) : BodyExecutionProjection
+
+    /** Decoded input is invalid: a typed SCHEMA rejection, never a fallback. */
+    data class InvalidInput(val detail: String) : BodyExecutionProjection
+
+    /**
+     * The declared shape has no interpretation in this engine build. Unreachable by
+     * construction (policy resolution rejects a shape outside
+     * [BodyExecutionSupport]), kept total so that widening the support without
+     * implementing the shape fails closed instead of silently degrading.
+*/
+    data class Unimplemented(val shape: BodyExecutionPolicyShape) : BodyExecutionProjection
+}
+
+/**
+ * Projects body execution from the DECLARED policy and the node's typed payload.
+ * `(policy, options) -> BodyExecutionProjection`: pure, no effects, no Step name. The
+ * SHAPE is the declaration; the runtime VALUES (`dir`'s path, `timeout`'s seconds,
+ * `retry`'s budget) are decoded input. Malformed input is returned as a typed
+ * [BodyExecutionProjection.InvalidInput], never thrown as domain control flow.
+*/
+internal fun BlockStepNode.projectBodyExecution(
+    policy: BodyExecutionPolicy,
+    options: ShOptions,
+): BodyExecutionProjection = when (policy) {
+    is BodyExecutionPolicy.Sequential -> BodyExecutionProjection.Scope(BlockShellScope.None)
+    is BodyExecutionPolicy.Folding -> projectFoldingBody(policy.fold)
+    is BodyExecutionPolicy.Scoped -> projectScopedBody(policy.projection, options)
+    is BodyExecutionPolicy.Retrying -> {
+        // Dispatch is policy-driven, not StepKey-driven. A Retrying body that
+        // declares a WaitUntilShape projects to WaitUntilScope using the declared cadence;
+        // any other Retrying body projects to the shared Retry scope with the decoded
+        // attempt budget. The body-routing dispatch is a closed ADT match on
+        // BodyExecutionPolicy; there is no concrete-PluginStepId comparison here.
+        policy.waitUntil?.let { shape -> projectWaitUntilScope(shape) }
+            ?: BodyExecutionProjection.Scope(
+                BlockShellScope.Retry(maxAttempts = decodeAttemptBudgetMaxAttempts()),
+            )
+    }
+    is BodyExecutionPolicy.Parallel -> BodyExecutionProjection.Unimplemented(policy.shape)
+}
+
+/**
+ * Projects the DECLARED contract of a control scope (`catchError` / `warnError`).
+ *
+ * The payload is decoded through [CoreWorkflowControlWireCodec] — the ONE authority
+ * for the wire format — and the decoded fold is checked against the DECLARED fold.
+ * A payload whose discriminator names the other family is a typed
+ * [BodyExecutionProjection.InvalidInput]: the two families own different semantics,
+ * and a scope that carried the other's payload would be folded the wrong way while
+ * looking well-formed.
+ *
+ * The decode happens HERE, in the pure projector, and nowhere else: a malformed
+ * payload is refused before any child is dispatched, and the contract reaches the
+ * fold already decoded.
+*/
+private fun BlockStepNode.projectFoldingBody(
+    declaredFold: BodyOutcomeFold,
+): BodyExecutionProjection {
+    val contract = try {
+        CoreWorkflowControlWireCodec.decode(EncodedStepValue(payload.encoded))
+    } catch (error: IllegalArgumentException) {
+        return BodyExecutionProjection.InvalidInput(
+            "control scope payload invalid: ${error.message ?: "decode failed"}",
+        )
+    }
+    if (contract.fold != declaredFold) {
+        return BodyExecutionProjection.InvalidInput(
+            "declared fold ${declaredFold.name} but the payload declares ${contract.fold.name}",
+        )
+    }
+    return BodyExecutionProjection.Folding(declaredFold, contract)
+}
+
+/**
+ * Projects the polling contract of a `core.waitUntil` block: the SHAPE is the declaration
+ * ([BodyExecutionPolicy.WaitUntilShape]), the backoff CEILING is decoded input.
+ * That split is the shape's own contract, not an invention here: `WaitUntilShape` documents
+ * itself as *"a structural property of the Step KIND, not runtime data: the attempt budget
+ * and the deadline still arrive as decoded typed input."*
+ * Why it is decoded HERE and nowhere else: this projector is the single place the
+ * coordinator asks for a body scope, and both polling branches read the ceiling from it —
+ * the durable branch at `BodyExecutionEngine` (`WaitUntilEngine(maxBackoffMs = scope.maxBackoffMs)`)
+ * and the inline branch below it. A value read anywhere else could only ever reach one of
+ * them, which is precisely how the previous regex side-channel behaved: it was consumed
+ * solely by the inline branch, so in production the durable poll always ran at the default.
+ * Absent key means [DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS]; a present but
+ * unusable one is a typed [BodyExecutionProjection.InvalidInput], matching this function's
+ * declared contract rather than throwing.
+*/
+private fun BlockStepNode.projectWaitUntilScope(
+    shape: WaitUntilShape,
+): BodyExecutionProjection {
+    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+
+    // Both cadences are DECODED INPUT, not structure. The shape is the Step KIND's default;
+    // the payload is what this call site asked for, and Jenkins makes both configurable per
+    // call. Reading the shape here once made `initialRecurrencePeriod` a decorative parameter:
+    // `StageScope.waitUntil(initialRecurrencePeriod = 7)` compiled, was encoded into the
+    // payload, and never reached either engine.
+    val initialRecurrencePeriodMs = payload.longOrDefault("initialRecurrencePeriod", shape.initialRecurrencePeriodMs)
+        ?: return BodyExecutionProjection.InvalidInput("initialRecurrencePeriod must be an integer")
+    val maxBackoffMs = payload.longOrDefault("maxBackoffMs", shape.maxBackoffMs)
+        ?: return BodyExecutionProjection.InvalidInput("maxBackoffMs must be an integer")
+    if (initialRecurrencePeriodMs < 1) {
+        return BodyExecutionProjection.InvalidInput(
+            "initialRecurrencePeriod must be >= 1, got $initialRecurrencePeriodMs",
+        )
+    }
+    // The same invariant `WaitUntilEngine` enforces on its own constructor. Enforcing it
+    // here means an impossible poll never reaches the engine to fail at run time.
+    if (maxBackoffMs < initialRecurrencePeriodMs) {
+        return BodyExecutionProjection.InvalidInput(
+            "maxBackoffMs ($maxBackoffMs) must be >= initialRecurrencePeriod ($initialRecurrencePeriodMs)",
+        )
+    }
+    return BodyExecutionProjection.Scope(
+        BlockShellScope.WaitUntilScope(
+            initialRecurrencePeriod = initialRecurrencePeriodMs,
+            maxBackoffMs = maxBackoffMs,
+        ),
+    )
+}
+
+/**
+ * Reads a JSON number that may be absent, and refuses one that is present but not a number.
+ * Absence is not an error: a payload written before a field existed, or by hand in a fixture,
+ * falls back to the declared default. Presence with an unusable value IS an error, because
+ * silently substituting a default there would make a typo indistinguishable from an omission.
+*/
+private fun kotlinx.serialization.json.JsonObject.longOrDefault(
+    key: String,
+    default: Long,
+): Long? {
+    val element = this[key] ?: return default
+    return element.jsonPrimitive.contentOrNull?.toLongOrNull()
+}
+
+/** Which context dimension a scoped body projects, and how its value is decoded. */
+internal fun BlockStepNode.projectScopedBody(
+    projection: BodyContextProjection,
+    options: ShOptions,
+): BodyExecutionProjection = when (projection) {
+    is BodyContextProjection.WorkingDirectory -> projectWorkingDirectory(options)
+    is BodyContextProjection.Environment -> projectEnvironment(options)
+    is BodyContextProjection.Timestamps -> BodyExecutionProjection.Scope(BlockShellScope.TimestampsScope)
+    is BodyContextProjection.Deadline -> decodeDeadline()
+    is BodyContextProjection.CredentialLease -> decodeCredentialBindings()
+}
+
+/**
+ * Projects the declared working directory onto a [BlockShellScope.Directory], refusing anything
+ * that lands outside the authorised boundary.
+ * The boundary is [ShOptions.workingDirectory] when the body already moved, else
+ * [ShOptions.workspaceRoot], and BOTH sides of the comparison are normalised: an unnormalised
+ * root silently refuses its own children, because `/ws/./sub` does not start with `/ws/./`.
+ * Absolute paths are held to the same boundary as relative ones. They used to be exempt, and
+ * that exemption was a hole rather than a decision: section 8/9 states that an absolute
+ * path inside the root is accepted and one outside it is rejected, [WorkspacePathResolver]
+ * implements that policy, and [DirExecutor.resolveTargetPath] implements it too -- but the latter
+ * has no production construction site, so this function was the live guard and it was the only
+ * one of the three letting an absolute path through unchecked. A `.pipeline.kts` could say
+ * `dir("/etc/cron.d")`, this projection accepted it, and `BodyExecutionEngine` then ran
+ * `Files.createDirectories` on it and handed it to the child as its CWD.
+*/
+internal fun BlockStepNode.projectWorkingDirectory(options: ShOptions): BodyExecutionProjection {
+    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+    val path = payload["path"]?.jsonPrimitive?.contentOrNull
+        ?: return BodyExecutionProjection.InvalidInput("requires a path")
+    if (path.isBlank()) return BodyExecutionProjection.InvalidInput("path must not be blank")
+
+    val previous = (options.workingDirectory ?: options.workspaceRoot).normalize()
+    val target = resolveContainedDirectory(path, previous)
+        ?: return BodyExecutionProjection.InvalidInput("path escapes the workspace: $path")
+    return BodyExecutionProjection.Scope(BlockShellScope.Directory(target, previous))
+}
+
+internal fun BlockStepNode.projectEnvironment(options: ShOptions): BodyExecutionProjection {
+    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+    val overridesArray = payload["overrides"]?.jsonArray
+    val overrides = overridesArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+    return BodyExecutionProjection.Scope(BlockShellScope.EnvScope(overrides = overrides, parentEnv = options.env))
+}
+
+// Fail-closed contract decode — malformed deadline/attempt payloads are
+// typed schema rejections, never a silent plain-sequence fallback.
+internal fun BlockStepNode.decodeDeadline(): BodyExecutionProjection {
+    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+    val seconds = payload["seconds"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+        ?: return BodyExecutionProjection.InvalidInput("requires integer seconds")
+    if (seconds <= 0) return BodyExecutionProjection.InvalidInput("seconds must be > 0, got $seconds")
+    return BodyExecutionProjection.Scope(BlockShellScope.Timeout(budgetMs = seconds * 1000L))
+}
+
+// The credential bindings are decoded HERE, in the pure projection,
+// so an invalid payload is a typed schema rejection before the acquisition effect runs and
+// before any child is dispatched. There is no second decode on the execution path.
+internal fun BlockStepNode.decodeCredentialBindings(): BodyExecutionProjection =
+    try {
+        BodyExecutionProjection.CredentialLease(CredentialBindingsPayload.decode(payload.encoded))
+    } catch (error: IllegalArgumentException) {
+        BodyExecutionProjection.InvalidInput("withCredentials bindings invalid: ${error.message}")
+    }
+
+internal fun BlockStepNode.decodeAttemptBudgetMaxAttempts(): Int {
+    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+    val maxAttempts = payload["maxAttempts"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+        ?: throw IllegalArgumentException("requires integer maxAttempts")
+    require(maxAttempts >= 1) { "maxAttempts must be >= 1, got $maxAttempts" }
+    return maxAttempts
+}
+

@@ -13,7 +13,7 @@ import kotlinx.serialization.json.put
 /**
  * JSON codec for [GitCheckoutInput]
  * Uses kotlinx.serialization runtime JSON (no plugin) following the
- * canonical pattern in `pipeline-application/durable/credentials`.
+ * canonical pattern in `pipeline-runtime/runtime/durable/credentials`.
  * `encodeDefaults = true` so codec roundtrips preserve optional fields
  * even when the caller leaves them at their default value (a codec that
  * drops optional fields on encode fails the canonical-envelope contract).

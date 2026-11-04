@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.runtime.TelemetrySource
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TELEMETRY_SCHEMA
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetrySignal

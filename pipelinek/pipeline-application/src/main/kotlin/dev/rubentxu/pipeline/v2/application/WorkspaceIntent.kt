@@ -1,8 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease
-import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceRequest
+import dev.rubentxu.pipeline.v2.runtime.RuntimeWorkspaceTransport
 import java.nio.file.Path
 
 /**
@@ -96,15 +96,3 @@ internal object WorkspaceIntent {
                 RuntimeWorkspaceTransport(base = null, ownership = lease.ownership)
         }
 }
-
-/**
- * What crosses the CLI boundary into the runtime: where stages share a
- * directory, and who owns that directory.
- * Grouped into one value because the two were previously decided in two places
- * and could disagree — which is exactly what happened, and what allowed
- * `deleteDir()` to erase a user's project under the local-first default.
-*/
-internal data class RuntimeWorkspaceTransport(
-    val base: Path?,
-    val ownership: WorkspaceOwnership,
-)

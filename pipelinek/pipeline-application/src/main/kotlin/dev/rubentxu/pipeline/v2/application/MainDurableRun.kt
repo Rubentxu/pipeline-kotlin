@@ -1,8 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding
-import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
-import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
+import dev.rubentxu.pipeline.v2.runtime.RunRequest
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.runtime.RunPolicy
+import dev.rubentxu.pipeline.v2.runtime.RunState
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaCompensationBinding
+import dev.rubentxu.pipeline.v2.runtime.durable.SagaVerdict
+import dev.rubentxu.pipeline.v2.runtime.durable.analyzeCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
@@ -62,7 +66,7 @@ private fun durableRunState(
     eventSink: dev.rubentxu.pipeline.v2.events.EventSink,
     sagaObligationStore: SagaObligationStore,
     lease: DurableLease,
-    outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal,
+    outputWakeups: dev.rubentxu.pipeline.v2.runtime.observation.WakeupSignal,
 ): RunState = RunState(
     outputWakeups = outputWakeups,
     journal = journal,

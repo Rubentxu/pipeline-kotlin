@@ -1,10 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.DurableRunCoordinator
-import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
-import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
-import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
-import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter
+import dev.rubentxu.pipeline.v2.runtime.RunRequest
+import dev.rubentxu.pipeline.v2.dsl.pipeline
+import dev.rubentxu.pipeline.v2.runtime.durable.DurableRunCoordinator
+import dev.rubentxu.pipeline.v2.runtime.durable.FileBasedRetryControlJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.FileBasedWaitUntilControlJournal
+import dev.rubentxu.pipeline.v2.runtime.durable.OutputPlaneProvider
+import dev.rubentxu.pipeline.v2.runtime.durable.credentials.WithCredentialsExecutorScopeAdapter
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.RunId

@@ -8,7 +8,7 @@ import kotlin.reflect.KClass
  * A closed vocabulary, not a sentence. The product's rule is that a fail-closed
  * boundary refuses with something the CONSUMER can switch on: a `String` reason is
  * how a fail-closed boundary degrades into a log line nobody can switch on. The
- * same rule already governs admission ([dev.rubentxu.pipeline.v2.domain.AdmissionRejection]),
+ * same rule already governs admission ([dev.rubentxu.pipeline.v2.domain.step.AdmissionRejection]),
  * the workspace ([dev.rubentxu.pipeline.v2.domain.workspace.WorkspacePathError]) and
  * the saga ([dev.rubentxu.pipeline.v2.domain.saga.SagaActionError]); a capability
  * that cannot be read is a refusal like any other, so it speaks that language and

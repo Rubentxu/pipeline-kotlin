@@ -44,7 +44,7 @@ import java.nio.file.Path
  *    reconciler reads. Disposing is a side effect each caller owns, not part of the value.
  *
  * ## Why it is public
- * The observer lives in the application module, which cannot see this module's `internal`
+ * The recovery observer lives in the engine module, which cannot see this module's `internal`
  * declarations, so the value's authority has to be reachable from outside the runtime. Its
  * surface is visible, but this module is not a published contract — it carries no
  * `maven-publish` and no ABI dump — so nothing an external consumer compiles against changes.

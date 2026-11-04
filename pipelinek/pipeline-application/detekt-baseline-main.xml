@@ -2,76 +2,30 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>AbstractClassCanBeInterface:CoreMilestoneStep.kt:MilestoneStatus$MilestoneStatus</ID>
     <ID>AbstractClassCanBeInterface:MainEventsCli.kt:MainEventsCli.EventsInspectionFlag$EventsInspectionFlag</ID>
     <ID>AbstractClassCanBeInterface:MainEventsCli.kt:MainEventsCli.EventsInspectionParseResult$EventsInspectionParseResult</ID>
-    <ID>AbstractClassCanBeInterface:MilestoneOperations.kt:MilestoneAdvanceResult$MilestoneAdvanceResult</ID>
-    <ID>CyclomaticComplexMethod:DurableRunCoordinator.kt:DurableRunCoordinator$private suspend fun runBody: RunOutcome</ID>
     <ID>CyclomaticComplexMethod:Main.kt:fun main</ID>
     <ID>CyclomaticComplexMethod:SimplePipelineCompiler.kt:SimplePipelineCompiler$override fun compile: CompileResult</ID>
-    <ID>ImplicitDefaultLocale:PluginManifestResourceReader.kt:PluginManifestResourceReader$"%02x".format(it)</ID>
-    <ID>ImplicitDefaultLocale:PublishHtmlSanitiser.kt:PublishHtmlSanitiser$"%04x".format(ch.code)</ID>
-    <ID>InjectDispatcher:FileLockCoordinator.kt:FileLockCoordinator$IO</ID>
-    <ID>InjectDispatcher:ParallelStageEngine.kt:ParallelStageEngine$Default</ID>
-    <ID>InstanceOfCheckForException:DurableRunCoordinator.kt:DurableRunCoordinator$e is EngineInvariantViolation</ID>
-    <ID>InstanceOfCheckForException:DurableRunCoordinator.kt:DurableRunCoordinator$e is IllegalStateException</ID>
     <ID>LongMethod:Main.kt:fun main</ID>
-    <ID>LongMethod:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$override fun publish: PublishHtmlResult</ID>
-    <ID>LongMethod:StepDispatchEngine.kt:StepDispatchEngine$private suspend fun dispatchStep: DispatchedStep</ID>
-    <ID>LongMethod:WaitUntilEngine.kt:WaitUntilEngine$suspend fun execute: StepOutcome</ID>
-    <ID>LongParameterList:BodyExecutionEngine.kt:BodyExecutionEngine$@Suppress("LongMethod", "CyclomaticComplexMethod") suspend fun executeScope3b: StepOutcome</ID>
-    <ID>LongParameterList:BodyExecutionEngine.kt:BodyExecutionEngine$suspend fun executeWaitUntilInline: StepOutcome</ID>
-    <ID>LongParameterList:BodyExecutionEngine.kt:BodyExecutionEngine$suspend fun invokeBodyChildren: StepOutcome</ID>
     <ID>LongParameterList:MainScriptedSupport.kt:internal fun runScriptedFrontend: RunOutcome?</ID>
-    <ID>LongParameterList:RetryEngine.kt:RetryEngine</ID>
-    <ID>LongParameterList:ScriptedFrontendRunner.kt:ScriptedFrontendRunner$fun run: Outcome</ID>
-    <ID>LongParameterList:ShExecution.kt:ShExecution$private suspend fun executeNonLinuxInvocation: ShellInvocationResult</ID>
-    <ID>LongParameterList:ShExecution.kt:ShExecution$suspend fun invokeShell: ShellInvocationResult</ID>
-    <ID>LongParameterList:WaitUntilEngine.kt:WaitUntilEngine</ID>
-    <ID>MaxLineLength:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$val reason = "reportDir '${input.reportDir}' (resolved to $reportDir) cannot be resolved to a real path; refusing to publish (possible broken symlink): ${e.message}"</ID>
-    <ID>MaxLineLength:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$val reason = "reportDir '${input.reportDir}' resolves to '$reportDirReal' which escapes the workspace (real path '$workspaceRootReal'); refusing to follow symlinks"</ID>
-    <ID>MaxLineLength:StashOperationsAdapter.kt:StashOperationsAdapter$val reason = "stash '${input.name}' matched path '$file' (real '$fileReal') which escapes the workspace (real '$workspaceRootReal'); refusing to follow symlinks"</ID>
-    <ID>MaxLineLength:StashOperationsAdapter.kt:StashOperationsAdapter$val reason = "unstash '${input.name}' 'into' path '$target' (real '$targetReal') escapes workspace (real '$workspaceRootReal'); refusing to follow symlinks"</ID>
     <ID>NewLineAtEndOfFile:EventStoreRefusalRendering.kt:dev.rubentxu.pipeline.v2.application.EventStoreRefusalRendering.kt</ID>
     <ID>ObjectLiteralToLambda:TextSelector.kt:object : CompiledTextSelector { override fun matches(text: String): Boolean = compiled.getOrThrow().containsMatchIn(text) }</ID>
     <ID>ObjectLiteralToLambda:TextSelector.kt:object : CompiledTextSelector { override fun matches(text: String): Boolean = if (selector.ignoreCase) text.contains(selector.value, ignoreCase = true) else text.contains(selector.value) }</ID>
     <ID>TooManyFunctions:ConsoleFamilyLines.kt:ConsoleFamilyLines</ID>
     <ID>TooManyFunctions:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler</ID>
-    <ID>UnnecessaryNotNullOperator:CoreInputInput.kt:CoreInputOutput$denial!!</ID>
     <ID>UnnecessaryNotNullOperator:SimplePipelineCompiler.kt:SimplePipelineCompiler$name!!</ID>
-    <ID>UnsafeCallOnNullableType:AdmissionControlJournal.kt:AdmissionControlRow.Companion$rejection::class.simpleName!!</ID>
     <ID>UnsafeCallOnNullableType:RunObservationOutput.kt:RunObservationOutput.Stream$console!!</ID>
     <ID>UnsafeCallOnNullableType:SimplePipelineCompiler.kt:SimplePipelineCompiler$configRef!!</ID>
     <ID>UnsafeCallOnNullableType:SimplePipelineCompiler.kt:SimplePipelineCompiler$name!!</ID>
     <ID>UnsafeCallOnNullableType:SimplePipelineCompiler.kt:SimplePipelineCompiler$version!!</ID>
-    <ID>UseCheckOrError:ExternalEventDefinitionDiscovery.kt:ExternalEventDefinitionDiscovery$throw IllegalStateException( "Event definition contributor '${contributor.id}' declared an invalid " + "event definition: ${outcome.problems.joinToString("; ")}. " + "Aborting composition.", )</ID>
-    <ID>UseCheckOrError:ExternalEventDefinitionDiscovery.kt:ExternalEventDefinitionDiscovery$throw IllegalStateException( "Event definition contributor '${contributor.id}' declared kind " + "'${outcome.kind}', already owned by '${outcome.registeredBy}'. " + "Aborting composition: a shadowed event kind makes every recorded " + "payload of that kind ambiguous forever.", )</ID>
-    <ID>UseCheckOrError:FileBasedRetryControlJournal.kt:FileBasedRetryControlJournal$throw IllegalStateException( "updateStatus: no control row for $controlOpId@$attempt; call beginAttempt first", )</ID>
-    <ID>UseCheckOrError:FileBasedWaitUntilControlJournal.kt:FileBasedWaitUntilControlJournal$throw IllegalStateException( "updateStatus: no control row for $controlOpId@$attempt; call beginAttempt first", )</ID>
-    <ID>UseCheckOrError:RuntimeApiVersion.kt:RuntimeApiVersion$throw IllegalStateException( "the generated version resource is missing or empty at $RESOURCE. Refusing to decide " + "plugin compatibility against a version that did not come from the build. Rebuild " + "via Gradle so the resource is generated from project.version.", )</ID>
-    <ID>UseCheckOrError:RuntimeApiVersion.kt:RuntimeApiVersion$throw IllegalStateException( "version '$raw' read from $RESOURCE is not MAJOR.MINOR.PATCH. The SDK admits plugin " + "apiRanges against a three-component SemVer and nothing else, so a version it " + "cannot read is a version it cannot safely compare.", )</ID>
-    <ID>UseOrEmpty:AdmissionControlJournal.kt:row.measuredDigest?.value ?: ""</ID>
-    <ID>UseOrEmpty:BodyExecutionEngine.kt:BodyExecutionEngine$ctx.attempt?.let { seg -&gt; listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(seg.index, seg.key)) } ?: emptyList()</ID>
-    <ID>UseOrEmpty:BodyStructureDigest.kt:BodyStructureDigest$(this as? dev.rubentxu.pipeline.v2.domain.BlockStepNode)?.body?.map { it.id.value } ?: emptyList()</ID>
     <ID>UseOrEmpty:BundledPluginClasspathPlan.kt:BundledPluginClasspathPlan$it.version ?: ""</ID>
-    <ID>UseOrEmpty:StructuralDecisions.kt:overridesArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()</ID>
-    <ID>UseOrEmpty:CoreArchiveArtifactsStep.kt:CoreArchiveArtifactsStep.&lt;no name provided&gt;$obj["excludes"]?.jsonPrimitive?.content ?: ""</ID>
-    <ID>UseOrEmpty:CoreCleanWsStep.kt:CoreCleanWsStep.&lt;no name provided&gt;$obj["patterns"]?.jsonArray ?.map { it.jsonPrimitive.content } ?: emptyList()</ID>
-    <ID>UseOrEmpty:CoreShellStep.kt:CoreShellStep.&lt;no name provided&gt;$frObj["details"]?.asStringMapOrNull() ?: emptyMap()</ID>
-    <ID>UseOrEmpty:CoreShellStep.kt:CoreShellStep.&lt;no name provided&gt;$obj["details"]?.asStringMapOrNull() ?: emptyMap()</ID>
-    <ID>UseOrEmpty:CoreStashStep.kt:CoreStashStep.&lt;no name provided&gt;$obj["excludes"]?.jsonPrimitive?.content ?: ""</ID>
     <ID>UseOrEmpty:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$git?.url ?: ""</ID>
     <ID>UseOrEmpty:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$step.patterns ?: emptyList()</ID>
-    <ID>UseOrEmpty:FileBasedRetryControlJournal.kt:FileBasedRetryControlJournal$obj["fingerprint"]?.jsonPrimitive?.content ?: ""</ID>
-    <ID>UseOrEmpty:FileBasedWaitUntilControlJournal.kt:FileBasedWaitUntilControlJournal$obj["fingerprint"]?.jsonPrimitive?.content ?: ""</ID>
     <ID>UseOrEmpty:MainInspectCli.kt:MainInspectCli.InspectField.Message$record.message ?: ""</ID>
     <ID>UseOrEmpty:MainInspectCli.kt:MainInspectCli.InspectField.Stage$record.stage ?: ""</ID>
     <ID>UseOrEmpty:MainInspectCli.kt:MainInspectCli.InspectField.Step$record.stepOrdinal?.toString() ?: ""</ID>
     <ID>UseOrEmpty:MainObserveCli.kt:ComposeLanes.&lt;no name provided&gt;$eventStore?.eventsFor(runId) ?: emptySequence()</ID>
-    <ID>UseOrEmpty:StepDispatchEngine.kt:StepDispatchEngine$bodyContext.attempt?.let { segment -&gt; listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(segment.index, segment.key)) } ?: emptyList()</ID>
-    <ID>UseRequire:FileLockCoordinator.kt:LockBackendUnavailableException$throw IllegalArgumentException("expected an I/O cause, got ${cause::class.simpleName}")</ID>
     <ID>UseRequire:RunIdDirectory.kt:RunIdDirectory$throw IllegalArgumentException( "Recorded run id for this pipeline definition is blank; " + "delete the corrupted record $file or run without --resume" )</ID>
     <ID>UselessCallOnNotNull:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$listOfNotNull( emitStep( stepId = "$parentToken/unstable-$occurrence", eventKind = "StageMarkedUnstable", payload = buildJsonObject { put("message", message) }, ), OpaqueStepNode( id = StepId("$parentToken/unstable-exit-0-$occurrence"), pluginStepId = PluginStepId("core.sh"), payload = VersionedStepPayload( PAYLOAD_SCHEMA_VERSION, shellPayload("exit 0", isScriptBlock = false, returnStdout = false), ), ), )</ID>
-    <ID>VarCouldBeVal:ParallelStageEngine.kt:ParallelStageEngine$var outcome: StepOutcome = StepOutcome.Success</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
@@ -32,7 +33,7 @@ internal fun runScriptedFrontend(
     idGenerator: IdGenerator,
     controlDirRoot: Path,
     sandboxProfile: SandboxProfile,
-    outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
+    outputWakeups: dev.rubentxu.pipeline.v2.runtime.observation.WakeupSignal? = null,
     /**
      * The live tracing seam. The scripted frontend runs the SAME canonical authorities
      * as the coordinator, so it opens the SAME boundaries — a scripted run that traced
@@ -43,7 +44,7 @@ internal fun runScriptedFrontend(
     // Frontend runs on the SAME durable authority: identical journal instance,
     // identical composed registry, identical event sink and control root.
     val outcome = kotlinx.coroutines.runBlocking {
-        dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.run(
+        dev.rubentxu.pipeline.v2.runtime.scripted.ScriptedFrontendRunner.run(
             entryPoint = entryPoint,
             runId = runId,
             expectedArtifact = artifact,
@@ -81,9 +82,9 @@ internal fun runScriptedFrontend(
         // here able to disagree with the reducer that is supposed to own it. The reducer is now
         // the only place precedence is expressed, and `Unstable` reaches this line because it was
         // never dropped upstream rather than because this `when` happens to have a case for it.
-        is dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.Outcome.Completed ->
+        is dev.rubentxu.pipeline.v2.runtime.scripted.ScriptedFrontendRunner.Outcome.Completed ->
             outcome.aggregate
-        is dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.Outcome.ArtifactIncompatible -> {
+        is dev.rubentxu.pipeline.v2.runtime.scripted.ScriptedFrontendRunner.Outcome.ArtifactIncompatible -> {
             // Fail closed (compatibility law): never silently replay an incompatible artifact.
             System.err.println("Error: ${outcome.message}")
             // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an

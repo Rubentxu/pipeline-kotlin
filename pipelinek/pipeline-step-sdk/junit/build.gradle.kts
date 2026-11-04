@@ -255,14 +255,9 @@ tasks.named("jar") {
     dependsOn(emitJunitManifest)
 }
 
-// The module is the `junit.results` step and the parser behind it, and the
-// executable layer does not reach it: no scenario publishes a JUnit report for
-// a step to read. The earlier version of this comment said that a JUnit-on-JUnit
-// test cannot exercise a parser that consumes JUnit XML, and that the
-// executable E2E layer is the module's verification. Both were wrong. A parser
+// The module is the `junit.results` step and the parser behind it. A parser
 // over bytes is as testable as any other pure function — the XML is data, not
-// a test runner — and no scenario drives the step, so the executable layer
-// verified nothing here either.
+// a test runner — so the parser has its own unit test.
 //
 // What the module holds is a guarantee about data from outside the process: a
 // report may declare an external entity, and the parser must not resolve it.

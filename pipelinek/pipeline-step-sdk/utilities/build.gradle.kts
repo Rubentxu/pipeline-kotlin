@@ -280,12 +280,12 @@ tasks.withType<Test>().configureEach {
 // Unit-test wiring, and what it does NOT cover.
 // This module is the `readJson`/`writeJson`/`sha256`/`findFiles` STEPs. Their guarantee is that a
 // pipeline calls them on real input, and AGENTS.md section 2 keeps a filesystem out of unit tests
-// -- so the walk, the encode/decode of a real file, and the 100_000 cap stay with the executable
-// E2E layer (`.pipeline.kts` under `examples/`, driven by `examples/run.sh`).
+// -- so the walk, the encode/decode of a real file, and the 100_000 cap stay with the integration
+// lane.
 // That reasoning does not reach `CoreUtilsFindFilesStepDefinition.buildMatcher`, a pure
 // String -> PathMatcher whose whole job is a written contract: a leading `**` means any depth
-// INCLUDING ZERO, which Java NIO's own `glob:` does not do. A defect there is invisible to the
-// E2E layer in the worst possible way -- `findFiles` returns `Unit`, so the scenario can only
+// INCLUDING ZERO, which Java NIO's own `glob:` does not do. A defect there shows up in the worst
+// possible way -- `findFiles` returns `Unit`, so a caller can only
 // read an exit code, and a wrong matcher and a right one both produce 0. Same shape and same
 // exception as `pipeline-step-sdk/files`, which tests its `antPatternToRegex` for exactly this
 // reason and says so in its own build file.

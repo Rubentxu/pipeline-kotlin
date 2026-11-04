@@ -32,6 +32,7 @@ tasks.test {
 // property, so a source set with no tagged test reports success regardless. (The property
 // arrives in Gradle 9, and this build runs on 8.14.5.)
 // `StreamingRedactor`'s throughput floor is therefore not enforced by a timed probe: a
-// wall-clock floor is a property of the machine, not of the code. The E2E pipelines carry
-// the behavioural replacement.
+// wall-clock floor is a property of the machine, not of the code. What the unit tests
+// enforce is the BEHAVIOUR the floor was standing in for: the redactor masks the secret
+// it was given and does not mask what is not a secret.
 

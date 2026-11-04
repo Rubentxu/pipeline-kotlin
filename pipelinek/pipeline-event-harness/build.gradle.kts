@@ -28,14 +28,11 @@ dependencies {
     implementation(libs.snakeyaml)
 }
 
-// The module is the runtime behind the `pipeline events verify` verb, and the
-// executable layer does not reach it: the launcher runs a pipeline and reads its
-// exit code, while the verifier is a second command that needs a journal, a run
-// id and a contract file. No scenario drives that command, so the claim that the
-// end-to-end layer is this module's verification was true of no one. The
+// The module is the runtime behind the `pipeline events verify` verb: the
+// launcher runs a pipeline and reads its exit code, while the verifier is a
+// second command that needs a journal, a run id and a contract file. The
 // guarantee that a contract honoured comes back clean, and a contract broken
-// comes back with the rule it broke, had no observer at all — not a unit test,
-// not an example. `EventHarnessVerifyTest` is that observer.
+// comes back with the rule it broke, is observed by `EventHarnessVerifyTest`.
 //
 // These lines exist because a test source does, and `scripts/verify-all.sh`
 // fails the build when a module with a test source produces no JUnit XML.

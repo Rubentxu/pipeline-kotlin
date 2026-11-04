@@ -27,14 +27,11 @@ dependencies {
     implementation(project(":pipeline-domain"))
 }
 
-// The module is a compiler front end, so the end-to-end layer is its main
-// observer: every scenario in `examples/` compiles a `.pipeline.kts` through
-// it. That observer, however, only reaches the compiler — not the protection
-// it applies to the text it compiles. A credential referenced as `$NAME` is
-// rewritten before the compiler ever sees it, and no scenario writes one that
-// way: the ones that need a value write it already escaped. So the guarantee
-// that a bound credential reaches the shell instead of the compiler had no
-// observer at all, which is what `ScriptTextEscaperTest` is for.
+// The module is a compiler front end. The protection it applies to the text it
+// compiles is the bound credential: a credential referenced as `$NAME` is
+// rewritten before the compiler ever sees it, so the reference reaches the
+// shell instead of the compiler. That guarantee is observed by
+// `ScriptTextEscaperTest`.
 //
 // These lines exist because a test source does, and `scripts/verify-all.sh`
 // fails the build when a module with a test source produces no JUnit XML.

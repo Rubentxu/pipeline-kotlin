@@ -288,13 +288,12 @@ tasks.named("jar") {
 }
 
 // Unit-test wiring RESTORED, and the reason it went is still worth keeping.
-// It was REMOVED by the testing reset, on the grounds that this module is a git
-// STEP whose guarantee is that a pipeline mutates a real repository, so its verification belongs
-// to the executable E2E layer -- `.pipeline.kts` pipelines under `examples/`, driven by
-// `examples/run.sh` -- and not to a JUnit class. The reasoning about that guarantee stands,
-// and the E2E layer is still where this module's I/O behaviour is verified.
+// This module is a git STEP whose guarantee is that a pipeline mutates a real
+// repository, and AGENTS.md section 2 keeps a subprocess out of unit tests, so the I/O behaviour
+// belongs to the integration lane.
 // What the reasoning did NOT cover is that this module also holds PURE decisions, and one of
-// them had a defect no E2E scenario could have caught: `GitCredentialsApplier.guardProcessBuilderArgs`
+// them had a defect no integration test could have caught:
+// `GitCredentialsApplier.guardProcessBuilderArgs`
 // refused argv carrying a credential by echoing that very argv into its exception message, and
 // the guard runs OUTSIDE `GitCheckoutExecutor`'s `try`, so the exception never reached the
 // scrub and `RegistryExecutionBoundary` copied the message into a durable `StepFailed` event.

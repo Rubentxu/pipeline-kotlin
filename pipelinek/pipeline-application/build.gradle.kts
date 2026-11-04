@@ -67,12 +67,12 @@ tasks.named<Jar>("jar") {
 // The version the RUNTIME reads, as a classpath RESOURCE rather than as a jar
 // manifest attribute.
 // Why this exists, and why it is not redundant with the manifest above: `Package.getImplementationVersion()`
-// only answers when the code was loaded from a JAR that declares a manifest. Thirty-four UAT and
-// corpus harnesses legitimately launch the CLI with `java -cp <test classpath>`, where
-// `pipeline-application` is a CLASSES DIRECTORY and no manifest exists. Reading the version only
-// from the manifest made admission fail closed on every one of those runs — 143 tests, all dying
-// with `FATAL - jar manifest is missing Implementation-Version` and exit 3. The fail-closed rule
-// was right; the SOURCE was wrong, because it conflated "no manifest" with "not a build artifact".
+// only answers when the code was loaded from a JAR that declares a manifest. A run that launches
+// the CLI with `java -cp <classpath>`, where `pipeline-application` is a CLASSES DIRECTORY, has no
+// manifest at all. Reading the version only from the manifest made admission fail closed on every
+// one of those runs, all dying with `FATAL - jar manifest is missing Implementation-Version` and
+// exit 3. The fail-closed rule was right; the SOURCE was wrong, because it conflated "no
+// manifest" with "not a build artifact".
 // Both are populated from the same `project.version`, which is the sole authority
 // `RuntimeApiVersionDriftTest` asserts the two agree, so this can never become a second authority
 // free to disagree with the manifest that `pipeline-release` certifies against.
@@ -80,9 +80,9 @@ tasks.named<Jar>("jar") {
 //
 // Provenance, recorded by the build that produced the bytes.
 // A product version names a release LINE, not a commit: every commit on 0.60.0 reports
-// `pipeline 0.60.0`. So a harness holding two binaries cannot separate them by asking the
-// binary, and that is not hypothetical — five corpus failures seen in the
-// field were a stale binary reporting the correct version.
+// `pipeline 0.60.0`. So two binaries of the same release cannot be separated by asking the binary
+// for its version, and a stale binary reporting the correct version is a failure mode that a
+// version check alone cannot see.
 //
 // It used to be read by a Provider evaluated while the build was being CONFIGURED. With the
 // configuration cache enabled that Provider is evaluated once, while the entry is stored, and
@@ -282,7 +282,7 @@ dependencies {
     runtimeOnly(files(rootDir.resolve("../examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar")))
     // The external CONSUMER of the Saga contract, and the only bundled plugin
     // that drives a real compensation loop. It is bundled for the same reason the other three
-    // are: the E2E scenarios have to reach the Saga contract the way a real plugin does —
+    // are: a consumer has to reach the Saga contract the way a real plugin does —
     // from OUTSIDE, through published capabilities, with the engine owning the state.
     runtimeOnly(files(rootDir.resolve("../examples/example-saga-plugin/build/libs/example-saga-plugin-0.1.0.jar")))
 
@@ -350,10 +350,7 @@ tasks.test {
 //     there is one test configuration left in this build and it has no plugin-build edge.
 //   * `forkEveryPerClass` was read by `tasks.test` and by nothing else. Left declared, an
 //     unread `-PpipelineTestForkEvery` would have looked like a live tuning knob.
-// Their replacement is the executable E2E layer: `scripts/verify-all.sh` builds the real
-// distribution once (`:pipeline-application:installDist`, stage 1) and `examples/run.sh`
-// then runs the real binary against the `.pipeline.kts` pipelines under `examples/`
-// (stage 3). An earlier version of this comment named a single script,
-// `scripts/run-e2e-pipelines.sh`, which does not exist in this tree and never staged
-// anything. That path executes the shipped artifact, so it certifies behaviour rather
-// than asserting a tag on an empty source set.
+// Their replacement is the gate: `scripts/verify-all.sh` builds the real distribution once
+// (`:pipeline-application:installDist`, stage 2) and then runs the unit tests, the integration
+// tests and the mutants against it. That path exercises the shipped artifact, so it certifies
+// behaviour rather than asserting a tag on an empty source set.

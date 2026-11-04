@@ -272,11 +272,10 @@ tasks.named("jar") {
 }
 
 // Unit-test wiring RESTORED.
-// It was REMOVED under the premise that this module carries no unit tests: it is an
-// HTTP STEP whose guarantee is that a pipeline performs a real request, verified by the executable
-// E2E layer under `examples/` rather than by a JUnit class. That premise held for the STEP
-// itself and stopped holding for the module: `StatusRange.parse` is a pure decode rule reached from
-// a JSON payload at request time, with no socket and no clock, and it now has a test.
+// The HTTP STEP's own guarantee is that a pipeline performs a real request, and that is the
+// subject of the integration lane rather than of a JUnit class. The module also holds a pure
+// decode rule, `StatusRange.parse`, reached from a JSON payload at request time, with no socket
+// and no clock, and that has a test.
 // The reason the wiring was pulled out is still true and is why the removal was the right call THEN:
 // a `Test` task whose source set is empty reports success while executing zero classes -- a silent
 // green. Gradle 8.14 exposes no `failOnNoDiscoveredTests` property, so nothing inside this build can

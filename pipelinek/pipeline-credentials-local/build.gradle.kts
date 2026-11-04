@@ -41,10 +41,11 @@ tasks.test {
 // Tests cover the EIGHT pure primitives in this module: KdfParams, AeadCipher,
 // PassphraseResolver, CredentialsStorePath, CredentialsStorePosix (assertSupported only),
 // CredentialCrypto, CredentialSerializer and CredentialPartReader. The store file's
-// IO is exercised by the E2E pipelines under `examples/security/`, not by JUnit; the
-// AGENTS.md rule against filesystem persistence in unit tests is what scopes the
-// suite this way. Each primitive is a `data class` or a pure `object`; the test
-// functions take arguments and return values without touching disk, network or clock.
+// IO is exercised by an integration test that composes the real store with the real
+// primitives over a temporary directory; the AGENTS.md rule against filesystem
+// persistence in unit tests is what scopes the unit suite this way. Each primitive is
+// a `data class` or a pure `object`; the test functions take arguments and return
+// values without touching disk, network or clock.
 //
 // There is ONE instrument here that is not a primitive: the CLI's own decision
 // to refuse a request it does not carry out -- a token its verb does not own,

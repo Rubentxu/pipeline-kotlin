@@ -49,11 +49,11 @@ tasks.test {
 // directory a stream lands in and how long its exclusion lives. All of them are pure functions
 // over a file NAME, a record and a counter — the tests build `Path` values by hand and never open
 // one. The segment files' IO (`readChunk`, `readRange`, `readRangeDigested`) is exercised by the
-// E2E pipelines under `examples/output/`, not by JUnit; the AGENTS.md rule against filesystem
-// persistence in unit tests is what scopes the suite.
+// integration lane, not by JUnit; the AGENTS.md rule against filesystem persistence in unit
+// tests is what scopes the unit suite.
 
 // This module has NO performance lane. A Gradle test task that discovers no tests reports
 // SUCCESS -- Gradle 8.14 has no `failOnNoDiscoveredTests` property at all -- so a lane over
 // this source set would be a green 1 GiB soak that never allocates anything. The soak's real
-// subject (Output Plane segment growth and rollover) is exercised by an E2E pipeline under
-// `examples/`.
+// subject (Output Plane segment growth and rollover) is not measured by any test in this
+// repository: it is a declared gap.

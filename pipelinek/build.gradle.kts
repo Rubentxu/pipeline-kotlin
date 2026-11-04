@@ -218,6 +218,105 @@ subprojects {
     }
 }
 
+// ── the integration leg: real modules composed, the world outside faked ───────
+//
+// A unit test exercises one module with its collaborators replaced. An
+// integration test exercises the SEAM between modules: the real objects of two
+// or more modules, wired as the product wires them, with every effect that
+// would reach outside the process replaced by a fake the test owns.
+//
+// The lane exists because the unit leg cannot observe a wiring mistake. Two
+// modules can each pass every unit test they own and still disagree about the
+// port they share; only a test that instantiates both of them can see it.
+//
+// What the lane does NOT do is reach outside the process. A filesystem, a
+// subprocess, the clock and the network stay faked, exactly as in a unit
+// test. The difference is which side of the boundary the code under test
+// sits on: INSIDE for a unit test, and STRADDLING for an integration test.
+//
+// The source set is declared here rather than in each module, so every module
+// gets the same lane and the same task names. A module without an
+// `src/integrationTest/kotlin` directory simply has no integration test, and
+// its task is skipped rather than reported as an empty success.
+subprojects {
+    pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+        // The Kotlin JVM plugin creates the `test` source set, and it does so
+        // through the Java plugin's source-set machinery. The lane is declared
+        // here, once, so every module gets the same one and the same task
+        // names: a lane declared per module would drift, and a lane that
+        // drifts is a lane whose reports nobody reads.
+        //
+        // The project is named explicitly because the receiver of this block
+        // is the plugin, not the project, and an unqualified `sourceSets`
+        // would not resolve. The extensions are reached by their TYPE rather
+        // than by their accessors, because the type-safe accessors are
+        // generated for the script's own receiver and not for the projects it
+        // enumerates.
+        val javaExtension =
+            project.extensions.getByType(org.gradle.api.plugins.JavaPluginExtension::class.java)
+        val lane: org.gradle.api.tasks.SourceSet = javaExtension.sourceSets.create("integrationTest")
+
+        // The Kotlin half of the lane. The source set carries the CONVENTIONAL
+        // directory, and it is added only when the plugin did not already map
+        // it, so a module that declares its own directory is not given the
+        // same sources twice.
+        val kotlinExtension = project.extensions
+            .getByType(org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension::class.java)
+        val kotlinLane = kotlinExtension.sourceSets.maybeCreate("integrationTest")
+        val kotlinDir = project.file("src/integrationTest/kotlin")
+        if (kotlinLane.kotlin.srcDirs.none { it == kotlinDir }) {
+            kotlinLane.kotlin.srcDir(kotlinDir)
+        }
+
+        // The lane compiles AGAINST the module's main, so it has to see the
+        // module's own seams and not only its published ones. Kotlin's
+        // `internal` is scoped to a compilation, and the lane is a separate
+        // compilation, so without this the lane could not reach an internal
+        // collaborator at all: the alternative would be to widen the product's
+        // visibility for the sake of a test, and the lane is the wrong reason
+        // to change what the product publishes.
+        kotlinExtension.target.compilations.configureEach {
+            if (name == "integrationTest") {
+                associateWith(kotlinExtension.target.compilations.getByName("main"))
+            }
+        }
+
+        project.configurations[lane.implementationConfigurationName]
+            .extendsFrom(project.configurations.getByName("testImplementation"))
+        project.configurations[lane.runtimeOnlyConfigurationName]
+            .extendsFrom(project.configurations.getByName("testRuntimeOnly"))
+
+        project.dependencies.add(lane.implementationConfigurationName, libs.junit.jupiter)
+        project.dependencies.add(lane.runtimeOnlyConfigurationName, libs.junit.platform.launcher)
+
+        // The lane's classpath. The lane compiles against the module's MAIN output
+        // and against its own configuration, and NOT against its own output:
+        // a classpath that names the lane's own output makes the Java and the
+        // Kotlin compile tasks depend on each other, and the build fails with
+        // a circular dependency.
+        lane.compileClasspath += javaExtension.sourceSets["main"].output
+        lane.runtimeClasspath += javaExtension.sourceSets["main"].output
+
+        project.tasks.register<org.gradle.api.tasks.testing.Test>("integrationTest") {
+            testClassesDirs = lane.output.classesDirs
+            classpath = lane.runtimeClasspath
+            useJUnitPlatform()
+            // The lane's reports live beside the unit ones, in a directory of
+            // their own, so a reader can tell which leg produced which number.
+            reports.junitXml.outputLocation.set(
+                project.layout.buildDirectory.dir("test-results/integrationTest"),
+            )
+            reports.html.outputLocation.set(
+                project.layout.buildDirectory.dir("reports/tests/integrationTest"),
+            )
+        }
+
+        project.tasks.named("check") {
+            dependsOn(project.tasks.named("integrationTest"))
+        }
+    }
+}
+
 // The Kover-all merge module was removed with the plugin . It aggregated
 // coverage from the Kotlin suites; with those gone every dependency in the merge list
 // resolves to zero coverage, so it reported a number that could not fail and could not
@@ -839,8 +938,10 @@ val buildExamplePlugins by tasks.registering(Exec::class) {
 //                  Corrected claim holds from outside the build.
 //   * saga      — the Saga contract is reachable from OUTSIDE the build,
 //                  through the published capabilities, with the engine owning
-//                  the state: the scenarios drive a compensation loop with a
-//                  plugin that knows nothing of the runtime's internals.
+//                  the state. The plugin knows nothing of the runtime's
+//                  internals, and the compensation loop it drives is not
+//                  observed by any test in this repository: it is a declared
+//                  gap.
 //
 // Their BUILD is one task (above) and their PROOF is four different claims.
 // The composite changes WHEN they are built, not WHAT they are: the four JARs

@@ -7,9 +7,9 @@ reader can audit the accounting instead of trusting it.
 
 What is counted, per AGENTS.md section 4:
 
-  VERIFY_LOC   permanent unit tests under src/test, plus the persistent E2E
-               .pipeline.kts programs, their thin launcher, and any other
-               repository verification script.
+  VERIFY_LOC   permanent unit tests under src/test, the integration tests
+               under src/integrationTest, and any repository verification
+               script.
   PRODUCT_LOC  active, non-generated production source: Kotlin/Java under
                src/main, the build scripts that produce the product, and the
                scripts that ship it.
@@ -48,7 +48,6 @@ RULES: list[tuple[str, str, str]] = [
     # Verification, most specific first.
     ("verify", "budget script", "scripts/check-budgets.py"),
     ("verify", "verification entrypoint", "scripts/verify-all.sh"),
-    ("verify", "E2E launcher", "examples/run.sh"),
     # The source guards. They read the tree and report; they produce no
     # artifact and ship nothing, so they are the numerator and not the
     # denominator. The catch-all rule below calls every other script a release
@@ -56,30 +55,7 @@ RULES: list[tuple[str, str, str]] = [
     # truth -- the same reason the two release checks are named above.
     ("verify", "source guard", "scripts/check-comment-provenance.py"),
     ("verify", "source guard", "scripts/check-process-exits.py"),
-    ("verify", "source guard", "scripts/check-scenario-process-creation.py"),
     ("verify", "source guard", "scripts/check-durable-shell-cost.py"),
-    # The reader of the E2E receipt. It reads the account the launcher wrote
-    # and decides whether the gate may consume it; it produces no artifact of
-    # the product and ships nothing, so it is the numerator and not the
-    # denominator.
-    ("verify", "source guard", "scripts/check-e2e-receipt.py"),
-    # The map from a build module to the E2E families. It is data and not
-    # code, and it is verification material: the change level reads it to
-    # decide which scenarios can observe a change. It is in the numerator and
-    # not in the denominator, or the ratio would look better than the truth.
-    ("verify", "E2E family map", "scripts/e2e-family-map.tsv"),
-    # The per-task clock the gate reads to report what each part of the build
-    # cost. It produces no artifact and ships nothing, so it is the numerator
-    # and not the denominator; the catch-all rule below would otherwise call it
-    # a release tool and make the ratio look better than the truth.
-    ("verify", "build timing probe", "scripts/gradle-task-timing.init.gradle"),
-    # The overlap clock of the build. It measures the WINDOW of each task, so
-    # it can say how much of the build ran at the same time; the probe above
-    # measures durations and cannot. It produces no artifact and ships
-    # nothing, so it is the numerator and not the denominator; the catch-all
-    # rule below would otherwise call it a release tool and make the ratio
-    # look better than the truth.
-    ("verify", "build overlap probe", "scripts/gradle-task-overlap.init.gradle"),
     # The external-consumer check verifies the published artifacts against a
     # consumer outside this repository. It does not ship them: it runs on the
     # publisher's machine during publication. Counting it as production would
@@ -93,11 +69,9 @@ RULES: list[tuple[str, str, str]] = [
     # Permanent unit tests. Two module depths: pipelinek/<m> and pipelinek/<g>/<m>.
     ("verify", "unit tests", "pipelinek/*/src/test/*"),
     ("verify", "unit tests", "pipelinek/*/*/src/test/*"),
-    # Persistent E2E pipelines. A versioned scenario lives in examples/, at
-    # one of three depths depending on the category it belongs to.
-    ("verify", "E2E pipeline", "examples/*.pipeline.kts"),
-    ("verify", "E2E pipeline", "examples/*/*.pipeline.kts"),
-    ("verify", "E2E pipeline", "examples/*/*/*.pipeline.kts"),
+    # The integration tests. Two module depths, like the unit ones.
+    ("verify", "integration tests", "pipelinek/*/src/integrationTest/*"),
+    ("verify", "integration tests", "pipelinek/*/*/src/integrationTest/*"),
     # Production. Also two module depths.
     ("product", "production source", "pipelinek/*/src/main/*"),
     ("product", "production source", "pipelinek/*/*/src/main/*"),
@@ -105,7 +79,7 @@ RULES: list[tuple[str, str, str]] = [
     ("product", "build script", "pipelinek/build.gradle.kts"),
     ("product", "build script", "pipelinek/*/build.gradle.kts"),
     ("product", "build script", "pipelinek/*/*/build.gradle.kts"),
-    # The three example plugins are independent Gradle builds whose JARs the
+    # The example plugins are independent Gradle builds whose JARs the
     # distribution ships via runtimeOnly, so their build scripts are the
     # denominator even though they live under examples/.
     ("product", "example plugin build", "examples/*/settings.gradle.kts"),

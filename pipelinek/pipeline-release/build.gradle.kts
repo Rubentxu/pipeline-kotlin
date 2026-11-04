@@ -570,8 +570,8 @@ tasks.register("releaseGate") {
     // (7 plugins) whose failure-on-unset-`PIPELINEK_DIST_ZIP` was the gate's hard-red path for a
     // missing distribution. All three read a JUnit source set that is empty. Naming them would
     // have been the exact false compliance this removal exists to end: a task description is read
-    // as a claim about what ran. The distribution is now exercised by `scripts/verify-all.sh`
-    // and `examples/run.sh`, which run the real binary.
+    // as a claim about what ran. The distribution is now exercised by `scripts/verify-all.sh`,
+    // which builds it and runs the gate against it.
 
     dependsOn(
         ":pipeline-application:distZip",
@@ -634,9 +634,7 @@ tasks.register("releaseGate") {
 // strings, with no ZIP and no SBOM. The clause above used to read "is empty here" in the
 // present tense, and it stopped being true when the first of those landed. A comment that
 // asserts a property of the build outlives the state it described unless someone edits it.
-// Its replacement is the executable E2E layer: `scripts/verify-all.sh` stages the distribution
-// once (`:pipeline-application:installDist`) and `examples/run.sh` runs the real binary
-// against the `.pipeline.kts` pipelines. An earlier version of this comment named a single
-// script, `scripts/run-e2e-pipelines.sh`, which does not exist in this tree and never staged
-// anything. That path executes the shipped bytes, so it certifies the artifact instead of
-// asserting a tag over an empty classpath.
+// Its replacement is the gate: `scripts/verify-all.sh` stages the distribution once
+// (`:pipeline-application:installDist`) and then runs the unit tests, the integration tests and
+// the mutants against it. That path executes the shipped bytes, so it certifies the artifact
+// instead of asserting a tag over an empty classpath.

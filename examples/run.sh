@@ -525,6 +525,9 @@ write_receipt() {
         PIPELINEK_RECEIPT_UNSTABLE="${unstable_runs:-0}" \
         PIPELINEK_RECEIPT_SEEDED="${seeded:-0}" \
         PIPELINEK_RECEIPT_DURABLE="${durable_runs:-0}" \
+        PIPELINEK_RECEIPT_WORLDS_BOTH="${both_total:-0}" \
+        PIPELINEK_RECEIPT_WORLDS_ONE="${one_total:-0}" \
+        PIPELINEK_RECEIPT_WORLDS_NONE="${no_total:-0}" \
         PIPELINEK_RECEIPT_CACHE_WRITTEN="${cache_written:-0}" \
         PIPELINEK_RECEIPT_CACHE_PRESENT="${cache_present:-0}" \
         PIPELINEK_RECEIPT_DIAGNOSTICS="$diagnostics_dir" \
@@ -580,6 +583,7 @@ def scenario_of(name):
             "reason": "",
             "checks": 0,
             "executions": 0,
+            "worlds": 0,
             "steps": 0,
             "outcome": "none",
             "durableReruns": 0,
@@ -626,6 +630,11 @@ with open(rows_path, "r", encoding="utf-8", errors="replace") as handle:
             row["durableReruns"] = as_int(fields[9])
             row["seeded"] = as_int(fields[10])
             row["root"] = fields[11] if len(fields) > 11 else ""
+            # The WORLDS the scenario was checked in. The receipt is the account
+            # that outlives the run, so a reader who opens it later has to be
+            # able to tell a capability that was checked with a store and
+            # without one from one that was only checked with it.
+            row["worlds"] = as_int(fields[12]) if len(fields) > 12 else 0
         elif kind == "E":
             row = scenario_of(fields[0])
             row["runs"].append({
@@ -688,6 +697,15 @@ document = {
         "unstable": number("PIPELINEK_RECEIPT_UNSTABLE"),
         "seeded": number("PIPELINEK_RECEIPT_SEEDED"),
         "durableReruns": number("PIPELINEK_RECEIPT_DURABLE"),
+        # The WORLDS the scenarios were checked in, and this is a DIFFERENT
+        # fact from `executions`: a scenario whose capability needs the store
+        # runs the durable replay, and that replay is a second execution in the
+        # SAME world. Counting executions as worlds would claim that the
+        # capability was checked without a store, which is the one claim this
+        # census has to make honestly.
+        "worldsBoth": number("PIPELINEK_RECEIPT_WORLDS_BOTH"),
+        "worldsOne": number("PIPELINEK_RECEIPT_WORLDS_ONE"),
+        "worldsNone": number("PIPELINEK_RECEIPT_WORLDS_NONE"),
     },
     # The launches of the product, per verb and in total.
     #
@@ -1296,6 +1314,63 @@ clock_marker=""
 # and the conclusion only after the run's own events are. A record that had
 # to be complete before the first fact was known could not be written at all.
 scenario_exec_labels=()
+
+# The families that ran, and how each one was checked.
+#
+# Four facts per family: how many scenarios it holds, and how many of them were
+# checked in BOTH worlds (with a store and without one), how many only in one,
+# and how many in none. The second is the one a reader needs: a scenario
+# checked in both worlds says its capability does not need a store, and one
+# checked in a single world says the opposite. A report that says only "ok"
+# hides that difference, and a coverage nobody can tell apart from a partial one
+# is a coverage nobody can rely on.
+#
+# The census is counted ONCE, here, and published three times: the report below
+# reads it, the receipt carries it, and the gate reads the receipt. One count,
+# several readers, and no reader that computes a number of its own.
+declare -A family_scenarios=()
+declare -A family_both_paths=()
+declare -A family_one_path=()
+declare -A family_no_path=()
+family_census_reset() {
+    family_scenarios=()
+    family_both_paths=()
+    family_one_path=()
+    family_no_path=()
+}
+
+# The family a scenario belongs to: the first segment of its path. A scenario
+# that sits directly in the root of the examples has no family of its own, and
+# it is told so by name instead of by an empty string, so the report and the
+# receipt say the same thing about it.
+#
+# There is ONE rule and ONE place that applies it: the census below and the
+# receipt row both read the family from here. Two derivations of the same rule
+# could drift, and then the report and the receipt would disagree about what
+# family a scenario belongs to -- which is the one thing they must not.
+scenario_family() {
+    local name="$1" family="${1%%/*}"
+    if [[ "$family" == "$name" ]]; then family="(root)"; fi
+    printf '%s' "$family"
+}
+
+# One scenario, counted into the census of its family.
+#
+# $2 is the number of WORLDS the scenario was checked in: two when it ran with
+# a store and without one, one when the capability it exercises needs the
+# store, and none when it was refused before running or left no record.
+family_census_note() {
+    local fam="$1" worlds="$2"
+    family_scenarios["$fam"]=$(( ${family_scenarios["$fam"]:-0} + 1 ))
+    if (( worlds >= 2 )); then
+        family_both_paths["$fam"]=$(( ${family_both_paths["$fam"]:-0} + 1 ))
+    elif (( worlds == 1 )); then
+        family_one_path["$fam"]=$(( ${family_one_path["$fam"]:-0} + 1 ))
+    else
+        family_no_path["$fam"]=$(( ${family_no_path["$fam"]:-0} + 1 ))
+    fi
+}
+
 scenario_exec_run_ids=()
 scenario_exec_dbs=()
 scenario_exec_caches=()
@@ -2487,6 +2562,7 @@ run_scenario() {
     # previous scenario's. The marker writer reads them once the body is done.
     scenario_guarantees=0
     scenario_executions=0
+    scenario_worlds=0
     scenario_steps=0
     scenario_outcome="none"
 
@@ -2587,8 +2663,8 @@ emit_scenario_markers() {
     fi
 
     printf '__VERDICT__ %s\n' "$verdict"
-    printf '__COUNTS__ observed=%s executions=%s steps=%s outcome=%s durable=%s seeded=%s\n' \
-        "$scenario_guarantees" "$scenario_executions" "$scenario_steps" "$scenario_outcome" \
+    printf '__COUNTS__ observed=%s executions=%s worlds=%s steps=%s outcome=%s durable=%s seeded=%s\n' \
+        "$scenario_guarantees" "$scenario_executions" "$scenario_worlds" "$scenario_steps" "$scenario_outcome" \
         "$(( durable_runs - before_durable ))" "$(( seeded - before_seeded ))"
     printf '__ELAPSED__ %s\n' "$(( $(now_ms) - started_ms ))"
     local reason
@@ -2760,6 +2836,22 @@ print("outcome=" + outcome + " steps=" + str(steps) + " cache=" + cache)
 # describes a suite that costs half of what it costs.
 count_run() {
     scenario_executions=$((scenario_executions + 1))
+    return 0
+}
+
+# A WORLD is a place the scenario was checked in: with a store, or without one.
+#
+# It is NOT an execution. The durable replay and the resumed run are a second
+# execution in the SAME world -- the same journal, the same workspace -- so
+# counting them as worlds would claim that a scenario whose capability needs
+# the store was checked without it, which is the one claim this count has to
+# make honestly.
+#
+# The count is per scenario, and it is published: a reader who does not know
+# whether a capability was checked with a store and without one cannot tell a
+# coverage that is exact from one that is only half of it.
+count_world() {
+    scenario_worlds=$((scenario_worlds + 1))
     return 0
 }
 
@@ -3900,6 +3992,9 @@ scenario_execute() {
         >"$stdout" 2>"$stderr" || code=$?
     cd "$caller_pwd"
     count_run
+    # The world WITH the store. Every scenario is checked in it at least once,
+    # because the journal is how a CI runs a pipeline.
+    count_world
     if ! check_story_order "$name" "$stdout"; then
         phase_failed=1
         return 0
@@ -3940,6 +4035,9 @@ scenario_execute() {
         export PIPELINEK_E2E_HOME="$durable_home"
         export PIPELINEK_E2E_CONTROL="$durable_control"
         count_run
+        # The world WITHOUT the store. This is the second world, and the one
+        # that says the capability does not need a journal.
+        count_world
         if ! check_story_order "$name (volatile)" "$vstdout"; then
             phase_failed=1
             return 0
@@ -5149,15 +5247,18 @@ emit_row() {
 receipt_row() {
     local name="$1" verdict="$2" elapsed="$3" reason="$4" checks="$5"
     local executions="$6" steps="$7" outcome="$8" durable="$9" seeded="${10}"
-    local blob="${11}" traces="${12}" root="${13}"
+    local blob="${11}" traces="${12}" root="${13}" worlds="${14}"
     local family record rest
     local -a parts
 
-    family="${name%%/*}"
-    if [[ "$family" == "$name" ]]; then family="(root)"; fi
+    family="$(scenario_family "$name")"
 
+    # The WORLDS the scenario was checked in travel with the row, because the
+    # receipt is the account that outlives the run: a reader who opens it later
+    # has to be able to tell a capability that was checked with a store and
+    # without one from one that was only checked with it.
     emit_row S "$name" "$family" "$verdict" "$elapsed" "$reason" "$checks" \
-        "$executions" "$steps" "$outcome" "$durable" "$seeded" "$root"
+        "$executions" "$steps" "$outcome" "$durable" "$seeded" "$root" "$worlds"
 
     rest="$blob"
     while [[ -n "$rest" ]]; do
@@ -5178,6 +5279,11 @@ receipt_row() {
     done
 }
 
+# The census starts empty. It is counted below, while the scenarios are read
+# back, and it is published once: a census that started from a previous pass
+# would add one cycle's scenarios to another's.
+family_census_reset
+
 for script in ${selected[@]+"${selected[@]}"}; do
     slug="$(scenario_slug "$script")"
     file="$verdict_dir/$slug.txt"
@@ -5193,6 +5299,7 @@ for script in ${selected[@]+"${selected[@]}"}; do
     row_exec_blob=""
     row_traces=""
     row_reason=""
+    row_family="$(scenario_family "$row_name")"
 
     # The executions this scenario made, and the traces that locate them.
     #
@@ -5224,13 +5331,41 @@ for script in ${selected[@]+"${selected[@]}"}; do
         done < <(grep '^__TRACE__ ' "$file" 2>/dev/null || true)
     fi
 
+    # What this scenario counted, read from the markers it published.
+    #
+    # They are read HERE, before the branches below, because the census of the
+    # worlds needs them on every path: a scenario that produced no verdict at
+    # all still has to be accounted for, and a count that only exists on the
+    # happy path is a count that silently drops the cases nobody wants to look
+    # at. A scenario with no file has no counts, and reads as zero.
+    counts="$(grep -m 1 '^__COUNTS__ ' "$file" 2>/dev/null || true)"
+    local_observed="$(sed -n 's/.*observed=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+    local_executions="$(sed -n 's/.*executions=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+    local_worlds="$(sed -n 's/.*worlds=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+    local_steps="$(sed -n 's/.*steps=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+    local_outcome="$(sed -n 's/.*outcome=\([a-z]*\).*/\1/p' <<<"$counts")"
+    local_durable="$(sed -n 's/.*durable=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+    local_seeded="$(sed -n 's/.*seeded=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+
+    # What this scenario covered, counted into the census of its family.
+    #
+    # The number of WORLDS is the number of places the scenario was checked in:
+    # two when it ran with a store and without one, one when the capability it
+    # exercises needs the store and cannot be checked without it, and none when
+    # it was refused before running or left no record of where it ran.
+    #
+    # The census is what turns "the suite ran" into "the suite checked THAT",
+    # and it is counted ONCE, here, while the scenarios are read back.
+    row_worlds="${local_worlds:-0}"
+    family_census_note "$row_family" "$row_worlds"
+
     if [[ ! -f "$file" ]]; then
         failed=$((failed + 1))
         row_reason="$row_name: the scenario produced no verdict at all"
         failures+=("$row_reason")
         receipt_row "$row_name" "$row_verdict" "$row_elapsed" "$row_reason" "$row_checks" \
             "$row_executions" "$row_steps" "$row_outcome" "$row_durable" "$row_seeded" \
-            "$row_exec_blob" "$row_traces" "$(scenario_artifacts_root "$slug")"
+            "$row_exec_blob" "$row_traces" "$(scenario_artifacts_root "$slug")" "$row_worlds" "$row_worlds"
         continue
     fi
 
@@ -5261,17 +5396,10 @@ for script in ${selected[@]+"${selected[@]}"}; do
         failures+=("$row_reason")
         receipt_row "$row_name" "$row_verdict" "$row_elapsed" "$row_reason" "$row_checks" \
             "$row_executions" "$row_steps" "$row_outcome" "$row_durable" "$row_seeded" \
-            "$row_exec_blob" "$row_traces" "$(scenario_artifacts_root "$slug")"
+            "$row_exec_blob" "$row_traces" "$(scenario_artifacts_root "$slug")" "$row_worlds" "$row_worlds"
         continue
     fi
 
-    counts="$(grep -m 1 '^__COUNTS__ ' "$file" 2>/dev/null || true)"
-    local_observed="$(sed -n 's/.*observed=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
-    local_executions="$(sed -n 's/.*executions=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
-    local_steps="$(sed -n 's/.*steps=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
-    local_outcome="$(sed -n 's/.*outcome=\([a-z]*\).*/\1/p' <<<"$counts")"
-    local_durable="$(sed -n 's/.*durable=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
-    local_seeded="$(sed -n 's/.*seeded=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
     # A counter that reads a corrupted value is a number nobody can trust, and
     # these counts are here to be trusted: they are ignored rather than added.
     [[ "$local_observed" =~ ^[0-9]+$ ]] && observed_expectations=$((observed_expectations + local_observed))
@@ -5318,7 +5446,7 @@ for script in ${selected[@]+"${selected[@]}"}; do
 
     receipt_row "$row_name" "$row_verdict" "$row_elapsed" "$row_reason" "$row_checks" \
         "$row_executions" "$row_steps" "$row_outcome" "$row_durable" "$row_seeded" \
-        "$row_exec_blob" "$row_traces" "$(scenario_artifacts_root "$slug")"
+        "$row_exec_blob" "$row_traces" "$(scenario_artifacts_root "$slug")" "$row_worlds"
 done
 
 # Every selected scenario reached exactly one bucket -- passed, failed or
@@ -5335,6 +5463,47 @@ fi
 
 printf '\n%d scenario(s), %d passed, %d failed, %d blocked, %d credential(s) seeded, %d durable rerun(s)\n' \
     "$scenario_index" "$passed" "$failed" "$blocked" "$seeded" "$durable_runs"
+
+# WHAT was checked, family by family, and in how many worlds.
+#
+# The reader of this report needs two things and neither of them is "the suite
+# ran": WHICH capability was exercised (the family) and WHETHER it was
+# exercised in both worlds. A scenario checked with a store and without one
+# says its capability does not need a store; a scenario checked in one world
+# only says the opposite, and that difference is invisible unless it is
+# published. A coverage that cannot be told apart from a partial one is a
+# coverage nobody can rely on.
+#
+# The census was counted ONCE, while the scenarios ran, and it is published
+# here and in the receipt: several readers, one count.
+printf 'the families that ran, and the worlds each was checked in:\n'
+for fam in $(printf '%s\n' "${!family_scenarios[@]}" | LC_ALL=C sort); do
+    printf '  %-16s %2d scenario(s), %2d in both worlds, %2d in one, %2d in none\n' \
+        "$fam" "${family_scenarios[$fam]}" "${family_both_paths[$fam]:-0}" \
+        "${family_one_path[$fam]:-0}" "${family_no_path[$fam]:-0}"
+done
+both_total=0
+one_total=0
+no_total=0
+for fam in "${!family_scenarios[@]}"; do
+    both_total=$(( both_total + ${family_both_paths[$fam]:-0} ))
+    one_total=$(( one_total + ${family_one_path[$fam]:-0} ))
+    no_total=$(( no_total + ${family_no_path[$fam]:-0} ))
+done
+# The census has to account for EVERY scenario the launcher ran. A scenario
+# that is in none of the three buckets is a scenario nobody can say where it
+# was checked, and the launcher says so rather than letting the buckets add up
+# to less than the run.
+if (( both_total + one_total + no_total != scenario_index )); then
+    printf 'run.sh: the census of the worlds accounts for %d scenario(s) and %d ran.\n' \
+        "$(( both_total + one_total + no_total ))" "$scenario_index" >&2
+    exit 1
+fi
+# The line does NOT start with a number on purpose: the gate reads the
+# launcher's summary with a pattern that starts with one, and a line that
+# looked like a second summary would make that reader see two accounts.
+printf 'the worlds each scenario was checked in: %d in both, %d in one, %d in none\n' \
+    "$both_total" "$one_total" "$no_total"
 
 # What the run CHECKED, next to what it EXECUTED. A gate that cannot say which
 # of its checks were real is a gate whose cost cannot be weighed against what

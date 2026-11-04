@@ -1,3 +1,9 @@
+//@ storage-agnostic
+
+// The capability under trial is the WRITE, and a write needs no store: what
+// lands on disk and what the next step reads back are decided by the
+// filesystem. The directive says so, and the launcher refuses this scenario if
+// it ever needs the store to keep its promise.
 pipeline {
     stages {
         stage("writefile-step") {

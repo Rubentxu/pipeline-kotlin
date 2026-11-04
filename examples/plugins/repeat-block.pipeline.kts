@@ -1,4 +1,10 @@
 //@ expect-stdout iteration
+//@ storage-agnostic
+
+// The capability under trial is the REPEAT COUNT, and a count needs no store:
+// how many times the body ran is decided by the block, and the file it wrote
+// is the witness. The directive says so, and the launcher refuses this
+// scenario if it ever needs the store to keep its promise.
 import example.block.repeatBlock
 pipeline {
     stages {

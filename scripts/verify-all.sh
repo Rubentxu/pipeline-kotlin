@@ -127,6 +127,15 @@ scenario_filter=""
 declare -a e2e_family_filters=()
 e2e_families_ran=""
 e2e_families_tree=0
+# The worlds the scenarios were checked in, as the launcher counted them:
+# how many ran with a store and without one, how many ran in a single world
+# because their capability needs the store, and how many ran in none at all
+# because they were refused before running. The launcher owns the count and
+# the gate reads it; a second counter here would be a second number that
+# could disagree with the first.
+e2e_both_paths=0
+e2e_one_path=0
+e2e_no_path=0
 declare -a test_filters=()
 subset=0
 stage_given=0
@@ -1897,6 +1906,47 @@ plan_scenarios() {
     [[ ${#keep[@]} -eq 0 ]] || printf '%s\n' "${keep[@]}"
 }
 
+# The reader of the launcher's account of the WORLDS each scenario was checked
+# in.
+#
+# It reads the account the launcher published in its report and leaves the
+# three counts in e2e_both_paths, e2e_one_path and e2e_no_path. It says NO
+# when the account is missing, when it does not carry the three counts, or
+# when the three do not add up to the number of scenarios that ran -- and it
+# says WHY in worlds_census_problem.
+#
+# A gate that cannot read the coverage of the run it just did must not publish
+# one. The account is written by the launcher the gate itself runs, so a
+# reader that accepted anything would agree with whatever it was given, and a
+# verdict line that says "the suite ran" would be saying nothing about WHICH
+# guarantees the run bought.
+worlds_census_problem=""
+read_worlds_census() {
+    local log="$1" expected="${2:-}"
+    local line both one none
+    worlds_census_problem=""
+    line="$(grep -aE '^the worlds each scenario was checked in: ' "$log" 2>/dev/null || true)"
+    if [[ -z "$line" ]]; then
+        worlds_census_problem="the launcher published no account of the worlds each scenario was checked in"
+        return 1
+    fi
+    both="$(sed -nE 's/^the worlds each scenario was checked in: ([0-9]+) in both.*/\1/p' <<<"$line")"
+    one="$(sed -nE 's/^the worlds each scenario was checked in: [0-9]+ in both, ([0-9]+) in one.*/\1/p' <<<"$line")"
+    none="$(sed -nE 's/^the worlds each scenario was checked in: [0-9]+ in both, [0-9]+ in one, ([0-9]+) in none.*/\1/p' <<<"$line")"
+    if [[ ! "$both" =~ ^[0-9]+$ || ! "$one" =~ ^[0-9]+$ || ! "$none" =~ ^[0-9]+$ ]]; then
+        worlds_census_problem="the launcher's account of the worlds does not carry three counts: $line"
+        return 1
+    fi
+    if [[ -n "$expected" ]] && (( both + one + none != expected )); then
+        worlds_census_problem="the launcher checked ${both} scenario(s) in both worlds, ${one} in one and ${none} in none, and it ran ${expected}"
+        return 1
+    fi
+    e2e_both_paths="$both"
+    e2e_one_path="$one"
+    e2e_no_path="$none"
+    return 0
+}
+
 print_plan() {
     local s m sc
     printf 'plan for sha %s\n' "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -2453,10 +2503,17 @@ tests_suffix() {
 #   gate_planned        scenarios the gate found in the tree before the stages.
 #   launcher_scenarios  distinct scenarios the launcher's report names.
 #   contrast            the verdict of comparing the last two, name by name.
+#   unseen              scenarios of the tree this run did NOT look at.
+#
+# The unseen count is DERIVED from the tree's census and the launcher's, and it
+# is published because a run that measured less has to say how much less: a
+# reader that sees only how many scenarios ran cannot tell a full inventory
+# from a slice of it.
 scenarios_suffix() {
     if [[ "$e2e_stage3_ran" == 1 && -n "$e2e_observed" ]]; then
-        printf '  scenarios=launcher_observed:%s launcher_executions:%s gate_planned:%s launcher_scenarios:%s tree_scenarios:%s contrast:%s' \
-            "$e2e_observed" "$e2e_executed" "$e2e_census_gate" "$e2e_census_launcher" "$e2e_census_tree" "$e2e_census_contrast"
+        printf '  scenarios=launcher_observed:%s launcher_executions:%s gate_planned:%s launcher_scenarios:%s tree_scenarios:%s contrast:%s unseen:%s' \
+            "$e2e_observed" "$e2e_executed" "$e2e_census_gate" "$e2e_census_launcher" "$e2e_census_tree" "$e2e_census_contrast" \
+            "$(( e2e_census_tree > e2e_census_launcher ? e2e_census_tree - e2e_census_launcher : 0 ))"
     else
         printf '  scenarios=NOT_RUN'
     fi
@@ -2473,6 +2530,21 @@ families_suffix() {
         printf '  families=ran:%s tree:%s' "${e2e_families_ran:-unknown}" "$e2e_families_tree"
     else
         printf '  families=NOT_RUN'
+    fi
+}
+
+# The WORLDS the scenarios were checked in.
+#
+# It travels with the verdict line for the same reason the families do: a run
+# that checked a scenario in ONE world and a run that checked it in BOTH are
+# different guarantees, and a line that does not say which one it bought reads
+# like the other. The counts are the launcher's, read from its published
+# account.
+worlds_suffix() {
+    if [[ "$e2e_stage3_ran" == 1 ]]; then
+        printf '  worlds=both:%s one:%s none:%s' "$e2e_both_paths" "$e2e_one_path" "$e2e_no_path"
+    else
+        printf '  worlds=NOT_RUN'
     fi
 }
 
@@ -2557,8 +2629,8 @@ jvm_suffix() {
 # unrepresentable -- one string, one `%s` -- and each field keeps saying NOT_RUN
 # rather than going quiet when its stage was skipped.
 evidence_suffixes() {
-    printf '%s%s%s%s%s%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
-        "$(families_suffix)" "$(jvm_suffix)" "$(receipt_suffix)" "$(residue_suffix)" \
+    printf '%s%s%s%s%s%s%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
+        "$(families_suffix)" "$(worlds_suffix)" "$(jvm_suffix)" "$(receipt_suffix)" "$(residue_suffix)" \
         "$(components_suffix)" "$(tasks_suffix)" "$(config_cache_suffix)" "$(trials_suffix)"
 }
 
@@ -2638,7 +2710,8 @@ trial_summary_keys=(
     trial_level stage2_ran xml_fresh_tests xml_read_tests
     e2e_stage3_ran e2e_not_run e2e_observed e2e_executed e2e_census_gate
     e2e_census_launcher e2e_census_tree e2e_census_contrast e2e_launches
-    e2e_families_ran e2e_families_tree receipt_state
+    e2e_families_ran e2e_families_tree e2e_both_paths e2e_one_path e2e_no_path
+    receipt_state
     component_measured_total component_required_total
     task_console_lines task_executed_total task_no_work_total config_cache_state
 )
@@ -2650,7 +2723,8 @@ trial_summary_keys=(
 trial_agreement_keys=(
     trial_verdict trial_sha trial_identity trial_scope trial_level
     e2e_observed e2e_census_gate e2e_census_launcher e2e_census_tree
-    e2e_census_contrast e2e_families_ran e2e_families_tree receipt_state
+    e2e_census_contrast e2e_families_ran e2e_families_tree
+    e2e_both_paths e2e_one_path e2e_no_path receipt_state
 )
 
 # The values a trial hands over.
@@ -2713,6 +2787,9 @@ write_trial_summary() {
         printf 'e2e_launches=%s\n' "${e2e_launches:-}"
         printf 'e2e_families_ran=%s\n' "${e2e_families_ran:-}"
         printf 'e2e_families_tree=%s\n' "${e2e_families_tree:-0}"
+        printf 'e2e_both_paths=%s\n' "${e2e_both_paths:-0}"
+        printf 'e2e_one_path=%s\n' "${e2e_one_path:-0}"
+        printf 'e2e_no_path=%s\n' "${e2e_no_path:-0}"
         printf 'receipt_state=%s\n' "${receipt_state:-NOT_RUN}"
         printf 'component_measured_total=%s\n' "${component_measured_total:-0}"
         printf 'component_required_total=%s\n' "${component_required_total:-0}"
@@ -2743,7 +2820,7 @@ load_trial_summary() {
             return 1
         fi
         case "$key" in
-            trial_index|trial_of|trial_elapsed_s|trial_wall_ms|stage2_ran|xml_fresh_tests|xml_read_tests|e2e_stage3_ran|e2e_not_run|e2e_census_gate|e2e_census_launcher|e2e_census_tree|e2e_families_tree|component_measured_total|component_required_total|task_console_lines|task_executed_total|task_no_work_total)
+            trial_index|trial_of|trial_elapsed_s|trial_wall_ms|stage2_ran|xml_fresh_tests|xml_read_tests|e2e_stage3_ran|e2e_not_run|e2e_census_gate|e2e_census_launcher|e2e_census_tree|e2e_families_tree|e2e_both_paths|e2e_one_path|e2e_no_path|component_measured_total|component_required_total|task_console_lines|task_executed_total|task_no_work_total)
                 if [[ ! "$value" =~ ^[0-9]+$ ]]; then
                     echo "verify-all: the summary of a trial carries $key=$value and that is not a number" >&2
                     return 1
@@ -3462,6 +3539,48 @@ JSON
     rm -rf "$fixture_dir"
     echo "    ok in $(elapsed "$stage_started_at")s"
 
+    # The reader of the launcher's account of the WORLDS, proven on fixtures.
+    #
+    # Nothing else inside the gate would notice if that reader stopped
+    # refusing: the account is written by the launcher the gate itself runs,
+    # so a reader that accepted anything would agree with whatever it was
+    # given, and the verdict line would publish a coverage nobody can check.
+    # The gate therefore checks that the reader REFUSES an account that is
+    # absent, an account that is short of a count, and an account that does
+    # not add up -- and that it ACCEPTS one that does.
+    worlds_fixture="$cycle_dir/worlds-fixture"
+    mkdir -p "$worlds_fixture"
+    # The probe must not leave its numbers behind: a run that does not reach
+    # the E2E stage would publish the census of a fixture as if it were the
+    # census of the run.
+    saved_both_paths="$e2e_both_paths"
+    saved_one_path="$e2e_one_path"
+    saved_no_path="$e2e_no_path"
+    printf 'the worlds each scenario was checked in: 3 in both, 2 in one, 0 in none\n' \
+        > "$worlds_fixture/good.log"
+    if ! read_worlds_census "$worlds_fixture/good.log" 5; then
+        fail "stage 1g: the reader of the census of the worlds refuses an account that adds up"
+    fi
+    if (( e2e_both_paths != 3 || e2e_one_path != 2 || e2e_no_path != 0 )); then
+        fail "stage 1g: the reader of the census of the worlds reads the counts of a sound account wrong"
+    fi
+    printf 'the suite ran\n' > "$worlds_fixture/absent.log"
+    if read_worlds_census "$worlds_fixture/absent.log" 5; then
+        fail "stage 1g: the reader of the census of the worlds accepts a run that published no account"
+    fi
+    printf 'the worlds each scenario was checked in: 3 in both, 2 in one\n' \
+        > "$worlds_fixture/short.log"
+    if read_worlds_census "$worlds_fixture/short.log" 5; then
+        fail "stage 1g: the reader of the census of the worlds accepts an account that carries no count for the scenarios that ran in no world"
+    fi
+    if read_worlds_census "$worlds_fixture/good.log" 6; then
+        fail "stage 1g: the reader of the census of the worlds accepts an account that does not account for every scenario that ran"
+    fi
+    rm -rf "$worlds_fixture"
+    e2e_both_paths="$saved_both_paths"
+    e2e_one_path="$saved_one_path"
+    e2e_no_path="$saved_no_path"
+
     # --- Stage 1h: compile, static analysis, API compatibility, distribution --
     # One Gradle invocation, so the distribution is assembled exactly once and
     # the tests below reuse the same compiled classes rather than recompiling.
@@ -4161,6 +4280,30 @@ if [[ "$e2e_not_run" -gt 0 ]]; then
     # stage log.
     echo "    ${e2e_not_run} scenario(s) NOT_RUN — declared unrunnable, NOT a pass"
 fi
+
+# The WORLDS each scenario was checked in.
+#
+# A scenario checked with a store and without one says its capability does not
+# need a store; one checked in a single world says the opposite. The launcher
+# counts that while the scenarios run and publishes it; the gate reads the
+# published count rather than counting a second time, because two counters of
+# the same fact are two numbers that can disagree, and the reader would have no
+# way to tell which one to believe.
+#
+# The account is REQUIRED: a run whose launcher did not publish it has not
+# said which worlds it covered, and a gate that published a verdict without
+# that would be publishing a coverage nobody can check.
+#
+# It is read AFTER the counts above, because the census has to be reconciled
+# against the number of scenarios that ran: a census that accounts for fewer
+# scenarios than the run says it ran is a census that dropped the cases nobody
+# wants to look at.
+if ! read_worlds_census "$log_dir/stage3.log" "$e2e_selected"; then
+    fail "stage 3: ${worlds_census_problem}"
+fi
+stage3_worlds="$(grep -aE '^the worlds each scenario was checked in: ' "$log_dir/stage3.log" || true)"
+printf '    %s\n' "$stage3_worlds"
+
     # The cost of the scenarios, per family. The launcher already prices every
     # scenario it ran; the gate turns those prices into parts a reader can act
     # on, because a suite whose cost is only a total is a suite nobody can
@@ -4292,6 +4435,40 @@ if python3 scripts/check-e2e-receipt.py check \
 else
     receipt_state="invalid"
     fail_with_verdict "stage 3: the E2E receipt is not a sound account (a defect of the harness, not of the product)"
+fi
+
+# The census of the worlds, told twice: once by the launcher's report and once
+# by the receipt it sealed. The two have to say the same thing, because a
+# reader that trusts one of them has to be able to check the other -- and
+# because the receipt is the account that outlives the run, a verdict line that
+# disagrees with it would be a claim about a coverage the receipt does not
+# carry.
+#
+# The receipt is read here with a reader that asks for three numbers and
+# nothing else, so a receipt that does not carry them is a receipt without a
+# census rather than a census of zeroes.
+receipt_worlds="$(python3 -c '
+import json, sys
+try:
+    document = json.load(open(sys.argv[1], encoding="utf-8"))
+    totals = document.get("totals") or {}
+    print("%s %s %s" % (
+        int(totals.get("worldsBoth", -1)),
+        int(totals.get("worldsOne", -1)),
+        int(totals.get("worldsNone", -1)),
+    ))
+except Exception:
+    print("")
+' "$receipt_file")"
+if [[ ! "$receipt_worlds" =~ ^[0-9]+\ [0-9]+\ [0-9]+$ ]]; then
+    fail_with_verdict "stage 3: the E2E receipt carries no census of the worlds each scenario was checked in"
+fi
+receipt_both="${receipt_worlds%% *}"
+receipt_rest="${receipt_worlds#* }"
+receipt_one="${receipt_rest%% *}"
+receipt_none="${receipt_rest##* }"
+if (( receipt_both != e2e_both_paths || receipt_one != e2e_one_path || receipt_none != e2e_no_path )); then
+    fail_with_verdict "stage 3: the launcher reported ${e2e_both_paths} scenario(s) in both worlds, ${e2e_one_path} in one and ${e2e_no_path} in none, and the receipt carries ${receipt_both}, ${receipt_one} and ${receipt_none}"
 fi
 
 # Where the receipt is, so that a reader of the report can find the trace of

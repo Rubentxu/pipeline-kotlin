@@ -1,5 +1,6 @@
 //@ expect-stdout x is positive
 //@ expect-transcript x is positive
+//@ storage-agnostic
 
 // Two scripted control flows in one scenario: a branch that takes one arm, and
 // a loop whose body must run a known number of times.
@@ -10,6 +11,11 @@
 // echo per iteration would stay green for a body that ran once, or not at
 // all, and a loop that ran three times when it should have run five is
 // exactly the regression the count is there to catch.
+//
+// The capability under trial is the BRANCH and the LOOP, and neither needs a
+// store: which arm runs and how many times the body runs are decided by the
+// script and by what it produced. The directive says so, and the launcher
+// refuses this scenario if it ever needs the store to keep its promise.
 pipeline {
     stages {
         stage("scripted-control-flow") {

@@ -12,6 +12,7 @@
 //@ expect-stdout MISSING_CAPABILITY_ANSWERS_RUNTIME_NOT_AVAILABLE
 //@ expect-stdout OPERATIONS_ADDRESS_THEIR_OWN_BYTES
 //@ expect-stdout FOLDED_IDENTITY_GETS_NO_NEIGHBOUR_BYTES
+//@ storage-agnostic
 
 // The product, asked about itself.
 //
@@ -75,6 +76,18 @@
 // Through the entry point the launcher writes for this scenario, which carries
 // this scenario's own clock: a question that hangs stops with the scenario
 // instead of hanging the suite.
+//
+// WHY THIS CAPABILITY NEEDS NO STORE
+//
+// Every fact checked above is decided by the PRODUCT and by the files it
+// reads: the health report measures the directory it is given, the catalogue
+// is printed by the build that carries it, and the operations are addressed
+// through the control root -- which the launcher writes for BOTH paths, each
+// one in its own directory, so the volatile run reads its own bytes and not
+// the other one's. None of that is the journal: the store records what
+// happened, and this scenario is about what the product says and addresses.
+// The directive says so, and the launcher refuses this scenario if it ever
+// needs the store to keep its promise.
 
 val product = System.getenv("PIPELINEK_E2E_PRODUCT")
     ?: error("PIPELINEK_E2E_PRODUCT is not set: this scenario must run under examples/run.sh")

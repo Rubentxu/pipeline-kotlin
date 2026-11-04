@@ -1,3 +1,5 @@
+//@ storage-agnostic
+
 // The subject is the SIDE-EFFECT contract of `core-utils.findFiles`. The step is
 // declared `Effect.READ_ONLY` and returns a typed value the DSL does not
 // expose, so the guarantee the harness can observe is "what files survived the
@@ -18,6 +20,11 @@
 // the zero-match case (`*.nope`) which is the loosest match a finder can
 // face: a step that decided "nothing matched, I will tidy up" would slip
 // past a glob selector and not past a tree-integrity hash.
+//
+// The capability under trial is the TREE, and a tree needs no store: which
+// files survived is decided by the bytes on disk. The directive says so, and
+// the launcher refuses this scenario if it ever needs the store to keep its
+// promise.
 //
 // The strong guarantee -- "this glob enumerates exactly the files it should" --
 // remains covered where the typed output IS observable: the unit test that

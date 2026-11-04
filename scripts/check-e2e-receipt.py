@@ -294,6 +294,14 @@ def validate(document: object) -> list[str]:
     # thing fails for a reason the reader cannot see.
     checks = executions = runs_count = steps = 0
     verdicts = {"ok": 0, "fail": 0, "blocked": 0, "none": 0}
+    # The census of the WORLDS, counted from the rows.
+    #
+    # It is counted here, from the per-scenario facts, and compared with the
+    # totals the launcher published: the launcher counted the census while the
+    # scenarios ran, and the receipt carries its answer. Two counts of one
+    # fact, compared, is a check; two counts that are never compared are a
+    # number nobody can trust.
+    worlds_census = {"both": 0, "one": 0, "none": 0}
     names: list[str] = []
     for row in scenarios:
         if not isinstance(row, dict):
@@ -313,6 +321,24 @@ def validate(document: object) -> list[str]:
         steps += as_int(row.get("steps"))
         declared = as_int(row.get("executions"))
         executions += declared
+        # A WORLD is a place the scenario was checked in: with a store, or
+        # without one. It is not an execution -- the durable replay is a second
+        # execution in the SAME world -- so the two are counted apart, and a
+        # scenario cannot be checked in more worlds than it made executions.
+        worlds = as_int(row.get("worlds"))
+        if worlds < 0:
+            problems.append(f"the scenario {name!r} declares {worlds} world(s)")
+        elif worlds > declared:
+            problems.append(
+                f"the scenario {name!r} declares {worlds} world(s) and {declared} execution(s):"
+                " a world needs an execution"
+            )
+        if worlds >= 2:
+            worlds_census["both"] += 1
+        elif worlds == 1:
+            worlds_census["one"] += 1
+        else:
+            worlds_census["none"] += 1
         runs = row.get("runs")
         if not isinstance(runs, list):
             problems.append(f"the scenario {name!r} carries no runs list")
@@ -356,6 +382,15 @@ def validate(document: object) -> list[str]:
         problems.append(
             f"the totals say {as_int(totals.get('executions'))} execution(s) and the scenarios declare {executions}"
         )
+    for key, counted in (
+        ("worldsBoth", worlds_census["both"]),
+        ("worldsOne", worlds_census["one"]),
+        ("worldsNone", worlds_census["none"]),
+    ):
+        if as_int(totals.get(key)) != counted:
+            problems.append(
+                f"the totals say {as_int(totals.get(key))} {key} and the scenarios declare {counted}"
+            )
     if as_int(totals.get("runs")) != runs_count:
         problems.append(
             f"the totals say {as_int(totals.get('runs'))} run(s) and the rows carry {runs_count}"

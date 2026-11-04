@@ -1,5 +1,6 @@
 //@ expect-stdout step-A
 //@ expect-outcome unstable
+//@ storage-agnostic
 
 // THE GUARANTEE UNDER TRIAL
 //
@@ -16,6 +17,11 @@
 //    caught failure and a clean run both end the process well. The conclusion
 //    the run PUBLISHED is what the harness compares, and the caught failure is
 //    the only thing that makes this run unstable.
+//
+// The capability under trial is the WORKSPACE, and a workspace needs no store:
+// the directory the step moved to and the files that were deleted are decided
+// by the filesystem. The directive says so, and the launcher refuses this
+// scenario if it ever needs the store to keep its promise.
 pipeline {
     stages {
         stage("workspace-control") {

@@ -1,3 +1,5 @@
+//@ storage-agnostic
+
 // The utilities plugin, end to end.
 //
 // The typed codec steps, the tree enumeration and the archive round trip are
@@ -5,6 +7,11 @@
 // goes through the workspace filesystem, and each stage resolves to its own
 // directory, so a producer in one stage and its consumer in another would be
 // reading two different trees.
+//
+// The capability under trial is the CODEC and the TREE, and neither needs a
+// store: what a document reads back as and which files survived are decided
+// by the bytes on disk. The directive says so, and the launcher refuses this
+// scenario if it ever needs the store to keep its promise.
 //
 // The guarantees, in the order they are earned:
 //

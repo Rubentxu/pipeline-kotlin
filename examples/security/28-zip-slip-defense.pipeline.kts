@@ -1,5 +1,6 @@
 //@ expect-exit 1
 //@ expect-stderr Zip Slip
+//@ storage-agnostic
 // Utilities OFFICIAL_PLUGIN live fixture.
 // End-to-end defence-in-depth proof of containment on
 // BOTH sides of the zip chain. The fixture:
@@ -16,6 +17,12 @@
 // Note: this fixture intentionally triggers a typed failure. The launcher
 // expects it: the run must fail, and it must fail with that specific
 // refusal.
+//
+// The capability under trial is the CONTAINMENT of the extraction, and
+// containment needs no store: what the handler decided about the entry name
+// is decided by the bytes of the archive, and the refusal is the witness.
+// The directive says so, and the launcher refuses this scenario if it ever
+// needs the store to keep its promise.
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.zipFiles
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.unzip
 

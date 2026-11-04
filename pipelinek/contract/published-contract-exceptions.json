@@ -918,12 +918,13 @@
         "0.62.0",
         "0.75.0",
         "0.90.0",
-        "0.91.0"
+        "0.91.0",
+        "0.92.0"
       ],
       "authorized_removals": [
         "dev/rubentxu/pipeline/v2/domain/step/StepCapabilityAccess#get-b1cZ3xE(Ljava/lang/String;)Ljava/lang/Object;"
       ],
-      "evidence": "Measured on the published SDK artifacts of the releases v0.56.0, v0.61.0, v0.62.0, v0.75.0, v0.90.0 and v0.91.0 - each sdk.zip verified against the SHA256SUMS of its own release, and each pipeline-domain jar inspected with javap: every one of them publishes StepCapabilityAccess.get(String):Object, and the candidate's published surface does not. The same signature is present in the locally resolved pipeline-domain artifacts 0.47.0, 0.48.0 and 0.57.0. The releases of the same train that exist only as candidates carry a version suffix of their own and were not measured; the approval covers the stable versions it names, which are the ones a consumer resolves."
+      "evidence": "Measured on the published SDK artifacts of the releases v0.56.0, v0.61.0, v0.62.0, v0.75.0, v0.90.0 and v0.91.0 - each sdk.zip verified against the SHA256SUMS of its own release, and each pipeline-domain jar inspected with javap: every one of them publishes StepCapabilityAccess.get(String):Object, and the candidate's published surface does not. The same signature is present in the locally resolved pipeline-domain artifacts 0.47.0, 0.48.0 and 0.57.0. The releases of the same train that exist only as candidates carry a version suffix of their own and were not measured; the approval covers the stable versions it names, which are the ones a consumer resolves. ADDED FOR 0.92.0: the jar the 0.92.0 distribution shipped - lib/pipeline-domain-0.92.0.jar, taken from pipelinek-0.92.0.zip and verified against the SHA256SUMS that release published (b92d3a3e825977c27c25495b361b3301b1137aaa3a4c8562afb5d2444da7fb5a) - still carries the erased one-argument accessor, so 0.92.0 is a version whose consumers this removal reaches."
     },
     {
       "module": "pipeline-domain",
@@ -985,7 +986,8 @@
         "0.88.0",
         "0.89.0",
         "0.90.0",
-        "0.91.0"
+        "0.91.0",
+        "0.92.0"
       ],
       "authorized_removals": [
         "dev/rubentxu/pipeline/v2/domain/step/junit/FailingCase",
@@ -1003,7 +1005,7 @@
         "dev/rubentxu/pipeline/v2/domain/step/junit/JunitSuiteSummary",
         "dev/rubentxu/pipeline/v2/domain/step/junit/JunitTotals"
       ],
-      "evidence": "Measured on the trees of the release tags v0.40.0, v0.43.0, v0.44.0, v0.44.1, v0.45.0, v0.46.0, v0.47.0, v0.48.0, v0.51.0, v0.56.0, v0.61.0, v0.62.0 and v0.91.0: each of them carries the eight source files of the retired package (the pre-restructure trees carry them under v2/pipeline-domain/...). Measured on the locally resolved published artifacts pipeline-domain 0.40.0-dev.2, 0.47.0, 0.48.0, 0.57.0 and 0.62.0: their class files carry dev/rubentxu/pipeline/v2/domain/step/junit/* (138 references each) and no other published artifact under ~/.m2/repository/dev references the package at all. DERIVED, not inspected: the reader was added at be079ae52f2cf8479ad8f6925a4e5832eeff1bed (2026-09-20) and 'git log --diff-filter=D' over v0.40.0..HEAD finds no commit that removed it, so every release built from that window carries it, including the versions of the window that this ledger already enumerates as published (0.63.0..0.90.0, see the entry for b4931a66b). The candidate's published surface does not: :pipeline-domain:apiDump regenerated the baseline as the previous one minus one contiguous block of 162 lines and nothing else, and :pipeline-domain:apiCheck reads it green."
+      "evidence": "Measured on the trees of the release tags v0.40.0, v0.43.0, v0.44.0, v0.44.1, v0.45.0, v0.46.0, v0.47.0, v0.48.0, v0.51.0, v0.56.0, v0.61.0, v0.62.0 and v0.91.0: each of them carries the eight source files of the retired package (the pre-restructure trees carry them under v2/pipeline-domain/...). Measured on the locally resolved published artifacts pipeline-domain 0.40.0-dev.2, 0.47.0, 0.48.0, 0.57.0 and 0.62.0: their class files carry dev/rubentxu/pipeline/v2/domain/step/junit/* (138 references each) and no other published artifact under ~/.m2/repository/dev references the package at all. DERIVED, not inspected: the reader was added at be079ae52f2cf8479ad8f6925a4e5832eeff1bed (2026-09-20) and 'git log --diff-filter=D' over v0.40.0..HEAD finds no commit that removed it, so every release built from that window carries it, including the versions of the window that this ledger already enumerates as published (0.63.0..0.90.0, see the entry for b4931a66b). The candidate's published surface does not: :pipeline-domain:apiDump regenerated the baseline as the previous one minus one contiguous block of 162 lines and nothing else, and :pipeline-domain:apiCheck reads it green. ADDED FOR 0.92.0: the jar the 0.92.0 distribution shipped - lib/pipeline-domain-0.92.0.jar, taken from pipelinek-0.92.0.zip and verified against the SHA256SUMS that release published (b92d3a3e825977c27c25495b361b3301b1137aaa3a4c8562afb5d2444da7fb5a) - still carries the fifteen class files of this package, so 0.92.0 is a version whose consumers this removal reaches."
     },
     {
       "module": "pipeline-credentials-api",
@@ -1030,6 +1032,44 @@
         "dev/rubentxu/pipeline/v2/credentials/api/CredentialScope#<init>(Ldev/rubentxu/pipeline/v2/credentials/api/SecretStore;Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/EventSink;Ldev/rubentxu/pipeline/v2/domain/durable/Clock;Ljava/lang/String;)V"
       ],
       "evidence": "Measured on the JAR the previous release's distribution shipped: lib/pipeline-credentials-api-0.92.0.jar, taken from pipelinek-0.92.0.zip and verified against the SHA256SUMS that release published (b92d3a3e825977c27c25495b361b3301b1137aaa3a4c8562afb5d2444da7fb5a). The published constructor of CredentialScope takes (SecretStore, List, EventSink, Clock, String) and the candidate's does not; the ABI door reads both sides with the same engine and reports this exact break with the key named in this entry. A consumer compiled against that jar and linked against the candidate fails with NoSuchMethodError on the erased constructor descriptor."
+    },
+    {
+      "module": "pipeline-events",
+      "sha": "0f13ccf90216d42cbe4c6a99089ebe3dccd5a29a",
+      "surface": "dev.rubentxu.pipeline.v2.events.CompilationStarted and dev.rubentxu.pipeline.v2.events.CompilationFinished",
+      "change": "TWO published data classes gained one property each, and the two are not the same fact. (1) CompilationStarted: added property `origin: ScriptOrigin`; the four-argument <init>(String, String, long, Instant), copy and copy$default all DISAPPEAR from the dump, and component5/getOrigin plus the five-argument forms are added. (2) CompilationFinished: added property `origin: ScriptOrigin`; the six-argument <init>(String, String, long, Instant, CacheKey, List), copy and copy$default all DISAPPEAR from the dump, and component7/getOrigin plus the seven-argument forms are added. The new property is declared WITHOUT a default value, so the erased descriptors are gone from the published ABI rather than merely superseded",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "BINARY, in both parts. An artifact compiled against 0.92.0 that constructs or copies a CompilationStarted or a CompilationFinished receives a NoSuchMethodError. A consumer that REBUILDS against this build needs a source edit, and that is the point of the design: the property has NO default, so every construction site has to say which origin it means.",
+        "",
+        "WHO WAS REACHABLE, measured and not assumed. The only PRODUCTION construction of either event in the whole tree is the compiler host, at three sites of one file; every other construction is a test. The readers - the console renderer, the run receipt, the run cost profile, the telemetry projection, the redaction sink and the envelope projector - are all modules of this repository. So a consumer that CONSTRUCTS these events is the only one the break reaches, and there is none outside this repository.",
+        "",
+        "WHY THE PROPERTY EXISTS, stated as the defect it removes: the product keeps a store of compiled scripts, so a run may not compile anything at all, and the transcript of that run said a compilation happened. The console could not say whether the compiler ran or the cache served the artifact, and a reader of a run receipt could not price the run. The origin is the fact that was missing, and it is now on the event plane rather than inferred.",
+        "",
+        "WHY TWO EVENTS AND NOT ONE, which is why the two properties are not interchangeable: CompilationStarted.origin is the DECISION, taken when the phase opens, because the store is consulted before anything is compiled. CompilationFinished.origin is the OUTCOME, because a stored artifact can load and still turn out to be unevaluable, which makes the run compile after all. The two differ in exactly that case, and the consumer that needs to know whether the cache served the run reads the second one. Publishing one property for both would have made the console answer about the decision while the receipt answered about the outcome, with the same name on both.",
+        "",
+        "THE ALTERNATIVE CONSIDERED AND REJECTED: give the property a default value. It was rejected twice over. A default of COMPILED would make every record written before this SHA claim that a compiler ran - the fabrication this change removes, one layer down. And a default of UNKNOWN would buy SOURCE compatibility and NO binary compatibility, because Kotlin emits the full constructor plus a synthetic one taking a DefaultConstructorMarker and never the old descriptor: the erased constructor would still be gone, so the default would have added a second spelling of the same absence without keeping the one that consumers had.",
+        "",
+        "THE VOCABULARY IS THREE-VALUED, and that is the reason the wire stayed frozen: a row written before this SHA carries no word for the origin, and it decodes to UNKNOWN, which is the truth about that row. It is never read as COMPILED. The writer emits the token and the decoder reads it back, and a spelling outside the vocabulary is refused rather than defaulted.",
+        "",
+        "WHAT DID NOT CHANGE, measured on the regenerated dump: the difference against the previous baseline is the two constructors, their copy and copy$default descriptors, and the added componentN/getOrigin accessors. The ScriptOrigin type itself is a NEW published type in pipeline-scripting-api, which is purely additive there, and the events module already depended on that module - CacheKey travels in CompilationFinished - so the dependency direction did not change.",
+        "",
+        "Nothing about the DURABLE WIRE changed shape: the payload is a JSON TEXT column, so the new field needs no migration, and a row written by a build that predates this SHA keeps decoding to the same typed values with an origin of UNKNOWN."
+      ],
+      "removal_boundary": "n/a - the four-argument CompilationStarted <init>, copy and copy$default, and the six-argument CompilationFinished <init>, copy and copy$default, are removed by THIS entry and are not coming back; the five- and seven-argument forms are the contract from this build onward. The origin property may not return with a default that names a compiler that did not run, and the two events may not collapse into one origin: the decision and the outcome are different facts and only the outcome answers whether the cache served the run",
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.92.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/events/CompilationFinished#copy$default(Ldev/rubentxu/pipeline/v2/events/CompilationFinished;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/CompilationFinished;",
+        "dev/rubentxu/pipeline/v2/events/CompilationFinished#copy(Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/events/CompilationFinished;",
+        "dev/rubentxu/pipeline/v2/events/CompilationFinished#<init>(Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/util/List;)V",
+        "dev/rubentxu/pipeline/v2/events/CompilationStarted#copy$default(Ldev/rubentxu/pipeline/v2/events/CompilationStarted;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/CompilationStarted;",
+        "dev/rubentxu/pipeline/v2/events/CompilationStarted#copy(Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)Ldev/rubentxu/pipeline/v2/events/CompilationStarted;",
+        "dev/rubentxu/pipeline/v2/events/CompilationStarted#<init>(Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)V"
+      ],
+      "evidence": "Measured on the JAR the previous release's distribution shipped: lib/pipeline-events-0.92.0.jar, taken from pipelinek-0.92.0.zip and verified against the SHA256SUMS that release published (b92d3a3e825977c27c25495b361b3301b1137aaa3a4c8562afb5d2444da7fb5a). That jar publishes the four-argument CompilationStarted constructor and the six-argument CompilationFinished constructor, and it carries no ScriptOrigin at all; the candidate's published surface publishes the five- and seven-argument forms and does publish the type. The ABI door reads both sides with the same engine and reports these six removals with the keys named in this entry. A consumer compiled against that jar and linked against the candidate fails with NoSuchMethodError on the erased constructor descriptors."
     }
   ]
 }

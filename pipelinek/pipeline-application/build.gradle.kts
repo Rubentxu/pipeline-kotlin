@@ -359,3 +359,66 @@ tasks.test {
 // (`:pipeline-application:installDist`, stage 2) and then runs the unit tests, the integration
 // tests and the mutants against it. That path exercises the shipped artifact, so it certifies
 // behaviour rather than asserting a tag on an empty source set.
+
+// The launcher of the distribution.
+//
+// The `application` plugin generates a start script that knows how to find a
+// JVM and how to spell a classpath, and nothing else. The product needs to
+// know three more things before it starts, and the only place that can know
+// them is the place that is about to run the JVM:
+//
+//   * where the distribution is installed, so that what the product keeps
+//     beside its jars stays beside its jars when the installation moves;
+//   * which JVM is running it, because a shared class archive is only valid
+//     for the JVM that wrote it;
+//   * whether the jars on disk are still the jars the archive was built from,
+//     because the JVM does NOT check that, and an archive written against
+//     yesterday's jars runs yesterday's classes.
+//
+// So the distribution ships the product's own launcher, and the generated one
+// is replaced by it. The three values the launcher needs that are facts about
+// the BUILD — the main class, the default JVM options and the classpath — are
+// written into it from the same source the application plugin uses, so the
+// distribution keeps ONE authority for what it is made of.
+//
+// It is the START SCRIPT TASK that writes it, and that is not a detail: the
+// distribution — the ZIP that is downloaded and the directory that is
+// installed — is assembled from what that task writes, so a launcher written
+// anywhere else would leave the distribution shipping the generated script.
+val launcherTemplate = layout.projectDirectory.file("launcher/pipelinek")
+
+tasks.named<org.gradle.jvm.application.tasks.CreateStartScripts>("startScripts") {
+    // The template IS the script this task writes, so it is one of its inputs:
+    // a launcher that changed and a build that did not run would ship the
+    // launcher of the last build.
+    inputs.file(launcherTemplate)
+    unixStartScriptGenerator = org.gradle.jvm.application.scripts.ScriptGenerator { details, writer ->
+        // The classpath is the one the application plugin computed for its own
+        // start script, in the same order: the product reads it from
+        // `java.class.path` to find its bundled plugins, and a different order
+        // would be a different distribution.
+        // The entries are relative to the home of the distribution, and the
+        // launcher resolves them against ITS OWN home, so an installation that
+        // is moved keeps working and a launcher started from another directory
+        // does not look for the product in the current one.
+        val classpath = details.classpath.joinToString(File.pathSeparator) {
+            "\$APP_HOME/lib/" + File(it).name
+        }
+        check(classpath.isNotEmpty()) {
+            "the distribution's classpath is empty, so the launcher would start the product " +
+                "with nothing to run: refusing to write a launcher that cannot work"
+        }
+        val rendered = launcherTemplate.asFile.readText()
+            .replace("@MAIN_CLASS@", details.mainClassName)
+            .replace("@DEFAULT_JVM_OPTS@", details.defaultJvmOpts.joinToString(" "))
+            .replace("@CLASSPATH@", classpath)
+        // A launcher that still names a placeholder starts nothing, and the
+        // distribution would ship it as if it worked.
+        val placeholder = Regex("@[A-Z_]+@").find(rendered)
+        check(placeholder == null) {
+            "the rendered launcher still holds the placeholder ${placeholder?.value}: " +
+                "refusing to write a launcher that cannot start the product"
+        }
+        writer.write(rendered)
+    }
+}

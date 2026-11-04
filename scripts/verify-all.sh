@@ -54,15 +54,17 @@
 # scenarios that run are the same, so the verdict is still the full gate's
 # verdict and the wall clock is still compared with the budget.
 #   scripts/verify-all.sh --level cambio
-# `--level` is NOT a filter either: it does not change WHAT the run measures.
-# It says what KIND of run this is, and the verdict says it in every line:
-# `PASS sha=… level=cambio elapsed=…`. A verdict that does not know whether it
-# is a change or a release cannot be quoted as either, and the reader would
-# have to guess. The default is `certificacion`, because that is what this gate
-# has always been: a gate that changes its meaning without being told is a
-# gate whose verdict nobody can quote. The three levels run the SAME work
-# today; what the change level leaves out arrives with the slice that moves
-# the checks, and the report says so while it happens.
+# `--level` says what KIND of run this is, and the verdict says it in every
+# line: `PASS sha=… level=cambio elapsed=…`. A verdict that does not know
+# whether it is a change or a release cannot be quoted as either, and the
+# reader would have to guess. The default is `certificacion`, because that is
+# what this gate has always been: a gate that changes its meaning without
+# being told is a gate whose verdict nobody can quote.
+# The level MOVES work. The FIRST thing it moves is the preparation: only the
+# certification deletes the build outputs and switches the build cache off,
+# because only the certification measures a build from nothing. The change and
+# milestone levels start from the outputs that are already on disk, and their
+# clock is NOT the clock of a certification.
 # The gate has four stages, and a stage number that names a fifth is a typo: a
 # typo that selected nothing would run nothing and print a clean verdict, which
 # is the same silent green this script refuses everywhere else.
@@ -128,10 +130,14 @@ overlap_probe_on=0
 #   milestone      the run that measures a milestone: the clock of the gate,
 #                  measured more than once.
 #
-# The level is a DECLARATION about the run, not a filter: it does not change
-# what the run measures. It changes what the verdict MEANS, and it says so in
-# every verdict line, because a verdict that does not know whether it is a
-# change or a release is a verdict nobody can quote.
+# The level says what KIND of run this is, and the verdict says it in every
+# line, because a verdict that does not know whether it is a change or a
+# release is a verdict nobody can quote.
+#
+# The level also MOVES work, and the first thing it moves is the
+# PREPARATION: only the certification deletes the build outputs and switches
+# the build cache off, because only the certification measures a build from
+# nothing. The other two levels start from the tree that is already there.
 #
 # The default is `certificacion`, because that is what this gate has always
 # been. A gate that changes its meaning without being told is a gate whose
@@ -382,6 +388,31 @@ case "$level" in
         exit 2 ;;
 esac
 
+# The run that MEASURES the gate: the full gate, at the certification level.
+#
+# This one flag is what the preparation and the build cache ask, and both ask
+# the same question: "does this run have to measure a build from nothing?".
+# A full run at another level does NOT: it answers a question about a change,
+# and a change is measured against the tree that is already there.
+#
+# The SUBSET part of the flag is the one that was already there: a subset run
+# has never quoted a wall clock, so it has never paid for a clean. Adding the
+# level does not change any subset run: a subset at the certification level
+# still skips the clean, exactly as it did before.
+#
+# It is computed ONCE, HERE, and not in the two places that need it: two
+# places that asked the same question separately would one day answer it
+# differently, and the difference would be a run that cleaned and did not
+# measure, or one that measured what it did not clean.
+#
+# HERE and not above, because the level is only final once the arguments have
+# been read and validated. A flag computed before the arguments arrive is a
+# flag that answers about the DEFAULT while the run does something else.
+full_certification=0
+if [[ "$subset" == 0 && "$level" == "certificacion" ]]; then
+    full_certification=1
+fi
+
 # The gate has four stages. A number that names a fifth is a typo, and a typo
 # that selected nothing would run nothing and print a clean verdict: the same
 # silent green this script refuses everywhere else. The check is here, before
@@ -422,20 +453,26 @@ fi
 # a no-op, so the second run of the day measured the cache instead of the work,
 # and its wall clock was a cache hit dressed as a measurement.
 #
-# So the full gate runs Gradle with `--no-build-cache` (measured to override
-# `org.gradle.caching=true` from pipelinek/gradle.properties: with the
-# property alone the task is served from the cache and the report files it
+# So the CERTIFICATION runs Gradle with `--no-build-cache` (measured to
+# override `org.gradle.caching=true` from pipelinek/gradle.properties: with
+# the property alone the task is served from the cache and the report files it
 # wrote come back unchanged; with the flag the task EXECUTES). The real cost
 # of this gate is the cost of building and testing this repository, not the
 # hundred-odd seconds a cache hit makes it look like, and only the former is a
 # number AGENTS.md's 900 s budget can be compared against.
 #
-# A SUBSET run keeps the cache. The inner loop exists to be cheap, and a
-# cache hit there is the cache doing its job; what the subset owes the reader
-# is an HONEST count, which the census below gives it by reading each report's
+# A run at another level keeps the cache, for the same reason a SUBSET run
+# keeps it: the inner loop exists to be cheap, and a cache hit there is the
+# cache doing its job. The difference is in what the run OWES the reader, and
+# the census below gives both of them an HONEST count by reading each report's
 # own stamp instead of the filesystem's.
+#
+# The flag follows the SAME question the preparation asks, so it is the same
+# flag: `full_certification`. A certification without `--no-build-cache` would
+# measure the cache, and a change run with it would pay for a guarantee it is
+# not quoting.
 gradle_cache_args=()
-if [[ "$subset" == 0 ]]; then
+if [[ "$full_certification" == 1 ]]; then
     gradle_cache_args=(--no-build-cache)
 fi
 
@@ -1064,16 +1101,17 @@ print_host_description() {
 # What the level of this run MEANS, said out loud, next to the numbers.
 #
 # A level that only appears as a field in the verdict line is a label the
-# reader has to interpret alone. The gate knows two things about its own
-# level that the reader cannot know: what the level promises, and what it does
-# NOT do yet. Both travel with the run, because the day the change level
-# starts paying less, the reader has to be able to see that the difference
-# came from the level and not from a quieter host.
+# reader has to interpret alone. The gate knows things about its own level
+# that the reader cannot know: what the level promises, what it does NOT do,
+# and what its clock means. All of it travels with the run, because the day
+# the change level pays less, the reader has to be able to see that the
+# difference came from the level and not from a quieter host.
 #
-# TODAY the three levels run the SAME work. That is stated here, in the report
-# of every run, so nobody reads a `level=cambio` verdict as a cheap run: it is
-# not one yet. What the change level leaves out arrives with the slice that
-# moves the checks, and the day it arrives this text changes with it.
+# The clock is the part that is easiest to misread. A change run starts from
+# the outputs that are already on disk, so its time is the time of the work
+# the change invalidated, NOT the time of a build from nothing. Comparing it
+# with the certification's clock would compare two different things, and the
+# report says so here, in the report of every run at that level.
 print_level_meaning() {
     printf '    the level of this run: %s\n' "$level"
     case "$level" in
@@ -1081,23 +1119,28 @@ print_level_meaning() {
             echo "      this run is the CERTIFICATION: its verdict is the one a release"
             echo "      can be quoted against, and its clock is compared with the"
             echo "      ${BUDGET_SECONDS}s budget of AGENTS.md section 4."
+            echo "      it deleted the build outputs and switched the build cache off,"
+            echo "      so it measured a build from nothing."
             ;;
         cambio)
             echo "      this run is a CHANGE run: it is not a certification, and its"
             echo "      verdict is not the one a release can be quoted against."
-            echo "      a FULL run at this level still has to fit inside the"
-            echo "      ${BUDGET_SECONDS}s budget, because today the three levels run the"
-            echo "      SAME work: what the change level leaves out arrives with the"
-            echo "      slice that moves the checks."
+            echo "      it did NOT delete the build outputs and it kept the build cache"
+            echo "      on, so it measured the work this change invalidated, starting"
+            echo "      from the outputs already on disk."
+            echo "      its clock is still held to the ${BUDGET_SECONDS}s ceiling, but it"
+            echo "      is NOT the clock of a certification and must not be quoted as the"
+            echo "      cost of this gate."
             ;;
         milestone)
             echo "      this run is a MILESTONE run: it is not a certification, and its"
             echo "      verdict is not the one a release can be quoted against."
-            echo "      a FULL run at this level still has to fit inside the"
-            echo "      ${BUDGET_SECONDS}s budget, because today the three levels run the"
-            echo "      SAME work: what the milestone level adds (the repeated runs that"
-            echo "      measure the clock, and the calibration) arrives with the slice"
-            echo "      that moves the checks."
+            echo "      it did NOT delete the build outputs and it kept the build cache"
+            echo "      on, so it measured the work that was invalidated, starting from"
+            echo "      the outputs already on disk."
+            echo "      its clock is still held to the ${BUDGET_SECONDS}s ceiling, but it"
+            echo "      is NOT the clock of a certification and must not be quoted as the"
+            echo "      cost of this gate."
             ;;
     esac
 }
@@ -1647,6 +1690,15 @@ residue_suffix() {
 # also match a package directory named `build` that holds tracked sources.
 # A subset run does not clean: it is the inner loop, it never quotes a wall
 # clock, and paying a full rebuild for it would defeat its purpose.
+# And a run at another LEVEL does not clean either, and that is the first
+# thing the level moves. The certification is the level that measures a build
+# from nothing, so the certification is the level that pays for it. A change
+# run answers a question about a change, and a change is measured against the
+# tree that is already there: the outputs of the last build are on disk, and
+# the work that has to be redone is the work the change actually invalidated.
+# What that costs is what the change level saves, and what it gives up is the
+# guarantee "this tree compiles from nothing" -- which is exactly the
+# guarantee that belongs to a release, not to a commit.
 # The cycle is deleted when the run ends, whatever the verdict.
 #
 # It used to be kept on a failing run, because that is when somebody needs to
@@ -1748,7 +1800,7 @@ stop_this_run_daemon() {
 trap cleanup_logs EXIT
 
 prep_started_ms=$(now_ms)
-if [[ "$subset" == 0 ]]; then
+if [[ "$full_certification" == 1 ]]; then
     log "preparation  clean build outputs"
     # Gradle runs on its daemon. `--no-daemon` made every invocation start a
     # JVM that verified nothing of the product -- measured at 12,94 s for
@@ -1759,8 +1811,16 @@ if [[ "$subset" == 0 ]]; then
     ./pipelinek/gradlew -p pipelinek "${gradle_cache_args[@]}" clean > "$log_dir/clean.log" 2>&1 \
         || { tail -40 "$log_dir/clean.log" >&2; fail "preparation (the tail of the clean log is above)"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
-else
+elif [[ "$subset" == 1 ]]; then
     log "preparation  SKIPPED (a subset run does not quote a wall clock)"
+else
+    # The preparation is skipped BY THE LEVEL, and it says so with the reason.
+    # A silent skip would be read as a preparation that cost nothing and did
+    # nothing, when what happened is that this run started from the outputs
+    # that were already on disk. That difference is the whole saving of the
+    # change level, and it is also the difference between a clock that can be
+    # compared with the budget and one that cannot.
+    log "preparation  SKIPPED (level=$level does not delete the build outputs: the certification is the level that measures a build from nothing)"
 fi
 prep_wall_ms=$(( $(now_ms) - prep_started_ms ))
 
@@ -2678,11 +2738,26 @@ else
             # the old wording asserted a cause ("up to date") that the gate had
             # no way to observe. A report restored from the cache is a different
             # fact with the same consequence, and only one of the two is true.
+            #
+            # The ADVICE depends on the level, because the two levels are in
+            # different states and the way out is different. The certification
+            # deletes the build outputs, so "remove the test outputs and rerun"
+            # is exactly what it does. A change level does NOT delete them, so
+            # that advice would send the reader to a door that does not exist:
+            # there, the reason nothing ran is that there was nothing to run,
+            # because the change invalidated nothing.
             echo "verify-all: no report was rewritten, so this run executed no test:" >&2
             echo "the test graph was served without running ($xml_cached report(s) restored" >&2
-            echo "from the build cache, $xml_disk already on disk). That is NOT a" >&2
-            echo "measurement of the gate's cost; remove the test outputs and rerun" >&2
-            echo "before quoting a wall clock." >&2
+            echo "from the build cache, $xml_disk already on disk)." >&2
+            if [[ "$level" == "certificacion" ]]; then
+                echo "That is NOT a measurement of the gate's cost; remove the test" >&2
+                echo "outputs and rerun before quoting a wall clock." >&2
+            else
+                echo "This run is at level '$level', and that level does NOT delete the" >&2
+                echo "build outputs: it measures the work a change invalidated, and" >&2
+                echo "there was none. Run it after a change, or run the certification," >&2
+                echo "which measures a build from nothing." >&2
+            fi
             fail "stage 2: no test task was executed by this run"
         fi
     fi

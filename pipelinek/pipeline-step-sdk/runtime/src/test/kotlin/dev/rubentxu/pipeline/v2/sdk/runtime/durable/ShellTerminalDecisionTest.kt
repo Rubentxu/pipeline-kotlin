@@ -35,12 +35,13 @@ import java.nio.file.Path
  * instrument that can fail is a call to it. A test that launched a real child to make it expire or
  * to fail before the launch would cost more, prove less, and add a process and a clock that a unit
  * test may not use. The facts that only appear when a child really runs — whether the exit code
- * reaches the terminal, whether the reconciler agrees — stay covered by the scenarios.
+ * reaches the terminal, whether the reconciler agrees with it — are not observed by any test in
+ * this repository: they are a declared gap.
  *
  * **What this does not freeze.** That the executor gathers the right facts, that the reconciler
  * reads the same mark, and that a child that expires really leaves the mark behind: those are
- * observed where they happen, not here. What is checked here is the verdict those facts feed,
- * which is the part that can be wrong while every observation succeeds.
+ * the imperative half, and this file does not observe them. What is checked here is the verdict
+ * those facts feed, which is the part that can be wrong while the imperative half succeeds.
  */
 class ShellTerminalDecisionTest {
 

@@ -100,8 +100,8 @@ interface RuntimeIntrospectionPort {
     companion object {
         /**
          * Upper bound on a single `inspect` call's wall time.
-         * Implementation default, NOT a contract surface. Documented so the UAT
-         * Matrix can pin it; the implementation MUST honour it. The methods
+         * Implementation default, NOT a contract surface. Documented so the test
+         * matrix can pin it; the implementation MUST honour it. The methods
          * `runStructure` and `inspectOperation` inherit the same budget by
          * construction.
 */
@@ -109,7 +109,7 @@ interface RuntimeIntrospectionPort {
 
         /**
          * Upper bound on a single `runStructure` call's wall time.
-         * Documented so the UAT matrix can pin it; the implementation
+         * Documented so the test matrix can pin it; the implementation
          * MUST honour it. The budget for the bounded-scan / paginated read
          * path is named the same way `DEFAULT_INSPECT_TIMEOUT_MS` names the budget
          * for the single-page inspect path. The value is 10_000L

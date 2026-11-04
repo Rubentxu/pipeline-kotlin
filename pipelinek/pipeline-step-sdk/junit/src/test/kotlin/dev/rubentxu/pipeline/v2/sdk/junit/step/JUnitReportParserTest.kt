@@ -27,9 +27,9 @@ import java.io.ByteArrayInputStream
  * outright, and an entity resolver that refuses every request — and this file
  * is what keeps that hardening from being an intention.
  *
- * Nothing else observes this parser. The executable layer runs pipelines, and
- * no scenario in it publishes a JUnit report; the step that calls the parser
- * reads a file, which is not a unit test's business.
+ * Nothing else observes this parser. The step that calls the parser reads a
+ * file, which is not a unit test's business, and no other test in this
+ * repository drives that step.
  */
 class JUnitReportParserTest {
 

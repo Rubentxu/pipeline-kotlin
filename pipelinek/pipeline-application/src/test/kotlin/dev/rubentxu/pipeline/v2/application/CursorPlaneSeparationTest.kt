@@ -21,13 +21,12 @@ import org.junit.jupiter.api.Test
  * las mezclara avanzaría a una posición plausible y equivocada — que es mucho más difícil de
  * detectar que un rechazo.
  *
- * ## Por qué esto NO lo puede observar la capa ejecutable
- * El verbo de consola escribe los bytes en stdout y el motivo del rechazo en stderr, y el
- * lanzador de ejemplos lee el código de salida y, como mucho, una subcadena de stderr. Lo que
- * esa lectura muestra es que el verbo FALLÓ, no de qué plano venía la posición: un token de bytes
- * rechazado y un token de hechos rechazado son exactamente la misma línea y el mismo código. Para
- * distinguir los planos hay que mirar el decodificador y el consumidor, que son donde la mezcla
- * ocurre.
+ * ## Por qué esto NO lo puede observar un test que sólo mire la salida
+ * El verbo de consola escribe los bytes en stdout y el motivo del rechazo en stderr, y un test
+ * que sólo mire el código de salida y, como mucho, una subcadena de stderr ve que el verbo
+ * FALLÓ, no de qué plano venía la posición: un token de bytes rechazado y un token de hechos
+ * rechazado son exactamente la misma línea y el mismo código. Para distinguir los planos hay que
+ * mirar el decodificador y el consumidor, que son donde la mezcla ocurre.
  *
  * ## Los tokens que se cruzan son tokens de verdad
  * Cada fila de este fichero usa el token que el productor real emite, no uno escrito a mano para

@@ -98,7 +98,7 @@ class NarrationAuthorityTest {
 
     private companion object {
         const val RUN_ID = "run-narration-authority"
-        const val SECRET = "e2e-fixture-secret-value"
+        const val SECRET = "fixture-secret-value"
         const val SCRUB_MARKER = "****"
     }
 }

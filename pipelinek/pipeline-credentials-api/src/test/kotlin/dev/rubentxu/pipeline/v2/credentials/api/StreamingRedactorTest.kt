@@ -323,10 +323,10 @@ class StreamingRedactorTest {
 
     private companion object {
         /** Long enough to be maskable: the registry ignores anything shorter. */
-        const val SECRET = "e2e-fixture-secret-value"
+        const val SECRET = "fixture-secret-value"
 
         /** The shortest secret the registry accepts, for the smallest possible window. */
-        const val SHORT_SECRET = "e2efixt1"
+        const val SHORT_SECRET = "fixsecr1"
 
         /** Thirty different bytes, so a byte out of place cannot hide. */
         const val DISTINCT_BYTES = "abcdefghijklmnopqrstuvwxyzABCD"

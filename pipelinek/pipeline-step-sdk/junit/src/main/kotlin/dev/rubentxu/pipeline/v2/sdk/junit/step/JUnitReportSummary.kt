@@ -14,8 +14,8 @@ package dev.rubentxu.pipeline.v2.sdk.junit.step
  * - reportPath: the absolute path of the XML the summary was derived
  *              from. Persists a typed reference for downstream Steps /
  *              reporting (no Map<String, Any?> smuggling).
- * The summary is intentionally narrower than a full XML parse: a UAT
- * caller wants the totals, not every testcase name. Per-testcase
+ * The summary is intentionally narrower than a full XML parse: a caller
+ * wants the totals, not every testcase name. Per-testcase
  * Expansion is an follow-up (the requirement is the totals +
  * a typed reference to the report).
 */

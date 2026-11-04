@@ -11,11 +11,11 @@ package dev.rubentxu.pipeline.v2.domain
  * to write.
  * ## Thread safety
  * Call logging is synchronized, so ONE instance can safely sit behind a
- * [ConcurrentStepDispatcher] receiving parallel wave dispatches — exactly
- * The scenario ("parallel usa dispatcher principal"). Recorded
- * order is dispatch-call order across threads (the wave submits in
- * declaration order; interleaving between concurrent calls is possible
- * by design and is part of what the tests characterise).
+ * [ConcurrentStepDispatcher] receiving parallel wave dispatches. That
+ * property is not observed by any test in this repository: it is a declared
+ * gap. Recorded order is dispatch-call order across threads (the wave submits
+ * in declaration order; interleaving between concurrent calls is possible
+ * by design).
  * ## Configuration
  * Outcomes are configured per step id at construction. A step id without
  * a configured outcome yields [StepOutcome.Success]. A configured

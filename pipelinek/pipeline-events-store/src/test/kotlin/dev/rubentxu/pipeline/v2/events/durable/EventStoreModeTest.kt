@@ -15,13 +15,12 @@ import org.junit.jupiter.api.Test
  *
  * The mapping is the whole of that guarantee, and it is a mapping somebody can break by accident:
  * a follow that "needs to repair something" is exactly the kind of change that would hand the
- * reader a writer's permissions again, and nothing else in the tree would notice. The symptom
- * only shows when a reader and a producer touch the same file at the same time, and the end-to-end
- * scenario cannot make that happen on demand — so the mapping is pinned here, per purpose.
+ * reader a writer's permissions again, and no other test in the tree would notice. The symptom
+ * only shows when a reader and a producer touch the same file at the same time, and no test in
+ * this tree arranges that — so the mapping is pinned here, per purpose.
  *
- * The behavioural half — an observer killed in mid-flight leaves the producer running — is pinned
- * by the end-to-end scenario `examples/events/08-observer-death-does-not-kill-the-producer.pipeline.kts`,
- * which runs the real distribution. Nothing here touches a database.
+ * The behavioural half — an observer killed in mid-flight leaves the producer running — has no
+ * test in this tree: it is a declared gap. Nothing here touches a database.
  */
 class EventStoreModeTest {
 

@@ -77,8 +77,8 @@ import java.nio.file.StandardOpenOption
  * ## Coverage
  * Nothing in this tree drives the agent end to end, so the guarantees
  * above are stated by construction — the FIFO type is checked, the
- * redaction happens in memory before the commit — rather than witnessed
- * by an executable scenario.
+ * redaction happens in memory before the commit — and no test in this
+ * repository witnesses them: they are a declared gap.
 */
 object ObsPc2IngestAgent {
 

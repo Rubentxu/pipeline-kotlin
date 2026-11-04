@@ -33,13 +33,13 @@ import org.junit.jupiter.api.Test
  *
  * The rows also read what the decision PRINTED, because the report is part of the same decision:
  * the same outcome has to be said the same way in both worlds, and the words the operator reads
- * are a published contract that the end-to-end scenarios pin.
+ * are a published contract that the rows below read.
  *
  * ## What this does not freeze
  *
  * WHICH function owns the decision. Nothing in a unit test can see that: the invariant is a
- * property of the source, and the instrument for it is review plus the scenarios that observe
- * both worlds. These rows ask WHAT the decision is, not who calls it.
+ * property of the source, and the instrument for it is review alone, because no test in this
+ * repository observes both worlds. These rows ask WHAT the decision is, not who calls it.
  *
  * These rows are pure: no filesystem, no clock, no process, no network. The only side effect is
  * what the CLI prints, and that is read from the stream the row itself handed to the decision,

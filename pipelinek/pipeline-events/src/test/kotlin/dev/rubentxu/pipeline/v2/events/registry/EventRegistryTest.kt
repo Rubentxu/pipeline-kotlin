@@ -52,9 +52,8 @@ class EventRegistryTest {
     @Test
     fun `a duplicate kind is refused and names the owner that already holds it`() {
         // THE ROW. Replace the `DuplicateKind` return with an overwrite and this
-        // goes red -- and nothing else in the repository would, because no E2E reads this module:
-        // `examples/run.sh` observes the process exit code and at most a stderr substring, and
-        // `stdout` is captured to a file that is never opened.
+        // goes red -- and no other test in the repository would, because nothing else observes the
+        // registry's admission decision.
         val builder = EventRegistry.builder()
         assertEquals(RegistrationOutcome.Registered("acme.thing"), builder.register(definition("acme.thing", emittedBy = "plugin-a")))
 

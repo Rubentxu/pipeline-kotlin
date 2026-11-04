@@ -99,7 +99,7 @@ class RedactingEventSinkSurfacesTest {
     }
 
     private companion object {
-        const val SECRET = "e2e-fixture-secret-value"
+        const val SECRET = "fixture-secret-value"
         const val EVENT_ID = "e-1"
         const val RUN_ID = "run-redaction-census"
         val NOW: Instant = Instant.EPOCH

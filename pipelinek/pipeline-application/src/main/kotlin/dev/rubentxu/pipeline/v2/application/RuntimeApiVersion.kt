@@ -13,15 +13,12 @@ import dev.rubentxu.pipeline.v2.domain.step.SemVer
  * the `version` subcommand already reports this value, and a second reader would be a second
  * answer to "what version is this", free to disagree with the first.
  * ## Why a RESOURCE and not `Package.getImplementationVersion()`
- * The first implementation of this type read `object {}.javaClass.getPackage().implementationVersion`,
- * and that was wrong — not because fail-closed is wrong, but because the source was. That call
- * answers only when the code was loaded from a JAR carrying a manifest. Thirty-four UAT and corpus
- * harnesses launch the CLI as `java -cp <test classpath>`, where this module is a CLASSES
- * DIRECTORY and the answer is `null`; admission then refused every such run with
- * `FATAL - jar manifest is missing Implementation-Version` and exit 3. Measured, not hypothesised:
- * 143 test failures across 29 classes, every one of them a harness that had been passing.
- * The rule the first version got right is kept: a build with no version cannot decide plugin
- * compatibility, and must refuse rather than guess. Only the SOURCE changes. The value now comes
+ * `Package.getImplementationVersion()` answers only when the code was loaded from a JAR carrying a
+ * manifest. The test suites launch the CLI as `java -cp <test classpath>`, where this module is a
+ * CLASSES DIRECTORY and that answer is `null`; admission would refuse every such run with
+ * `FATAL - jar manifest is missing Implementation-Version` and exit 3.
+ * The rule is the one that matters: a build with no version cannot decide plugin
+ * compatibility, and must refuse rather than guess. The value comes
  * from a resource generated from `project.version`, which exists in a jar AND in a classes
  * directory. The jar manifest attribute is still populated for `pipeline-release` and for external
  * inspection, and nothing checks that the two never diverge — a second source that

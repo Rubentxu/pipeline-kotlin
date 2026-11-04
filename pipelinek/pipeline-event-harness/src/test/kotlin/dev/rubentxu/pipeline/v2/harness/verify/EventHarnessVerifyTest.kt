@@ -31,10 +31,11 @@ import java.time.Instant
  * lenient tells an author their pipeline is fine when it is not, and one that is
  * too strict teaches them to ignore the command.
  *
- * Nothing in the executable suite reaches this. The launcher runs a pipeline and
+ * Nothing else in this repository drives it. The launcher runs a pipeline and
  * reads its exit code; the verifier is a second command that needs a journal, a
- * run id and a contract file, and no scenario drives it. So the guarantee had no
- * observer at all — not a unit test, not an example.
+ * run id and a contract file. This file is the observer of the guarantee that a
+ * contract honoured comes back clean, and a contract broken comes back with the
+ * rule it broke.
  *
  * The histories below are built by hand from the same event types the store
  * produces, because the verifier reads the typed event and not a recording of

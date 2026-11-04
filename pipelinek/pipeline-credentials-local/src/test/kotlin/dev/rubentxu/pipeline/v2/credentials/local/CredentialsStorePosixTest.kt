@@ -13,8 +13,8 @@ import java.nio.file.attribute.PosixFilePermission
  * the only thing to test in unit-land is the one function that does NOT touch the
  * filesystem: [assertSupported], which decides whether the runtime can enforce them at all.
  * The file-creating and chmod-applying helpers are deliberately not exercised here: the
- * unit-test rule (AGENTS.md) forbids real filesystem mutations, and the E2E layer is
- * the right place to observe a real file's mode bits.
+ * unit-test rule (AGENTS.md) forbids real filesystem mutations, and no test in this tree
+ * observes a real file's mode bits.
 */
 class CredentialsStorePosixTest {
 

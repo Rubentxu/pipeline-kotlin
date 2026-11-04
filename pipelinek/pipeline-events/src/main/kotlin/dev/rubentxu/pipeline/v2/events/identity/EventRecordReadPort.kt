@@ -30,7 +30,7 @@ import dev.rubentxu.pipeline.v2.events.EventRecordSlice
  * ## Stability
  * This port is `EXPERIMENTAL` for the first cut (capability ID
  * `events.follow.v1` is published only after the contract test suite
- * Is green and the cross-JVM e2e test is green). The
+ * is green). The
  * Implementation may add a typed `RunId` parameter in a future
  * the port signature is additive.
 */

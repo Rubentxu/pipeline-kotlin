@@ -495,7 +495,7 @@ interface ObserveLanes : AutoCloseable {
      * substitute for it. A run that finished writing nothing owns no stream and no frame, so
      * [outputTailsOf] answers an empty list for it — and so it answers the same empty list for a run
      * that has not started. A follower that read termination off that list would hang on
-     * `sh("true")` forever, which is precisely the UAT row.
+     * `sh("true")` forever, which is precisely the row `FollowDecisionTest` pins.
      *
      * It is consulted ONLY when the tail list is empty. A non-empty sealed tail is the output lane's
      * own authority and needs no corroboration; requiring the run to have finished as well would make

@@ -93,9 +93,9 @@ import java.io.PrintStream
  *
  * It cannot see that the verb went on to USE the token it read: every row
  * stops at the refusal, which comes before the store is opened. That the id a
- * verb reads is the id it acts upon is covered by the E2E scenario under
- * `examples/security/`, which seeds credentials through this same command and
- * removes them by the id it was given.
+ * verb reads is the id it acts upon is a declared gap: no test in this tree
+ * seeds credentials through this same command and then removes them by the id
+ * it was given.
  */
 class CredentialsRefusalTest {
 

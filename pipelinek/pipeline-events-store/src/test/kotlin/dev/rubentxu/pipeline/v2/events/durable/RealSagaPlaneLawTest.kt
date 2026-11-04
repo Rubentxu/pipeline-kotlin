@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test
  *
  * ## Where the bytes come from
  *
- * They are the captured plane of a REAL run — the scenario whose chain SUCCEEDED, the path that
+ * They are the captured plane of a REAL run — a run whose chain SUCCEEDED, the path that
  * did not exist before the closing verb — read out of the durable store of that run. Nothing
  * here is written by hand: the file is what the engine wrote.
  */

@@ -19,8 +19,8 @@ import org.junit.jupiter.api.Test
  * success.
  *
  * What is pinned here is the pattern list -- the decision `match()` acts on. `match()` itself
- * walks a real directory, which AGENTS.md section 2 keeps out of unit tests; matching stays with
- * the E2E pipelines.
+ * walks a real directory, which AGENTS.md section 2 keeps out of unit tests; the directory walk is
+ * filesystem behaviour, and no test in this tree exercises it.
  */
 class AntStyleGlobPatternTest {
 

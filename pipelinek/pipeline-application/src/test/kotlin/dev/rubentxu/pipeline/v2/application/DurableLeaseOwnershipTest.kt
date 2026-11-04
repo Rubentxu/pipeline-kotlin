@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test
  * que tragaba el fallo del cierre, el mismo patrón que
  * [ResourceScope] dejó de permitir.
  *
- * ## Por qué esto no lo puede observar la capa ejecutable
+ * ## Por qué esto no lo puede observar un test que sólo mire la salida
  * El hueco vive entre la construcción del store y la respuesta del acquire:
  * un proceso real que lo atraviese no deja huella en su código de salida — el
  * fichero de lock y su record simplemente quedan ahí, y el siguiente lector

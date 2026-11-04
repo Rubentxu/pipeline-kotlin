@@ -43,8 +43,8 @@ import kotlin.script.experimental.jvm.updateClasspath
  *    through `jvm { updateClasspath(files) }` inside the eval body.
  *  - Returns a stable [ScriptCompilationResult.cacheKey] computed from
  *    sha256(scriptText | sortedClasspath | kotlinVersion | hostVersion).
- *  - Maps [ScriptDiagnostic] fields 1:1 to [ScriptingDiagnostic] so the
- *    editor/UAT harness can render source-mapped errors.
+ *  - Maps [ScriptDiagnostic] fields 1:1 to [ScriptingDiagnostic] so an
+ *    editor can render source-mapped errors.
 */
 class Kotlin24ScriptingHost(
     private val eventSink: EventSink = NullEventSink,

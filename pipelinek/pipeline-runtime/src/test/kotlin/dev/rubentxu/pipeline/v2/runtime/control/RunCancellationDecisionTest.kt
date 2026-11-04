@@ -8,8 +8,8 @@ import org.junit.jupiter.api.Test
  *
  * The instrument here is the cheapest one that can fail: a pure function over
  * four observed facts, with no store, no clock and no filesystem. The adapter
- * that gathers the facts and the E2E that exercises the whole verb are the
- * instruments for the parts this cannot see.
+ * that gathers the facts is the instrument for the parts this cannot see; no
+ * test in this tree exercises the whole verb against a real store.
  */
 class RunCancellationDecisionTest {
 

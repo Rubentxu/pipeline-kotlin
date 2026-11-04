@@ -17,8 +17,8 @@ import org.junit.jupiter.api.Test
  * vivo — un lock con dueño escrito en disco, un fichero sin cerrar — y el
  * operador tiene que enterarse; tragárselo convierte una fuga en un silencio).
  *
- * ## Por qué esto no lo puede observar la capa ejecutable
- * La señal vive en la excepción que `close` emite, y el ejecutable mira un
+ * ## Por qué esto no lo puede observar un test que sólo mire la salida
+ * La señal vive en la excepción que `close` emite, y un proceso sólo mira un
  * código de salida. El consumidor real es Kotlin `use`, que encadena la
  * excepción del cierre como suppressed del outcome del bloque: lanzar aquí no
  * oculta nada, silenciar aquí lo pierde todo. La unidad de la garantía es el

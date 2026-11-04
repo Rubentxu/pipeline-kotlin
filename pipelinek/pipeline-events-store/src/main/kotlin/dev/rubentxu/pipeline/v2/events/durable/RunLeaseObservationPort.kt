@@ -17,8 +17,8 @@ import dev.rubentxu.pipeline.v2.domain.RunId
  * concrete store as a constructor argument, so the only way to exercise it
  * was to give it a directory of lock files on disk. That is not a unit test,
  * it is a second harness, and this repository does not buy those: `AGENTS.md`
- * keeps unit tests free of filesystem persistence and puts that behaviour in
- * `examples/` instead.
+ * keeps unit tests free of filesystem persistence, and no test in this tree
+ * exercises the lease store's filesystem behaviour.
  *
  * So the two read-only facts became a port, and the adapter depends on the
  * port. The store implements it; a test supplies an in-memory answer.

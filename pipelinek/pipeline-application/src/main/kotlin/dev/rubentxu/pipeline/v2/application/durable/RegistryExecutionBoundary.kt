@@ -18,10 +18,10 @@ import kotlinx.coroutines.CancellationException
  * already-decoded input. Therefore the execution here runs the typed handler WITHOUT re-decoding
  * (the prepare/codec split is preserved).
  * Direction: PreparedRegistryExecution -> capability admission (re-checked against the runtime access,
- * fail-closed) -> [StepCapabilityAccess] (via [CanonicalRuntimeCapabilityAccess], never the raw
+ * fail-closed) -> [StepCapabilityAccess] (via [RuntimeCapabilityAccess], never the raw
  * context) -> typed handler -> durable outcome. The handler receives only a narrow
  * [StepHandlerContext] built from the runtime identity plus its declared capabilities; it never sees a
- * [CanonicalRuntimeContext].
+ * [RuntimeContext].
  *
  * ## /: atomic outcome + encodedOutput
  * The boundary returns a [CommonExecutionResult] carrying both `outcome` and `encodedOutput?`. The encoded
@@ -54,11 +54,11 @@ class RegistryExecutionBoundary(
      * The collaborators the capability table is built from.
      *
      * The collaborator set is not spelled out here: it is held by
-     * [CanonicalCapabilityBindings], which the caller composes once and shares
+     * [CapabilityBindings], which the caller composes once and shares
      * with the preparation that admitted the Step. That is what makes the
      * EXECUTE-time table the SAME table admission saw.
      */
-    private val capabilityBindings: CanonicalCapabilityBindings,
+    private val capabilityBindings: CapabilityBindings,
 ) : CommonExecutionBoundary {
 
     /**
@@ -69,7 +69,7 @@ class RegistryExecutionBoundary(
     @Suppress("UNCHECKED_CAST")
     override suspend fun execute(
         prepared: PreparedRegistryExecution,
-        context: CanonicalRuntimeContext,
+        context: RuntimeContext,
     ): CommonExecutionResult {
         // Erasure boundary: the concrete payload type lives behind the codec / in the prepared input.
         val definition = prepared.definition as StepDefinition<Any, Any>

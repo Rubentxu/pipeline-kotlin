@@ -35,12 +35,12 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  * happen" lives here.
  *
  * The unit of cohesion is the RECURSION. [dispatch] hands a body-bearing Step's body to
- * [CanonicalBodyDispatch] with [dispatchChild] as the single re-entry reference — the same
+ * [BodyDispatch] with [dispatchChild] as the single re-entry reference — the same
  * [BodyChildDispatcher] seam [BodyExecutionEngine] already declares — so a body child walks
  * the canonical spine again through exactly one call site; [executeBranchSteps] walks a
  * parallel branch through [dispatch] again. The body's own shape (its declared policy, its
- * projection, its credential preamble and its child loop) lives in [CanonicalBodyDispatch];
- * the per-invocation runtime context is composed by [CanonicalRuntimeContextFactory]. Neither
+ * projection, its credential preamble and its child loop) lives in [BodyDispatch];
+ * the per-invocation runtime context is composed by [RuntimeContextFactory]. Neither
  * owns the ORDER of the dispatch: the engine keeps the order and performs the effects.
  *
  * ## What decides, and where
@@ -50,17 +50,17 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  *
  * | decision | owner |
  * |---|---|
- * | preparation — durable identity, metadata, fingerprint | [CanonicalDispatchPreparation] |
- * | the runtime context — SAGA ports, body adapter, plugin emitter | [CanonicalRuntimeContextFactory] |
- * | the body — policy, projection, credential preamble, child loop | [CanonicalBodyDispatch] |
+ * | preparation — durable identity, metadata, fingerprint | [DispatchPreparationOwner] |
+ * | the runtime context — SAGA ports, body adapter, plugin emitter | [RuntimeContextFactory] |
+ * | the body — policy, projection, credential preamble, child loop | [BodyDispatch] |
  * | reconciliation against the journal — reading the row and deciding about it | [DurableInvocationResolver] |
  * | the durable row of an invocation — admission and terminal write | [DurableInvocationRecord] |
  * | interpretation of a recovery resolution | [RecoveryInterpretationEngine] |
- * | the durable cursor | [CanonicalCursorAdvance] |
+ * | the durable cursor | [CursorAdvanceOwner] |
  * | the ORDER of the dispatch | this class |
  *
  * [RecoveryInterpretationEngine] is the boundary where a recovery resolution becomes either
- * a settled outcome or a progression to execution. [CanonicalCursorAdvance] is the boundary
+ * a settled outcome or a progression to execution. [CursorAdvanceOwner] is the boundary
  * where an outcome becomes a cursor position, and it is the only place in the application
  * that writes one.
  *
@@ -78,7 +78,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 internal class StepDispatchEngine(
     // PREPARACION: durable identity, metadata and fingerprint are decided
     // by their owner, which has no clock, no journal and no executor.
-    private val dispatchPreparation: CanonicalDispatchPreparation,
+    private val dispatchPreparation: DispatchPreparationOwner,
     private val typedInputPreparation: DurableTypedInputPreparation,
     private val stepExecutor: DurableStepExecutor,
     private val invocationResolver: DurableInvocationResolver,
@@ -88,14 +88,14 @@ internal class StepDispatchEngine(
      * moves and performs the write that moves it. The engine asks and observes; it never
      * writes a cursor of its own.
      */
-    private val cursorAdvance: CanonicalCursorAdvance,
+    private val cursorAdvance: CursorAdvanceOwner,
     private val stepRegistry: StepRegistry?,
     // CONTEXTO: the per-invocation runtime context is composed by its owner. The engine
     // asks for one and observes it; it never wires a SAGA port or an emitter of its own.
-    private val runtimeContexts: CanonicalRuntimeContextFactory,
+    private val runtimeContexts: RuntimeContextFactory,
     // CUERPO: the body's own shape is the body dispatch's responsibility. The engine hands
     // it [childReentry] — the ONE reference through which a body child re-enters this spine.
-    private val bodyDispatch: CanonicalBodyDispatch,
+    private val bodyDispatch: BodyDispatch,
     // The live tracing seam. The dispatch is one of the boundaries a trace
     // has to show, and the engine is the ONE place that knows whether the
     // step's effect ran, was refused, or was skipped by a replay.
@@ -216,7 +216,7 @@ internal class StepDispatchEngine(
                 ) {
                     BodyContinuation { bodyContext ->
                         // Same derivation the engine-side adapter performs for a core body
-                        // (CanonicalBodyInvokerAdapter.open): a per-attempt segment is appended
+                        // (BodyInvokerAdapter.open): a per-attempt segment is appended
                         // to the body path so a retried body gets its own durable identity, and
                         // the scope patch is applied by pure derivation without mutating the
                         // caller's context.
@@ -413,7 +413,7 @@ internal class StepDispatchEngine(
                     // of the carrier itself, instead of trusting that a bare outcome could not have
                     // dropped it on the way out.
                     //
-                    // the RULE of what advances belongs to [CanonicalCursorAdvance]; the engine asks
+                    // the RULE of what advances belongs to [CursorAdvanceOwner]; the engine asks
                     // it and performs the write it names.
                     cursorAdvance.advance(
                         runId = runId.value,
@@ -498,7 +498,7 @@ internal class StepDispatchEngine(
                 lifecycleContext = lifecycleContext,
                 parent = innerScope.parent,
             )
-            // the RULE of what advances belongs to [CanonicalCursorAdvance]: the engine asks it for a
+            // the RULE of what advances belongs to [CursorAdvanceOwner]: the engine asks it for a
             // decision and performs the write the decision names. It does not repeat the predicate.
             cursorAdvance.advance(
                 runId = runId.value,
@@ -570,7 +570,7 @@ internal class StepDispatchEngine(
      */
     private fun measurePreparation(
         step: StepNode,
-        runtime: CanonicalRuntimeContext,
+        runtime: RuntimeContext,
     ): DurableTypedInputPreparation.TypedPreparation {
         val measurement = telemetry.metrics.start(MetricBoundary.StepPreparation)
         val prepared = try {

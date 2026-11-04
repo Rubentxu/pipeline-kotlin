@@ -8,7 +8,7 @@ import java.nio.file.Path
 
 /**
  * Runtime dependencies required by the canonical core step dispatcher.
- * [bodyInvoker] is the / seam: a per-run [CanonicalBodyInvokerAdapter] that re-enters
+ * [bodyInvoker] is the / seam: a per-run [BodyInvokerAdapter] that re-enters
  * the canonical body machinery (`invokeBodyChildren`) for block-step handlers that declare
  * `BODY_INVOKER_CAPABILITY`. Defaulted to `null` so every pre-existing constructor site
  * (legacy dispatch, registry-aware dispatch, scripted runners, and ~25 unit tests)
@@ -19,7 +19,7 @@ import java.nio.file.Path
  * The data class is the canonical seam between the dispatch body and the runtime
  * adapters; giving the field bundle its own file gives it its own focus.
 */
-data class CanonicalRuntimeContext(
+data class RuntimeContext(
     val opId: OpId,
     val runId: String,
     val stageName: String,
@@ -40,7 +40,7 @@ data class CanonicalRuntimeContext(
     // built, and a default would be an ambient read wearing a default's clothes.
     val clock: Clock,
     val idGenerator: IdGenerator,
-    val bodyInvoker: CanonicalBodyInvokerAdapter? = null,
+    val bodyInvoker: BodyInvokerAdapter? = null,
     // The body-ALREADY-BOUND continuation of a Step that declared
     // BodyExecutionOwner.HANDLER_CONTINUATION, supplied under
     // BODY_CONTINUATION_CAPABILITY to that Step's handler only.
@@ -56,7 +56,7 @@ data class CanonicalRuntimeContext(
     // redacted chunk-boundary-safe BEFORE it reaches the observable plane.
     // Optional (null → no transcript redaction) so legacy callers/tests that
     // construct the context directly keep compiling; the production wire-up
-    // in CanonicalDurableRunCoordinator always supplies it.
+    // in DurableRunCoordinator always supplies it.
     val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     // The run's output-wake signal, shared with the run's live observer.
     // The shell adapter announces on it after each committed output chunk;
@@ -72,7 +72,7 @@ data class CanonicalRuntimeContext(
     // The open event registry composed from plugin contributors, already bound to
     // THIS run's sink and clock as a [dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter].
     // It rides here rather than as a constructor parameter of
-    // [CanonicalRuntimeCapabilityAccess] on purpose. That class is constructed at FOUR sites —
+    // [RuntimeCapabilityAccess] on purpose. That class is constructed at FOUR sites —
     // two of them prepare-time — and admission has to see exactly the keys the handler will get,
     // so a per-call parameter would have to be threaded through all four or the Step would be
     // admitted for a capability it never receives. The context is already the per-run carrier that

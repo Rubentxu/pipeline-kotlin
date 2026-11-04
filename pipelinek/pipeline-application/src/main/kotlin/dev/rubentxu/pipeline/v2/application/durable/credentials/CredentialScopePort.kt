@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 
 /**
  * Application seam credential scope port.
- * A suspend function interface consumed by [dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator].
+ * A suspend function interface consumed by [dev.rubentxu.pipeline.v2.application.durable.DurableRunCoordinator].
  * It is implemented by [WithCredentialsExecutorScopeAdapter] which wraps the
  * [dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor].
  * ## Design rationale

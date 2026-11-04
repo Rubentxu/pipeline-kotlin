@@ -39,7 +39,7 @@ import kotlinx.coroutines.runBlocking
  * nested bodies. The adapter is not a global service-locator and is not thread-safe
  * across runs.
 */
-class CanonicalBodyInvokerAdapter : BodyInvoker {
+class BodyInvokerAdapter : BodyInvoker {
 
     /**
      * BodyRef -> body runner for bodies currently open in this coordinator run.

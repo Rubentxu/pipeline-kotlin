@@ -16,7 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * This capability is the typed seam that lets a *suspending* Step honour the same
  * budget `core.sh` honours through [SHELL_OPERATIONS_CAPABILITY]: the value is
  * already threaded, the Step simply had no legal way to read it (reaching
- * `CanonicalRuntimeContext` directly is forbidden).
+ * `RuntimeContext` directly is forbidden).
  * ## Semantics
  * @property remainingMs budget in milliseconds for this invocation, or `null` when
  *   no scope budget applies (the wait is then unbounded, exactly as declared).

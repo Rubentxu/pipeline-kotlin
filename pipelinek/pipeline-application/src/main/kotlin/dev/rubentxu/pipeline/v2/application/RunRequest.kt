@@ -27,7 +27,7 @@ import java.nio.file.Path
  *
  * Nothing here says the two worlds are otherwise identical, because they are
  * not, and pretending otherwise would be a lie in a KDoc. Two facts of
- * [CanonicalRunPolicy] differ too, and both on purpose:
+ * [RunPolicy] differ too, and both on purpose:
  *
  * - `credentialProvider`: the in-memory world passes **no** provider,
  *   so a Step that reads a credential gets `NotConfigured` — the honest answer
@@ -45,7 +45,7 @@ import java.nio.file.Path
  * sites.** Before, any of the eighteen could differ between the worlds and
  * nothing said which.
  */
-internal data class CanonicalRunState(
+internal data class RunState(
     val journal: OperationJournal,
     val cursorStore: ReplayCursorStore,
     val eventSink: EventSink,
@@ -77,7 +77,7 @@ internal data class CanonicalRunState(
  * Both are derived by [dev.rubentxu.pipeline.v2.application.durable.canonicalShellOptions]
  * and [dev.rubentxu.pipeline.v2.application.durable.canonicalOutputRetention].
  */
-internal data class CanonicalRunPolicy(
+internal data class RunPolicy(
     val clock: Clock,
     // The run's source of opaque identifiers. It travels with the clock because the two
     // are the SAME kind of fact: an ambient read the run was GIVEN, so that the engine
@@ -108,11 +108,11 @@ internal data class CanonicalRunPolicy(
  * What the values may differ in is written down where it is decided, not here:
  * the [state] group and the two fields of [policy] that differ on purpose.
  */
-internal data class CanonicalRunRequest(
+internal data class RunRequest(
     val pipeline: CompiledPipeline,
     val runId: RunId,
-    val state: CanonicalRunState,
-    val policy: CanonicalRunPolicy,
+    val state: RunState,
+    val policy: RunPolicy,
     val composition: PreResolvedComposition,
     // The live tracing seam. It travels with the REQUEST and not with the
     // durable state, and the distinction is not cosmetic: the state is what a

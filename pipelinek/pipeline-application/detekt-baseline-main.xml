@@ -6,15 +6,15 @@
     <ID>AbstractClassCanBeInterface:MainEventsCli.kt:MainEventsCli.EventsInspectionFlag$EventsInspectionFlag</ID>
     <ID>AbstractClassCanBeInterface:MainEventsCli.kt:MainEventsCli.EventsInspectionParseResult$EventsInspectionParseResult</ID>
     <ID>AbstractClassCanBeInterface:MilestoneOperations.kt:MilestoneAdvanceResult$MilestoneAdvanceResult</ID>
-    <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun runBody: RunOutcome</ID>
+    <ID>CyclomaticComplexMethod:DurableRunCoordinator.kt:DurableRunCoordinator$private suspend fun runBody: RunOutcome</ID>
     <ID>CyclomaticComplexMethod:Main.kt:fun main</ID>
     <ID>CyclomaticComplexMethod:SimplePipelineCompiler.kt:SimplePipelineCompiler$override fun compile: CompileResult</ID>
     <ID>ImplicitDefaultLocale:PluginManifestResourceReader.kt:PluginManifestResourceReader$"%02x".format(it)</ID>
     <ID>ImplicitDefaultLocale:PublishHtmlSanitiser.kt:PublishHtmlSanitiser$"%04x".format(ch.code)</ID>
     <ID>InjectDispatcher:FileLockCoordinator.kt:FileLockCoordinator$IO</ID>
     <ID>InjectDispatcher:ParallelStageEngine.kt:ParallelStageEngine$Default</ID>
-    <ID>InstanceOfCheckForException:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$e is EngineInvariantViolation</ID>
-    <ID>InstanceOfCheckForException:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$e is IllegalStateException</ID>
+    <ID>InstanceOfCheckForException:DurableRunCoordinator.kt:DurableRunCoordinator$e is EngineInvariantViolation</ID>
+    <ID>InstanceOfCheckForException:DurableRunCoordinator.kt:DurableRunCoordinator$e is IllegalStateException</ID>
     <ID>LongMethod:Main.kt:fun main</ID>
     <ID>LongMethod:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$override fun publish: PublishHtmlResult</ID>
     <ID>LongMethod:StepDispatchEngine.kt:StepDispatchEngine$private suspend fun dispatchStep: DispatchedStep</ID>
@@ -54,7 +54,7 @@
     <ID>UseOrEmpty:BodyExecutionEngine.kt:BodyExecutionEngine$ctx.attempt?.let { seg -&gt; listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(seg.index, seg.key)) } ?: emptyList()</ID>
     <ID>UseOrEmpty:BodyStructureDigest.kt:BodyStructureDigest$(this as? dev.rubentxu.pipeline.v2.domain.BlockStepNode)?.body?.map { it.id.value } ?: emptyList()</ID>
     <ID>UseOrEmpty:BundledPluginClasspathPlan.kt:BundledPluginClasspathPlan$it.version ?: ""</ID>
-    <ID>UseOrEmpty:CanonicalStructuralDecisions.kt:overridesArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()</ID>
+    <ID>UseOrEmpty:StructuralDecisions.kt:overridesArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()</ID>
     <ID>UseOrEmpty:CoreArchiveArtifactsStep.kt:CoreArchiveArtifactsStep.&lt;no name provided&gt;$obj["excludes"]?.jsonPrimitive?.content ?: ""</ID>
     <ID>UseOrEmpty:CoreCleanWsStep.kt:CoreCleanWsStep.&lt;no name provided&gt;$obj["patterns"]?.jsonArray ?.map { it.jsonPrimitive.content } ?: emptyList()</ID>
     <ID>UseOrEmpty:CoreShellStep.kt:CoreShellStep.&lt;no name provided&gt;$frObj["details"]?.asStringMapOrNull() ?: emptyMap()</ID>

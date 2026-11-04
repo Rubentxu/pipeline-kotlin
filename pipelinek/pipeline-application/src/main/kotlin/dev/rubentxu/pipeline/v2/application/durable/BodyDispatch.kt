@@ -38,10 +38,10 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  * the lease is released on EVERY path and its typed outcome is folded with the body's
  * outcome; a refused lease returns BEFORE any child is dispatched.
  */
-internal class CanonicalBodyDispatch(
+internal class BodyDispatch(
     private val bodyPolicyResolver: BodyPolicyResolver,
     private val bodyExecutionEngine: BodyExecutionEngine,
-    private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter,
+    private val bodyInvokerAdapter: BodyInvokerAdapter,
     // ADMISION: the lease of the credentials is decided by its owner, and the body dispatch only
     // observes whether it was admitted. The port itself is not the dispatch's business.
     private val leaseAdmission: CredentialLeaseAdmission,

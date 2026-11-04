@@ -405,7 +405,7 @@ object CoreShellStep {
      *   non-Linux route, where there is no Output Plane to seal into and the
      *   event is the only rendering of those bytes.
      * It MUST NOT:
-     * - reach `CanonicalRuntimeContext`,
+     * - reach `RuntimeContext`,
      * - reach the journal,
      * - call `eventSink` directly,
      * - reach the durable-shell substrate (that is the adapter's authority),

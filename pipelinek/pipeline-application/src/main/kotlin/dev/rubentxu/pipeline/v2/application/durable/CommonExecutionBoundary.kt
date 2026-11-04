@@ -32,6 +32,6 @@ package dev.rubentxu.pipeline.v2.application.durable
 fun interface CommonExecutionBoundary {
     suspend fun execute(
         prepared: PreparedRegistryExecution,
-        context: CanonicalRuntimeContext,
+        context: RuntimeContext,
     ): CommonExecutionResult
 }

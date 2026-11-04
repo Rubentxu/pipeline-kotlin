@@ -9,7 +9,7 @@ package dev.rubentxu.pipeline.v2.application
  * ## Why a typed seam and not a var in the handler?
  * AGENTS.md (a handler must NOT hold mutable state). `CoreMilestoneStep` is a singleton `object`; its
  * `private var lastReachedOrdinal: Int? = null` is global classloader state.
- * The legacy `CanonicalMilestoneNodeDispatcher` tracks state per-coordinator
+ * The legacy milestone dispatcher tracks state per-coordinator
  * instance (per run). A singleton handler does not provide equivalent isolation:
  * in multi-run scenarios or test harnesses, the classloader-singleton state
  * bleeds across runs.
@@ -17,10 +17,10 @@ package dev.rubentxu.pipeline.v2.application
  * [MilestoneStateStore] (and hence [MilestoneOperations]) lives at the
  * coordinator/run level: it is created by the coordinator wiring alongside
  * the dispatcher, not by handler invocation. This mirrors the legacy
- * `CanonicalMilestoneNodeDispatcher.lastReachedOrdinal` scope exactly.
+ * the legacy milestone dispatcher's `lastReachedOrdinal` scope exactly.
  * ## Capability wiring
  * The adapter is bound as [MILESTONE_OPERATIONS_CAPABILITY] in
- * [dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess].
+ * [dev.rubentxu.pipeline.v2.application.durable.RuntimeCapabilityAccess].
  * The handler declares this capability in its [dev.rubentxu.pipeline.v2.domain.step.StepContract];
  * capability admission is fail-closed before the handler runs when it is unavailable.
 */
@@ -65,10 +65,10 @@ sealed class MilestoneAdvanceResult {
  * sees only the [MilestoneOperations] capability interface.
  * ## Why run-scoped?
  * Milestone monotonicity is defined *per pipeline run*. The legacy
- * `CanonicalMilestoneNodeDispatcher.lastReachedOrdinal` is reset at the start
+ * milestone dispatcher's `lastReachedOrdinal` is reset at the start
  * of each run. By creating the store at coordinator construction time and
  * binding it through the capability system, we guarantee:
- * 1. **Isolation per run**: each `CanonicalDurableRunCoordinator` instance gets
+ * 1. **Isolation per run**: each `DurableRunCoordinator` instance gets
  *    its own store, matching the legacy dispatcher's per-run semantics.
  * 2. **No classloader leakage**: unlike a `var` in an `object` singleton,
  *    the store is not shared across classloader boundaries.

@@ -11,7 +11,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
 
 /**
- * The per-invocation [CanonicalRuntimeContext], composed by its owner.
+ * The per-invocation [RuntimeContext], composed by its owner.
  *
  * Composition is not dispatch: the context is a bag of capabilities a handler receives, and
  * who wires the SAGA ports, the body re-entry adapter and the plugin emitter into that bag is
@@ -29,14 +29,14 @@ import java.nio.file.Path
 @Suppress("LongParameterList") // Every argument is a named fact the context cannot derive, and
 // the alternative would be a holder that exists only to satisfy a counting rule — the same
 // reason the function below carries.
-internal class CanonicalRuntimeContextFactory(
+internal class RuntimeContextFactory(
     // The registry that says which plugin declared a Step. A read, never a switch on the key.
     private val stepRegistry: StepRegistry?,
     // B11 / W2: the per-run body-reentry adapter, surfaced under
     // BODY_INVOKER_CAPABILITY for any block-step handler that declares it.
     // Fail-closed admission (null bodyInvoker → no capability) is preserved
     // for legacy callers because the field defaults to null on the context.
-    private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter,
+    private val bodyInvokerAdapter: BodyInvokerAdapter,
     // S6.4: the open plugin event registry for THIS run. The emitter is composed here from
     // this registry plus the sink and clock, so one run has one registry shared by every
     // invocation — two registries would let two Steps disagree about what a kind means, and
@@ -91,9 +91,9 @@ internal class CanonicalRuntimeContextFactory(
         bodySlotInvoker: BodySlotInvoker?,
         bodies: SagaBodyResolver?,
         stepObservability: dev.rubentxu.pipeline.v2.runtime.telemetry.StepObservability? = null,
-    ): CanonicalRuntimeContext {
+    ): RuntimeContext {
         val ownerPluginId = pluginIdOf(step)
-        return CanonicalRuntimeContext(
+        return RuntimeContext(
             opId = opId,
             runId = runId.value,
             stageName = stageName,

@@ -1,8 +1,8 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalCapabilityBindings
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
+import dev.rubentxu.pipeline.v2.application.durable.CapabilityBindings
+import dev.rubentxu.pipeline.v2.application.durable.RuntimeContext
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationRecord
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationResolver
@@ -227,7 +227,7 @@ data class ScriptedRegistryCall(
 */
 internal class ScriptedRegistryInvoker(
     private val registry: StepRegistry,
-    private val runtimeContextFactory: (call: ScriptedRegistryCall) -> CanonicalRuntimeContext,
+    private val runtimeContextFactory: (call: ScriptedRegistryCall) -> RuntimeContext,
     /**
      * The collaborators the capability table is built from.
      *
@@ -236,7 +236,7 @@ internal class ScriptedRegistryInvoker(
      * the scripted path always had. Admission stays fail-closed and replay never
      * consults this holder.
 */
-    private val capabilityBindings: CanonicalCapabilityBindings = CanonicalCapabilityBindings(),
+    private val capabilityBindings: CapabilityBindings = CapabilityBindings(),
     /**
      * Pre-decode durable metadata authority. Derived from the registry this invoker already
      * holds, so scripted and canonical resolve a Step's effects, replay policy and recovery
@@ -565,7 +565,7 @@ internal class ScriptedRegistryInvoker(
     /**
      * Lifecycle coordinates for an execution this frontend performs.
      * These are the coordinates the scripted runner ALREADY assigns its
-     * [CanonicalRuntimeContext] (`stageName = "scripted"`, `stageIndex = 0`,
+     * [RuntimeContext] (`stageName = "scripted"`, `stageIndex = 0`,
      * `stepIndex = invocationOrdinal`), reused verbatim rather than invented here. They
      * name WHERE the execution happened for observability; they are not a cursor position,
      * And this frontend advances no cursor

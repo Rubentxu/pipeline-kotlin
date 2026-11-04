@@ -181,12 +181,12 @@ internal class StageExecutionEngine(
             // The stage fold needs the OUTCOME, so it projects it explicitly and leaves the
             // carrier alone. See DispatchedStep for why no `outcome` shortcut exists.
             when (val continuation = runLifecycle.decideStageContinuation(dispatched.result.outcome)) {
-                CanonicalContinuation.Continue -> Unit
-                CanonicalContinuation.ContinueUnstable -> {
+                StageContinuation.Continue -> Unit
+                StageContinuation.ContinueUnstable -> {
                     runLifecycle.fold(dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable)
                     stageUnstable = true
                 }
-                is CanonicalContinuation.Abort -> {
+                is StageContinuation.Abort -> {
                     // A step failure is still a stage outcome. The
                     // failure/always/cleanup finalizers MUST run before the run
                     // aborts, or `post { failure { ... } }` would be dead code
@@ -272,18 +272,18 @@ internal class StageExecutionEngine(
     ): StageVerdict = when (
         val continuation = runLifecycle.decideStageContinuation(bodyOutcome)
     ) {
-        CanonicalContinuation.Continue -> {
+        StageContinuation.Continue -> {
             finalizeStage(stage, stageIndex, StageOutcome.Succeeded, runId, stageShOptions, ambient)
                 ?.let { failure -> return StageVerdict.Abort(failure, ambient) }
             StageVerdict.Completed(StageOutcome.Succeeded, ambient)
         }
-        CanonicalContinuation.ContinueUnstable -> {
+        StageContinuation.ContinueUnstable -> {
             runLifecycle.fold(dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable)
             finalizeStage(stage, stageIndex, StageOutcome.Unstable, runId, stageShOptions, ambient)
                 ?.let { failure -> return StageVerdict.Abort(failure, ambient) }
             StageVerdict.Completed(StageOutcome.Unstable, ambient)
         }
-        is CanonicalContinuation.Abort -> {
+        is StageContinuation.Abort -> {
             // A body that did not reach its end is still a stage outcome: the failure/always/
             // cleanup finalizers MUST run before the run aborts. A finalizer that itself fails
             // replaces the reason, because the run is being failed either way and the later

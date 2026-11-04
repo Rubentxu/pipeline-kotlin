@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.PluginStepType
-import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
+import dev.rubentxu.pipeline.v2.application.StructuralPreparationGate
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StructuralPreparation
@@ -25,7 +25,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * vanish. A nullable seam would have let exactly that happen silently.
  *
  * It lives at the top level of the package and not inside the dispatch engine because the
- * engine does not decide it: [CanonicalDispatchPreparation] decides it, and the engine only
+ * engine does not decide it: [DispatchPreparationOwner] decides it, and the engine only
  * interprets the answer.
  */
 internal sealed interface DispatchPreparation {
@@ -83,7 +83,7 @@ internal data class DispatchCoordinates(
  * authorities on what a control scope means would have been a second event authority, and
  * this class no longer has one to offer.
  */
-internal class CanonicalDispatchPreparation(
+internal class DispatchPreparationOwner(
     private val metadataResolver: StepMetadataResolver,
 ) {
     /**
@@ -137,7 +137,7 @@ internal class CanonicalDispatchPreparation(
 
         // The structural gate: a node that is not structurally a canonical Step is
         // rejected here, before any typed semantics are read.
-        when (val structural = CanonicalStructuralPreparation.prepare(step)) {
+        when (val structural = StructuralPreparationGate.prepare(step)) {
             is StructuralPreparation.Rejected ->
                 return DispatchPreparation.Rejected(operationId, input, structural.reason)
             is StructuralPreparation.Ready -> Unit

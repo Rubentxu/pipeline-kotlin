@@ -47,7 +47,7 @@ object HttpRequestKey {
  *   ASKS, never a verdict it reads. The runtime withholds the capability entirely
  *   unless this run has some network entitlement, so the default is refused at
  *   admission; the gate is what narrows that entitlement to a destination.
- * It never reaches `CanonicalRuntimeContext`, the journal, the event sink, the
+ * It never reaches `RuntimeContext`, the journal, the event sink, the
  * filesystem, or `java.net` directly. It resolves no credential: the transport
  * receives an already-resolved [HttpAuthorization] and never a [CredentialsId],
  * so a secret cannot leak through a typed value by accident.

@@ -19,12 +19,12 @@ import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Effective-execution block extracted from [CanonicalDurableRunCoordinator]
+ * Effective-execution block extracted from [DurableRunCoordinator]
  * (the Execute branch of the dispatch reconciliation). This is the ONLY code that invokes
  * the effective executor: beginOperation, the [StepExecutionBoundary]-wrapped
  * [CommonExecutionBoundary] call and the terminal journal write live here. Reuse/divergence/recover
  * never reach this class.
- * The cursor advance decision does NOT live here: it belongs to [CanonicalCursorAdvance],
+ * The cursor advance decision does NOT live here: it belongs to [CursorAdvanceOwner],
  * which is the single authority for what advances and for the write that advances it.
  * This class is FRONTEND-NEUTRAL and does not own the replay cursor
  * It once took a [dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore] and advanced
@@ -83,7 +83,7 @@ internal class DurableStepExecutor(
         input: OperationInput,
         journaled: DurableOperation?,
         prepared: PreparedRegistryExecution,
-        runtime: CanonicalRuntimeContext,
+        runtime: RuntimeContext,
         lifecycleContext: StepLifecycleContext,
         parent: LiveSpanParent,
     ): CommonExecutionResult {

@@ -89,7 +89,7 @@ import kotlin.reflect.KClass
  * It does not run a pipeline, does not touch a database and does not observe a handler. It
  * observes the ACCESS: what the table hands over, and how it says no.
  */
-class CanonicalCapabilityAccessTest {
+class RuntimeCapabilityAccessTest {
 
     @Test
     @DisplayName("a capability that is present is delivered with its declared type")
@@ -183,7 +183,7 @@ class CanonicalCapabilityAccessTest {
     private fun <T : Any> refusalFor(
         key: StepCapability,
         type: KClass<T>,
-        holding: CanonicalRuntimeContext = context(),
+        holding: RuntimeContext = context(),
     ): CapabilityRefusal {
         val thrown = assertThrows<CapabilityRefusedException> {
             access(holding).get(key, type)
@@ -196,8 +196,8 @@ class CanonicalCapabilityAccessTest {
      * production holder with no collaborators bound, over a runtime context that carries no
      * milestone store, no artifact index and no plugin contributor.
      */
-    private fun access(holding: CanonicalRuntimeContext = context()): CanonicalRuntimeCapabilityAccess =
-        CanonicalCapabilityBindings().access(holding)
+    private fun access(holding: RuntimeContext = context()): RuntimeCapabilityAccess =
+        CapabilityBindings().access(holding)
 
     /**
      * The runtime context, pointing at paths that do not exist and discarding every event.
@@ -205,8 +205,8 @@ class CanonicalCapabilityAccessTest {
      * The seam is a parameter because whether the context carries one is a fact about how the
      * context was composed, and the rows above need both answers.
      */
-    private fun context(stepObservability: StepObservability? = null): CanonicalRuntimeContext =
-        CanonicalRuntimeContext(
+    private fun context(stepObservability: StepObservability? = null): RuntimeContext =
+        RuntimeContext(
             opId = OpId(RUN_ID, 0, 0),
             runId = RUN_ID,
             stageName = "stage-0",

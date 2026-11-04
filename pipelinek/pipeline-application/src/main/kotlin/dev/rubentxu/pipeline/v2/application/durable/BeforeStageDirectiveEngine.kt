@@ -29,7 +29,7 @@ import dev.rubentxu.pipeline.v2.events.StageSkipped
 /**
  * The BEFORE_STAGE directive seam, out of the run loop
  * Admission plus interpretation of a stage's declared directives used to be ~317 lines inline in
- * `CanonicalDurableRunCoordinator.run`, interleaved with the run's control flow: every denial
+ * `DurableRunCoordinator.run`, interleaved with the run's control flow: every denial
  * site wrote a `return@run`, and the skip site wrote a `continue@stagesLoop`. That made the seam
  * impossible to read as a unit and impossible to test without a whole run.
  * The split is the one AGENTS.md asks for everywhere else:

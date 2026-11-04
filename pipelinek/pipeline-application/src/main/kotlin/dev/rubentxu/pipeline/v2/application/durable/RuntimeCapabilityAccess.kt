@@ -66,13 +66,13 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.scm.git.SCM_GIT_TRANSCRIPT_CAPABILITY
 
 /**
- * explicit, small capability bridge from a [CanonicalRuntimeContext] to a
+ * explicit, small capability bridge from a [RuntimeContext] to a
  * [StepCapabilityAccess].
  * It exposes ONLY the capabilities the canonical runtime actually declares and provides today
- * ([EVENT_SINK_CAPABILITY] backed by the runtime's [CanonicalRuntimeContext.eventSink], and — since
+ * ([EVENT_SINK_CAPABILITY] backed by the runtime's [RuntimeContext.eventSink], and — since
  * [SHELL_OPERATIONS_CAPABILITY] backed by a fresh [ShOperationsAdapter] constructed
  * from the runtime context). It derives the capability values from the runtime context WITHOUT
- * handing the whole [CanonicalRuntimeContext] to a handler and without rebuilding a pipeline
+ * handing the whole [RuntimeContext] to a handler and without rebuilding a pipeline
  * context. Direction is contract.requiredCapabilities -> capability admission ->
  * [StepCapabilityAccess] -> handler; a handler must never receive the raw runtime context.
  * Lookup is fail-closed: [get] on a capability that is not available throws rather than returning a
@@ -80,14 +80,14 @@ import dev.rubentxu.pipeline.v2.sdk.scm.git.SCM_GIT_TRANSCRIPT_CAPABILITY
  * availability.
  *
  * ## Why this class cannot be constructed directly
- * The constructor is `internal`, and [CanonicalCapabilityBindings] is the only thing that calls
+ * The constructor is `internal`, and [CapabilityBindings] is the only thing that calls
  * it. The bridge decides WHICH capabilities an invocation has; letting a caller construct one
  * with a different set of collaborators would put a second decision site next to the first, and
  * two decision sites are exactly what the fail-closed contract cannot afford: a Step could pass
  * admission against one table and run against another.
 */
-class CanonicalRuntimeCapabilityAccess internal constructor(
-    context: CanonicalRuntimeContext,
+class RuntimeCapabilityAccess internal constructor(
+    context: RuntimeContext,
     // Milestone state store for MILESTONE_OPERATIONS_CAPABILITY.
     // Always non-null in production (coordinator provides it); nullable for test/adapter flexibility.
     private val milestoneStateStore: MilestoneStateStore? = null,
@@ -149,7 +149,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
      * the table.
 */
     private fun egressPermission(
-        context: CanonicalRuntimeContext,
+        context: RuntimeContext,
         builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         val gate = context.shOptions.networkEgress
@@ -169,7 +169,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
 */
     // private because the class itself is the only thing that builds the table: a
     // subclass could not widen it without also becoming a second decision site.
-    private fun buildProvided(context: CanonicalRuntimeContext): Map<StepCapability, CapabilitySlot> {
+    private fun buildProvided(context: RuntimeContext): Map<StepCapability, CapabilitySlot> {
         val builder: MutableMap<StepCapability, CapabilitySlot> = mutableMapOf(
             EVENT_SINK_CAPABILITY to CapabilitySlot.of(context.eventSink),
         )
@@ -216,7 +216,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
      * lives, so none of them can be absent.
 */
     private fun bindProcessAndStageCapabilities(
-        context: CanonicalRuntimeContext,
+        context: RuntimeContext,
         builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         val shellOps: ShellOperations = ShOperationsAdapter(
@@ -308,7 +308,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
      * exposure mirrors the destructive capabilities below: always registered.
 */
     private fun bindDurableChannelCapabilities(
-        context: CanonicalRuntimeContext,
+        context: RuntimeContext,
         builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         val root = context.controlDirRoot
@@ -393,7 +393,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
      * use to mutate anything.
 */
     private fun bindWorkspaceObservationCapabilities(
-        context: CanonicalRuntimeContext,
+        context: RuntimeContext,
         builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         // Raw environmental observation for platform-classification handlers
@@ -461,7 +461,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
      * strength of a dotfile.
 */
     private fun bindWorkspaceDestructionCapabilities(
-        context: CanonicalRuntimeContext,
+        context: RuntimeContext,
         builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         // DeleteDir operations for core.deleteDir.
@@ -518,7 +518,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
      * match instead of being bypassed by the adapter.
 */
     private fun bindWorkspaceContentCapabilities(
-        context: CanonicalRuntimeContext,
+        context: RuntimeContext,
         builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         val root = context.controlDirRoot
@@ -588,7 +588,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
      * admission rather than surfacing as a null a handler has to interpret.
 */
     private fun bindOptionalSeamCapabilities(
-        context: CanonicalRuntimeContext,
+        context: RuntimeContext,
         builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
         // Milestone state operations (core.milestone). The store is optional
@@ -683,7 +683,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
      * reads no ambient process state.
 */
     private fun executionLocationFor(
-        context: CanonicalRuntimeContext,
+        context: RuntimeContext,
     ): ExecutionLocation = ShOptionsExecutionLocationAdapter.from(
         workspaceRoot = context.shOptions.workspaceRoot,
         scopedWorkingDirectory = context.shOptions.workingDirectory,
@@ -702,7 +702,7 @@ class CanonicalRuntimeCapabilityAccess internal constructor(
      * guaranteed to describe the same location for a given step.
 */
     private fun workspaceOperationsFor(
-        context: CanonicalRuntimeContext,
+        context: RuntimeContext,
     ): WorkspaceOperations = WorkspaceOperationsAdapter(
         stageName = context.stageName,
         stageIndex = context.stageIndex,

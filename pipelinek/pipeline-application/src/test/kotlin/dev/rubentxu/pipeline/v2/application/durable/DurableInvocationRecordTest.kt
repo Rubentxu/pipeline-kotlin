@@ -367,7 +367,7 @@ class DurableInvocationRecordTest {
     }
 
     /** The runtime context of the invocation, pointing at paths that do not exist. */
-    private fun runtime(): CanonicalRuntimeContext = CanonicalRuntimeContext(
+    private fun runtime(): RuntimeContext = RuntimeContext(
         opId = OpId(RUN_ID, 0, 0),
         runId = RUN_ID,
         stageName = "stage-0",

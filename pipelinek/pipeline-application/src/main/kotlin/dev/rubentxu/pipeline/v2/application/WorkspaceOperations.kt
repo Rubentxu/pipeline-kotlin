@@ -26,7 +26,7 @@ import java.time.Instant
  * typed seam, which is implemented by the certified
  * [FileWriteExecutor] substrate (atomic temp+rename write, path-traversal guard,
  * reserved `.v2` guard). The capability system wires the adapter in
- * [dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess].
+ * [dev.rubentxu.pipeline.v2.application.durable.RuntimeCapabilityAccess].
  * ## Why a typed seam and not `FileWriteExecutor` directly?
  * AGENTS.md (a handler must adapt to the existing named ports/adapters).
  * Mirrors [ShellOperations] for `core.sh`: the substrate

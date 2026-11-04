@@ -8,7 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
  * The ONE holder of the collaborators a capability table is built from.
  *
  * ## Why the collaborators live here and not in the bridge
- * The bridge ([CanonicalRuntimeCapabilityAccess]) derives most of its table
+ * The bridge ([RuntimeCapabilityAccess]) derives most of its table
  * from the runtime context, but three capabilities come from collaborators the
  * runtime context does not carry: the milestone state store, the per-run
  * artifact index and the plugin capability contributor. Those three were
@@ -27,7 +27,7 @@ import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
  * holder is what makes that agreement structural rather than a matter of
  * passing the same three arguments twice.
  */
-class CanonicalCapabilityBindings(
+class CapabilityBindings(
     /**
      * Milestone state store for MILESTONE_OPERATIONS_CAPABILITY.
      * Always non-null in production (the coordinator provides it); nullable for
@@ -52,8 +52,8 @@ class CanonicalCapabilityBindings(
      * The capability access for one invocation, built from these collaborators
      * and the invocation's own runtime context.
      */
-    fun access(context: CanonicalRuntimeContext): CanonicalRuntimeCapabilityAccess =
-        CanonicalRuntimeCapabilityAccess(
+    fun access(context: RuntimeContext): RuntimeCapabilityAccess =
+        RuntimeCapabilityAccess(
             context,
             milestoneStateStore = milestoneStateStore,
             artifactIndex = artifactIndex,

@@ -16,7 +16,7 @@ import java.nio.file.Path
  * to that outcome.
  * ## Dependency direction
  * ```
- * CanonicalDurableRunCoordinator (application)
+ * DurableRunCoordinator (application)
  *   -> CredentialScopePort (application contract)
  *        <- WithCredentialsExecutorScopeAdapter (application adapter)
  *             -> WithCredentialsExecutor (credentials executor)

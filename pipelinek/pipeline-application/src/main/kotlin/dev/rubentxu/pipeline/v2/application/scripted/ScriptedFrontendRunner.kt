@@ -3,14 +3,14 @@ package dev.rubentxu.pipeline.v2.application.scripted
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
+import dev.rubentxu.pipeline.v2.application.durable.RuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationRecord
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationResolver
 import dev.rubentxu.pipeline.v2.application.durable.DurableStepExecutor
 import dev.rubentxu.pipeline.v2.application.durable.ExternalSubprocessRecovery
 import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.RecoveryInterpretationEngine
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalCapabilityBindings
+import dev.rubentxu.pipeline.v2.application.durable.CapabilityBindings
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.RunOutcomeReducer
@@ -118,7 +118,7 @@ internal object ScriptedFrontendRunner {
         // contributor, so this holder provisions exactly what it always did — and
         // both the boundary and the invoker read it, so admission and execution
         // cannot disagree about which capabilities exist.
-        val capabilityBindings = CanonicalCapabilityBindings()
+        val capabilityBindings = CapabilityBindings()
         val executor = DurableStepExecutor(
             eventSink = eventSink,
             executionBoundary = RegistryExecutionBoundary(capabilityBindings = capabilityBindings),
@@ -147,7 +147,7 @@ internal object ScriptedFrontendRunner {
             spanParent = spanParent,
             metadataResolver = RegistryStepMetadataResolver.composite(registry),
             runtimeContextFactory = { call ->
-                CanonicalRuntimeContext(
+                RuntimeContext(
                     // The STRUCTURAL address of an operation depends on WHERE the body
                     // runs, and the two places are not the same. A whole-program scripted entry
                     // has no canonical stage, so it keeps stage 0 and the invocation ordinal as

@@ -1,8 +1,8 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 
-import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
-import dev.rubentxu.pipeline.v2.application.CanonicalRunState
+import dev.rubentxu.pipeline.v2.application.RunPolicy
+import dev.rubentxu.pipeline.v2.application.RunState
 import dev.rubentxu.pipeline.v2.application.LiveSpanAttributes
 import dev.rubentxu.pipeline.v2.application.LiveSpanHandle
 import dev.rubentxu.pipeline.v2.application.LiveSpanNames
@@ -72,10 +72,10 @@ import dev.rubentxu.pipeline.v2.credentials.executor.BasicCredentialsCapabilityC
  * Everything else the run uses is DERIVED inside this class, and the derivation is where the
  * guarantees live. The three groups above are the reasons:
  *
- * - **[CanonicalRunState]** owns the run's durable state. Two facts that used to be separate
+ * - **[RunState]** owns the run's durable state. Two facts that used to be separate
  *   constructor parameters — the journal and the cursor store — are one fact ("this run's
  *   durable spine"), and they cannot now be supplied by two different worlds.
- * - **[CanonicalRunPolicy]** owns what the run was given. The shell transport and the output
+ * - **[RunPolicy]** owns what the run was given. The shell transport and the output
  *   retention are consequences of this group, not inputs: a caller could previously hand the
  *   coordinator a workspace root that was not the run's, or a retention policy that deleted
  *   what the product keeps. Both are now computed by
@@ -113,9 +113,9 @@ import dev.rubentxu.pipeline.v2.credentials.executor.BasicCredentialsCapabilityC
  * stage that quietly did nothing. There is no fourth kind of null here: every other fact has
  * exactly one answer, and this class computes it.
  */
-internal class CanonicalDurableRunCoordinator(
-    state: CanonicalRunState,
-    policy: CanonicalRunPolicy,
+internal class DurableRunCoordinator(
+    state: RunState,
+    policy: RunPolicy,
     composition: PreResolvedComposition,
     credentialScopePort: CredentialScopePort,
     divergenceDetector: DivergenceDetector,
@@ -174,7 +174,7 @@ internal class CanonicalDurableRunCoordinator(
     // which is the defect this grouping removes.
     private val milestoneStateStore = MilestoneStateStore()
     private val artifactIndex = ArtifactIndexAdapter.build()
-    private val bodyInvokerAdapter = CanonicalBodyInvokerAdapter()
+    private val bodyInvokerAdapter = BodyInvokerAdapter()
 
     /**
      * The collaborators the capability table is built from, held ONCE.
@@ -184,7 +184,7 @@ internal class CanonicalDurableRunCoordinator(
      * disagree about which capabilities exist. The holder is the only place
      * that decides it.
      */
-    private val capabilityBindings = CanonicalCapabilityBindings(
+    private val capabilityBindings = CapabilityBindings(
         milestoneStateStore = milestoneStateStore,
         artifactIndex = artifactIndex,
         capabilityContributor = capabilityContributor,
@@ -310,13 +310,13 @@ internal class CanonicalDurableRunCoordinator(
     //   PREPARACION — the durable identity, the control overlay, the metadata and the fingerprint.
     //   ADMISION — the credential lease.
     //   AVANCE — the canonical cursor: what moves it and the write that moves it.
-    private val dispatchPreparation = CanonicalDispatchPreparation(metadataResolver)
+    private val dispatchPreparation = DispatchPreparationOwner(metadataResolver)
     private val leaseAdmission = CredentialLeaseAdmission(credentialScopePort)
-    private val cursorAdvance = CanonicalCursorAdvance(cursorStore)
+    private val cursorAdvance = CursorAdvanceOwner(cursorStore)
     // The two body/context owners the spine observes, built on the same ports the
     // coordinator owns. The spine asks them and observes the answers; it never wires a
     // SAGA port, an emitter or a body policy of its own.
-    private val runtimeContexts = CanonicalRuntimeContextFactory(
+    private val runtimeContexts = RuntimeContextFactory(
         stepRegistry = stepRegistry,
         bodyInvokerAdapter = bodyInvokerAdapter,
         eventRegistry = eventRegistry,
@@ -329,7 +329,7 @@ internal class CanonicalDurableRunCoordinator(
         secretPatternRegistry = policy.secretPatternRegistry,
         sagaBinding = state.sagaBinding,
     )
-    private val bodyDispatch = CanonicalBodyDispatch(
+    private val bodyDispatch = BodyDispatch(
         bodyPolicyResolver = bodyPolicyResolver,
         bodyExecutionEngine = bodyExecutionEngine,
         bodyInvokerAdapter = bodyInvokerAdapter,

@@ -63,7 +63,7 @@ private fun durableRunState(
     sagaObligationStore: SagaObligationStore,
     lease: DurableLease,
     outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal,
-): CanonicalRunState = CanonicalRunState(
+): RunState = RunState(
     outputWakeups = outputWakeups,
     journal = journal,
     cursorStore = cursorStore,
@@ -147,7 +147,7 @@ private fun runDurablePipelineOwned(
     val idGenerator: dev.rubentxu.pipeline.v2.domain.IdGenerator = UuidIdGenerator()
     val durableStores = DurableStores.open(rawEventStore, controlDirRoot, clock)
     // the canonical engine threads `workspaceBase` through
-    // `CanonicalRuntimeContext.workspaceBase`; the capability bridge
+    // `RuntimeContext.workspaceBase`; the capability bridge
     // populates `WORKSPACE_IDENTITY_CAPABILITY` from
     // `context.shOptions.workspaceRoot`. Plugins consume the typed
     // seam via `StepHandlerContext.capabilities.get(WORKSPACE_IDENTITY_CAPABILITY, WorkspaceIdentity::class)`
@@ -265,11 +265,11 @@ private fun runDurablePipelineOwned(
                 val nonCanonicalSteps = compiledPipeline.analyzeCanonicalDurableExecution(composedStepRegistry)
                 if (nonCanonicalSteps.isEmpty()) {
                     runCanonical(
-                        CanonicalRunRequest(
+                        RunRequest(
                             pipeline = compiledPipeline,
                             runId = RunId(runId),
                             state = durableRunState(journal, cursorStore, eventStore, sagaObligationStore, lease, outputObserver.wakeups),
-                            policy = CanonicalRunPolicy(
+                            policy = RunPolicy(
                                 clock = clock,
                                 idGenerator = idGenerator,
                                 effectReplayPolicy = effectPolicy,

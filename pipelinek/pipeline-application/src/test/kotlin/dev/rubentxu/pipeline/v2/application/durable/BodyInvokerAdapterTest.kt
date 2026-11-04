@@ -21,11 +21,11 @@ import org.junit.jupiter.api.assertInstanceOf
  * was stopped on purpose; nothing here stopped the run, and telling the caller that it did
  * would send it looking for a deadline that never expired.
  */
-class CanonicalBodyInvokerAdapterTest {
+class BodyInvokerAdapterTest {
 
     @Test
     fun `a reference that is not open is an engine failure and not a cancellation`() {
-        val adapter = CanonicalBodyInvokerAdapter()
+        val adapter = BodyInvokerAdapter()
 
         val outcome = adapter.invokeBlocking(BodyRef("body/absent"), BodyInvocationContext())
 
@@ -36,7 +36,7 @@ class CanonicalBodyInvokerAdapterTest {
 
     @Test
     fun `a reference that is not open says which reference was missing`() {
-        val adapter = CanonicalBodyInvokerAdapter()
+        val adapter = BodyInvokerAdapter()
 
         val outcome = adapter.invokeBlocking(BodyRef("body/absent"), BodyInvocationContext())
 
@@ -50,7 +50,7 @@ class CanonicalBodyInvokerAdapterTest {
 
     @Test
     fun `an open reference runs the body and returns its own outcome`() {
-        val adapter = CanonicalBodyInvokerAdapter()
+        val adapter = BodyInvokerAdapter()
         val reference = BodyRef("body/open")
         adapter.open(reference) { StepOutcome.Success }
 
@@ -62,7 +62,7 @@ class CanonicalBodyInvokerAdapterTest {
 
     @Test
     fun `the runner receives the invocation context verbatim`() {
-        val adapter = CanonicalBodyInvokerAdapter()
+        val adapter = BodyInvokerAdapter()
         val reference = BodyRef("body/context")
         var received: BodyInvocationContext? = null
         adapter.open(reference) { context ->
@@ -80,7 +80,7 @@ class CanonicalBodyInvokerAdapterTest {
 
     @Test
     fun `a reference closed by the engine is no longer open`() {
-        val adapter = CanonicalBodyInvokerAdapter()
+        val adapter = BodyInvokerAdapter()
         val reference = BodyRef("body/closed")
         adapter.open(reference) { StepOutcome.Success }
         assertEquals(1, adapter.openBodyCount)
@@ -95,7 +95,7 @@ class CanonicalBodyInvokerAdapterTest {
 
     @Test
     fun `an absent reference carries no cause of its own`() {
-        val adapter = CanonicalBodyInvokerAdapter()
+        val adapter = BodyInvokerAdapter()
 
         val outcome = adapter.invokeBlocking(BodyRef("body/absent"), BodyInvocationContext())
 

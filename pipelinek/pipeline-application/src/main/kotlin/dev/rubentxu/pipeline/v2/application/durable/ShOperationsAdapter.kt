@@ -28,7 +28,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * - **Project invariant**: handlers adapt to typed seams; they never
  *   own process-execution logic.
  * The adapter binds the canonical [OpId] of the invocation (handed in from
- * the [CanonicalRuntimeContext] at construction time, so it already carries
+ * the [RuntimeContext] at construction time, so it already carries
  * the stage/step indices AND any branch/bodyPath identity — e.g. the
  * `-bp2-b0:branch-...` form for parallel-branch steps). Deriving a fresh
  * `OpId(runId, 0, stepIndex)` per call would collapse two concurrent parallel

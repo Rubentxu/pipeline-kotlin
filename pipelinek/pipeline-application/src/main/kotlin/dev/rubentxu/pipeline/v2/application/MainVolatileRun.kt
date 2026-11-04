@@ -202,10 +202,10 @@ private fun runVolatilePipelineOwned(
             absentPipelineOutcome(compilation)
         } else if (nonCanonicalSteps.isEmpty()) {
             runCanonical(
-                CanonicalRunRequest(
+                RunRequest(
                     pipeline = pipeline,
                     runId = RunId(runId),
-                    state = CanonicalRunState(
+                    state = RunState(
                         journal = journal,
                         cursorStore = cursorStore,
                         eventSink = eventStore,
@@ -229,7 +229,7 @@ private fun runVolatilePipelineOwned(
                             leaseEpoch = 0,
                         ),
                     ),
-                    policy = CanonicalRunPolicy(
+                    policy = RunPolicy(
                         clock = clock,
                         idGenerator = idGenerator,
                         effectReplayPolicy = DefaultEffectReplayPolicy(),

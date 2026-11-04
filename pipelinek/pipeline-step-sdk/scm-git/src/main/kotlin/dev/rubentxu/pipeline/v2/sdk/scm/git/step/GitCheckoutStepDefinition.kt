@@ -35,7 +35,7 @@ import java.time.Clock
 
 /**
  * SCM Operations capability key
- * The handler does NOT reach CanonicalRuntimeContext or process-engine
+ * The handler does NOT reach RuntimeContext or process-engine
  * classes directly — it asks for a narrow typed capability that
  * pipelinek/pipeline-application/runtime wires with the concrete [EventSink]
  * + [Clock] + secret resolver at composition time. This is the

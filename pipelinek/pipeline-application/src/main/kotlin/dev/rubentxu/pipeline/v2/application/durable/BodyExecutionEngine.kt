@@ -379,7 +379,7 @@ internal class BodyExecutionEngine(
         parentBodyPath: List<BlockSegment>,
         spanScope: SpanScope,
         dispatcher: BodyChildDispatcher,
-        bodyInvokerAdapter: CanonicalBodyInvokerAdapter,
+        bodyInvokerAdapter: BodyInvokerAdapter,
     ): StepOutcome {
         val scopeInBody = spanScope
         var outcome: StepOutcome = StepOutcome.Success

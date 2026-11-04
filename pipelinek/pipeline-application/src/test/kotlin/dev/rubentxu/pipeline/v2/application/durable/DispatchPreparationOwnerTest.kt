@@ -40,13 +40,13 @@ import java.nio.file.Path
  *
  * Pure and total: nothing here touches a disk, a clock or a process.
  */
-class CanonicalDispatchPreparationTest {
+class DispatchPreparationOwnerTest {
 
     /**
      * The legacy core catalog is the production resolver; here it answers for the one
      * core key this test dispatches, and refuses the rest the way a lookup miss does.
      */
-    private val preparation = CanonicalDispatchPreparation(
+    private val preparation = DispatchPreparationOwner(
         StepMetadataResolver { key ->
             if (key.value == "core.emit.event") {
                 StepMetadata(effects = setOf(Effect.READ_ONLY), replayPolicy = ReplayPolicy.MEMOIZED)

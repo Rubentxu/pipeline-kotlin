@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.LiveSpanParent
 import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
 
-import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
+import dev.rubentxu.pipeline.v2.application.RunPolicy
 import dev.rubentxu.pipeline.v2.application.RuntimeWorkspaceTransport
 import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
@@ -61,7 +61,7 @@ import java.time.Instant
  * its stages, and the retention of a live run happens in the coordinator's `finally`. It observes
  * the derivation itself, which is where the guarantee lives.
  */
-class CanonicalRunDerivationsTest {
+class RunDerivationsTest {
 
     @Test
     @DisplayName("the shell transport runs in the run's own workspace, or in the control root's")
@@ -154,7 +154,7 @@ class CanonicalRunDerivationsTest {
         ownership: WorkspaceOwnership = WorkspaceOwnership.PIPELINEK,
         sandboxProfile: SandboxProfile = SandboxProfile.NONE,
         allowNetwork: Boolean = false,
-    ): CanonicalRunPolicy = CanonicalRunPolicy(
+    ): RunPolicy = RunPolicy(
         clock = FixedClock,
         idGenerator = SequentialIdGenerator(),
         effectReplayPolicy = DefaultEffectReplayPolicy(),

@@ -18,14 +18,14 @@ import kotlinx.serialization.json.JsonObject
  * reconstruction from a decoded command (no `when(key){ Echo -> text }` bridging).
  * The registry strategy feeds [encodedInput] unchanged to `StepDefinition.inputCodec`.
 */
-data class CanonicalInvocation(
+data class Invocation(
     val stepKey: PluginStepId,
     val schemaVersion: String,
     val encodedInput: EncodedStepValue,
 ) {
     companion object {
         /** Structural projection of a compiler [StepNode] before any canonical decode. */
-        fun fromNode(node: StepNode): CanonicalInvocation = CanonicalInvocation(
+        fun fromNode(node: StepNode): Invocation = Invocation(
             stepKey = node.pluginStepId,
             schemaVersion = node.payload.schemaVersion,
             encodedInput = EncodedStepValue(node.payload.encoded),
@@ -40,7 +40,7 @@ data class CanonicalInvocation(
  * well-formed dsl-v1 JSON object. It is deliberately structural, so a structurally-invalid node is
  * rejected as `SCHEMA` without ever entering typed field extraction. This is what keeps the
  * decode-first laws intact: typed decode happens later, behind the durable resolution.
- * A [Ready] carries the structural [CanonicalInvocation] (stepKey + schemaVersion + lossless
+ * A [Ready] carries the structural [Invocation] (stepKey + schemaVersion + lossless
  * [EncodedStepValue]); durable resolution and typed decode consume it. A [Rejected] carries the reason
  * the envelope gate rejected the node (terminal `SCHEMA`, never the executor).
 */
@@ -52,7 +52,7 @@ sealed interface StructuralPreparation {
      * for concrete Step semantics is the later TypedInputDecode's job.
 */
     data class Ready(
-        val invocation: CanonicalInvocation,
+        val invocation: Invocation,
         val envelope: JsonObject,
     ) : StructuralPreparation
 
@@ -60,7 +60,7 @@ sealed interface StructuralPreparation {
 }
 
 /** Step-agnostic envelope gate that yields a [StructuralPreparation] without concrete decode. */
-object CanonicalStructuralPreparation {
+object StructuralPreparationGate {
     private const val SCHEMA_VERSION = "dsl-v1"
 
     /**
@@ -86,7 +86,7 @@ object CanonicalStructuralPreparation {
                 "Canonical payload for '${node.id.value}' must be a JSON object",
             )
         }
-        return StructuralPreparation.Ready(CanonicalInvocation.fromNode(node), element)
+        return StructuralPreparation.Ready(Invocation.fromNode(node), element)
     }
 }
 

@@ -405,7 +405,7 @@ sealed interface ContextOverlay {
 
 /**
  * Immutable stack of [ContextOverlay] values.
- * Used by CanonicalDurableRunCoordinator to track active scopes during body execution.
+ * Used by DurableRunCoordinator to track active scopes during body execution.
  * The immutability guarantee ensures trivially correct `finally`-restoration:
  * `val parentStack = contextStack; try { ... } finally { contextStack = parentStack }`.
 */

@@ -58,7 +58,7 @@ data class StepRegistration<I : Any, O : Any>(
          * Legacy keys). The projector still returns `null` for the
          * legacy path because the runner passes `null` as `providerLookup`
          * to the projection seam (see `EnvelopeProjectingEventSink`
-         * Wiring in / CanonicalDurableRunCoordinator)
+         * Wiring in / DurableRunCoordinator)
 */
         fun legacy(definition: StepDefinition<*, *>, publisher: String): StepRegistration<*, *> {
             val key = definition.contract.key

@@ -13,8 +13,8 @@ import java.nio.file.Path
  * `StepHandlerContext.capabilities.get(KEY, Type::class)` instead of closing over
  * a `() -> Path` resolver that reads the launcher system property.
  * The capability is populated by
- * `dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess`
- * from the per-invocation `CanonicalRuntimeContext.shOptions.workspaceRoot`,
+ * `dev.rubentxu.pipeline.v2.application.durable.RuntimeCapabilityAccess`
+ * from the per-invocation `RuntimeContext.shOptions.workspaceRoot`,
  * which the launcher threads into the canonical durable run. There is
  * NO shared mutable state: two plugin handlers in the same JVM can each
  * receive their own `WorkspaceIdentity` because the value comes from the

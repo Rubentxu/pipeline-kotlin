@@ -114,7 +114,7 @@ class StepFailureKindPreservationTest {
         )
 
     /** El contexto de runtime, apuntando a rutas que no existen. */
-    private fun runtime(): CanonicalRuntimeContext = CanonicalRuntimeContext(
+    private fun runtime(): RuntimeContext = RuntimeContext(
         opId = OpId(RUN_ID, 0, 0),
         runId = RUN_ID,
         stageName = "stage-0",
@@ -137,7 +137,7 @@ class StepFailureKindPreservationTest {
      * consumidor recibe.
      */
     private suspend fun outcomeThroughTheWholeChain(kind: FailureKind): StepOutcome {
-        val boundary = RegistryExecutionBoundary(CanonicalCapabilityBindings())
+        val boundary = RegistryExecutionBoundary(CapabilityBindings())
         val result = StepExecutionBoundary(RecordingSink(), clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             boundary.execute(prepared(failingHandler(kind)), runtime())
         }
@@ -196,7 +196,7 @@ class StepFailureKindPreservationTest {
     @DisplayName("el evento de fallo publica el kind del fallo, no ENGINE")
     fun `the failure event publishes the failure's own kind`() = runBlocking {
         val sink = RecordingSink()
-        val boundary = RegistryExecutionBoundary(CanonicalCapabilityBindings())
+        val boundary = RegistryExecutionBoundary(CapabilityBindings())
 
         StepExecutionBoundary(sink, clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             boundary.execute(prepared(failingHandler(FailureKind.USER)), runtime())
@@ -213,7 +213,7 @@ class StepFailureKindPreservationTest {
     @Test
     @DisplayName("un fallo que NO es de paso sigue siendo ENGINE")
     fun `a failure that is not a step failure stays ENGINE`() = runBlocking {
-        val boundary = RegistryExecutionBoundary(CanonicalCapabilityBindings())
+        val boundary = RegistryExecutionBoundary(CapabilityBindings())
 
         val result = StepExecutionBoundary(RecordingSink(), clock = FixedClock, idGenerator = SequentialIdGenerator()).execute(context()) {
             boundary.execute(prepared(explodingHandler()), runtime())
@@ -229,7 +229,7 @@ class StepFailureKindPreservationTest {
     @Test
     @DisplayName("el límite del registro no relabela un fallo tipado: lo deja subir")
     fun `the registry boundary does not relabel a typed failure`() = runBlocking {
-        val boundary = RegistryExecutionBoundary(CanonicalCapabilityBindings())
+        val boundary = RegistryExecutionBoundary(CapabilityBindings())
 
         val thrown = runCatching {
             boundary.execute(prepared(failingHandler(FailureKind.USER)), runtime())

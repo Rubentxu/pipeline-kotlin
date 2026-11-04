@@ -236,10 +236,10 @@ internal fun StepOutcome.toOperationStatus(): OperationStatus = when (this) {
     }
 }
 
-internal sealed interface CanonicalContinuation {
-    data object Continue : CanonicalContinuation
-    data object ContinueUnstable : CanonicalContinuation
-    data class Abort(val failure: PipelineFailure) : CanonicalContinuation
+internal sealed interface StageContinuation {
+    data object Continue : StageContinuation
+    data object ContinueUnstable : StageContinuation
+    data class Abort(val failure: PipelineFailure) : StageContinuation
 }
 
 /**

@@ -18,7 +18,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciler
  *     [RetryReconciliationDecision].
  * The driver MUST NOT mutate the journal directly. The caller (the
  * dispatch loop in
- * [dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator])
+ * [dev.rubentxu.pipeline.v2.application.durable.DurableRunCoordinator])
  * It persists the plan BEFORE
  * launching any child effect, and only the driver plans.
  * ## Plan-only contract

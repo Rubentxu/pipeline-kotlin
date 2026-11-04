@@ -2,8 +2,8 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.NoopPipelineTelemetry
 
-import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
-import dev.rubentxu.pipeline.v2.application.CanonicalRunState
+import dev.rubentxu.pipeline.v2.application.RunPolicy
+import dev.rubentxu.pipeline.v2.application.RunState
 import dev.rubentxu.pipeline.v2.application.PluginComposition
 import dev.rubentxu.pipeline.v2.application.RuntimeWorkspaceTransport
 import dev.rubentxu.pipeline.v2.application.SequentialIdGenerator
@@ -40,7 +40,7 @@ import java.time.Instant
  *
  * ## The guarantee
  *
- * A caller that hands [CanonicalDurableRunCoordinator] a [DivergenceDetector] gets THAT detector
+ * A caller that hands [DurableRunCoordinator] a [DivergenceDetector] gets THAT detector
  * composed into the run. The coordinator's constructor declares the interface, and so does its
  * collaborator ([DurableInvocationResolver]), so the only thing that could stand between the two
  * is a downcast in the coordinator's own body:
@@ -127,8 +127,8 @@ class DivergenceDetectorPortTest {
      * The control root points at a directory that does not exist. Nothing in this composition may
      * write to it, and a write would fail this row rather than pass unnoticed.
      */
-    private fun coordinator(detector: DivergenceDetector): CanonicalDurableRunCoordinator =
-        CanonicalDurableRunCoordinator(
+    private fun coordinator(detector: DivergenceDetector): DurableRunCoordinator =
+        DurableRunCoordinator(
             state = state(),
             policy = policy(),
             composition = PluginComposition.resolve(pluginClassLoader = null),
@@ -152,7 +152,7 @@ class DivergenceDetectorPortTest {
         )
 
     /** The run's durable spine: the journal, the cursor store, the sink and the Saga seam. */
-    private fun state(): CanonicalRunState = CanonicalRunState(
+    private fun state(): RunState = RunState(
         journal = InMemoryOperationJournal(FixedClock),
         cursorStore = InMemoryReplayCursorStore(FixedClock),
         eventSink = NullEventSink,
@@ -161,7 +161,7 @@ class DivergenceDetectorPortTest {
     )
 
     /** What the run was given: the clock, the replay policy, the control root and the rest. */
-    private fun policy(): CanonicalRunPolicy = CanonicalRunPolicy(
+    private fun policy(): RunPolicy = RunPolicy(
         clock = FixedClock,
         idGenerator = SequentialIdGenerator(),
         effectReplayPolicy = DefaultEffectReplayPolicy(),

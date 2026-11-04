@@ -50,7 +50,7 @@ typealias PwdTmpOutput = PwdOutput
  * ```text
  * Files.*                    -> only TemporaryWorkspaceOperationsAdapter
  * EventSink                  -> only TemporaryWorkspaceOperationsAdapter
- * CanonicalRuntimeContext    -> never
+ * RuntimeContext    -> never
  * OpId                       -> never
  * sha256 / MessageDigest     -> never
  * ```
@@ -86,7 +86,7 @@ typealias PwdTmpOutput = PwdOutput
  * code does not draw will not notice the day one is crossed.
  * ## Capability-routed handler discipline
  * - declared capability = used capability = `{TEMPORARY_WORKSPACE_OPERATIONS}`
- * - no `CanonicalRuntimeContext` reach
+ * - no `RuntimeContext` reach
  * - no coordinator / journal / event sink reach
  * - the substrate (sha256 + Files + PwdResolved) is the adapter's responsibility
  * ## Scope firewall

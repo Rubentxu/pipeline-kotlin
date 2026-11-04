@@ -36,7 +36,7 @@ import java.nio.file.Path
  * `core.deleteDir → DeleteDirOperations → DeleteDirOperationsAdapter`.
  * ## No privileged executor
  * The adapter reuses the SAME `CleanWsExecutor` substrate the legacy
- * `CanonicalCleanWsNodeDispatcher` uses (identical construction: WorkspaceResolver
+ * clean-ws node dispatcher uses (identical construction: WorkspaceResolver
  * over controlDirRoot, ensureCreated before execution) — differential equivalence
  * by construction, not by reimplementation.
 */

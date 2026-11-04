@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 
 /**
- * Typed input preparation extracted from [CanonicalDurableRunCoordinator].
+ * Typed input preparation extracted from [DurableRunCoordinator].
  * Preparation runs ONLY on actual execution and NEVER produces Step side effects.
  * There is exactly ONE way to prepare a step — registry resolution, capability
  * admission and typed decode through [RegistryExecutionPreparation] — because the
@@ -21,7 +21,7 @@ internal class DurableTypedInputPreparation(
      * capabilities and EXECUTE asks it for the same table, so a Step can never
      * pass admission against one table and run against another.
      */
-    private val capabilityBindings: CanonicalCapabilityBindings,
+    private val capabilityBindings: CapabilityBindings,
 ) {
 
     /** Closed outcome of typed preparation; the coordinator interprets each case. */
@@ -30,7 +30,7 @@ internal class DurableTypedInputPreparation(
         data class Rejected(val reason: String) : TypedPreparation
     }
 
-    fun prepare(step: StepNode, runtime: CanonicalRuntimeContext): TypedPreparation {
+    fun prepare(step: StepNode, runtime: RuntimeContext): TypedPreparation {
         val admission = RegistryExecutionPreparation.prepare(
             registry = stepRegistry,
             key = step.pluginStepId,

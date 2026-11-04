@@ -11,7 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
  * execution. The handler MUST NOT carry any process-launching logic itself.
  * It adapts to this typed seam which is implemented
  * by the certified `ShExecution.invokeShell` engine entry-point; the
- * capability system wires that adapter in [CanonicalRuntimeCapabilityAccess].
+ * capability system wires that adapter in [RuntimeCapabilityAccess].
  * ## Why a typed seam and not `ShExecution.invokeShell` directly?
  * AGENTS.md (a handler must adapt to the existing named ports/adapters). The previous Step
  * (`core.echo`) does not embed event emission in its handler either: it

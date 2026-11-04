@@ -48,7 +48,7 @@ internal sealed interface CursorAdvance {
  * terminal journal append has returned, because a cursor pointing at an operation that was
  * never persisted is a lie the next run would believe.
  */
-internal class CanonicalCursorAdvance(
+internal class CursorAdvanceOwner(
     private val cursorStore: ReplayCursorStore,
 ) {
     /**

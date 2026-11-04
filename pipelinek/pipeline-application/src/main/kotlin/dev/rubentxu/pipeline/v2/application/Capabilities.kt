@@ -68,7 +68,7 @@ val PLATFORM_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.platf
  * decides what to project from it. This separation lets the canonical path be decided
  * Without changing how the workspace is acquired, and keeps the handler from
  * reading the controller user-directory property or the relative-path shorthand directly.
- * Bridge wiring: `CanonicalRuntimeCapabilityAccess.buildProvided` populates this
+ * Bridge wiring: `RuntimeCapabilityAccess.buildProvided` populates this
  * capability from `context.shOptions.workspaceRoot` (the same source the legacy
  * `pwdContext()` consumed) — preserving byte-equivalent truth with PATH_B.
  * Declared in `StepContract.requiredCapabilities`; admission is fail-closed before
@@ -227,7 +227,7 @@ val CLEAN_WS_OPERATIONS_CAPABILITY: StepCapability = StepCapability("clean-ws.op
  * The adapter ([dev.rubentxu.pipeline.v2.application.MilestoneOperationsAdapter]) binds to a
  * [dev.rubentxu.pipeline.v2.application.MilestoneStateStore] that lives at the
  * coordinator/run lifetime (created by coordinator wiring, not by handler invocation).
- * This mirrors the legacy `CanonicalMilestoneNodeDispatcher.lastReachedOrdinal` scope.
+ * This mirrors the legacy milestone dispatcher's `lastReachedOrdinal` scope.
  * ## Why a capability and not a var in the handler?
  * AGENTS.md: decisions are pure and immutable where practical, so a handler MUST NOT
  * hold mutable state. The previous

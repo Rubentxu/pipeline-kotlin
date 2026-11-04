@@ -21,7 +21,7 @@ import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 
 /**
- * The run-lifecycle bookends, extracted from [CanonicalDurableRunCoordinator]
+ * The run-lifecycle bookends, extracted from [DurableRunCoordinator]
  * .
  * Owns exactly two responsibilities that used to live as coordinator fields:
  *  1. the RunStarted/RunFinished bookend pair, including the
@@ -216,10 +216,10 @@ internal class RunLifecycleEngine(
      * publishes what it saw. A stage that received the scope's outcome cannot
      * disagree with the scope about it.
      */
-    fun decideStageContinuation(outcome: StepOutcome): CanonicalContinuation = when (outcome) {
-        StepOutcome.Success -> CanonicalContinuation.Continue
-        StepOutcome.Unstable -> CanonicalContinuation.ContinueUnstable
-        is StepOutcome.Failure -> CanonicalContinuation.Abort(outcome.failure)
+    fun decideStageContinuation(outcome: StepOutcome): StageContinuation = when (outcome) {
+        StepOutcome.Success -> StageContinuation.Continue
+        StepOutcome.Unstable -> StageContinuation.ContinueUnstable
+        is StepOutcome.Failure -> StageContinuation.Abort(outcome.failure)
     }
 
     /**

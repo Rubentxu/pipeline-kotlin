@@ -289,7 +289,7 @@ internal class ExternalSubprocessRecovery(
     }
 
     private companion object {
-        // Preserved from CanonicalDurableRunCoordinator companion (behaviour-equivalence law).
+        // Preserved from DurableRunCoordinator companion (behaviour-equivalence law).
         private const val REATTACH_TIMEOUT_MS = 60_000L
     }
 }

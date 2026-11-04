@@ -37,10 +37,10 @@ import org.junit.jupiter.api.Test
  * Pure and total: the store here is a recorder, and nothing touches a disk, a clock
  * or a process.
  */
-class CanonicalCursorAdvanceTest {
+class CursorAdvanceOwnerTest {
 
     private val store = RecordingCursorStore()
-    private val advance = CanonicalCursorAdvance(store)
+    private val advance = CursorAdvanceOwner(store)
 
     private val failure = StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "the step failed"))
 

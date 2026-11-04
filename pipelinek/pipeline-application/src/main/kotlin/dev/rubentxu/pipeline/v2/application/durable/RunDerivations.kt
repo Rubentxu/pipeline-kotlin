@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.CanonicalRunPolicy
+import dev.rubentxu.pipeline.v2.application.RunPolicy
 import dev.rubentxu.pipeline.v2.application.PipelineTelemetry
 import dev.rubentxu.pipeline.v2.domain.step.AllowAll
 import dev.rubentxu.pipeline.v2.domain.step.DenyAll
@@ -46,7 +46,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  * Every field below is a **consequence** of one field of the policy, and the derivation is
  * total: there is no second place where a workspace root or a network decision can be written.
  */
-internal fun canonicalShellOptions(policy: CanonicalRunPolicy): ShOptions = ShOptions(
+internal fun canonicalShellOptions(policy: RunPolicy): ShOptions = ShOptions(
     // With --workspace <dir>, the project's own directory IS the workspace — stages share it
     // (Jenkins-familiar semantics). Adding .resolve("workspace") would point to a subdirectory
     // of the project root (typically nonexistent), and every `sh` step would fail with

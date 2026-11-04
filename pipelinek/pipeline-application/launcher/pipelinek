@@ -111,8 +111,13 @@ VERSION_TRUST_SECONDS=600
 # and over.
 ARCHIVE_RETRY_SECONDS=600
 
-# The current time, in seconds. The shell knows it without starting anything.
-NOW="$(printf '%(%s)T' -1)"
+# The current time, in seconds. The shell knows it without starting anything,
+# on the versions of bash that can print it; the ones that cannot are asked,
+# and they pay for the question once per start.
+NOW="$(printf '%(%s)T' -1 2>/dev/null)"
+case "$NOW" in
+    ''|*[!0-9]*) NOW="$(date +%s)" ;;
+esac
 
 # --- the JVM ------------------------------------------------------------------
 
@@ -137,6 +142,7 @@ fi
 # process, and a process is a few milliseconds the product does not have.
 STATE_MAJOR=""
 STATE_JVM_COMMAND=""
+STATE_CWD=""
 STATE_ASKED_AT=0
 STATE_ATTEMPTED=""
 STATE_FAILED_AT=0
@@ -149,6 +155,7 @@ read_state() {
         case "$line" in
             major=*) STATE_MAJOR="${line#major=}" ;;
             jvm_command=*) STATE_JVM_COMMAND="${line#jvm_command=}" ;;
+            cwd=*) STATE_CWD="${line#cwd=}" ;;
             asked_at=*)
                 value="${line#asked_at=}"
                 case "$value" in
@@ -293,10 +300,13 @@ resolve_version() {
     fi
 
     # The answer this distribution remembers. It is trusted only while the JVM
-    # command is the same one it was asked about, and only while it is young:
-    # a version manager can change the JDK under the same command, and the
-    # answer that describes the old JDK would name the wrong archive.
+    # command is the same one it was asked about, only while the answer comes
+    # from the directory it was asked in, and only while it is young: a version
+    # manager resolves the JDK from the directory the product is started in,
+    # and it can change the JDK under the same command, so an answer that
+    # describes another JDK would name the wrong archive.
     if [ -n "$STATE_MAJOR" ] && [ "$STATE_JVM_COMMAND" = "$JVM_COMMAND_IDENTITY" ] &&
+        [ "$STATE_CWD" = "$PWD" ] &&
         [ "$NOW" -lt $(( STATE_ASKED_AT + VERSION_TRUST_SECONDS )) ]; then
         RESOLVED_MAJOR="$STATE_MAJOR"
         return 0
@@ -314,6 +324,7 @@ resolve_version() {
     if ask_the_jvm; then
         RESOLVED_MAJOR="$ASKED_VERSION"
         STATE_ASKED_AT="$NOW"
+        STATE_CWD="$PWD"
         STATE_DIRTY=1
         return 0
     fi
@@ -418,6 +429,7 @@ write_state() {
     {
         printf 'major=%s\n' "$RESOLVED_MAJOR"
         printf 'jvm_command=%s\n' "$JVM_COMMAND_IDENTITY"
+        printf 'cwd=%s\n' "$STATE_CWD"
         printf 'asked_at=%s\n' "$STATE_ASKED_AT"
         printf 'attempted=%s\n' "$STATE_ATTEMPTED"
         printf 'failed_at=%s\n' "$STATE_FAILED_AT"
@@ -425,32 +437,37 @@ write_state() {
     } > "$STATE_FILE" 2>/dev/null || true
 }
 
-# The archives of other JVM versions are dead weight: the JVM that wrote them
-# is not the JVM that reads them, and nobody knows why they are there.
-remove_other_archives() {
-    local candidate
-    [ -n "$ARCHIVE_FILE" ] || return 0
-    for candidate in "$LIB_DIR"/"$ARCHIVE_PREFIX"*"$ARCHIVE_SUFFIX"; do
-        [ -e "$candidate" ] || continue
-        [ "$candidate" = "$ARCHIVE_FILE" ] && continue
-        rm -f "$candidate" 2>/dev/null || true
-    done
-}
-
 read_state
 read_classpath_fingerprint
 prepare_archive
 write_state
-remove_other_archives
 
 # --- run ---------------------------------------------------------------------
+
+# The JVM options, as words and not as text: an option that contains a
+# wildcard is an option, and not a pattern to match against the directory the
+# product happens to start in. The three sources are the ones the generated
+# start script honoured — the options the build declares, JAVA_OPTS, and the
+# options named after the product — and the last one wins, as it did there.
+JVM_ARGS=()
+
+add_options() {
+    local text="$1"
+    local -a words
+    [ -n "$text" ] || return 0
+    read -ra words <<< "$text"
+    JVM_ARGS+=("${words[@]}")
+}
+
+add_options "$ARCHIVE_FLAGS"
+add_options "$DEFAULT_JVM_OPTS"
+add_options "${JAVA_OPTS:-}"
+add_options "${PIPELINEK_OPTS:-}"
 
 # `exec` so the product's exit code and its signals are the ones the operator
 # sees, and the JVM is the process, not a child of the launcher.
 exec "$JAVACMD" \
-    $DEFAULT_JVM_OPTS \
-    $ARCHIVE_FLAGS \
-    ${JAVA_OPTS:-} \
+    ${JVM_ARGS[@]+"${JVM_ARGS[@]}"} \
     -classpath "$CLASSPATH" \
     "$MAIN_CLASS" \
     "$@"

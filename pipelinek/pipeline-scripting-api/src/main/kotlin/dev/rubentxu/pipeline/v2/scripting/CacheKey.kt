@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.scripting
 
+import kotlinx.serialization.Serializable
+
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 
 /**
@@ -7,6 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.digest.Sha256
  * @property value The SHA-256 hex digest.
  * @property version The algorithm version tag.
 */
+@Serializable
 data class CacheKey(
     val value: String,
     val version: String,

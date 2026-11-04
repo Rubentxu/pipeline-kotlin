@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    kotlin("plugin.serialization")
     `maven-publish`
 }
 
@@ -32,6 +33,11 @@ dependencies {
     // published set already compiles with both on its classpath. Before this change that coupling
     // was real but undeclared: it existed transitively, by accident of the module graph.
     api(project(":pipeline-domain"))
+    // `api`: `CacheKey`, `ScriptingDiagnostic` and `ScriptOrigin` are `@Serializable`, so their
+    // generated `serializer()` returns a `KSerializer` and a consumer that names one of those
+    // types compiles against the serialization API. The dependency is a POM fact, not a runtime
+    // surprise: `:pipeline-events` and `:pipeline-domain` already publish it as `api`.
+    api(libs.kotlinx.serialization.json)
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotlin.reflect)
     testRuntimeOnly(libs.junit.platform.launcher)

@@ -38,13 +38,20 @@ import org.junit.jupiter.api.Test
  */
 class JsonEventLogDecodeStoredRowTest {
 
-    /** One `RunStarted`, the smallest kind whose required fields are all readable. */
+    /**
+     * One `RunStarted`, the smallest kind whose required fields are all readable.
+     *
+     * The payload is the shape the WRITER produces: every field carries its own leading comma,
+     * so the row ends with a value and not with a comma. A trailing comma is not part of the
+     * wire format -- the old reader tolerated one because it scanned the text, and a fixture
+     * leaning on that tolerance would be testing the leniency of a reader this one replaced
+     * with a parser.
+     */
     private fun validPayload(
         kind: String = "RunStarted",
         occurredAt: String = "2026-01-01T00:00:00Z",
-        extra: String = """""scriptPath":"/pipeline.kts",""",
     ) = """[{"eventId":"e-1","runId":"run-42","sequence":7,"kind":"$kind",""" +
-        """"occurredAt":"$occurredAt",$extra}]"""
+        """"occurredAt":"$occurredAt","scriptPath":"/pipeline.kts"}]"""
 
     private fun refusedReason(outcome: StoredRowDecode): UndecodableReason {
         val refused = outcome as StoredRowDecode.Refused

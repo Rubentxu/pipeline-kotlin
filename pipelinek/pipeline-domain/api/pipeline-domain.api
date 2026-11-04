@@ -5163,6 +5163,371 @@ public final class dev/rubentxu/pipeline/v2/domain/identity/ResourceRefs {
 	public final fun stepDefinition (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/domain/isolation/Admission {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/Admission$Allowed : dev/rubentxu/pipeline/v2/domain/isolation/Admission {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionGrant;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionGrant;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionGrant;)Ldev/rubentxu/pipeline/v2/domain/isolation/Admission$Allowed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/Admission$Allowed;Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionGrant;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/Admission$Allowed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getGrant ()Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionGrant;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/Admission$Denied : dev/rubentxu/pipeline/v2/domain/isolation/Admission {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason;)Ldev/rubentxu/pipeline/v2/domain/isolation/Admission$Denied;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/Admission$Denied;Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/Admission$Denied;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/AdmissionDecider {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/AdmissionDecider;
+	public final fun decide (Ldev/rubentxu/pipeline/v2/domain/isolation/AdmissionQuery;)Ldev/rubentxu/pipeline/v2/domain/isolation/Admission;
+	public final fun requiredCapabilities (Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;)Ljava/util/Set;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/AdmissionQuery {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation;Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact;)V
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation;Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation;Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact;)Ldev/rubentxu/pipeline/v2/domain/isolation/AdmissionQuery;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/AdmissionQuery;Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation;Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/AdmissionQuery;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttestation ()Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation;
+	public final fun getPlugins ()Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact;
+	public final fun getRequirements ()Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/CpuLimit {
+	public fun <init> (D)V
+	public final fun component1 ()D
+	public final fun copy (D)Ldev/rubentxu/pipeline/v2/domain/isolation/CpuLimit;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/CpuLimit;DILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/CpuLimit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCores ()D
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/isolation/DenialReason {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/DenialReason$MissingAttestation : dev/rubentxu/pipeline/v2/domain/isolation/DenialReason {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$MissingAttestation;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$MissingAttestation;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$MissingAttestation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetail ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/DenialReason$PolicyConflict : dev/rubentxu/pipeline/v2/domain/isolation/DenialReason {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$PolicyConflict;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$PolicyConflict;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$PolicyConflict;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetail ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/DenialReason$UnsupportedCapability : dev/rubentxu/pipeline/v2/domain/isolation/DenialReason {
+	public fun <init> (Ljava/util/Set;)V
+	public final fun component1 ()Ljava/util/Set;
+	public final fun copy (Ljava/util/Set;)Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$UnsupportedCapability;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$UnsupportedCapability;Ljava/util/Set;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$UnsupportedCapability;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMissing ()Ljava/util/Set;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/DenialReason$UntrustedPlugin : dev/rubentxu/pipeline/v2/domain/isolation/DenialReason {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$UntrustedPlugin;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$UntrustedPlugin;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/DenialReason$UntrustedPlugin;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifacts ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/ExecutionGrant {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;Ljava/util/List;Ljava/lang/String;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;Ljava/util/List;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionGrant;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionGrant;Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionGrant;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getProven ()Ljava/util/List;
+	public final fun getRationale ()Ljava/lang/String;
+	public final fun getRequirements ()Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements {
+	public fun <init> ()V
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/isolation/TrustIntent;Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess;Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess;Ldev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget;Ldev/rubentxu/pipeline/v2/domain/isolation/SecretGrant;)V
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/isolation/TrustIntent;Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess;Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess;Ldev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget;Ldev/rubentxu/pipeline/v2/domain/isolation/SecretGrant;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/isolation/TrustIntent;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess;
+	public final fun component4 ()Ldev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget;
+	public final fun component5 ()Ldev/rubentxu/pipeline/v2/domain/isolation/SecretGrant;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/isolation/TrustIntent;Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess;Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess;Ldev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget;Ldev/rubentxu/pipeline/v2/domain/isolation/SecretGrant;)Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;Ldev/rubentxu/pipeline/v2/domain/isolation/TrustIntent;Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess;Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess;Ldev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget;Ldev/rubentxu/pipeline/v2/domain/isolation/SecretGrant;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/ExecutionRequirements;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFilesystem ()Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess;
+	public final fun getNetwork ()Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess;
+	public final fun getResources ()Ldev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget;
+	public final fun getSecrets ()Ldev/rubentxu/pipeline/v2/domain/isolation/SecretGrant;
+	public final fun getTrustIntent ()Ldev/rubentxu/pipeline/v2/domain/isolation/TrustIntent;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess$ApprovedReadonly : dev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess$ApprovedReadonly;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess$ApprovedReadonly;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess$ApprovedReadonly;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPaths ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess$WorkspaceScoped : dev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess$WorkspaceScoped;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation$Provider : dev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation$Provider;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation$Provider;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation$Provider;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getProven ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation$TrustedProfileOnly : dev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation$TrustedProfileOnly;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation$Unprobeable : dev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation$Unprobeable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation$Unprobeable;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationAttestation$Unprobeable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability : java/lang/Enum {
+	public static final field CredentialIsolation Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+	public static final field DslEvaluationIsolation Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+	public static final field FilesystemConfinement Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+	public static final field NetworkConfinement Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+	public static final field ProcessConfinement Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+	public static final field ResourceLimits Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+	public static final field SandboxLauncher Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+	public static final field UserNamespace Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/MemoryLimit {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/domain/isolation/MemoryLimit;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/MemoryLimit;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/MemoryLimit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess$Allowlisted : dev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess$Allowlisted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess$Allowlisted;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess$Allowlisted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDestinations ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess$Denied : dev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess$Denied;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/PidsLimit {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Ldev/rubentxu/pipeline/v2/domain/isolation/PidsLimit;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/PidsLimit;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/PidsLimit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getProcesses ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$Attested : dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$Attested;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$Attested;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$Attested;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifacts ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$NoPlugins : dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$NoPlugins;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$Unattested : dev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$Unattested;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$Unattested;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/PluginAdmissionFact$Unattested;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifacts ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/ProvenCapability {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;Ljava/lang/String;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/isolation/ProvenCapability;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/ProvenCapability;Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/ProvenCapability;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCapability ()Ldev/rubentxu/pipeline/v2/domain/isolation/IsolationCapability;
+	public final fun getEvidence ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget$Bounded : dev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget {
+	public fun <init> ()V
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/isolation/CpuLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/MemoryLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/PidsLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/TimeLimit;)V
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/isolation/CpuLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/MemoryLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/PidsLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/TimeLimit;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/isolation/CpuLimit;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/isolation/MemoryLimit;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/isolation/PidsLimit;
+	public final fun component4 ()Ldev/rubentxu/pipeline/v2/domain/isolation/TimeLimit;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/isolation/CpuLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/MemoryLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/PidsLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/TimeLimit;)Ldev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget$Bounded;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget$Bounded;Ldev/rubentxu/pipeline/v2/domain/isolation/CpuLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/MemoryLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/PidsLimit;Ldev/rubentxu/pipeline/v2/domain/isolation/TimeLimit;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget$Bounded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCpu ()Ldev/rubentxu/pipeline/v2/domain/isolation/CpuLimit;
+	public final fun getMemory ()Ldev/rubentxu/pipeline/v2/domain/isolation/MemoryLimit;
+	public final fun getPids ()Ldev/rubentxu/pipeline/v2/domain/isolation/PidsLimit;
+	public final fun getTime ()Ldev/rubentxu/pipeline/v2/domain/isolation/TimeLimit;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget$Unbounded : dev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/ResourceBudget$Unbounded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/isolation/SecretGrant {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/SecretGrant$None : dev/rubentxu/pipeline/v2/domain/isolation/SecretGrant {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/SecretGrant$None;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/SecretGrant$Scoped : dev/rubentxu/pipeline/v2/domain/isolation/SecretGrant {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/isolation/SecretGrant$Scoped;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/SecretGrant$Scoped;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/SecretGrant$Scoped;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIds ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/TimeLimit {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/domain/isolation/TimeLimit;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/isolation/TimeLimit;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/isolation/TimeLimit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSeconds ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/TrustIntent : java/lang/Enum {
+	public static final field TrustedSingleTenant Ldev/rubentxu/pipeline/v2/domain/isolation/TrustIntent;
+	public static final field UntrustedIsolated Ldev/rubentxu/pipeline/v2/domain/isolation/TrustIntent;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/isolation/TrustIntent;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/isolation/TrustIntent;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/post/PostCondition : java/lang/Enum {
 	public static final field ABORTED Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;
 	public static final field ALWAYS Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;

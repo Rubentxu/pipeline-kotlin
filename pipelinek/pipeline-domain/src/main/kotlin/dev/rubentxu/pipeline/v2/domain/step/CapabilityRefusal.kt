@@ -60,6 +60,15 @@ sealed interface CapabilityRefusal {
     /** The refusal in one line, for the diagnostic that carries it. */
     fun describe(): String
 
+    /**
+     * The helper both refusal cases use to name a type.
+     *
+     * The companion owns the single rule about how a type is written into a
+     * refusal message, and both cases render their sentence through it, so the
+     * two refusals name a class the same way. Nothing here is public: the
+     * companion is the seam that keeps the wording in one place, not a surface
+     * a consumer may call.
+     */
     companion object {
         /**
          * A readable name for a class, never a classpath fragment.

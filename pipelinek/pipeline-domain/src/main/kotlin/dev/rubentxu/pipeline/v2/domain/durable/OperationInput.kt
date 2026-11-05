@@ -30,6 +30,14 @@ data class OperationInput(
         validate(params)
     }
 
+    /**
+     * Holds the rules a parameter map has to satisfy.
+     *
+     * They live here and not only in the constructor, so a caller can ask
+     * whether a map is admissible before building a value out of it. What they
+     * refuse: a parameter whose key looks like it holds a secret and is not on
+     * the allowlist, and a value too large for the digest to stay bounded.
+     */
     companion object {
         /** Maximum serialized size in bytes (64 KiB). */
         private const val MAX_SIZE_BYTES = 64 * 1024

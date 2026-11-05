@@ -17,6 +17,14 @@ class MismatchedSecretException(
 ) : IllegalArgumentException(
     "Credential '${credentialId.value}' is of type '$actualKind' where '$expectedKind' was expected."
 ) {
+    /**
+     * The template the wording of a credential mismatch is spelled in.
+     *
+     * The template takes the credential id, the kind that was found and the
+     * kind that was expected, in that order. The exception spells the same
+     * three facts in its own message, so a caller that asserts on the
+     * wording has two strings to match and the two can drift apart.
+     */
     companion object {
         /**
          * Verbatim Jenkins message format for assertion in tests.

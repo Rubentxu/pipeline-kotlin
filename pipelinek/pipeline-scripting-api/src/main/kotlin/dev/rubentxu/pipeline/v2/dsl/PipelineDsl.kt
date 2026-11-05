@@ -72,32 +72,58 @@ fun pipeline(
 }
 
 /**
- * DSL isolation markers.
- * Each marker declares a separate lexical layer of the DSL. A `@DslMarker`
- * on a receiver type tells the Kotlin compiler to reject implicit `this`
- * from an outer scope when an inner scope is in scope: a method that
- * belongs to [PipelineScope] cannot be called from inside a
- * [StageScope] lambda, and vice versa. The user gets a compile-time
- * error when they accidentally try to nest DSL calls in the wrong scope.
- * The four layers are deliberately separate markers, not one umbrella
- * marker: when [StagesScope] and [PipelineScope] both carried the same
- * marker, a `stages { pipeline { ... } }` mistake would be rejected the
- * same as a `stages { stages { ... } }` mistake — but those are different
- * errors and the user-facing message should reflect that.
- * What these markers do NOT do: they do not change the API surface, do
- * not add runtime checks, and do not affect existing pipelines that use
- * the DSL correctly. The only observable change is that misuse becomes
- * a compile error instead of a silent miscompile.
-*/
+ * The marker of the pipeline layer: the scope a `pipeline { }` block opens.
+ *
+ * A DSL marker hides an outer receiver that carries the SAME marker, so the
+ * scopes of one layer do not see each other: a call that would resolve to the
+ * outer scope is refused by the compiler instead of running on it.
+ *
+ * The four markers of the DSL are separate annotations, not a hierarchy, so
+ * the layers do not hide each other: the pipeline scope's calls stay
+ * reachable from a `stages { }` block, and a `stages { stages { ... } }`
+ * nesting compiles. What a block of one layer may use from another layer is
+ * decided by the scopes themselves, not by the compiler.
+ *
+ * What these markers do NOT do: they do not change the API surface and they
+ * add no runtime check. Their effect is compile-time: a scope of the same
+ * layer cannot be reached by mistake, so a pipeline that relied on an outer
+ * scope's call is refused by the compiler and needs the scope's own spelling.
+ */
 @DslMarker
 annotation class PipelineDslMarker
 
+/**
+ * The marker of the stage layer: the scope a `stages { }` block opens.
+ *
+ * It separates the stage layer from itself: a scope carrying this marker
+ * nested inside another scope carrying it does not see the outer one, so the
+ * compiler refuses a call that would resolve to the outer scope. Only the
+ * stages scope carries it today, so the layer has a single scope and the rule
+ * has nothing to hide yet.
+ */
 @DslMarker
 annotation class StageDslMarker
 
+/**
+ * The marker of the step layer: the scopes a step body opens — the stage
+ * scope, the directives scope, the environment and options scopes, the
+ * parallel, branch and script scopes.
+ *
+ * It separates the step layer from itself: inside a branch the parallel
+ * scope's own calls are out of reach, and inside a step body the stage
+ * scope's own calls are out of reach. The stage scope and the directives
+ * scope share it, so a directives block cannot reach the stage scope's calls
+ * either.
+ */
 @DslMarker
 annotation class StepDslMarker
 
+/**
+ * The marker of the post layer: the scopes a post-condition block opens.
+ *
+ * It separates the post layer from itself, so the outer post scope's calls
+ * are out of reach from inside the steps of a post condition.
+ */
 @DslMarker
 annotation class PostDslMarker
 

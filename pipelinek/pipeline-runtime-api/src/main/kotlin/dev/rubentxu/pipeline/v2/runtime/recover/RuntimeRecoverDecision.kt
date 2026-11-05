@@ -74,11 +74,52 @@ object RuntimeRecoverDecision {
 
     /** Closed vocabulary of operation outcomes the decider recognises. */
     sealed interface OperationOutcome {
+        /**
+         * The operation finished and its effect is in place.
+         *
+         * Recovery leaves it alone: replaying it would apply the effect a
+         * second time, and the decision the decider records is `SKIP`.
+         */
         data object Succeeded : OperationOutcome
+
+        /**
+         * The operation failed and its effect is not in place.
+         *
+         * Recovery runs it again, and the decision the decider records is
+         * `RERUN`.
+         */
         data object Failed : OperationOutcome
+
+        /**
+         * The operation left its effect in an unknown state.
+         *
+         * Recovery leaves it alone rather than applying the effect a second
+         * time, and the decision the decider records is `SKIP`.
+         */
         data object Unstable : OperationOutcome
+
+        /**
+         * The operation was aborted and is not to be retried.
+         *
+         * Recovery aborts with it, and the decision the decider records is
+         * `ABORT`.
+         */
         data object Aborted : OperationOutcome
+
+        /**
+         * The operation was cancelled before it could finish.
+         *
+         * Recovery aborts with it, and the decision the decider records is
+         * `ABORT`.
+         */
         data object Cancelled : OperationOutcome
+
+        /**
+         * The operation was still running when the journal was read.
+         *
+         * Recovery runs it again, because its effect is not known to be in
+         * place, and the decision the decider records is `RERUN`.
+         */
         data object Running : OperationOutcome
         /** Any outcome not in the closed set. */
         data class Other(val raw: String) : OperationOutcome

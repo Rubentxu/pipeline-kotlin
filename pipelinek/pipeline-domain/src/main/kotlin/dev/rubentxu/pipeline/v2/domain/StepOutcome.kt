@@ -52,6 +52,14 @@ sealed interface StepOutcome {
             is Failure -> FAILURE_TOKEN
         }
 
+    /**
+     * The vocabulary the Event Plane writes a step's outcome as.
+     *
+     * The words live here, next to the cases they name, so the writer and the
+     * reader of the plane share one list. Adding a case to the interface
+     * breaks the writer at compile time instead of leaving a reader that does
+     * not understand a step the writer believes it described.
+     */
     companion object {
 
         /** The word a successful step is written as. */

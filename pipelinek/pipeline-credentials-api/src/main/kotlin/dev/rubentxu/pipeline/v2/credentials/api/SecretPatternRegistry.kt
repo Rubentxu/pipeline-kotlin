@@ -338,6 +338,14 @@ class SecretPatternRegistry {
         return result
     }
 
+    /**
+     * The thresholds and the marker the registry works by.
+     *
+     * [MIN_MASKABLE_LENGTH] is the shortest value worth masking and [MIN_SECRET_WINDOW] the floor
+     * of the lookahead a streaming redactor needs. [SCRUB_MARKER] is what a masked value is
+     * replaced by. They are public because a caller that reports on redaction needs to state the
+     * same thresholds the registry applies, not a copy of them.
+     */
     companion object {
         /**
          * GitLab minimum maskable secret length.

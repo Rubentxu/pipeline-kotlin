@@ -39,6 +39,17 @@ data class ResourceRef(
     fun canonicalText(): String =
         "v$SERIALIZATION_VERSION:${kind.name.lowercase()}:" + segments.joinToString("/")
 
+    /**
+     * The rules that decide whether a segment may take part in a reference,
+     * and the version of the canonical text.
+     *
+     * The version belongs to the canonical form alone: it is written into the
+     * canonical text, so a text names the shape it was written in and two
+     * shapes can be told apart. The segment rules are the ones the
+     * constructor applies, and they live here so that a builder such as
+     * [ResourceRefs] asks the reference instead of keeping its own copy of
+     * them.
+     */
     companion object {
         /**
          * Version of the internal canonical serialization. Bumping it is a

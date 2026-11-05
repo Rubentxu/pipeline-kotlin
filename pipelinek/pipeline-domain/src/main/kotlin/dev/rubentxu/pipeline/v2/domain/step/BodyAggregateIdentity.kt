@@ -78,6 +78,13 @@ sealed interface BodyAggregateIdentity {
         override val durableRole: AggregateDurableRole = AggregateDurableRole.WAIT_UNTIL_CONTROL_ROW
     }
 
+    /**
+     * Every aggregate identity this tree declares.
+     *
+     * The list is the closed set of durable aggregate keys, so a new one
+     * cannot turn up as a string literal inside the coordinator: it has to
+     * be added here, with the decision that owns it.
+     */
     companion object {
         /**
          * Every declared aggregate identity. Pinned so a THIRD durable aggregate identity

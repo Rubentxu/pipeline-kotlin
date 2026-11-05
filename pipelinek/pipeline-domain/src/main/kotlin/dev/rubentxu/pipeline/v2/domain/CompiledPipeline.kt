@@ -23,25 +23,64 @@ data class CompiledPipeline(
     }
 }
 
+/**
+ * The pipeline source a compiled definition came from.
+ *
+ * The path is where the definition was read from and the digest fingerprints
+ * its content, so two compilations of the same file are recognisable as the
+ * same source. The path must not be blank; the digest is whatever the
+ * compiler hashed the file into.
+ */
 @Serializable
 data class SourceDescriptor(val path: String, val digest: Digest) {
     init { require(path.isNotBlank()) { "SourceDescriptor.path must not be blank" } }
 }
 
+/**
+ * An opaque content fingerprint, used wherever a compiled definition has to
+ * name the thing it was built from.
+ *
+ * The value is text the domain never interprets: it is compared, hashed
+ * further and embedded in identities, but no reader parses it. That is why
+ * the only rule is that it is not blank — a fingerprint with no text is not a
+ * fingerprint of anything.
+ */
 @JvmInline
 @Serializable
 value class Digest(val value: String) {
     init { require(value.isNotBlank()) { "Digest value must not be blank" } }
 }
 
+/**
+ * The environment a stage or a body scope contributes.
+ *
+ * The names are the variable names the steps inside the scope will see, and
+ * no name may be blank: an environment entry nobody can name is an entry
+ * nothing can read. The values are plain text; nothing here interprets them.
+ */
 @Serializable
 data class EnvironmentSpec(val values: Map<String, String>) {
     init { require(values.keys.none(String::isBlank)) { "Environment keys must not be blank" } }
-    companion object { fun empty() = EnvironmentSpec(emptyMap()) }
+    /**
+     * The factory that builds the environment that contributes nothing.
+     */
+    companion object {
+        /**
+         * The environment that contributes nothing.
+         *
+         * A scope with no declared variables uses `empty()`, which yields an
+         * environment equal to every other empty one.
+         */
+        fun empty() = EnvironmentSpec(emptyMap())
+    }
 }
 
 /**
- * A name/value option carrier. DEPRECATED: use [StageOption].
+ * A name and an optional value. DEPRECATED: use [StageOption].
+ *
+ * The name must not be blank, and the value may be absent. The pair states
+ * nothing about which options exist, so it cannot say whether anything will
+ * read it — that is what [StageOption] states.
  *
  * Why it is wrong, stated so the deprecation is informative rather than a bare
  * marker: a `name: String` / `value: String?` pair cannot express WHICH options
@@ -127,6 +166,15 @@ sealed interface StageOption {
     }
 }
 
+/**
+ * A parameter the pipeline declares it accepts.
+ *
+ * The name and the type must not be blank: a parameter nobody can name, or
+ * whose type is empty, is a declaration no caller could satisfy. The type is
+ * a name and not a parsed type — the domain does not interpret it. The
+ * default is the text a caller may supply instead of a value; `null` means
+ * the parameter declares none.
+ */
 @Serializable
 data class ParameterSpec(val name: String, val type: String, val defaultValue: String? = null) {
     init {
@@ -135,6 +183,14 @@ data class ParameterSpec(val name: String, val type: String, val defaultValue: S
     }
 }
 
+/**
+ * A tool the pipeline declares it needs, at one version.
+ *
+ * Neither the name nor the version may be blank: a tool nobody can name, or
+ * one named without a version, is a requirement no resolver can satisfy.
+ * The version is the one the declaration pins; nothing here compares it
+ * against anything.
+ */
 @Serializable
 data class ToolSpec(val name: String, val version: String) {
     init {
@@ -178,16 +234,37 @@ data class PostSpec(
         dev.rubentxu.pipeline.v2.domain.post.PostPlan(bodies = conditions)
 }
 
+/**
+ * The condition a stage declares, kept as text.
+ *
+ * The expression must not be blank. The domain carries the text; whether a
+ * condition is evaluated, and against what, belongs to whoever reads it.
+ */
 @Serializable
 data class ConditionSpec(val expression: String) {
     init { require(expression.isNotBlank()) { "ConditionSpec.expression must not be blank" } }
 }
 
+/**
+ * The prompt a stage shows when it asks the caller for input.
+ *
+ * The message must not be blank: a request nobody can read is not a request.
+ * What the answer does to the stage is decided where the stage is executed,
+ * not here.
+ */
 @Serializable
 data class InputSpec(val message: String) {
     init { require(message.isNotBlank()) { "InputSpec.message must not be blank" } }
 }
 
+/**
+ * The axes a matrix body expands over.
+ *
+ * Each entry names one axis and the values it takes. There must be at least
+ * one axis, no axis name may be blank, and no axis may have an empty list of
+ * values — an axis with no values expands to nothing. The body is not
+ * expanded yet: the planner refuses a matrix stage.
+ */
 @Serializable
 data class MatrixSpec(val axes: Map<String, List<String>>) {
     init {
@@ -198,6 +275,15 @@ data class MatrixSpec(val axes: Map<String, List<String>>) {
     }
 }
 
+/**
+ * One stage of a compiled pipeline: the unit a run executes and reports on.
+ *
+ * The identity must be unique among the stages of its pipeline, and the name
+ * must not be blank — a stage nobody can name cannot be reported on. The
+ * environment, the options and the condition are the stage's own
+ * declarations; the body is what it runs and the post block is what runs
+ * after it.
+ */
 @Serializable
 data class StageNode(
     val id: StageId,
@@ -238,14 +324,51 @@ data class StageDirective(
     }
 }
 
+/**
+ * What a stage's body is, as a closed set of shapes.
+ *
+ * The set is closed so that every reader of a body has to name every case:
+ * a body that could also be something else would let a reader handle the
+ * cases it knows and silently ignore the rest.
+ */
 @Serializable
 sealed interface StageBody {
+    /**
+     * A body of steps, run one after another.
+     *
+     * The order is the order the steps are listed in, and it is the order
+     * they run in.
+     */
     @Serializable
     data class Steps(val steps: List<StepNode>) : StageBody
+
+    /**
+     * A body of stages, each with a body of its own.
+     *
+     * The stages are the children of this one: the enclosing stage declares
+     * them. The planner flattens their units into the same list, and the
+     * coordinator refuses a nested body at run time.
+     */
     @Serializable
     data class NestedStages(val stages: List<StageNode>) : StageBody
+
+    /**
+     * A body of branches that run at the same time.
+     *
+     * The compiler's validator is what requires at least two branches and a
+     * single step per branch: a branch that ran a sequence of its own would
+     * not be a branch but a stage, and the shape is refused before a run
+     * sees it.
+     */
     @Serializable
     data class Parallel(val branches: List<StageNode>) : StageBody
+
+    /**
+     * A body declared over a matrix's axis values.
+     *
+     * The planner does not expand it yet: a matrix stage is refused at
+     * planning time.
+     */
     @Serializable
     data class Matrix(val matrix: MatrixSpec) : StageBody
 
@@ -293,6 +416,13 @@ data class ScriptedStageRef(
     }
 }
 
+/**
+ * One step of a compiled pipeline, as a node the engine can dispatch.
+ *
+ * The set of shapes is closed, so the engine's dispatch is a `when` over it
+ * with no `else` to absorb a case nobody handled: adding a shape forces the
+ * dispatch to name it, and the compiler names the branch that is missing.
+ */
 @kotlinx.serialization.Polymorphic
 @Serializable
 sealed interface StepNode {
@@ -329,6 +459,14 @@ sealed interface StepNode {
     val address: PluginStepId get() = slot ?: pluginStepId
 }
 
+/**
+ * A step that runs a plugin and has no body of its own.
+ *
+ * The plugin step id is what the engine dispatches by, and the payload is
+ * the step's input in the plugin's own encoding. The encoded payload must
+ * not be blank: a step with nothing to run would be dispatched and then do
+ * nothing.
+ */
 @Serializable
 data class OpaqueStepNode(
     override val id: StepId,
@@ -337,6 +475,14 @@ data class OpaqueStepNode(
     override val slot: PluginStepId? = null,
 ) : StepNode
 
+/**
+ * A step that owns a body of other steps.
+ *
+ * The plugin step id names the scope the body runs under, and the payload
+ * carries that scope's declared contract; the body carries the steps the
+ * scope governs. The step id of a block is its own, so the body is
+ * addressed under the block and not in its place.
+ */
 @Serializable
 data class BlockStepNode(
     override val id: StepId,
@@ -346,6 +492,14 @@ data class BlockStepNode(
     override val slot: PluginStepId? = null,
 ) : StepNode
 
+/**
+ * The payload of a step, together with the version of its schema.
+ *
+ * The schema version names the encoding of the encoded text, and it is what
+ * lets the runtime refuse a payload it cannot read instead of guessing at
+ * it. The version must not be blank: an unversioned payload has no encoding
+ * to refuse.
+ */
 @Serializable
 data class VersionedStepPayload(val schemaVersion: String, val encoded: String) {
     init {
@@ -360,18 +514,48 @@ data class VersionedStepPayload(val schemaVersion: String, val encoded: String) 
 @kotlinx.serialization.Polymorphic
 @Serializable
 sealed interface ContextOverlay {
+    /**
+     * The environment a body scope introduces around its children.
+     *
+     * The values are the scope's own, and they apply to the body beneath the
+     * frame and to nothing outside it.
+     */
     @Serializable
     data class Environment(val values: EnvironmentSpec) : ContextOverlay
 
+    /**
+     * The working directory a body scope introduces around its children.
+     *
+     * The path is where the body beneath the frame runs.
+     */
     @Serializable
     data class Cwd(val path: String) : ContextOverlay
 
+    /**
+     * The credential binding a body scope introduces around its children.
+     *
+     * The binding id names the binding the body runs under; the lease that
+     * grants it is taken by the credential preamble, not by this frame.
+     */
     @Serializable
     data class Credentials(val bindingId: String) : ContextOverlay
 
+    /**
+     * The output decoration a body scope applies to its children's outcome.
+     *
+     * The kind names the decoration. A decorated scope turns whatever the
+     * body produced into a published warning rather than into a containment.
+     */
     @Serializable
     data class OutputDecorator(val kind: String) : ContextOverlay
 
+    /**
+     * The cancellation scope a body scope runs under.
+     *
+     * The scope id names the scope, so a reader can tell two cancellation
+     * scopes apart. Whether an interruption ends the body or is absorbed by
+     * it is the scope's own decision.
+     */
     @Serializable
     data class CancellationScope(val scopeId: String) : ContextOverlay
 
@@ -386,6 +570,16 @@ sealed interface ContextOverlay {
     // typed, and both keep travelling as BARE JSON STRINGS. The explicit serializer is
     // load-bearing — kotlinx would otherwise emit `{"type":"UNSTABLE"}` and change the
     // compiled-pipeline format this overlay has always had.
+    /**
+     * The frame a catch-error scope carries: what it caught and what it
+     * decided about it.
+     *
+     * The build result is what the scope reports about the failure, the
+     * stage result is what the stage reports, the message is the scope's own
+     * text, and the timestamp is when the scope was entered. Both results
+     * travel as bare JSON strings, so an unknown one is refused rather than
+     * read as one of the known ones.
+     */
     @Serializable
     data class CatchErrorOverlay(
         @Serializable(with = CatchErrorBuildResult.Serializer::class)
@@ -396,9 +590,22 @@ sealed interface ContextOverlay {
         val enteredAt: Long,
     ) : ContextOverlay
 
+    /**
+     * The deadline a body scope runs under.
+     *
+     * The time and the unit are the budget as the scope declared it; the
+     * body beneath the frame is what the deadline governs.
+     */
     @Serializable
     data class TimeoutOverlay(val time: Long, val unit: String) : ContextOverlay
 
+    /**
+     * The retry budget a body scope runs under.
+     *
+     * The count is how many attempts the scope allows, and the conditions,
+     * when they are there, name the circumstances under which an attempt is
+     * repeated.
+     */
     @Serializable
     data class RetryOverlay(val count: Int, val conditions: List<String>?) : ContextOverlay
 }
@@ -417,6 +624,13 @@ data class ContextStack(val frames: List<ContextOverlay>) {
     val size: Int get() = frames.size
     val isEmpty: Boolean get() = frames.isEmpty()
 
+    /**
+     * The stack with no frames.
+     *
+     * [EMPTY] is the value a scope starts from before anything is pushed
+     * onto it, and the value a scope returns to when it pops the last frame
+     * it owns.
+     */
     companion object {
         val EMPTY = ContextStack(emptyList())
     }

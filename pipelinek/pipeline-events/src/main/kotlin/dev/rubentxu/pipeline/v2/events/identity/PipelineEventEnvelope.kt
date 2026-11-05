@@ -44,6 +44,13 @@ data class PipelineEventEnvelope(
 */
     val provenance: ProviderProvenance? = null,
 ) {
+    /**
+     * The envelope's format version, and the only place that states it.
+     *
+     * A major bump means a breaking codec change. The version does not move
+     * for an additive field: a wire form written without it decodes with that
+     * field absent.
+     */
     companion object {
         /**
          * Envelope format version. Major bump = breaking codec change.

@@ -183,6 +183,18 @@ class SecretHandle private constructor(
         }
     }
 
+    /**
+     * The factories that make a handle out of a value.
+     *
+     * Each one answers a different question about the value: whether it
+     * arrives as text or as bytes, and whether it is a secret at all. A
+     * masked handle holds a value that is not a secret and must not be
+     * redacted, such as a path or a user name.
+     *
+     * The byte factory does not copy the bytes it is given: `secret(value)`
+     * keeps the caller's array, so closing the handle wipes that same array.
+     * The text factory encodes into an array of its own.
+     */
     companion object {
         /**
          * Factory for creating a SecretHandle from a plain String.

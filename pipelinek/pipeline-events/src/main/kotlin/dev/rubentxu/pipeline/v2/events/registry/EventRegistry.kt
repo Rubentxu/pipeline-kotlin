@@ -91,6 +91,14 @@ class EventRegistry private constructor(
         }
     }
 
+    /**
+     * The two ways to obtain a registry: an empty one, or a builder to compose
+     * one.
+     *
+     * The empty registry is already frozen — no path off it grows it — so "a
+     * plugin declared nothing" and "nothing is registered" are the same typed
+     * answer.
+     */
     companion object {
         /** A fresh [Builder]. Registration order starts at 1. */
         fun builder(): Builder = Builder()

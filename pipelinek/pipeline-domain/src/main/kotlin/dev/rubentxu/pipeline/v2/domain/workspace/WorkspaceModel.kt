@@ -120,8 +120,26 @@ sealed interface WorkspaceRequest {
  * them apart stops a future change in sharing from reinterpreting the origin.
 */
 sealed interface WorkspaceAllocationPolicy {
+
+    /**
+     * One workspace directory serves the whole run: the policy says that every
+     * stage and every branch resolves its paths against the same root.
+     */
     data object RunShared : WorkspaceAllocationPolicy
+
+    /**
+     * Each stage of the run gets its own directory, and the branches inside
+     * one stage share that stage's directory: the policy says that a stage
+     * resolves its paths against its own root, and the branches of a stage
+     * against that same one.
+     */
     data object StageIsolated : WorkspaceAllocationPolicy
+
+    /**
+     * Each branch of the run gets its own directory, whatever stage it
+     * belongs to: the policy says that the directories are allocated per
+     * branch rather than per stage.
+     */
     data object BranchIsolated : WorkspaceAllocationPolicy
 }
 
@@ -131,14 +149,43 @@ sealed interface WorkspaceAllocationPolicy {
  * flow, and a Step must be able to report it as a typed outcome.
 */
 sealed interface WorkspacePathError {
+
+    /**
+     * The path the caller supplied is empty, so there is nothing to resolve.
+     * The refusal happens before any interpretation of the path, and the
+     * caller has to supply a non-empty path to be answered at all.
+     */
     data class InvalidPath(val raw: String) : WorkspacePathError
+
+    /**
+     * The path is absolute and lies outside the workspace root. Host-wide
+     * access is a different capability, not a path this seam grants, so an
+     * absolute path inside the root is accepted and one outside it is not.
+     */
     data class AbsolutePathNotAllowed(val raw: String) : WorkspacePathError
+
+    /**
+     * The path was relative and resolved outside the workspace root, so it
+     * escaped the confinement boundary. The root is the boundary the path
+     * failed to stay inside.
+     */
     data class EscapesWorkspace(val raw: String, val root: Path) : WorkspacePathError
+
+    /**
+     * The real path of the target lies outside the root, reached through a
+     * symbolic link inside the workspace. The check needs filesystem state,
+     * so it is decided by the authorising adapter and not by the pure
+     * resolver.
+     */
     data class SymlinkEscape(val path: Path, val root: Path) : WorkspacePathError
 
     /** A root-wide destructive Step targeted an Attached workspace. */
     data class ProtectedWorkspaceRoot(val operation: String, val root: Path) : WorkspacePathError
 
+    /**
+     * The workspace itself cannot be used, whatever path was asked for. The
+     * reason says why it is unavailable.
+     */
     data class WorkspaceUnavailable(val reason: String) : WorkspacePathError
 
     /** `--isolated` and `--workspace` were both requested. */
@@ -172,7 +219,19 @@ sealed interface PathResolution {
  * "not applicable".
 */
 sealed interface DestructiveAuthorization {
+
+    /**
+     * The root-wide destructive operation is allowed: the workspace is
+     * PipelineK's own scratch and its lifecycle cleanup stays permitted. The
+     * caller may now destroy the root.
+     */
     data object Permitted : DestructiveAuthorization
+
+    /**
+     * The root-wide destructive operation is refused, and the reason says
+     * which refusal it was. Nothing was destroyed: the authorisation is a
+     * value the caller reads, not an absence of one.
+     */
     data class Refused(val reason: WorkspacePathError) : DestructiveAuthorization
 }
 

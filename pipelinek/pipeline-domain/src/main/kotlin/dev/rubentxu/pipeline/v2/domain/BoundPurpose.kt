@@ -61,6 +61,21 @@ enum class BoundPurpose {
     USERNAME_COLON_PASSWORD,
     ;
 
+    /**
+     * The vocabulary of wire spellings, and the one boundary where a spelling
+     * becomes a typed purpose.
+     *
+     * [parse] returns `null` for a spelling outside the vocabulary and never
+     * falls back to a variant: a catch-all would put on the durable event
+     * stream a binding the producer never declared, and an observer could not
+     * tell it apart from a real one.
+     *
+     * The map is derived from [entries], so the accepted spellings cannot
+     * drift away from the constants themselves.
+     *
+     * What an unreadable purpose MEANS belongs to the caller: only the caller
+     * knows whether it can report a refusal or must keep reading history.
+     */
     companion object {
 
         /**

@@ -305,24 +305,23 @@ data class StepFinished(
 }
 
 /**
- * Emitted when an agent is resolved for parallel execution.
- * Records which agent label was selected and any associated metadata.
- * @deprecated.1. This event has never had a producer, and the reason is
- *   now on record rather than merely absent: its payload is a LABEL plus an
- *   optional remote URI, and neither can express the semantics that actually
- *   exist. `LocalAny` has no label, and a `CapabilitySet` requirement is not a
- *   label at all — the only way to emit this event for those would be to
- *   invent a label, which is precisely the "metadata accepted but never
- *   interpreted" shape the contract forbids.
- *   [ExecutionTargetResolved] carries the declared requirement and the granted
- *   target instead, so every case of the requirement hierarchy is
- *   representable and an observer can tell a satisfied requirement from an
- *   absent one.
- *   The type is retained, not deleted, because it is part of a published SDK
- *   surface and removing it would be a binary-compatibility break for a
- *   payload nobody can produce. It is a schema variant for compatibility, not a
- *   live contract.
-*/
+ * A compatibility shape naming an agent label and an optional remote URI.
+ *
+ * No producer emits it, and the reason is that its payload is a label plus an
+ * optional remote URI, neither of which can express the semantics that
+ * actually exist: `LocalAny` has no label, and a `CapabilitySet` requirement is
+ * not a label at all. Emitting it for those would mean inventing a label,
+ * which is the "metadata accepted but never interpreted" shape the contract
+ * forbids. [ExecutionTargetResolved] carries the declared requirement and the
+ * target that satisfied it instead, so an observer can tell a satisfied
+ * requirement from an absent one.
+ *
+ * The shape is part of a published surface, so it stays: a consumer that meets
+ * this kind learns that the shape exists, not that a resolution happened.
+ *
+ * @deprecated Use [ExecutionTargetResolved], whose payload expresses every case
+ *   of the requirement hierarchy.
+ */
 @Deprecated(
     "Superseded by ExecutionTargetResolved; never had a producer and its label-shaped " +
         "payload cannot express LocalAny or CapabilitySet.",
@@ -1486,6 +1485,16 @@ data class DirectiveAdmitted(
     override fun withSequence(sequence: Long): DirectiveAdmitted = copy(sequence = sequence)
 }
 
+/**
+ * Emitted when a stage's declared directive failed admission, before the stage
+ * started and before any stage effect.
+ *
+ * The denial is fail-closed: the stage never starts and the run fails. The
+ * reason names the directive that was refused and says why, in the words the
+ * directive seam used. The absence of this event means no directive of the
+ * stage was refused; a stage whose directives were all admitted emits one
+ * [DirectiveAdmitted] per directive and no denial.
+ */
 @Serializable
 @SerialName("DirectiveDenied")
 data class DirectiveDenied(
@@ -1592,6 +1601,16 @@ data class LockRequested(
     override fun withSequence(sequence: Long): LockRequested = copy(sequence = sequence)
 }
 
+/**
+ * Emitted when this run takes the lock on the named resource, before the
+ * locked body runs.
+ *
+ * The owner of the hold is the execution lane, not the run and not the step:
+ * the lane is the run plus its parallel lineage, so two parallel branches of
+ * one run contend with each other. The event names the resource and the run
+ * that emitted it. A [LockReleased] closes it, and the release happens on
+ * every terminal of the body, so a body that failed still ends in a release.
+ */
 @Serializable
 @SerialName("LockAcquired")
 data class LockAcquired(
@@ -1606,6 +1625,13 @@ data class LockAcquired(
     override fun withSequence(sequence: Long): LockAcquired = copy(sequence = sequence)
 }
 
+/**
+ * Emitted when the hold on the named resource ends, whatever the body did.
+ *
+ * The release belongs to the acquisition: it happens on every terminal of the
+ * locked body — completed, failed or cancelled — so a reader that sees an
+ * acquisition always finds the release that closes it.
+ */
 @Serializable
 @SerialName("LockReleased")
 data class LockReleased(
@@ -1679,6 +1705,14 @@ data class InputRequested(
     override fun withSequence(sequence: Long): InputRequested = copy(sequence = sequence)
 }
 
+/**
+ * Emitted when the answer to an input question is "proceed", before the input
+ * body runs.
+ *
+ * The submitter names who answered, not an identity the runner verified: this
+ * runner is headless and checks the name against nothing. The message is the
+ * answer's own text, when the answer carried one.
+ */
 @Serializable
 @SerialName("InputProceed")
 data class InputProceed(
@@ -1696,6 +1730,14 @@ data class InputProceed(
     override fun withSequence(sequence: Long): InputProceed = copy(sequence = sequence)
 }
 
+/**
+ * Emitted when the answer to an input question is "abort", and the input body
+ * does not run.
+ *
+ * An abort is the author saying the rest of the block must not happen, so the
+ * body that does not run is the meaning of the event and not a missing effect.
+ * The submitter names who answered; the message carries the answer's text.
+ */
 @Serializable
 @SerialName("InputAborted")
 data class InputAborted(

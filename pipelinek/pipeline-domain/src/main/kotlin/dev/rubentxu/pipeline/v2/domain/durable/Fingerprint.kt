@@ -53,6 +53,16 @@ value class Fingerprint(val hex: String) {
         require(hex.all { it in '0'..'9' || it in 'a'..'f' }) { "Fingerprint hex must contain only 0-9 and a-f, got: $hex" }
     }
 
+    /**
+     * Computes fingerprints and owns the encoding they are a function of.
+     *
+     * The companion is the one place the canonical form is defined: the JSON
+     * codec, the recursive sort that makes the encoding order-independent, and
+     * the payload shape the digest is taken over. A caller that needs a
+     * fingerprint asks for one here rather than hashing something itself,
+     * because a second spelling of the digest would be a second identity for
+     * the same operation.
+     */
     companion object {
         @OptIn(ExperimentalSerializationApi::class)
         private val JSON = Json {

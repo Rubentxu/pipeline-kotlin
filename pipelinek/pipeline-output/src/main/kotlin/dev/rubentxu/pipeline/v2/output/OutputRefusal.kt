@@ -118,6 +118,21 @@ sealed interface OutputRefusal {
 
 /** A read that either produced a bounded page or was refused. */
 sealed interface OutputReadResult {
+
+    /**
+     * The read produced a bounded page of committed bytes.
+     *
+     * The page carries the cursor to resume from, so a consumer continues by handing that cursor
+     * back to the read port rather than by computing the next offset itself.
+     */
     data class Page(val page: OutputPage) : OutputReadResult
+
+    /**
+     * The read was refused and produced no bytes.
+     *
+     * A refusal is never a partial answer: the reason is one of the closed cases of
+     * [OutputRefusal], so a consumer can tell "there is nothing to read" from "this read was
+     * refused".
+     */
     data class Refused(val reason: OutputRefusal) : OutputReadResult
 }

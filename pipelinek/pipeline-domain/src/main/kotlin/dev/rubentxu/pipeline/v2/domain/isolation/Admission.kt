@@ -44,7 +44,22 @@ data class ExecutionGrant(
 
 /** The verdict of the admission core: a grant, or a reason. */
 sealed interface Admission {
+    /**
+     * The request may run.
+     *
+     * The grant states what the host proved and why it admitted the request,
+     * so the caller can report the evidence beside the run it lets happen.
+     * The grant carries no condition: a request that was admitted is a
+     * request that runs.
+     */
     data class Allowed(val grant: ExecutionGrant) : Admission
+
+    /**
+     * The request may not run.
+     *
+     * The reason names the question an operator has to answer, and nothing
+     * runs: a refusal is not a grant with conditions attached.
+     */
     data class Denied(val reason: DenialReason) : Admission
 }
 

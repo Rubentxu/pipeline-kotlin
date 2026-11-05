@@ -104,6 +104,15 @@ object PluginAdmission {
 */
 sealed interface PluginAdmissionResult {
 
+    /**
+     * The plugin may join the runtime.
+     *
+     * It carries the document the plugin declared and the artifact the runtime
+     * measured, so nothing about it has to be decided a second time: the
+     * registry resolves a Step from this value without asking the plugin again,
+     * and a contributor whose contributions disagree with the document is
+     * refused at the post-load cross-check, not here.
+     */
     data class Admitted(val plugin: AdmittedPlugin) : PluginAdmissionResult
 
     /**

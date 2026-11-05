@@ -20,6 +20,14 @@ data class RetryPolicy(
         require(jitterMs >= 0) { "jitterMs must be >= 0, got $jitterMs" }
     }
 
+    /**
+     * Holds the policy that asks for no retry, and the arithmetic of the wait.
+     *
+     * [NONE] is the policy of a step that must not be tried again: one
+     * attempt and no delay. The backoff lives here so that every caller waits
+     * the same way — the exponential term and the jitter are decided in one
+     * place, and a second spelling of the delay would be a second schedule.
+     */
     companion object {
         /**
          * Default retry policy with no retry (single attempt).

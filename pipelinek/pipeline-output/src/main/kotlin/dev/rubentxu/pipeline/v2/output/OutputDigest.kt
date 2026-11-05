@@ -30,6 +30,13 @@ value class OutputDigest(val hex: String) {
 
     override fun toString(): String = "OutputDigest(${hex.take(16)}…)"
 
+    /**
+     * The algorithm the plane hashes with, the value that stands for "no digest", and the one way
+     * to compute a digest over bytes.
+     *
+     * The hash is deterministic in its input, so two calls over the same bytes answer with the
+     * same value, and the comparison a reader makes is a comparison of hex.
+     */
     companion object {
         /** Default digest algorithm. Matches the journal's `Fingerprint`. */
         const val DEFAULT_ALGORITHM: String = "SHA-256"

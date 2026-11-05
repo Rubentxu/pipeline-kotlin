@@ -296,7 +296,7 @@ trap cleanup_run_dir EXIT
 
 # --- Stage 1: the checks that read only the tree --------------------------------
 #
-# The stage runs four checks that read ONLY the tree, and only then the Gradle
+# The stage runs six checks that read ONLY the tree, and only then the Gradle
 # invocation that builds the product and analyses it. The order is the point,
 # and it is the reason this stage exists at all.
 #
@@ -342,6 +342,27 @@ if want_stage 1; then
     else
         cat "$log_dir/comments.out" >&2
         fail "stage 1: the comment provenance guard"
+    fi
+
+    # --- The published contracts carry their contract -------------------------
+    # The `.api` files are the authority of the public surface, and a type
+    # that a consumer can program against is a type whose contract a consumer
+    # has to be able to read. The guard locates every type the seven
+    # published contracts name in the sources of the module that publishes it
+    # and asks whether a KDoc block states it; the types the compiler writes
+    # (the file facades, the `DefaultImpls` holders, the companion the
+    # serialization plugin adds) are listed and measured by nobody.
+    #
+    # The number is the point: a coverage that nobody re-reads is a
+    # sentiment, and a receipt that only the author can reproduce is a
+    # receipt that cannot be checked. The guard prints it per contract, and
+    # the floor is the whole surface.
+    if python3 scripts/check-kdoc-coverage.py > "$log_dir/kdoc.out" 2>&1; then
+        log "stage 1/5  contract KDoc coverage"
+        cat "$log_dir/kdoc.out"
+    else
+        cat "$log_dir/kdoc.out" >&2
+        fail "stage 1: the contract KDoc coverage guard"
     fi
 
     # --- Only the entry point may end the process ------------------------------

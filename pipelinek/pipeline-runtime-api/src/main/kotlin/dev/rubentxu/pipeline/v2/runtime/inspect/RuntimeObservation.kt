@@ -123,7 +123,22 @@ data class OutputTailView(
  * introspection port's projection can stay in `:pipeline-runtime`.
 */
 sealed interface TailState {
+    /**
+     * The stream can still grow.
+     *
+     * [committedEnd] is the extent committed when the state was observed. It
+     * says nothing about whether a writer is attached: a stream whose
+     * process died is still open until something records its end.
+     */
     data class Open(val committedEnd: Long) : TailState
+
+    /**
+     * The stream will not grow again.
+     *
+     * [finalEnd] is the extent the stream had when it was sealed, which is
+     * its committed extent afterwards: a sealed stream cannot grow, so the
+     * two are the same number.
+     */
     data class Sealed(val finalEnd: Long) : TailState
 }
 
@@ -152,10 +167,54 @@ sealed interface TailState {
  * `RunOutcome.parse`; this projection is what the runtime saw of it.
 */
 sealed interface TerminalObservation {
+    /**
+     * The run ended with its work done.
+     *
+     * Every step of the run succeeded, and the runtime observed that
+     * terminal. [terminalAtMs] is the moment the run's own terminal carries,
+     * not the moment the observation was taken.
+     */
     data class Succeeded(val terminalAtMs: Long) : TerminalObservation
+
+    /**
+     * The run ended in failure.
+     *
+     * [failureKind] is the run's own word for the failure, and a bare one
+     * names the outcome without naming the cause: the cause lives in the
+     * run's failure fact. [terminalAtMs] is the moment the run's own
+     * terminal carries.
+     */
     data class Failed(val failureKind: String, val terminalAtMs: Long) : TerminalObservation
+
+    /**
+     * The run ended degraded: some step asked for attention and none
+     * failed.
+     *
+     * It is not a failure, and the runtime keeps it apart from one, because
+     * a step that reports a degraded run as a failed one says the opposite
+     * of what the run said. [terminalAtMs] is the moment the run's own
+     * terminal carries.
+     */
     data class Unstable(val terminalAtMs: Long) : TerminalObservation
+
+    /**
+     * The run ended with the `aborted` word: it was stopped before it
+     * reached a normal terminal state.
+     *
+     * The word is the run's own, read back from the outcome the run
+     * recorded. [terminalAtMs] is the moment the run's own terminal carries.
+     */
     data class Aborted(val terminalAtMs: Long) : TerminalObservation
+
+    /**
+     * The run was cancelled.
+     *
+     * The word belongs to what was observed, and the run's own result
+     * vocabulary has no word for it: that vocabulary says `aborted` for a
+     * run that was cancelled or interrupted, so a consumer that swaps the
+     * two reads a cancelled run as an aborted one. [terminalAtMs] is the
+     * moment the run's own terminal carries.
+     */
     data class Cancelled(val terminalAtMs: Long) : TerminalObservation
     /** The journal recorded a terminal that does not map to the canonical outcomes. */
     data class Other(val rawOutcome: String, val terminalAtMs: Long) : TerminalObservation

@@ -17,6 +17,15 @@ data class WaitUntilControlIdentity(
         }
     }
 
+    /**
+     * The schema version of the control row, and the floor a row's own
+     * version is checked against.
+     *
+     * The row is durable, so the version travels with it: a row that carries
+     * a version below this one is refused when it is read back, and a row
+     * that carries a newer one is read as this shape, with the newer version
+     * carried in the field.
+     */
     companion object {
         const val CURRENT_SCHEMA_VERSION = 1
     }

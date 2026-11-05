@@ -70,6 +70,19 @@
 - **Every rule names the instrument that can fail it, or says that it has none.** `scripts/check-comment-provenance.py` fails on the shapes it recognises: ticket, section, commit hash, working-document name, administrative label, plan coordinate, a reference to something outside the tree (an issue, a pull request, a merge request), an attribution to a person, and a narration of a past implementation that names a symbol the tree no longer contains. It reads tracked `.kt`, `.kts` and `.sh` under the product tree, the examples and the scripts; it does not read Markdown. Every vocabulary added after the tree was MEASURED instead of guessed at is closed, and its exception list — with a reason per exception — is written down in the guard itself; the measured false positives over the tree are zero. **A narration that names nothing has NO mechanical instrument**: the tree carries hundreds of past-tense sentences that are not provenance at all, so the rule needs the dead symbol to discriminate; for a narration without a name, review remains the instrument, and saying so is part of the rule. The Detekt documentation rules are added progressively, and only over the part of this section that is mechanically decidable. This prose is outside both guards and is governed by review.
 - **This file obeys the rule it states**: it names the forbidden shapes without reproducing them, so applying the guard's own patterns to this file finds nothing. A policy that failed its own check would be worse than no policy.
 - **KDoc earns its place on the public API**: a supported public type or function states what it guarantees, what it refuses, and what it does with invalid input. An empty KDoc written only to satisfy an analyser is worse than none, because it buys a green with a lie. Private helpers need no KDoc unless they hold a non-obvious invariant.
+- **A contract KDoc is written this way.** The opening line states the guarantee and does not restate the name of the type; the lines that follow say the precondition it imposes, what it rejects, what it does with invalid input, what effects it has, and what the consumer may take for granted. Here is one, from the published surface:
+
+  ```kotlin
+  /**
+   * The store was reachable and holds nothing under that name.
+   *
+   * The answer is about the credential, not about the store: the name is
+   * wrong or the credential was never created. A caller that reads this as a
+   * broken store is diagnosing the wrong thing.
+   */
+  data class NotFound(val id: String) : BasicCredentialResolution
+  ```
+- **That rule has an instrument, and it runs in the gate.** `scripts/check-kdoc-coverage.py` locates, in the sources of the module that publishes each contract, the types its `.api` names, and the first stage of `scripts/verify-all.sh` fails when one of them carries no KDoc: the published surface is the surface a third party programs against, and a type whose contract cannot be read is a type whose contract does not exist. The types the compiler writes —the file facades, the `DefaultImpls` holders, the companion the serialization plugin adds— are listed and measured by nobody.
 - **A comment that explains a non-obvious invariant stays**, and that is the point: the ban is on provenance, not on explanation. Explain why a branch exists, why the order of two operations matters, why a value may not be cached.
 - **Three mistakes to avoid**: documenting every private method; adding a comment to silence an analyser; adding an integration or end-to-end test for a change that only touches documentation. None of the three fails the product, and all three cost the next reader.
 - **When the contract changes, the documentation changes in the same commit.** A commit that changes what the product guarantees and leaves the KDoc promising the old thing is a defect, not an unfinished task.

@@ -187,8 +187,23 @@ data class CredentialsBinding(
     val usernameVariable: String? = null,
     val passwordVariable: String? = null,
 ) {
+    /**
+     * The shape of the environment a bound credential is delivered as.
+     *
+     * Each case states which variable names the binding must carry, and the
+     * binding that does not carry them fails when it is turned into entries
+     * rather than when it is declared.
+     */
     enum class Kind {
+        /** One variable holding the whole secret, as a single opaque value. */
         STRING,
+
+        /**
+         * Two variables holding the two halves of a login, read from a secret
+         * whose bytes are the username and the password joined by a null byte.
+         * A secret whose bytes carry no null byte, or whose null byte sits at
+         * the first position, is read as a username with an empty password.
+         */
         USERNAME_PASSWORD,
     }
 
@@ -244,10 +259,25 @@ data class CredentialsBinding(
         }
     }
 
+    /**
+     * The two factories that build a binding whose variable names agree with
+     * its kind.
+     *
+     * The primary constructor takes the kind and the variable names separately,
+     * so a caller can name a variable that the kind never reads. These
+     * factories cannot: each supplies the names its kind requires.
+     */
     companion object {
+        /**
+         * A binding of one variable holding the whole secret.
+         */
         fun string(credentialsId: CredentialsId, variable: String) =
             CredentialsBinding(Kind.STRING, credentialsId, variable = variable)
 
+        /**
+         * A binding of two variables, one for the username and one for the
+         * password.
+         */
         fun usernamePassword(
             credentialsId: CredentialsId,
             usernameVariable: String,

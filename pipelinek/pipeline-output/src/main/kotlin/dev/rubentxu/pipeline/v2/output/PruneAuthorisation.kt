@@ -61,6 +61,13 @@ sealed interface PruneRefusal {
         }
     }
 
+    /**
+     * The bound a refusal's diagnostic obeys.
+     *
+     * The diagnostic is stored beside the refusal and read back later, so its length is capped
+     * and it carries no newline: a reason that spans two lines would not survive the round trip
+     * as one reason.
+     */
     companion object {
         const val REFUSAL_REASON_MAX_LEN: Int = 256
     }

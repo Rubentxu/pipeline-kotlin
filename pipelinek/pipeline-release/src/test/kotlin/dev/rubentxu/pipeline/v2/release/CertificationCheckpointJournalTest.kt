@@ -12,7 +12,6 @@ import dev.rubentxu.pipeline.v2.runtime.durable.LeaseAcquisition
 import dev.rubentxu.pipeline.v2.runtime.durable.LeaseLiveness
 import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRecord
 import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRequest
-import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.runtime.durable.RunExecutionLease
 import dev.rubentxu.pipeline.v2.runtime.durable.RunLeasePort
 import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId

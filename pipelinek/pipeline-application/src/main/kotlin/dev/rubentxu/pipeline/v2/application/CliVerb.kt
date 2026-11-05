@@ -134,10 +134,9 @@ internal val CLI_VERBS: List<CliVerb> = buildList {
             MainSagaInspectCli.USAGE,
         ),
     )
-    // The credentials verb publishes everything it says — refusals included — on one
-    // stream, so the door's second stream is discarded here instead of being carried
-    // into a verb that has no place to write to.
-    add(CliVerb("credentials", "list registered credential material (redacted)", { args, out, _ -> runCredentialsVerb(args, out) }))
+    // The credentials verb publishes its ANSWER on stdout and its REFUSAL on stderr, like
+    // every other verb of this CLI, so both streams are carried into it.
+    add(CliVerb("credentials", "list registered credential material (redacted)", { args, out, err -> runCredentialsVerb(args, out, err) }))
     add(CliVerb("doctor", "report the installation's health", ::runDoctorVerb))
     add(CliVerb("version", "print the product version (--json)", ::runVersionVerb))
     add(CliVerb("capabilities", "print the capability keys this build admits", ::runCapabilitiesVerb))

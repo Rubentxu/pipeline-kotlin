@@ -7,14 +7,18 @@ import org.junit.jupiter.api.Test
 
 /**
  * The contract of the credentials command, stated as two pure decisions: which
- * verb needs the key that opens the store, and what each outcome costs the
- * caller.
+ * verb needs the key that opens the store, and what facts the command can end
+ * on.
  *
  * Both decisions are the ones the command runs on, so a row that pins them
  * pins the behaviour rather than a copy of it. The consequences are not small:
  * a verb that asks for a key it does not need refuses a request it could have
- * answered, and an outcome that costs the wrong exit code tells a script that
+ * answered, and a fact that ends on the wrong answer tells a script that
  * something it did not do went well.
+ *
+ * The CODE each fact is answered with is not pinned here: it is not this
+ * module's to choose, and the CLI's taxonomy names the case of every fact in
+ * the module that owns it.
 */
 class CredentialsContractTest {
 
@@ -44,24 +48,29 @@ class CredentialsContractTest {
     }
 
     @Test
-    fun `each outcome costs the caller its own exit code`() {
-        // A caller tells these apart by the code alone, so no two of them may
-        // cost the same one.
-        assertEquals(0, CredentialsOutcome.ANSWERED.exitCode)
-        assertEquals(1, CredentialsOutcome.NOT_CARRIED_OUT.exitCode)
-        assertEquals(2, CredentialsOutcome.NO_PASSPHRASE.exitCode)
-        assertEquals(3, CredentialsOutcome.WRONG_PASSPHRASE.exitCode)
-        assertEquals(4, CredentialsOutcome.TAMPERED.exitCode)
-    }
-
-    @Test
-    fun `a request that went well and a request that did not are not the same answer`() {
-        // The difference between "there was nothing to do" and "it did not
-        // happen" is the difference between a script that continues and one
-        // that retries, so the two must never share a code.
-        assertTrue(CredentialsOutcome.ANSWERED.exitCode < CredentialsOutcome.NOT_CARRIED_OUT.exitCode)
-        assertTrue(CredentialsOutcome.NOT_CARRIED_OUT.exitCode < CredentialsOutcome.NO_PASSPHRASE.exitCode)
-        assertTrue(CredentialsOutcome.NO_PASSPHRASE.exitCode < CredentialsOutcome.WRONG_PASSPHRASE.exitCode)
-        assertTrue(CredentialsOutcome.WRONG_PASSPHRASE.exitCode < CredentialsOutcome.TAMPERED.exitCode)
+    fun `the family names the facts it can end on, and no code`() {
+        // These five facts are the contract of the command: the request was
+        // carried out, it was not carried out, there was no key, the key did
+        // not match, the store was tampered.
+        //
+        // The family used to name a CODE with each one, and the door
+        // translated those numbers BY NUMBER, so the number that meant "the
+        // request was not carried out" reached the process as the case that
+        // means "the pipeline executed and produced a failure" — and nothing
+        // had executed. The code belongs to the CLI's taxonomy, which names
+        // the case of each fact in the module that owns it, and the two
+        // passphrase facts share that case exactly as the run path already
+        // shares it: the SENTENCES still tell them apart.
+        assertEquals(
+            listOf(
+                CredentialsOutcome.ANSWERED,
+                CredentialsOutcome.NOT_CARRIED_OUT,
+                CredentialsOutcome.NO_PASSPHRASE,
+                CredentialsOutcome.WRONG_PASSPHRASE,
+                CredentialsOutcome.TAMPERED,
+            ),
+            CredentialsOutcome.entries.toList(),
+            "the family names every fact it can end on, and no other",
+        )
     }
 }

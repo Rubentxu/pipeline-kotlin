@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.credentials.local
 
 /**
  * The contract of the credentials command: which verb needs the key that opens
- * the store, and what each outcome costs the caller.
+ * the store, and what each outcome tells the caller.
  *
  * The rule is one sentence: **the passphrase is the authorization to touch the
  * store**. A verb that creates the store needs the key, because the key is
@@ -114,8 +114,33 @@ internal enum class CredentialsVerb {
     }
 }
 
-/** How an attempt to carry out a request ended. */
-internal enum class CredentialsOutcome {
+/**
+ * How an attempt to carry out a request ended.
+ *
+ * ## What this type is, and what it deliberately does NOT carry
+ *
+ * It is the FACT, and only the fact: the request was carried out, it was not
+ * carried out, there was no key, the key did not match, the store was tampered.
+ * It carries **no exit code**, because the code the process ends with is not
+ * the family's to choose: the CLI owns the taxonomy of exits, and the case that
+ * owns a number is named in the module that owns the taxonomy.
+ *
+ * ## Why the family does not answer with a number
+ *
+ * It used to. The family carried its own five codes, and the door translated
+ * them BY NUMBER, so the number that meant "the request was not carried out"
+ * reached the process as the case that means "the pipeline executed and
+ * produced a failure" — and nothing had executed. A family that answers with a
+ * number owns a second copy of a taxonomy it cannot even see, and a copy is
+ * free to drift: the next outcome would pick a number whose meaning nobody
+ * declared.
+ *
+ * Answering with the FACT makes that impossible. The door names the case of
+ * every outcome in one exhaustive `when`, so an outcome that nobody named does
+ * not compile — the mechanism that produced four false meanings is gone, not
+ * just its latest symptom.
+ */
+enum class CredentialsOutcome {
     /** The request was carried out, or there was nothing to carry out. */
     ANSWERED,
 
@@ -129,15 +154,5 @@ internal enum class CredentialsOutcome {
     WRONG_PASSPHRASE,
 
     /** The store is tampered. */
-    TAMPERED;
-
-    /** The exit code the caller sees. */
-    val exitCode: Int
-        get() = when (this) {
-            ANSWERED -> 0
-            NOT_CARRIED_OUT -> 1
-            NO_PASSPHRASE -> 2
-            WRONG_PASSPHRASE -> 3
-            TAMPERED -> 4
-        }
+    TAMPERED,
 }

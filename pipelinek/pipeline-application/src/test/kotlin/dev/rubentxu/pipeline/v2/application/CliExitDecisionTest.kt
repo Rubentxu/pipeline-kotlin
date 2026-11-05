@@ -1,9 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.credentials.local.CredentialsOutcome
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -31,7 +34,9 @@ import org.junit.jupiter.api.Test
  *
  * The WORDS a refusal carries. The sentence is the renderer's, and it is
  * asserted where it belongs, in the file that owns the rendering. These rows
- * assert the case, the code and the fact that the refusal reached the caller.
+ * assert the case, the code, the fact that the refusal reached the caller and
+ * the STREAM it reached: a refusal published on the stream that carries the
+ * answers is mixed into the output a program parses, and no case can undo that.
  *
  * ## What this instrument cannot see
  *
@@ -84,6 +89,84 @@ class CliExitDecisionTest {
             streams.stderr.contains("missing required argument: subcommand"),
             "the refusal still reached the operator: ${streams.stderr}",
         )
+    }
+
+    @Test
+    fun `a refusal of the credentials family reaches stderr with the code the taxonomy declares`() {
+        val (outcome, streams) = capturing { out, err ->
+            handleReadOnlyVerb(arrayOf("credentials", "list", ""), out, err)
+        }
+
+        val answered = assertInstanceOf(
+            ReadOnlyVerbOutcome.Answered::class.java,
+            outcome,
+            "the credentials family answers the request",
+        )
+        // The case the taxonomy declares for a request that was not understood.
+        // The family used to answer with a number of its own, and the door
+        // translated it BY NUMBER: the number that meant "the request was not
+        // carried out" reached the process as the case that means "the pipeline
+        // executed and produced a failure".
+        assertEquals(
+            "InvalidArgument",
+            answered.exit.name,
+            "a request the CLI did not understand is the invalid-argument case",
+        )
+        assertEquals(2, answered.exit.code, "the code the taxonomy declares for that case")
+        // The CHANNEL: the refusal goes where the CLI publishes refusals, and
+        // NOT where it publishes answers. A program that reads stdout to parse
+        // the answer must not find a refusal inside it.
+        assertTrue(
+            streams.stderr.contains("unexpected argument"),
+            "the refusal reaches stderr: ${streams.stderr}",
+        )
+        assertFalse(
+            streams.stdout.contains("Error:"),
+            "the refusal does not reach the stream that carries the answer: ${streams.stdout}",
+        )
+    }
+
+    @Test
+    fun `each outcome of the credentials family is answered with the case the taxonomy declares`() {
+        val declared = mapOf(
+            CredentialsOutcome.ANSWERED to "Success",
+            CredentialsOutcome.NOT_CARRIED_OUT to "InvalidArgument",
+            CredentialsOutcome.NO_PASSPHRASE to "IncompatibleVersion",
+            CredentialsOutcome.WRONG_PASSPHRASE to "IncompatibleVersion",
+            CredentialsOutcome.TAMPERED to "RuntimeNotAvailable",
+        )
+
+        val wrong = declared.filter { (outcome, name) -> credentialsExit(outcome).name != name }
+            .map { (outcome, _) -> "${outcome.name} -> ${credentialsExit(outcome).name}" }
+
+        assertEquals(
+            emptyList<String>(),
+            wrong,
+            "every outcome of the family is answered with the case the taxonomy declares",
+        )
+        // The two passphrase facts share a case because the RUN PATH already
+        // shares it: a store that cannot be opened and a store that cannot be
+        // unlocked are the same fact for a consumer that branches on the code,
+        // and the sentences still tell them apart.
+        assertEquals(
+            credentialsExit(CredentialsOutcome.NO_PASSPHRASE).name,
+            credentialsExit(CredentialsOutcome.WRONG_PASSPHRASE).name,
+            "the two passphrase facts are answered with the same case",
+        )
+        // The answer and the refusal are not the same answer: a script that
+        // continues and a script that retries must not read the same code.
+        assertEquals(
+            0,
+            credentialsExit(CredentialsOutcome.ANSWERED).code,
+            "the outcome that says it happened ends the process with the success code",
+        )
+        declared.keys.filter { it != CredentialsOutcome.ANSWERED }.forEach { outcome ->
+            assertNotEquals(
+                0,
+                credentialsExit(outcome).code,
+                "${outcome.name} is a refusal, and a refusal does not end the process with the success code",
+            )
+        }
     }
 
     @Test

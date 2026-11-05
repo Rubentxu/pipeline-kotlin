@@ -17,7 +17,7 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptor
  * # comment lines start with #
  * name hello                              # required: pipeline name
  * version 0.0.0                           # required: pipeline version
- * step <type> <id> [configRef]            # one per step; configRef defaults to id
+ * step <type> <id> <configRef>           # one per step; the third token is optional and defaults to id
  * edge <fromId> <toId> [SEQUENTIAL|PARALLEL|CONDITIONAL]   # one per edge
  * ```
  * Blank lines and lines starting with `#` are ignored. Whitespace is

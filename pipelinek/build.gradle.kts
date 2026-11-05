@@ -157,6 +157,37 @@ subprojects {
 // Static analysis is NOT removed: detekt below is the "análisis estático" leg of
 // the current verification pyramid and needs no tests to produce a verdict.
 
+// The modules whose public ABI is frozen by a committed `.api` dump. The list
+// lives here, next to the static analysis that also reads it, because TWO parts
+// of this build have to agree on it: the ABI guard that freezes the surface
+// (the binary-compatibility-validator section below) and the documentation
+// rules that hold the published surface to its contract. One list, two readers.
+
+val bcvModules = setOf(
+    "pipeline-domain",
+    "pipeline-events",
+    "pipeline-step-sdk:api",
+    "pipeline-credentials-api",
+    // The published output read contract. Added because `:pipeline-output` became a
+    // PUBLISHED artifact, and the dump is what freezes exactly which types a consumer resolves.
+    // Without it, adding a public type to the output plane would change the published surface with
+    // nothing failing: no diff to review, and no `apiCheck` to refuse it.
+    // `:pipeline-output-store` and `:pipeline-events-store` are deliberately NOT here. BCV protects
+    // a published ABI; those modules are not published, and a baseline over an internal
+    // implementation is maintenance with no consumer behind it.
+    "pipeline-output",
+    // Already PUBLISHED (the external plugin compiles against it) and
+    // therefore already had no ABI guard. Found while running `apiCheck` across the published set:
+    // the task did not exist. Guarding three published contracts and leaving the fourth free would
+    // have been the inconsistency, not the fix.
+    "pipeline-scripting-api",
+    // Runtime ports publication. The new `:pipeline-runtime-api` module
+    // (carved out of `:pipeline-runtime`) carries the publish/subscribe
+    // ports and their ADTs. Guiding the published ABI here so `apiCheck` refuses an
+    // unannounced surface change.
+    "pipeline-runtime-api",
+)
+
 // SAST (detekt). Applied to every Kotlin subproject with a single
 // shared config, and wired into each subproject's own `check` so the root
 // `check` inherits it.
@@ -175,8 +206,29 @@ subprojects {
         // already existed when it was taken, so the analysis fails on any NEW
         // one and the existing ones stop being news.
         val moduleBaseline = layout.projectDirectory.file("detekt-baseline-main.xml")
+        // The configuration this module is analysed with. The base applies to
+        // every module; the ones whose public contract is published get the
+        // overlay on top of it, which switches on the requirement that a public
+        // type states its contract. The overlay is passed SECOND on purpose:
+        // detekt merges the files it is handed and the last one wins.
+        //
+        // The membership test is the one the ABI guard uses, with the same list,
+        // so the two cannot disagree about which modules carry a frozen
+        // contract. The two guards read that contract from different sides —
+        // this one from the sources, the ABI guard from the committed `.api`
+        // dump — and the agreement between them is what says the published
+        // surface is the one the sources describe.
+        val isContractModule = bcvModules.any { project.path == ":$it" || project.path.endsWith(":$it") }
+        val detektConfig = if (isContractModule) {
+            rootProject.files(
+                "config/detekt/detekt.yml",
+                "config/detekt/detekt-published-contracts.yml",
+            )
+        } else {
+            rootProject.files("config/detekt/detekt.yml")
+        }
         extensions.configure<dev.detekt.gradle.extensions.DetektExtension> {
-            config.setFrom(rootProject.files("config/detekt/detekt.yml"))
+            config.setFrom(detektConfig)
             buildUponDefaultConfig.set(true)
             parallel.set(true)
             // Each detekt task reads the source set it belongs to: `detektMain`
@@ -452,32 +504,8 @@ subprojects {
 // distribution shipped, so a break of it is named by the instrument, it carries a maturity
 // classification, and it needs an exception receipt like any other published break.
 // Adding a new module to BCV requires two steps: (1) append its name to
-// `bcvModules` below; (2) run `:pipeline-<x>:apiDump` to materialise the
+// `bcvModules` above; (2) run `:pipeline-<x>:apiDump` to materialise the
 // baseline, then commit.api file alongside the build change.
-val bcvModules = setOf(
-    "pipeline-domain",
-    "pipeline-events",
-    "pipeline-step-sdk:api".removePrefix(":"), // resolved below by project.path
-    "pipeline-credentials-api",
-    // The published output read contract. Added because `:pipeline-output` became a
-    // PUBLISHED artifact, and the dump is what freezes exactly which types a consumer resolves.
-    // Without it, adding a public type to the output plane would change the published surface with
-    // nothing failing: no diff to review, and no `apiCheck` to refuse it.
-    // `:pipeline-output-store` and `:pipeline-events-store` are deliberately NOT here. BCV protects
-    // a published ABI; those modules are not published, and a baseline over an internal
-    // implementation is maintenance with no consumer behind it.
-    "pipeline-output",
-    // Already PUBLISHED (the external plugin compiles against it) and
-    // therefore already had no ABI guard. Found while running `apiCheck` across the published set:
-    // the task did not exist. Guarding three published contracts and leaving the fourth free would
-    // have been the inconsistency, not the fix.
-    "pipeline-scripting-api",
-    // Runtime ports publication. The new `:pipeline-runtime-api` module
-    // (carved out of `:pipeline-runtime`) carries the publish/subscribe
-    // ports and their ADTs. Guiding the published ABI here so `apiCheck` refuses an
-    // unannounced surface change.
-    "pipeline-runtime-api",
-)
 
 subprojects {
     val isBcvModule = bcvModules.any { project.path == ":$it" || project.path.endsWith(":$it") }

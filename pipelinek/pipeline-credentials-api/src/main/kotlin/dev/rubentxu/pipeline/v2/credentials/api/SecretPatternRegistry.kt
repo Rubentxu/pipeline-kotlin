@@ -22,8 +22,8 @@ import java.util.regex.Pattern
  * computation). This ensures consistent enumeration without duplication.
  * ## Minimum Maskable Length
  * Per GitLab rule, secrets shorter than [MIN_MASKABLE_LENGTH] are NOT registered for masking, and
- * the discard is SILENT: nothing is thrown, nothing is reported, and the value simply never
- * reaches [registeredSecrets].
+ * the discard is SILENT: nothing is thrown, nothing is reported, and the value is never
+ * registered, so no masking pattern is ever built for it.
  * ## What this means for a caller, stated plainly
  * A bound credential whose secret is shorter than [MIN_MASKABLE_LENGTH] runs normally and its value
  * appears in the transcript IN THE CLEAR. The threshold governs MASKING, not VALIDITY — a short

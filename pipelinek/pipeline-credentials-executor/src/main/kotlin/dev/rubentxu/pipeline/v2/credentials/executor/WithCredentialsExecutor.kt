@@ -370,9 +370,9 @@ private class SpiMaterializationAdapter(
  *   mapping of that exception, not a type this class throws.)
  * ## Concurrency
  * [close] is idempotent from a SINGLE thread: the second call is a no-op. It is
- * NOT safe to call concurrently. `@Volatile` on [closed] gives visibility, not
- * mutual exclusion, so `if (!closed) { closed = true; ... }` is a check-then-act
- * two threads can both pass. No caller does this today — the only consumer holds
+ * NOT safe to call concurrently. The `@Volatile` flag that records the closed
+ * state gives visibility, not mutual exclusion, so the check-then-act on that
+ * flag is one two threads can both pass. No caller does this today — the only consumer holds
  * the instance on a non-escaping local and closes it from one `finally` — so the
  * race is latent rather than live. It becomes real the moment a second thread can
  * reach this object, and the fix then is a lock, not a stronger volatile.

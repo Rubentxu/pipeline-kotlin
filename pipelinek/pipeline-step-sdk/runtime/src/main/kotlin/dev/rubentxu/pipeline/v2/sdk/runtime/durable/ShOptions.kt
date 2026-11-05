@@ -19,13 +19,11 @@ import java.nio.file.Path
  * Back-compat factory [from] converts legacy `Map<String, String>` callers
  * to the new typed form using [SecretHandle.plain].
  * @property workspaceRoot Root directory for the stage workspace.
- * @property workingDirectory Optional directory for the current nested execution context.
  * @property captureStdout If true, capture stdout to output.txt via tee wrapper.
  * @property timeoutMs Timeout in milliseconds, or null for no timeout.
  * @property env Environment variables to inject via pb.environment.putAll.
  * Typed as Map<String, SecretHandle> for secret redaction
- * Durable sh Pattern</a>
- * FAILED_TIMEOUT Terminal State</a>
+ * @property workingDirectory Optional directory for the current nested execution context.
 */
 data class ShOptions(
     val workspaceRoot: Path,

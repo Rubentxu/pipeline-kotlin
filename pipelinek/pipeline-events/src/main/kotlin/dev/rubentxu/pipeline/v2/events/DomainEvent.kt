@@ -319,8 +319,8 @@ data class StepFinished(
  * The shape is part of a published surface, so it stays: a consumer that meets
  * this kind learns that the shape exists, not that a resolution happened.
  *
- * @deprecated Use [ExecutionTargetResolved], whose payload expresses every case
- *   of the requirement hierarchy.
+ * [ExecutionTargetResolved] is the shape that expresses every case of the
+ * requirement hierarchy, and it is the one to reach for.
  */
 @Deprecated(
     "Superseded by ExecutionTargetResolved; never had a producer and its label-shaped " +
@@ -747,12 +747,11 @@ data class ArtifactEntry(
  * Payload is restricted to path + sha256 + size — NEVER text/content/bytes.
  * No secret material.
  * @param runId Run ID
- * @param stageName Stage name
+ * @param occurredAt Timestamp
  * @param path Resolved absolute path of the written file
  * @param sha256 SHA-256 hex digest of the file content
  * @param size Size in bytes
  * @param atomicallyMoved True if ATOMIC_MOVE succeeded; false if cross-fs fallback was used
- * @param occurredAt Timestamp
 */
 @Serializable
 @SerialName("FileWritten")
@@ -779,11 +778,10 @@ data class FileWritten(
  * readText is captured ONLY for files created within the same run (writeFile→readFile pipeline).
  * Files read from outside the run have exists=false and no bytes captured.
  * @param runId Run ID
- * @param stageName Stage name
+ * @param occurredAt Timestamp
  * @param path Resolved absolute path of the file
  * @param sha256 SHA-256 hex digest (null if file does not exist)
  * @param size Size in bytes (null if file does not exist)
- * @param occurredAt Timestamp
 */
 @Serializable
 @SerialName("FileRead")
@@ -832,9 +830,8 @@ data class FileExistsChecked(
  * Payload is restricted to typed ArtifactEntry list — NEVER content/bytes/data.
  * No secret material.
  * @param runId Run ID
- * @param stageName Stage name
- * @param files List of archived artifact entries
  * @param occurredAt Timestamp
+ * @param files List of archived artifact entries
 */
 @Serializable
 @SerialName("ArtifactArchived")
@@ -855,9 +852,8 @@ data class ArtifactArchived(
  * The reason is passed through SecretPatternRegistry.scrub BEFORE emit.
  * No secret material in reason field.
  * @param runId Run ID
- * @param stageName Stage name
- * @param reason Scrubbed failure reason
  * @param occurredAt Timestamp
+ * @param reason Scrubbed failure reason
 */
 @Serializable
 @SerialName("ArtifactArchiveFailed")

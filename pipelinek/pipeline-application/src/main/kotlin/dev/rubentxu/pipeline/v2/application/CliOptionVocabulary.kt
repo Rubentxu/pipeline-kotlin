@@ -243,10 +243,11 @@ internal sealed interface OptionValueOutcome {
  *
  * ## What it decides, and only this
  *
- * Two facts, and only two:
+ * Three facts, and only three:
  *
  *  - the value is NOT THERE -> [CliError.MissingOptionValue];
- *  - the value IS spelled like an option -> [CliError.OptionValueIsAnOption].
+ *  - the value IS spelled like an option -> [CliError.OptionValueIsAnOption];
+ *  - the value IS BLANK and the option names a location -> [CliError.InvalidOptionValue].
  *
  * The scope of the second check is the tokens THIS BUILD knows ([knownOptionArity])
  * plus the tokens the calling verb owns ([ownedTokens]). A token that names nothing
@@ -254,6 +255,16 @@ internal sealed interface OptionValueOutcome {
  * option of this build is accepted: refusing every value that begins with `--`
  * would make `--grep --verbose-stop` unexpressible, trading one silent drop for a
  * new surprise.
+ *
+ * ## Why the THIRD fact is here and not downstream
+ *
+ * An option that names a location, given an empty value, is a request for a path
+ * the operator did not name. The filesystem resolves it to the working directory
+ * and the storage engine reads it as a temporary database, so the refusal that
+ * comes back is a fact about the filesystem or about the engine — and it names a
+ * path the operator never wrote. Decided HERE, it is a fact about the REQUEST,
+ * and it lands before anything is opened. The rule and the set of options it
+ * covers are [LOCATION_NAMING_OPTIONS] and [blankNamedValueRefusal].
  *
  * @param valueIndex the index of the argument that holds the value: the one AFTER
  *   the option.
@@ -269,6 +280,9 @@ internal fun readOptionValue(
         ?: return OptionValueOutcome.Refused(CliError.MissingOptionValue(token))
     if (knownOptionArity(value) != null || value in ownedTokens) {
         return OptionValueOutcome.Refused(CliError.OptionValueIsAnOption(token, value))
+    }
+    if (token in LOCATION_NAMING_OPTIONS && value.isBlank()) {
+        return OptionValueOutcome.Refused(blankNamedValueRefusal(token))
     }
     return OptionValueOutcome.Present(value)
 }

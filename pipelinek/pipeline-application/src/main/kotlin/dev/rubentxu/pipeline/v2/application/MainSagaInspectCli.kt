@@ -77,6 +77,20 @@ object MainSagaInspectCli {
             return code
         }
 
+        // A run id that names NOTHING is not "no run id": the store reads an
+        // empty run as a run nobody has heard of, and this verb would answer
+        // about that run instead of refusing the request. The refusal is
+        // decided here, at the boundary that read the value, and it names the
+        // argument the operator has to write.
+        if (runId.isBlank()) {
+            val code = refuse(
+                blankNamedValueRefusal("run id"),
+                "saga inspect", err = err
+            )
+            err.println(USAGE)
+            return code
+        }
+
         if (options.dbPath == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("--db <path>", "to read the durable promises"),

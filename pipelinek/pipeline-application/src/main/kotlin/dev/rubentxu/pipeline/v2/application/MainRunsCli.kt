@@ -125,21 +125,6 @@ Exit codes:
     }
 
     /**
-     * The refusal for a database path that names no store, or null when it names one.
-     *
-     * A path with no text in it is not "no path": the storage engine reads an empty name as a
-     * TEMPORARY database, and a temporary database cannot be in the journal mode a writer needs.
-     * That precondition is correct where it lives, but it lives far below this boundary, and it
-     * answers a value the operator typed with a fact about the storage engine.
-     *
-     * The absence and the emptiness are two facts and they are answered in two words: a path that
-     * was never written is a missing argument, and a path that was written with nothing in it is a
-     * value that cannot be used.
-     */
-    private fun blankDbRefusal(dbPath: String): CliError? =
-        if (dbPath.isBlank()) CliError.InvalidOptionValue("--db", "must not be blank") else null
-
-    /**
      * `runs cancel` — close a run that no live process is working on.
      *
      * ## It takes its OWN options
@@ -176,9 +161,14 @@ Exit codes:
             return code
         }
 
-        if (options.dbPath == null) {
+        // A run id that names NOTHING is not "no run id": the store reads an
+        // empty run as a run nobody has heard of, and this verb would answer
+        // about that run instead of refusing the request. The refusal is
+        // decided here, at the boundary that read the value, and it names the
+        // argument the operator has to write.
+        if (runId.isBlank()) {
             val code = refuse(
-                CliError.MissingRequiredArgument("--db <path>", "to read the run's durable state"),
+                blankNamedValueRefusal("run id"),
                 "runs cancel", err = err
             )
             err.println(USAGE)
@@ -186,10 +176,15 @@ Exit codes:
         }
 
         // The path names the store this verb reads the run from. A path that
-        // names no store is refused here, before the admission opens anything,
-        // so the answer is the one the CLI owes the operator.
-        blankDbRefusal(options.dbPath)?.let { error ->
-            val code = refuse(error, "runs cancel", err = err)
+        // was NEVER WRITTEN is a missing argument. A path that was written with
+        // nothing in it is refused by the reader of the option's value, before
+        // the admission opens anything: the absence and the emptiness are two
+        // facts, and they are answered in two words.
+        if (options.dbPath == null) {
+            val code = refuse(
+                CliError.MissingRequiredArgument("--db <path>", "to read the run's durable state"),
+                "runs cancel", err = err
+            )
             err.println(USAGE)
             return code
         }
@@ -309,9 +304,14 @@ Exit codes:
             return code
         }
 
-        if (options.dbPath == null) {
+        // A run id that names NOTHING is not "no run id": the store reads an
+        // empty run as a run nobody has heard of, and this verb would answer
+        // about that run instead of refusing the request. The refusal is
+        // decided here, at the boundary that read the value, and it names the
+        // argument the operator has to write.
+        if (runId.isBlank()) {
             val code = refuse(
-                CliError.MissingRequiredArgument("--db <path>", "to read the run's durable state"),
+                blankNamedValueRefusal("run id"),
                 "runs recover", err = err
             )
             err.println(USAGE)
@@ -319,10 +319,15 @@ Exit codes:
         }
 
         // The path names the store this verb reads the run from. A path that
-        // names no store is refused here, before the admission opens anything,
-        // so the answer is the one the CLI owes the operator.
-        blankDbRefusal(options.dbPath)?.let { error ->
-            val code = refuse(error, "runs recover", err = err)
+        // was NEVER WRITTEN is a missing argument. A path that was written with
+        // nothing in it is refused by the reader of the option's value, before
+        // the admission opens anything: the absence and the emptiness are two
+        // facts, and they are answered in two words.
+        if (options.dbPath == null) {
+            val code = refuse(
+                CliError.MissingRequiredArgument("--db <path>", "to read the run's durable state"),
+                "runs recover", err = err
+            )
             err.println(USAGE)
             return code
         }

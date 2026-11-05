@@ -54,8 +54,8 @@ data class TelemetryAttributeBinding(
  * The keys the product exports are its own spelling, and [attributeMap] says
  * which upstream attribute carries the same fact for each of them. Four of the
  * five have no upstream counterpart, and the map says so rather than leaving
- * the reader to guess: the CI/CD conventions define no ordinal, no compile
- * outcome and no failure class. A consumer that bridges to the upstream
+ * the reader to guess: the CI/CD conventions define no ordinal, no script
+ * origin and no failure class. A consumer that bridges to the upstream
  * vocabulary carries those itself, and the map is where it learns that it has
  * to.
  *
@@ -120,7 +120,7 @@ object TelemetryCompatibility {
             upstreamAttribute = null,
         ),
         TelemetryAttributeBinding(
-            key = "compile.outcome",
+            key = "script.origin",
             upstreamAttribute = null,
         ),
         TelemetryAttributeBinding(

@@ -333,8 +333,14 @@ The keys the export carries are the product's own:
 
 | | |
 |---|---|
-| Attributes | `run.id`, `stage.index`, `step.index`, `compile.outcome`, `failure.class` |
+| Attributes | `run.id`, `stage.index`, `step.index`, `script.origin`, `failure.class` |
 | Dimensions | `operation_kind`, `status`, `failure_class` |
+
+How a span ended is not an attribute: it is the span's status, and the export
+carries it there. An outcome is read from the status of the span and from the
+`status` dimension of the measurement that says the same thing, never from a
+key of its own — a second spelling of the same fact is a second place for the
+two to disagree.
 
 The conventions the product speaks are the OpenTelemetry CI/CD ones, pinned at
 `1.44.0` and declared a release candidate: their names may still move between
@@ -397,7 +403,10 @@ demand, which is the path that needs no SDK. That projection carries its own
 instrument names — `pipelinek.compile_duration_ms`,
 `pipelinek.step_duration_ms` and `pipelinek.run_outcome_total` — because a
 run read back from the journal is measured at its own boundaries and not at
-the live ones.
+the live ones. Their dimension keys are the published ones, so the same
+question is answered the same way in both paths: what was measured
+(`operation_kind`), how it came out (`status`) and, for a failure that has a
+class, which class it was (`failure_class`).
 
 #### Where it goes
 

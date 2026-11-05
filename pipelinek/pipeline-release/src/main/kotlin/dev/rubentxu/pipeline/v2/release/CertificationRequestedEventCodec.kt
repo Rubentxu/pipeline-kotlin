@@ -9,11 +9,10 @@ import kotlinx.serialization.json.JsonObject
 /**
  * What reading an event document may yield.
  *
- * The refusal vocabulary is the one the request codec publishes
- * ([CertificationRequestRejection]), and it is the SAME one on purpose: the
- * documents that cross the boundary between repositories are refused in the
- * same words, so a receiver that has to log a refusal has one vocabulary to
- * learn and not two that could drift apart.
+ * The refusal vocabulary is the SHARED one ([CertificationRejection]), and it
+ * is shared on purpose: the documents that cross the boundary between
+ * repositories are refused in the same words, so a receiver that has to log a
+ * refusal has one vocabulary to learn and not two that could drift apart.
  */
 sealed interface CertificationEventDecode {
 
@@ -21,7 +20,7 @@ sealed interface CertificationEventDecode {
     data class Accepted(val event: CertificationRequestedEvent) : CertificationEventDecode
 
     /** The document is not an event this build can act on. */
-    data class Rejected(val rejection: CertificationRequestRejection) : CertificationEventDecode
+    data class Rejected(val rejection: CertificationRejection) : CertificationEventDecode
 }
 
 /**
@@ -66,14 +65,14 @@ object CertificationRequestedEventCodec {
             reader.parseToJsonElement(text)
         } catch (e: SerializationException) {
             return CertificationEventDecode.Rejected(
-                CertificationRequestRejection.MalformedDocument(
+                CertificationRejection.MalformedDocument(
                     e.message ?: "the document is not valid JSON.",
                 ),
             )
         }
         val fields = element as? JsonObject
             ?: return CertificationEventDecode.Rejected(
-                CertificationRequestRejection.MalformedDocument(
+                CertificationRejection.MalformedDocument(
                     "the document is not a JSON object, so it names no event.",
                 ),
             )
@@ -84,7 +83,7 @@ object CertificationRequestedEventCodec {
         val unknown = fields.keys - known
         if (unknown.isNotEmpty()) {
             return CertificationEventDecode.Rejected(
-                CertificationRequestRejection.UnknownField(unknown.sorted()),
+                CertificationRejection.UnknownField(unknown.sorted()),
             )
         }
 
@@ -115,13 +114,13 @@ object CertificationRequestedEventCodec {
             )
         } catch (e: SerializationException) {
             CertificationEventDecode.Rejected(
-                CertificationRequestRejection.MalformedDocument(
+                CertificationRejection.MalformedDocument(
                     e.message ?: "the document does not describe a certification request event.",
                 ),
             )
         } catch (e: IllegalArgumentException) {
             CertificationEventDecode.Rejected(
-                CertificationRequestRejection.MalformedDocument(
+                CertificationRejection.MalformedDocument(
                     e.message ?: "the document does not describe a certification request event.",
                 ),
             )
@@ -131,23 +130,23 @@ object CertificationRequestedEventCodec {
      * The reason this event is not one this build can act on, or null when it
      * is one.
      */
-    private fun refusalOf(event: CertificationRequestedEvent): CertificationRequestRejection? {
+    private fun refusalOf(event: CertificationRequestedEvent): CertificationRejection? {
         if (event.schemaVersion != CertificationRequestedEvent.SCHEMA_VERSION) {
-            return CertificationRequestRejection.MalformedDocument(
+            return CertificationRejection.MalformedDocument(
                 "the document declares schema '${event.schemaVersion}' and this build reads " +
                     "'${CertificationRequestedEvent.SCHEMA_VERSION}'. An event written for " +
                     "another schema is not an event this build can act on.",
             )
         }
         if (event.protocolVersion != CertificationRequestedEvent.PROTOCOL_VERSION) {
-            return CertificationRequestRejection.MalformedDocument(
+            return CertificationRejection.MalformedDocument(
                 "the event speaks protocol '${event.protocolVersion}' and this build speaks " +
                     "'${CertificationRequestedEvent.PROTOCOL_VERSION}'. A receiver and a " +
                     "producer that speak different protocols do not have a contract.",
             )
         }
         if (event.name != CertificationRequestedEvent.NAME) {
-            return CertificationRequestRejection.MalformedDocument(
+            return CertificationRejection.MalformedDocument(
                 "the event carries the name '${event.name}' and this build publishes " +
                     "'${CertificationRequestedEvent.NAME}'. An event the receiver does not " +
                     "listen for is not an event.",
@@ -164,10 +163,10 @@ fun CertificationEventDecode.render(): String = when (this) {
             "${event.release.tag}"
 
     is CertificationEventDecode.Rejected -> when (val r = rejection) {
-        is CertificationRequestRejection.UnknownField ->
+        is CertificationRejection.UnknownField ->
             "certification requested event REJECTED: unknown field(s) ${r.fields.joinToString()}"
 
-        is CertificationRequestRejection.MalformedDocument ->
+        is CertificationRejection.MalformedDocument ->
             "certification requested event REJECTED: ${r.detail}"
     }
 }

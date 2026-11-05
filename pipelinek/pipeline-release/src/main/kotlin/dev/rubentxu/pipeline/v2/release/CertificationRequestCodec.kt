@@ -57,7 +57,7 @@ object CertificationRequestCodec {
         val fields = element as? JsonObject
         if (fields == null) {
             CertificationRequestDecodeResult.Rejected(
-                CertificationRequestRejection.MalformedDocument(
+                CertificationRejection.MalformedDocument(
                     "the document is not a JSON object, so it names no request.",
                 ),
             )
@@ -68,7 +68,7 @@ object CertificationRequestCodec {
             val unknown = fields.keys - known
             if (unknown.isNotEmpty()) {
                 CertificationRequestDecodeResult.Rejected(
-                    CertificationRequestRejection.UnknownField(unknown.sorted()),
+                    CertificationRejection.UnknownField(unknown.sorted()),
                 )
             } else {
                 readRequest(fields)
@@ -76,13 +76,13 @@ object CertificationRequestCodec {
         }
     } catch (e: SerializationException) {
         CertificationRequestDecodeResult.Rejected(
-            CertificationRequestRejection.MalformedDocument(
+            CertificationRejection.MalformedDocument(
                 e.message ?: "the document is not valid JSON.",
             ),
         )
     } catch (e: IllegalArgumentException) {
         CertificationRequestDecodeResult.Rejected(
-            CertificationRequestRejection.MalformedDocument(
+            CertificationRejection.MalformedDocument(
                 e.message ?: "the document is not valid JSON.",
             ),
         )
@@ -105,7 +105,7 @@ object CertificationRequestCodec {
         val request = reader.decodeFromJsonElement(CertificationRequest.serializer(), fields)
         if (request.schemaVersion != CertificationRequest.SCHEMA_VERSION) {
             CertificationRequestDecodeResult.Rejected(
-                CertificationRequestRejection.MalformedDocument(
+                CertificationRejection.MalformedDocument(
                     "the document declares schema '${request.schemaVersion}' and this build " +
                         "reads '${CertificationRequest.SCHEMA_VERSION}'. A request written for " +
                         "another schema is not a request this product can act on.",
@@ -116,7 +116,7 @@ object CertificationRequestCodec {
         }
     } catch (e: SerializationException) {
         CertificationRequestDecodeResult.Rejected(
-            CertificationRequestRejection.MalformedDocument(
+            CertificationRejection.MalformedDocument(
                 e.message ?: "the document does not describe a certification request.",
             ),
         )
@@ -125,7 +125,7 @@ object CertificationRequestCodec {
         // moment, a battery without a name. The message is the invariant's own,
         // and it is the useful part.
         CertificationRequestDecodeResult.Rejected(
-            CertificationRequestRejection.MalformedDocument(
+            CertificationRejection.MalformedDocument(
                 e.message ?: "the document does not describe a certification request.",
             ),
         )

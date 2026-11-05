@@ -135,7 +135,7 @@ class CertificationRequestTest {
 
         val rejected = assertInstanceOf(CertificationRequestDecodeResult.Rejected::class.java, result)
         val unknown = assertInstanceOf(
-            CertificationRequestRejection.UnknownField::class.java,
+            CertificationRejection.UnknownField::class.java,
             rejected.rejection,
         )
         assertEquals(listOf("unexpected"), unknown.fields)
@@ -159,7 +159,7 @@ class CertificationRequestTest {
         val result = CertificationRequestCodec.decode(tampered)
 
         val rejected = assertInstanceOf(CertificationRequestDecodeResult.Rejected::class.java, result)
-        assertInstanceOf(CertificationRequestRejection.MalformedDocument::class.java, rejected.rejection)
+        assertInstanceOf(CertificationRejection.MalformedDocument::class.java, rejected.rejection)
     }
 
     @Test
@@ -170,7 +170,7 @@ class CertificationRequestTest {
         val result = CertificationRequestCodec.decode(tampered)
 
         val rejected = assertInstanceOf(CertificationRequestDecodeResult.Rejected::class.java, result)
-        assertInstanceOf(CertificationRequestRejection.MalformedDocument::class.java, rejected.rejection)
+        assertInstanceOf(CertificationRejection.MalformedDocument::class.java, rejected.rejection)
     }
 
     @Test
@@ -202,7 +202,7 @@ class CertificationRequestTest {
             "a NESTED unknown field was accepted: the reader ignored a field it did not " +
                 "understand, which is exactly what a closed shape forbids",
         )
-        assertInstanceOf(CertificationRequestRejection.MalformedDocument::class.java, rejected.rejection)
+        assertInstanceOf(CertificationRejection.MalformedDocument::class.java, rejected.rejection)
     }
 
     @Test
@@ -216,6 +216,6 @@ class CertificationRequestTest {
         val result = CertificationRequestCodec.decode(tampered)
 
         val rejected = assertInstanceOf(CertificationRequestDecodeResult.Rejected::class.java, result)
-        assertInstanceOf(CertificationRequestRejection.MalformedDocument::class.java, rejected.rejection)
+        assertInstanceOf(CertificationRejection.MalformedDocument::class.java, rejected.rejection)
     }
 }

@@ -46,7 +46,7 @@ data class CertificationRequestedEvent internal constructor(
     /** The release the certification is asked about. */
     val release: PublishedReleaseRef,
     /** The instant the release was published. */
-    @SerialName("occurred_at") val occurredAt: RequestInstant,
+    @SerialName("occurred_at") val occurredAt: WireInstant,
     /** The request that is being made. */
     val request: CertificationRequest,
 ) {
@@ -140,7 +140,7 @@ fun buildCertificationRequestedEvent(
             protocolVersion = CertificationRequestedEvent.PROTOCOL_VERSION,
             candidateId = request.candidateId,
             release = release,
-            occurredAt = RequestInstant.of(occurredAt),
+            occurredAt = WireInstant.of(occurredAt),
             request = request,
         ),
     )

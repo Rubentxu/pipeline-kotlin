@@ -130,18 +130,29 @@ sealed interface CatalogueDecodeResult {
  * so the bytes are measured once and used twice: the request does not measure
  * the ZIP again, and it cannot therefore disagree with the handoff about what
  * it is asking to certify.
+ *
+ * When the candidate is the answer to a defect, the document that reported
+ * that defect is the INPUT that says so: the correction is derived from the
+ * report and not typed by hand, so the defect it names is a defect somebody
+ * actually observed, and the candidate it was observed against is the one the
+ * report says.
  */
 object CertificationRequestProducer {
 
     /**
      * Write the request for the candidate described by [handoffPath] against
      * the battery described by [cataloguePath], and return the outcome.
+     *
+     * [correctionReportPath] is the report of the defect this candidate
+     * answers. It is OPTIONAL: a candidate that is not a correction produces a
+     * request that says nothing about any defect.
      */
     fun produce(
         handoffPath: Path,
         cataloguePath: Path,
         requestedAt: Instant,
         outPath: Path,
+        correctionReportPath: Path? = null,
     ): CertificationRequestOutcome {
         val handoff = readHandoff(handoffPath)
             ?: return CertificationRequestOutcome.Refused(
@@ -166,6 +177,12 @@ object CertificationRequestProducer {
             is CatalogueDecodeResult.Accepted -> decoded.catalogue
         }
 
+        val correction = when (val read = readCorrection(correctionReportPath)) {
+            is CorrectionReading.Refused -> return CertificationRequestOutcome.Refused(read.reason)
+            is CorrectionReading.None -> null
+            is CorrectionReading.Stated -> read.correction
+        }
+
         val outcome = buildCertificationRequest(
             handoff = handoff,
             catalogue = CertificationBatteryCatalogue(
@@ -174,6 +191,7 @@ object CertificationRequestProducer {
                 scenarios = catalogue.scenarios,
             ),
             requestedAt = requestedAt,
+            correction = correction,
         )
 
         if (outcome is CertificationRequestOutcome.Accepted) {
@@ -197,10 +215,64 @@ object CertificationRequestProducer {
         }
     }
 
+    /**
+     * The correction stated by the defect report at [path], or why there is
+     * none.
+     *
+     * The report is READ with the reader that reads every report this product
+     * receives, and the correction is derived from what it says: the footprint
+     * of the defect and the candidate the defect was observed against. Nothing
+     * about the defect is typed by hand, so the request cannot name a defect
+     * that nobody observed.
+     */
+    private fun readCorrection(path: Path?): CorrectionReading {
+        if (path == null) return CorrectionReading.None
+        val text = readText(path)
+            ?: return CorrectionReading.Refused(
+                "the defect report at $path does not exist or cannot be read. A request that " +
+                    "answers a defect says which one, and a report nobody can read answers " +
+                    "nothing.",
+            )
+        return when (val decoded = DefectReportedEventReader.decode(text)) {
+            is DefectReportedEventDecode.Accepted -> CorrectionReading.Stated(
+                CandidateCorrection(
+                    defect = decoded.event.defect,
+                    observedAgainst = decoded.event.candidateId,
+                ),
+            )
+
+            is DefectReportedEventDecode.Rejected -> CorrectionReading.Refused(
+                "the defect report at $path is not a report this build can read: " +
+                    decoded.rejection.describe(),
+            )
+        }
+    }
+
     /** The text of the document at [path], or null when it cannot be read. */
     private fun readText(path: Path): String? = try {
         if (Files.isRegularFile(path)) Files.readString(path) else null
     } catch (e: java.io.IOException) {
         null
     }
+}
+
+/**
+ * What reading the defect report may yield.
+ *
+ * The three cases are three different facts: no report was named, a report was
+ * named and states a correction, or a report was named and cannot be read. A
+ * report that cannot be read is NOT the same as no report: the operator asked
+ * for a correction and the build could not say which one, and answering "there
+ * is no correction" would be a lie.
+ */
+private sealed interface CorrectionReading {
+
+    /** No report was named, so the candidate is not a correction. */
+    data object None : CorrectionReading
+
+    /** The report states the defect and the candidate it was seen against. */
+    data class Stated(val correction: CandidateCorrection) : CorrectionReading
+
+    /** The report was named and could not be read. */
+    data class Refused(val reason: String) : CorrectionReading
 }

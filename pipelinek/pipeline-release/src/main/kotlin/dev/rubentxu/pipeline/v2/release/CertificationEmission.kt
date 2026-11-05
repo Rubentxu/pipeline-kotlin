@@ -112,12 +112,7 @@ fun certificationRequestedEmission(
     val request = when (val read = CertificationRequestCodec.decode(requestText)) {
         is CertificationRequestDecodeResult.Accepted -> read.request
         is CertificationRequestDecodeResult.Rejected -> return CertificationEmission.Refused(
-            "the certification request could not be read: " +
-                when (val rejection = read.rejection) {
-                    is CertificationRejection.UnknownField ->
-                        "unknown field(s) ${rejection.fields.joinToString()}"
-                    is CertificationRejection.MalformedDocument -> rejection.detail
-                },
+            "the certification request could not be read: ${read.rejection.describe()}",
         )
     }
 
@@ -149,7 +144,7 @@ fun certificationRequestedEmission(
             is CertificationEventDecode.Accepted -> decoded.event
             is CertificationEventDecode.Rejected -> return CertificationEmission.Refused(
                 "something was already emitted for this candidate, and this build cannot read " +
-                    "it: ${describeRejection(decoded.rejection)}. A document nobody can read is " +
+                    "it: ${decoded.rejection.describe()}. A document nobody can read is " +
                     "not overwritten with one nobody could compare it to.",
             )
         }
@@ -182,12 +177,16 @@ fun certificationRequestedEmission(
  *
  * A different tag or a different battery IS a different ask: the receiver
  * would not know which of the two to act on, so those are refused rather than
- * written over.
+ * written over. A different CORRECTION is a different ask for the same reason:
+ * the receiver revalidates the scenario the defect was in, and two events that
+ * point at two different defects ask it to revalidate two different scenarios
+ * for one candidate.
  */
 private fun CertificationRequestedEvent.asksTheSameAs(other: CertificationRequestedEvent): Boolean =
     candidateId == other.candidateId &&
         release == other.release &&
-        request.battery == other.request.battery
+        request.battery == other.request.battery &&
+        request.correction == other.request.correction
 
 /**
  * What an event asks for, in words, for a refusal that has to name it
@@ -199,17 +198,6 @@ private fun describeAsk(event: CertificationRequestedEvent): String {
         "(${event.release.version}), battery ${battery.id} ${battery.version} " +
         "(${battery.scenarioCount} scenarios)"
 }
-
-/**
- * Why a document was refused, in words.
- */
-private fun describeRejection(rejection: CertificationRejection): String =
-    when (rejection) {
-        is CertificationRejection.UnknownField ->
-            "unknown field(s) ${rejection.fields.joinToString()}"
-
-        is CertificationRejection.MalformedDocument -> rejection.detail
-    }
 
 /**
  * The release the publication receipt records.

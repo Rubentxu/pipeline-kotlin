@@ -19,7 +19,9 @@ import java.time.Instant
  * The request is a closed value: it names the candidate by the digest of the
  * distribution that was measured, the product version that digest belongs to,
  * the artifact itself, the battery the certification is asked against, and the
- * instant the request was made. Nothing else travels in it.
+ * instant the request was made. Nothing else travels in it, except the ONE
+ * thing a request may carry about the candidate besides the candidate: the
+ * correction that produced it, when it was produced by one.
  *
  * The candidate is named by its digest and never by a name. A tag, a branch or
  * a release label can be pointed at different bytes; a digest cannot, so the
@@ -47,9 +49,28 @@ data class CertificationRequest internal constructor(
     val battery: CertificationBattery,
     /** The instant the request was made. */
     @SerialName("requested_at") val requestedAt: WireInstant,
+    /**
+     * The correction that produced this candidate, when it is a correction.
+     *
+     * It is OPTIONAL because most candidates are not corrections, and it is
+     * stated ONCE here: this is the document the receiver acts on, so a fact
+     * that travelled in two of them would be two spellings that could
+     * disagree.
+     */
+    val correction: CandidateCorrection? = null,
 ) {
+    init {
+        if (correction != null) {
+            require(correction.observedAgainst != candidateId) {
+                "the correction names ${candidateId.canonical} as the candidate the defect was " +
+                    "seen against, and that is the candidate this request is about: a candidate " +
+                    "that corrects itself says nothing."
+            }
+        }
+    }
+
     companion object {
-        const val SCHEMA_VERSION: String = "pipelinek-certification-request-1"
+        const val SCHEMA_VERSION: String = "pipelinek-certification-request-2"
     }
 }
 
@@ -178,10 +199,17 @@ sealed interface CertificationRequestOutcome {
  * Operator-facing diagnostic for a request that could not be stated.
  */
 fun CertificationRequestOutcome.render(): String = when (this) {
-    is CertificationRequestOutcome.Accepted ->
-        "certification request stated: ${request.candidateId.canonical} against battery " +
-            "${request.battery.id} ${request.battery.version} (${request.battery.scenarioCount} " +
-            "scenarios)"
+    is CertificationRequestOutcome.Accepted -> buildString {
+        append("certification request stated: ${request.candidateId.canonical} against battery ")
+        append("${request.battery.id} ${request.battery.version} ")
+        append("(${request.battery.scenarioCount} scenarios)")
+        request.correction?.let { correction ->
+            append(
+                "; it answers the defect in ${correction.defect.scenario}, seen against " +
+                    "${correction.observedAgainst.canonical}",
+            )
+        }
+    }
 
     is CertificationRequestOutcome.Refused ->
         "certification request REFUSED: $reason"
@@ -202,6 +230,12 @@ fun CertificationRequestOutcome.render(): String = when (this) {
  * identifier produces no request at all: a request that names a battery it
  * cannot describe is a request nobody can act on.
  *
+ * A [correction] travels with the request when the candidate is the answer to
+ * a defect. It is refused when it names the candidate being certified as the
+ * candidate the defect was seen against: a candidate that corrects itself
+ * says nothing, and a request that carries it would tell the receiver that
+ * something happened without saying what.
+ *
  * Pure: it reads the values it is given and returns a decision. It touches no
  * filesystem and no clock.
  */
@@ -209,7 +243,15 @@ fun buildCertificationRequest(
     handoff: CandidateHandoff,
     catalogue: CertificationBatteryCatalogue,
     requestedAt: Instant,
+    correction: CandidateCorrection? = null,
 ): CertificationRequestOutcome {
+    if (correction != null && correction.observedAgainst == handoff.candidateId) {
+        return CertificationRequestOutcome.Refused(
+            "the correction names ${handoff.candidateId.canonical} as the candidate the defect " +
+                "was seen against, and that is the candidate this request is about: a candidate " +
+                "that corrects itself says nothing.",
+        )
+    }
     if (catalogue.id.isBlank()) {
         return CertificationRequestOutcome.Refused(
             "the battery has no name: a request that names no battery asks for nothing.",
@@ -253,6 +295,7 @@ fun buildCertificationRequest(
                 scenarioCount = catalogue.scenarios.size,
             ),
             requestedAt = WireInstant.of(requestedAt),
+            correction = correction,
         ),
     )
 }

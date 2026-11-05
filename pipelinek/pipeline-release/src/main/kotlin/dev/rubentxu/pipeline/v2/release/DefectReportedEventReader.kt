@@ -160,11 +160,6 @@ fun DefectReportedEventDecode.render(): String = when (this) {
     is DefectReportedEventDecode.Accepted ->
         "defect report accepted: ${event.defect.scenario} against ${event.candidateId.canonical}"
 
-    is DefectReportedEventDecode.Rejected -> when (val r = rejection) {
-        is CertificationRejection.UnknownField ->
-            "defect report REJECTED: unknown field(s) ${r.fields.joinToString()}"
-
-        is CertificationRejection.MalformedDocument ->
-            "defect report REJECTED: ${r.detail}"
-    }
+    is DefectReportedEventDecode.Rejected ->
+        "defect report REJECTED: ${rejection.describe()}"
 }

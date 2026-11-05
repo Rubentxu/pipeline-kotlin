@@ -14,23 +14,34 @@ import kotlin.system.exitProcess
  * fact of the model.
  *
  * ```text
- * usage: certification-request <handoff.json> <catalogue.json> <out.json>
+ * usage: certification-request <handoff.json> <catalogue.json> <out.json> [<defect.reported.json>]
  * exit  0 = the request was stated, 1 = refused, 2 = usage error
  * ```
+ *
+ * The fourth argument is the report of the defect this candidate answers. It
+ * is optional, and when it is there the request says which defect it answers
+ * and the candidate the defect was seen against. The report is READ, never
+ * written: this product does not report defects, it receives them.
  */
 fun main(args: Array<String>) {
     if (args.size < 3) {
         System.err.println(
-            "usage: certification-request <handoff.json> <catalogue.json> <out.json>",
+            "usage: certification-request <handoff.json> <catalogue.json> <out.json> " +
+                "[<defect.reported.json>]",
         )
         exitProcess(2)
     }
+
+    val correctionReportPath = args.getOrNull(3)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { Paths.get(it) }
 
     val outcome = CertificationRequestProducer.produce(
         handoffPath = Paths.get(args[0]),
         cataloguePath = Paths.get(args[1]),
         requestedAt = Instant.now(),
         outPath = Paths.get(args[2]),
+        correctionReportPath = correctionReportPath,
     )
 
     when (outcome) {

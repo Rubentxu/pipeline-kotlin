@@ -16,6 +16,12 @@ import java.time.Instant
  * reference the receiver would have to resolve could resolve to something
  * else.
  *
+ * The request names its own shape version, and that version is what says
+ * whether the receiver understands what the event carries: the event's own
+ * fields did not change when the request learned to carry a correction, and a
+ * version that changed for that would say that the event's contract changed
+ * when it did not.
+ *
  * The moment in the event is the moment of the PUBLICATION, not the moment of
  * the build. Those are two different instants, and confusing them produces a
  * request about bytes the receiver cannot download yet.

@@ -26,7 +26,9 @@ class CertificationRequestedEventTest {
 
     private val publishedAt = Instant.parse("2026-11-05T18:04:00Z")
 
-    private fun request(): CertificationRequest {
+    private fun request(
+        correction: CandidateCorrection? = null,
+    ): CertificationRequest {
         val outcome = buildCertificationRequest(
             handoff = CandidateHandoff(
                 candidateId = CandidateId.fromDigest(digest),
@@ -56,6 +58,7 @@ class CertificationRequestedEventTest {
                 scenarios = listOf("alpha", "beta", "gamma"),
             ),
             requestedAt = Instant.parse("2026-11-05T17:00:00Z"),
+            correction = correction,
         )
         return assertInstanceOf(CertificationRequestOutcome.Accepted::class.java, outcome).request
     }
@@ -104,6 +107,34 @@ class CertificationRequestedEventTest {
         assertEquals(request, event.request)
         assertEquals(request.candidateId, event.candidateId)
         assertEquals(request.artifact.sha256, event.request.artifact.sha256)
+    }
+
+    @Test
+    fun `the event carries the correction inside, so the receiver knows what to revalidate first`() {
+        // The event is what crosses the boundary. A correction that stayed in
+        // the request and never reached the event would leave the receiver
+        // with an unexplained candidate and no way to know which scenario it
+        // has to revalidate first, and nothing else in the tree would say so.
+        val correction = CandidateCorrection(
+            defect = DefectFingerprint(
+                contract = "contract.alpha",
+                scenario = "scenario.beta",
+                failureType = DefectFailureType.REPRODUCIBLE_DEFECT,
+                signature = "sig-123",
+            ),
+            observedAgainst = CandidateId.fromDigest("b".repeat(64)),
+        )
+
+        val event = assertInstanceOf(
+            CertificationRequestedEventOutcome.Accepted::class.java,
+            buildCertificationRequestedEvent(request(correction), release(), publishedAt),
+        ).event
+
+        val decoded = assertInstanceOf(
+            CertificationEventDecode.Accepted::class.java,
+            CertificationRequestedEventCodec.decode(CertificationRequestedEventCodec.encode(event)),
+        )
+        assertEquals(correction, decoded.event.request.correction)
     }
 
     @Test

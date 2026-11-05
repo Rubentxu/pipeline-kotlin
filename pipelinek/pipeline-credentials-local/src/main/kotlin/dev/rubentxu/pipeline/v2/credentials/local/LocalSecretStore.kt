@@ -18,6 +18,7 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 
 /**
@@ -67,6 +68,70 @@ class LocalSecretStore(
     private var openedDek: ByteArray? = null
 
     /**
+     * How many times this store derived a key from the passphrase.
+     *
+     * The derivation is the expensive half of opening a store: Argon2id over
+     * nineteen mebibytes of memory, twice. The number of derivations an
+     * operation performs IS its cost, so an operation that walks a chain of
+     * linked secrets and derives once per hop pays that cost once per hop.
+     * This counter is what makes the difference visible instead of argued.
+     *
+     * It counts and nothing else. No derivation is skipped, delayed or made
+     * cheaper because of it.
+     */
+    internal val passphraseValidations = AtomicInteger()
+
+    /**
+     * How many times this store's file was read.
+     *
+     * Every read of the store file goes through one place, so this counts
+     * all of them: the reads that answer a question and the reads that
+     * write one back. A chain of linked secrets is answered against ONE
+     * view of the store, so the number of reads does not grow with the
+     * length of the chain.
+     *
+     * It counts and nothing else. No read is skipped, delayed or made
+     * cheaper because of it.
+     */
+    internal val storeReads = AtomicInteger()
+
+    /**
+     * How many times the data key was unwrapped to answer a question.
+     *
+     * The unwrap is the step that turns the passphrase into the key that
+     * opens the entries. A chain of linked secrets unwraps once, not once
+     * per hop.
+     *
+     * It counts and nothing else. No unwrap is skipped, delayed or made
+     * cheaper because of it.
+     */
+    internal val keyUnwraps = AtomicInteger()
+
+    /**
+     * How many times the entries of the store file were parsed to answer a
+     * question.
+     *
+     * A chain of linked secrets is answered against ONE parsing of the
+     * entries, not one per hop.
+     *
+     * It counts and nothing else. No parse is skipped, delayed or made
+     * cheaper because of it.
+     */
+    internal val entryParses = AtomicInteger()
+
+    /**
+     * Derives the key that wraps this store's data key.
+     *
+     * Every derivation this store performs goes through here, so the counter
+     * above counts all of them and not only the ones somebody remembered to
+     * count.
+     */
+    private fun deriveKek(salt: ByteArray): ByteArray {
+        passphraseValidations.incrementAndGet()
+        return CredentialCrypto.deriveKek(passphrase, salt)
+    }
+
+    /**
      * Checks that this passphrase is the one that opens this store.
      *
      * A store that holds something is sealed with a key that only the right
@@ -78,7 +143,7 @@ class LocalSecretStore(
      */
     fun verifyPassphrase() {
         if (!Files.exists(file) || Files.size(file) == 0L) return
-        open(Files.readAllBytes(file))
+        open(readStoreFile())
     }
 
     /**
@@ -91,10 +156,102 @@ class LocalSecretStore(
     private fun open(fileBytes: ByteArray): ByteArray {
         openedDek?.let { return it }
         val hdr = readHeader(fileBytes)
-        val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
+        val kek = deriveKek(hdr.kdfSalt)
         val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
         openedDek = dek
         return dek
+    }
+
+    /**
+     * The store as ONE operation sees it.
+     *
+     * A snapshot carries the bytes of the store file, the header they carry
+     * and the key that opens them. Every operation takes one snapshot and
+     * every hop of a chain of linked secrets walks THAT one, so the passphrase
+     * is validated once per operation and the cost of a chain does not grow
+     * with the length of the chain.
+     *
+     * The key lives in the snapshot and in nothing else: the snapshot is a
+     * local value, so the key dies with the operation that took it, and no
+     * key outlives the operation that opened it.
+     *
+     * The header is read when the snapshot is taken, and the key and the
+     * entries are opened WHEN THEY ARE NEEDED, because the paths that need
+     * them need them in a different order: one of them looks for the
+     * credential before it opens the key, and that order is what decides
+     * whether a wrong passphrase is answered with "the passphrase is wrong"
+     * or with "that credential is not there".
+     */
+    private inner class Snapshot(
+        val header: StoreHeader,
+        private val fileBytes: ByteArray,
+        private val kek: ByteArray,
+    ) {
+        private var unwrappedDek: ByteArray? = null
+        private var parsedEntries: Map<String, out Any>? = null
+
+        /**
+         * The key that opens the entries, unwrapped once.
+         *
+         * The unwrap is remembered, so a chain of linked secrets pays for one
+         * unwrap and not for one per hop.
+         */
+        fun dek(): ByteArray {
+            val already = unwrappedDek
+            if (already != null) return already
+            keyUnwraps.incrementAndGet()
+            val fresh = CredentialCrypto.unwrapDek(kek, header.wrappedDek)
+            unwrappedDek = fresh
+            return fresh
+        }
+
+        /**
+         * The entries the store file holds, parsed once.
+         *
+         * The parse is remembered, so a chain of linked secrets pays for one
+         * parse and not for one per hop.
+         */
+        fun entries(): Map<String, out Any> {
+            val already = parsedEntries
+            if (already != null) return already
+            entryParses.incrementAndGet()
+            val fresh = if (header.version == VERSION_V1.toShort()) {
+                CredentialCrypto.readEntriesV1(fileBytes)
+            } else {
+                CredentialCrypto.readEntries(fileBytes)
+            }
+            parsedEntries = fresh
+            return fresh
+        }
+    }
+
+    /**
+     * Takes the snapshot this operation works on.
+     *
+     * The file is read once and the passphrase is validated once. The
+     * derivation is the expensive half of opening a store -- Argon2id over
+     * nineteen mebibytes, twice -- and an operation that derives once per hop
+     * of a chain pays that cost once per hop.
+     */
+    private fun snapshot(): Snapshot {
+        if (!Files.exists(file)) {
+            throw SecretStoreTamperException("Store file does not exist")
+        }
+        val fileBytes = readStoreFile()
+        val header = readHeader(fileBytes)
+        val kek = deriveKek(header.kdfSalt)
+        return Snapshot(header, fileBytes, kek)
+    }
+
+    /**
+     * Reads this store's file.
+     *
+     * Every read of the store file goes through here, so the counter above
+     * counts all of them and not only the ones somebody remembered to count.
+     */
+    private fun readStoreFile(): ByteArray {
+        storeReads.incrementAndGet()
+        return Files.readAllBytes(file)
     }
 
     /** Shared wire types of the store file format. */
@@ -180,15 +337,6 @@ class LocalSecretStore(
         const val DEK_SIZE = 32
         // (RFC 3394) output = input + 8 bytes (64-bit IV/wrap vector)
         const val WRAPPED_DEK_SIZE = DEK_SIZE + 8  // = 40 bytes
-
-        // Kind IDs for v2 envelope (stored as first 2 bytes after version)
-        private const val KIND_SECRET_TEXT: Short = 1
-        private const val KIND_USERNAME_PASSWORD: Short = 2
-        private const val KIND_SSH_PRIVATE_KEY: Short = 3
-        private const val KIND_SECRET_FILE: Short = 4
-        private const val KIND_CERTIFICATE: Short = 5
-        private const val KIND_ZIP: Short = 6
-        private const val KIND_USERNAME_COLON_PASSWORD: Short = 7
 
         /**
          * Maps a Credential simple name to a kind ID.
@@ -414,7 +562,7 @@ class LocalSecretStore(
      * reentrant, and a nested one would be refused instead of waited for.
      */
     private fun writeBytes(id: CredentialsId, bytes: ByteArray) {
-        val existingFileBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
+        val existingFileBytes = if (Files.exists(file) && Files.size(file) > 0) readStoreFile() else null
         val hdr = if (existingFileBytes != null) {
             readHeader(existingFileBytes)
         } else {
@@ -422,7 +570,7 @@ class LocalSecretStore(
             val salt = ByteArray(SALT_SIZE); secureRandom.nextBytes(salt)
             StoreHeader(MAGIC, VERSION_V1, OWASP_M, OWASP_T, OWASP_P, salt, ByteArray(WRAPPED_DEK_SIZE))
         }
-        val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
+        val kek = deriveKek(hdr.kdfSalt)
 
         // Load existing DEK from header, or generate new one for a FRESH store only.
         val dek = if (hdr.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
@@ -462,7 +610,7 @@ class LocalSecretStore(
     override fun add(id: CredentialsId, credential: Credential) {
         withExclusiveLock {
             val hdr = loadOrCreateHeader()
-            val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
+            val kek = deriveKek(hdr.kdfSalt)
 
             // Load or generate DEK
             val dek = if (hdr.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
@@ -480,7 +628,7 @@ class LocalSecretStore(
             val sealed = AeadCipher.encrypt(dek, credentialBytes, aad)
 
             // Atomic write
-            val existingBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
+            val existingBytes = if (Files.exists(file) && Files.size(file) > 0) readStoreFile() else null
 
             val out = ByteArrayOutputStream()
             // Always write header for new entries; migrate entries to
@@ -518,21 +666,12 @@ class LocalSecretStore(
      * Handles both v1 (back-compat) and v2 formats.
 */
     override fun get(id: CredentialsId): Credential {
-        if (!Files.exists(file)) {
-            throw SecretStoreTamperException("Store file does not exist")
-        }
-        val fileBytes = Files.readAllBytes(file)
-        val hdr = readHeader(fileBytes)
-        val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
-        val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
+        val snapshot = snapshot()
+        val hdr = snapshot.header
+        val dek = snapshot.dek()
 
         // Route to correct reader based on header version
-        val entries: Map<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
-            CredentialCrypto.readEntriesV1(fileBytes)
-        } else {
-            CredentialCrypto.readEntries(fileBytes)
-        }
-        val entry = entries[id.value]
+        val entry = snapshot.entries()[id.value]
             ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
         // Check if v1 or v2 entry
@@ -564,24 +703,18 @@ class LocalSecretStore(
      * Full implementation - same as behavior
 */
     override fun getAsSecretHandle(id: CredentialsId): SecretHandle {
-        if (!Files.exists(file)) {
-            throw SecretStoreTamperException("Store file does not exist")
-        }
-        val fileBytes = Files.readAllBytes(file)
-        val hdr = readHeader(fileBytes)
-        val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
+        val snapshot = snapshot()
+        val hdr = snapshot.header
 
         // Route to correct reader based on header version (add stores in format)
-        val entries: Map<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
-            CredentialCrypto.readEntriesV1(fileBytes)
-        } else {
-            CredentialCrypto.readEntries(fileBytes)
-        }
-        val entry = entries[id.value]
+        val entry = snapshot.entries()[id.value]
             ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
-        // Decrypt DEK: the DEK is stored in the header (wrapped with KEK)
-        val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
+        // Decrypt DEK: the DEK is stored in the header (wrapped with KEK). The
+        // key is unwrapped AFTER the lookup, so a store that does not hold
+        // the credential answers "it is not there" even when the passphrase
+        // is wrong: the answer does not depend on the order of the checks.
+        val dek = snapshot.dek()
 
         // Decrypt secret - build AAD based on version
         val plaintext = try {
@@ -616,21 +749,15 @@ class LocalSecretStore(
      * @throws SecretStoreTamperException if the credential is tampered
 */
     override fun getAsHandle(id: CredentialsId, partName: String): SecretHandle {
-        if (!Files.exists(file)) {
-            throw SecretStoreTamperException("Store file does not exist")
-        }
-        val fileBytes = Files.readAllBytes(file)
-        val hdr = readHeader(fileBytes)
-        val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
-        val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
+        val snapshot = snapshot()
+        val hdr = snapshot.header
+        val dek = snapshot.dek()
 
         // Route based on header version
-        val entries: Map<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
+        if (hdr.version == VERSION_V1.toShort()) {
             throw SecretStoreTamperException("getAsHandle not supported for v1 single-blob entries")
-        } else {
-            CredentialCrypto.readEntries(fileBytes)
         }
-        val entry = entries[id.value]
+        val entry = snapshot.entries()[id.value]
             ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
         val v2Entry = entry as V2EntryData
@@ -643,292 +770,8 @@ class LocalSecretStore(
         }
 
         // Deserialize and extract the requested part; use visited set for cycle detection
-        return extractPart(plaintext, v2Entry.kindId, id, partName, mutableSetOf(id))
-    }
-
-    /**
-     * Extracts a named part from deserialized credential bytes using the canonical part format.
-     * Format per part: [nameLen:1][name][len:4 BE][bytes]
-     * After reading nameLen and name, position is at len(4). We must also skip len to reach bytes.
-*/
-    private fun extractPart(
-        plaintext: ByteArray,
-        kindId: Short,
-        id: CredentialsId,
-        partName: String,
-        visited: MutableSet<CredentialsId> = mutableSetOf(id)
-    ): SecretHandle = try {
-        readPart(plaintext, kindId, partName, visited)
-    } catch (e: CredentialPartReader.MalformedEnvelopeException) {
-        // The reader reports a malformed envelope; callers of the store catch
-        // SecretStoreTamperException, which stays the public type.
-        throw SecretStoreTamperException(e.message ?: "Malformed envelope", e)
-    }
-
-    /** Runs a reader operation and re-raises its envelope failure as a tamper. */
-    private inline fun <T> envelope(block: () -> T): T =
-        try {
-            block()
-        } catch (e: CredentialPartReader.MalformedEnvelopeException) {
-            throw SecretStoreTamperException(e.message ?: "Malformed envelope", e)
-        }
-
-    private fun readPart(
-        plaintext: ByteArray,
-        kindId: Short,
-        partName: String,
-        visited: MutableSet<CredentialsId>,
-    ): SecretHandle {
-        val buf = CredentialPartReader.bufferOver(plaintext)
-        return when (kindId) {
-            KIND_SECRET_TEXT -> {
-                requirePart(partName == "value", partName, "SecretText")
-                buf.get().toInt() // partCount
-                SecretHandle.secret(CredentialPartReader.readInlinePart(buf, 0))
-            }
-            KIND_USERNAME_PASSWORD -> {
-                buf.get().toInt() // partCount
-                SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "UsernamePassword", "username" to 0, "password" to 1))
-            }
-            KIND_SSH_PRIVATE_KEY -> {
-                buf.get().toInt() // partCount
-                when (partName) {
-                    "username", "privateKey" ->
-                        SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "SshPrivateKey", "username" to 0, "privateKey" to 1))
-                    "passphrase" -> {
-                        CredentialPartReader.skipPart(buf) // skip username part
-                        CredentialPartReader.skipPart(buf) // skip privateKey part
-                        val refId = CredentialPartReader.readLinkedRefPart(buf, "passphrase")
-                        requireLinkedRef(refId, "Credential has no passphrase part")
-                        return resolveLinkedSecretRef(refId!!, visited)
-                    }
-                    else -> throw envelope { CredentialPartReader.notFound(partName, "SshPrivateKey") }
-                }
-            }
-            KIND_SECRET_FILE -> {
-                buf.get().toInt() // partCount
-                SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "SecretFile", "originalName" to 0, "content" to 1))
-            }
-            KIND_CERTIFICATE -> {
-                buf.get().toInt() // partCount
-                when (partName) {
-                    "keystore", "alias" ->
-                        SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "Certificate", "keystore" to 0, "alias" to 1))
-                    "password" -> {
-                        CredentialPartReader.skipPart(buf) // skip keystore part
-                        CredentialPartReader.skipPart(buf) // skip alias part
-                        val refId = CredentialPartReader.readLinkedRefPart(buf, "password")
-                        requireLinkedRef(refId, "Credential has no password part")
-                        return resolveLinkedSecretRef(refId!!, visited)
-                    }
-                    else -> throw envelope { CredentialPartReader.notFound(partName, "Certificate") }
-                }
-            }
-            KIND_ZIP -> SecretHandle.secret(envelope { CredentialPartReader.readZipPart(buf, partName) })
-            KIND_USERNAME_COLON_PASSWORD -> {
-                buf.get().toInt() // partCount
-                when (partName) {
-                    "username", "password" ->
-                        SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "UsernameColonPassword", "username" to 0, "password" to 1))
-                    "value" -> {
-                        // Read username part: readInlinePart returns the username value bytes
-                        val usernameBytes = CredentialPartReader.readPartValue(buf)
-                        // Read password length from header (pass name follows username value)
-                        val passLen = CredentialPartReader.readPartHeader(buf)
-                        // Read password value bytes (do NOT skip — we're at the value already)
-                        val passwordBytes = ByteArray(passLen); buf.get(passwordBytes)
-                        // Join with ASCII colon (0x3A)
-                        SecretHandle.secret(usernameBytes + byteArrayOf(0x3A) + passwordBytes)
-                    }
-                    else -> throw envelope { CredentialPartReader.notFound(partName, "UsernameColonPassword") }
-                }
-            }
-            else -> throw SecretStoreTamperException("Unknown credential kind: $kindId")
-        }
-    }
-
-    private fun requirePart(matches: Boolean, partName: String, credential: String) {
-        if (!matches) throw envelope { CredentialPartReader.notFound(partName, credential) }
-    }
-
-    /**
-     * A linked-ref part must carry a reference. [readLinkedRefPart] already
-     * raises for the absent marker, so this is the null-safety net that lets the
-     * caller pass the result straight to [resolveLinkedSecretRef].
-*/
-    private fun requireLinkedRef(refId: CredentialsId?, absentMessage: String) {
-        if (refId == null) throw SecretStoreTamperException(absentMessage)
-    }
-
-    /**
-     * Resolves a LinkedSecretRef by getting the SecretText part of the referenced credential.
-     * Uses a visited set with depth cap ≤16 to detect circular linked secret references.
-     * For SshPrivateKey/Certificate passphrase/password LinkedSecretRefs, this method
-     * traverses through intermediate credentials following the ref chain until SecretText is found.
-*/
-    private fun resolveLinkedSecretRef(refId: CredentialsId, visited: MutableSet<CredentialsId> = mutableSetOf()): SecretHandle {
-        // Cycle detection: if refId is already in visited set, we have a circular reference
-        if (refId in visited) {
-            throw SecretStoreTamperException("Circular linked secret reference detected: ${visited.joinToString(" → ") { it.value }} → ${refId.value}")
-        }
-        // Depth cap: if visited set is large, we've hit a long chain (potential cycle or deep ref)
-        if (visited.size >= 16) {
-            throw SecretStoreTamperException("Linked secret reference chain exceeds maximum depth of 16")
-        }
-
-        visited.add(refId)
-
-        if (!Files.exists(file)) {
-            throw LinkedSecretReferenceNotFoundException(refId)
-        }
-        val fileBytes = Files.readAllBytes(file)
-        val hdr = readHeader(fileBytes)
-        val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
-        val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
-
-        // Route to correct reader based on header version
-        val entries: Map<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
-            CredentialCrypto.readEntriesV1(fileBytes)
-        } else {
-            CredentialCrypto.readEntries(fileBytes)
-        }
-        val refEntry = entries[refId.value]
-            ?: throw LinkedSecretReferenceNotFoundException(refId)
-
-        val v2Entry: V2EntryData
-        try {
-            v2Entry = refEntry as V2EntryData
-        } catch (e: ClassCastException) {
-            throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", "Unknown (v1 format not supported for linked refs)")
-        }
-
-        // For SecretText: directly extract and return the value
-        if (v2Entry.kindId == KIND_SECRET_TEXT) {
-            val aad = CredentialCrypto.buildV2Aad(hdr, refId, v2Entry.kindId)
-            val plaintext = try {
-                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
-            } catch (e: javax.crypto.AEADBadTagException) {
-                throw SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
-            }
-            // Extract the "value" part from SecretText using canonical format
-            val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
-            buf.get().toInt() // partCount
-            val nameLen = buf.get().toInt()
-            if (nameLen > buf.remaining()) {
-                throw SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
-            }
-            buf.position(buf.position() + nameLen) // skip name "value"
-            val valueLen = buf.int
-            val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-            return SecretHandle.secret(valueBytes)
-        }
-
-        // For SshPrivateKey: follow the passphrase LinkedSecretRef chain
-        if (v2Entry.kindId == KIND_SSH_PRIVATE_KEY) {
-            val aad = CredentialCrypto.buildV2Aad(hdr, refId, v2Entry.kindId)
-            val plaintext = try {
-                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
-            } catch (e: javax.crypto.AEADBadTagException) {
-                throw SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
-            }
-            return extractLinkedRefFromSshPrivateKey(plaintext, visited)
-        }
-
-        // For Certificate: follow the password LinkedSecretRef chain
-        if (v2Entry.kindId == KIND_CERTIFICATE) {
-            val aad = CredentialCrypto.buildV2Aad(hdr, refId, v2Entry.kindId)
-            val plaintext = try {
-                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
-            } catch (e: javax.crypto.AEADBadTagException) {
-                throw SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
-            }
-            return extractLinkedRefFromCertificate(plaintext, visited)
-        }
-
-        // Other credential types cannot be the target of a LinkedSecretRef for passphrase/password
-        throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", kindNameFor(v2Entry.kindId))
-    }
-
-    /**
-     * Extracts the passphrase LinkedSecretRef from a SshPrivateKey and resolves it.
-*/
-    private fun extractLinkedRefFromSshPrivateKey(plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
-        val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
-        buf.get().toInt() // partCount
-        // Skip username part
-        run {
-            val nameLen = buf.get().toInt() and 0xFF
-            if (nameLen > buf.remaining()) throw SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
-            buf.position(buf.position() + nameLen)
-            val valueLen = buf.int; buf.position(buf.position() + valueLen)
-        }
-        // Skip privateKey part
-        run {
-            val nameLen = buf.get().toInt() and 0xFF
-            if (nameLen > buf.remaining()) throw SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
-            buf.position(buf.position() + nameLen)
-            val valueLen = buf.int; buf.position(buf.position() + valueLen)
-        }
-        // Now at passphrase header: nameLen(1) + name + 4-byte marker
-        val passphraseNameLen = buf.get().toInt() and 0xFF
-        if (passphraseNameLen > buf.remaining()) {
-            throw SecretStoreTamperException("Malformed envelope: nameLen($passphraseNameLen) exceeds remaining bytes(${buf.remaining()})")
-        }
-        buf.position(buf.position() + passphraseNameLen)
-        val marker = buf.int
-        when (marker) {
-            0xFFFFFFFF.toInt() -> {
-                val refIdLen = buf.int
-                val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
-                val nextRefId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
-                return resolveLinkedSecretRef(nextRefId, visited)
-            }
-            0x00000000.toInt() -> {
-                throw SecretStoreTamperException("Credential has no passphrase part")
-            }
-            else -> throw SecretStoreTamperException("SshPrivateKey passphrase must be linked-ref or absent")
-        }
-    }
-
-    /**
-     * Extracts the password LinkedSecretRef from a Certificate and resolves it.
-*/
-    private fun extractLinkedRefFromCertificate(plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
-        val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
-        buf.get().toInt() // partCount
-        // Skip keystore part
-        run {
-            val nameLen = buf.get().toInt() and 0xFF
-            if (nameLen > buf.remaining()) throw SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
-            buf.position(buf.position() + nameLen)
-            val valueLen = buf.int; buf.position(buf.position() + valueLen)
-        }
-        // Skip alias part
-        run {
-            val nameLen = buf.get().toInt() and 0xFF
-            if (nameLen > buf.remaining()) throw SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
-            buf.position(buf.position() + nameLen)
-            val valueLen = buf.int; buf.position(buf.position() + valueLen)
-        }
-        // Now at password header: nameLen(1) + name + 4-byte marker
-        val pwNameLen = buf.get().toInt() and 0xFF
-        if (pwNameLen > buf.remaining()) {
-            throw SecretStoreTamperException("Malformed envelope: nameLen($pwNameLen) exceeds remaining bytes(${buf.remaining()})")
-        }
-        buf.position(buf.position() + pwNameLen)
-        val marker = buf.int
-        when (marker) {
-            0xFFFFFFFF.toInt() -> {
-                val pwRefIdLen = buf.int
-                val pwRefIdBytes = ByteArray(pwRefIdLen); buf.get(pwRefIdBytes)
-                val nextRefId = CredentialsId.from(String(pwRefIdBytes, Charsets.UTF_8))
-                return resolveLinkedSecretRef(nextRefId, visited)
-            }
-            0x00000000.toInt() -> {
-                throw SecretStoreTamperException("Credential has no password part")
-            }
-            else -> throw SecretStoreTamperException("Certificate password must be linked-ref or absent")
-        }
+        return LinkedSecretResolver(snapshot.header, { snapshot.dek() }, { snapshot.entries() })
+            .extractPart(plaintext, v2Entry.kindId, id, partName, mutableSetOf(id))
     }
 
     /**
@@ -940,7 +783,7 @@ class LocalSecretStore(
 */
     override fun list(): List<CredentialsId> {
         if (!Files.exists(file) || Files.size(file) == 0L) return emptyList()
-        val fileBytes = Files.readAllBytes(file)
+        val fileBytes = readStoreFile()
         open(fileBytes)
         val hdr = readHeader(fileBytes)
         // Route based on header version
@@ -965,7 +808,7 @@ class LocalSecretStore(
     override fun remove(id: CredentialsId) {
         withExclusiveLock {
             if (!Files.exists(file) || Files.size(file) == 0L) return
-            val fileBytes = Files.readAllBytes(file)
+            val fileBytes = readStoreFile()
             open(fileBytes)
             val hdr = readHeader(fileBytes)
 
@@ -1010,9 +853,9 @@ class LocalSecretStore(
                 throw SecretStoreTamperException("Credential not found: ${id.value}")
             }
 
-            val fileBytes = Files.readAllBytes(file)
+            val fileBytes = readStoreFile()
             val hdr = readHeader(fileBytes)
-            val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
+            val kek = deriveKek(hdr.kdfSalt)
 
             // Route based on header version; rotate always upgrades to v2
             val entries: MutableMap<String, V2EntryData> = if (hdr.version == VERSION_V1.toShort()) {
@@ -1073,9 +916,9 @@ class LocalSecretStore(
                 writeBytes(id, newBytes)
                 return@withExclusiveLock
             }
-            val fileBytes = Files.readAllBytes(file)
+            val fileBytes = readStoreFile()
             val hdr = readHeader(fileBytes)
-            val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
+            val kek = deriveKek(hdr.kdfSalt)
 
             val entries = CredentialCrypto.readEntriesV1(fileBytes)
             entries[id.value]
@@ -1126,7 +969,7 @@ class LocalSecretStore(
 
     private fun loadOrCreateHeader(): StoreHeader {
         if (Files.exists(file) && Files.size(file) > 0) {
-            return readHeader(Files.readAllBytes(file))
+            return readHeader(readStoreFile())
         }
         // Create new header with fresh salt - use format for new stores
         val salt = ByteArray(SALT_SIZE)
@@ -1160,3 +1003,337 @@ class LocalSecretStore(
         Companion.readHeaderBytes(bytes)
 
 }
+
+// Kind IDs for v2 envelope (stored as first 2 bytes after version)
+private const val KIND_SECRET_TEXT: Short = 1
+private const val KIND_USERNAME_PASSWORD: Short = 2
+private const val KIND_SSH_PRIVATE_KEY: Short = 3
+private const val KIND_SECRET_FILE: Short = 4
+private const val KIND_CERTIFICATE: Short = 5
+private const val KIND_ZIP: Short = 6
+private const val KIND_USERNAME_COLON_PASSWORD: Short = 7
+
+/**
+ * The walk over a chain of linked secrets.
+ *
+ * A chain is a credential whose part refers to another credential, which may
+ * refer to another one. This walk follows those references until it reaches
+ * the secret text at the end of the chain, and it refuses the chains that
+ * close on themselves and the chains that are deeper than the cap.
+ *
+ * The walk reads ONE view of the store: the header, the key and the entries
+ * it is given come from the same opening of the store, so the chain is
+ * answered against the store as it was when the operation started, and the
+ * passphrase is validated once and not once per hop.
+ */
+private class LinkedSecretResolver(
+    private val header: LocalSecretStore.StoreHeader,
+    private val dek: () -> ByteArray,
+    private val entries: () -> Map<String, out Any>,
+) {
+    /**
+     * Extracts a named part from deserialized credential bytes using the canonical part format.
+     * Format per part: [nameLen:1][name][len:4 BE][bytes]
+     * After reading nameLen and name, position is at len(4). We must also skip len to reach bytes.
+    */
+    fun extractPart(
+        plaintext: ByteArray,
+        kindId: Short,
+        id: CredentialsId,
+        partName: String,
+        visited: MutableSet<CredentialsId> = mutableSetOf(id),
+        ): SecretHandle = try {
+        readPart(plaintext, kindId, partName, visited)
+    } catch (e: CredentialPartReader.MalformedEnvelopeException) {
+        // The reader reports a malformed envelope; callers of the store catch
+        // SecretStoreTamperException, which stays the public type.
+        throw LocalSecretStore.SecretStoreTamperException(e.message ?: "Malformed envelope", e)
+    }
+
+    /** Runs a reader operation and re-raises its envelope failure as a tamper. */
+    private inline fun <T> envelope(block: () -> T): T =
+        try {
+            block()
+        } catch (e: CredentialPartReader.MalformedEnvelopeException) {
+            throw LocalSecretStore.SecretStoreTamperException(e.message ?: "Malformed envelope", e)
+        }
+
+    private fun readPart(
+        plaintext: ByteArray,
+        kindId: Short,
+        partName: String,
+        visited: MutableSet<CredentialsId>,
+        ): SecretHandle {
+        val buf = CredentialPartReader.bufferOver(plaintext)
+        return when (kindId) {
+            KIND_SECRET_TEXT -> {
+                requirePart(partName == "value", partName, "SecretText")
+                buf.get().toInt() // partCount
+                SecretHandle.secret(CredentialPartReader.readInlinePart(buf, 0))
+            }
+            KIND_USERNAME_PASSWORD -> {
+                buf.get().toInt() // partCount
+                SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "UsernamePassword", "username" to 0, "password" to 1))
+            }
+            KIND_SSH_PRIVATE_KEY -> {
+                buf.get().toInt() // partCount
+                when (partName) {
+                    "username", "privateKey" ->
+                        SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "SshPrivateKey", "username" to 0, "privateKey" to 1))
+                    "passphrase" -> {
+                        CredentialPartReader.skipPart(buf) // skip username part
+                        CredentialPartReader.skipPart(buf) // skip privateKey part
+                        val refId = CredentialPartReader.readLinkedRefPart(buf, "passphrase")
+                        return resolveLinkedSecretRef(
+                            requireLinkedRef(refId, "Credential has no passphrase part"),
+                            visited,
+                        )
+                    }
+                    else -> throw envelope { CredentialPartReader.notFound(partName, "SshPrivateKey") }
+                }
+            }
+            KIND_SECRET_FILE -> {
+                buf.get().toInt() // partCount
+                SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "SecretFile", "originalName" to 0, "content" to 1))
+            }
+            KIND_CERTIFICATE -> {
+                buf.get().toInt() // partCount
+                when (partName) {
+                    "keystore", "alias" ->
+                        SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "Certificate", "keystore" to 0, "alias" to 1))
+                    "password" -> {
+                        CredentialPartReader.skipPart(buf) // skip keystore part
+                        CredentialPartReader.skipPart(buf) // skip alias part
+                        val refId = CredentialPartReader.readLinkedRefPart(buf, "password")
+                        return resolveLinkedSecretRef(
+                            requireLinkedRef(refId, "Credential has no password part"),
+                            visited,
+                        )
+                    }
+                    else -> throw envelope { CredentialPartReader.notFound(partName, "Certificate") }
+                }
+            }
+            KIND_ZIP -> SecretHandle.secret(envelope { CredentialPartReader.readZipPart(buf, partName) })
+            KIND_USERNAME_COLON_PASSWORD -> {
+                buf.get().toInt() // partCount
+                when (partName) {
+                    "username", "password" ->
+                        SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "UsernameColonPassword", "username" to 0, "password" to 1))
+                    "value" -> {
+                        // Read username part: readInlinePart returns the username value bytes
+                        val usernameBytes = CredentialPartReader.readPartValue(buf)
+                        // Read password length from header (pass name follows username value)
+                        val passLen = CredentialPartReader.readPartHeader(buf)
+                        // Read password value bytes (do NOT skip — we're at the value already)
+                        val passwordBytes = ByteArray(passLen); buf.get(passwordBytes)
+                        // Join with ASCII colon (0x3A)
+                        SecretHandle.secret(usernameBytes + byteArrayOf(0x3A) + passwordBytes)
+                    }
+                    else -> throw envelope { CredentialPartReader.notFound(partName, "UsernameColonPassword") }
+                }
+            }
+            else -> throw LocalSecretStore.SecretStoreTamperException("Unknown credential kind: $kindId")
+        }
+    }
+
+    private fun requirePart(matches: Boolean, partName: String, credential: String) {
+        if (!matches) throw envelope { CredentialPartReader.notFound(partName, credential) }
+    }
+
+    /**
+     * A linked-ref part must carry a reference. [readLinkedRefPart] already
+     * raises for the absent marker, so this is the null-safety net that lets the
+     * caller pass the result straight to [resolveLinkedSecretRef].
+    */
+    private fun requireLinkedRef(refId: CredentialsId?, absentMessage: String): CredentialsId =
+        refId ?: throw LocalSecretStore.SecretStoreTamperException(absentMessage)
+
+    /**
+     * Resolves a LinkedSecretRef by getting the SecretText part of the referenced credential.
+     * Uses a visited set with depth cap ≤16 to detect circular linked secret references.
+     * For SshPrivateKey/Certificate passphrase/password LinkedSecretRefs, this method
+     * traverses through intermediate credentials following the ref chain until SecretText is found.
+     *
+     * Every hop walks the SAME view of the store, so the chain is resolved
+     * against one consistent view and the passphrase is validated once, not
+     * once per hop. The file is not read again: the view holds the bytes the
+     * operation resolves against, so a file that disappears mid-operation
+     * cannot make the operation see a different store half way through the
+     * chain.
+    */
+    private fun resolveLinkedSecretRef(
+        refId: CredentialsId,
+        visited: MutableSet<CredentialsId> = mutableSetOf(),
+        ): SecretHandle {
+        // Cycle detection: if refId is already in visited set, we have a circular reference
+        if (refId in visited) {
+            throw LocalSecretStore.SecretStoreTamperException(
+                "Circular linked secret reference detected: " +
+                    "${visited.joinToString(" → ") { it.value }} → ${refId.value}",
+            )
+        }
+        // Depth cap: if visited set is large, we've hit a long chain (potential cycle or deep ref)
+        if (visited.size >= 16) {
+            throw LocalSecretStore.SecretStoreTamperException("Linked secret reference chain exceeds maximum depth of 16")
+        }
+
+        visited.add(refId)
+
+        val hdr = header
+        val dek = dek()
+
+        val refEntry = entries()[refId.value]
+            ?: throw LinkedSecretReferenceNotFoundException(refId)
+
+        val v2Entry: LocalSecretStore.V2EntryData
+        try {
+            v2Entry = refEntry as LocalSecretStore.V2EntryData
+        } catch (e: ClassCastException) {
+            throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", "Unknown (v1 format not supported for linked refs)")
+        }
+
+        // For SecretText: directly extract and return the value
+        if (v2Entry.kindId == KIND_SECRET_TEXT) {
+            val aad = CredentialCrypto.buildV2Aad(hdr, refId, v2Entry.kindId)
+            val plaintext = try {
+                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
+            } catch (e: javax.crypto.AEADBadTagException) {
+                throw LocalSecretStore.SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
+            }
+            // Extract the "value" part from SecretText using canonical format
+            val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
+            buf.get().toInt() // partCount
+            val nameLen = buf.get().toInt()
+            if (nameLen > buf.remaining()) {
+                throw LocalSecretStore.SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
+            }
+            buf.position(buf.position() + nameLen) // skip name "value"
+            val valueLen = buf.int
+            val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+            return SecretHandle.secret(valueBytes)
+        }
+
+        // For SshPrivateKey: follow the passphrase LinkedSecretRef chain
+        if (v2Entry.kindId == KIND_SSH_PRIVATE_KEY) {
+            val aad = CredentialCrypto.buildV2Aad(hdr, refId, v2Entry.kindId)
+            val plaintext = try {
+                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
+            } catch (e: javax.crypto.AEADBadTagException) {
+                throw LocalSecretStore.SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
+            }
+            return extractLinkedRefFromSshPrivateKey(plaintext, visited)
+        }
+
+        // For Certificate: follow the password LinkedSecretRef chain
+        if (v2Entry.kindId == KIND_CERTIFICATE) {
+            val aad = CredentialCrypto.buildV2Aad(hdr, refId, v2Entry.kindId)
+            val plaintext = try {
+                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
+            } catch (e: javax.crypto.AEADBadTagException) {
+                throw LocalSecretStore.SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
+            }
+            return extractLinkedRefFromCertificate(plaintext, visited)
+        }
+
+        // Other credential types cannot be the target of a LinkedSecretRef for passphrase/password
+        throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", LocalSecretStore.kindNameFor(v2Entry.kindId))
+    }
+
+    /**
+     * Extracts the passphrase LinkedSecretRef from a SshPrivateKey and resolves it.
+    */
+    private fun extractLinkedRefFromSshPrivateKey(plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
+        val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
+        buf.get().toInt() // partCount
+        // Skip username part
+        run {
+            val nameLen = buf.get().toInt() and 0xFF
+            if (nameLen > buf.remaining()) {
+                throw LocalSecretStore.SecretStoreTamperException(
+                    "Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})",
+                )
+            }
+            buf.position(buf.position() + nameLen)
+            val valueLen = buf.int; buf.position(buf.position() + valueLen)
+        }
+        // Skip privateKey part
+        run {
+            val nameLen = buf.get().toInt() and 0xFF
+            if (nameLen > buf.remaining()) {
+                throw LocalSecretStore.SecretStoreTamperException(
+                    "Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})",
+                )
+            }
+            buf.position(buf.position() + nameLen)
+            val valueLen = buf.int; buf.position(buf.position() + valueLen)
+        }
+        // Now at passphrase header: nameLen(1) + name + 4-byte marker
+        val passphraseNameLen = buf.get().toInt() and 0xFF
+        if (passphraseNameLen > buf.remaining()) {
+            throw LocalSecretStore.SecretStoreTamperException("Malformed envelope: nameLen($passphraseNameLen) exceeds remaining bytes(${buf.remaining()})")
+        }
+        buf.position(buf.position() + passphraseNameLen)
+        val marker = buf.int
+        when (marker) {
+            0xFFFFFFFF.toInt() -> {
+                val refIdLen = buf.int
+                val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
+                val nextRefId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
+                return resolveLinkedSecretRef(nextRefId, visited)
+            }
+            0x00000000.toInt() -> {
+                throw LocalSecretStore.SecretStoreTamperException("Credential has no passphrase part")
+            }
+            else -> throw LocalSecretStore.SecretStoreTamperException("SshPrivateKey passphrase must be linked-ref or absent")
+        }
+    }
+
+    /**
+     * Extracts the password LinkedSecretRef from a Certificate and resolves it.
+    */
+    private fun extractLinkedRefFromCertificate(plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
+        val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
+        buf.get().toInt() // partCount
+        // Skip keystore part
+        run {
+            val nameLen = buf.get().toInt() and 0xFF
+            if (nameLen > buf.remaining()) {
+                throw LocalSecretStore.SecretStoreTamperException(
+                    "Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})",
+                )
+            }
+            buf.position(buf.position() + nameLen)
+            val valueLen = buf.int; buf.position(buf.position() + valueLen)
+        }
+        // Skip alias part
+        run {
+            val nameLen = buf.get().toInt() and 0xFF
+            if (nameLen > buf.remaining()) {
+                throw LocalSecretStore.SecretStoreTamperException(
+                    "Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})",
+                )
+            }
+            buf.position(buf.position() + nameLen)
+            val valueLen = buf.int; buf.position(buf.position() + valueLen)
+        }
+        // Now at password header: nameLen(1) + name + 4-byte marker
+        val pwNameLen = buf.get().toInt() and 0xFF
+        if (pwNameLen > buf.remaining()) {
+            throw LocalSecretStore.SecretStoreTamperException("Malformed envelope: nameLen($pwNameLen) exceeds remaining bytes(${buf.remaining()})")
+        }
+        buf.position(buf.position() + pwNameLen)
+        val marker = buf.int
+        when (marker) {
+            0xFFFFFFFF.toInt() -> {
+                val pwRefIdLen = buf.int
+                val pwRefIdBytes = ByteArray(pwRefIdLen); buf.get(pwRefIdBytes)
+                val nextRefId = CredentialsId.from(String(pwRefIdBytes, Charsets.UTF_8))
+                return resolveLinkedSecretRef(nextRefId, visited)
+            }
+            0x00000000.toInt() -> {
+                throw LocalSecretStore.SecretStoreTamperException("Credential has no password part")
+            }
+            else -> throw LocalSecretStore.SecretStoreTamperException("Certificate password must be linked-ref or absent")
+        }
+    }
+    }

@@ -227,6 +227,9 @@ internal fun composeRuntimeControlPort(
  * this composition, unreachable: an operator could not ask the product
  * whether a run was still going, and an external worker (Fabric) could not
  * ask it either, because the port had no in-tree implementation to stand on.
+ * What an external consumer may ask the product about a run, and what it may
+ * not do, is the contract the root README states under "Reading a run from
+ * outside".
  *
  * ## Why the same stores, and not new ones
  * The plane is a READ of the run that already exists: the event lane for its

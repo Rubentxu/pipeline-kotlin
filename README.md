@@ -298,6 +298,121 @@ therefore closed by default: a cache directory that cannot be proven private
 is not used, and the run simply compiles again. `pipelinek doctor` always
 reports where the cache is and whether it is being used.
 
+## Contracts
+
+Three contracts, one for each role that meets this product from outside: a
+consumer of telemetry, an author of a plugin, and a third party that reads a
+run. Each one says what it guarantees and what it refuses. The code that
+carries the detail is named at the end of every one.
+
+### Telemetry
+
+PipelineK can export spans, counters and histograms in OpenTelemetry's
+format. What it exports is **timing, counts and buckets, and never
+payload**: no script text, no command, no transcript. Those live in the
+output plane and in the journal, and a second copy of them in telemetry
+would be a second place a secret could hide.
+
+The keys the export carries are the product's own:
+
+| | |
+|---|---|
+| Attributes | `run.id`, `stage.index`, `step.index`, `compile.outcome`, `failure.class` |
+| Dimensions | `operation_kind`, `status`, `failure_class` |
+
+The conventions the product speaks are the OpenTelemetry CI/CD ones, pinned at
+`1.44.0` and declared a release candidate: their names may still move between
+two versions of the specification, so the pin is part of what the product
+promises. The pin is read from the product, not from the payload.
+
+Only the run id travels as an identity. The correlation id, the operation
+id, the attempt id and the fencing token do not travel: they belong to the
+invoker, to idempotency and to write authority respectively. The trace id
+of a finished run is a digest of the run id — it groups that run's signals
+and is not an identity of its own. The live W3C trace id is the only carrier
+of causality.
+
+Every export is bounded: at most 8 attributes per signal, 64 characters per
+text value, and 16 distinct values per dimension key across the whole
+export. The surplus travels as `__overflow__`, so a consumer can see that
+values were collapsed instead of guessing that none existed.
+
+Telemetry is off unless the operator asks for it: without
+`PIPELINEK_OTEL_ENABLED=true` there is no SDK, no exporter and no worker,
+and the run emits nothing. A finished run can also be projected into the
+same vocabulary and exported on demand, which is the path that needs no SDK.
+An export that cannot be written is reported — the loss is counted and the
+run's result does not change.
+
+The contract that carries the detail is the KDoc on `TelemetryPolicy`, in
+`RunTelemetry.kt` of `:pipeline-runtime-api`.
+
+### Writing a plugin
+
+A plugin declares Step families and the engine calls them. A plugin **sees**
+two things and no more: the decoded input of its own type, and a narrow
+execution identity that names the run, the index of the step within it, and
+the capabilities the engine supplied.
+
+A plugin **may** do exactly what its contract declared. It declares the
+capabilities it needs, the engine supplies the ones it can, and the call is
+admitted only when the declared set is inside the supplied one: a capability
+that is missing is refused by name, before the handler runs. What the engine
+supplies, the plugin reads through a typed accessor that refuses both an
+absent capability and a value of the wrong shape.
+
+A plugin **may not** reach an effect it did not declare. The file system,
+the clock and the network are behind capabilities. It may not mutate what it
+receives, may not signal a failure by throwing — the handler returns a typed
+result — and an observation it emits does not choose its own place in the
+run's event flow: the store assigns the sequence.
+
+The declaration is a `StepContract` in the domain module: the family key, the
+descriptor, the typed codecs and the capabilities it requires. The outcome of
+an invocation is a closed algebra of four cases — a typed value, an unknown
+Step, a decode refusal and a missing capability — and the three refusals are
+decided before the handler runs. The manifest declares the plugin's
+contributions and the range of the API it was built against, and admission
+refuses a plugin outside that range before its classes load.
+
+`examples/example-uppercase-plugin` is a plugin built against the published
+SDK alone, and it observes itself: one Step asks for nothing, one asks for a
+single public seam, and one asks the runtime to watch it. It needs no
+dependency the consumer does not already have.
+
+The contract that carries the detail is the KDoc on `StepContext.kt` in
+`:pipeline-step-sdk`.
+
+### Reading a run from outside
+
+A consumer outside this process — Fabric, a CI system, a scheduler — reads a
+run. It does not drive it, and it is not a second authority over the run's
+facts.
+
+| | |
+|---|---|
+| Reads | the committed bytes of the output plane, by stream and by cursor |
+| Reads | the typed events of the event lane, paginated by sequence |
+| Reads | the state of a run: its attempt, its lease holder and its journal position |
+| Joins on | the run id, and the correlation id the invoker assigned |
+| Does not write | bytes into the output plane: the write side is outside the published surface |
+| Does not become | a second authority over the run's facts: a consumer resolves the read-only ports, and the engine keeps the write authority |
+| Does not treat | a trace id as an identity, or as a permission |
+
+The lease is where the access control lives. The holder's owner id, its
+fencing token and its liveness are the durable, cross-process facts a
+consumer can act on; the fencing token is write authority, and it does not
+travel in telemetry.
+
+Two of the published introspection methods are announced and not delivered in
+this build: the enumeration of a run's structure and the inspection of one
+operation of it. Nothing composes them yet, so a consumer cannot count on
+them.
+
+The contract that carries the detail is this section, and the KDoc on
+`OutputReadPort.kt` in `:pipeline-output`, `EventRecordReadPort.kt` in
+`:pipeline-events` and `RuntimeIntrospectionPort.kt` in `:pipeline-runtime-api`.
+
 ## Documentation
 
 There is no separate user-documentation tree in this repository. The
@@ -316,6 +431,9 @@ code that implements each surface:
 | `--workspace`, `--db`, `--control-root` | The KDoc on `durable/WorkspaceResolver.kt` in `:pipeline-runtime` |
 | Secret redaction and credentials | Redaction: the KDoc on `SecretPatternRegistry.kt` in `:pipeline-credentials-api`, which also states that a bound secret of fewer than `MIN_MASKABLE_LENGTH` (8) characters runs normally but is **not** masked, so it reaches the transcript in the clear. Store access: `PassphraseResolver.kt` and `CredentialsStorePath.kt` in `:pipeline-credentials-local` |
 | Typed events, transcripts, recovery | The KDoc on `JsonEventLog.kt` in `:pipeline-events-store` |
+| The telemetry contract | The section "Contracts" above, and the KDoc on `TelemetryPolicy`, in `RunTelemetry.kt` of `:pipeline-runtime-api` |
+| The plugin contract | The section "Contracts" above, and the KDoc on `StepContext.kt` in `:pipeline-step-sdk` |
+| Reading a run from outside | The section "Contracts" above, and the KDoc on `OutputReadPort.kt` in `:pipeline-output`, `EventRecordReadPort.kt` in `:pipeline-events` and `RuntimeIntrospectionPort.kt` in `:pipeline-runtime-api` |
 | How the build is verified, and what is out of bounds | `AGENTS.md` in the repository root |
 
 The reason to prefer this over a prose tree is not preference: a KDoc block

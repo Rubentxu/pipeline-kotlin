@@ -8,18 +8,22 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
  * now?". Each case names a substrate condition; new cases are compile errors at
  * every `when` site that exhausts this ADT.
  *  - `Running.process` is OPTIONAL (the runtime does not always have a durable
- *    reference to the live writer process — e.g. when Fabric is on a different
- *    host). The contract does not depend on it.
+ *    reference to the live writer process — e.g. when an external consumer is on
+ *    a different host). The contract does not depend on it.
  *  - `Terminal.terminal` carries a typed [TerminalObservation] (NOT a raw
  *    `(StepOutcome, OperationStatus)` pair), which names the fix for the
  *    category error between "what the journal recorded"
  *    and "what the run semantically is".
+ *
+ * What a consumer outside this process may do with these facts, and what it
+ * may not do, is the contract the root README states under "Reading a run
+ * from outside".
 */
 sealed interface RuntimeObservation {
 
     /**
      * The run is in flight and observed.
-     * `leaseHolder` is the durable, cross-process fact a Fabric can act on (the
+     * `leaseHolder` is the durable, cross-process fact an external consumer can act on (the
      * holder's owner id + fencing token + liveness). `process` is OPTIONAL: cross-
      * process introspection always returns `null` for it; co-located introspection
      * may carry a [ProcessRef]. The contract never depends on `process` being non-
@@ -49,10 +53,10 @@ sealed interface RuntimeObservation {
      * inspection found no live evidence. This is a FACT about the substrate, not
      * a refusal — the runtime knows the run exists but the journal / lease record
      * / event plane is empty.
-     * The correction (see design revision note 1) made this the same
-     * distinction on the introspection port: "unknown run" vs "empty-but-known".
-     * The distinction is part of the design, and the test that pinned it
-     * is gone.
+     * The introspection port draws the same distinction: "unknown run" and
+     * "empty but known" are two different answers, and a consumer that cannot
+     * tell them apart cannot decide whether to wait for the run or to give it
+     * up.
 */
     data class LiveButEmpty(
         val attempt: AttemptId,

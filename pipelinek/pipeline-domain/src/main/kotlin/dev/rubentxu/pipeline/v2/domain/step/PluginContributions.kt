@@ -96,11 +96,12 @@ data class PluginContributions(
 
 /**
  * The PipelineK API range a plugin declares compatibility with.
- *  of the plugin SDK package requires `apiRange`, and it is what makes admission
- * able to refuse a plugin before its classes load: a plugin built against PipelineK
- * 0.48 is not silently loadable into 0.52. Exclusive upper bound, because a
- * compatibility range states where a plugin stops being supported, not where it
- * stops being parseable.
+ *
+ * The manifest of the plugin SDK package requires `apiRange`, and it is what
+ * makes admission able to refuse a plugin before its classes load: a plugin
+ * built against PipelineK 0.48 is not silently loadable into 0.52. Exclusive
+ * upper bound, because a compatibility range states where a plugin stops being
+ * supported, not where it stops being parseable.
 */
 data class PipelineKApiRange(
     val fromInclusive: SemVer,

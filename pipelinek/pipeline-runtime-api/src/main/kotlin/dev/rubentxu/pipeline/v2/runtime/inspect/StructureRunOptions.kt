@@ -14,8 +14,10 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
  *    result, depending on the mismatch.
  *  - `includeTerminalStages` — when `true` (the default), terminal stages
  *    are included in the enumeration. When `false`, only in-flight stages
- *    are returned. The flag exists so a Fabric that wants the live view of
- *    a long-running run can skip the historical tail.
+ *    are returned. The flag exists so an external consumer that wants the
+ *    live view of a long-running run can skip the historical tail.
+ * What a consumer outside this process may ask for, and what it may not do,
+ * is the contract the root README states under "Reading a run from outside".
  * The options are validated at construction (`init`); a closed ADT pattern
  * with a `Default` companion preserves the "no `Either`/`Result` reuse"
  * rule.

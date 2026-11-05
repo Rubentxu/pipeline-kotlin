@@ -53,8 +53,9 @@ interface RuntimeIntrospectionPort {
 
     /**
      * Inspect the live state of [runId] right now.
-     * @param runId The run to inspect. `String`, NOT a typed `RunId` (the design
-     * pins `runId` as `String`; typed identity is a future concern)
+     * @param runId The run to inspect. `String`, NOT a typed `RunId`: this port
+     * takes the run's identifier as a string, and a typed identity is not what
+     * it accepts.
      * @return A [RuntimeIntrospectionResult] that is either an
      *   [RuntimeIntrospectionResult.Observation] carrying the closed
      *   [RuntimeObservation], or a [RuntimeIntrospectionResult.Refused] carrying a

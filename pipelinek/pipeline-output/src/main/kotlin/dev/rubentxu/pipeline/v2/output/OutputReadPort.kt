@@ -8,9 +8,10 @@ package dev.rubentxu.pipeline.v2.output
  * This port is the whole of the published Output Plane. The write side ([`OutputAppendPort`]) and
  * the recovery entry point live in `:pipeline-output-store` and are not part of this contract,
  * because a reader that could also write would be a second potential authority over the bytes
- * [] gives to exactly one plane. An external consumer (Fabric's console reader) reads
- * committed bytes; it does not reserve, commit, recover or prune.
- * @see
+ * the runtime gives to exactly one plane. An external consumer (Fabric's console reader) reads
+ * committed bytes; it does not reserve, commit, recover or prune. What an external consumer may
+ * read, and what it may not do, is the contract the root README states under
+ * "Reading a run from outside".
 */
 interface OutputReadPort {
 

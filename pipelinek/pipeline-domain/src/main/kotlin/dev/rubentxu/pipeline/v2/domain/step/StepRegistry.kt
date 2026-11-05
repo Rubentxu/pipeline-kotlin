@@ -60,7 +60,7 @@ interface StepCapabilityAccess {
 }
 
 /**
- * Narrow execution identity handed to a [StepHandler] for one invocation (.2a)
+ * Narrow execution identity handed to a [StepHandler] for one invocation.
  * Deliberately carries only execution identity plus explicit capability access. It is NOT a
  * [dev.rubentxu.pipeline.v2.domain.StepExecutionContext]-style catch-all and MUST NOT grow into an
  * omnipotent `PipelineContext`: a handler declares its minimal capabilities in its contract and
@@ -192,7 +192,7 @@ interface StepRegistry {
     /**
      * Returns the registered provider metadata for [key], or null if the registration was made
      * via the legacy [StepRegistryBuilder.add] path that carries no provider. O(1), backed by the
-     * Same map as [definition]
+     * same map as [definition].
 */
     fun providerOf(key: PluginStepId): StepProviderMetadata?
 

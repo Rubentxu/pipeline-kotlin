@@ -1,0 +1,53 @@
+# The traces a consumer reads, one query per family.
+#
+# These are TraceQL queries, the language Tempo and Jaeger speak. The product
+# exports the spans it opens at the real boundaries of the engine, so a trace
+# is the shape of a run: the compile, the admission, the stage, the step, the
+# wait, the retry, the recovery and the release.
+#
+# Every span carries the run id under `run.id`, and that is the only
+# identity that travels: the attribute is quoted in the queries because its
+# name ends in a period.
+#
+# The family that has NO span is the telemetry drop: a signal that could not
+# be written leaves no trace behind, and the counter that names it is the
+# only witness. The query for it is in `metrics.promql`.
+
+# --- 1. Compile --------------------------------------------------------------
+# Question: what did the compile cost, and what was it?
+# Decision: a compile that dominates the run is the pipeline's own cost.
+{ name = "pipelinek.compile" }
+
+# --- 2. Step -----------------------------------------------------------------
+# Question: which step took the time, and which one failed?
+# Decision: the step that dominates the run is the one to parallelise, cache
+# or move to a faster runner.
+{ name = "pipelinek.step.dispatch" }
+{ name = "pipelinek.step.invoke" }
+
+# --- 3. Queue and provisioning ----------------------------------------------
+# Question: how long did the run wait before its work started?
+# Decision: this is the cost of admission and of the wait; it is where a
+# queue shows up, and it is not the step's own time.
+{ name = "pipelinek.admission" }
+{ name = "pipelinek.waituntil" }
+
+# --- 4. Recovery -------------------------------------------------------------
+# Question: what had to be recovered, and how long did it take?
+# Decision: a recovery is a durability event, not a business one; the run's
+# result does not depend on it.
+{ name = "pipelinek.recovery" }
+{ name = "pipelinek.retry.attempt" }
+
+# --- 5. Error taxonomy -------------------------------------------------------
+# Question: which class of failure is this?
+# Decision: the class says who has to act, so it is what routes the alert.
+{ status = error }
+{ span."failure.class" = "failed" }
+{ span."failure.class" = "rejected" }
+
+# --- Correlating a metric with a trace ---------------------------------------
+# Question: which run does this measurement belong to?
+# Decision: the run id is the join between the metrics and the traces, and
+# the trace id that groups a run's signals is not an identity of its own.
+{ name = "pipelinek.run" && span."run.id" = "the run id" }

@@ -1,0 +1,67 @@
+# The optional local Collector for PipelineK's telemetry.
+#
+# It is an EXAMPLE, not a dependency of the engine: the product does not know
+# this file exists, and the gate never asks for it. The product speaks OTLP,
+# and this is one of the places that speaks it back:
+#
+#   PIPELINEK_OTEL_ENABLED=true
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+#
+# Run it with the contrib distribution, which is the one that carries the
+# Prometheus exporter:
+#
+#   podman run --rm -p 4318:4318 -p 8889:8889 \
+#     -v "$PWD/examples/observability/collector.yaml:/etc/otelcol-contrib/config.yaml" \
+#     docker.io/otel/opentelemetry-collector-contrib:latest
+#
+# Every endpoint is read from the environment, so no observability backend is
+# fixed here and none of them is a contract of the product.
+#
+# The traces leave through the debug exporter, which prints them in the
+# Collector's own log: that is a way to read a trace with no backend at all.
+# To send them to a backend instead, add `otlp_grpc` to the exporters of the
+# traces pipeline and point OTEL_COLLECTOR_OTLP_EXPORT_ENDPOINT at it.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: ${env:OTEL_COLLECTOR_OTLP_HTTP_ENDPOINT:-0.0.0.0:4318}
+      grpc:
+        endpoint: ${env:OTEL_COLLECTOR_OTLP_GRPC_ENDPOINT:-0.0.0.0:4317}
+
+processors:
+  batch:
+    timeout: ${env:OTEL_COLLECTOR_BATCH_TIMEOUT:-5s}
+
+exporters:
+  # Grafana reads the metrics from here: the Prometheus exposition of the
+  # product's own instruments.
+  prometheus:
+    endpoint: ${env:OTEL_COLLECTOR_PROMETHEUS_ENDPOINT:-0.0.0.0:8889}
+  # Tempo or Jaeger read the traces from here. The default address is a port
+  # nothing listens on, so the exporter is defined but not wired: it joins the
+  # traces pipeline when there is a backend to send them to.
+  otlp_grpc:
+    endpoint: ${env:OTEL_COLLECTOR_OTLP_EXPORT_ENDPOINT:-localhost:4319}
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      queue_size: 64
+    retry_on_failure:
+      enabled: false
+  # The traces as text, for a reader that has no backend at all.
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus, debug]

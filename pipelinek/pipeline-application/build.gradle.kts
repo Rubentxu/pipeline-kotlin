@@ -332,6 +332,29 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+
+    // The drift rules read documents that live OUTSIDE this module's sources:
+    // the README, the policy and the observability example. Gradle's
+    // up-to-date check only sees DECLARED inputs, so without this declaration
+    // the task is UP-TO-DATE after a change to any of them and the rules that
+    // read them never run — a green over a document nobody looked at. The
+    // subject of the rule is the document, so the document is an input of the
+    // task that checks it.
+    inputs.files(
+        rootProject.file("../README.md"),
+        rootProject.file("../AGENTS.md"),
+        rootProject.file("../examples/observability"),
+    )
+    // The example plugins are a subject by NAME and not by content: the rule
+    // asks which plugin directories exist, so hashing their build outputs
+    // would invalidate this task on every build in exchange for nothing.
+    inputs.property("driftExamplePluginNames", rootProject.provider {
+        rootProject.file("../examples").listFiles()
+            ?.filter { it.isDirectory }
+            ?.map { it.name }
+            ?.sorted()
+            .orEmpty()
+    })
 }
 
 // TEST LANES REMOVED. Five separate registrations were deleted

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.credentials.local.CredentialsOutcome
 import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
 import dev.rubentxu.pipeline.v2.output.store.UnnameableRunIdentity
 import dev.rubentxu.pipeline.v2.runtime.RuntimeApiVersion
@@ -357,13 +358,55 @@ internal fun runObserveVerb(args: Array<String>, out: PrintStream, err: PrintStr
 /**
  * `credentials` — the registered credential material, redacted.
  *
- * ONE stream and not two, because the command publishes everything it says — refusals
- * included — on stdout. The door of the application offers both streams to every verb; this
- * one has a single place to write to, and the second is discarded where the verb is declared
- * rather than pretended into use here.
+ * TWO streams, like every other verb of this CLI: the family publishes its
+ * ANSWER on stdout and its REFUSAL on stderr, and the door carries both
+ * streams into it. The family used to publish both on stdout, on the grounds
+ * that it had a single place to write to; but it has no door of its own — the
+ * distribution ships one launcher and this family is reached only as
+ * `pipelinek credentials` — and a program that reads stdout to parse the
+ * answer must not find a refusal inside it.
  */
-internal fun runCredentialsVerb(args: Array<String>, out: PrintStream): CliExit =
-    verbExit(MainCredentialsCli.main(args, out))
+internal fun runCredentialsVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    credentialsExit(MainCredentialsCli.main(args, out, err))
+
+/**
+ * The case the taxonomy declares for each way the credentials request ended.
+ *
+ * ## Why the family does not answer with a number
+ *
+ * It used to carry five codes of its own, and the door translated them BY
+ * NUMBER. The number that meant "the request was not carried out" reached the
+ * process as the case that means "the pipeline executed and produced a
+ * failure" — and nothing had executed; the number that meant "no passphrase"
+ * reached it as the case that means "the request was not understood", when the
+ * request had been understood perfectly and the KEY was missing. Four facts,
+ * four false meanings, one process.
+ *
+ * The family therefore answers with the FACT, and this function names the case
+ * of every fact. The `when` is EXHAUSTIVE, so an outcome that nobody named
+ * here does not compile: the mechanism is gone, not just its latest symptom.
+ *
+ * ## Where each case comes from
+ *
+ * The two store facts are not decided here for the first time. The run path
+ * already answers the same facts with the same cases, in
+ * `composeCredentialSeam`: a store that cannot be OPENED because no key is
+ * available and a store that cannot be UNLOCKED because the key does not
+ * match are both [CliExit.IncompatibleVersion], and a store that does not pass
+ * its integrity check is [CliExit.RuntimeNotAvailable]. The same fact has to
+ * have the same answer wherever it is produced, or a consumer that branches on
+ * the code has to know which verb it called.
+ *
+ * The two passphrase facts share a case, as they already do in the run path,
+ * and the sentences still tell them apart: the operator reads the complaint on
+ * stderr, and a program reads the code.
+ */
+internal fun credentialsExit(outcome: CredentialsOutcome): CliExit = when (outcome) {
+    CredentialsOutcome.ANSWERED -> CliExit.SUCCESS
+    CredentialsOutcome.NOT_CARRIED_OUT -> CliExit.INVALID_ARGUMENT
+    CredentialsOutcome.NO_PASSPHRASE, CredentialsOutcome.WRONG_PASSPHRASE -> CliExit.INCOMPATIBLE_VERSION
+    CredentialsOutcome.TAMPERED -> CliExit.RUNTIME_NOT_AVAILABLE
+}
 
 /**
  * `inspect` — a bounded diagnostic surface.

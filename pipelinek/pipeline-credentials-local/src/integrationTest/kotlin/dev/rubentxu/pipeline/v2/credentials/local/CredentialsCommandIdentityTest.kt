@@ -53,7 +53,7 @@ import org.junit.jupiter.api.io.TempDir
  *
  * ## What this does not freeze
  *
- * The wording of what the command says is not frozen. What is frozen is the exit code, the
+ * The wording of what the command says is not frozen. What is frozen is the outcome, the
  * identifier the store holds, and the bytes the store holds under it.
  */
 class CredentialsCommandIdentityTest {
@@ -84,26 +84,28 @@ class CredentialsCommandIdentityTest {
     private fun store(): LocalSecretStore =
         LocalSecretStore(storeFile(), PassphraseResolver.resolve(environment(), ttyReader = { null }))
 
-    /** What the command did: the exit code the caller sees, and what it said. */
-    private data class Answer(val exit: Int, val said: String)
+    /** What the command did: the fact the caller sees, and what it said. */
+    private data class Answer(val outcome: CredentialsOutcome, val said: String)
 
     /**
      * The command, with the world it reads.
      *
      * The argv is the argv an operator writes, the stream is the terminal the operator types
-     * into, and the exit code is the outcome the caller sees. The passphrase comes from the
+     * into, and the outcome is the fact the caller sees. The passphrase comes from the
      * environment here, so the reader that would ask for one at a terminal is never consulted.
      */
     private fun run(vararg args: String, stdin: String = ""): Answer {
         val said = ByteArrayOutputStream()
-        val exit = MainCredentialsCli.main(
+        val refused = ByteArrayOutputStream()
+        val outcome = MainCredentialsCli.main(
             args = arrayOf(*args),
             out = PrintStream(said, true, Charsets.UTF_8),
+            err = PrintStream(refused, true, Charsets.UTF_8),
             environment = environment(),
             stdin = ByteArrayInputStream(stdin.toByteArray(Charsets.UTF_8)),
             passphraseReader = { null },
         )
-        return Answer(exit, said.toString(Charsets.UTF_8))
+        return Answer(outcome, said.toString(Charsets.UTF_8))
     }
 
     /**
@@ -122,8 +124,8 @@ class CredentialsCommandIdentityTest {
 
     @Test
     fun `the credential named is the one that is removed, and the other one survives with its own value`() {
-        assertEquals(0, seed("alpha", "alpha-value").exit, "the first credential was not stored")
-        assertEquals(0, seed("beta", "beta-value").exit, "the second credential was not stored")
+        assertEquals(CredentialsOutcome.ANSWERED, seed("alpha", "alpha-value").outcome, "the first credential was not stored")
+        assertEquals(CredentialsOutcome.ANSWERED, seed("beta", "beta-value").outcome, "the second credential was not stored")
 
         // The store holds the two identifiers the command was given, under those identifiers.
         val seeded = store()
@@ -134,7 +136,11 @@ class CredentialsCommandIdentityTest {
         )
 
         val removed = run("remove", "alpha")
-        assertEquals(0, removed.exit, "the command refused to remove a credential it holds: ${removed.said}")
+        assertEquals(
+            CredentialsOutcome.ANSWERED,
+            removed.outcome,
+            "the command refused to remove a credential it holds: ${removed.said}",
+        )
 
         val after = store()
         assertFalse(
@@ -161,11 +167,15 @@ class CredentialsCommandIdentityTest {
 
     @Test
     fun `a rotation keeps the identity of the credential it was given, and leaves the other one alone`() {
-        assertEquals(0, seed("alpha", "alpha-value").exit, "the first credential was not stored")
-        assertEquals(0, seed("beta", "beta-value").exit, "the second credential was not stored")
+        assertEquals(CredentialsOutcome.ANSWERED, seed("alpha", "alpha-value").outcome, "the first credential was not stored")
+        assertEquals(CredentialsOutcome.ANSWERED, seed("beta", "beta-value").outcome, "the second credential was not stored")
 
         val rotated = run("rotate", "--from-stdin", "alpha", stdin = "rotated-value\n")
-        assertEquals(0, rotated.exit, "the command refused to rotate a credential it holds: ${rotated.said}")
+        assertEquals(
+            CredentialsOutcome.ANSWERED,
+            rotated.outcome,
+            "the command refused to rotate a credential it holds: ${rotated.said}",
+        )
 
         val store = store()
         assertEquals(

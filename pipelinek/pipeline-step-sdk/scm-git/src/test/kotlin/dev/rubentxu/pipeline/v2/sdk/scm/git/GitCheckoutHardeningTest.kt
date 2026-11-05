@@ -9,6 +9,8 @@ import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -345,6 +347,7 @@ class GitCheckoutHardeningTest {
         spec = CheckoutSpec(GitScm(url = url, branch = branch)),
         runId = "run-1",
         workspaceRoot = temp.resolve("workspace"),
+        authorizedTarget = authorizedTarget(temp.resolve("workspace")),
         eventSink = object : EventSink {
             override fun append(event: DomainEvent) {
                 events.add(event)
@@ -357,6 +360,19 @@ class GitCheckoutHardeningTest {
         stepIndex = 0,
         previousRemoteSha = null,
     )
+
+    /**
+     * The authorised destination of a checkout inside [root].
+     *
+     * It is resolved by the same authority the Step uses, so a test cannot hand
+     * the executor a path the workspace would have refused.
+     */
+    private fun authorizedTarget(root: Path, relativeTargetDir: String = "."): AuthorizedCheckoutTarget =
+        AuthorizedCheckoutTarget.resolve(
+            ExecutionLocation(WorkspaceLease.Attached(root), root),
+            "scm-git.checkout",
+            relativeTargetDir,
+        )
 
     /**
      * A runtime that records the argv it was asked to run and answers with a fixed

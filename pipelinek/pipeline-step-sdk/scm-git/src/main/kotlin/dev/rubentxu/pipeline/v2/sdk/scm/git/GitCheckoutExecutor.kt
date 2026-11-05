@@ -131,7 +131,11 @@ open class GitCheckoutExecutor(
 */
     open fun execute(req: GitCheckoutRequest): Result<GitCheckoutResult> {
         val spec = req.spec.scm as dev.rubentxu.pipeline.v2.domain.scm.GitScm
-        val workspace = req.workspaceRoot.resolve(spec.relativeTargetDir)
+        // The destination is AUTHORISED, not resolved here. The caller resolved it once,
+        // against the workspace, before any credential, directory or process existed.
+        // Resolving it again here would be a second rule about the same path — and the
+        // lax one: `Path.resolve` normalises nothing and confines nothing.
+        val workspace = req.authorizedTarget.path
         val gitDir = workspace.resolve(".git")
 
         // The remote is refused BEFORE the run is told a checkout started, before any
@@ -372,7 +376,10 @@ open class GitCheckoutExecutor(
 
             // Append changelog
             if (spec.changelog) {
-                changelog.append(workspaceRoot, spec.relativeTargetDir, currentSha, "HEAD", transcript)
+                // The changelog reads the SAME authorised destination the checkout
+                // wrote to, and it no longer resolves a path of its own: a second
+                // resolver is a second rule about the same directory.
+                changelog.append(workspace, workspaceRoot.resolve("changelog.txt"), currentSha, "HEAD", transcript)
             }
 
             val durationMs = System.currentTimeMillis() - startMs
@@ -412,7 +419,7 @@ open class GitCheckoutExecutor(
 
         // Append changelog
         if (spec.changelog) {
-            changelog.append(workspaceRoot, spec.relativeTargetDir, null, "HEAD", transcript)
+            changelog.append(workspace, workspaceRoot.resolve("changelog.txt"), null, "HEAD", transcript)
         }
 
         val durationMs = System.currentTimeMillis() - startMs
@@ -646,6 +653,12 @@ data class GitCheckoutRequest(
     val spec: CheckoutSpec,
     val runId: String,
     val workspaceRoot: Path,
+    /**
+     * The authorised destination of the checkout: the only directory this request
+     * may write to. It is resolved by the caller against the workspace, before
+     * anything is created, so a path that escapes is refused before it can act.
+     */
+    val authorizedTarget: AuthorizedCheckoutTarget,
     val eventSink: EventSink,
     val clock: Clock,
     val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore?,

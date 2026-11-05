@@ -46,7 +46,7 @@ data class CertificationRequest internal constructor(
     /** The battery the certification is asked against. */
     val battery: CertificationBattery,
     /** The instant the request was made. */
-    @SerialName("requested_at") val requestedAt: RequestInstant,
+    @SerialName("requested_at") val requestedAt: WireInstant,
 ) {
     companion object {
         const val SCHEMA_VERSION: String = "pipelinek-certification-request-1"
@@ -98,15 +98,20 @@ data class CertificationBatteryCatalogue(
 )
 
 /**
- * The instant a request was made, in ISO-8601 and normalised to UTC.
+ * The instant a document states, in ISO-8601 and normalised to UTC.
  *
  * Wrapped in a value class with a private constructor so an instant cannot be
- * built from a string that is not one: a request whose moment is "yesterday"
- * says nothing about when the certification was asked for.
+ * built from a string that is not one: a document whose moment is "yesterday"
+ * says nothing about when the thing it reports happened.
+ *
+ * The name says the WIRE and not the event, because the same instant travels
+ * in every document that crosses the boundary between repositories: the moment
+ * a certification was asked for, and the moment a defect was observed. A type
+ * named after one of them would be a lie in the other.
  */
-@Serializable(with = RequestInstantSerializer::class)
+@Serializable(with = WireInstantSerializer::class)
 @JvmInline
-value class RequestInstant private constructor(val canonical: String) {
+value class WireInstant private constructor(val canonical: String) {
 
     /** The instant as a time value. */
     val instant: Instant get() = Instant.parse(canonical)
@@ -115,11 +120,11 @@ value class RequestInstant private constructor(val canonical: String) {
 
     companion object {
         /** The instant, normalised to UTC. */
-        fun of(instant: Instant): RequestInstant = RequestInstant(instant.toString())
+        fun of(instant: Instant): WireInstant = WireInstant(instant.toString())
 
         /** The instant, or null when [raw] is not one. */
-        fun parseOrNull(raw: String): RequestInstant? = try {
-            RequestInstant(Instant.parse(raw.trim()).toString())
+        fun parseOrNull(raw: String): WireInstant? = try {
+            WireInstant(Instant.parse(raw.trim()).toString())
         } catch (e: DateTimeException) {
             null
         }
@@ -127,29 +132,29 @@ value class RequestInstant private constructor(val canonical: String) {
 }
 
 /**
- * Serialises [RequestInstant] in its canonical form and validates on the way
+ * Serialises [WireInstant] in its canonical form and validates on the way
  * back in.
  *
  * Validating while decoding matters: a document this product did not write
  * must not be able to state a moment that is not an instant. The rule is
  * enforced at the boundary, not only when the value is built.
  */
-object RequestInstantSerializer : KSerializer<RequestInstant> {
+object WireInstantSerializer : KSerializer<WireInstant> {
 
     override val descriptor: SerialDescriptor =
         PrimitiveSerialDescriptor(
-            "dev.rubentxu.pipeline.v2.release.RequestInstant",
+            "dev.rubentxu.pipeline.v2.release.WireInstant",
             PrimitiveKind.STRING,
         )
 
-    override fun serialize(encoder: Encoder, value: RequestInstant) {
+    override fun serialize(encoder: Encoder, value: WireInstant) {
         encoder.encodeString(value.canonical)
     }
 
-    override fun deserialize(decoder: Decoder): RequestInstant {
+    override fun deserialize(decoder: Decoder): WireInstant {
         val raw = decoder.decodeString()
-        return RequestInstant.parseOrNull(raw) ?: throw SerializationException(
-            "requested_at must be an ISO-8601 instant such as 2026-11-05T18:04:00Z, got '$raw'.",
+        return WireInstant.parseOrNull(raw) ?: throw SerializationException(
+            "the instant must be an ISO-8601 instant such as 2026-11-05T18:04:00Z, got '$raw'.",
         )
     }
 }
@@ -247,7 +252,7 @@ fun buildCertificationRequest(
                 version = catalogue.version,
                 scenarioCount = catalogue.scenarios.size,
             ),
-            requestedAt = RequestInstant.of(requestedAt),
+            requestedAt = WireInstant.of(requestedAt),
         ),
     )
 }

@@ -10,7 +10,7 @@ import kotlinx.serialization.json.JsonObject
  * What reading a promotion certification may yield.
  *
  * The refusal vocabulary is the one the request codec publishes
- * ([CertificationRequestRejection]), and it is the SAME one on purpose: the
+ * ([CertificationRejection]), and it is the SAME one on purpose: the
  * documents that cross the boundary between repositories are refused in the
  * same words, so a receiver that has to log a refusal has one vocabulary to
  * learn and not two that could drift apart.
@@ -21,7 +21,7 @@ sealed interface PromotionCertificationDecode {
     data class Accepted(val certification: PromotionCertification) : PromotionCertificationDecode
 
     /** The document is not a certification this build can act on. */
-    data class Rejected(val rejection: CertificationRequestRejection) : PromotionCertificationDecode
+    data class Rejected(val rejection: CertificationRejection) : PromotionCertificationDecode
 }
 
 /**
@@ -77,14 +77,14 @@ object PromotionCertificationCodec {
             reader.parseToJsonElement(text)
         } catch (e: SerializationException) {
             return PromotionCertificationDecode.Rejected(
-                CertificationRequestRejection.MalformedDocument(
+                CertificationRejection.MalformedDocument(
                     e.message ?: "the document is not valid JSON.",
                 ),
             )
         }
         val fields = element as? JsonObject
             ?: return PromotionCertificationDecode.Rejected(
-                CertificationRequestRejection.MalformedDocument(
+                CertificationRejection.MalformedDocument(
                     "the document is not a JSON object, so it names no certification.",
                 ),
             )
@@ -95,7 +95,7 @@ object PromotionCertificationCodec {
         val unknown = fields.keys - known
         if (unknown.isNotEmpty()) {
             return PromotionCertificationDecode.Rejected(
-                CertificationRequestRejection.UnknownField(unknown.sorted()),
+                CertificationRejection.UnknownField(unknown.sorted()),
             )
         }
 
@@ -126,13 +126,13 @@ object PromotionCertificationCodec {
             )
         } catch (e: SerializationException) {
             PromotionCertificationDecode.Rejected(
-                CertificationRequestRejection.MalformedDocument(
+                CertificationRejection.MalformedDocument(
                     e.message ?: "the document does not describe a promotion certification.",
                 ),
             )
         } catch (e: IllegalArgumentException) {
             PromotionCertificationDecode.Rejected(
-                CertificationRequestRejection.MalformedDocument(
+                CertificationRejection.MalformedDocument(
                     e.message ?: "the document does not describe a promotion certification.",
                 ),
             )
@@ -142,9 +142,9 @@ object PromotionCertificationCodec {
      * The reason this certification is not one this build can act on, or null
      * when it is one.
      */
-    private fun refusalOf(certification: PromotionCertification): CertificationRequestRejection? {
+    private fun refusalOf(certification: PromotionCertification): CertificationRejection? {
         if (certification.schemaVersion != PromotionCertification.SCHEMA_VERSION) {
-            return CertificationRequestRejection.MalformedDocument(
+            return CertificationRejection.MalformedDocument(
                 "the document declares schema '${certification.schemaVersion}' and this build " +
                     "reads '${PromotionCertification.SCHEMA_VERSION}'. A certification written " +
                     "for another schema is not a certification this build can act on.",
@@ -161,10 +161,10 @@ fun PromotionCertificationDecode.render(): String = when (this) {
             "${certification.parts.size} part(s)"
 
     is PromotionCertificationDecode.Rejected -> when (val r = rejection) {
-        is CertificationRequestRejection.UnknownField ->
+        is CertificationRejection.UnknownField ->
             "promotion certification REJECTED: unknown field(s) ${r.fields.joinToString()}"
 
-        is CertificationRequestRejection.MalformedDocument ->
+        is CertificationRejection.MalformedDocument ->
             "promotion certification REJECTED: ${r.detail}"
     }
 }

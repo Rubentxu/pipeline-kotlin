@@ -73,7 +73,7 @@ class PromotionCertificationTest {
             PromotionCertificationCodec.decode(tampered),
         )
         val refusal = assertInstanceOf(
-            CertificationRequestRejection.UnknownField::class.java,
+            CertificationRejection.UnknownField::class.java,
             rejected.rejection,
         )
         assertEquals(listOf("unexpected"), refusal.fields)

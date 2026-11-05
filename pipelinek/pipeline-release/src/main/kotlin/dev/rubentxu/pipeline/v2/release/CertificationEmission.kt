@@ -114,9 +114,9 @@ fun certificationRequestedEmission(
         is CertificationRequestDecodeResult.Rejected -> return CertificationEmission.Refused(
             "the certification request could not be read: " +
                 when (val rejection = read.rejection) {
-                    is CertificationRequestRejection.UnknownField ->
+                    is CertificationRejection.UnknownField ->
                         "unknown field(s) ${rejection.fields.joinToString()}"
-                    is CertificationRequestRejection.MalformedDocument -> rejection.detail
+                    is CertificationRejection.MalformedDocument -> rejection.detail
                 },
         )
     }
@@ -203,12 +203,12 @@ private fun describeAsk(event: CertificationRequestedEvent): String {
 /**
  * Why a document was refused, in words.
  */
-private fun describeRejection(rejection: CertificationRequestRejection): String =
+private fun describeRejection(rejection: CertificationRejection): String =
     when (rejection) {
-        is CertificationRequestRejection.UnknownField ->
+        is CertificationRejection.UnknownField ->
             "unknown field(s) ${rejection.fields.joinToString()}"
 
-        is CertificationRequestRejection.MalformedDocument -> rejection.detail
+        is CertificationRejection.MalformedDocument -> rejection.detail
     }
 
 /**

@@ -139,7 +139,7 @@ class CertificationRequestedEventTest {
 
         val refused = assertInstanceOf(CertificationEventDecode.Rejected::class.java, result)
         val unknown = assertInstanceOf(
-            CertificationRequestRejection.UnknownField::class.java,
+            CertificationRejection.UnknownField::class.java,
             refused.rejection,
         )
         assertEquals(listOf("unexpected"), unknown.fields)
@@ -154,7 +154,7 @@ class CertificationRequestedEventTest {
 
         val refused = assertInstanceOf(CertificationEventDecode.Rejected::class.java, result)
         assertInstanceOf(
-            CertificationRequestRejection.MalformedDocument::class.java,
+            CertificationRejection.MalformedDocument::class.java,
             refused.rejection,
         )
     }
@@ -171,7 +171,7 @@ class CertificationRequestedEventTest {
 
         val refused = assertInstanceOf(CertificationEventDecode.Rejected::class.java, result)
         assertInstanceOf(
-            CertificationRequestRejection.MalformedDocument::class.java,
+            CertificationRejection.MalformedDocument::class.java,
             refused.rejection,
         )
     }
@@ -188,7 +188,7 @@ class CertificationRequestedEventTest {
 
         val refused = assertInstanceOf(CertificationEventDecode.Rejected::class.java, result)
         assertInstanceOf(
-            CertificationRequestRejection.MalformedDocument::class.java,
+            CertificationRejection.MalformedDocument::class.java,
             refused.rejection,
         )
     }
@@ -205,7 +205,7 @@ class CertificationRequestedEventTest {
 
         val refused = assertInstanceOf(CertificationEventDecode.Rejected::class.java, result)
         assertInstanceOf(
-            CertificationRequestRejection.MalformedDocument::class.java,
+            CertificationRejection.MalformedDocument::class.java,
             refused.rejection,
         )
     }
@@ -225,7 +225,7 @@ class CertificationRequestedEventTest {
 
         val refused = assertInstanceOf(CertificationEventDecode.Rejected::class.java, result)
         assertInstanceOf(
-            CertificationRequestRejection.MalformedDocument::class.java,
+            CertificationRejection.MalformedDocument::class.java,
             refused.rejection,
         )
     }

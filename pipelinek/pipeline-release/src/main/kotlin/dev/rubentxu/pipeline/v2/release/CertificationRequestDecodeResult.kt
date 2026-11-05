@@ -22,11 +22,11 @@ sealed interface CertificationRequestDecodeResult {
     data class Accepted(val request: CertificationRequest) : CertificationRequestDecodeResult
 
     /** The document is not a request this build can accept. */
-    data class Rejected(val rejection: CertificationRequestRejection) : CertificationRequestDecodeResult
+    data class Rejected(val rejection: CertificationRejection) : CertificationRequestDecodeResult
 }
 
 /** One specific reason a document was refused. */
-sealed interface CertificationRequestRejection {
+sealed interface CertificationRejection {
 
     /**
      * The document carries a field this build does not know.
@@ -36,10 +36,10 @@ sealed interface CertificationRequestRejection {
      * understand cannot claim to have understood the message: the field may
      * carry the instruction that would have changed what the receiver does.
      */
-    data class UnknownField(val fields: List<String>) : CertificationRequestRejection
+    data class UnknownField(val fields: List<String>) : CertificationRejection
 
     /** The document is not shaped like a request at all. */
-    data class MalformedDocument(val detail: String) : CertificationRequestRejection
+    data class MalformedDocument(val detail: String) : CertificationRejection
 }
 
 /**
@@ -56,10 +56,10 @@ fun CertificationRequestDecodeResult.render(): String = when (this) {
             "(${request.battery.scenarioCount} scenarios)"
 
     is CertificationRequestDecodeResult.Rejected -> when (val r = rejection) {
-        is CertificationRequestRejection.UnknownField ->
+        is CertificationRejection.UnknownField ->
             "certification request REJECTED: unknown field(s) ${r.fields.joinToString()}"
 
-        is CertificationRequestRejection.MalformedDocument ->
+        is CertificationRejection.MalformedDocument ->
             "certification request REJECTED: ${r.detail}"
     }
 }

@@ -17,6 +17,13 @@ data class RecoverReport(
     /** The replay decisions observed per operation, in order. */
     val replayDecisions: List<String>,
 ) {
+    /**
+     * The report a recovery that wrote nothing produces.
+     *
+     * A dry run computes the decision and touches nothing, so the report it
+     * answers with has the shape of the audit and nothing in it: no row
+     * reconciled, no frame appended, no cursor moved.
+     */
     companion object {
         /** A zero-valued report for the `dryRun` path. */
         val Empty: RecoverReport = RecoverReport(

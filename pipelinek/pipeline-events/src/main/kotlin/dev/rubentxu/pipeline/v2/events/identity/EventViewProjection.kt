@@ -4,7 +4,7 @@ package dev.rubentxu.pipeline.v2.events.identity
 /**
  * Read-side projection of an event history query.
  * ## CORRECTION. This KDoc was false and said so at length
- * It claimed that [MainEventsCli][dev.rubentxu.pipeline.v2.application.MainEventsCli]
+ * It claimed that `MainEventsCli`
  * "accepts `--view <mode>` and `--format <fmt>` and delegates the projection" here. It accepts
  * neither flag: its parser is `--db / --runId / --kind / --subject / --limit / --after-cursor` and
  * nothing else. **This projection has no caller at all** — production or test. `project`, and
@@ -23,7 +23,7 @@ package dev.rubentxu.pipeline.v2.events.identity
  * can only ever return a subset of console, which is the dangerous kind of wrong: it looks like it
  * works, and it silently drops whatever a process printed. Filtering events to reconstruct a
  * Console is also exactly the event-sequence-for-output-cursor conflation that ` ` forbids
- * The real console reader is [dev.rubentxu.pipeline.v2.application.ConsoleReadService], which
+ * The real console reader is `ConsoleReadService`, which
  * addresses the Output Plane by committed byte offset.
  * ## Modes
  *  - `events` — every envelope, full payload, one per line in the chosen
@@ -36,7 +36,7 @@ package dev.rubentxu.pipeline.v2.events.identity
  * `console` — DEPRECATED. Selects `EchoOutputCaptured` envelopes, which since carry the
  *    semantic `core.echo` event and NOT process output. It cannot show a process console, and
  *    nothing selects it. A real console is read through
- *    [dev.rubentxu.pipeline.v2.application.ConsoleReadService].
+ *    `ConsoleReadService`.
  *  - `quiet` — only `RunFinished` envelopes (the aggregate outcome).
  * ## Formats
  *  - `jsonl` — one JSON envelope per line (the canonical wire format).
@@ -130,7 +130,7 @@ enum class ViewMode {
      * DEPRECATED — semantic `core.echo` envelopes only, never a process console.
      * Kept so the closed enum stays source-compatible for a caller that wants echo events, and so
      * the wrong thing is named rather than quietly available. A process console is read through
-     * [dev.rubentxu.pipeline.v2.application.ConsoleReadService].
+     * `ConsoleReadService`.
 */
     @Deprecated(
         message = "selects semantic core.echo events, not process output; use ConsoleReadService for a console",

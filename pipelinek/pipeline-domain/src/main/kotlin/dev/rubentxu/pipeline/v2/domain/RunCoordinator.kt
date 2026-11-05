@@ -4,7 +4,7 @@ package dev.rubentxu.pipeline.v2.domain
  * Port that orchestrates one complete pipeline invocation.
  * This is the contract — the "Single RunCoordinator" that is
  * named after. The coordinator owns the execution loop: it resolves the
- * step order from the [PipelineDefinition] (via [StepOrderResolver]),
+ * step order from the [PipelineDefinition] (via [ExecutionPlanner]),
  * Dispatches each step through the [StepDispatcher] port, and
  * folds the observed [StepOutcome]s into the canonical [RunOutcome] via
  * [RunOutcomeReducer]— the single authority for run outcomes.

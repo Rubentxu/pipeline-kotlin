@@ -50,6 +50,14 @@ data class EventCursor(val runId: String, val lastSequence: Long) {
     fun encode(): String =
         "evt-cursor-v1:" + java.net.URLEncoder.encode(runId, Charsets.UTF_8) + ":" + lastSequence
 
+    /**
+     * The wire form of the cursor, and the one place that reads it back.
+     *
+     * The token is `evt-cursor-v1:<escaped runId>:<lastSequence>`. A token of
+     * another shape, or one whose run id cannot be decoded, yields `null`
+     * instead of a cursor: a continuation that cannot be read is not a
+     * continuation.
+     */
     companion object {
         fun decode(token: String): EventCursor? {
             val parts = token.split(":")
@@ -106,7 +114,7 @@ sealed class EventQuery {
 
 /**
  * A page of history plus the continuation cursor. Never claims completeness:
- * [remaining] distinguishes a definite end from a truncated page. Absence of a
+ * `remaining` distinguishes a definite end from a truncated page. Absence of a
  * RunFinished event is NOT interpreted as "complete" (law)
 */
 data class EventPage(

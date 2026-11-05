@@ -91,7 +91,15 @@ object RunTelemetryProjection {
                 is RunStarted -> {
                     val span = OpenSpan(ids.next(TRACE), at)
                     runSpan = span
-                    signals.add(started("pipelinek.run", span.spanId, null, at, listOf(attribute("run.id", runId))))
+                    signals.add(
+                        started(
+                            "pipelinek.run",
+                            span.spanId,
+                            null,
+                            at,
+                            listOf(TelemetryAttribute.Text("run.id", runId)),
+                        ),
+                    )
                 }
 
                 is RunFinished -> {
@@ -117,14 +125,16 @@ object RunTelemetryProjection {
                         // The span carries the origin as an attribute, so a
                         // dashboard can tell a compilation that reused a
                         // stored artifact from one that ran the compiler —
-                        // the same fact the console states in words.
+                        // the same fact the console states in words. The
+                        // word travels in lower case, like every other word
+                        // the export publishes.
                         signals.add(
                             started(
                                 "pipelinek.script.compile",
                                 span.spanId,
                                 parent.spanId,
                                 at,
-                                listOf(TelemetryAttribute.Text("script.origin", event.origin.name)),
+                                listOf(TelemetryAttribute.Text("script.origin", event.origin.name.lowercase())),
                             ),
                         )
                     }
@@ -138,8 +148,21 @@ object RunTelemetryProjection {
                     // its own.
                     compileSpan = null
                     if (span != null) {
-                        if (closeSpan("pipelinek.script.compile", "compile", span, at, compileOutcome(event), signals)) {
-                            signals.add(histogram("pipelinek.compile_duration_ms", at - span.startedAtMs, emptyMap()))
+                        val outcome = compileOutcome(event)
+                        if (closeSpan("pipelinek.script.compile", "compile", span, at, outcome, signals)) {
+                            // The duration carries the dimensions every other
+                            // duration carries: what was measured, and how it
+                            // came out. Without them a consumer could measure
+                            // how long compiles take but not how many of them
+                            // failed, and the live measurement answers exactly
+                            // that question with exactly these two keys.
+                            signals.add(
+                                histogram(
+                                    "pipelinek.compile_duration_ms",
+                                    at - span.startedAtMs,
+                                    mapOf("operation_kind" to "compile", "status" to outcome),
+                                ),
+                            )
                         }
                     }
                 }
@@ -320,8 +343,6 @@ object RunTelemetryProjection {
 
     private fun histogram(name: String, millis: Long, dimensions: Map<String, String>) =
         TelemetrySignal.Histogram(name, millis, dimensions)
-
-    private fun attribute(key: String, value: String) = TelemetryAttribute.Text(key, value)
 
     private fun compileOutcome(event: CompilationFinished): String =
         if (event.diagnostics.any { it.severity.name == "ERROR" }) "failure" else "success"

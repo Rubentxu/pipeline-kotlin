@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 
 /**
  * A bounded, ordered window of TYPED history, as decided by the sequence authority.
- * This is to [PipelineEventEnvelope] what [DomainEvent] is to its envelope: the thing itself, and a
+ * This is to [dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope] what [DomainEvent] is to its envelope: the thing itself, and a
  * projection of it. The envelope is identity — an occurrence, its kind, its position, its time —
  * and a consumer that needs the outcome of a stage or the name of a step cannot read it from there.
  * [EventSlice] is the page of the events themselves, so "what happened" survives the trip.
@@ -21,7 +21,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventCursor
  *    whose next element exists is possible, and a page that exactly fills the limit can still be
  *    the end.
  * It never claims completeness in the other direction either: a page at the end of a run is not
- * evidence that the run finished, exactly as [EventPage] does not read the absence of a
+ * evidence that the run finished, exactly as [dev.rubentxu.pipeline.v2.events.identity.EventPage] does not read the absence of a
  * `RunFinished` as "complete" (law)
 */
 data class EventSlice(

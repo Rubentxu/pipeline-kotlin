@@ -66,6 +66,13 @@ class StepDescriptorRegistry private constructor(
     fun bodyPolicy(key: PluginStepId, support: BodyExecutionSupport): BodyPolicyResolution =
         resolveBodyExecutionPolicy(key, get(key), support)
 
+    /**
+     * Holds the canonical rows the registry ships with.
+     *
+     * A registry is immutable once built, and `standard()` is the only way to
+     * obtain one: the rows that constitute it are stated here and nowhere
+     * else.
+     */
     companion object {
         /**
          * Creates a registry with the standard canonical core step descriptors.

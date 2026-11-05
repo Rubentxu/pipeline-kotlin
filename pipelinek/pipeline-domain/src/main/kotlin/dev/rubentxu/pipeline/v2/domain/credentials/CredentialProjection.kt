@@ -58,6 +58,15 @@ data class ProjectionResult(
         }
     }
 
+    /**
+     * Raised when one or more retained materializations could not be wiped.
+     *
+     * The exception names every path the cleanup left behind, so a caller
+     * that must account for the leftovers can find them. It is thrown after
+     * every materialization has been attempted: the wipe failures are
+     * accumulated rather than stopping at the first one, and the first
+     * failure is the cause with the rest attached as suppressed.
+     */
     class WipeException(
         val orphanPaths: List<java.nio.file.Path>,
         cause: Throwable,
@@ -77,7 +86,7 @@ data class ProjectionResult(
 /**
  * Port that maps a typed [CredentialBindingSpec] + resolved
  * [Credential] into the env-var shape that
- * [dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor]
+ * `WithCredentialsExecutor`
  * hands to the durable step.
  * ## Why this exists
  * The previous path inlined a `when (binding.kind)` switch inside the executor

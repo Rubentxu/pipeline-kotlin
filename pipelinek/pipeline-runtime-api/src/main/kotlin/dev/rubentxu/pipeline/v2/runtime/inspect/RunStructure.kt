@@ -151,11 +151,58 @@ data class OperationSummary(
  * every `when` site that exhausts this ADT.
 */
 sealed interface StepState {
+    /**
+     * The step has not begun.
+     *
+     * The journal shows no operation for it, or only operations that have
+     * not started yet. It says nothing about the step's outcome, so a
+     * consumer that reads it as a verdict reads more than the journal
+     * holds.
+     */
     data object Pending : StepState
+
+    /**
+     * The step is in flight.
+     *
+     * At least one of its operations is running, so the step has no verdict
+     * yet: a consumer that reads this state reads progress, not an outcome.
+     */
     data object Running : StepState
+
+    /**
+     * The step finished with its work done.
+     *
+     * Every operation of the step succeeded, and that is the one state that
+     * says the work completed.
+     */
     data object Succeeded : StepState
+
+    /**
+     * The step ended in failure.
+     *
+     * [failureKind] names the failure in the durable vocabulary's own
+     * spelling: `FAILED`, `FAILED_TIMEOUT`, `DIVERGENT` or `LOST`. A lost
+     * operation is a failure here because its outcome is unknown, and
+     * unknown never means success.
+     */
     data class Failed(val failureKind: String) : StepState
+
+    /**
+     * The step was stopped on purpose.
+     *
+     * An operation of the step was aborted, so the step did not fail: it
+     * was stopped. A consumer that reads it as a failure says the opposite
+     * of what the step said.
+     */
     data object Cancelled : StepState
+
+    /**
+     * The step did not run.
+     *
+     * The run went past it, so it holds no verdict of its own and no
+     * operation of it began. It is a case of its own so a consumer can tell
+     * a step that was skipped from a pending one, which may still run.
+     */
     data object Skipped : StepState
 
     /**
@@ -168,6 +215,13 @@ sealed interface StepState {
      */
     data object Unstable : StepState
 
+    /**
+     * The one place a durable status is given a meaning at the step level.
+     *
+     * It holds the projection from the journal's [OperationStatus] onto this
+     * vocabulary, so a consumer never has to know the durable enum: it
+     * reads a step state, and it reads the state the product gives.
+     */
     companion object {
         /**
          * The projection of one durable operation status onto a step state.

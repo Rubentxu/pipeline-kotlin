@@ -1,0 +1,24 @@
+# The configuration of the modules whose public contract is published.
+#
+# It is applied ON TOP of `detekt.yml`: the build passes both files to detekt,
+# and the last one wins, so this file says only what it changes.
+#
+# What it switches on is the requirement a reader outside the product needs:
+# every public type of a published module states its contract. It is switched
+# on HERE and not in the base because it is not satisfiable everywhere:
+# measured over the tree, `UndocumentedPublicClass` reports 259 findings, and
+# every one of them is in a module whose contract is not published. In the seven
+# modules this file covers it reports 0, because the contracts were written
+# before the rule was switched on — which is the order the milestone sets:
+# the instruments come after the contracts.
+#
+# The KDoc coverage guard (`scripts/check-kdoc-coverage.py`) already holds the
+# same property over the same seven modules, and both were seen failing on the
+# same defect: a published type whose KDoc had been removed. What this rule
+# adds is the cadence, not the measurement. The guard reads the tree when the
+# gate runs; this rule reads it on every build of the module, so a contract
+# that loses its KDoc fails the build that took it away instead of waiting for
+# the next gate.
+comments:
+  UndocumentedPublicClass:
+    active: true

@@ -30,6 +30,17 @@ value class RunId(val value: String) {
         require(value.isNotBlank()) { "RunId value must not be blank" }
     }
 
+    /**
+     * The authority on what may stand as a run identity.
+     *
+     * A border that needs to know whether a raw string names a run, or may
+     * name a durable location, asks here instead of keeping its own copy of
+     * the rule. Two authorities answer the same question, and they drift
+     * apart the first time one of them refuses a value the other accepted.
+     *
+     * The alphabet that decides the answer is private, so a store cannot
+     * read it and build a second one from it.
+     */
     companion object {
 
         /**
@@ -120,12 +131,12 @@ value class RunId(val value: String) {
  * A [CorrelationId] is the identity an EXTERNAL invoker (CI, Fabric, a
  * script) assigns to a single invocation. PipelineK preserves it through
  * the durable state and emits it in:
- *  - The [dev.rubentxu.pipeline.v2.events.RunCorrelated] event.
+ *  - The `RunCorrelated` event.
  *  ## Where it lands in the timeline, and why it is stated rather than inferred
  *  `RunCorrelated` is the FIRST event of a run: it precedes
  *  `CompilationStarted`, which in turn precedes `RunStarted`. That is a
  *  promise this document now makes explicitly, because the previous wording —
- *  "before the first [RunStarted]" — was true but under-determined. It left the
+ *  "before the first `RunStarted`" — was true but under-determined. It left the
  *  position relative to compilation unstated, and three UATs filled the gap by
  *  asserting an order no document had ever promised.
  *  The reason it goes first is not tidiness. `RunCorrelated` is emitted at the
@@ -139,12 +150,14 @@ value class RunId(val value: String) {
  *  - The `last-run.json` file in the control dir.
  * A [CorrelationId] is NOT a [RunId] — two concurrent invocations with
  * the same [CorrelationId] get different [RunId]s, because the
- * [RunId] remains's authority. The [CorrelationId] is the
+ * [RunId] remains the authority. The [CorrelationId] is the
  * invoker-side join key: it groups runs a single CI job initiated, or
- * a single Fabric workflow executes.
- *  generates a UUIDv4 if the invoker does not supply one via
- * `--correlation-id`. The value is opaque to; only the non-blank
- * invariant is enforced.
+ * a single Fabric workflow executes. What an external invoker may do with
+ * the runs it correlates is the contract the root README states under
+ * "Reading a run from outside".
+ * The CLI generates a UUIDv4 when the invoker supplies none;
+ * `--correlation-id` is how the invoker supplies one. The value is opaque
+ * to the product: only the non-blank invariant is enforced.
 */
 @JvmInline
 @Serializable
@@ -231,6 +244,19 @@ fun interface RunIdGenerator {
     fun next(): RunId
 }
 
+/**
+ * The facts a definition's identity is derived from.
+ *
+ * The identity is a pure function of these three: the same facts always
+ * yield the same identity, and a change in any of them yields a different
+ * one. The source is read canonically — a leading byte-order mark is
+ * dropped and the line endings are folded — so a file that only changed its
+ * line endings keeps the identity it had.
+ *
+ * The source and the compatibility version must not be blank, and no
+ * semantic input may carry a blank key. The order of the semantic inputs
+ * does not matter: they are sorted before the identity is derived.
+ */
 data class DefinitionIdentityInput(
     val source: String,
     val compatibilityVersion: String,

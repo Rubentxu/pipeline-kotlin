@@ -60,6 +60,25 @@ sealed interface PluginManifestRejection : AdmissionRejection {
         val measuredDigest: String,
         val foundDigest: String,
     ) : PluginManifestRejection
+
+    /**
+     * The private copy of the artifact could not be put where only the operator can reach it.
+     *
+     * The runtime copies every artifact before loading it, so that the bytes it verifies are
+     * the bytes it loads, and it puts the copies in a directory only the operator can read. When
+     * that directory's permissions cannot be imposed and verified, the copy cannot be made
+     * private, and a copy that cannot be made private can be swapped between the moment it is
+     * verified and the moment it is loaded — which is the one thing the copy exists to prevent.
+     *
+     * The refusal is therefore about the artifact that was not copied, and not about the
+     * artifact's bytes: the bytes may be perfectly sound, and what failed is the place they
+     * were going to be put. A caller reading this as a corrupt artifact is diagnosing the
+     * wrong thing.
+    */
+    data class PrivateCopyNotSecured(
+        val artifact: String,
+        val detail: String,
+    ) : PluginManifestRejection
 }
 
 /**
@@ -69,10 +88,33 @@ sealed interface PluginManifestRejection : AdmissionRejection {
 */
 sealed interface PluginManifestDecodeResult {
 
+    /**
+     * The document was read and is one this release understands.
+     *
+     * Acceptance is a statement about the TEXT alone: it says the codec could read
+     * it, and nothing about the artifact that carries it, about the plugin's
+     * trustworthiness, or about whether the plugin may join the runtime. Those are
+     * the gate's questions, and it asks them over the accepted document.
+     */
     data class Accepted(val manifest: PluginManifest) : PluginManifestDecodeResult
 
+    /**
+     * The document was refused, and the refusal names which fact refused it.
+     *
+     * Every case of the refusal vocabulary is something the caller can switch on,
+     * which is the reason the refusal is typed and not a sentence to be parsed.
+     */
     data class Rejected(val rejection: PluginManifestRejection) : PluginManifestDecodeResult
 
+    /**
+     * The two answers a read of a manifest document can give.
+     *
+     * Both are total and neither throws: a reader hands over either the document
+     * it read — or nothing, when the document was missing or unreadable — or the
+     * refusal it decided on, and gets a result back. A missing document is answered
+     * as a refusal rather than as an absent value, because the reader still has to
+     * say WHY it could not read what it was given.
+     */
     companion object {
         fun accept(manifest: PluginManifest?): PluginManifestDecodeResult =
             if (manifest == null) {
@@ -115,7 +157,7 @@ data class MeasuredArtifactIdentity(
     /**
      * What the runtime can say about the artifact's bytes against the manifest's claim.
      * `measuredDigest == null` means "the runtime did not measure", and that is deliberately
-     * NOT a pass: it is an [Unverified] state, distinct from both agreement and disagreement.
+     * NOT a pass: it is an [ArtifactIdentityVerdict.Unverified] state, distinct from both agreement and disagreement.
      * Collapsing "nobody checked" into "checked and fine" is the fail-open this whole type
      * was written to prevent.
      * A [ArtifactIdentityVerdict.Mismatch] here means the artifact and the manifest disagree.

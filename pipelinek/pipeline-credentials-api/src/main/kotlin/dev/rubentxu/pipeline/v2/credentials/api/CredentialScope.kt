@@ -25,8 +25,8 @@ import java.util.UUID
  *    Called in `finally` — always executes even on step failure.
  * 3. **Redaction pattern scoping**: `close()` also drops active redaction patterns
  * From the bound [RedactingEventSink]
- * 4. **Audit events**: emits [CredentialBound], [CredentialUsed], [CredentialUnbound]
- * Events through the bound [EventSink]
+ * 4. **Audit events**: emits `CredentialBound`, `CredentialUsed`, `CredentialUnbound`
+ * events through the bound `EventSink`
  * ## How a credential is resolved
  * The scope resolves a credential WHEN THE CALLER ASKS FOR IT, and it resolves nothing
  * else: `env(binding)` reads the binding's credential from the store, and `env(id)`
@@ -37,7 +37,7 @@ import java.util.UUID
  * ## Failures
  * Wipe failures propagate via `addSuppressed` and do NOT prevent step completion.
  * The first exception is rethrown; subsequent exceptions are suppressed.
- * @param store The credential store (e.g., [LocalSecretStore])
+ * @param store The credential store (e.g., `LocalSecretStore`)
  * @param eventSink The event sink for audit events
  * @param clock Clock for event timestamps
  * @param runId The run identifier for audit events
@@ -187,8 +187,23 @@ data class CredentialsBinding(
     val usernameVariable: String? = null,
     val passwordVariable: String? = null,
 ) {
+    /**
+     * The shape of the environment a bound credential is delivered as.
+     *
+     * Each case states which variable names the binding must carry, and the
+     * binding that does not carry them fails when it is turned into entries
+     * rather than when it is declared.
+     */
     enum class Kind {
+        /** One variable holding the whole secret, as a single opaque value. */
         STRING,
+
+        /**
+         * Two variables holding the two halves of a login, read from a secret
+         * whose bytes are the username and the password joined by a null byte.
+         * A secret whose bytes carry no null byte, or whose null byte sits at
+         * the first position, is read as a username with an empty password.
+         */
         USERNAME_PASSWORD,
     }
 
@@ -244,10 +259,25 @@ data class CredentialsBinding(
         }
     }
 
+    /**
+     * The two factories that build a binding whose variable names agree with
+     * its kind.
+     *
+     * The primary constructor takes the kind and the variable names separately,
+     * so a caller can name a variable that the kind never reads. These
+     * factories cannot: each supplies the names its kind requires.
+     */
     companion object {
+        /**
+         * A binding of one variable holding the whole secret.
+         */
         fun string(credentialsId: CredentialsId, variable: String) =
             CredentialsBinding(Kind.STRING, credentialsId, variable = variable)
 
+        /**
+         * A binding of two variables, one for the username and one for the
+         * password.
+         */
         fun usernamePassword(
             credentialsId: CredentialsId,
             usernameVariable: String,

@@ -1070,6 +1070,50 @@
         "dev/rubentxu/pipeline/v2/events/CompilationStarted#<init>(Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)V"
       ],
       "evidence": "Measured on the JAR the previous release's distribution shipped: lib/pipeline-events-0.92.0.jar, taken from pipelinek-0.92.0.zip and verified against the SHA256SUMS that release published (b92d3a3e825977c27c25495b361b3301b1137aaa3a4c8562afb5d2444da7fb5a). That jar publishes the four-argument CompilationStarted constructor and the six-argument CompilationFinished constructor, and it carries no ScriptOrigin at all; the candidate's published surface publishes the five- and seven-argument forms and does publish the type. The ABI door reads both sides with the same engine and reports these six removals with the keys named in this entry. A consumer compiled against that jar and linked against the candidate fails with NoSuchMethodError on the erased constructor descriptors."
+    },
+    {
+      "module": "pipeline-runtime-api",
+      "sha": "39339b825e69555f7381f599171be6ec2f1860c0",
+      "surface": "TelemetryIdentityTable.Default.attributeVocabulary, TelemetryIdentityTable.Default.dimensionVocabulary and TelemetryCompatibility.attributeMap",
+      "change": "the published attribute vocabulary loses the key `compile.outcome` and gains the key `script.origin`; the role of the `status` dimension changes from CLASS to OUTCOME; and the compatibility map loses the row `compile.outcome` and gains the row `script.origin`. NO member of the published surface disappears: the descriptors are the same before and after, because these are the VALUES the published accessors return and not how they are described",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "WHAT BREAKS AND WHAT DOES NOT. No member of the published surface disappears, so the ABI dump of pipeline-runtime-api is unchanged and an artifact compiled against the previous release keeps linking. What changes is the CONTENT: a consumer that reads the published vocabulary to learn what to query finds one key less and one key more. The key that goes, `compile.outcome`, was a key no signal has ever carried, so the query a consumer wrote against it was already returning nothing. The break is the removal of a promise, not the removal of data.",
+        "",
+        "WHY THE KEY IS WITHDRAWN AND NOT PRODUCED. The outcome of a compilation was already published twice: as the STATUS of the span, and as the `status` dimension of the live measurement. An attribute that repeated it would be a second place for the two to disagree. The alternative considered and rejected: emit `compile.outcome` as an attribute so that the published key becomes true. It would have made the vocabulary honest by adding a second spelling of a fact the export already carries, and the two spellings would be free to diverge the moment one of them is missed.",
+        "",
+        "WHY THE OUTCOME ROLE IS NOT LEFT EMPTY. The role moved to the `status` dimension, which is where a measurement says what came out of it. A role that no key carries is a promise about the shape of the vocabulary that nothing keeps, and the new guard checks that the outcome travels in a dimension and in no attribute at all.",
+        "",
+        "WHY `script.origin` IS PUBLISHED AND NOT DROPPED. The product already wrote the origin of the compilation on the span, and a comment said that a dashboard could read it; the redaction dropped the attribute because the key was not in the allowlist, so it was lost in silence. The alternative considered and rejected: stop writing the origin and delete the comment that promised it. It is cheaper and it removes a fact a consumer needs, whether a run compiled or reused a stored artifact, on the grounds that the export was not going to carry it anyway. The allowlist had fallen behind the code, and bringing the allowlist up to date is the fix; the guard is what keeps it there.",
+        "",
+        "THE VALUES TRAVEL IN LOWER CASE, like every other word the export publishes: `compiled`, `reused`, `unknown`. A consumer that queries the attribute does not have to know how the enum is spelled, and a word that changed case between two builds would split one measurement into two.",
+        "",
+        "WHAT DID NOT CHANGE, measured on the regenerated dump: the published surface of pipeline-runtime-api is identical before and after this SHA. This entry therefore approves a change of content and no removal, and it carries no `authorized_removals`: the ABI door has nothing to authorize, and an entry that listed removals it does not cause would be a false receipt.",
+        "",
+        "Nothing about the DURABLE WIRE changed: the telemetry export is a projection of the persisted events and not a format a consumer resolves from the artifact. A run recorded before this SHA keeps decoding, and the vocabulary it is read against is the vocabulary of the build that reads it."
+      ],
+      "removal_boundary": "n/a - no member removed; this is a change in the CONTENT of the published vocabulary, not a deletion of a member. The key `compile.outcome` may not return as an attribute, because the outcome of a span is its status and a second copy of the same fact is a second place for the two to disagree; the key `script.origin` may not return with a value spelled in upper case, because the published words travel in lower case",
+      "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "a31a0db0a",
+      "surface": "PluginManifestRejection.PrivateCopyNotSecured",
+      "change": "added a case `PrivateCopyNotSecured(String artifact, String detail)` to the sealed interface PluginManifestRejection; the interface itself is unchanged and the new class is additive in the ABI dump",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "A SOURCE break, not a binary one: the ABI dump only grows (13 lines added, none removed), so apiCheck passes, but a consumer that writes an EXHAUSTIVE `when` over PluginManifestRejection stops compiling until it says what a copy that could not be kept private means.",
+        "",
+        "The alternatives considered and rejected: refuse the copy with a case that already existed. `ArtifactNotMeasurable` would be a lie (the artifact's bytes were read perfectly well; what failed is the place they were going to be put) and `ArtifactChangedDuringAdmission` would be a lie (nothing changed). A refusal that names the wrong reason is worse than no refusal, because the reader acts on it: the operator would go looking for a corrupt plugin instead of a filesystem that cannot hold a private directory.",
+        "",
+        "What it buys: the refusal says WHICH artifact was not copied and WHY the directory could not hold the copies. The copy exists so that the bytes the runtime verifies are the bytes it loads, and a copy that cannot be hidden from the other users of the machine can be swapped between the verification and the load, which is the one thing the copy prevents. Failing closed there is the guarantee and not a nicety.",
+        "",
+        "The cost is bounded and measured: nothing in this repository enumerates the cases of PluginManifestRejection (the CLI prints the refusal and its detail, and the durable row carries the class name as a string), so the tree keeps compiling; a consumer with an exhaustive `when` has to add one branch, and the compiler says exactly where.",
+        "",
+        "Nothing about the DURABLE WIRE changed: the admission rows written before this SHA are read by the same statement and decode to the same values, and a row that carries this kind could only have been written by a build that already has the case."
+      ],
+      "removal_boundary": "n/a — no member removed; this is an added case on a sealed interface",
+      "supersedes": null
     }
   ]
 }

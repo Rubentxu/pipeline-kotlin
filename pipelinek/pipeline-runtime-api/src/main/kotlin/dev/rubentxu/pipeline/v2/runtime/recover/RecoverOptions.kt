@@ -23,6 +23,14 @@ data class RecoverOptions(
         }
     }
 
+    /**
+     * The shipped policy for a recovery.
+     *
+     * The default is a real recovery, not a rehearsal: a caller that wants
+     * to see what a recovery would decide without touching the run builds
+     * its own options with `dryRun = true` rather than asking for a
+     * different default.
+     */
     companion object {
         /** The default options: not a dry run. */
         val Default: RecoverOptions = RecoverOptions()

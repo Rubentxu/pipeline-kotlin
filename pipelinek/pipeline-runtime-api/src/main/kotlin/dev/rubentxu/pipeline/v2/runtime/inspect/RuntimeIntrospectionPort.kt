@@ -53,8 +53,9 @@ interface RuntimeIntrospectionPort {
 
     /**
      * Inspect the live state of [runId] right now.
-     * @param runId The run to inspect. `String`, NOT a typed `RunId` (the design
-     * pins `runId` as `String`; typed identity is a future concern)
+     * @param runId The run to inspect. `String`, NOT a typed `RunId`: this port
+     * takes the run's identifier as a string, and a typed identity is not what
+     * it accepts.
      * @return A [RuntimeIntrospectionResult] that is either an
      *   [RuntimeIntrospectionResult.Observation] carrying the closed
      *   [RuntimeObservation], or a [RuntimeIntrospectionResult.Refused] carrying a
@@ -97,22 +98,31 @@ interface RuntimeIntrospectionPort {
 */
     fun inspectOperation(operationId: String, attempt: Int): OperationInspectionResult
 
+    /**
+     * The budgets an implementation publishes for the calls it answers.
+     *
+     * Each value names the wall-time ceiling of one call shape, and it is a
+     * declared default rather than an enforced one: the shipped store adapter
+     * holds no timeout of its own, so a caller that needs a bounded wait has
+     * to take the outcome, not the number.
+     */
     companion object {
         /**
          * Upper bound on a single `inspect` call's wall time.
          * Implementation default, NOT a contract surface. Documented so the test
-         * matrix can pin it; the implementation MUST honour it. The methods
-         * `runStructure` and `inspectOperation` inherit the same budget by
-         * construction.
+         * matrix can pin it. The shipped store adapter holds no timeout of its
+         * own, so the value states a shape and not a ceiling the caller may
+         * rely on. The methods `runStructure` and `inspectOperation` inherit
+         * the same budget by construction.
 */
         const val DEFAULT_INSPECT_TIMEOUT_MS: Long = 5_000L
 
         /**
          * Upper bound on a single `runStructure` call's wall time.
-         * Documented so the test matrix can pin it; the implementation
-         * MUST honour it. The budget for the bounded-scan / paginated read
-         * path is named the same way `DEFAULT_INSPECT_TIMEOUT_MS` names the budget
-         * for the single-page inspect path. The value is 10_000L
+         * Documented so the test matrix can pin it. The budget for the
+         * bounded-scan / paginated read path is named the same way
+         * `DEFAULT_INSPECT_TIMEOUT_MS` names the budget for the single-page
+         * inspect path. The value is 10_000L
          * (twice `DEFAULT_INSPECT_TIMEOUT_MS`) because paginated
          * reads may legitimately take longer than a single-page
          * inspect.

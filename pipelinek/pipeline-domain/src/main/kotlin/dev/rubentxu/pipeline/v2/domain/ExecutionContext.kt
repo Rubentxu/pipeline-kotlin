@@ -112,6 +112,14 @@ data class ExecutionContext(
         return result
     }
 
+    /**
+     * The one context that holds no frame.
+     *
+     * It is the value every derivation starts from, and the one a caller
+     * passes when a scope has no parent to inherit from. It holds nothing,
+     * so it is safe to share: deriving a context never mutates the one it
+     * was derived from.
+     */
     companion object {
         val EMPTY = ExecutionContext(emptyList())
     }

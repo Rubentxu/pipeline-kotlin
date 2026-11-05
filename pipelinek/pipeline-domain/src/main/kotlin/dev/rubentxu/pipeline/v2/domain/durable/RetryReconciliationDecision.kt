@@ -7,23 +7,23 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * needs to act. There are NO nullable booleans, no `failed: Boolean?`,
  * no `attempt: Int?` flag bags. The variant IS the state.
  * ## Variants
- * - [ScheduleAttempt] — execute the body as a fresh attempt at [attempt].
+ * - [ScheduleAttempt] — execute the body as a fresh attempt at `attempt`.
  *   Only one writer must persist the control row BEFORE any child is
  *   launched. (.)
- * - [ResumeAttempt] — re-attach to an in-flight attempt [attempt] whose
+ * - [ResumeAttempt] — re-attach to an in-flight attempt `attempt` whose
  *   child journal evidence is mid-run. NO new child is launched; the
  *   canonical child dispatch resumes.
  * - [CloseSuccessFromChild] — child evidence from a still-attached
  *   attempt proves success. The aggregate becomes terminal success
  *   for the retry; ZERO new child executions are scheduled.
- * - [AdvanceAfterFailure] — attempt [from] failed; advance to [to].
+ * - [AdvanceAfterFailure] — attempt `from` failed; advance to [to].
  *   The writer persists this transition BEFORE launching any new child.
- * - [ReuseSuccess] — aggregate succeeded at [attempt]. No child
+ * - [ReuseSuccess] — aggregate succeeded at `attempt`. No child
  *   execution. The journal row is the source of truth.
- * - [ReuseUnstable] — aggregate completed UNSTABLE at [attempt]. No child
+ * - [ReuseUnstable] — aggregate completed UNSTABLE at `attempt`. No child
  *   execution and no advance; the restart reports the same unstable
  *   outcome fresh execution produced.
- * - [ReuseFailure] — aggregate failed at [attempt] (terminal exhaustion).
+ * - [ReuseFailure] — aggregate failed at `attempt` (terminal exhaustion).
  *   No child execution.
  * - [RejectDivergence] — durable state is ambiguous or contract-divergent.
  *   ZERO child execution. The caller MUST surface this as a step failure
@@ -31,31 +31,31 @@ package dev.rubentxu.pipeline.v2.domain.durable
 */
 sealed interface RetryReconciliationDecision {
 
-    /** Execute the body as a fresh attempt at [attempt]. */
+    /** Execute the body as a fresh attempt at `attempt`. */
     data class ScheduleAttempt(val attempt: Int) : RetryReconciliationDecision
 
-    /** Re-attach to an in-flight attempt [attempt] without launching a new child. */
+    /** Re-attach to an in-flight attempt `attempt` without launching a new child. */
     data class ResumeAttempt(val attempt: Int) : RetryReconciliationDecision
 
     /**
-     * Child evidence at attempt [attempt]
+     * Child evidence at attempt `attempt`
      * proves success; close the aggregate as success without scheduling
      * any new child execution.
 */
     data class CloseSuccessFromChild(val attempt: Int) : RetryReconciliationDecision
 
     /**
-     * Attempt [from] failed with retry budget remaining; advance to
+     * Attempt `from` failed with retry budget remaining; advance to
      * [to]. The writer persists the new control row before launching
      * any child.
 */
     data class AdvanceAfterFailure(val from: Int, val to: Int) : RetryReconciliationDecision
 
-    /** Aggregate succeeded at [attempt]. No new child execution. */
+    /** Aggregate succeeded at `attempt`. No new child execution. */
     data class ReuseSuccess(val attempt: Int) : RetryReconciliationDecision
 
     /**
-     * Aggregate completed UNSTABLE at [attempt] (of the Runtime Observation Contract
+     * Aggregate completed UNSTABLE at `attempt` (of the Runtime Observation Contract
      * Closure). No new child execution, and no advance: fresh retry semantics return an
      * unstable outcome immediately without consuming another attempt, so the restart must
      * answer the same fact the control row already carries — `UNSTABLE` — instead of
@@ -64,7 +64,7 @@ sealed interface RetryReconciliationDecision {
 */
     data class ReuseUnstable(val attempt: Int) : RetryReconciliationDecision
 
-    /** Aggregate failed at [attempt] (terminal exhaustion). No new child execution. */
+    /** Aggregate failed at `attempt` (terminal exhaustion). No new child execution. */
     data class ReuseFailure(val attempt: Int) : RetryReconciliationDecision
 
     /**

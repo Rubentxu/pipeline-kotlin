@@ -145,12 +145,6 @@ sealed interface FollowDecision {
  *     claiming the run is over, only that the output plane has nothing pending.
  * The rejected alternative was declaring a stream for a silent step so there would be something to
  * seal. That invents an observation to buy a termination, which is why [runFinished] exists instead.
- * @param moreFrames whether the last page was truncated by the window.
- * @param tailStates the tail state of every stream this run owns. `null` entries are streams whose
- *   state could not be established, and they keep the follower going.
- * @param runPlane what the durable EXECUTION authority can say about the run. A closed
- *   three-state answer, deliberately not a `Boolean`: "the run is still going" and "I cannot
- *   ask" are different facts and the follower must not confuse them.
  * ## Why the run plane is a THREE-state answer and not a flag
  * Two failure directions, both real, and they pull in opposite ways:
  *  - **Too strict.** If "not finished" is a single falsy value, a lane with no event store can
@@ -186,6 +180,18 @@ sealed interface RunPlane {
     fun asBoolean(): Boolean = this == Completed
 }
 
+/**
+ * Answers whether a follower keeps reading or finishes, from the three facts it is given.
+ *
+ * The rules and the reasons they are not a single conjunct are on [RunPlane], the three-state
+ * answer this function consumes.
+ * @param moreFrames whether the last page was truncated by the window.
+ * @param tailStates the tail state of every stream this run owns. `null` entries are streams whose
+ *   state could not be established, and they keep the follower going.
+ * @param runPlane what the durable EXECUTION authority can say about the run. A closed
+ *   three-state answer, deliberately not a `Boolean`: "the run is still going" and "I cannot
+ *   ask" are different facts and the follower must not confuse them.
+ */
 fun followDecision(
     moreFrames: Boolean,
     tailStates: Collection<OutputTailState?>,

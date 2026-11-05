@@ -31,6 +31,12 @@ data class FailureRecord(
         require(details.keys.none(String::isBlank)) { "FailureRecord details keys must not be blank" }
     }
 
+    /**
+     * Holds the version of the persisted shape.
+     *
+     * One number, stamped by every producer and checked by every reader: a
+     * record whose version is not this one is refused rather than half-read.
+     */
     companion object {
         const val SCHEMA_VERSION: Int = 1
     }
@@ -65,12 +71,31 @@ data class InterruptionRecord(
     }
 }
 
+/**
+ * Why a durable task was interrupted rather than failed.
+ *
+ * The distinction a caller cares about is between an interruption the product
+ * decided on — a deadline that fired, an abort the operator asked for, a
+ * parent that went away, a successor operation, a shutdown — and a failure of
+ * the work itself. The kind is what tells the caller which interruption
+ * happened; whether the operation is tried again is a separate decision that
+ * this record does not carry.
+ */
 @Serializable
 enum class InterruptionKind {
+    /** A deadline expired and the operation was stopped because of it. */
     TIMEOUT,
+
+    /** The operator asked for the operation to stop. */
     USER_ABORT,
+
+    /** The run that owned the operation went away, taking it with it. */
     PARENT_CANCELLED,
+
+    /** Another operation took the place of this one under the same identity. */
     SUPERSEDED,
+
+    /** The product is shutting down and the operation was stopped with it. */
     SHUTDOWN,
 }
 
@@ -85,6 +110,14 @@ sealed interface DurableTaskSnapshot {
     val controlDir: String
     val workerId: String?
 
+    /**
+     * The operation has been accepted and its process is being started.
+     *
+     * It is a non-terminal observation: the operation exists, [controlDir] is
+     * where its durable record will be written, and no outcome is known yet.
+     * [workerId] names the worker the run claimed for the operation, or `null`
+     * when none was claimed.
+     */
     @Serializable
     data class Launching(
         override val operationId: String,
@@ -92,6 +125,13 @@ sealed interface DurableTaskSnapshot {
         override val workerId: String? = null,
     ) : DurableTaskSnapshot
 
+    /**
+     * The operation's process is alive.
+     *
+     * It is a non-terminal observation too: the work is under way, its
+     * outcome is not known, and [controlDir] is where the durable record of it
+     * is being written.
+     */
     @Serializable
     data class Running(
         override val operationId: String,
@@ -130,18 +170,48 @@ data class DurableTaskOutput(
 */
 @Serializable
 sealed interface DurableTaskTerminal {
+    /**
+     * The operation's process ended on its own, with [exitCode].
+     *
+     * The output the substrate retained comes with it, but only the captured
+     * stdout; the console transcript is read from the Output Plane, not from
+     * the terminal. A non-zero code is a failure of the work, not of the
+     * operation: the operation ran, and the caller decides what that means.
+     */
     @Serializable
     data class Exited(
         val exitCode: Int,
         val output: DurableTaskOutput,
     ) : DurableTaskTerminal
 
+    /**
+     * The operation never got a process.
+     *
+     * The launch itself failed, so nothing ran and nothing can be concluded
+     * about the work. [failure] is the launcher's own record of why.
+     */
     @Serializable
     data class LaunchFailed(val failure: FailureRecord) : DurableTaskTerminal
 
+    /**
+     * The outcome of the operation cannot be determined.
+     *
+     * The wrapper ended without publishing a result, the execution failed
+     * after the launch, or the reattach window expired: no result was
+     * published, so nothing may be read out of it. The process may still be
+     * running, may have crashed, or may never have written its result. The
+     * caller has to reconcile rather than assume the work succeeded.
+     */
     @Serializable
     data class Lost(val failure: FailureRecord) : DurableTaskTerminal
 
+    /**
+     * The operation was interrupted before it produced a result.
+     *
+     * [interruption] records why — a deadline, an abort, a parent that went
+     * away — and the interruption is not a failure of the work: whether the
+     * operation is tried again is the caller's decision.
+     */
     @Serializable
     data class Cancelled(val interruption: InterruptionRecord) : DurableTaskTerminal
 }

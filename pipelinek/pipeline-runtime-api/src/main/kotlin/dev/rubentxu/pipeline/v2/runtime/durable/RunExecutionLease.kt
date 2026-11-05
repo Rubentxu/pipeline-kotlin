@@ -44,6 +44,14 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 value class RunOwnerId private constructor(val value: String) {
     override fun toString(): String = value
 
+    /**
+     * The one place an owner id may be minted.
+     *
+     * It owns the rule that decides whether a string names an owner, so a
+     * border asks it instead of keeping its own copy: two copies of the
+     * rule drift, and two owners that should be distinct end up sharing a
+     * name in a diagnostic.
+     */
     companion object {
         /**
          * A validated owner id. Blank or unprintable ids are rejected at the
@@ -67,6 +75,15 @@ value class RunOwnerId private constructor(val value: String) {
 value class FencingToken private constructor(val value: Long) {
     override fun toString(): String = value.toString()
 
+    /**
+     * The tokens the product reserves, and the way a raw number becomes one.
+     *
+     * It holds the two tokens whose meaning is fixed: the one no owner has
+     * been given, and the one a first owner receives. A raw number becomes a
+     * token through [of], which does not reserve the sequence: only the tokens
+     * the issuer hands out carry a position in it, and a consumer compares two
+     * of them to learn which is newer, and never the other way round.
+     */
     companion object {
         /** The token held before any owner has ever been admitted. */
         val UNISSUED: FencingToken = FencingToken(0)

@@ -43,6 +43,13 @@ sealed interface RuntimeCost {
         override val id: String get() = "recovery"
     }
 
+    /**
+     * The catalogue every report is built from.
+     *
+     * [all] is the closed set of costs the summarizer measures: a report
+     * lists exactly these, so a cost that nothing was measured for still
+     * appears — absent rather than missing.
+     */
     companion object {
         /** Declaration order; every report lists exactly these costs. */
         val all: List<RuntimeCost> = listOf(
@@ -134,26 +141,68 @@ sealed interface RunEvidence {
 sealed interface PartialReason {
     val id: String
 
+    /**
+     * The run started and never reached a terminal event.
+     *
+     * The run's own window is open, so no completeness can be claimed for a
+     * run whose end was never observed; the costs are reported on the
+     * evidence there is.
+     */
     data object RunNotFinished : PartialReason {
         override val id: String get() = "run-not-finished"
     }
 
+    /**
+     * The run finished, with an outcome other than `success`.
+     *
+     * The end of the run was observed, so the costs may well be measured;
+     * what the profile cannot be is complete, because a run that did not
+     * succeed never reached some of the work. The outcome is the run's own
+     * word for how it ended.
+     */
     data class RunDidNotSucceed(val outcome: String) : PartialReason {
         override val id: String get() = "run-did-not-succeed"
     }
 
+    /**
+     * Neither the start nor the end of the run was observed.
+     *
+     * With no run window there is no interval to compare against, so every
+     * cost stands on its own evidence and the profile is partial by
+     * construction.
+     */
     data object NoRunBounds : PartialReason {
         override val id: String get() = "no-run-bounds"
     }
 
+    /**
+     * The cost opened an interval that never closed.
+     *
+     * The work is reported as bounded rather than measured, and the hole is
+     * named so a reader can tell an open interval from an absent one.
+     */
     data class DanglingInterval(val cost: RuntimeCost) : PartialReason {
         override val id: String get() = "dangling-interval"
     }
 
+    /**
+     * An interval of the cost ended before it started.
+     *
+     * The timestamps disagree, so that interval carries no duration: the
+     * cost keeps the intervals that do agree and the report says one was
+     * dropped, rather than printing a negative number.
+     */
     data class RefusedInvertedInterval(val cost: RuntimeCost) : PartialReason {
         override val id: String get() = "refused-inverted-interval"
     }
 
+    /**
+     * The cost's samples were taken with clocks that cannot be compared.
+     *
+     * A stretch of time across two clock domains is not a stretch of time, so
+     * the whole set of samples for that cost is refused as one, and the
+     * domains are named so a reader can see which clocks were mixed.
+     */
     data class ClockIncompatible(val cost: RuntimeCost, val domains: Set<String>) : PartialReason {
         override val id: String get() = "clock-incompatible"
     }
@@ -162,6 +211,13 @@ sealed interface PartialReason {
 /** One cost's row in the report, after the summarizer's decision. */
 data class ResolvedCost(val cost: RuntimeCost, val evidence: ResolvedEvidence)
 
+/**
+ * What the summarizer concluded about one cost.
+ *
+ * Every case answers the same question — how long the cost took — in a way
+ * the report can print: a single measurement, a series of them, a bound, or a
+ * named refusal. A cost never carries a duration that was not observed.
+ */
 sealed interface ResolvedEvidence {
     /** Exactly one interval was measured. */
     data class Measured(val duration: MeasuredDuration) : ResolvedEvidence
@@ -181,6 +237,12 @@ sealed interface ResolvedEvidence {
     /** Bounds on work that never closed; the run is partial by construction. */
     data class Estimated(val estimate: IntervalEstimate) : ResolvedEvidence
 
+    /**
+     * The cost carries no duration, and the reason says why.
+     *
+     * The refusal is never a zero: "not measured" and "measured as zero"
+     * answer different questions, and only the second may print a number.
+     */
     data class Unavailable(val reason: UnavailableReason) : ResolvedEvidence
 }
 

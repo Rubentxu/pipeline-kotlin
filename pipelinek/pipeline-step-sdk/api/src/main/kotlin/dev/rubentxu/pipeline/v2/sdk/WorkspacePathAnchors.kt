@@ -36,7 +36,7 @@ import java.nio.file.Path
 object WorkspacePathAnchors {
 
     /**
-     * Resolve [userPath] against [location.cwd].
+     * Resolve [userPath] against [ExecutionLocation.cwd].
      * The `CURRENT_DIRECTORY` anchor is what `dir(...)` moves: relative inputs
      * follow the active scope, while the workspace root stays the boundary a
      * resolved path must not escape.

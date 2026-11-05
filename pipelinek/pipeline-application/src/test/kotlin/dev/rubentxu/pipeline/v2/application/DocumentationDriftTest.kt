@@ -1,8 +1,18 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.runtime.telemetry.OTEL_SEMCONV_CICD_VERSION
+import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryIdentityTable
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.stream.Collectors
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -143,6 +153,355 @@ class DocumentationDriftTest {
         }
     }
 
+    @Test
+    fun `the README names only source files this repository has`() {
+        val named = KOTLIN_FILE.findAll(readme()).map { it.groupValues[1] }.distinct().toList()
+
+        assertTrue(
+            named.isNotEmpty(),
+            "the README names no Kotlin source file, so this rule proves nothing",
+        )
+
+        val present = kotlinFileNames()
+        assertTrue(
+            present.isNotEmpty(),
+            "no Kotlin source file was found in the repository, so this rule proves nothing",
+        )
+
+        named.forEach { reference ->
+            assertTrue(
+                present.contains(reference.substringAfterLast('/')),
+                "the README names the source file '$reference', which this repository does not have",
+            )
+        }
+    }
+
+    @Test
+    fun `the README states the telemetry vocabulary this build exports`() {
+        val section = telemetrySection()
+
+        val attributes = tableRow(section, "Attributes")
+        val dimensions = tableRow(section, "Dimensions")
+
+        assertTrue(
+            attributes.isNotEmpty(),
+            "the README states no telemetry attribute, so this rule proves nothing",
+        )
+        assertTrue(
+            dimensions.isNotEmpty(),
+            "the README states no telemetry dimension, so this rule proves nothing",
+        )
+
+        assertEquals(
+            TelemetryIdentityTable.Default.allowedAttributeKeys(),
+            attributes.toSet(),
+            "the README states an attribute vocabulary that is not the one this build exports",
+        )
+        assertEquals(
+            TelemetryIdentityTable.Default.allowedDimensionKeys(),
+            dimensions.toSet(),
+            "the README states a dimension vocabulary that is not the one this build exports",
+        )
+
+        assertTrue(
+            section.contains("`$OTEL_SEMCONV_CICD_VERSION`"),
+            "the README does not state the version of the semantic conventions this build pins",
+        )
+    }
+
+    /**
+     * The signals the documents name must be signals this build DECLARES.
+     *
+     * The name of an instrument is a promise to the consumer: a query that
+     * names an instrument the product does not carry returns nothing, and the
+     * consumer reads that emptiness as "nothing happened" instead of "the
+     * instrument is not there". So the names the documents carry are checked
+     * against the names the sources declare.
+     *
+     * The subject is the README, which is always here. The observability
+     * example is read when it is here and adds its names to the same check,
+     * so an example that names an instrument nobody declared is caught too.
+     */
+    @Test
+    fun `the documents name only the signals this build declares`() {
+        val declared = declaredSignalNames()
+        assertTrue(
+            declared.isNotEmpty(),
+            "no signal name was derived from the sources, so this rule proves nothing",
+        )
+
+        val named = LinkedHashMap<String, String>()
+        signalNamesIn(telemetrySection()).forEach { name ->
+            named.putIfAbsent(name, "the README")
+        }
+        observabilityExampleFiles().forEach { file ->
+            signalNamesIn(Files.readString(file)).forEach { name ->
+                named.putIfAbsent(name, file.fileName.toString())
+            }
+        }
+
+        assertTrue(
+            named.isNotEmpty(),
+            "no signal name was found in the documents, so this rule proves nothing",
+        )
+
+        named.forEach { (name, where) ->
+            assertTrue(
+                isDeclaredSignal(name, declared),
+                "the document '$where' names the signal '$name', which this build does not declare",
+            )
+        }
+    }
+
+    /**
+     * The dashboard must run the queries the example declares.
+     *
+     * The example is optional: the gate never requires it, and the engine does
+     * not need it. When it IS here, a dashboard that runs another query than
+     * the one the queries file declares is a consumer reading a different
+     * picture than the one this repository ships.
+     */
+    @Test
+    fun `the dashboard runs the queries the example declares`() {
+        val example = repositoryRoot().resolve(EXAMPLES_DIRECTORY).resolve(OBSERVABILITY_DIRECTORY)
+        val queries = example.resolve(QUERIES_FILE)
+        val dashboard = example.resolve(DASHBOARD_FILE)
+        if (!Files.isRegularFile(queries) || !Files.isRegularFile(dashboard)) {
+            return
+        }
+
+        val declared = Files.readString(queries).lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+        val expressions = dashboardExpressions(Files.readString(dashboard))
+
+        assertTrue(
+            declared.isNotEmpty(),
+            "the queries file declares no query, so this rule proves nothing",
+        )
+        assertEquals(
+            declared.sorted(),
+            expressions.sorted(),
+            "the dashboard does not run the queries the example declares",
+        )
+    }
+
+    /**
+     * The promise to ask for a passphrase at a terminal is made in ONE place.
+     *
+     * The resolver owns the diagnostic that names the alternatives, and it
+     * names the terminal only when the caller offered a reader to ask with. A
+     * second source that repeats the promise makes it somewhere it may not be
+     * kept: a caller that cannot ask anybody would be sending the operator to
+     * a terminal that changes nothing.
+     */
+    @Test
+    fun `the promise to ask at a terminal is made only by the resolver`() {
+        val owner = requireNotNull(mainSources().firstOrNull { it.text.contains(RESOLVER_DECLARATION) }) {
+            "the resolver was not found among the main sources, so this rule proves nothing"
+        }
+
+        val offenders = mainSources().filter { it.name != owner.name && it.text.contains(TERMINAL_PROMISE) }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "these sources promise to ask at a terminal, and the promise is the resolver's to make: " +
+                offenders.joinToString { it.name },
+        )
+    }
+
+    /**
+     * A run does not ask anybody for the passphrase.
+     *
+     * A run that waited for a human to type the passphrase would wait forever
+     * in the place runs usually happen, and a run triggered by a scheduler has
+     * nobody to ask. The run therefore hands the resolver no reader at all,
+     * and the diagnostic it gets names the environment variable and nothing
+     * else.
+     */
+    @Test
+    fun `the runtime resolves the passphrase without asking anybody`() {
+        val runtime = requireNotNull(mainSources().firstOrNull { it.text.contains(RUNTIME_SEAM_DECLARATION) }) {
+            "the source that composes the credential seam was not found, so this rule proves nothing"
+        }
+
+        val calls = RESOLVER_CALL.findAll(runtime.text).map { it.groupValues[1].trim() }.toList()
+
+        assertTrue(
+            calls.isNotEmpty(),
+            "the runtime does not resolve the passphrase, so this rule proves nothing",
+        )
+        assertTrue(
+            calls.all { it.isEmpty() },
+            "the runtime hands the resolver something to ask with, so a run asks at a terminal: " +
+                "a run that waits for a human waits forever",
+        )
+    }
+
+    /**
+     * The signal names the sources of the product declare.
+     *
+     * The declaration is spread over several files, and this rule reads all of
+     * them and takes the union: a name that appears in any main source counts
+     * as declared. The over-approximation is deliberate — this rule is about
+     * catching a name that NO source declares, not about being the authority
+     * of the vocabulary.
+     */
+    private fun declaredSignalNames(): Set<String> {
+        val root = repositoryRoot().resolve("pipelinek")
+        if (!Files.isDirectory(root)) {
+            return emptySet()
+        }
+        return Files.walk(root).use { paths ->
+            paths.iterator().asSequence()
+                .filter { Files.isRegularFile(it) }
+                .filter { it.fileName.toString().endsWith(".kt") }
+                .filter { it.toString().contains("${File.separator}src${File.separator}main${File.separator}") }
+                .map { Files.readString(it) }
+                .flatMap { text -> SIGNAL_NAME.findAll(text).map { match -> match.value } }
+                .toSet()
+        }
+    }
+
+    /**
+     * A source of the product, by name and text.
+     */
+    private data class Source(val name: String, val text: String)
+
+    /**
+     * The main sources of the product.
+     *
+     * The main source set and not the tests: a test may QUOTE a promise to
+     * assert on it, and a quoted promise is not a promise made.
+     */
+    private fun mainSources(): List<Source> {
+        val root = repositoryRoot().resolve("pipelinek")
+        if (!Files.isDirectory(root)) {
+            return emptyList()
+        }
+        return Files.walk(root).use { paths ->
+            paths.iterator().asSequence()
+                .filter { Files.isRegularFile(it) }
+                .filter { it.fileName.toString().endsWith(".kt") }
+                .filter { it.toString().contains("${File.separator}src${File.separator}main${File.separator}") }
+                .map { Source(it.fileName.toString(), Files.readString(it)) }
+                .toList()
+        }
+    }
+
+    /**
+     * The signal names a text names, in both of the spellings a consumer reads.
+     *
+     * The product spells an instrument with dots and the Prometheus exposition
+     * spells it with underscores, so a document may carry either.
+     */
+    private fun signalNamesIn(text: String): List<String> =
+        SIGNAL_NAME.findAll(text).map { it.value }.toList() +
+            EXPOSITION_NAME.findAll(text).map { it.value }.toList()
+
+    /**
+     * Whether a name is a signal this build declares.
+     *
+     * The exposition is not spelled the way the product spells it: the exporter
+     * turns every dot into an underscore, appends the unit and writes a
+     * histogram as three series. So an exposition name is accepted when
+     * removing those suffixes leaves a name the product declares.
+     */
+    private fun isDeclaredSignal(name: String, declared: Set<String>): Boolean {
+        if (name.isEmpty()) {
+            return false
+        }
+        if (name in declared) {
+            return true
+        }
+        if (name.replaceFirst("_", ".") in declared) {
+            return true
+        }
+        return EXPOSITION_SUFFIXES.any { suffix ->
+            name.endsWith(suffix) && isDeclaredSignal(name.dropLast(suffix.length), declared)
+        }
+    }
+
+    /**
+     * The files of the observability example, when this repository has them.
+     *
+     * The example is optional, and nothing here asks for it: the rule reads it
+     * when it is there and finds nothing when it is not.
+     */
+    private fun observabilityExampleFiles(): List<Path> {
+        val root = repositoryRoot().resolve(EXAMPLES_DIRECTORY).resolve(OBSERVABILITY_DIRECTORY)
+        if (!Files.isDirectory(root)) {
+            return emptyList()
+        }
+        return Files.walk(root).use { paths ->
+            paths.iterator().asSequence()
+                .filter { Files.isRegularFile(it) }
+                .filter { it.fileName.toString() in EXAMPLE_DOCUMENTS }
+                .sorted()
+                .toList()
+        }
+    }
+
+    /**
+     * The expressions a dashboard runs, in the order the panels declare them.
+     */
+    private fun dashboardExpressions(text: String): List<String> {
+        val panels = Json.parseToJsonElement(text).jsonObject["panels"]?.jsonArray ?: return emptyList()
+        return panels.flatMap { panel ->
+            panel.jsonObject["targets"]?.jsonArray.orEmpty().mapNotNull { target ->
+                target.jsonObject["expr"]?.jsonPrimitive?.contentOrNull
+            }
+        }
+    }
+
+    /**
+     * The Kotlin source files this repository has, by file name.
+     *
+     * The name and not the path: a document may point at a file by its bare
+     * name or by a path relative to a module, and both name the same file.
+     * The directories a build produces are pruned, because a generated file is
+     * not a file the repository has.
+     */
+    private fun kotlinFileNames(): Set<String> {
+        val root = repositoryRoot()
+        return Files.walk(root).use { paths ->
+            paths
+                .filter { Files.isRegularFile(it) }
+                .filter { it.fileName.toString().endsWith(".kt") }
+                .filter { path ->
+                    PRUNED_DIRECTORIES.none { pruned ->
+                        path.toString().contains("${java.io.File.separator}$pruned${java.io.File.separator}")
+                    }
+                }
+                .map { it.fileName.toString() }
+                .collect(Collectors.toSet())
+        }
+    }
+
+    /**
+     * The section of the README that states the telemetry contract.
+     */
+    private fun telemetrySection(): String =
+        readme().substringAfter(TELEMETRY_HEADING).substringBefore(PLUGIN_HEADING)
+
+    /**
+     * The values of one row of a table, by its label.
+     *
+     * The row is the unit a list of values lives in, and the label is how the
+     * row is told apart from the others: a table that carries the same list
+     * twice under two labels is two claims, and only the label says which is
+     * which.
+     */
+    private fun tableRow(section: String, label: String): List<String> {
+        val line = section.lines().firstOrNull { it.trimStart().startsWith("| $label |") } ?: return emptyList()
+        return line.split("|")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && it != label }
+            .flatMap { it.split(",") }
+            .map { it.trim().removeSurrounding("`") }
+            .filter { it.isNotEmpty() }
+    }
+
     /**
      * The root of this repository.
      *
@@ -184,8 +543,44 @@ class DocumentationDriftTest {
         /** The name of this instrument, as the README has to name it. */
         const val INSTRUMENT_NAME = "DocumentationDriftTest"
 
+        /** How the resolver declares itself, which is how its owner is found. */
+        const val RESOLVER_DECLARATION = "object PassphraseResolver"
+
+        /** How the runtime's credential seam declares itself. */
+        const val RUNTIME_SEAM_DECLARATION = "fun composeCredentialSeam"
+
+        /**
+         * The promise to ask for a passphrase at a terminal, as the product
+         * spells it. The phrase is the promise, and the promise has one owner.
+         */
+        const val TERMINAL_PROMISE = "interactively in a TTY"
+
+        /** A call to the passphrase resolver, with its arguments. */
+        val RESOLVER_CALL = Regex("PassphraseResolver\\.resolve\\(([^)]*)\\)")
+
         /** The directory the example plugins live in, relative to the repository root. */
         const val EXAMPLES_DIRECTORY = "examples"
+
+        /** The directory the observability example lives in, relative to the examples directory. */
+        const val OBSERVABILITY_DIRECTORY = "observability"
+
+        /** The file the example declares its metric queries in. */
+        const val QUERIES_FILE = "queries/metrics.promql"
+
+        /** The file the example declares its dashboard in. */
+        const val DASHBOARD_FILE = "dashboards/pipelinek.json"
+
+        /** The documents of the example that name signals. */
+        val EXAMPLE_DOCUMENTS = setOf("metrics.promql", "traces.traceql", "pipelinek.json", "collector.yaml")
+
+        /** A signal name, as the product spells it. */
+        val SIGNAL_NAME = Regex("pipelinek\\.[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*")
+
+        /** A signal name, as the Prometheus exposition spells it. */
+        val EXPOSITION_NAME = Regex("pipelinek_[A-Za-z0-9_]+")
+
+        /** The suffixes the Prometheus exposition adds to a signal name. */
+        val EXPOSITION_SUFFIXES = listOf("_milliseconds", "_bucket", "_sum", "_count", "_total")
 
         /**
          * What a repository root carries and a module does not.
@@ -223,6 +618,18 @@ class DocumentationDriftTest {
 
         /** A test lane the policy names. */
         val TEST_LANE = Regex("src/(test|integrationTest)")
+
+        /** A Kotlin source file the README names, with the path it names it under. */
+        val KOTLIN_FILE = Regex("`([A-Za-z0-9_./-]+\\.kt)`")
+
+        /** The section of the README that states the telemetry contract. */
+        const val TELEMETRY_HEADING = "### Telemetry"
+
+        /** The section that follows it, which ends the one this rule reads. */
+        const val PLUGIN_HEADING = "### Writing a plugin"
+
+        /** The directories a build produces, whose files the repository does not have. */
+        val PRUNED_DIRECTORIES = setOf("build", ".git", ".gradle", ".idea", "node_modules")
 
         /** The lanes this repository runs. */
         val ALLOWED_LANES = setOf("test", "integrationTest")

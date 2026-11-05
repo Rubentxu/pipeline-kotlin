@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.scripting
 
+import kotlinx.serialization.Serializable
+
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 
 /**
@@ -7,10 +9,19 @@ import dev.rubentxu.pipeline.v2.domain.digest.Sha256
  * @property value The SHA-256 hex digest.
  * @property version The algorithm version tag.
 */
+@Serializable
 data class CacheKey(
     val value: String,
     val version: String,
 ) {
+    /**
+     * The version labels and the recipes that compute a key under each of
+     * them.
+     *
+     * Every algorithm lives under its own label, so a key always says how
+     * it was produced: a reader never has to guess which pre-image a digest
+     * came from, and two labels can never be mistaken for one another.
+     */
     companion object {
         const val V1 = "v1"
         const val V2 = "v2"
@@ -88,6 +99,15 @@ data class CacheKey(
             }
         )
 
+        /**
+         * The `v1` algorithm: a digest over four inputs joined by `|`.
+         *
+         * The join is unframed, so the assignment of the four inputs is not
+         * recoverable from the digest. That is what this label means, and a
+         * value stored under it stays interpretable only by the recipe that
+         * produced it — which is why the framed recipes live under their own
+         * labels rather than replacing this one.
+         */
         object v1 {
             fun compute(
                 scriptText: String,

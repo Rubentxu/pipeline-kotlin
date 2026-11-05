@@ -23,6 +23,17 @@ data class ScriptDefinition(
         }
     }
 
+    /**
+     * The ways a definition can be built, and the product's own jars located
+     * on the runtime classpath.
+     *
+     * The factories say where the source comes from — text held by the
+     * caller, or a file to read — and the jar lookups answer with a path
+     * the script can be compiled against. A jar lookup answers `null` when
+     * the artifact is absent: a caller that needs the DSL on the script's
+     * classpath decides what to do about that, and the lookup does not
+     * invent a path.
+     */
     companion object {
         @JvmStatic
         fun inline(text: String, classpath: List<String> = emptyList(), properties: Map<String, String> = emptyMap()): ScriptDefinition =

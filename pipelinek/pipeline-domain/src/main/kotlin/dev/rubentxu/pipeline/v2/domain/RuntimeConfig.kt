@@ -23,7 +23,7 @@ package dev.rubentxu.pipeline.v2.domain
  * - `MapRuntimeConfig` (in domain) — test-friendly, deterministic, immutable
  *   over a frozen map of values. Useful for the test matrix, characterization
  *   fixtures, and any site that needs reproducible behaviour.
- * - `SystemRuntimeConfig` (in application) — the production adapter that
+ * - `SystemRuntimeConfig` (in the runtime module) — the production adapter that
  *   reads from `System.getenv` / `System.getProperty`. The only site allowed
  *   to call those methods directly.
  *
@@ -34,7 +34,6 @@ package dev.rubentxu.pipeline.v2.domain
  * System.getProperty in application" yet — that pin lands with the
  * migration so each replacement has a clean regression net.
  *
- * @see SystemRuntimeConfig
  * @see MapRuntimeConfig
  */
 interface RuntimeConfig {

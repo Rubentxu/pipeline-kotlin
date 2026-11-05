@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.scripting
 
+import kotlinx.serialization.Serializable
+
 /**
  * Where the executable form of a pipeline script came from.
  *
@@ -23,6 +25,7 @@ package dev.rubentxu.pipeline.v2.scripting
  * A vocabulary the producer needs and the consumer needs therefore belongs
  * below both of them, or it would have to travel twice.
  */
+@Serializable
 enum class ScriptOrigin {
 
     /**
@@ -48,6 +51,14 @@ enum class ScriptOrigin {
     UNKNOWN,
     ;
 
+    /**
+     * The token vocabulary of the origin, and the rules that read it.
+     *
+     * [parse] answers the token a caller knows, and answers `null` for one
+     * outside the vocabulary; [parseOrUnknown] answers the token a durable
+     * record carries, and answers [UNKNOWN] for a token it cannot read.
+     * The two answer different questions, and neither invents an origin.
+     */
     companion object {
 
         /**

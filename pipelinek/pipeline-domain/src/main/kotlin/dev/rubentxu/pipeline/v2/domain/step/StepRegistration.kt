@@ -24,6 +24,18 @@ data class StepRegistration<I : Any, O : Any>(
 */
     val stepKey: PluginStepId get() = definition.contract.key
 
+    /**
+     * The one way to build a registration whose provenance is synthesised rather
+     * than declared.
+     *
+     * A registration that pairs a definition with a real plugin's provenance is
+     * constructed directly, because the two values arrive together. A
+     * definition with no provenance of its own — a core Step, or a contributor
+     * that has no manifest to hand — has none to declare, so the companion
+     * builds one for it and says so in the metadata it produces: a synthetic
+     * plugin identity, a sentinel digest, and a delivery that never claims an
+     * official plugin.
+     */
     companion object {
         /**
          * Wraps a [StepDefinition] into a [StepRegistration] with the

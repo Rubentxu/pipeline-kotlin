@@ -24,7 +24,7 @@ package dev.rubentxu.pipeline.v2.output
  *   treated as RELEASED, not refused.
  * ## Default limit
  * [DEFAULT_MAX_PINS_PER_STREAM] is the cap on the number of active
- * pins per `(stream, runId)`.
+ * pins per stream.
 */
 interface OutputPinPort {
 
@@ -68,9 +68,17 @@ interface OutputPinPort {
 */
     fun isPinned(stream: OutputStreamId, offset: Long): Boolean
 
+    /**
+     * The cap the port applies to the pins of one stream unless an implementation sets its own.
+     *
+     * The cap bounds how many holds one stream may carry at once, and it counts the pins
+     * that have not expired, so an expired pin frees a slot. An implementation may set its
+     * own cap; the default is what a caller may reason about when it does not know the
+     * store behind it.
+     */
     companion object {
         /**
-         * Default cap on the number of active pins per `(stream, runId)`.
+         * Default cap on the number of active pins per stream.
          * Configurable baseline. The implementation MUST refuse with
          * [PinRefusal.TooManyPins] above this default.
 */

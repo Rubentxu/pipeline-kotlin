@@ -255,7 +255,7 @@ private val DENY_LIST_GLOB = setOf("BASH_FUNC_")
 /**
  * Applies the env deny-list: strips deny-listed keys unless in [allowExtra].
  * Called for [SandboxProfile.LOCAL] only. [SandboxProfile.NONE] skips this entirely.
- * @param env The base environment map (typically pb.environment snapshot).
+ * @receiver The base environment map (typically pb.environment snapshot).
  * @param allowExtra Set of keys to retain even if deny-listed.
  * @return A new map with deny-listed keys removed (unless in allowExtra).
 */
@@ -324,12 +324,12 @@ private val DEFAULT_PATH_KEEP: Set<String> = setOf(
 /**
  * Normalises PATH: keeps only entries whose absolute prefix is in [pathKeep]
  * plus the default keep-set, then prepends `${javaHome}/bin` and `${m2Home}/bin`.
- * Prepend order: JAVA_HOME/bin first, then_HOME/bin (legacy — prepend always wins)
+ * Prepend order: JAVA_HOME/bin first, then M2_HOME/bin (legacy — prepend always wins)
  * Prefix matching: `/tmp/rogue/x` is dropped if `/tmp/rogue` is NOT in keep-set;
  * `/opt/x/y` is retained because `/opt` IS in the default keep-set.
  * @param pathKeep Additional prefixes to retain (from PIPELINE_SANDBOX_PATH_KEEP).
  * @param javaHome JAVA_HOME path (if set, `${javaHome}/bin` is prepended to PATH).
- * @param m2Home_HOME path (if set, `${m2Home}/bin` is prepended after JAVA_HOME).
+ * @param m2Home M2_HOME path (if set, `${m2Home}/bin` is prepended after JAVA_HOME).
  * @return A new map with normalised PATH.
 */
 fun Map<String, String>.normalizePath(

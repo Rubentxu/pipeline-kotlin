@@ -70,6 +70,15 @@ class CapabilitySlot private constructor(private val value: Any) {
 
     override fun toString(): String = "CapabilitySlot(${value::class.simpleName ?: "an unnamed type"})"
 
+    /**
+     * The single way a slot comes into existence.
+     *
+     * A slot is built around a value and never around a key: the key is named by
+     * the consumer at the moment it reads the value, so the binding records what
+     * was provisioned and the read records who asked for it. Keeping construction
+     * here is what stops a second way in from appearing and reopening the hole of
+     * type `Any` that this type exists to close.
+     */
     companion object {
         /** Binds [value] as the capability payload for one key. */
         fun <T : Any> of(value: T): CapabilitySlot = CapabilitySlot(value)

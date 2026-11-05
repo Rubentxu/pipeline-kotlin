@@ -174,6 +174,12 @@ open-world claim it proves false. The four are built by ONE task in the root
 build script, which forks a single Gradle invocation over the composite in
 `examples/example-plugins` so they build concurrently.
 
+One directory there is not a plugin at all: `examples/observability/` holds
+the consumer side of the telemetry — a local Collector configuration, the
+queries for each family and a Grafana dashboard that runs them. The engine
+does not need it, the distribution does not ship it and the gate never
+requires it.
+
 ## Verification
 
 The verification of this repository is `scripts/verify-all.sh`, and it runs
@@ -201,6 +207,15 @@ The gate also reads the tree before it builds anything, and it refuses a green
 over nothing: a module that has a test source and produces no JUnit report
 fails the run, because Gradle reports SUCCESS over an empty result set.
 
+The gate reviews the documentation it publishes. The reference of the
+published contracts is generated again on every run and analysed, and a KDoc
+link that names a symbol the reader cannot open fails the run: the reference
+is the document a third party reads to learn the API, so a broken link in it
+is a broken promise in the product's own words. It is not a second gate — it
+is a leg of `scripts/verify-all.sh`, and `scripts/check-published-reference.py`
+answers the same question when it is run by hand. The receipt of the review
+travels with the change, in the commit or in the task card.
+
 The gate certifies a **batch of ten tasks** from the backlog board, not every
 change: the board is the unit of delivery, and between two batches the loop is
 the scoped run of the module that changed. The gate does not re-run what
@@ -208,8 +223,9 @@ Gradle already knows is unchanged — the verdict says which reports it wrote
 and which it read from disk — so a batch costs what the batch changed and no
 more.
 
-For the inner loop, the gate takes filters — `--module` and `--test` — and a
-filtered run says `PASS (subset)`, because it measured less than the whole:
+For the inner loop, the gate takes filters — `--stage`, `--module` and
+`--test` — and a filtered run says `PASS (subset)`, because it measured less
+than the whole:
 
 ```bash
 scripts/verify-all.sh --stage 3 --module ':pipeline-domain' --test '*ResolveTest'
@@ -298,6 +314,229 @@ therefore closed by default: a cache directory that cannot be proven private
 is not used, and the run simply compiles again. `pipelinek doctor` always
 reports where the cache is and whether it is being used.
 
+## Contracts
+
+Three contracts, one for each role that meets this product from outside: a
+consumer of telemetry, an author of a plugin, and a third party that reads a
+run. Each one says what it guarantees and what it refuses. The code that
+carries the detail is named at the end of every one.
+
+### Telemetry
+
+PipelineK can export spans, counters and histograms in OpenTelemetry's
+format. What it exports is **timing, counts and buckets, and never
+payload**: no script text, no command, no transcript. Those live in the
+output plane and in the journal, and a second copy of them in telemetry
+would be a second place a secret could hide.
+
+The keys the export carries are the product's own:
+
+| | |
+|---|---|
+| Attributes | `run.id`, `stage.index`, `step.index`, `script.origin`, `failure.class` |
+| Dimensions | `operation_kind`, `status`, `failure_class` |
+
+How a span ended is not an attribute: it is the span's status, and the export
+carries it there. An outcome is read from the status of the span and from the
+`status` dimension of the measurement that says the same thing, never from a
+key of its own — a second spelling of the same fact is a second place for the
+two to disagree.
+
+The conventions the product speaks are the OpenTelemetry CI/CD ones, pinned at
+`1.44.0` and declared a release candidate: their names may still move between
+two versions of the specification, so the pin is part of what the product
+promises. The pin is read from the product, not from the payload.
+
+Only the run id travels as an identity. The correlation id, the operation
+id, the attempt id and the fencing token do not travel: they belong to the
+invoker, to idempotency and to write authority respectively. The trace id
+of a finished run is a digest of the run id — it groups that run's signals
+and is not an identity of its own. The live W3C trace id is the only carrier
+of causality.
+
+Every export is bounded: at most 8 attributes per signal, 64 characters per
+text value, and 16 distinct values per dimension key across the whole
+export. The surplus travels as `__overflow__`, so a consumer can see that
+values were collapsed instead of guessing that none existed.
+
+Telemetry is off unless the operator asks for it: without
+`PIPELINEK_OTEL_ENABLED=true` there is no SDK, no exporter and no worker,
+and the run emits nothing. A finished run can also be projected into the
+same vocabulary and exported on demand, which is the path that needs no SDK.
+An export that cannot be written is reported — the loss is counted and the
+run's result does not change.
+
+#### What a consumer reads
+
+Six families of measurement and six of trace, each one answering a single
+question and allowing a single decision. The last column names who acts on
+the answer.
+
+| Measurement | Question | Decision | Who acts |
+|---|---|---|---|
+| `pipelinek.boundary_duration_ms` with `operation_kind="compile"` | How long does compiling the script take? | A compile that grows is the pipeline's own cost: the fix is in the script, not in the runner. | Product |
+| `pipelinek.boundary_duration_ms` with `operation_kind="step.dispatch"` | How long does a dispatched step take? | The step that dominates the run is the one to parallelise, cache or move to a faster runner. | Product |
+| `pipelinek.boundary_duration_ms` with `operation_kind="step.preparation"` | How long did a step wait before it was allowed to run? | Time here is the cost of admission and of the wait; it is where a queue shows up, and it is not the step's own time. | SLA |
+| `pipelinek.boundary_duration_ms` with `operation_kind="recovery"` | How long does recovering an unobserved operation take? | A recovery that grows is a durability problem, not a business one: the run's result does not depend on it. | SLA |
+| `pipelinek.boundary_total` with `status` and `failure_class` | Which failures happened, and of which class? | The class says who has to act, so it is what routes the alert and not the count alone. | Debugging |
+| `pipelinek.export_loss_total` | Did the telemetry itself fail to leave the process? | A growing loss means the picture is incomplete; the run's result does not change, so this is a question about trust. | Debugging |
+
+| Trace | Question | Decision | Who acts |
+|---|---|---|---|
+| `pipelinek.compile` | What did compiling the script cost inside the run? | It is the first thing to attack when a run is slow from its first millisecond. | Product |
+| `pipelinek.admission` | Was the run's plugin set admitted, and what was refused? | A refusal names the missing capability, so the fix is in the plugin's declaration. | Debugging |
+| `pipelinek.step.dispatch` and `pipelinek.step.invoke` | Which step took the time, and did it fail inside the plugin or outside it? | The step that dominates the run is the one to parallelise, cache or move to a faster runner. | Product |
+| `pipelinek.waituntil` | How long did the run wait for a condition it did not control? | A wait that grows is a latency promise being broken, not a slow step. | SLA |
+| `pipelinek.recovery` and `pipelinek.retry.attempt` | What had to be recovered, and how many attempts did it take? | A recovery is a durability event: the run's result does not depend on it. | SLA |
+| Any span with `status = error`, read with its `failure.class` | Which run failed, and in which class? | The class says who has to act, so it is what routes the alert and not the count alone. | Debugging |
+
+Two more spans frame the run without answering a question of their own:
+`pipelinek.stage` opens around each stage and `pipelinek.release` around the
+release of the output plane.
+
+The run id is the join between the two: a measurement and the trace of the
+same run carry the same `run.id`, and that is how a dashboard and a trace
+view are put next to each other.
+
+A finished run can also be projected into the same vocabulary and exported on
+demand, which is the path that needs no SDK. That projection carries its own
+instrument names — `pipelinek.compile_duration_ms`,
+`pipelinek.step_duration_ms` and `pipelinek.run_outcome_total` — because a
+run read back from the journal is measured at its own boundaries and not at
+the live ones. Their dimension keys are the published ones, so the same
+question is answered the same way in both paths: what was measured
+(`operation_kind`), how it came out (`status`) and, for a failure that has a
+class, which class it was (`failure_class`).
+
+#### Where it goes
+
+The product names no backend. The endpoint, the protocol and the credentials
+are read from the environment, so the same build points at a local Collector,
+at Tempo, at Jaeger or at nothing at all:
+
+| Variable | What it decides |
+|---|---|
+| `PIPELINEK_OTEL_ENABLED` | `true` turns the SDK on. Without it there is no SDK, no exporter and no worker, and the run emits nothing. |
+| `PIPELINEK_OTEL_TRACEPARENT` | The trace the run hangs from, when the operator already has one. A value that is not well formed is refused, and the run starts its own trace. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Where the OTLP documents go. No endpoint is compiled into the product. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` or `grpc`, whichever the receiver speaks. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | The credentials, in the SDK's own header format. The pipeline content never sees them. |
+| `OTEL_SERVICE_NAME` | The name the signals travel under. |
+
+`examples/observability/` holds a working example of the consumer side: a
+local Collector configuration, one query per family in PromQL and in TraceQL,
+and a Grafana dashboard that runs those queries. It is an example and not a
+dependency: the engine does not know the directory exists, the gate never
+requires it, and nothing in it is compiled into the distribution. Grafana,
+Tempo and Jaeger are adapters that read what the Collector exports; the
+product knows none of them, and a reader who wants none of them still gets
+the same contract.
+
+The Prometheus exposition of a signal is not spelled the way the product
+spells it: the exporter turns every dot into an underscore and appends the
+unit, so `pipelinek.boundary_duration_ms` is exposed as
+`pipelinek_boundary_duration_ms_milliseconds`, with `_bucket`, `_sum` and
+`_count` beside it. The queries in the example carry both spellings, so a
+reader can tell which instrument answers the question.
+
+#### What it costs
+
+Measured on a known host — Intel Xeon E5-2682 v4 at 2.50 GHz, 64 cores,
+94 GiB of RAM, Linux 5.2.15, Temurin 21.0.8 — by driving the product's own
+telemetry machinery from a program outside this repository, with the exporter
+pointing at a local OTLP receiver and 25 runs per measurement:
+
+| | Telemetry off | Telemetry on |
+|---|---|---|
+| Opening the telemetry | 0.003 ms | 10.4 ms |
+| Recording one run of ten spans and four boundaries | 0.007 ms | 0.74 ms |
+| Closing the telemetry | 0.003 ms | 147 ms |
+| Bytes exported per run | 0 | 1130, of which 841 are traces |
+| Spans per run | 0 | 10 |
+
+A process that runs one pipeline pays about **158 ms** to be observed, and
+147 of those milliseconds are paid at the two ends: opening the SDK and
+flushing it. A process that runs N pipelines pays 10.4 ms + 0.74 ms × N +
+147 ms, so the cost per run falls as the process does more. A run that emits
+nothing costs nothing at all, because nothing is constructed.
+
+With the exporter pointed at a port nobody listens on, the run's result does
+not change and the run is not blocked: the product warns on stderr, counts
+the loss, and the close takes 8.1 s waiting for a backend that is not there.
+That wait is the exporter's own timeout, not a promise of the product.
+
+These are measurements on one host, not limits the product enforces. What
+they buy is a budget that was measured instead of invented.
+
+The contract that carries the detail is the KDoc on `TelemetryPolicy`, in
+`RunTelemetry.kt` of `:pipeline-runtime-api`.
+
+### Writing a plugin
+
+A plugin declares Step families and the engine calls them. A plugin **sees**
+two things and no more: the decoded input of its own type, and a narrow
+execution identity that names the run, the index of the step within it, and
+the capabilities the engine supplied.
+
+A plugin **may** do exactly what its contract declared. It declares the
+capabilities it needs, the engine supplies the ones it can, and the call is
+admitted only when the declared set is inside the supplied one: a capability
+that is missing is refused by name, before the handler runs. What the engine
+supplies, the plugin reads through a typed accessor that refuses both an
+absent capability and a value of the wrong shape.
+
+A plugin **may not** reach an effect it did not declare. The file system,
+the clock and the network are behind capabilities. It may not mutate what it
+receives, may not signal a failure by throwing — the handler returns a typed
+result — and an observation it emits does not choose its own place in the
+run's event flow: the store assigns the sequence.
+
+The declaration is a `StepContract` in the domain module: the family key, the
+descriptor, the typed codecs and the capabilities it requires. The outcome of
+an invocation is a closed algebra of four cases — a typed value, an unknown
+Step, a decode refusal and a missing capability — and the three refusals are
+decided before the handler runs. The manifest declares the plugin's
+contributions and the range of the API it was built against, and admission
+refuses a plugin outside that range before its classes load.
+
+`examples/example-uppercase-plugin` is a plugin built against the published
+SDK alone, and it observes itself: one Step asks for nothing, one asks for a
+single public seam, and one asks the runtime to watch it. It needs no
+dependency the consumer does not already have.
+
+The contract that carries the detail is the KDoc on `StepContext.kt` in
+`:pipeline-step-sdk`.
+
+### Reading a run from outside
+
+A consumer outside this process — Fabric, a CI system, a scheduler — reads a
+run. It does not drive it, and it is not a second authority over the run's
+facts.
+
+| | |
+|---|---|
+| Reads | the committed bytes of the output plane, by stream and by cursor |
+| Reads | the typed events of the event lane, paginated by sequence |
+| Reads | the state of a run: its attempt, its lease holder and its journal position |
+| Joins on | the run id, and the correlation id the invoker assigned |
+| Does not write | bytes into the output plane: the write side is outside the published surface |
+| Does not become | a second authority over the run's facts: a consumer resolves the read-only ports, and the engine keeps the write authority |
+| Does not treat | a trace id as an identity, or as a permission |
+
+The lease is where the access control lives. The holder's owner id, its
+fencing token and its liveness are the durable, cross-process facts a
+consumer can act on; the fencing token is write authority, and it does not
+travel in telemetry.
+
+Two of the published introspection methods are announced and not delivered in
+this build: the enumeration of a run's structure and the inspection of one
+operation of it. Nothing composes them yet, so a consumer cannot count on
+them.
+
+The contract that carries the detail is this section, and the KDoc on
+`OutputReadPort.kt` in `:pipeline-output`, `EventRecordReadPort.kt` in
+`:pipeline-events` and `RuntimeIntrospectionPort.kt` in `:pipeline-runtime-api`.
+
 ## Documentation
 
 There is no separate user-documentation tree in this repository. The
@@ -316,6 +555,11 @@ code that implements each surface:
 | `--workspace`, `--db`, `--control-root` | The KDoc on `durable/WorkspaceResolver.kt` in `:pipeline-runtime` |
 | Secret redaction and credentials | Redaction: the KDoc on `SecretPatternRegistry.kt` in `:pipeline-credentials-api`, which also states that a bound secret of fewer than `MIN_MASKABLE_LENGTH` (8) characters runs normally but is **not** masked, so it reaches the transcript in the clear. Store access: `PassphraseResolver.kt` and `CredentialsStorePath.kt` in `:pipeline-credentials-local` |
 | Typed events, transcripts, recovery | The KDoc on `JsonEventLog.kt` in `:pipeline-events-store` |
+| The telemetry contract | The section "Contracts" above, and the KDoc on `TelemetryPolicy`, in `RunTelemetry.kt` of `:pipeline-runtime-api` |
+| An observability backend that reads the telemetry | `examples/observability/`, which holds a local Collector configuration, the queries for each family and a Grafana dashboard that runs them |
+| The plugin contract | The section "Contracts" above, and the KDoc on `StepContext.kt` in `:pipeline-step-sdk` |
+| Reading a run from outside | The section "Contracts" above, and the KDoc on `OutputReadPort.kt` in `:pipeline-output`, `EventRecordReadPort.kt` in `:pipeline-events` and `RuntimeIntrospectionPort.kt` in `:pipeline-runtime-api` |
+| The API reference of the published contracts | `./pipelinek/gradlew -p pipelinek apiReferenceHtml`, which writes one HTML site per published contract under that module's `build/dokka/html` |
 | How the build is verified, and what is out of bounds | `AGENTS.md` in the repository root |
 
 The reason to prefer this over a prose tree is not preference: a KDoc block

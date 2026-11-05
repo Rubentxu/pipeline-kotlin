@@ -54,8 +54,13 @@ RULES: list[tuple[str, str, str]] = [
     # tool, and a guard caught by it would make the ratio look better than the
     # truth -- the same reason the two release checks are named above.
     ("verify", "source guard", "scripts/check-comment-provenance.py"),
+    ("verify", "source guard", "scripts/check-kdoc-coverage.py"),
     ("verify", "source guard", "scripts/check-process-exits.py"),
     ("verify", "source guard", "scripts/check-durable-shell-cost.py"),
+    # The review of the published reference. It reads the tree and generates
+    # the reference of the published contracts, and it ships nothing: it is
+    # the numerator too.
+    ("verify", "source guard", "scripts/check-published-reference.py"),
     # The external-consumer check verifies the published artifacts against a
     # consumer outside this repository. It does not ship them: it runs on the
     # publisher's machine during publication. Counting it as production would

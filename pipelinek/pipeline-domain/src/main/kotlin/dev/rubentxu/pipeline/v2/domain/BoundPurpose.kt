@@ -1,11 +1,12 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import kotlinx.serialization.Serializable
+
 /**
  * Records how a credential is bound to a step at runtime.
  * ## Purpose
  * [BoundPurpose] documents the injection method for audit trail purposes.
- * It is carried in [CredentialBound][dev.rubentxu.pipeline.v2.events.CredentialBound],
- * [CredentialUsed][dev.rubentxu.pipeline.v2.events.CredentialUsed] events.
+ * It is carried in the `CredentialBound` and `CredentialUsed` events.
  * The purpose is informational only - it does not affect security.
  * ## Variants
  * Maps to Jenkins credentials-binding kinds as follows:
@@ -16,10 +17,8 @@ package dev.rubentxu.pipeline.v2.domain
  * - [CERTIFICATE]: Keystore certificate — `certificate` binding
  * - [ZIP]: ZIP archive credential — `zip` binding
  * - [USERNAME_COLON_PASSWORD]: Colon-joined credentials — `usernameColonPassword` binding
- * ## Deprecation aliases
- * [ENV] is deprecated — renamed to [API_KEY] (semantically equivalent for callers)
- * [VALUE] is deprecated — no direct replacement in; reserved for future `returnStdout` interplay
 */
+@Serializable
 enum class BoundPurpose {
     /**
      * Secret text credential — maps to `string` binding.
@@ -58,6 +57,21 @@ enum class BoundPurpose {
     USERNAME_COLON_PASSWORD,
     ;
 
+    /**
+     * The vocabulary of wire spellings, and the one boundary where a spelling
+     * becomes a typed purpose.
+     *
+     * [parse] returns `null` for a spelling outside the vocabulary and never
+     * falls back to a variant: a catch-all would put on the durable event
+     * stream a binding the producer never declared, and an observer could not
+     * tell it apart from a real one.
+     *
+     * The map is derived from [entries], so the accepted spellings cannot
+     * drift away from the constants themselves.
+     *
+     * What an unreadable purpose MEANS belongs to the caller: only the caller
+     * knows whether it can report a refusal or must keep reading history.
+     */
     companion object {
 
         /**

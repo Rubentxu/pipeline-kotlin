@@ -25,6 +25,12 @@ class OutputChunk(
 
     override fun toString(): String = "OutputChunk(stream=$stream, bytes=${data.size})"
 
+    /**
+     * Builds a chunk for one of the two output streams.
+     *
+     * The factories exist so that a producer names the stream it read from
+     * instead of repeating the stream constant at the call site.
+     */
     companion object {
         fun stdout(data: ByteArray): OutputChunk = OutputChunk(TaskStream.STDOUT, data)
         fun stderr(data: ByteArray): OutputChunk = OutputChunk(TaskStream.STDERR, data)

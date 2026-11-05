@@ -16,7 +16,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * changed; the reconciler MUST reject in that case.
  * ## Backoff field
  * [currentBackoffMs] is the backoff interval in milliseconds at the moment
- * this row was persisted. Used to compute [nextBackoffMs] on advance.
+ * this row was persisted. Used to compute [WaitUntilReconciliationDecision.AdvanceAfterPredicateUnsatisfied.nextBackoffMs] on advance.
 */
 data class WaitUntilControlRowSnapshot(
     /**

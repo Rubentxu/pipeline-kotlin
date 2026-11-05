@@ -24,6 +24,13 @@ enum class OutputChannel(val token: String) {
     STDERR("stderr"),
     ;
 
+    /**
+     * The one place that turns a stored token back into a channel.
+     *
+     * The vocabulary is the enum's own: a token that names no channel is not a channel, so the
+     * lookup answers `null` rather than throwing, and a caller can act on "this is not a
+     * channel-addressed stream" as a fact about the stream.
+     */
     companion object {
         /**
          * The channel named [token], or `null` when the token names none.
@@ -122,6 +129,14 @@ data class OutputStreamAddress(
     fun isOperationOf(runId: String, operationId: String): Boolean =
         this.runId == runId && this.operationId == operationId
 
+    /**
+     * The two ways to name an address: build one from its parts, or read one back out of a
+     * stream id.
+     *
+     * [of] is the construction a producer uses, and [parse] reads back the ids this producer
+     * minted; both agree on the shape, so an address that goes out through [of] and comes back
+     * through [parse] is the same address.
+     */
     companion object {
 
         /** The address [operationId]'s [channel] stream lives at, within [runId]. */
@@ -200,6 +215,13 @@ data class OperationOutputStreams(
     fun select(channels: Set<OutputChannel>): List<OutputStreamAddress> =
         all.filter { it.channel in channels }
 
+    /**
+     * The one construction of a channel pair.
+     *
+     * It builds the correct pair by definition — the field named stdout addresses the STDOUT
+     * channel and the field named stderr addresses STDERR — so the crossing pair the constructor
+     * refuses is not reachable through it.
+     */
     companion object {
         /** The pair of streams one operation writes, within [runId]. */
         fun of(runId: String, operationId: String): OperationOutputStreams =

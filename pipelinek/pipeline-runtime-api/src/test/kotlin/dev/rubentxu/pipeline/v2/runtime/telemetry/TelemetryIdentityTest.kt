@@ -179,11 +179,11 @@ class TelemetryIdentityTest {
      */
     private fun assertTheVocabularyIsClosed() {
         assertEquals(
-            setOf("run.id", "stage.index", "step.index", "compile.outcome", "failure.class"),
+            setOf("run.id", "stage.index", "step.index", "script.origin", "failure.class"),
             TelemetryIdentityTable.Default.allowedAttributeKeys(),
-            "el vocabulario de atributos es el que se dijo: una identidad, dos índices, un resultado " +
-                "y una clase. Los nombres de los pasos, los comandos, los paths y los tokens NO " +
-                "están, y no se añaden sin una decisión de producto",
+            "el vocabulario de atributos es el que se dijo: una identidad, dos índices y dos clases. " +
+                "Los nombres de los pasos, los comandos, los paths y los tokens NO están, y no se " +
+                "añaden sin una decisión de producto",
         )
         assertEquals(
             setOf("operation_kind", "status", "failure_class"),

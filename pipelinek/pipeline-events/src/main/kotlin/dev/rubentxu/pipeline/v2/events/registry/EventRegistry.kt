@@ -4,7 +4,7 @@ package dev.rubentxu.pipeline.v2.events.registry
  * The open registry where contributors declare their event kinds.
  * Payloads are typed, versioned, and registered through an open
  * `EventRegistry`.
- * Laws, each pinned by [EventRegistryTest]:
+ * Laws, each pinned by `EventRegistryTest`:
  *  - **Fail-closed admission.** A duplicate [EventDefinition.kind] is a registration FAILURE,
  *    never a silent overwrite: two plugins claiming one kind would make every recorded payload
  *    of that kind ambiguous forever. A definition that did not pass
@@ -91,6 +91,14 @@ class EventRegistry private constructor(
         }
     }
 
+    /**
+     * The two ways to obtain a registry: an empty one, or a builder to compose
+     * one.
+     *
+     * The empty registry is already frozen — no path off it grows it — so "a
+     * plugin declared nothing" and "nothing is registered" are the same typed
+     * answer.
+     */
     companion object {
         /** A fresh [Builder]. Registration order starts at 1. */
         fun builder(): Builder = Builder()

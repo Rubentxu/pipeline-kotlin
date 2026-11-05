@@ -64,20 +64,47 @@ enum class CredentialStoreUnavailability {
  * a credential that is perfectly fine.
 */
 sealed interface BasicCredentialResolution {
+    /**
+     * The store held the credential, and it is of the kind this seam serves.
+     *
+     * The password is raw bytes, not a string: the caller decides when and
+     * where it becomes text, and owns the encoding and the wiping that follow.
+     */
     data class Resolved(
         val username: String,
         /** Secret material. Never rendered, never encoded, never journalled. */
         val password: ByteArray,
     ) : BasicCredentialResolution
 
+    /**
+     * The store was reachable and holds nothing under that name.
+     *
+     * The answer is about the credential, not about the store: the name is
+     * wrong or the credential was never created. A caller that reads this as a
+     * broken store is diagnosing the wrong thing.
+     */
     data class NotFound(val id: String) : BasicCredentialResolution
 
+    /**
+     * The store holds the credential, but as a kind this seam cannot serve.
+     *
+     * A certificate, a private key or an archive has no username and no
+     * password, so it is refused here rather than reshaped. `found` names the
+     * kind the store holds and `supported` the kinds this seam can serve.
+     */
     data class KindUnsupported(
         val id: String,
         val found: String,
         val supported: List<String>,
     ) : BasicCredentialResolution
 
+    /**
+     * The store could not be consulted, so nothing is known about the credential.
+     *
+     * The reason tells a run with no store from one whose store exists but
+     * could not be opened or reached. The lookup failed; the credential may
+     * well be there.
+     */
     data class StoreUnavailable(
         val reason: CredentialStoreUnavailability,
     ) : BasicCredentialResolution

@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
 
 /**
  * Declared recovery/reconciliation behaviour of a durable operation
- * The durable protocol consumes only this typed property of [StepMetadata] to decide whether a
+ * The durable protocol consumes only this typed property of `StepMetadata` to decide whether a
  * RUNNING-journaled operation needs special external reconciliation; it never selects concrete
  * behaviour by a Step name. Identity selects metadata; metadata expresses the recovery property.
  * Concrete recovery mechanics (e.g. reattaching to and polling a real external process via a control

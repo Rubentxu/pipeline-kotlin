@@ -618,7 +618,7 @@ class StageScope(
      * — byte-for-byte identical to `CorePublishHtmlStep.inputCodec.encode()`
      * So the durable fingerprint round-trips through the registry path
      * @param name Logical name of the report (used to derive the archive
-     *             subdirectory; sanitised by [dev.rubentxu.pipeline.v2.runtime.PublishHtmlSanitiser]).
+     *             subdirectory; sanitised by `PublishHtmlSanitiser`).
      * @param reportDir Workspace-relative directory containing the report files.
      * @param reportFiles Ant-style glob (default `**` recursive match).
      * @param keepAll Whether to keep historical reports across runs (v1 runtime
@@ -660,10 +660,11 @@ class StageScope(
 
     /**
      * Executes the inner block with a timeout.
-     * Jenkins verbatim: `timeout(time: Long, unit: String, activity: String? = null) { block }`
+     * The Jenkins step takes an optional activity label as a third argument; this scope takes the
+     * time and the unit only, so `timeout(time: Long, unit: String) { block }` is the whole
+     * spelling a pipeline can use.
      * @param time Timeout value
      * @param unit Time unit (SECONDS, MINUTES, etc.)
-     * @param activity Optional activity description
      * @param block Nested steps to execute with timeout
 */
     fun timeout(time: Long, unit: String, block: StageScope.() -> Unit) {

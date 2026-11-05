@@ -39,7 +39,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventCursor
  * - a `mapNotNull` / `?: continue` on the way out — that is the defect, restated;
  * - a default semantic value — that is E4b.3's rule, and it does not become allowed here.
  * ## Why the refusal carries identity
- * [Undecodable] keeps the row's real position and kind so a consumer can act on the refusal
+ * [EventRecordRead.Undecodable] keeps the row's real position and kind so a consumer can act on the refusal
  * instead of guessing: skip it by sequence, stop the run, or page past it deliberately. Without
  * the sequence, the caller could not even resume correctly, because the cursor is the store's
  * sequence authority and a hole in it is indistinguishable from the end of history.
@@ -47,7 +47,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventCursor
  * is precisely the part that failed to decode, and it can be GiB-scale (the store reads row by row
  * for exactly that reason). What survives is the row's identity — enough to prove a record
  * existed at that position, which is the whole claim E4c makes.
- * [Decoded] carries the event; the row's identity is the event's own, because a decoded event has
+ * [EventRecordRead.Decoded] carries the event; the row's identity is the event's own, because a decoded event has
  * its sequence by construction.
 */
 sealed interface EventRecordRead {
@@ -77,7 +77,7 @@ sealed interface EventRecordRead {
         val rawRowPresent: Boolean = true,
     ) : EventRecordRead
 
-    /** The identity an [Undecodable] carries, when it has one. */
+    /** The identity an [EventRecordRead.Undecodable] carries, when it has one. */
     val identityOrNull: EventRecordIdentity?
         get() = when (this) {
             is Decoded -> EventRecordIdentity(sequence, event.eventId, event.kind)
@@ -120,7 +120,7 @@ sealed interface UndecodableReason {
 }
 
 /**
- * One bounded page of durable rows, each [Decoded] or [Undecodable], cut by the store's own
+ * One bounded page of durable rows, each [EventRecordRead.Decoded] or [EventRecordRead.Undecodable], cut by the store's own
  * sequence. E4c.
  * This is [EventSlice]'s honest counterpart and it replaces [EventSlice] as the authority: the
  * page bound counts ROWS, not decodable events, so a row that refuses to decode cannot shrink the

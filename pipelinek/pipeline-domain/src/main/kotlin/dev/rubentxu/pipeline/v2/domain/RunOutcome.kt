@@ -49,9 +49,40 @@ package dev.rubentxu.pipeline.v2.domain
  * @see RunOutcomeReducer
  */
 sealed interface RunOutcome {
+    /**
+     * The run ended and every step succeeded.
+     *
+     * There is nothing to inspect: the run holds no failure and no
+     * unfinished business.
+     */
     data object Success : RunOutcome
+
+    /**
+     * The run ended with at least one unstable step and no failed one.
+     *
+     * An unstable step reported trouble it got past, so the run is not a
+     * failure. A caller that reads every run as pass or fail must give
+     * this case a verdict of its own: whether an unstable run is good
+     * enough is the caller's policy, not the runtime's.
+     */
     data object Unstable : RunOutcome
+
+    /**
+     * The run ended with at least one failed step.
+     *
+     * It holds the failure that was observed first in declaration order,
+     * not in completion order, so the same run always reports the same
+     * cause.
+     */
     data class Failure(val failure: PipelineFailure) : RunOutcome
+
+    /**
+     * The run was cancelled or interrupted before it reached a normal end.
+     *
+     * The orchestrator states it; the reducer does not derive it. A caller
+     * that sees it knows the run stopped rather than that it failed, and
+     * whether to resume it is the caller's decision.
+     */
     data object Aborted : RunOutcome
 
     /**
@@ -78,6 +109,15 @@ sealed interface RunOutcome {
             Aborted -> ABORTED_TOKEN
         }
 
+    /**
+     * The vocabulary a run's result is written in.
+     *
+     * The four words live here, next to the cases they name, and both ends
+     * of the event plane use them: the writer writes the case's token and
+     * the reader recovers the case with [parse]. A word this build does not
+     * know is answered with `null` and never with a default, because a word
+     * it cannot read is not a failed run.
+     */
     companion object {
 
         /** The word a successful run is written as. */

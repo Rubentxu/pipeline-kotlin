@@ -114,7 +114,9 @@ data class OutputFollowOptions(
      * [dev.rubentxu.pipeline.v2.output.OutputFrameIndex.streamsOfRun] and
      * follow every declared stream. The empty default exists so a Fabric
      * consumer can subscribe by run alone without naming the channels
-     * up front.
+     * up front. What a consumer outside this process may follow, and what
+     * it may not do, is the contract the root README states under "Reading a
+     * run from outside".
 */
     val streams: List<OutputStreamAddress> = emptyList(),
     val pageMaxBytes: Int = 64 * 1024,
@@ -148,13 +150,38 @@ data class OutputFollowOptions(
 
 /**
  * A terminal condition for [OutputFollower.open]. The default is
- * [FollowUntil.Unbounded] (the follow runs until the run reaches
- * terminal state across all declared streams, or until the consumer
- * closes the handle).
+ * [FollowUntil.Unbounded]: the follow runs until the consumer closes the
+ * handle, because the output plane does not learn that the run is over.
 */
 sealed interface FollowUntil {
+
+    /**
+     * The follow ends when the consumer closes the handle, or when the run
+     * declares no stream at all and the follow reports itself unobservable.
+     *
+     * The output plane never learns that the run is over, so the run's terminal
+     * state does not end the follow. It is the default because a consumer that
+     * has not said where to stop is watching for as long as it cares to.
+     */
     data object Unbounded : FollowUntil
+
+    /**
+     * The follow ends when every declared stream of the followed run has been
+     * sealed.
+     *
+     * A sealed stream admits no more bytes, so the end of the follow is decided by the output
+     * plane alone and not by the run's outcome. The [runId] this condition carries does not
+     * select the run: the follow's own run id already fixes it.
+     */
     data class UntilAllSealed(val runId: String) : FollowUntil
+
+    /**
+     * The follow ends once the pages it has delivered sum to [limit] bytes.
+     *
+     * The bound counts committed bytes handed to the consumer, and it is checked after a page
+     * is delivered, so a limit of zero ends the follow once the first page has been handed
+     * over rather than before any byte arrives.
+     */
     data class UntilBytesRead(val limit: Long) : FollowUntil {
         init {
             require(limit >= 0) { "limit must be non-negative, got $limit" }
@@ -174,20 +201,50 @@ sealed interface FollowUntil {
  * alone does NOT authoritatively know the run is over (cf.
  * [dev.rubentxu.pipeline.v2.output.OutputTailState] KDoc: "Putting
  * an outcome here would make the Output Plane a second authority
- * over execution results"). [FollowState.RunTerminal] is emitted
- * only after the event plane observes a `RunFinished` event; the
- * join happens in the application-layer adapter.
+ * over execution results"). No implementation emits
+ * [FollowState.RunTerminal]: the follower stops at
+ * [FollowState.StreamSealed], and only an adapter that joins the
+ * event plane could say that the run is over.
 */
 sealed interface FollowState {
+
+    /**
+     * Not every declared stream is sealed yet.
+     *
+     * The state is about the streams and not about the run: the output plane does not learn
+     * that the run is over, so it does not say that the run is still executing either. The two
+     * lists tell the consumer which streams may still produce bytes and which are done, so a
+     * consumer that watches several streams at once knows where the remaining output will
+     * come from. A declared stream the tail port does not know about yet is in neither list.
+     */
     data class Running(
         val openStreams: List<OutputStreamId>,
         val sealedStreams: List<OutputStreamId>,
     ) : FollowState
 
+    /**
+     * Every stream the tail port reports is sealed, but the run is not yet observed as terminal.
+     *
+     * The distinction matters because the two facts have different owners: the output plane sees
+     * the streams close, and only the event plane may say the run is over.
+     */
     data class StreamSealed(val sealedStreams: List<OutputStreamId>) : FollowState
 
+    /**
+     * The run reached a terminal state and no further output can arrive.
+     *
+     * No implementation produces this state: the output plane does not learn
+     * that the run is over, so the state is reserved for an adapter that joins
+     * the event plane.
+     */
     data object RunTerminal : FollowState
 
+    /**
+     * The run's output cannot be observed, and [refusal] names why.
+     *
+     * The follow reports the state once and then ends: the event after it is the completion
+     * of the follow, and a consumer that wants to try again opens a new follow.
+     */
     data class Unobservable(val refusal: OutputRefusal) : FollowState
 }
 
@@ -198,8 +255,36 @@ sealed interface FollowState {
  * reason named in the event).
 */
 sealed interface OutputFollowEvent {
+
+    /**
+     * A page of committed bytes was delivered, and [newState] is the follow's state after it.
+     *
+     * The state travels with the bytes so a consumer that reads pages never has to poll for the
+     * state separately.
+     */
     data class Bytes(val page: OutputPage, val newState: FollowState) : OutputFollowEvent
+
+    /**
+     * The follow's state changed and no bytes accompanied the change.
+     *
+     * The first event of a follow is one of these, unless the follow refuses at
+     * the open boundary: it carries the initial state, so a consumer starts from
+     * a declared position rather than from an assumption.
+     */
     data class StateChanged(val state: FollowState) : OutputFollowEvent
+
+    /**
+     * The follow stopped because it could not continue, and [refusal] names the closed cause.
+     *
+     * It is terminal: the consumer closes the handle and decides whether to re-anchor or escalate.
+     */
     data class Refused(val refusal: OutputRefusal) : OutputFollowEvent
+
+    /**
+     * The follow reached the condition it was opened with, or found that the
+     * run declares no stream to observe.
+     *
+     * It is the last event of a follow: the iterator is exhausted after it.
+     */
     data object Completed : OutputFollowEvent
 }

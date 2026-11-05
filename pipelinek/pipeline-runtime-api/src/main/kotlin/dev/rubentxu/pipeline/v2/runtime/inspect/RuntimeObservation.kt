@@ -8,18 +8,22 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
  * now?". Each case names a substrate condition; new cases are compile errors at
  * every `when` site that exhausts this ADT.
  *  - `Running.process` is OPTIONAL (the runtime does not always have a durable
- *    reference to the live writer process — e.g. when Fabric is on a different
- *    host). The contract does not depend on it.
+ *    reference to the live writer process — e.g. when an external consumer is on
+ *    a different host). The contract does not depend on it.
  *  - `Terminal.terminal` carries a typed [TerminalObservation] (NOT a raw
  *    `(StepOutcome, OperationStatus)` pair), which names the fix for the
  *    category error between "what the journal recorded"
  *    and "what the run semantically is".
+ *
+ * What a consumer outside this process may do with these facts, and what it
+ * may not do, is the contract the root README states under "Reading a run
+ * from outside".
 */
 sealed interface RuntimeObservation {
 
     /**
      * The run is in flight and observed.
-     * `leaseHolder` is the durable, cross-process fact a Fabric can act on (the
+     * `leaseHolder` is the durable, cross-process fact an external consumer can act on (the
      * holder's owner id + fencing token + liveness). `process` is OPTIONAL: cross-
      * process introspection always returns `null` for it; co-located introspection
      * may carry a [ProcessRef]. The contract never depends on `process` being non-
@@ -49,10 +53,10 @@ sealed interface RuntimeObservation {
      * inspection found no live evidence. This is a FACT about the substrate, not
      * a refusal — the runtime knows the run exists but the journal / lease record
      * / event plane is empty.
-     * The correction (see design revision note 1) made this the same
-     * distinction on the introspection port: "unknown run" vs "empty-but-known".
-     * The distinction is part of the design, and the test that pinned it
-     * is gone.
+     * The introspection port draws the same distinction: "unknown run" and
+     * "empty but known" are two different answers, and a consumer that cannot
+     * tell them apart cannot decide whether to wait for the run or to give it
+     * up.
 */
     data class LiveButEmpty(
         val attempt: AttemptId,
@@ -123,7 +127,22 @@ data class OutputTailView(
  * introspection port's projection can stay in `:pipeline-runtime`.
 */
 sealed interface TailState {
+    /**
+     * The stream can still grow.
+     *
+     * [committedEnd] is the extent committed when the state was observed. It
+     * says nothing about whether a writer is attached: a stream whose
+     * process died is still open until something records its end.
+     */
     data class Open(val committedEnd: Long) : TailState
+
+    /**
+     * The stream will not grow again.
+     *
+     * [finalEnd] is the extent the stream had when it was sealed, which is
+     * its committed extent afterwards: a sealed stream cannot grow, so the
+     * two are the same number.
+     */
     data class Sealed(val finalEnd: Long) : TailState
 }
 
@@ -152,10 +171,54 @@ sealed interface TailState {
  * `RunOutcome.parse`; this projection is what the runtime saw of it.
 */
 sealed interface TerminalObservation {
+    /**
+     * The run ended with its work done.
+     *
+     * Every step of the run succeeded, and the runtime observed that
+     * terminal. [terminalAtMs] is the moment the run's own terminal carries,
+     * not the moment the observation was taken.
+     */
     data class Succeeded(val terminalAtMs: Long) : TerminalObservation
+
+    /**
+     * The run ended in failure.
+     *
+     * [failureKind] is the run's own word for the failure, and a bare one
+     * names the outcome without naming the cause: the cause lives in the
+     * run's failure fact. [terminalAtMs] is the moment the run's own
+     * terminal carries.
+     */
     data class Failed(val failureKind: String, val terminalAtMs: Long) : TerminalObservation
+
+    /**
+     * The run ended degraded: some step asked for attention and none
+     * failed.
+     *
+     * It is not a failure, and the runtime keeps it apart from one, because
+     * a step that reports a degraded run as a failed one says the opposite
+     * of what the run said. [terminalAtMs] is the moment the run's own
+     * terminal carries.
+     */
     data class Unstable(val terminalAtMs: Long) : TerminalObservation
+
+    /**
+     * The run ended with the `aborted` word: it was stopped before it
+     * reached a normal terminal state.
+     *
+     * The word is the run's own, read back from the outcome the run
+     * recorded. [terminalAtMs] is the moment the run's own terminal carries.
+     */
     data class Aborted(val terminalAtMs: Long) : TerminalObservation
+
+    /**
+     * The run was cancelled.
+     *
+     * The word belongs to what was observed, and the run's own result
+     * vocabulary has no word for it: that vocabulary says `aborted` for a
+     * run that was cancelled or interrupted, so a consumer that swaps the
+     * two reads a cancelled run as an aborted one. [terminalAtMs] is the
+     * moment the run's own terminal carries.
+     */
     data class Cancelled(val terminalAtMs: Long) : TerminalObservation
     /** The journal recorded a terminal that does not map to the canonical outcomes. */
     data class Other(val rawOutcome: String, val terminalAtMs: Long) : TerminalObservation

@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.BlockSegment
 
 /**
  * Typed control identity for a parallel aggregate
- * Never a sentinel `stepIndex`/`branchIndex` inside [OpId]: the aggregate
+ * Never a sentinel `stepIndex`/`branchIndex` inside `OpId`: the aggregate
  * is identified by run + stage + the parallel control kind. Nested parallel
  * (future) extends this with the canonical bodyPath.
  * MUST NOT embed: branch completion order, coroutine id, thread id,
@@ -25,8 +25,31 @@ data class ParallelAggregateId(
 sealed interface BranchTerminal {
     val asText: String
 
+    /**
+     * The branch ran and every one of its steps succeeded.
+     *
+     * It is the outcome the fold falls back to when no branch failed and none
+     * declared itself unstable.
+     */
     data object Succeeded : BranchTerminal { override val asText get() = "success" }
+
+    /**
+     * The branch ran to completion and declared itself unstable.
+     *
+     * The work happened and something in it deserves attention, without the
+     * branch having failed. It is a case of its own because the two mean
+     * different things to the caller, and collapsing them would turn a
+     * declared-unstable branch into a declared-failed one.
+     */
     data object Unstable : BranchTerminal { override val asText get() = "unstable" }
+
+    /**
+     * The branch did not succeed.
+     *
+     * [message] carries the reason when there is one, and `null` when the
+     * failure has nothing to say. A failure dominates the fold: an aggregate
+     * with one failed branch fails, whatever the others did.
+     */
     data class Failed(val message: String?) : BranchTerminal { override val asText get() = "failure" }
 }
 

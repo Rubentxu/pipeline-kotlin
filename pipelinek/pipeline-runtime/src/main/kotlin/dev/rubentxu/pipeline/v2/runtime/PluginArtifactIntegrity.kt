@@ -53,8 +53,15 @@ internal object PluginArtifactIntegrity {
         /** The artifact's bytes were read and hashed. */
         data class Measured(val path: Path, val digest: Digest) : Measurement
 
-        /** The artifact's bytes could not be read. */
-        data class Unreadable(val path: Path) : Measurement
+        /**
+         * The artifact's bytes could not be read.
+         *
+         * The [reason] is kept, and not collapsed into a flag, because the operator's next
+         * question is WHY the artifact has no identity, and the answers are different facts:
+         * a tree that reaches outside itself through a symbolic link is not an artifact whose
+         * bytes failed to be read.
+         */
+        data class Unreadable(val path: Path, val reason: PluginArtifactDigest.Refusal) : Measurement
     }
 
     /**
@@ -70,7 +77,7 @@ internal object PluginArtifactIntegrity {
         data class Admitted(val artifacts: List<Measurement.Measured>) : Selection
 
         /** This artifact's bytes could not be read, so nothing about it can be established. */
-        data class NotMeasurable(val artifact: Path) : Selection
+        data class NotMeasurable(val artifact: Path, val reason: PluginArtifactDigest.Refusal) : Selection
     }
 
     /**
@@ -93,7 +100,7 @@ internal object PluginArtifactIntegrity {
 
         for (measurement in measurements) {
             when (measurement) {
-                is Measurement.Unreadable -> return Selection.NotMeasurable(measurement.path)
+                is Measurement.Unreadable -> return Selection.NotMeasurable(measurement.path, measurement.reason)
                 is Measurement.Measured -> {
                     if (seen.add(measurement.digest.value.lowercase())) admitted += measurement
                 }

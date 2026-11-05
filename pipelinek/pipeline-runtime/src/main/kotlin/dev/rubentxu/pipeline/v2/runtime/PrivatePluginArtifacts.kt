@@ -9,7 +9,6 @@ import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
-import java.nio.file.attribute.PosixFilePermission
 
 /**
  * The private copy of every plugin artifact, and the guarantee that the copy is what runs.
@@ -46,6 +45,11 @@ import java.nio.file.attribute.PosixFilePermission
  * start: a plugin whose bytes are not the bytes that were admitted is not the plugin the
  * operator asked for, and the runtime would be about to run it anyway.
  *
+ * The same is true of the directory the copies go into. Its permissions are imposed and then
+ * verified, and a directory that does not hold the profile afterwards is a refusal: a copy that
+ * cannot be hidden from the other users of the machine is a copy that can be swapped between
+ * the moment it is verified and the moment it is loaded.
+ *
  * ## What this does NOT do
  *
  * It does not protect the operator's ORIGINAL artifact, which stays where they put it with the
@@ -80,16 +84,39 @@ internal object PrivatePluginArtifacts {
      * @param measured the digest the runtime measured over each artifact's bytes, by path. These
      *   are the digests the admission decided on, so a copy is verified against the DECISION and
      *   not against a fresh reading of the same file.
-     * @param into the directory the copies go into. It is created with mode 0700 when the
-     *   filesystem has POSIX permissions, and it is the only thing standing between the copies
-     *   and the other users of the machine.
+     * @param into the directory the copies go into. It is created with the permissions the
+     *   profile requires, and it is the only thing standing between the copies and the other
+     *   users of the machine.
+     * @param permissions how the directory's permissions are imposed and verified. The port is
+     *   here so that the refusal has a witness: a directory that cannot be secured is a
+     *   directory the runtime must refuse, and only a double that fails on purpose can make
+     *   that happen on demand.
      */
     fun copyAll(
         admitted: List<AdmittedArtifact>,
         measured: Map<Path, Digest>,
         into: Path,
+        permissions: DirectoryPermissions = PosixDirectoryPermissions,
     ): CopyOutcome {
-        val directory = privateDirectory(into)
+        if (admitted.isEmpty()) return CopyOutcome.Copied(emptyList())
+
+        val directory = when (val prepared = privateDirectory(into, permissions)) {
+            is PrivateDirectory.Prepared -> prepared.path
+
+            is PrivateDirectory.NotSecured -> {
+                val artifact = admitted.first().path
+                return CopyOutcome.Refused(
+                    artifact = artifact,
+                    rejection = PluginManifestRejection.PrivateCopyNotSecured(
+                        artifact = artifact.toString(),
+                        detail = prepared.detail,
+                    ),
+                    detail = "the private copy of $artifact could not be put where only the operator " +
+                        "can reach it, so no copy was made: ${prepared.detail}",
+                )
+            }
+        }
+
         val copied = mutableListOf<AdmittedArtifact>()
 
         for (artifact in admitted) {
@@ -108,6 +135,18 @@ internal object PrivatePluginArtifacts {
             val copy = directory.resolve(copyNameOf(artifact.path, expected))
             try {
                 copyBytes(artifact.path, copy)
+            } catch (e: SymbolicLinkInArtifact) {
+                return CopyOutcome.Refused(
+                    artifact = artifact.path,
+                    rejection = PluginManifestRejection.ArtifactNotMeasurable(
+                        artifact = artifact.path.toString(),
+                        detail = "the artifact contains a symbolic link at ${e.path}, and a link can " +
+                            "point outside the artifact, so the copy could not be made from the " +
+                            "artifact's own content",
+                    ),
+                    detail = "the artifact $artifact contains a symbolic link at ${e.path}, and a link " +
+                        "can point outside the artifact, so it is not copied",
+                )
             } catch (e: IOException) {
                 return CopyOutcome.Refused(
                     artifact = artifact.path,
@@ -149,20 +188,27 @@ internal object PrivatePluginArtifacts {
      * traverse hides every file inside it, and a copy of a plugin JAR is not a secret the
      * operator asked to be protected from themselves — it is a file that must not be swapped
      * between the moment it is verified and the moment it is loaded.
+     *
+     * The permissions are IMPOSED and then VERIFIED, and a directory that does not hold the
+     * profile afterwards is a refusal rather than a warning: a copy that cannot be hidden from
+     * the other users of the machine is a copy that can be swapped between the moment it is
+     * verified and the moment it is loaded, which is the whole thing the copy exists to prevent.
      */
-    private fun privateDirectory(into: Path): Path {
-        Files.createDirectories(into)
-        runCatching {
-            Files.setPosixFilePermissions(
-                into,
-                setOf(
-                    PosixFilePermission.OWNER_READ,
-                    PosixFilePermission.OWNER_WRITE,
-                    PosixFilePermission.OWNER_EXECUTE,
-                ),
-            )
+    private fun privateDirectory(into: Path, permissions: DirectoryPermissions): PrivateDirectory {
+        try {
+            Files.createDirectories(into)
+        } catch (e: IOException) {
+            return PrivateDirectory.NotSecured("the private directory $into could not be created: ${e.message}")
         }
-        return into
+
+        val imposed = permissions.impose(into)
+        if (imposed != null) return PrivateDirectory.NotSecured(imposed)
+
+        if (!permissions.verify(into)) {
+            return PrivateDirectory.NotSecured("the permissions of $into are not the ones the profile requires")
+        }
+
+        return PrivateDirectory.Prepared(into)
     }
 
     /**
@@ -184,11 +230,13 @@ internal object PrivatePluginArtifacts {
                 from,
                 object : SimpleFileVisitor<Path>() {
                     override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                        if (Files.isSymbolicLink(dir)) throw SymbolicLinkInArtifact(dir.toString())
                         Files.createDirectories(to.resolve(from.relativize(dir).toString()))
                         return FileVisitResult.CONTINUE
                     }
 
                     override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                        if (Files.isSymbolicLink(file)) throw SymbolicLinkInArtifact(file.toString())
                         Files.copy(
                             file,
                             to.resolve(from.relativize(file).toString()),
@@ -199,7 +247,32 @@ internal object PrivatePluginArtifacts {
                 },
             )
         } else {
+            if (Files.isSymbolicLink(from)) throw SymbolicLinkInArtifact(from.toString())
             Files.copy(from, to, StandardCopyOption.REPLACE_EXISTING)
         }
     }
+
+    /**
+     * The private directory, either secured or not.
+     *
+     * There is no third case: a directory whose permissions could not be imposed and verified
+     * is a directory the copies do not go into.
+     */
+    private sealed interface PrivateDirectory {
+
+        /** The directory exists and holds the permissions the profile requires. */
+        data class Prepared(val path: Path) : PrivateDirectory
+
+        /** The directory could not be secured, and this is why. */
+        data class NotSecured(val detail: String) : PrivateDirectory
+    }
+
+    /**
+     * A symbolic link inside the artifact, which the copy refuses to follow.
+     *
+     * A link can point anywhere, so copying it would copy whatever it points at, and the copy
+     * would no longer be the artifact that was measured.
+     */
+    private class SymbolicLinkInArtifact(val path: String) :
+        IOException("the artifact contains a symbolic link at $path")
 }

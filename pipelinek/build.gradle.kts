@@ -11,6 +11,11 @@ plugins {
     // per-module via subprojects {... } below. See comments in
     // the application block for the phased rollout scope.
     alias(libs.plugins.binary.compatibility.validator) apply false
+    // Dokka. Declared at the root project and applied per-module via
+    // subprojects {... } below, to the modules whose public surface is frozen.
+    // It generates the HTML reference of the published API, and no task of the
+    // gate depends on it: the reference is asked for when someone wants it.
+    alias(libs.plugins.dokka) apply false
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -157,6 +162,37 @@ subprojects {
 // Static analysis is NOT removed: detekt below is the "análisis estático" leg of
 // the current verification pyramid and needs no tests to produce a verdict.
 
+// The modules whose public ABI is frozen by a committed `.api` dump. The list
+// lives here, next to the static analysis that also reads it, because TWO parts
+// of this build have to agree on it: the ABI guard that freezes the surface
+// (the binary-compatibility-validator section below) and the documentation
+// rules that hold the published surface to its contract. One list, two readers.
+
+val bcvModules = setOf(
+    "pipeline-domain",
+    "pipeline-events",
+    "pipeline-step-sdk:api",
+    "pipeline-credentials-api",
+    // The published output read contract. Added because `:pipeline-output` became a
+    // PUBLISHED artifact, and the dump is what freezes exactly which types a consumer resolves.
+    // Without it, adding a public type to the output plane would change the published surface with
+    // nothing failing: no diff to review, and no `apiCheck` to refuse it.
+    // `:pipeline-output-store` and `:pipeline-events-store` are deliberately NOT here. BCV protects
+    // a published ABI; those modules are not published, and a baseline over an internal
+    // implementation is maintenance with no consumer behind it.
+    "pipeline-output",
+    // Already PUBLISHED (the external plugin compiles against it) and
+    // therefore already had no ABI guard. Found while running `apiCheck` across the published set:
+    // the task did not exist. Guarding three published contracts and leaving the fourth free would
+    // have been the inconsistency, not the fix.
+    "pipeline-scripting-api",
+    // Runtime ports publication. The new `:pipeline-runtime-api` module
+    // (carved out of `:pipeline-runtime`) carries the publish/subscribe
+    // ports and their ADTs. Guiding the published ABI here so `apiCheck` refuses an
+    // unannounced surface change.
+    "pipeline-runtime-api",
+)
+
 // SAST (detekt). Applied to every Kotlin subproject with a single
 // shared config, and wired into each subproject's own `check` so the root
 // `check` inherits it.
@@ -175,8 +211,29 @@ subprojects {
         // already existed when it was taken, so the analysis fails on any NEW
         // one and the existing ones stop being news.
         val moduleBaseline = layout.projectDirectory.file("detekt-baseline-main.xml")
+        // The configuration this module is analysed with. The base applies to
+        // every module; the ones whose public contract is published get the
+        // overlay on top of it, which switches on the requirement that a public
+        // type states its contract. The overlay is passed SECOND on purpose:
+        // detekt merges the files it is handed and the last one wins.
+        //
+        // The membership test is the one the ABI guard uses, with the same list,
+        // so the two cannot disagree about which modules carry a frozen
+        // contract. The two guards read that contract from different sides —
+        // this one from the sources, the ABI guard from the committed `.api`
+        // dump — and the agreement between them is what says the published
+        // surface is the one the sources describe.
+        val isContractModule = bcvModules.any { project.path == ":$it" || project.path.endsWith(":$it") }
+        val detektConfig = if (isContractModule) {
+            rootProject.files(
+                "config/detekt/detekt.yml",
+                "config/detekt/detekt-published-contracts.yml",
+            )
+        } else {
+            rootProject.files("config/detekt/detekt.yml")
+        }
         extensions.configure<dev.detekt.gradle.extensions.DetektExtension> {
-            config.setFrom(rootProject.files("config/detekt/detekt.yml"))
+            config.setFrom(detektConfig)
             buildUponDefaultConfig.set(true)
             parallel.set(true)
             // Each detekt task reads the source set it belongs to: `detektMain`
@@ -452,32 +509,8 @@ subprojects {
 // distribution shipped, so a break of it is named by the instrument, it carries a maturity
 // classification, and it needs an exception receipt like any other published break.
 // Adding a new module to BCV requires two steps: (1) append its name to
-// `bcvModules` below; (2) run `:pipeline-<x>:apiDump` to materialise the
+// `bcvModules` above; (2) run `:pipeline-<x>:apiDump` to materialise the
 // baseline, then commit.api file alongside the build change.
-val bcvModules = setOf(
-    "pipeline-domain",
-    "pipeline-events",
-    "pipeline-step-sdk:api".removePrefix(":"), // resolved below by project.path
-    "pipeline-credentials-api",
-    // The published output read contract. Added because `:pipeline-output` became a
-    // PUBLISHED artifact, and the dump is what freezes exactly which types a consumer resolves.
-    // Without it, adding a public type to the output plane would change the published surface with
-    // nothing failing: no diff to review, and no `apiCheck` to refuse it.
-    // `:pipeline-output-store` and `:pipeline-events-store` are deliberately NOT here. BCV protects
-    // a published ABI; those modules are not published, and a baseline over an internal
-    // implementation is maintenance with no consumer behind it.
-    "pipeline-output",
-    // Already PUBLISHED (the external plugin compiles against it) and
-    // therefore already had no ABI guard. Found while running `apiCheck` across the published set:
-    // the task did not exist. Guarding three published contracts and leaving the fourth free would
-    // have been the inconsistency, not the fix.
-    "pipeline-scripting-api",
-    // Runtime ports publication. The new `:pipeline-runtime-api` module
-    // (carved out of `:pipeline-runtime`) carries the publish/subscribe
-    // ports and their ADTs. Guiding the published ABI here so `apiCheck` refuses an
-    // unannounced surface change.
-    "pipeline-runtime-api",
-)
 
 subprojects {
     val isBcvModule = bcvModules.any { project.path == ":$it" || project.path.endsWith(":$it") }
@@ -490,6 +523,104 @@ subprojects {
         pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
             tasks.named("check") {
                 dependsOn(tasks.named("apiCheck"))
+            }
+        }
+    }
+}
+
+// ── the HTML reference of the published API ─────────────────────────────────────
+//
+// Dokka generates the reference a third party reads to learn what this product
+// publishes. It is applied to the modules whose public ABI is frozen, and to
+// NO other: a reference of an internal module would describe a surface nobody
+// consumes.
+//
+// The membership test is the one the ABI guard uses, with the same list, so the
+// reference and the frozen surface cannot disagree about which modules carry a
+// published contract. `bcvModules` is now read by three guards — the ABI
+// baseline, the documentation rules and this one — and ONE list is what keeps
+// them from drifting apart.
+//
+// The reference is ONE site PER CONTRACT, and not a single aggregated site.
+// That is a measured decision, not a preference: Dokka 2.2.0 can aggregate the
+// modules into one site, and the aggregated site was measured at 2764 broken
+// internal links out of 193281 (the paths it writes carry a module prefix that
+// the aggregation does not rewrite), while the per-module site of the same
+// contract measures ZERO broken links out of 4446. A reference whose links do
+// not resolve is a worse artifact than seven references that each resolve.
+//
+// Why Dokka enters the build at all: it brings an engine (KDoc analysis over
+// K2) and an output format (HTML) that this project does not own and would not
+// reimplement for an artifact that is not part of the product. It runs at build
+// time and reaches no published jar.
+//
+// The output lands in `build/dokka/html` inside each module, inside `build/`
+// and outside the versioned tree: a reference is a build artifact, and this
+// repository carries no documentation tree.
+//
+// Nothing here is wired into `check`: the generation is an INDEPENDENT task
+// that a reader asks for when they want the reference, and it is never part of
+// the cost of a unit test or of the gate.
+subprojects {
+    val isBcvModule = bcvModules.any { project.path == ":$it" || project.path.endsWith(":$it") }
+    if (isBcvModule) {
+        pluginManager.apply("org.jetbrains.dokka")
+        pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+            extensions.configure<org.jetbrains.dokka.gradle.DokkaExtension> {
+                // The output is declared here and not left to the tool's
+                // default: "the reference lives under build/" is this
+                // repository's contract, and a contract that depends on a
+                // default is a contract one upgrade can break.
+                dokkaPublications.getByName("html").outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+            }
+        }
+    }
+}
+
+// The one task that asks for the whole reference: `./gradlew apiReferenceHtml`.
+// It depends on the per-contract generation and on nothing else. It is
+// deliberately NOT a dependency of `check`, of `build` or of any test task, so
+// neither a unit test nor the gate pays for a web page.
+tasks.register("apiReferenceHtml") {
+    group = "documentation"
+    description = "Generates the HTML reference of every published contract under each module's build/dokka/html."
+    dependsOn(bcvModules.map { module -> ":$module:dokkaGeneratePublicationHtml" })
+}
+
+// The review of the published reference, as the gate asks for it.
+//
+// A contract is read through its reference, and a link in that reference which
+// names a symbol the reader cannot open is a promise the artifact does not
+// keep. The generator emits a warning for each of those links, and a warning
+// that nobody counts is a warning nobody fixes.
+//
+// The generation is FORCED when this task is what was asked for. A generation
+// Gradle finds up to date emits no warning at all, so reading the log of one
+// would report zero unresolved links whatever the tree says. The generator
+// has no `failOnWarning` of its own, and the re-run is what makes the
+// measurement real.
+//
+// The contracts are the SAME ones the ABI guard freezes, from the SAME list,
+// so the reference and the frozen surface cannot disagree about which modules
+// carry a published contract.
+tasks.register("publishedReferenceCheck") {
+    group = "documentation"
+    description = "Generates the reference of every published contract and reports the KDoc links that do not resolve."
+    dependsOn(bcvModules.map { module -> ":$module:dokkaGeneratePublicationHtml" })
+}
+
+// The re-run is forced for the review alone. A reader who asks for the
+// reference gets the one Gradle already holds, because an unchanged input
+// produces an unchanged reference; and the review asks for a fresh one,
+// because it counts warnings that a held reference no longer emits.
+gradle.projectsEvaluated {
+    val asksForTheReview = gradle.startParameter.taskNames.any {
+        it.substringAfterLast(':') == "publishedReferenceCheck"
+    }
+    if (asksForTheReview) {
+        bcvModules.forEach { module ->
+            project(":$module").tasks.named("dokkaGeneratePublicationHtml").configure {
+                outputs.upToDateWhen { false }
             }
         }
     }

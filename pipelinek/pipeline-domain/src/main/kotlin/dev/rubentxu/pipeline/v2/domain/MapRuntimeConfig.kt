@@ -9,8 +9,8 @@ package dev.rubentxu.pipeline.v2.domain
  * at construction and then frozen.
  * Both maps are defensively copied on construction so that subsequent
  * mutation of the source maps by the caller does not affect this config.
- * @property env frozen map of OS environment variables (case-sensitive keys).
- * @property properties frozen map of JVM system properties.
+ * @param env frozen map of OS environment variables (case-sensitive keys).
+ * @param properties frozen map of JVM system properties.
 */
 class MapRuntimeConfig(
     env: Map<String, String>,

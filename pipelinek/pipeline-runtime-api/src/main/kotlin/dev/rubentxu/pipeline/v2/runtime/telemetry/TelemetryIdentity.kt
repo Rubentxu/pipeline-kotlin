@@ -196,6 +196,11 @@ data class TelemetryIdentityRule(
  * is why the step names, the commands, the paths and the tokens are absent —
  * not because they were filtered out on the way, but because they were never
  * in the list.
+ *
+ * The vocabulary is also HONEST: a key named here is a key the product
+ * emits, and a key the product emits is a key named here. The two sets are
+ * compared by an instrument, because a vocabulary and its producers are two
+ * declarations and two declarations drift apart on their own.
  */
 enum class TelemetryVocabularyRole {
     /** The key carries an identity, and only that identity. */
@@ -204,7 +209,15 @@ enum class TelemetryVocabularyRole {
     /** The key carries an ordinal, which is bounded by the run's shape. */
     INDEX,
 
-    /** The key carries an outcome, drawn from a closed set of words. */
+    /**
+     * The key carries an outcome, drawn from a closed set of words.
+     *
+     * No ATTRIBUTE carries this role, and the reason is the product's own:
+     * how a span ended is the span's STATUS, which the exporter already
+     * carries, and an attribute that repeated it would be a second place for
+     * the two to disagree. The role belongs to the `status` dimension, which
+     * is where a measurement says what came out of it.
+     */
     OUTCOME,
 
     /** The key carries a class, drawn from a closed set of words. */
@@ -349,6 +362,11 @@ data class TelemetryIdentityTable(
         TelemetryTravel.Nowhere -> "nowhere"
     }
 
+    /**
+     * The table this product ships, and the only one a consumer needs to
+     * consult to know which identity it may join on, which one it may not,
+     * and where each of them travels.
+     */
     companion object {
         /**
          * The shipped table.
@@ -443,12 +461,12 @@ data class TelemetryIdentityTable(
                 TelemetryVocabularyEntry("run.id", TelemetryVocabularyRole.IDENTITY),
                 TelemetryVocabularyEntry("stage.index", TelemetryVocabularyRole.INDEX),
                 TelemetryVocabularyEntry("step.index", TelemetryVocabularyRole.INDEX),
-                TelemetryVocabularyEntry("compile.outcome", TelemetryVocabularyRole.OUTCOME),
+                TelemetryVocabularyEntry("script.origin", TelemetryVocabularyRole.CLASS),
                 TelemetryVocabularyEntry("failure.class", TelemetryVocabularyRole.CLASS),
             ),
             dimensionVocabulary = listOf(
                 TelemetryVocabularyEntry("operation_kind", TelemetryVocabularyRole.CLASS),
-                TelemetryVocabularyEntry("status", TelemetryVocabularyRole.CLASS),
+                TelemetryVocabularyEntry("status", TelemetryVocabularyRole.OUTCOME),
                 TelemetryVocabularyEntry("failure_class", TelemetryVocabularyRole.CLASS),
             ),
         )
@@ -499,6 +517,11 @@ data class LiveTraceContext(
         }
     }
 
+    /**
+     * The shapes a live trace id and a live span id must have: 32 and 16
+     * lowercase hexadecimal characters, the shape W3C trace context gives
+     * them.
+     */
     companion object {
         private val TRACE_ID: Regex = Regex("^[0-9a-f]{32}$")
         private val SPAN_ID: Regex = Regex("^[0-9a-f]{16}$")

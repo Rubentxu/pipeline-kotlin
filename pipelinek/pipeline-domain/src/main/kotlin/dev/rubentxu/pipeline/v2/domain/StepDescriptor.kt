@@ -84,9 +84,50 @@ sealed interface BodyInvocationPolicy {
  * Kind of context introduced by a block step.
 */
 sealed interface ContextKind {
+    /**
+     * The body runs with an environment overlay projected around it.
+     *
+     * A descriptor declares this kind when its body executes under
+     * [dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection.Environment].
+     * The overlay's values arrive as decoded input, never as part of the
+     * declaration, so the kind names the dimension and not the content.
+     */
     data object ENVIRONMENT : ContextKind
+
+    /**
+     * The body runs with a working directory projected around it.
+     *
+     * The directory is decoded input: the declaration says which dimension is
+     * in scope, so two runs of the same step kind project whatever their own
+     * input says.
+     */
     data object CWD : ContextKind
+
+    /**
+     * The body runs under a bound credential lease.
+     *
+     * The lease is bound by the credential scope preamble rather than by the
+     * overlay derivation, so this kind names the dimension the scope owns and
+     * nothing about how the lease is obtained.
+     */
     data object CREDENTIALS : ContextKind
+
+    /**
+     * The body runs at most once, and its outcome is turned into a published
+     * warning.
+     *
+     * The scope ends UNSTABLE whatever the body produced, which is what
+     * distinguishes a decoration from a containment.
+     */
     data object OUTPUT_DECORATOR : ContextKind
+
+    /**
+     * The scope decides what an interruption of the body means.
+     *
+     * Two shapes share this dimension: a deadline that ends the body, and a
+     * containment that absorbs the body's failure. The declaration states
+     * which one it is, so the kind alone says only that interruption is in
+     * scope here.
+     */
     data object CANCELLATION : ContextKind
 }

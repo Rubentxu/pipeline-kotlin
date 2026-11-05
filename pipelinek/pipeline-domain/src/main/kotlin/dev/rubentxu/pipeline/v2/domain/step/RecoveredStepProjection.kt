@@ -25,7 +25,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
  *  authority         it receives a terminal and returns a value; it decides nothing about
  *                    Execute / Reuse / Recover / Diverged / Abort
  * ```
- * It is an [InsufficientEvidence] reporter as much as a projector. Declaring a recovered value
+ * It is an [RecoveredProjection.InsufficientEvidence] reporter as much as a projector. Declaring a recovered value
  * possible is not a promise that one is: a Step whose return mode needs evidence the substrate never
  * recorded must say so, because the alternative is inventing a value.
 */

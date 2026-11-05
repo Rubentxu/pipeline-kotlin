@@ -12,9 +12,11 @@ import java.nio.file.Path
  *
  * ## What this is for
  *
- * `OutputReadPort` existed since, and nothing called it. A contract nobody can call is a
- * design, not a product. This is the surface a consumer actually reaches for: a Jenkins
- * `LogStorage`, a Fabric ACL adapter, or [MainConsoleCli].
+ * `OutputReadPort` is the published read side, and this is the surface a consumer
+ * actually reaches for: a Jenkins
+ * `LogStorage`, a Fabric ACL adapter, or [MainConsoleCli]. What such a consumer may
+ * read, and what it may not do, is the contract the root README states under
+ * "Reading a run from outside".
  *
  * ## Why it is not built on `EventHistoryReader`
  *

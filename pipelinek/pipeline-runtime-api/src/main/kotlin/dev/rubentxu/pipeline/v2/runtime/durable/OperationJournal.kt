@@ -61,7 +61,7 @@ interface OperationJournal {
     fun get(opId: String, attempt: Int): DurableOperation?
 
     /**
-     * Lists all journaled operations for a given [runId], ordered by [created_at] ascending.
+     * Lists all journaled operations for a given [runId], ordered by `created_at` ascending.
      *
      * @param runId The run identifier.
      * @return A [List] of [DurableOperation] in execution order.

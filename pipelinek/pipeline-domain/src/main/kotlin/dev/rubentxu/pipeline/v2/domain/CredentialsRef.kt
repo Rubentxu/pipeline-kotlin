@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import kotlinx.serialization.Serializable
+
 import org.jetbrains.annotations.NotNull
 
 /**
@@ -13,7 +15,7 @@ import org.jetbrains.annotations.NotNull
  * No function or event field should ever carry `Map<String, String>` or
  * raw secret bytes across module boundaries. Instead, they carry
  * [CredentialsRef] which is resolved to [SecretHandle] only at the
- * [CredentialScope.env] call site (the single coercion choke).
+ * `CredentialScope.env` call site (the single coercion choke).
  * ## Usage
  * ```
  * val credentialsId = CredentialsId("github-token")
@@ -22,7 +24,8 @@ import org.jetbrains.annotations.NotNull
  * ```
  * @see CredentialsId for the ID type
  * @see SecretHandle for the secret value channel
- * @see dev.rubentxu.pipeline.v2.credentials.api.CredentialScope for the scope that resolves refs
+ * The scope that resolves refs is `CredentialScope`, in the credentials API.
 */
 @JvmInline
+@Serializable
 value class CredentialsRef(@NotNull val id: CredentialsId)

@@ -142,8 +142,23 @@ data class TimeLimit(val seconds: Long)
  * that can enforce one of them can enforce all of them.
  */
 sealed interface ResourceBudget {
+    /**
+     * No budget: the run spends what it needs.
+     *
+     * This is the legacy behaviour, and it is what a request that names no
+     * resource posture gets. A host that can enforce limits does not apply
+     * them here.
+     */
     data object Unbounded : ResourceBudget
 
+    /**
+     * A budget the run is held to.
+     *
+     * Every limit present is one the run may not exceed; a limit absent is
+     * a dimension the run is not bounded on. Asking for a bounded budget is
+     * asking for a capability, so only a host that can enforce limits
+     * honours the request.
+     */
     data class Bounded(
         val cpu: CpuLimit? = null,
         val memory: MemoryLimit? = null,

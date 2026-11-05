@@ -3,6 +3,111 @@
 # with rules that are pure noise disabled below — each with a stated reason.
 # No rule is disabled to hide a reviewed finding.
 
+comments:
+  # The documentation rules. Every rule here is either on, with the reason it
+  # earns its place, or off, with the number that says why it is not.
+  #
+  # The rule that matters most is `OutdatedDocumentation`: the KDoc coverage
+  # guard asks whether a published type HAS a contract, and this one asks
+  # whether the contract it states is TRUE. A KDoc that names a parameter the
+  # declaration does not have sends a reader to call something that does not
+  # exist, and no other instrument in the tree sees that.
+  OutdatedDocumentation:
+    active: true
+    # `exhaustive: true` demands a `@param` for EVERY parameter. The house
+    # style of a contract KDoc is prose — the guarantee, the precondition, what
+    # it refuses — and a `@param` line per parameter is the boilerplate the
+    # policy forbids. With it off, the rule validates the parameters the KDoc
+    # DOES name, which is the part that can be a lie.
+    exhaustive: false
+    # A type parameter carries no contract of its own: the contract belongs to
+    # the declaration that uses it, so demanding `@param T` would be the same
+    # boilerplate.
+    matchTypeParameters: false
+    # This repository documents a constructor property with `@param`, and the
+    # rule is told so. Without this, every data class that names its
+    # constructor's properties is reported as documenting a parameter that is
+    # not there.
+    allowParamOnConstructorProperties: true
+    # Measured over the tree, one option at a time, on the sources as they were
+    # before the corrections below:
+    #   every option at detekt's own default        132 findings
+    #   `exhaustive: false`                            82 findings  (-50)
+    #   `allowParamOnConstructorProperties: true`      15 findings  (-67)
+    #   `matchTypeParameters: false`                   15 findings  ( -0)
+    # The 132 are the rule's defaults, which are `exhaustive: true`,
+    # `matchTypeParameters: true` and
+    # `allowParamOnConstructorProperties: false` (detekt 2.0.0-alpha.6).
+    # Of the 82 that survive `exhaustive: false`, 67 are the data classes whose
+    # constructor properties are documented with `@param`: the rule reads that
+    # tag as naming a parameter the class does not declare, because the
+    # property is not a parameter of the declaration it documents. Those 67 are
+    # what `allowParamOnConstructorProperties: true` removes.
+    # `matchTypeParameters: false` removes nothing over this tree — no
+    # declaration documents a type parameter — so it is set to the house style
+    # at no cost in coverage.
+    # The 15 that remain are the lies a reader would act on: a KDoc that names
+    # a parameter the declaration does not have, or lists them in an order the
+    # declaration does not use. All 15 were corrected, and the rule reports 0
+    # on the tree as it stands.
+  DeprecatedBlockTag:
+    active: true
+    # A `@deprecated` KDoc tag deprecates nothing in Kotlin: only the annotation
+    # does. A tag beside a live declaration promises a deprecation the compiler
+    # never reports, and the reader of the contract believes in it.
+    # Measured over the tree: 1 finding.
+  KDocReferencesNonPublicProperty:
+    active: true
+    # A published contract that links to a private property links to something
+    # the reader cannot open.
+    # Measured over the tree: 4 findings.
+  UndocumentedPublicClass:
+    active: false
+    # Measured over the tree: 259 findings, and 0 of them in the seven modules
+    # whose contract is published — the KDoc coverage guard already holds those
+    # at 100%. Applied to the whole tree it would demand a KDoc on internal
+    # classes, which is the empty documentation the policy forbids. It is
+    # switched on for the published modules only; see
+    # `detekt-published-contracts.yml`.
+    #
+    # What the overlay adds over that guard is not the measurement but the
+    # cadence: the guard reads the tree when the gate runs, and this rule
+    # reads it on every build of the module that publishes the contract. Both
+    # were seen failing on the same defect — a published type whose KDoc was
+    # removed — and the point of having both is that the second one does not
+    # wait for the next gate.
+  UndocumentedPublicFunction:
+    active: false
+    # Measured over the tree: 302 findings, 168 of them in the published
+    # modules. They are the DSL builders (`sh`, `echo`, `stage`) and the codec
+    # functions, and a one-line KDoc per builder is the boilerplate the policy
+    # forbids: the contract of a builder is stated by the type it builds.
+  UndocumentedPublicProperty:
+    active: false
+    # Measured over the tree: 2345 findings, 1327 of them in the published
+    # modules. A data class names its state in its constructor, and a
+    # `@property` line per field would double the size of every published type
+    # without saying anything the type's own contract does not already say.
+  DocumentationOverPrivateFunction:
+    active: false
+    # Measured over the tree: 806 findings. The policy allows a private member
+    # to carry a KDoc when it holds a non-obvious invariant, and this rule
+    # cannot tell that member from the others.
+  DocumentationOverPrivateProperty:
+    active: false
+    # Measured over the tree: 271 findings, for the same reason as the function
+    # above.
+  EndOfSentenceFormat:
+    active: false
+    # Measured over the tree: 58 findings. Punctuation is not part of a
+    # contract.
+  AbsentOrWrongFileLicense:
+    active: false
+    # This repository carries no per-file licence header, so there is nothing
+    # for the rule to accept and nothing for it to protect.
+    # Measured over the tree: 0 findings — the rule needs a licence template to
+    # compare against, and this repository declares none.
+
 complexity:
   LongMethod:
     allowedLines: 120

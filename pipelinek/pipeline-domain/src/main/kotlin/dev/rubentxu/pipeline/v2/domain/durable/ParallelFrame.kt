@@ -9,7 +9,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
 /**
  * Minimal domain interface for a pipeline step.
  * This is the domain-level contract.  The DSL layer's [StepSpec] sealed interface
- * (in [dev.rubentxu.pipeline.v2.dsl]) implements this interface, allowing
+ * (in `dev.rubentxu.pipeline.v2.dsl`) implements this interface, allowing
  * [BranchSpec.steps] to be typed against the domain without a DSL dependency.
  * Concrete step variants (echo, shell, error, sleep, parallel) are defined
  * in the DSL layer as data classes implementing this interface.
@@ -24,8 +24,8 @@ interface StepSpec {
 
 /**
  * Marker interface for pipeline frame types that can appear in a pipeline
- * execution sequence. Used by [dev.rubentxu.pipeline.v2.application.PipelineRun]
- * to dispatch to the appropriate frame handler (sequential vs. parallel).
+ * execution sequence. [ParallelFrame] is the frame the `ReplayCursorStore`
+ * advances past.
  * @see ParallelFrame
 */
 sealed interface PipelineFrame
@@ -34,7 +34,7 @@ sealed interface PipelineFrame
  * Represents a parallel execution frame containing multiple branches that
  * execute concurrently, joined by a [JoinPolicy].
  * This is a pure-domain type: it has no dependency on [OperationContext],
- * [ReplayCursor][dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore],
+ * `ReplayCursorStore`,
  * or any other execution artifact.
  * @property branches The list of branch specifications to execute in parallel.
  * @property joinPolicy The policy determining when the parallel frame completes.

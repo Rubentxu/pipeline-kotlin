@@ -27,7 +27,7 @@ val WHEN_DIRECTIVE_KEY: DirectiveKey = DirectiveKey("core.when")
  * predicate codec already guards against for `when`.
  * This paragraph used to say the key was "NOT yet registered" by a
  * [dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinition], that "the
- * definition, the resolver and the interpreter do not [exist]", and that "the
+ * definition, the resolver and the interpreter do not exist", and that "the
  * DSL still throws". All three were false from.1 onward and had been read as
  * true by anyone consulting the source: `AgentDirectiveDefinition`,
  * `LocalExecutionTargetResolver`, the `DirectiveExecutionPolicy.Resource`

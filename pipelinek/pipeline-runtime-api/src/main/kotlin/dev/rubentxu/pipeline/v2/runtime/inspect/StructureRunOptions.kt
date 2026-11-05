@@ -14,8 +14,10 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
  *    result, depending on the mismatch.
  *  - `includeTerminalStages` — when `true` (the default), terminal stages
  *    are included in the enumeration. When `false`, only in-flight stages
- *    are returned. The flag exists so a Fabric that wants the live view of
- *    a long-running run can skip the historical tail.
+ *    are returned. The flag exists so an external consumer that wants the
+ *    live view of a long-running run can skip the historical tail.
+ * What a consumer outside this process may ask for, and what it may not do,
+ * is the contract the root README states under "Reading a run from outside".
  * The options are validated at construction (`init`); a closed ADT pattern
  * with a `Default` companion preserves the "no `Either`/`Result` reuse"
  * rule.
@@ -31,6 +33,14 @@ data class StructureRunOptions(
         }
     }
 
+    /**
+     * The bounds and the default the product ships with.
+     *
+     * It holds the page size a call uses when the caller names none, the
+     * ceiling a call may not exceed, and the options themselves. A caller
+     * that wants a bounded scan says so by naming a page size; the default
+     * is the bound the product considers safe for a call nobody bounded.
+     */
     companion object {
         /** Default page size; matches the design's `DEFAULT_INSPECT_TIMEOUT_MS` discipline */
         const val DEFAULT_STRUCTURE_PAGE_SIZE: Int = 64

@@ -1,9 +1,12 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import kotlinx.serialization.Serializable
+
 /**
  * Classification of failure kinds for error reporting.
- * Used by [dev.rubentxu.pipeline.v2.dsl.StepSpec.Error] step type.
+ * Used by `StepSpec.Error` step type.
 */
+@Serializable
 enum class FailureKind {
     /** Infrastructure-level failure (network, disk, etc.) */
     INFRASTRUCTURE,
@@ -27,6 +30,14 @@ enum class FailureKind {
     UNKNOWN,
     ;
 
+    /**
+     * The vocabulary of the failure tokens this runtime accepts.
+     *
+     * The kind a token names is decided here and nowhere else: the tokens a
+     * caller may offer are published as a set, and the answer for one of
+     * them is a kind or `null`. A token outside the vocabulary is refused,
+     * never rounded to a nearby kind.
+     */
     companion object {
 
         /**

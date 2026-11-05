@@ -9,7 +9,7 @@ import java.nio.file.Path
  * ## Why this exists
  * The body execution decision lives in two layers:
  *  1. **Decision** — `BlockStepNode.projectBodyExecution(policy, options)`
- *     produces a [BodyExecutionProjection] (pure: `(policy, options) -> ADT`).
+ *     produces a `BodyExecutionProjection` (pure: `(policy, options) -> ADT`).
  *  2. **Interpretation** — `BodyInterpreter.interpret(projection)` produces a
  *     [InterpretedBody] describing how the body machinery should run the body:
  *     the scope to project, the `ShOptions` patch to apply, whether the body is
@@ -171,7 +171,7 @@ sealed interface ContextOverlayDescriptor {
 /**
  * Pure patch describing the typed values the runner should overlay on the
  * inherited runtime options before running body children.
- * The interpreter produces one of these for every [Scoped] body. No effect,
+ * The interpreter produces one of these for every [InterpretedBody.Scoped] body. No effect,
  * no event emission: the runner applies the patch atomically with the
  * corresponding `*Entered` event.
  * The interpreter is intentionally agnostic to the concrete runtime options
@@ -188,6 +188,15 @@ data class ShPatch(
     val workingDirectory: Path? = null,
     val env: Map<String, String>? = null,
 ) {
+    /**
+     * The shared patches a runner can name without building one.
+     *
+     * The companion holds the identity patch — the patch that overrides nothing —
+     * so a scope with nothing to project says so by naming it instead of spelling
+     * an empty set of overrides at every use. The patch stays a value: a field
+     * left unset means "inherit from the parent", and nothing here is applied
+     * until the runner materializes it onto its own options type.
+     */
     companion object {
         /** Identity patch: every field `null`, no fields overridden. */
         val NONE: ShPatch = ShPatch()

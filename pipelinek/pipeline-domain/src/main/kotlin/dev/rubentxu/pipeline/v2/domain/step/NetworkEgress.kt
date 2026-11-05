@@ -37,8 +37,23 @@ data class EgressDestination(
  * policy refusal from a typo will change the wrong thing.
 */
 sealed interface EgressDecision {
+
+    /**
+     * The socket to this destination may be opened.
+     *
+     * The answer is about ONE destination: it says nothing about any other, so
+     * a caller that opens sockets to several destinations asks the gate about
+     * each of them separately.
+     */
     data object Allowed : EgressDecision
 
+    /**
+     * The socket to this destination may not be opened.
+     *
+     * The refusal names which rule refused it, so an operator can tell a run
+     * with no network from a run whose network does not reach this host, and
+     * neither from a destination the runtime could not make sense of.
+     */
     data class Refused(val reason: EgressRefusal) : EgressDecision
 }
 

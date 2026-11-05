@@ -15,24 +15,27 @@ import dev.rubentxu.pipeline.v2.events.EventRecordSlice
  * The existing [dev.rubentxu.pipeline.v2.events.EventStore] interface
  * combines a write side (`append`, `appendAssigned`) and a read side
  * (`readRecords`, `readSlice`, `eventsFor`). For external consumers
- * like Fabric, the read side is the only thing needed; the write side
- * is a runtime concern that should not be part of the public ABI.
+ * like Fabric, the read side is the only thing needed: the write side of
+ * [dev.rubentxu.pipeline.v2.events.EventStore] is the engine's, and a
+ * consumer that appended into the run's event lane would be a second
+ * authority over the facts of the run. What an external consumer may read,
+ * and what it may not do, is the contract the root README states under
+ * "Reading a run from outside".
  * [EventTail.readAfter] is the only existing paged read port, but it
  * returns `EventPage(envelopes: List<PipelineEventEnvelope>, ...)` —
  * wire envelopes, not the typed [dev.rubentxu.pipeline.v2.events.DomainEvent]
- * Payload. The design requires a port that returns the typed payload
+ * Payload. The requirement is a port that returns the typed payload
  * directly, with refusal rows preserved, so consumers do not need to
  * project envelopes themselves.
  * [EventRecordReadPort] is the new port. It is a thin wrapper around
  * [dev.rubentxu.pipeline.v2.events.EventStore.readRecords] that omits
- * the write side. Adding this port does NOT change [EventStore] or
+ * the write side. Adding this port does NOT change [dev.rubentxu.pipeline.v2.events.EventStore] or
  * [EventTail]; both stay where they are.
  * ## Stability
- * This port is `EXPERIMENTAL` for the first cut (capability ID
- * `events.follow.v1` is published only after the contract test suite
- * is green). The
- * Implementation may add a typed `RunId` parameter in a future
- * the port signature is additive.
+ * The shape of this port may still change, and it carries no capability id
+ * of its own. A change to its signature is additive: a typed `RunId`
+ * parameter may join the ones it has without breaking a caller that names
+ * none.
 */
 interface EventRecordReadPort {
 

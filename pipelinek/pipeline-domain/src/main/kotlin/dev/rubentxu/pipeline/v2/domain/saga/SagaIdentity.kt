@@ -63,6 +63,14 @@ value class SagaId private constructor(val value: String) {
 
     override fun toString(): String = value
 
+    /**
+     * The two ways to obtain a Saga id: one that refuses, and one that
+     * answers `null`.
+     *
+     * Both apply the same rule — trimmed, not blank, within the shared
+     * length limit, and free of whitespace and control characters — so the
+     * two forms differ only in what a caller does with a rejected value.
+     */
     companion object {
         /**
          * A validated Saga id.
@@ -88,6 +96,15 @@ value class SagaActionId private constructor(val value: String) {
 
     override fun toString(): String = value
 
+    /**
+     * The two ways to obtain an action id: one that refuses, and one that
+     * answers `null`.
+     *
+     * The rule is the one the Saga identifiers share — trimmed, not blank,
+     * within the shared length limit, and free of whitespace and control
+     * characters — because an action id is a key: two different obligations
+     * must not collapse into one.
+     */
     companion object {
         /**
          * A validated action id.
@@ -113,6 +130,16 @@ value class CompensationId private constructor(val value: String) {
 
     override fun toString(): String = value
 
+    /**
+     * The two ways to obtain a compensation id: one that refuses, and one
+     * that answers `null`.
+     *
+     * The rule is the one the Saga identifiers share — trimmed, not blank,
+     * within the shared length limit, and free of whitespace and control
+     * characters — because the compensation id names the promise that undoes
+     * an effect, and two promises that share one key leave an effect owed to
+     * nobody.
+     */
     companion object {
         /**
          * A validated compensation id.
@@ -163,6 +190,15 @@ value class SagaPlanFingerprint(val hex: String) {
 
     override fun toString(): String = hex
 
+    /**
+     * The published canonical form of a plan and the digest derived from it.
+     *
+     * The version travels with the form, so an implementation that
+     * reproduces another version says so out loud instead of quietly
+     * disagreeing. The canonical form is the text every implementation has
+     * to spell identically, the digest is the SHA-256 of that text, and the
+     * tolerant form is for a digest that arrives from an untrusted source.
+     */
     companion object {
         /**
          * The version of the CANONICAL FORM this fingerprint is derived from.
@@ -279,6 +315,16 @@ value class ResourceRef private constructor(val value: String) {
 
     override fun toString(): String = value
 
+    /**
+     * The two ways to obtain a resource reference: one that refuses, and one
+     * that answers `null`.
+     *
+     * The value is trimmed, must not be blank, must fit the length limit
+     * declared here, and must carry no control characters. It names WHICH
+     * external thing a Saga acts on, so it never carries a secret: it is a
+     * readable identifier, and a value that can be read is a value that can
+     * leak.
+     */
     companion object {
         /** Long enough for a qualified resource name, short enough to catch a runaway value. */
         const val MAX_LENGTH: Int = 512
@@ -317,6 +363,15 @@ value class EffectReceiptRef private constructor(val value: String) {
 
     override fun toString(): String = value
 
+    /**
+     * The two ways to obtain a receipt reference: one that refuses, and one
+     * that answers `null`.
+     *
+     * The value is trimmed, must not be blank, must fit the length limit
+     * declared here, and must carry no control characters. It correlates an
+     * observed effect with the provider's receipt and carries nothing else:
+     * no payload, no captured output, no token.
+     */
     companion object {
         /** Long enough for a provider receipt id, short enough to catch a runaway value. */
         const val MAX_LENGTH: Int = 256

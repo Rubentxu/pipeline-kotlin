@@ -22,8 +22,8 @@ import java.util.regex.Pattern
  * computation). This ensures consistent enumeration without duplication.
  * ## Minimum Maskable Length
  * Per GitLab rule, secrets shorter than [MIN_MASKABLE_LENGTH] are NOT registered for masking, and
- * the discard is SILENT: nothing is thrown, nothing is reported, and the value simply never
- * reaches [registeredSecrets].
+ * the discard is SILENT: nothing is thrown, nothing is reported, and the value is never
+ * registered, so no masking pattern is ever built for it.
  * ## What this means for a caller, stated plainly
  * A bound credential whose secret is shorter than [MIN_MASKABLE_LENGTH] runs normally and its value
  * appears in the transcript IN THE CLEAR. The threshold governs MASKING, not VALIDITY — a short
@@ -319,7 +319,7 @@ class SecretPatternRegistry {
 
     /**
      * Scrubs all registered secret patterns from a string.
-     * This is a standalone scrub for use cases like [GitCheckoutFailed.reason]
+     * This is a standalone scrub for use cases like `GitCheckoutFailed.reason`
      * where the error message may contain embedded credentials that need to be
      * redacted before the event is emitted.
      * `GitCheckoutFailed.reason` must be scrubbed via this method
@@ -338,6 +338,14 @@ class SecretPatternRegistry {
         return result
     }
 
+    /**
+     * The thresholds and the marker the registry works by.
+     *
+     * [MIN_MASKABLE_LENGTH] is the shortest value worth masking and [MIN_SECRET_WINDOW] the floor
+     * of the lookahead a streaming redactor needs. [SCRUB_MARKER] is what a masked value is
+     * replaced by. They are public because a caller that reports on redaction needs to state the
+     * same thresholds the registry applies, not a copy of them.
+     */
     companion object {
         /**
          * GitLab minimum maskable secret length.

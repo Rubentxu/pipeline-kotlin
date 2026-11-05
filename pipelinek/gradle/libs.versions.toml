@@ -16,6 +16,13 @@ protobufJava = "4.36.2"
 junit = "5.11.4"
 junitLauncher = "1.11.4"
 cyclonedx = "1.8.2"
+# Dokka: the engine that generates the HTML reference of the published API.
+# 2.2.0 is the stable release; 2.3.0-Beta is a pre-release and is not used here.
+# It earns its place under the dependency policy because it brings an engine
+# (KDoc analysis over K2) and an output format (HTML) that this project does
+# not own and would not reimplement: the reference is a build artifact, not
+# part of the product. It runs at build time and reaches no published jar.
+dokka = "2.2.0"
 
 # BouncyCastle (credentials-local module only)
 # NOTE: bcprov-jdk18on is the correct artifact (NOT bcprov-jdk21on which does not exist)
@@ -76,3 +83,5 @@ detekt = { id = "dev.detekt", version = "2.0.0-alpha.6" }
 cyclonedx = { id = "org.cyclonedx.bom", version.ref = "cyclonedx" }
 # ABI baseline capture. See version note above.
 binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "binaryCompatibilityValidator" }
+# The HTML reference of the published API. See version note above.
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }

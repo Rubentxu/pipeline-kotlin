@@ -5,7 +5,7 @@ package dev.rubentxu.pipeline.v2.domain.directive
  * This is a decision, not an effect: [resolve] is a total pure function over two
  * maps, so the rule can be tested and reasoned about without a process, an
  * environment block, or a coordinator. Reading the ambient process environment is
- * the caller's job (an adapter), and it arrives here already captured as [host].
+ * the caller's job (an adapter), and it arrives here already captured as `host`.
 */
 sealed interface GateEnvironmentPrecedence {
     /**
@@ -18,7 +18,7 @@ sealed interface GateEnvironmentPrecedence {
     data object DeclarationWins : GateEnvironmentPrecedence
 
     /**
-     * [resolve] against this precedence. [host] is the captured ambient
+     * [resolve] against this precedence. `host` is the captured ambient
      * environment; only names the stage declares are read from it, so a gate can
      * never observe an arbitrary process variable by guessing its name.
 */
@@ -32,6 +32,13 @@ sealed interface GateEnvironmentPrecedence {
         }
     }
 
+    /**
+     * The precedence the product ships.
+     *
+     * [DEFAULT] is [DeclarationWins]: the stage's own declaration wins over
+     * a host variable of the same name, so the same script evaluates the
+     * same way on two machines for a reason the author wrote down.
+     */
     companion object {
         val DEFAULT: GateEnvironmentPrecedence = DeclarationWins
     }

@@ -99,6 +99,15 @@ sealed interface CatchErrorBuildResult {
         }
     }
 
+    /**
+     * The wire spellings this result travels under, and the one boundary where
+     * a spelling becomes a typed result.
+     *
+     * [parse] returns `null` for a spelling outside the vocabulary, and the
+     * caller MUST treat that null as a configuration error and fail closed.
+     * A spelling that no case claims names no result, and naming one anyway
+     * would suppress a failure the scope was installed to catch.
+     */
     companion object {
 
         /**

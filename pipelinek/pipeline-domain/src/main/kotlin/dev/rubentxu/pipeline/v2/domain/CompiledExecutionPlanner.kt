@@ -4,10 +4,27 @@ package dev.rubentxu.pipeline.v2.domain
 sealed interface CompiledExecutionUnit {
     val steps: List<StepNode>
 
+    /**
+     * One step on its own.
+     *
+     * The unit holds exactly one step and states no ordering constraint
+     * against anything else on the plan, so a dispatcher may run it as soon
+     * as the plan reaches it.
+     */
     data class Single(val step: StepNode) : CompiledExecutionUnit {
         override val steps: List<StepNode> = listOf(step)
     }
 
+    /**
+     * A wave of steps that may run at the same time.
+     *
+     * The constructor refuses fewer than two steps: a wave of one is not a
+     * wave, and admitting it here would let a caller claim a concurrency
+     * that does not exist. No ordering constraint holds between the steps,
+     * and their declaration order is the order their outcomes must keep, so
+     * that a fold over the wave stays deterministic however the wave
+     * completes.
+     */
     data class Concurrent(override val steps: List<StepNode>) : CompiledExecutionUnit {
         init { require(steps.size >= 2) { "Concurrent unit requires at least two steps" } }
     }
@@ -24,7 +41,21 @@ sealed interface CompiledExecutionUnit {
     }
 }
 
+/**
+ * The schedulable units of one compiled pipeline, in the order a dispatcher
+ * walks them.
+ *
+ * The plan is what the planner produces and what a run consumes: it is a
+ * value, holds no reference to the pipeline it came from, and may be walked
+ * more than once.
+ *
+ * [linearSteps] flattens the units into the step sequence they contain. It
+ * reports the steps of a [CompiledExecutionUnit.Block] as the block itself,
+ * because the block's body is scheduled by the plan that the block carries,
+ * not by this one.
+ */
 data class CompiledExecutionPlan(val units: List<CompiledExecutionUnit>) {
+    /** Every step of the plan, in unit order and, inside a unit, in its own order. */
     val linearSteps: List<StepNode> get() = units.flatMap { it.steps }
 }
 

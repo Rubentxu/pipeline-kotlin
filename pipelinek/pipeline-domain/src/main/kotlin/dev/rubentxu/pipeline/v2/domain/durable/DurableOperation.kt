@@ -5,7 +5,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * Sealed hierarchy of durable operations.
  *
  * A durable operation represents a step execution that can be replayed, skipped,
- * or aborted based on its [replayPolicy] and the contents of the [OperationJournal].
+ * or aborted based on its [replayPolicy] and the contents of the `OperationJournal`.
  *
  * ## Variants
  *

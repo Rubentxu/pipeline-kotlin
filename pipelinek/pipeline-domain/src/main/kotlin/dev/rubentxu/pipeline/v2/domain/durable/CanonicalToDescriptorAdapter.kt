@@ -136,26 +136,111 @@ object CanonicalToDescriptorAdapter {
  * so tests can construct fixtures without going through the secret lifecycle.
 */
 sealed interface CanonicalBlockShellScope {
+    /**
+     * No scope at all: the body runs in the caller's own context.
+     *
+     * Nothing is derived around the children — no working directory, no
+     * environment overlay, no deadline of its own. The adapter maps it onto
+     * [BlockShellScopeDescriptor.None].
+     */
     data object None : CanonicalBlockShellScope
+
+    /**
+     * The body runs inside a derived working directory.
+     *
+     * [target] is the directory the body starts in, and [previous] is the one
+     * that was in effect before the scope was applied, so the runner knows
+     * what to go back to.
+     */
     data class Directory(val target: Path, val previous: Path) : CanonicalBlockShellScope
+
+    /**
+     * The body runs with the timestamps decorator wrapped around every child
+     * event, so each child's timing is attributable to the body's own scope.
+     */
     data object TimestampsScope : CanonicalBlockShellScope
+
+    /**
+     * The body runs with environment values projected around its children.
+     *
+     * [overrides] names the variables the scope sets; [parentEnv] holds the
+     * inherited ones, whose secret material stays behind
+     * [CanonicalSecretHandle.borrow] and is never stored as text in this
+     * mirror.
+     */
     data class EnvScope(
         val overrides: List<String>,
         val parentEnv: Map<String, CanonicalSecretHandle>,
     ) : CanonicalBlockShellScope
+
+    /**
+     * The body runs under a deadline of its own.
+     *
+     * [budgetMs] is the wall-clock budget for the body as a whole, projected
+     * down to the children as the per-invocation watchdog.
+     */
     data class Timeout(val budgetMs: Long) : CanonicalBlockShellScope
+
+    /**
+     * The body is re-dispatched, up to [maxAttempts] times, each attempt with
+     * its own deterministic identity.
+     */
     data class Retry(val maxAttempts: Int) : CanonicalBlockShellScope
+
+    /**
+     * The body is re-dispatched until its condition succeeds or its backoff
+     * grows past the cap.
+     *
+     * [initialRecurrencePeriod] is the delay before the first recurrence, and
+     * [maxBackoffMs] is the ceiling the growing delay is held under — note
+     * that `adaptScope` drops it: the descriptor twin carries only the
+     * initial period.
+     */
     data class WaitUntilScope(
         val initialRecurrencePeriod: Long,
         val maxBackoffMs: Long = 60_000L,
     ) : CanonicalBlockShellScope
 }
 
+/**
+ * What the body machinery is told to do with one body invocation.
+ *
+ * The projection is the value the coordinator hands to the interpreter. It
+ * names the scope the body runs under, the credentials it may use, or the
+ * reason the body cannot run at all. It holds no effect of its own: the
+ * runner applies it.
+ */
 sealed interface CanonicalBodyExecutionProjection {
+    /**
+     * The generic body machinery runs this body with [scope] projected around
+     * it.
+     */
     data class Scope(val scope: CanonicalBlockShellScope) : CanonicalBodyExecutionProjection
+
+    /**
+     * The body runs under a bound credential lease.
+     *
+     * The bindings are acquired before the environment is overlaid, and they
+     * are closed when the body ends, whether it ended well or not.
+     */
     data class CredentialLease(val bindings: List<CredentialBindingSpec>) :
         CanonicalBodyExecutionProjection
+
+    /**
+     * The decoded input was invalid: a typed rejection.
+     *
+     * [detail] says what was wrong. The children are not iterated on this
+     * projection, and it is not treated as an unimplemented shape either: the
+     * two mean different things to the caller.
+     */
     data class InvalidInput(val detail: String) : CanonicalBodyExecutionProjection
+
+    /**
+     * The declared shape has no interpretation in this interpreter.
+     *
+     * The case exists so that a shape admitted without an implementation fails
+     * closed instead of running the body as something else.
+     */
     data class Unimplemented(val shape: BodyExecutionPolicyShape) :
         CanonicalBodyExecutionProjection
 }

@@ -1,11 +1,13 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import kotlinx.serialization.Serializable
+
 import org.jetbrains.annotations.NotNull
 
 /**
  * Value class wrapper for a credentials identifier.
  * The ID itself is NOT a secret - it is a public identifier that safely
- * references credentials stored in the [SecretStore][dev.rubentxu.pipeline.v2.credentials.api.SecretStore].
+ * references credentials stored in the `SecretStore`.
  * This is structural redaction: credentials cannot leak through the ID type alone
  * ## Structural Redaction Role
  * [CredentialsId] is the ONLY public reference type for credentials.
@@ -21,11 +23,19 @@ import org.jetbrains.annotations.NotNull
  * @see SecretHandle for the secret value channel (never the ID)
 */
 @JvmInline
+@Serializable
 value class CredentialsId(@NotNull val value: String) {
     init {
         require(value.isNotBlank()) { "CredentialsId value must not be blank" }
     }
 
+    /**
+     * The factory that turns text into an identifier.
+     *
+     * [from] is the way to build one from a value that came from outside,
+     * such as a string the user typed. It refuses a blank value exactly as
+     * the constructor does, so both routes agree on what an identifier is.
+     */
     companion object {
         /**
          * Factory for creating a CredentialsId from a string value.

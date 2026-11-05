@@ -21,7 +21,10 @@ import java.nio.file.Path
  *
  * T12: the store location comes from [CredentialsStorePath], the
  * ONE authority: PIPELINE_CREDENTIALS_STORE if set, else ~/.pipeline/credentials.bin.
- * PIPELINE_STORE_PASSPHRASE supplies the passphrase.
+ * PIPELINE_STORE_PASSPHRASE supplies the passphrase. A run never asks for one:
+ * the passphrase is read from the environment or the run refuses, because a run
+ * that waits for a human waits forever where runs usually happen. The command
+ * that manages the store is the interactive one, and it asks.
  *
  * This decision is written ONCE: the in-memory branch and the durable branch call
  * this same function, hand it the run's clock, and get the same store. Two copies
@@ -79,8 +82,13 @@ internal fun composeCredentialSeam(
         // zeros the passphrase in its own close().
         LocalSecretStore(credentialsStorePath, passphraseChars)
     } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
+        // A run does not offer an interactive path: a run that waited for a
+        // human to type the passphrase would wait forever in the place runs
+        // usually happen, and a run triggered by a scheduler has nobody to
+        // ask. The resolver therefore refused without a reader, and its
+        // diagnostic names the environment variable and nothing else — which
+        // is exactly the alternative this caller has.
         System.err.println("Error: ${e.message}")
-        System.err.println("Hint: set PIPELINE_STORE_PASSPHRASE env var, or run interactively in a TTY.")
         // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
         // event store has to give them back before the process ends, and ending here would skip
         // that release. The branch that owns nothing turns the refusal into the exit.

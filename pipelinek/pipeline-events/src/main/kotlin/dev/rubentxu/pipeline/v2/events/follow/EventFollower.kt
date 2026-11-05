@@ -46,7 +46,7 @@ interface EventFollower {
      * state) or an [EventFollowEvent.Refused] (declaring why the follow
      * cannot start).
      * Refusal rows in the underlying store are surfaced inside
-     * [EventFollowEvent.Page.slice.refusals] (carried by
+     * [EventRecordSlice.refusals] (carried by
      * [EventRecordSlice.refusals]); the follow itself does not refuse on
      * a single undecodable row.
      * The handle is single-observer: a second consumer that wants to
@@ -166,7 +166,7 @@ data class EventFollowOptions(
      * the last [EventRecordSlice.nextCursor] it observed and reopens
      * with `after = lastCursor`; the implementation begins polling
      * from there. The
-     * [EventRecordReadPort.readRecords] call is the existing primitive
+     * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort.readRecords] call is the existing primitive
      * that backs this.
 */
     val after: EventCursor? = null,
@@ -194,8 +194,31 @@ data class EventFollowOptions(
  * [EventFollowUntil.Unbounded].
 */
 sealed interface EventFollowUntil {
+    /**
+     * The follow declares no bound of its own.
+     *
+     * It ends when the run finishes and the follow observes that, or when the
+     * consumer closes the handle. A quiet tail is not an ending: the follow
+     * keeps polling for as long as the handle is open.
+     */
     data object Unbounded : EventFollowUntil
+
+    /**
+     * The follow ends when it observes the run's terminal event.
+     *
+     * Only that event stops the follow under this bound; a quiet tail does
+     * not. The run id names the run whose end ends the follow.
+     */
     data class UntilRunFinished(val runId: String) : EventFollowUntil
+
+    /**
+     * The follow ends at the sequence the consumer names.
+     *
+     * The bound is a position in the store's own numbering, not a count of
+     * records: the page is truncated to the rows at or below it, so a record
+     * beyond the bound is never delivered. The bound takes priority over the
+     * run's terminal event.
+     */
     data class UntilSequence(val lastSequence: Long) : EventFollowUntil {
         init {
             require(lastSequence >= 0) { "lastSequence must be non-negative, got $lastSequence" }
@@ -213,6 +236,12 @@ sealed interface EventFollowUntil {
  * beginning that no longer exists.
 */
 sealed interface EventFollowState {
+    /**
+     * The follow is observing and the run has not finished.
+     *
+     * The sequence is the last one the follow delivered, so it is both the
+     * position the follow stands at and the one a consumer resumes from.
+     */
     data class Live(val lastSequence: Long) : EventFollowState
 
     /**
@@ -223,6 +252,13 @@ sealed interface EventFollowState {
 */
     data object RunFinished : EventFollowState
 
+    /**
+     * The follow cannot observe the run, and the refusal says why.
+     *
+     * No implementation produces this state: a follow that cannot observe the run answers
+     * with [EventFollowEvent.Refused] instead, and the refusal carries the fact, so the
+     * caller decides whether to retry, to reset the cursor, or to stop looking.
+     */
     data class Unobservable(val refusal: EventFollowRefusal) : EventFollowState
 }
 
@@ -263,6 +299,16 @@ sealed interface EventFollowState {
  * taken.
 */
 sealed interface EventFollowRefusal {
+    /**
+     * The store holds no event for the run: nothing was ever written for it.
+     *
+     * The fact is what the store knows at the moment of the poll and not a verdict about the
+     * run: a run that has not written its first event yet answers the same way. The follow
+     * refuses at the open boundary and ends, so a consumer that wants to watch a run that has
+     * not started writing opens a new follow.
+     *
+     * The run id is the one the follow was opened for.
+     */
     data class UnknownRun(val runId: String) : EventFollowRefusal
     /**
      * The cursor is past the tail of the run. The run EXISTS; the position does not.
@@ -281,6 +327,14 @@ sealed interface EventFollowRefusal {
     */
     data class StorageError(val cause: String) : EventFollowRefusal
 
+    /**
+     * The one translation between the read port's refusal vocabulary and this
+     * one.
+     *
+     * Every case of the port's refusal has its own case here, so the follow is
+     * never less precise than the port it sits on: a store that failed and a
+     * run that does not exist stay two different answers.
+     */
     companion object {
         /**
          * Translate a read-port refusal into the follow's vocabulary, WITHOUT losing the fact.
@@ -314,8 +368,41 @@ sealed interface EventFollowRefusal {
  * named in the event).
 */
 sealed interface EventFollowEvent {
+    /**
+     * A batch of records the follow observed, with the position to resume from.
+     *
+     * The slice holds the rows in sequence order and the cursor that follows
+     * them; the state says where the follow stands after them. A poll that
+     * finds nothing emits no page: the follow stays alive and keeps polling.
+     */
     data class Page(val slice: EventRecordSlice, val newState: EventFollowState) : EventFollowEvent
+
+    /**
+     * The follow's state changed, and the change is announced on its own.
+     *
+     * The first event of a follow is this one, unless the follow refuses at the
+     * open boundary: it declares the state the follow opens in, so a consumer
+     * knows where it stands before any record arrives. Later ones report a
+     * transition the consumer would otherwise have to infer.
+     */
     data class StateChanged(val state: EventFollowState) : EventFollowEvent
+
+    /**
+     * The follow cannot continue, and the refusal names the fact that stopped
+     * it.
+     *
+     * It is terminal: the iterator yields no further events and the consumer
+     * closes the handle. The refusal tells a run that does not exist apart
+     * from a store that could not answer.
+     */
     data class Refused(val refusal: EventFollowRefusal) : EventFollowEvent
+
+    /**
+     * The follow reached its end and finished.
+     *
+     * It is terminal: the iterator yields no further events and the consumer
+     * closes the handle. Only two facts produce it — the consumer's own bound
+     * and the run's terminal event — so a quiet tail never does.
+     */
     data object Completed : EventFollowEvent
 }

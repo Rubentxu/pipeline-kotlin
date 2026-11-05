@@ -45,7 +45,7 @@ data class EnvironmentSpec(
  * Retry semantics live in the retry
  * Block Step (durable control row,); skip is not a durable-engine concept
  * The validity of `timeout` is enforced HERE as well as in [OptionsScope], and
- * both consult the same [StageTimeout] authority. The [init] is not redundant defence —
+ * both consult the same [StageTimeout] authority. The `init` is not redundant defence —
  * this data class is public API, so a consumer of the typed model can construct one
  * without ever touching the DSL, and before this type existed that path admitted
  * `OptionsSpec(timeout = Long.MAX_VALUE)` straight into the compiler's
@@ -86,7 +86,7 @@ enum class TimeoutAction {
 
 /**
  * Post conditions declared on a stage
- * Keyed by the closed [PostCondition] set rather than three named lists, so the
+ * Keyed by the closed `PostCondition` set rather than three named lists, so the
  * DSL and the IR speak the same typed vocabulary and a condition that the
  * planner cannot honour is a compile error instead of a silently ignored block.
  * The EXECUTION ORDER across conditions is not stored here: it belongs to

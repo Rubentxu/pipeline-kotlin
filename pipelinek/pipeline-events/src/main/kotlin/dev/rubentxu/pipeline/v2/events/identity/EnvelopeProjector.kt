@@ -82,6 +82,15 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import dev.rubentxu.pipeline.v2.events.WorkflowLoaded
 import dev.rubentxu.pipeline.v2.events.WsCleaned
 
+/**
+ * Turns a domain event into the envelope the event plane publishes.
+ *
+ * The projection is total over the closed family of events and performs no
+ * effect: it derives the subject the event is about, carries the store's own
+ * sequence, and optionally attaches the provider provenance of the step that
+ * emitted the event. An event kind with no identity rule fails to compile
+ * rather than losing its identity.
+ */
 object EnvelopeProjector {
 
     /**

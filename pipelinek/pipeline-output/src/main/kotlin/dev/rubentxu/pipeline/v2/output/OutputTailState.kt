@@ -27,7 +27,6 @@ package dev.rubentxu.pipeline.v2.output
  * consumer in a fresh JVM must be able to learn "this stream is finished" without the producer
  * being alive to tell it. An implementation that answered from live writer state would report
  * `Open` forever after a crash, and a consumer would tail a dead run indefinitely.
- * @property committedEnd the stream's committed extent when this state was observed
 */
 sealed interface OutputTailState {
 
@@ -36,6 +35,7 @@ sealed interface OutputTailState {
      * Says nothing about whether a producer is currently attached: a stream whose process died is
      * still [Open] until something records its end, because "nobody is writing" is not the same fact
      * as "nothing will ever be written".
+     * @property committedEnd the stream's committed extent when this state was observed
 */
     data class Open(val committedEnd: Long) : OutputTailState {
         init {
@@ -48,6 +48,7 @@ sealed interface OutputTailState {
      * [finalEnd] is the extent the stream had when it was sealed, which equals its committed extent
      * afterwards: a sealed stream cannot grow, so the two are the same number by construction. It is
      * carried explicitly so a reader never has to ask a second question to know where the tail is.
+     * @property finalEnd the extent the stream had when it was sealed
 */
     data class Sealed(val finalEnd: Long) : OutputTailState {
         init {

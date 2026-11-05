@@ -37,8 +37,10 @@ class GitChangelogWriter(
 
     /**
      * Append new commits from `<prevSha>..<endRef>` to `<workspace>/<rel>/changelog.txt`.
-     * @param workspace Workspace root
-     * @param relativeTargetDir Relative directory inside workspace
+     * @param targetDir The authorised checkout directory. It arrives RESOLVED: this
+     *   writer does not resolve paths, because a second resolver is a second rule
+     *   about the same directory, and the strict one has to be the only one.
+     * @param changelogFile The file the changelog is written to
      * @param previousSha SHA to start from (excluded), or null/empty for all history
      * @param endRef Git ref for end of range (e.g., "HEAD")
      * @param transcript the host's transcript destination, or null when this composition has
@@ -46,16 +48,13 @@ class GitChangelogWriter(
      *   changelog was derived from.
 */
     fun append(
-        workspace: Path,
-        relativeTargetDir: String,
+        targetDir: Path,
+        changelogFile: Path,
         previousSha: String?,
         endRef: String,
         transcript: GitTranscript? = null,
     ): Result<Unit> {
         return try {
-            val targetDir = workspace.resolve(relativeTargetDir)
-            val changelogFile = workspace.resolve("changelog.txt")
-
             // Parse existing SHAs to skip duplicates
             val existingShas = if (Files.exists(changelogFile)) {
                 Files.readAllLines(changelogFile)

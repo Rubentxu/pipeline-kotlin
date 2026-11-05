@@ -6,6 +6,8 @@ import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 import java.nio.file.Path
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -56,6 +58,7 @@ class GitCheckoutExecutorRecordTest {
             spec = CheckoutSpec(GitScm(url = "file:///nowhere/repo.git", branch = "main")),
             runId = "run-1",
             workspaceRoot = temp.resolve("workspace"),
+            authorizedTarget = authorizedTarget(temp.resolve("workspace")),
             eventSink = sink,
             clock = FIXED_CLOCK,
             secretStore = null,
@@ -94,6 +97,19 @@ class GitCheckoutExecutorRecordTest {
 
         override fun eventsFor(runId: String): Sequence<DomainEvent> = emptySequence()
     }
+
+    /**
+     * The authorised destination of a checkout inside [root].
+     *
+     * It is resolved by the same authority the Step uses, so a test cannot hand
+     * the executor a path the workspace would have refused.
+     */
+    private fun authorizedTarget(root: Path, relativeTargetDir: String = "."): AuthorizedCheckoutTarget =
+        AuthorizedCheckoutTarget.resolve(
+            ExecutionLocation(WorkspaceLease.Attached(root), root),
+            "scm-git.checkout",
+            relativeTargetDir,
+        )
 
     private companion object {
         val FIXED_CLOCK: Clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC)

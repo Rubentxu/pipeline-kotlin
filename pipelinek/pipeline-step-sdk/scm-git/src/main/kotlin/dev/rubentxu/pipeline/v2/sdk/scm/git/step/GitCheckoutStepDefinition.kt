@@ -19,7 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.GitRemotePolicy
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
+import dev.rubentxu.pipeline.v2.sdk.scm.git.AuthorizedCheckoutTarget
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutExecutor
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutRequest
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCredentialsApplier
@@ -194,12 +194,26 @@ class GitCheckoutStepDefinition(
         // executor and of the changelog writer. `use` closes it when the step ends —
         // on the failure path too — so a checkout that failed halfway does not leave a
         // private key and a token in the system temporary area.
+        // The destination is authorised BEFORE the checkout exists.
+        //
+        // It used to be resolved twice: the executor resolved it with `Path.resolve`
+        // — which normalises nothing and confines nothing — and worked there, and
+        // the handler validated the same user path AFTERWARDS, when the files were
+        // already written. A refusal that arrives after the effect is a note, not a
+        // guard. Now the path is resolved once, here, by the authority that owns
+        // confinement, and the executor receives the resolved destination.
+        val authorizedTarget = AuthorizedCheckoutTarget.resolve(
+            location = location,
+            stepKey = ScmGitCheckoutKey.VALUE.value,
+            relativeTargetDir = input.relativeTargetDir,
+        )
         executorFactory(workspaceRoot, transcript).use { executor ->
             val resolved = executor.execute(
                 GitCheckoutRequest(
                     spec = spec,
                     runId = ctx.runId.value,
                     workspaceRoot = workspaceRoot,
+                    authorizedTarget = authorizedTarget,
                     eventSink = sink,
                     clock = this.clock,
                     secretStore = this.secretStore,
@@ -216,11 +230,9 @@ class GitCheckoutStepDefinition(
             }
             GitCheckoutOutput(
                 resolvedSha = resolved.sha,
-                localPath = WorkspacePathAnchors.currentDirectory(
-                    location = location,
-                    stepKey = ScmGitCheckoutKey.VALUE.value,
-                    userPath = input.relativeTargetDir,
-                ).toString(),
+                // The published path IS the authorised destination: the same directory
+                // the checkout wrote to, by construction and not by coincidence.
+                localPath = authorizedTarget.path.toString(),
                 wasCloned = resolved.classification == "clone",
                 credentialApplied = resolved.credentialsFilePath != null || resolved.gitConfigFilePath != null,
             )

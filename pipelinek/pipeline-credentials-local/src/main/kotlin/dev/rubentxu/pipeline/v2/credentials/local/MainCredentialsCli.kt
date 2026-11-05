@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.credentials.local
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
+import java.io.InputStream
 import java.io.PrintStream
 import java.nio.file.Path
 
@@ -60,20 +61,24 @@ import java.nio.file.Path
 */
 object MainCredentialsCli {
 
-    // The store location is decided by CredentialsStorePath, the ONE authority.
-    // This comment used to spell the rule out here AND claim the runtime agreed
-    // And the runtime resolved a
-    // different default, because it took <controlRoot>/../credentials.bin. Two
-    // copies of one rule is how `credentials add` came to write somewhere the run
-    // never looked. See CredentialsStorePath's KDoc.
-    private val STORE_FILE: Path = resolveStoreFile()
-
     /**
      * The CLI's store path, delegated to [CredentialsStorePath] rather than
      * recomputed. Internal visibility exists for the contract regression test
      * CLI and runtime MUST resolve the same store.
+     *
+     * The delegation is the point: the store location is decided by
+     * [CredentialsStorePath], the ONE authority, and a reader that decided the
+     * path for itself would let the location drift between the command that
+     * WRITES a credential and the one that READS it. `credentials add` writes
+     * with no `--control-root` in scope, so it can only write the user-home
+     * default, and a run's own directory is not a location a user can populate
+     * beforehand. Two copies of one rule are how the write and the read end up
+     * disagreeing about the file.
+     *
+     * @param environment the environment that names the store.
 */
-    internal fun resolveStoreFile(): Path = CredentialsStorePath.fromEnvironment(System.getenv())
+    internal fun resolveStoreFile(environment: Map<String, String>): Path =
+        CredentialsStorePath.fromEnvironment(environment)
 
     // Supported credential kinds
     enum class CredentialKind {
@@ -129,14 +134,41 @@ object MainCredentialsCli {
      * published on stdout, and that is the shape the refusals of [CredentialsRefusal] are
      * rendered for. A second stream would offer a place to write to that this command does
      * not use.
+     *
+     * The world this command READS is the ambient one: the environment that names the store and
+     * the passphrase, and the standard input that carries a value written for the terminal. The
+     * variant that takes them as arguments is the one that can be driven over a store the
+     * caller owns.
      */
     @JvmStatic
-    fun main(args: Array<String>, out: PrintStream): Int {
+    fun main(args: Array<String>, out: PrintStream): Int =
+        main(args, out, System.getenv(), System.`in`)
+
+    /**
+     * The command, with the world it reads handed to it.
+     *
+     * The environment names the store and the passphrase, and the stream carries the value of a
+     * credential written with `--from-stdin`. Both are arguments because both are the world
+     * OUTSIDE the command: the command does not decide where the store is nor where the value
+     * comes from, it is told. A caller that hands it a store of its own sees the command act
+     * on that store, and one that hands it a stream of its own sees it read that value.
+     *
+     * @param args the argv, whose first token names the verb.
+     * @param out where the command says what it did.
+     * @param environment the environment that names the store and the passphrase.
+     * @param stdin where the value of a credential comes from when the request names it.
+     */
+    internal fun main(
+        args: Array<String>,
+        out: PrintStream,
+        environment: Map<String, String>,
+        stdin: InputStream,
+    ): Int {
         return when (CredentialsVerb.from(args.firstOrNull())) {
-            CredentialsVerb.ADD -> add(args.drop(1), out)
-            CredentialsVerb.LIST -> list(args.drop(1), out)
-            CredentialsVerb.REMOVE -> remove(args.drop(1), out)
-            CredentialsVerb.ROTATE -> rotate(args.drop(1), out)
+            CredentialsVerb.ADD -> add(args.drop(1), out, environment, stdin)
+            CredentialsVerb.LIST -> list(args.drop(1), out, environment)
+            CredentialsVerb.REMOVE -> remove(args.drop(1), out, environment)
+            CredentialsVerb.ROTATE -> rotate(args.drop(1), out, environment, stdin)
             null -> {
                 out.println(CredentialsRefusal.ofUnknownVerb(args.firstOrNull()))
                 CredentialsOutcome.NOT_CARRIED_OUT.exitCode
@@ -144,14 +176,19 @@ object MainCredentialsCli {
         }
     }
 
-    private fun add(args: List<String>, out: PrintStream): Int {
+    private fun add(
+        args: List<String>,
+        out: PrintStream,
+        environment: Map<String, String>,
+        stdin: InputStream,
+    ): Int {
         val parsed = parseWriteArguments(args, CredentialsVerb.ADD, out) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         return try {
-            val store = openStore()
+            val store = openStore(environment)
             // The key is checked before the operator is asked for a secret: a
             // passphrase that does not match should not cost them the typing.
             store.verifyPassphrase()
-            store.add(CredentialsId.from(parsed.id), readCredential(parsed.kind, parsed.fromStdin))
+            store.add(CredentialsId.from(parsed.id), readCredential(parsed.kind, parsed.fromStdin, stdin))
             out.println("Credential '${parsed.id}' stored successfully.")
             CredentialsOutcome.ANSWERED.exitCode
         } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
@@ -182,7 +219,11 @@ object MainCredentialsCli {
      * that carries one is not a request of this verb, and it is refused naming
      * the token before the store is looked at.
      */
-    private fun list(args: List<String>, out: PrintStream): Int {
+    private fun list(
+        args: List<String>,
+        out: PrintStream,
+        environment: Map<String, String>,
+    ): Int {
         val foreign = args.firstOrNull()
         if (foreign != null) {
             out.println(CredentialsRefusal.of(CredentialsVerb.LIST, foreign))
@@ -191,12 +232,12 @@ object MainCredentialsCli {
         // Nothing to list means nothing to unlock: a store that is not there
         // does not need a key, and asking for one would be asking for the key
         // to a door that does not exist.
-        if (!storeHoldsAnything()) {
+        if (!storeHoldsAnything(environment)) {
             out.println("No credentials stored.")
             return CredentialsOutcome.ANSWERED.exitCode
         }
         return try {
-            val store = openStore()
+            val store = openStore(environment)
             val ids = store.list()
             if (ids.isEmpty()) {
                 out.println("No credentials stored.")
@@ -231,7 +272,11 @@ object MainCredentialsCli {
         }
     }
 
-    private fun remove(args: List<String>, out: PrintStream): Int {
+    private fun remove(
+        args: List<String>,
+        out: PrintStream,
+        environment: Map<String, String>,
+    ): Int {
         // `remove` owns NO option, so a token that looks like one is not the
         // credential id: it is refused naming it, BEFORE the store is looked
         // at. Taking it for an id would only discover the mistake at the end,
@@ -253,12 +298,12 @@ object MainCredentialsCli {
             out.println(CredentialsRefusal.of(CredentialsVerb.REMOVE, extra))
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
-        if (!storeHoldsAnything()) {
+        if (!storeHoldsAnything(environment)) {
             out.println("No credentials stored.")
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         return try {
-            val store = openStore()
+            val store = openStore(environment)
             val credentialsId = CredentialsId.from(id)
             // Listing is also how the passphrase gets checked, so a key that
             // does not match is refused here, before anything is removed.
@@ -284,14 +329,19 @@ object MainCredentialsCli {
         }
     }
 
-    private fun rotate(args: List<String>, out: PrintStream): Int {
+    private fun rotate(
+        args: List<String>,
+        out: PrintStream,
+        environment: Map<String, String>,
+        stdin: InputStream,
+    ): Int {
         val parsed = parseWriteArguments(args, CredentialsVerb.ROTATE, out) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
-        if (!storeHoldsAnything()) {
+        if (!storeHoldsAnything(environment)) {
             out.println("No credentials stored.")
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         return try {
-            val store = openStore()
+            val store = openStore(environment)
             // The key is checked before the operator is asked for a secret: a
             // passphrase that does not match should not cost them the typing.
             store.verifyPassphrase()
@@ -300,7 +350,7 @@ object MainCredentialsCli {
                 out.println("No credential named '${parsed.id}'.")
                 return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
             }
-            store.rotate(credentialsId, readCredential(parsed.kind, parsed.fromStdin))
+            store.rotate(credentialsId, readCredential(parsed.kind, parsed.fromStdin, stdin))
             out.println("Credential '${parsed.id}' rotated successfully.")
             CredentialsOutcome.ANSWERED.exitCode
         } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
@@ -399,8 +449,8 @@ object MainCredentialsCli {
         return WriteArguments(kind ?: CredentialKind.SECRET_TEXT, idArg, fromStdin)
     }
 
-    private fun openStore(): LocalSecretStore =
-        LocalSecretStore(STORE_FILE, PassphraseResolver.resolve())
+    private fun openStore(environment: Map<String, String>): LocalSecretStore =
+        LocalSecretStore(resolveStoreFile(environment), PassphraseResolver.resolve(environment))
 
     /**
      * Whether there is a store with something in it.
@@ -411,10 +461,12 @@ object MainCredentialsCli {
      * a door that does not exist. It also keeps those verbs from bringing a
      * store file into existence just by looking.
      */
-    private fun storeHoldsAnything(): Boolean =
-        java.nio.file.Files.exists(STORE_FILE) && java.nio.file.Files.size(STORE_FILE) > 0L
+    private fun storeHoldsAnything(environment: Map<String, String>): Boolean {
+        val file = resolveStoreFile(environment)
+        return java.nio.file.Files.exists(file) && java.nio.file.Files.size(file) > 0L
+    }
 
-    private fun readCredential(kind: CredentialKind, fromStdin: Boolean): Credential =
-        if (fromStdin) StreamCredentialPrompts.read(kind, System.`in`)
+    private fun readCredential(kind: CredentialKind, fromStdin: Boolean, stdin: InputStream): Credential =
+        if (fromStdin) StreamCredentialPrompts.read(kind, stdin)
         else CredentialPrompts.read(kind)
 }

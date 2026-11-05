@@ -92,10 +92,10 @@ import java.io.PrintStream
  * ## What this instrument cannot see
  *
  * It cannot see that the verb went on to USE the token it read: every row
- * stops at the refusal, which comes before the store is opened. That the id a
- * verb reads is the id it acts upon is a declared gap: no test in this tree
- * seeds credentials through this same command and then removes them by the id
- * it was given.
+ * stops at the refusal, which comes before the store is opened. What the
+ * command does with an identifier it read is witnessed where the command is
+ * driven over a store of its own and the store is read back:
+ * [CredentialsCommandIdentityTest].
  */
 class CredentialsRefusalTest {
 

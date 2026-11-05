@@ -238,7 +238,34 @@ private fun consoleValidate(options: ConsoleCliOptions): ConsoleCliParseResult {
             )
     } ?: MainConsoleCli.ConsoleFormat.TEXT
 
+    // An argument that names nothing is refused HERE, at the boundary that read it.
+    //
+    // The layers that USE these arguments hold their own invariants — the Output Plane requires
+    // a non-blank operation id, the frame reader requires a non-blank op id — and those
+    // invariants are checked too late to be a diagnostic: by then the answer is a stack trace,
+    // and the operator is told about an internal invariant instead of about the empty argument
+    // they typed. The order matters too: this refusal comes AFTER the shape of the request has
+    // been judged (its flags, its format), so a request that is wrong in more than one way is
+    // still answered about the way it was wrong before.
+    blankArgumentRefusal(effectiveRunId, oid)?.let { return consoleReject(it) }
+
     return consoleDecideVerb(options, cd, effectiveRunId, oid, format, hasFilter)
+}
+
+/**
+ * The refusal for an argument that names nothing, or `null` when every argument names something.
+ *
+ * The verb owns two arguments — the run id and the operation id — and a blank value names no run
+ * and no operation. The run id is checked first because it is the first thing the usage line asks
+ * for, and a request that is wrong in both is wrong in the run id first.
+ *
+ * The operation id is only refused when it was GIVEN: a filter over the frames of a whole run
+ * does not name an operation at all, and that is a different request, not an empty one.
+ */
+private fun blankArgumentRefusal(runId: String, opId: String?): ConsoleCliRefusal? = when {
+    runId.isBlank() -> ConsoleCliRefusal.BlankArgument("runId")
+    opId != null && opId.isBlank() -> ConsoleCliRefusal.BlankArgument("opId")
+    else -> null
 }
 
 /**

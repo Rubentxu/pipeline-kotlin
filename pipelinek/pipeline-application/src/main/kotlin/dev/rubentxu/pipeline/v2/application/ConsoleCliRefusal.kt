@@ -29,6 +29,21 @@ sealed interface ConsoleCliRefusal {
     data class MissingOptionValue(val option: String) : ConsoleCliRefusal
 
     /**
+     * An argument that names nothing.
+     *
+     * The verb owns two positional arguments — the run id and the operation id — and a blank value
+     * names no run and no operation. The refusal lives here, at the boundary that read the value,
+     * because the layers below hold their own invariants (the Output Plane requires a non-blank
+     * operation id, the frame reader requires a non-blank op id) and those invariants are checked
+     * too late to be a DIAGNOSTIC: by then the answer is a stack trace, which says nothing about
+     * what to type next and leaves the process with the exit code of an unexpected crash.
+     *
+     * [argument] names the slot the blank value landed in, in the words the usage text uses
+     * (`runId`, `opId`), so the answer says WHICH argument is the empty one.
+*/
+    data class BlankArgument(val argument: String) : ConsoleCliRefusal
+
+    /**
      * A refusal the console does not word itself.
      *
      * The console keeps its own vocabulary for the facts only it has — the
@@ -181,6 +196,7 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
     is ConsoleCliRefusal.NotACursorToken -> "Error: not an output cursor token: ${refusal.token}"
     is ConsoleCliRefusal.ControlDirNotFound -> "Error: control dir not found: ${refusal.path}"
     is ConsoleCliRefusal.MissingOptionValue -> "Error: ${refusal.option} requires a value"
+    is ConsoleCliRefusal.BlankArgument -> "Error: ${refusal.argument} must not be blank"
     is ConsoleCliRefusal.SharedRefusal -> "Error: ${refusal.message}"
     is ConsoleCliRefusal.IncompatibleWithRange -> "Error: ${refusal.toString()}"
     is ConsoleCliRefusal.IncompatibleWithFrames -> "Error: ${refusal.toString()}"

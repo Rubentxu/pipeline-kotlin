@@ -150,6 +150,12 @@ DECLARED_EXECUTABLES = {
     "scripts/release/build-release-manifest.sh": (
         "publication: it describes the artifact that leaves"
     ),
+    "scripts/release/emit-certification-requested.sh": (
+        "the emitter of the certification request: it composes the event that crosses the "
+        "boundary between the repositories and leaves it beside the publication, so what "
+        "leaves here is a request about the PUBLISHED artifact and not a certification of "
+        "this tree's behaviour"
+    ),
     "scripts/release/promote-stable.sh": (
         "publication: it moves the stable slot to a published release"
     ),

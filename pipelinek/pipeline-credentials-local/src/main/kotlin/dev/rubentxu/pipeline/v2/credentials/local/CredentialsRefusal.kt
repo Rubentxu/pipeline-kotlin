@@ -41,8 +41,28 @@ internal object CredentialsRefusal {
     fun of(verb: CredentialsVerb, token: String): String {
         val optionShaped = token.startsWith("--")
         val complaint = if (optionShaped) "unknown option" else "unexpected argument"
-        return "Error: $complaint: $token. 'credentials ${verb.token}' ${formOf(verb, optionShaped)}."
+        return "Error: $complaint: ${drawnToken(token)}. 'credentials ${verb.token}' ${formOf(verb, optionShaped)}."
     }
+
+    /**
+     * How a refusal draws the token the operator wrote.
+     *
+     * A token with visible characters is drawn as it is. A token with NO visible
+     * characters is drawn between single quotes: the empty one as `''` and the
+     * one of only spaces as `' '`.
+     *
+     * A token drawn RAW stops naming what the operator wrote the moment that
+     * token is empty, and the sentence keeps its shape while losing its
+     * content: `Error: unexpected argument: . 'credentials list' takes no
+     * argument.` leaves the operator reading a phrase with a hole where the
+     * data was, and unable to tell an empty token from a cut message.
+     *
+     * This rule is the one the rest of the CLI applies to the values it draws,
+     * and it lives HERE because these sentences are this module's own: the
+     * common ancestor of this module and the CLI is a published contract, and a
+     * convention of presentation does not belong in a frozen ABI.
+     */
+    private fun drawnToken(token: String): String = if (token.isBlank()) "'$token'" else token
 
     /**
      * The refusal of a request that does not name a verb of this command.

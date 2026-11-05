@@ -189,19 +189,19 @@ internal const val CONSOLE_USAGE_TEXT: String =
 fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal) {
     ConsoleCliRefusal.MissingArgument -> CONSOLE_USAGE_TEXT
     is ConsoleCliRefusal.UnknownOption -> "Error: unknown option: ${refusal.option}"
-    is ConsoleCliRefusal.UnexpectedArgument -> "Error: unexpected extra argument: ${refusal.value}"
+    is ConsoleCliRefusal.UnexpectedArgument -> "Error: unexpected extra argument: ${renderValue(refusal.value)}"
     is ConsoleCliRefusal.NotAnInteger ->
-        "Error: ${refusal.option} must be a positive integer, got: ${refusal.value}"
-    is ConsoleCliRefusal.NotARange -> "Error: --range must be FROM:TO with integers, got ${refusal.value}"
-    is ConsoleCliRefusal.NotACursorToken -> "Error: not an output cursor token: ${refusal.token}"
-    is ConsoleCliRefusal.ControlDirNotFound -> "Error: control dir not found: ${refusal.path}"
+        "Error: ${refusal.option} must be a positive integer, got: ${renderValue(refusal.value)}"
+    is ConsoleCliRefusal.NotARange -> "Error: --range must be FROM:TO with integers, got ${renderValue(refusal.value)}"
+    is ConsoleCliRefusal.NotACursorToken -> "Error: not an output cursor token: ${renderValue(refusal.token)}"
+    is ConsoleCliRefusal.ControlDirNotFound -> "Error: control dir not found: ${renderValue(refusal.path)}"
     is ConsoleCliRefusal.MissingOptionValue -> "Error: ${refusal.option} requires a value"
     is ConsoleCliRefusal.BlankArgument -> "Error: ${refusal.argument} must not be blank"
     is ConsoleCliRefusal.SharedRefusal -> "Error: ${refusal.message}"
     is ConsoleCliRefusal.IncompatibleWithRange -> "Error: ${refusal.toString()}"
     is ConsoleCliRefusal.IncompatibleWithFrames -> "Error: ${refusal.toString()}"
     is ConsoleCliRefusal.UnknownFormat ->
-        "Error: --format must be one of ${refusal.accepted.joinToString("|")}, got: ${refusal.value}"
+        "Error: --format must be one of ${refusal.accepted.joinToString("|")}, got: ${renderValue(refusal.value)}"
     ConsoleCliRefusal.FollowRequiresFrames -> "Error: ${ConsoleCliRefusal.FollowRequiresFrames}"
     is ConsoleCliRefusal.MutuallyExclusiveRunId ->
         "Error: --run and positional runId are mutually exclusive " +

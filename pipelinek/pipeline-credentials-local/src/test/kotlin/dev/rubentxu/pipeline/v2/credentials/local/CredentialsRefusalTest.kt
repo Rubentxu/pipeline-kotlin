@@ -135,6 +135,22 @@ class CredentialsRefusalTest {
     }
 
     @Test
+    fun `an empty argument is named so the operator can see it`() {
+        // A token that is EMPTY is still the token the operator wrote, and a
+        // refusal that draws it raw leaves a hole where the data was: the
+        // sentence keeps its shape and the operator cannot tell an empty
+        // argument from a cut message. The token is drawn between quotes, the
+        // way the CLI already draws a value that is not there.
+        val result = capture { out -> MainCredentialsCli.main(arrayOf("list", ""), out) }
+
+        assertEquals(CredentialsOutcome.NOT_CARRIED_OUT.exitCode, result.exitCode, result.stdout)
+        assertTrue(
+            result.stdout.contains("''"),
+            "the refusal does not show the empty argument: ${result.stdout}",
+        )
+    }
+
+    @Test
     fun `an option the verb does not own is refused as an unknown option`() {
         // An option-shaped token IS an option, whatever the verb owns. An
         // option the verb does not own is UNKNOWN: it is not an argument, and

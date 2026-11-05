@@ -13,10 +13,10 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
  *  - `outcome` MUST be derived from the same domain ADT that produced [OperationOutput.result]
  *    via the single, reusable classifier for that Step (see e.g. `ShellStepOutcomeClassifier`).
  *  - `outcome` MUST be stable for the lifetime of this output (it is the input the
- *    [CommonExecutionBoundary] projects into `CommonExecutionResult.outcome`).
+ *    `CommonExecutionBoundary` projects into `CommonExecutionResult.outcome`).
  *  - Implementations MUST NOT duplicate or override the classifier inside the Step handler;
  *    that would create two parallel outcome authorities and risk drift.
- * [CommonExecutionBoundary] uses `produced as? TypedStepOutput` to project `outcome` without
+ * `CommonExecutionBoundary` uses `produced as? TypedStepOutput` to project `outcome` without
  * needing to know the concrete Step type. Coordinator stays Step-agnostic.
 */
 interface TypedStepOutput {

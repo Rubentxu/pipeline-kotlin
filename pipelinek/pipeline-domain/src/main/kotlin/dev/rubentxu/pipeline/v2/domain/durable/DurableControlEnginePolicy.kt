@@ -30,7 +30,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.Sched
  *    for "is the durable state ambiguous"; the policy is authoritative for
  *    "given a sound decision, what's the runner's next step".
  *  - NOT a StepKey branch. The mapping is closed over the
- *    [RetryReconciliationDecision] ADT and the [maxAttempts] budget. Adding a
+ *    [RetryReconciliationDecision] ADT and the `maxAttempts` budget. Adding a
  *    new decision case forces the engine policy to be revisited (compile-time
  *    exhaustiveness check).
  *
@@ -65,11 +65,11 @@ fun interface DurableControlEnginePolicy {
  *
  * Mapping:
  *
- *  - [LaunchChild] — execute the body's children at [attempt]. [fresh] = true
+ *  - [LaunchChild] — execute the body's children at `attempt`. `fresh` = true
  *    means a fresh attempt (no journal evidence to resume); false means the
- *    journal evidence at [attempt] is mid-run and must be resumed without
+ *    journal evidence at `attempt` is mid-run and must be resumed without
  *    launching a new child.
- *  - [CloseTerminal] — the aggregate has reached a terminal state. [success]
+ *  - [CloseTerminal] — the aggregate has reached a terminal state. `success`
  *    distinguishes the SUCCEEDED closure from the FAILED closure. The runner
  *    emits `RetrySucceeded` / `RetryFailed` (or `WaitUntilCompleted`) and the
  *    canonical loop terminates.
@@ -81,7 +81,7 @@ fun interface DurableControlEnginePolicy {
 sealed interface EngineDirective {
 
     /**
-     * Launch body children at [attempt].
+     * Launch body children at `attempt`.
      *
      * @property attempt The deterministic attempt ordinal (1-indexed).
      * @property fresh `true` = new child execution; `false` = resume mid-run
@@ -89,11 +89,11 @@ sealed interface EngineDirective {
      */
     data class LaunchChild(val attempt: Int, val fresh: Boolean) : EngineDirective
 
-    /** Aggregate reached terminal state. [success] distinguishes SUCCEEDED vs FAILED. */
+    /** Aggregate reached terminal state. `success` distinguishes SUCCEEDED vs FAILED. */
     data class CloseTerminal(val success: Boolean, val attempt: Int) : EngineDirective
 
     /**
-     * Aggregate completed UNSTABLE at [attempt] (of the Runtime Observation Contract
+     * Aggregate completed UNSTABLE at `attempt` (of the Runtime Observation Contract
      * Closure). Its own case, NOT `CloseTerminal(success = false)`: an unstable completion is
      * neither success nor failure, and forcing it through the boolean would re-collapse the
      * exact distinction introduced `OperationStatus.UNSTABLE` to carry.
@@ -110,7 +110,7 @@ sealed interface EngineDirective {
 /**
  * Reference implementation of [DurableControlEnginePolicy].
  *
- * Translation table (decision → directive, against [maxAttempts]):
+ * Translation table (decision → directive, against `maxAttempts`):
  *
  * | Decision                          | Precondition           | Directive                                   |
  * |-----------------------------------|------------------------|---------------------------------------------|
@@ -127,7 +127,7 @@ sealed interface EngineDirective {
  * | `RejectDivergence(_, reason)`     | always                 | `FailClosed(reason)`                        |
  *
  * The three closure decisions ([ReuseSuccess], [ReuseUnstable],
- * [ReuseFailure]) and [CloseSuccessFromChild] ignore [maxAttempts]
+ * [ReuseFailure]) and [CloseSuccessFromChild] ignore `maxAttempts`
  * entirely: the budget bounds launching, and a closure launches nothing.
  *
  * Total over the decision ADT — adding a decision case forces this `when`

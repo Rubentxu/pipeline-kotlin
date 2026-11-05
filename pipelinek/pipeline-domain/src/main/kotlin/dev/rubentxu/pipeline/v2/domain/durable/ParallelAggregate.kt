@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.BlockSegment
 
 /**
  * Typed control identity for a parallel aggregate
- * Never a sentinel `stepIndex`/`branchIndex` inside [OpId]: the aggregate
+ * Never a sentinel `stepIndex`/`branchIndex` inside `OpId`: the aggregate
  * is identified by run + stage + the parallel control kind. Nested parallel
  * (future) extends this with the canonical bodyPath.
  * MUST NOT embed: branch completion order, coroutine id, thread id,

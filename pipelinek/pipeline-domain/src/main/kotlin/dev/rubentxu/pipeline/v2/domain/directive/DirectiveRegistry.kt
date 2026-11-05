@@ -11,7 +11,7 @@ package dev.rubentxu.pipeline.v2.domain.directive
 /**
  * A registered directive, with its own typed input and output.
  * The type parameters exist so a definition owns the shape of its own arguments.
- * The kernel erases them to [DirectiveDefinition.Any] at the boundary, exactly as
+ * The kernel erases them to [DirectiveDefinitionAny] at the boundary, exactly as
  * the Step registry erases a plugin contract to an untyped handler. Erasure is
  * explicit and named rather than smuggled in as `Any?` at a call site.
 */

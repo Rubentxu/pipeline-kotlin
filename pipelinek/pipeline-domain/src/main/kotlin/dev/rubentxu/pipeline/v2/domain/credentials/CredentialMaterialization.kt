@@ -10,7 +10,7 @@ import java.nio.file.Path
  * [DefaultCredentialProjector] can compose against it without dragging in
  * the `:pipeline-credentials-api` SPI module. The existing SPI port
  * (`:pipeline-credentials-api/spi/CredentialMaterialization`) is kept for
- * backward compatibility with [dev.rubentxu.pipeline.v2.credentials.spi.MaterializedCredential]
+ * backward compatibility with `MaterializedCredential`
  * carry-types used by `:pipeline-credentials-multipart`; it extends this domain
  * port by subtyping.
  *
@@ -21,7 +21,7 @@ import java.nio.file.Path
  *    `0600` perms and tracks it for [close]-time wipe.
  *
  * The port is intentionally narrower than the SPI one (it strips out
- * the [MaterializationKind] parameter) — the kind is statically derivable
+ * the `MaterializationKind` parameter) — the kind is statically derivable
  * from the [Credential] subtype by the projector.
  */
 interface CredentialMaterializationDomain : AutoCloseable {
@@ -51,7 +51,7 @@ interface CredentialMaterializationDomain : AutoCloseable {
  * - [handle]: the in-memory handle for non-file payloads (or `null`)
  *
  * The result implements [AutoCloseable] so it can be composed with `use{}`
- * blocks at the call site. The class is [open] so test doubles can override
+ * blocks at the call site. The class is `open` so test doubles can override
  * [close] to simulate wipe failures without needing root privileges.
  *
  * [close] is NOT silent. A delete that fails is reported: the first failure is thrown with the

@@ -143,7 +143,7 @@ object JsonAccessors {
 
     /**
      * Required-array accessor: returns the value at [key] typed as a
-     * [JsonArray]. Throws when the key is missing or the value is not an
+     * [kotlinx.serialization.json.JsonArray]. Throws when the key is missing or the value is not an
      * array (e.g. an object / primitive / null). Pattern A codecs use
      * arrays for repeated-element payloads (e.g. `documents: List<YamlDocument>`
      * inside `WriteYamlPayload.Multiple.items`).

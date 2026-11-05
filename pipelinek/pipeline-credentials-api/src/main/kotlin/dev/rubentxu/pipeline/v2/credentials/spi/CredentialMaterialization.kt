@@ -17,7 +17,6 @@ import dev.rubentxu.pipeline.v2.domain.credentials.Credential
  * - scope: LocalFileMaterialization only
  * - CredentialMaterializer signature UNCHANGED (invariant — adapter delegates)
  * META-INF/services SPI registration deferred to +
- * @see dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer for the implementation
 */
 interface CredentialMaterialization : AutoCloseable {
 

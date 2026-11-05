@@ -43,7 +43,7 @@ sealed interface OutputRefusal {
     /** A range read whose end precedes its start, or whose size is not positive. */
     data class InvalidRange(val from: Long, val to: Long) : OutputRefusal
 
-    /** The read was attempted before [OutputRecoveryPort.recover] completed */
+    /** The read was attempted before `OutputRecoveryPort.recover` completed */
     data object RecoveryNotCompleted : OutputRefusal
 
     /**
@@ -81,7 +81,7 @@ sealed interface OutputRefusal {
      * The review notes that an IOException-as-control-flow is
      * a hole in the closed ADT, and the parallel port on the event
      * side already exposes
-     * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.StorageError]
+     * `EventRecordReadRefusal.StorageError`
      * for the same reason; the Output side mirrors it.
 */
     data class StorageError(val cause: String) : OutputRefusal

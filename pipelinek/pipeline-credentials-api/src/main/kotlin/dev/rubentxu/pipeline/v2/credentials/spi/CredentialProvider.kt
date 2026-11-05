@@ -17,7 +17,6 @@ import dev.rubentxu.pipeline.v2.domain.credentials.Credential
  * - scope: LocalCredentialProvider only
  * META-INF/services SPI registration deferred to +
  * - Composition-root constructs concrete directly
- * @see dev.rubentxu.pipeline.v2.credentials.local.LocalCredentialProvider for the implementation
 */
 interface CredentialProvider : AutoCloseable {
 

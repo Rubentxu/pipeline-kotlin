@@ -23,8 +23,8 @@ import java.nio.charset.StandardCharsets
  * val env: Map<String, SecretHandle> =...
  * pb.environment.putAll(env.mapValues { it.value.materialize })
  * ```
- * This happens in [dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.launch]
- * and [dev.rubentxu.pipeline.v2.runtime.durable.ShExecution.executeNonDurable].
+ * This happens in `DurableShellExecutor.launch`
+ * and `ShExecution.invokeShell`.
  * ## Wipe Contract
  * When [close] is called, the internal byte array is filled with zeros.
  * The wiped array is observable: after [close],
@@ -34,10 +34,8 @@ import java.nio.charset.StandardCharsets
  * (Foreign Function & Memory API) to use scoped MemorySegment handles
  * that are automatically closed when exiting a try-with-resources block.
  * This would provide stronger guarantees than the manual wipe pattern.
- * @see dev.rubentxu.pipeline.v2.credentials.api.CredentialScope for the scope
- *      that manages handle lifetimes
- * @see dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor for
- *      the single coercion point
+ * The scope that manages handle lifetimes is `CredentialScope`;
+ * `DurableShellExecutor` is the single coercion point.
 */
 class SecretHandle private constructor(
     @PublishedApi internal val bytes: ByteArray,
@@ -95,7 +93,7 @@ class SecretHandle private constructor(
      * returns, the handle is NOT closed and the internal buffer is NOT wiped —
      * the original bytes remain readable for subsequent [borrow] / [bytesView]
      * Calls. This is the fix for the legacy footgun where
-     * [CredentialScope.toEnvEntries][dev.rubentxu.pipeline.v2.credentials.api.CredentialScope.toEnvEntries]
+     * `CredentialScope.toEnvEntries`
      * called `handle.use{}` (which wipes the cached handle in `activeHandles`)
      * before `close()` ran.
      * The block MAY mutate the bytes it receives; mutations apply only to the
@@ -158,7 +156,7 @@ class SecretHandle private constructor(
      * This should ONLY be called at the ProcessBuilder coercion choke.
      * After materialization, the internal buffer is NOT wiped - the
      * String is passed to the child process and the handle is later
-     * closed by the [CredentialScope].
+     * closed by the credential scope that owns it.
      * ## Performance Note
      * This creates a new String from the byte array. The String will
      * be subject to GC, string interning, and potentially stack traces.

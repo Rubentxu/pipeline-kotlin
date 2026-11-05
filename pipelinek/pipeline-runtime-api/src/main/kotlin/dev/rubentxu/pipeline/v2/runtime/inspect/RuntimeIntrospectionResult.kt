@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
 /**
  * The result envelope returned by [RuntimeIntrospectionPort.inspect].
  * Closed ADT: one case for an observation, one for a refusal. Mirrors the
- * read ports ([dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult]
+ * read ports (`EventRecordReadResult`
  * and [dev.rubentxu.pipeline.v2.output.OutputReadResult]) but with only two
  * cases because the introspection result is pull-by-call (not a follow).
  * The result is a typed ADT, not a nullable. The follow-style ports over the

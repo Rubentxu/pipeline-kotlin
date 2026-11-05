@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * Severity level for a [ScriptingDiagnostic], modelled after
- * [kotlin.script.experimental.api.ScriptDiagnostic.Severity].
+ * `ScriptDiagnostic.Severity`.
 */
 @Serializable
 enum class ScriptDiagnosticSeverity {

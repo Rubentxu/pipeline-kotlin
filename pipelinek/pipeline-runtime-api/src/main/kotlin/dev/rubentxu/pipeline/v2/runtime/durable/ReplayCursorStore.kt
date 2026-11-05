@@ -63,8 +63,8 @@ interface ReplayCursorStore {
 /**
  * Result of a single branch execution, used by [ReplayCursorStore.advancePastParallelFrame].
  *
- * This is a minimal data class defined in the events module to avoid a dependency
- * from events on the step-sdk runtime module (where [BranchResult] lives).
+ * A minimal data class declared next to the port that carries it, so that the
+ * events store can implement that port without depending on the shell runtime.
  *
  * @property branchIndex The index of the branch.
  * @property stageIndex The stage index after this branch completed.

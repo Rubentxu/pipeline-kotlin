@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.domain
 
 /**
  * Exception thrown when a credential's actual kind does not match the expected kind.
- * Thrown during [dev.rubentxu.pipeline.v2.credentials.api.CredentialScope.env]
+ * Thrown during `CredentialScope.env`
  * when a binding expects one credential type but the store returns another.
  * Jenkins verbatim wording (post-2019 source):
  * `"Credential '<id>' is of type '<actual>' where '<expected>' was expected."`

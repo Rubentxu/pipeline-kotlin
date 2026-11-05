@@ -29,7 +29,7 @@ package dev.rubentxu.pipeline.v2.domain.step
  * argument makes that impossible by construction rather than by discipline: the
  * same value is produced at both moments, always.
  * Anything genuinely per-execution belongs in the runtime's own capability
- * (e.g. `network.egress` reads [dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions]),
+ * (e.g. `network.egress` reads `ShOptions`),
  * which is exactly the split that keeps the plugin from needing the context.
  * ## The law on collisions
  * Two contributors providing the same [StepCapability] is a DEFECT, not a

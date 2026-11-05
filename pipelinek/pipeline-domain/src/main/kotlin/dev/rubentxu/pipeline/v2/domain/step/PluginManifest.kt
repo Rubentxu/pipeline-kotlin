@@ -66,7 +66,7 @@ data class PluginManifest(
 
 /**
  * One Step family's declaration inside a [PluginManifest].
- * [declaredCapabilities] is what the plugin author claims the Step requires. The
+ * [PluginStepContribution.declaredCapabilities] is what the plugin author claims the Step requires. The
  * runtime contract is the [StepContract.requiredCapabilities] the registry sees.
  * Cross-checking the two is [PluginManifestValidator]'s job.
  * Retained as a named alias for [PluginStepContribution] so existing readers keep

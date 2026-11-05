@@ -30,7 +30,7 @@ interface DivergenceDetector {
 /**
  * Strict fingerprint-based divergence detector.
  *
- * Compares the [fingerprint] of the [current] operation against the [journaled]
+ * Compares the [DurableOperation.fingerprint] of the `current` operation against the `journaled`
  * operation (if any). If fingerprints differ, throws [DivergenceException].
  *
  */

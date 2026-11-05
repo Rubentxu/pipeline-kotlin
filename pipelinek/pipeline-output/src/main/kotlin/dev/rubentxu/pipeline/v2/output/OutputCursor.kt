@@ -26,7 +26,7 @@ value class OutputStreamId(val value: String) {
 
 /**
  * A position inside one output stream, expressed as **committed byte offset**.
- * ## Why this is not an [dev.rubentxu.pipeline.v2.events.identity.EventCursor]
+ * ## Why this is not an `EventCursor`
  * An event cursor continues over a store-assigned event sequence. An output cursor continues over
  * byte offsets. They are different orders with different failure modes:
  * - event #143 is not byte #143 of the log;

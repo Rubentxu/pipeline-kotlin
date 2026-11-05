@@ -319,7 +319,7 @@ class SecretPatternRegistry {
 
     /**
      * Scrubs all registered secret patterns from a string.
-     * This is a standalone scrub for use cases like [GitCheckoutFailed.reason]
+     * This is a standalone scrub for use cases like `GitCheckoutFailed.reason`
      * where the error message may contain embedded credentials that need to be
      * redacted before the event is emitted.
      * `GitCheckoutFailed.reason` must be scrubbed via this method

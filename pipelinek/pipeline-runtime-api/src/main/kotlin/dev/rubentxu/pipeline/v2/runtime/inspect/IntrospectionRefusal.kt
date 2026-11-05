@@ -43,7 +43,7 @@ sealed interface IntrospectionRefusal {
     data class InconsistentLeaseState(val details: String) : IntrospectionRefusal
 
     /**
-     * [inspectOperation] was called with an `(operationId, attempt)`
+     * [RuntimeIntrospectionPort.inspectOperation] was called with an `(operationId, attempt)`
      * pair that the journal has no row for. The case is additive on the
      * Existing `IntrospectionRefusal` ADT (no breaking change). The
      * first-cut adapter used `StorageError("no journal row ...")` for

@@ -61,7 +61,7 @@ data class ArtifactHandle(
 
 /**
  * Single archived file entry within an [ArtifactHandle].
- * Mirrors the certified [dev.rubentxu.pipeline.v2.runtime.ArchivedFileSummary]
+ * Mirrors the certified `ArchivedFileSummary`
  * shape (relPath / sha256 / size) without timestamps. The bridge from
  * `core.archiveArtifacts` to `core.artifact.query` materialises
  * `ArchivedFileSummary` records into these ADT entries.

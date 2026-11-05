@@ -25,8 +25,8 @@ import java.util.UUID
  *    Called in `finally` — always executes even on step failure.
  * 3. **Redaction pattern scoping**: `close()` also drops active redaction patterns
  * From the bound [RedactingEventSink]
- * 4. **Audit events**: emits [CredentialBound], [CredentialUsed], [CredentialUnbound]
- * Events through the bound [EventSink]
+ * 4. **Audit events**: emits `CredentialBound`, `CredentialUsed`, `CredentialUnbound`
+ * events through the bound `EventSink`
  * ## How a credential is resolved
  * The scope resolves a credential WHEN THE CALLER ASKS FOR IT, and it resolves nothing
  * else: `env(binding)` reads the binding's credential from the store, and `env(id)`
@@ -37,7 +37,7 @@ import java.util.UUID
  * ## Failures
  * Wipe failures propagate via `addSuppressed` and do NOT prevent step completion.
  * The first exception is rethrown; subsequent exceptions are suppressed.
- * @param store The credential store (e.g., [LocalSecretStore])
+ * @param store The credential store (e.g., `LocalSecretStore`)
  * @param eventSink The event sink for audit events
  * @param clock Clock for event timestamps
  * @param runId The run identifier for audit events

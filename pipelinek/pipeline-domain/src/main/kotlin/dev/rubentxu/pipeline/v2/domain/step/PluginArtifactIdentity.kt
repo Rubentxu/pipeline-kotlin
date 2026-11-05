@@ -138,7 +138,7 @@ data class MeasuredArtifactIdentity(
     /**
      * What the runtime can say about the artifact's bytes against the manifest's claim.
      * `measuredDigest == null` means "the runtime did not measure", and that is deliberately
-     * NOT a pass: it is an [Unverified] state, distinct from both agreement and disagreement.
+     * NOT a pass: it is an [ArtifactIdentityVerdict.Unverified] state, distinct from both agreement and disagreement.
      * Collapsing "nobody checked" into "checked and fine" is the fail-open this whole type
      * was written to prevent.
      * A [ArtifactIdentityVerdict.Mismatch] here means the artifact and the manifest disagree.

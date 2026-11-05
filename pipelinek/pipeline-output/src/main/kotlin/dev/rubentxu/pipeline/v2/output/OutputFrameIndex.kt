@@ -136,7 +136,7 @@ interface OutputFrameIndex {
      * finished. That is the asymmetry this closes.
      * ## Declared, not written
      * This lists streams [declareStream] was told about, which is deliberately a SUPERSET of the
-     * streams that hold bytes: [ShExecution] declares both channels before the first byte precisely
+     * streams that hold bytes: `ShExecution` declares both channels before the first byte precisely
      * so a crash between a stream's first commit and its first frame is recoverable. A stream
      * declared and never written to is listed here and contributes nothing to recovery, and
      * answering a tail question about it is safe rather than misleading — an absent stream is not

@@ -9,8 +9,9 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * remains the sole sequence authority) → EnvelopeProjector on the event WITH its
  * assigned sequence → [EventPublisher]. Producers are untouched: they keep
  * appending raw DomainEvents and never see ResourceRef or envelopes.
- * Read path lives in [InMemoryEventHistory]/[SqliteEventHistory] adapters (see
- * adapters package). This class is write-side only.
+ * Read path lives in [EventHistoryReader], which reads through the same sink;
+ * the InMemory and SQLite adapters share its semantics. This class is write-side
+ * only.
 */
 class EnvelopeProjectingEventSink(
     private val inner: EventSink,

@@ -45,7 +45,7 @@ object Sha256 {
     private const val STREAM_BUFFER = 8192
 
     /**
-     * Lowercase hex of the SHA-256 of [bytes].
+     * Lowercase hex of the SHA-256 of `bytes`.
      * `%02x` on a signed `Byte` yields the two-digit form in Kotlin because the format masks
      * to 8 bits; the value is therefore stable for negative bytes (`-1` -> `ff`), which the
      * tests pin against the JDK oracle.
@@ -89,7 +89,7 @@ object Sha256 {
     }
 
     /**
-     * Lowercase hex of the SHA-256 of [bytes], matching [ofBytes] for the same content.
+     * Lowercase hex of the SHA-256 of `value`, matching [ofBytes] for the same content.
      * Retained as a named alternative rather than removed: `ofText` is the spelling that says
      * "this was a string", and having both is one line. If a caller is migrating, prefer
      * [ofText].

@@ -791,7 +791,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * `input(message) { ... }` — ask a human and continue only if they say yes
      * . declarative structural IR only: the compiler lowers this
      * variant through
-     * [dev.rubentxu.pipeline.v2.runtime.CoreInputInput] and the single wire
+     * `CoreInputInput` and the single wire
      * authority `CoreInputWireCodec`; this type carries no wire vocabulary of its
      * own.
      */

@@ -39,7 +39,7 @@ sealed interface TrustMetadata {
 
     /**
      * The runtime has not been able to confirm the artifact's identity.
-     * Carries [reason] and [origin] so a refusal can say WHY a plugin is unverified (no
+     * Carries [reason] and `origin` so a refusal can say WHY a plugin is unverified (no
      * operator trust row, the bytes could not be read, or the pinned digest disagrees with
      * the claim) and WHERE it came from. The default values model the manifest-decode-time
      * state: the codec has parsed the document and the gate has not yet measured. The gate
@@ -84,7 +84,7 @@ sealed interface TrustMetadata {
 
         /**
          * The runtime could not read the artifact's bytes.
-         * The [origin] field carries whatever the runtime knows about where the artifact
+         * The `origin` field carries whatever the runtime knows about where the artifact
          * lives; the failure is that the bytes were not reachable. This is distinct from
          * [NoTrustedDigestAvailable] because the operator may have pinned the digest but
          * the runtime cannot confirm it — and an admit on "we could not measure" is the

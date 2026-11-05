@@ -96,8 +96,8 @@ sealed interface CompileResult {
  * The runtime is the only entity that knows what a
  * "pipeline" *means* in execution. The compiler is the only entity that
  * knows what a pipeline source *means* in code. Both are domain concerns.
- * Adapters (the actual parsers) live in [application][dev.rubentxu.pipeline.v2.application]
- * or in [sdk][dev.rubentxu.pipeline.v2.sdk], never in domain itself.
+ * Adapters (the actual parsers) live in the `application`
+ * or `sdk` packages, never in domain itself.
  *
  * @see PipelineDefinition
  * @see PipelineDiagnostic

@@ -237,6 +237,27 @@ class CertificationCheckpointTest {
     }
 
     @Test
+    fun `a second receipt for the same candidate replaces the one that was held`() {
+        // The identity of the transition is the receipt, so a receipt that arrives later is a
+        // different fact and the state moves to it. A receipt that repeats the one already held
+        // is the same fact, and that is the case the state does not move for.
+        val requested = checkpointOf(
+            applyCertificationTransition(cycle, null, CertificationTransition.Requested(request())),
+        )
+        val admitted = checkpointOf(
+            applyCertificationTransition(cycle, requested, CertificationTransition.Admitted(receipt())),
+        )
+
+        val later = receipt(resultId = "fedcba9876543210")
+        val checkpoint = checkpointOf(
+            applyCertificationTransition(cycle, admitted, CertificationTransition.Admitted(later)),
+        )
+
+        assertEquals(later, checkpoint.receipt)
+        assertEquals(3, checkpoint.revision)
+    }
+
+    @Test
     fun `a defect is held against the candidate it was found against`() {
         val requested = checkpointOf(
             applyCertificationTransition(cycle, null, CertificationTransition.Requested(request())),

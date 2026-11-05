@@ -336,12 +336,12 @@ class CertificationCheckpointJournalTest {
     @Test
     fun `a journal that contradicts itself is not written over`() {
         // The row of the revision 2 is there and it is terminal, but the checkpoint it carries
-        // says revision 1: the row and the payload disagree. The writer restores the payload,
-        // computes revision 2, and finds the revision already written.
+        // says revision 1 and holds another ask: the row and the payload disagree. The writer
+        // restores the payload, computes revision 2, and finds the revision already written.
         val contradicting = CertificationCheckpoint(
             cycleId = cycle.value,
             candidate = CandidateId.fromDigest(digest),
-            request = request(),
+            request = request(scenarios = listOf("alpha")),
             revision = 1,
         )
         journal.append(

@@ -62,10 +62,13 @@ fun CertificationEmission.render(): String = when (this) {
  * the request about another candidate, and the event refuses it instead of
  * carrying it.
  *
- * [alreadyEmitted] is what an emission of the same candidate left behind. The
- * same ASK is not emitted twice, and a DIFFERENT ask for the same candidate is
- * refused rather than written over: two questions for one candidate would
- * leave the receiver with no way to tell which one it is being asked.
+ * [previousEmission] is asked for what an emission of the same candidate left
+ * behind, and it is a PORT rather than a document: this model does not know
+ * where a message lives, and the part that does knows how to look for one.
+ * The same ASK is not emitted twice, and a DIFFERENT ask for the same
+ * candidate is refused rather than written over: two questions for one
+ * candidate would leave the receiver with no way to tell which one it is
+ * being asked.
  *
  * The ask is the candidate, the release it is published under and the battery
  * it is certified against — not the instants. A publication that is replayed
@@ -74,14 +77,15 @@ fun CertificationEmission.render(): String = when (this) {
  * its own successful retry.
  *
  * Pure: it reads the values it is given and returns a decision. It touches no
- * filesystem and no clock — the moment is supplied.
+ * filesystem and no clock — the moment is supplied, and the one thing it asks
+ * of the outside world is asked through a port.
  */
 fun certificationRequestedEmission(
     handoffText: String,
     requestText: String,
     publicationReceipt: String,
     publishedAt: Instant,
-    alreadyEmitted: String? = null,
+    previousEmission: (CandidateId) -> String? = { null },
 ): CertificationEmission {
     val published = publishedReleaseOf(publicationReceipt)
         ?: return CertificationEmission.Refused(
@@ -139,6 +143,7 @@ fun certificationRequestedEmission(
     val document = CertificationRequestedEventCodec.encode(event)
     val receipt = receiptOf(event, published.tag)
 
+    val alreadyEmitted = previousEmission(request.candidateId)
     if (alreadyEmitted != null) {
         val previous = when (val decoded = CertificationRequestedEventCodec.decode(alreadyEmitted)) {
             is CertificationEventDecode.Accepted -> decoded.event
@@ -239,6 +244,7 @@ private fun receiptOf(event: CertificationRequestedEvent, tag: String): String {
     return buildString {
         append("certification-request: EMITTED\n")
         append("  event_name: ${CertificationRequestedEvent.NAME}\n")
+        append("  event_file: ${CertificationRequestedEvent.fileNameFor(event.candidateId)}\n")
         append("  candidate_id: ${event.candidateId.canonical}\n")
         append("  release_tag: $tag\n")
         append("  release_version: ${event.release.version}\n")

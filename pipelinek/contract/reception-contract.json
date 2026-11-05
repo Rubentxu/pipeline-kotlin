@@ -1,0 +1,37 @@
+{
+  "schema_version": "pipelinek-reception-contract-1",
+  "contract_id": "pipelinek-release-reception",
+  "inbox": {
+    "environment_variable": "PIPELINEK_INBOX_DIRECTORY",
+    "default": {
+      "base_environment_variable": "XDG_STATE_HOME",
+      "base_default_directory": ".local/state",
+      "path": "pipelinek/inbox"
+    }
+  },
+  "message": {
+    "name": "rc.certification.requested",
+    "file_name": "rc.certification.requested.<candidate_digest>.json",
+    "file_name_pattern": "^rc\\.certification\\.requested\\.[0-9a-f]{64}\\.json$",
+    "format": "json",
+    "format_version": "pipelinek-certification-requested-1",
+    "protocol_version": "1"
+  },
+  "identity": {
+    "rule": "candidate_digest",
+    "carried_by": [
+      "file_name",
+      "document"
+    ],
+    "never": "modification_time"
+  },
+  "states": {
+    "pending": "a message whose identity the receiver has not processed yet",
+    "claimed": "a message the receiver is processing right now, claimed by identity so a second reader does not take it",
+    "processed": "a message whose identity the receiver has recorded as processed"
+  },
+  "pending_sweep": {
+    "required": true,
+    "why": "a .path unit only sees CHANGES, and a message written while the receiver was down leaves no change to trigger it; the receiver therefore sweeps the pending messages when it starts, so an interruption does not leave work behind"
+  }
+}

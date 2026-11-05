@@ -343,6 +343,12 @@ tasks.register<JavaExec>("candidateAdmission") {
  * (`:pipeline-release:certificationAdmission`): the receiver is asked about the
  * bytes and the battery that were admitted, and there is no second derivation
  * of the request that could disagree with the first.
+ *
+ * The task does NOT take the place of the message. The reception contract
+ * does: it declares the inbox the receiver observes and the name the file
+ * carries, and the producer lands the message there. A task that took a path
+ * would let the release path and the contract say two different things, and
+ * only one of them would be the truth.
  */
 tasks.register<JavaExec>("certificationRequested") {
     group = "distribution"
@@ -355,7 +361,7 @@ tasks.register<JavaExec>("certificationRequested") {
     val request = providers.gradleProperty("certification.request").orNull
     val publicationReceipt = providers.gradleProperty("certification.publicationReceipt").orNull
     val publishedAt = providers.gradleProperty("certification.publishedAt").orNull
-    val eventFile = providers.gradleProperty("certification.eventFile").orNull
+    val contract = providers.gradleProperty("certification.contract").orNull
     val receiptFile = providers.gradleProperty("certification.receiptFile").orNull
 
     // The documents the decision depends on are INPUTS: a command line carries
@@ -363,8 +369,12 @@ tasks.register<JavaExec>("certificationRequested") {
     listOfNotNull(handoff, request, publicationReceipt).forEach { path ->
         inputs.file(project.file(path))
     }
+    // The contract is an input too, and it is read from the ROOT project: the
+    // contract of the repository is not a file of one module, and a task that
+    // read it from somewhere else would read a copy.
+    if (contract != null) inputs.file(rootProject.file(contract))
     inputs.property("publishedAt", publishedAt ?: "")
-    inputs.property("eventFile", eventFile ?: "")
+    inputs.property("contract", contract ?: "")
     inputs.property("receiptFile", receiptFile ?: "")
 
     // The arguments are fixed while the task is CONFIGURED, not while it runs.
@@ -376,7 +386,7 @@ tasks.register<JavaExec>("certificationRequested") {
         request ?: "",
         publicationReceipt ?: "",
         publishedAt ?: "",
-        eventFile ?: "",
+        contract ?: "",
         receiptFile ?: "",
     )
 
@@ -386,7 +396,7 @@ tasks.register<JavaExec>("certificationRequested") {
             "certification.request" to request,
             "certification.publicationReceipt" to publicationReceipt,
             "certification.publishedAt" to publishedAt,
-            "certification.eventFile" to eventFile,
+            "certification.contract" to contract,
             "certification.receiptFile" to receiptFile,
         ).filter { (_, value) -> value.isNullOrBlank() }.map { (name, _) -> name }
 
@@ -394,7 +404,7 @@ tasks.register<JavaExec>("certificationRequested") {
             throw GradleException(
                 "certificationRequested needs ${missing.joinToString(", ")}. The event is " +
                     "emitted from the publication, and an emission with no document to read and " +
-                    "no place to write it certifies nothing.",
+                    "no contract to land the message in certifies nothing.",
             )
         }
     }

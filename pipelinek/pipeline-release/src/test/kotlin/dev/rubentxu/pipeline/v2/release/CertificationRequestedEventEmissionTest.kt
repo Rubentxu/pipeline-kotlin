@@ -81,13 +81,13 @@ class CertificationRequestedEventEmissionTest {
         request: String = requestText(),
         receipt: String = publicationReceipt(),
         publishedAt: Instant = this.publishedAt,
-        alreadyEmitted: String? = null,
+        previousEmission: (CandidateId) -> String? = { null },
     ) = certificationRequestedEmission(
         handoffText = handoff,
         requestText = request,
         publicationReceipt = receipt,
         publishedAt = publishedAt,
-        alreadyEmitted = alreadyEmitted,
+        previousEmission = previousEmission,
     )
 
     private fun decodedEvent(document: String): CertificationRequestedEvent {
@@ -206,7 +206,7 @@ class CertificationRequestedEventEmissionTest {
 
         val second = assertInstanceOf(
             CertificationEmission.AlreadyEmitted::class.java,
-            emission(alreadyEmitted = first.document),
+            emission(previousEmission = { first.document }),
         )
         assertEquals(first.receipt, second.receipt)
     }
@@ -232,7 +232,7 @@ class CertificationRequestedEventEmissionTest {
         val again = assertInstanceOf(
             CertificationEmission.AlreadyEmitted::class.java,
             emission(
-                alreadyEmitted = first.document,
+                previousEmission = { first.document },
                 publishedAt = Instant.parse("2026-11-05T19:30:00Z"),
             ),
         )
@@ -249,7 +249,7 @@ class CertificationRequestedEventEmissionTest {
         val refused = assertInstanceOf(
             CertificationEmission.Refused::class.java,
             emission(
-                alreadyEmitted = first.document,
+                previousEmission = { first.document },
                 receipt = publicationReceipt(tag = "v0.44.0-rc2"),
             ),
         )
@@ -265,7 +265,7 @@ class CertificationRequestedEventEmissionTest {
         val refused = assertInstanceOf(
             CertificationEmission.Refused::class.java,
             emission(
-                alreadyEmitted = first.document,
+                previousEmission = { first.document },
                 request = requestText(batteryId = "other-battery"),
             ),
         )
@@ -278,7 +278,7 @@ class CertificationRequestedEventEmissionTest {
     fun `a document that cannot be read is not overwritten`() {
         val refused = assertInstanceOf(
             CertificationEmission.Refused::class.java,
-            emission(alreadyEmitted = "{\"not\": \"an event\"}"),
+            emission(previousEmission = { "{\"not\": \"an event\"}" }),
         )
         assertTrue(refused.reason.contains("cannot read"))
     }

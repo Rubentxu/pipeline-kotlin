@@ -862,19 +862,25 @@ echo "release-pipelinek: published asset set verified complete (${#STAGED_PATHS[
 #
 #    The moment is taken HERE, right after the publication was observed to have
 #    succeeded: it is the instant the release became real.
+#
+#    The message does NOT land in the evidence directory. It lands in the inbox
+#    that the reception contract declares (the contract of reception, under
+#    pipelinek/contract/), because that is the directory the receiver observes:
+#    an inbox that changes name with every release is an inbox no unit can
+#    watch. The receipt of the emission stays here, in the evidence of the
+#    release.
 # ----------------------------------------------------------------------------
 
 PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-CERTIFICATION_EVENT="${EVIDENCE_DIR}/rc.certification.requested.${LOCAL_SHA}.json"
 CERTIFICATION_RECEIPT="${EVIDENCE_DIR}/rc.certification.requested.txt"
 
 set +e
 "${REPO_ROOT}/scripts/release/emit-certification-requested.sh" \
-    --handoff "pipelinek/pipeline-release/build/candidate/candidate-handoff.json" \
+    --handoff "${REPO_ROOT}/pipelinek/pipeline-release/build/candidate/candidate-handoff.json" \
     --request "$CERTIFICATION_REQUEST" \
     --publication-receipt "${EVIDENCE_DIR}/github-release.txt" \
     --published-at "$PUBLISHED_AT" \
-    --event-file "$CERTIFICATION_EVENT" \
+    --contract "${REPO_ROOT}/pipelinek/contract/reception-contract.json" \
     --receipt-file "$CERTIFICATION_RECEIPT"
 CERTIFICATION_EXIT=$?
 set -e
@@ -891,7 +897,7 @@ if [ "$CERTIFICATION_EXIT" -ne 0 ]; then
     exit 1
 fi
 
-echo "release-pipelinek: certification request emitted at ${CERTIFICATION_EVENT}"
+echo "release-pipelinek: certification request emitted; the receipt is at ${CERTIFICATION_RECEIPT}"
 
 # Nothing is committed here. The four text artefacts were already delivered:
 # they are release assets, and HANDOFF.md is the release notes body (see the

@@ -434,6 +434,7 @@ code that implements each surface:
 | The telemetry contract | The section "Contracts" above, and the KDoc on `TelemetryPolicy`, in `RunTelemetry.kt` of `:pipeline-runtime-api` |
 | The plugin contract | The section "Contracts" above, and the KDoc on `StepContext.kt` in `:pipeline-step-sdk` |
 | Reading a run from outside | The section "Contracts" above, and the KDoc on `OutputReadPort.kt` in `:pipeline-output`, `EventRecordReadPort.kt` in `:pipeline-events` and `RuntimeIntrospectionPort.kt` in `:pipeline-runtime-api` |
+| The API reference of the published contracts | `./pipelinek/gradlew -p pipelinek apiReferenceHtml`, which writes one HTML site per published contract under that module's `build/dokka/html` |
 | How the build is verified, and what is out of bounds | `AGENTS.md` in the repository root |
 
 The reason to prefer this over a prose tree is not preference: a KDoc block

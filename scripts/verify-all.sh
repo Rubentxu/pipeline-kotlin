@@ -3,8 +3,8 @@
 #
 # It runs, in one process and on purpose no other:
 #   1. the checks that read only the tree: the comment-provenance guard, the
-#      process-exit guard, the durable-path cost guard, the census of Kotlin
-#      source sets, and the LOC census;
+#      process-exit guard, the durable-path cost guard, the product-boot-layer
+#      guard, the census of Kotlin source sets, and the LOC census;
 #   2. the build with its static analysis, its public-API compatibility check,
 #      the development distribution, and the reference of the published
 #      contracts with the review of the links it does not resolve;
@@ -16,6 +16,16 @@
 # It is not a test framework and it has no registry, no service, no database
 # and no tests-of-tests. It runs named commands in a fixed order, and it stops
 # at the first failing stage so a red run names the stage that is red.
+#
+# THE LAYER THIS GATE DOES NOT CALL. The layer that boots a product lives in
+# a harness repository: it certifies the published artifact against the
+# contract of the product and keeps the record of what it certified in its own
+# board. This gate calls none of it, and the tree it certifies holds none of
+# it: the first stage refuses a scenario suite, a launcher, a family map or an
+# init script that belongs to that layer. The one executable program that does
+# start the product is the compatibility gate of the publication, which
+# compares the published artifact against the last published one; it is named
+# in the declaration of that guard, and it does not run here.
 #
 # THE ORDER IS PART OF THE GATE, not a detail of it. The checks that read only
 # the tree cost seconds between them, and the checks that RUN the product cost
@@ -461,7 +471,7 @@ trap cleanup_run_dir EXIT
 
 # --- Stage 1: the checks that read only the tree --------------------------------
 #
-# The stage runs six checks that read ONLY the tree, and only then the Gradle
+# The stage runs seven checks that read ONLY the tree, and only then the Gradle
 # invocation that builds the product and analyses it. The order is the point,
 # and it is the reason this stage exists at all.
 #
@@ -588,6 +598,29 @@ if want_stage 1; then
     else
         cat "$log_dir/durable.out" >&2
         fail "stage 1: the durable-path cost guard"
+    fi
+
+    # --- The tree holds no layer that boots a product -------------------------
+    # A layer that starts the product to certify it lives in a harness
+    # repository, which certifies the published artifact and keeps the record
+    # of that certification in its own board. This tree certifies itself with
+    # three legs -- unit tests, integration tests with mocks and mutants -- so
+    # it holds no scenario suite, no acceptance harness, no launcher of the
+    # product under test, no receipt of a booted run and no executable
+    # end-to-end program.
+    #
+    # The guard reads the tree and compares it with a closed declaration: an
+    # executable program that the declaration does not name is a failure, and a
+    # declared program that is no longer there is a failure too, so the list
+    # cannot rot into a set of names that would allow whatever arrives next.
+    # The one executable program that starts the product is the compatibility
+    # gate of the publication, and the declaration says so with its reason.
+    if python3 scripts/check-product-boot-layer.py > "$log_dir/boot-layer.out" 2>&1; then
+        log "stage 1/5  the layer that boots a product"
+        cat "$log_dir/boot-layer.out"
+    else
+        cat "$log_dir/boot-layer.out" >&2
+        fail "stage 1: the product-boot layer guard"
     fi
 
     # --- Only src/main, src/test and src/integrationTest may hold Kotlin -------

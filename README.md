@@ -174,6 +174,12 @@ open-world claim it proves false. The four are built by ONE task in the root
 build script, which forks a single Gradle invocation over the composite in
 `examples/example-plugins` so they build concurrently.
 
+One directory there is not a plugin at all: `examples/observability/` holds
+the consumer side of the telemetry — a local Collector configuration, the
+queries for each family and a Grafana dashboard that runs them. The engine
+does not need it, the distribution does not ship it and the gate never
+requires it.
+
 ## Verification
 
 The verification of this repository is `scripts/verify-all.sh`, and it runs
@@ -354,6 +360,105 @@ same vocabulary and exported on demand, which is the path that needs no SDK.
 An export that cannot be written is reported — the loss is counted and the
 run's result does not change.
 
+#### What a consumer reads
+
+Six families of measurement and six of trace, each one answering a single
+question and allowing a single decision. The last column names who acts on
+the answer.
+
+| Measurement | Question | Decision | Who acts |
+|---|---|---|---|
+| `pipelinek.boundary_duration_ms` with `operation_kind="compile"` | How long does compiling the script take? | A compile that grows is the pipeline's own cost: the fix is in the script, not in the runner. | Product |
+| `pipelinek.boundary_duration_ms` with `operation_kind="step.dispatch"` | How long does a dispatched step take? | The step that dominates the run is the one to parallelise, cache or move to a faster runner. | Product |
+| `pipelinek.boundary_duration_ms` with `operation_kind="step.preparation"` | How long did a step wait before it was allowed to run? | Time here is the cost of admission and of the wait; it is where a queue shows up, and it is not the step's own time. | SLA |
+| `pipelinek.boundary_duration_ms` with `operation_kind="recovery"` | How long does recovering an unobserved operation take? | A recovery that grows is a durability problem, not a business one: the run's result does not depend on it. | SLA |
+| `pipelinek.boundary_total` with `status` and `failure_class` | Which failures happened, and of which class? | The class says who has to act, so it is what routes the alert and not the count alone. | Debugging |
+| `pipelinek.export_loss_total` | Did the telemetry itself fail to leave the process? | A growing loss means the picture is incomplete; the run's result does not change, so this is a question about trust. | Debugging |
+
+| Trace | Question | Decision | Who acts |
+|---|---|---|---|
+| `pipelinek.compile` | What did compiling the script cost inside the run? | It is the first thing to attack when a run is slow from its first millisecond. | Product |
+| `pipelinek.admission` | Was the run's plugin set admitted, and what was refused? | A refusal names the missing capability, so the fix is in the plugin's declaration. | Debugging |
+| `pipelinek.step.dispatch` and `pipelinek.step.invoke` | Which step took the time, and did it fail inside the plugin or outside it? | The step that dominates the run is the one to parallelise, cache or move to a faster runner. | Product |
+| `pipelinek.waituntil` | How long did the run wait for a condition it did not control? | A wait that grows is a latency promise being broken, not a slow step. | SLA |
+| `pipelinek.recovery` and `pipelinek.retry.attempt` | What had to be recovered, and how many attempts did it take? | A recovery is a durability event: the run's result does not depend on it. | SLA |
+| Any span with `status = error`, read with its `failure.class` | Which run failed, and in which class? | The class says who has to act, so it is what routes the alert and not the count alone. | Debugging |
+
+Two more spans frame the run without answering a question of their own:
+`pipelinek.stage` opens around each stage and `pipelinek.release` around the
+release of the output plane.
+
+The run id is the join between the two: a measurement and the trace of the
+same run carry the same `run.id`, and that is how a dashboard and a trace
+view are put next to each other.
+
+A finished run can also be projected into the same vocabulary and exported on
+demand, which is the path that needs no SDK. That projection carries its own
+instrument names — `pipelinek.compile_duration_ms`,
+`pipelinek.step_duration_ms` and `pipelinek.run_outcome_total` — because a
+run read back from the journal is measured at its own boundaries and not at
+the live ones.
+
+#### Where it goes
+
+The product names no backend. The endpoint, the protocol and the credentials
+are read from the environment, so the same build points at a local Collector,
+at Tempo, at Jaeger or at nothing at all:
+
+| Variable | What it decides |
+|---|---|
+| `PIPELINEK_OTEL_ENABLED` | `true` turns the SDK on. Without it there is no SDK, no exporter and no worker, and the run emits nothing. |
+| `PIPELINEK_OTEL_TRACEPARENT` | The trace the run hangs from, when the operator already has one. A value that is not well formed is refused, and the run starts its own trace. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Where the OTLP documents go. No endpoint is compiled into the product. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` or `grpc`, whichever the receiver speaks. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | The credentials, in the SDK's own header format. The pipeline content never sees them. |
+| `OTEL_SERVICE_NAME` | The name the signals travel under. |
+
+`examples/observability/` holds a working example of the consumer side: a
+local Collector configuration, one query per family in PromQL and in TraceQL,
+and a Grafana dashboard that runs those queries. It is an example and not a
+dependency: the engine does not know the directory exists, the gate never
+requires it, and nothing in it is compiled into the distribution. Grafana,
+Tempo and Jaeger are adapters that read what the Collector exports; the
+product knows none of them, and a reader who wants none of them still gets
+the same contract.
+
+The Prometheus exposition of a signal is not spelled the way the product
+spells it: the exporter turns every dot into an underscore and appends the
+unit, so `pipelinek.boundary_duration_ms` is exposed as
+`pipelinek_boundary_duration_ms_milliseconds`, with `_bucket`, `_sum` and
+`_count` beside it. The queries in the example carry both spellings, so a
+reader can tell which instrument answers the question.
+
+#### What it costs
+
+Measured on a known host — Intel Xeon E5-2682 v4 at 2.50 GHz, 64 cores,
+94 GiB of RAM, Linux 5.2.15, Temurin 21.0.8 — by driving the product's own
+telemetry machinery from a program outside this repository, with the exporter
+pointing at a local OTLP receiver and 25 runs per measurement:
+
+| | Telemetry off | Telemetry on |
+|---|---|---|
+| Opening the telemetry | 0.003 ms | 10.4 ms |
+| Recording one run of ten spans and four boundaries | 0.007 ms | 0.74 ms |
+| Closing the telemetry | 0.003 ms | 147 ms |
+| Bytes exported per run | 0 | 1130, of which 841 are traces |
+| Spans per run | 0 | 10 |
+
+A process that runs one pipeline pays about **158 ms** to be observed, and
+147 of those milliseconds are paid at the two ends: opening the SDK and
+flushing it. A process that runs N pipelines pays 10.4 ms + 0.74 ms × N +
+147 ms, so the cost per run falls as the process does more. A run that emits
+nothing costs nothing at all, because nothing is constructed.
+
+With the exporter pointed at a port nobody listens on, the run's result does
+not change and the run is not blocked: the product warns on stderr, counts
+the loss, and the close takes 8.1 s waiting for a backend that is not there.
+That wait is the exporter's own timeout, not a promise of the product.
+
+These are measurements on one host, not limits the product enforces. What
+they buy is a budget that was measured instead of invented.
+
 The contract that carries the detail is the KDoc on `TelemetryPolicy`, in
 `RunTelemetry.kt` of `:pipeline-runtime-api`.
 
@@ -442,6 +547,7 @@ code that implements each surface:
 | Secret redaction and credentials | Redaction: the KDoc on `SecretPatternRegistry.kt` in `:pipeline-credentials-api`, which also states that a bound secret of fewer than `MIN_MASKABLE_LENGTH` (8) characters runs normally but is **not** masked, so it reaches the transcript in the clear. Store access: `PassphraseResolver.kt` and `CredentialsStorePath.kt` in `:pipeline-credentials-local` |
 | Typed events, transcripts, recovery | The KDoc on `JsonEventLog.kt` in `:pipeline-events-store` |
 | The telemetry contract | The section "Contracts" above, and the KDoc on `TelemetryPolicy`, in `RunTelemetry.kt` of `:pipeline-runtime-api` |
+| An observability backend that reads the telemetry | `examples/observability/`, which holds a local Collector configuration, the queries for each family and a Grafana dashboard that runs them |
 | The plugin contract | The section "Contracts" above, and the KDoc on `StepContext.kt` in `:pipeline-step-sdk` |
 | Reading a run from outside | The section "Contracts" above, and the KDoc on `OutputReadPort.kt` in `:pipeline-output`, `EventRecordReadPort.kt` in `:pipeline-events` and `RuntimeIntrospectionPort.kt` in `:pipeline-runtime-api` |
 | The API reference of the published contracts | `./pipelinek/gradlew -p pipelinek apiReferenceHtml`, which writes one HTML site per published contract under that module's `build/dokka/html` |

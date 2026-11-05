@@ -1,0 +1,61 @@
+# The metrics a consumer reads, one query per family.
+#
+# The names here are the ones the Prometheus exposition of the Collector
+# produces, which is not the same spelling as the product's own: the exporter
+# replaces every dot with an underscore and appends the unit. The product's
+# name is written next to each query, so a reader can tell which instrument
+# answers the question and a change of either spelling is visible here.
+#
+# Two dimensions come with every measurement: `operation_kind` (which boundary
+# was measured) and `status` (how it ended). A measurement that ended in a
+# failure also carries `failure_class`, which is the class of the failure and
+# not a message.
+#
+# The queries read the metric `pipelinek.boundary_duration_ms` and
+# `pipelinek.boundary_total`, and the loss counter
+# `pipelinek.export_loss_total`.
+
+# --- 1. Compile duration -----------------------------------------------------
+# Product's metric: pipelinek.boundary_duration_ms
+# Question: how long does compiling the script take?
+# Decision: a compile that grows is the pipeline's own cost, not the
+# step's; the fix is in the script, not in the runner.
+histogram_quantile(0.95, sum by (le) (rate(pipelinek_boundary_duration_ms_milliseconds_bucket{operation_kind="compile"}[5m])))
+
+# --- 2. Step duration --------------------------------------------------------
+# Product's metric: pipelinek.boundary_duration_ms
+# Question: how long does a dispatched step take?
+# Decision: a step that dominates the run is the one to parallelise, cache
+# or move to a faster runner.
+histogram_quantile(0.95, sum by (le) (rate(pipelinek_boundary_duration_ms_milliseconds_bucket{operation_kind="step.dispatch"}[5m])))
+
+# --- 3. Queue and provisioning ----------------------------------------------
+# Product's metric: pipelinek.boundary_duration_ms
+# Question: how long did a step wait before it was allowed to run?
+# Decision: time spent here is time the pipeline was NOT doing the work;
+# it is the cost of admission and of the wait, and it is where a queue
+# shows up.
+histogram_quantile(0.95, sum by (le) (rate(pipelinek_boundary_duration_ms_milliseconds_bucket{operation_kind="step.preparation"}[5m])))
+
+# --- 4. Recovery -------------------------------------------------------------
+# Product's metric: pipelinek.boundary_duration_ms
+# Question: how long does recovering an unobserved operation take?
+# Decision: a recovery that grows is a durability problem, not a business
+# one; the run's result does not depend on it.
+histogram_quantile(0.95, sum by (le) (rate(pipelinek_boundary_duration_ms_milliseconds_bucket{operation_kind="recovery"}[5m])))
+
+# --- 5. Error taxonomy -------------------------------------------------------
+# Product's metric: pipelinek.boundary_total
+# Question: which failures happened, and of which class?
+# Decision: the class says who has to act (the pipeline's content, the
+# admission, the machinery, the operator, the telemetry itself), so the
+# class is what routes the alert and not the count alone.
+sum by (operation_kind, status, failure_class) (rate(pipelinek_boundary_total{status!="success"}[5m]))
+
+# --- 6. Telemetry drop -------------------------------------------------------
+# Product's metric: pipelinek.export_loss_total
+# Question: did the telemetry itself fail to leave the process?
+# Decision: a growing loss means the picture is incomplete; the run's own
+# result does not change, so this is a question about trust, not about
+# correctness.
+sum(rate(pipelinek_export_loss_total[5m]))

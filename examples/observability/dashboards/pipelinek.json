@@ -1,0 +1,155 @@
+{
+  "title": "PipelineK",
+  "uid": "pipelinek-overview",
+  "description": "One panel per signal family: what the product measured, the question the measurement answers and the decision it allows.",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Compile duration (p95)",
+      "description": "Product's metric: pipelinek.boundary_duration_ms, operation_kind=compile. Question: how long does compiling the script take? Decision: a compile that grows is the pipeline's own cost, so the fix is in the script.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(pipelinek_boundary_duration_ms_milliseconds_bucket{operation_kind=\"compile\"}[5m])))",
+          "legendFormat": "compile p95"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Step duration (p95)",
+      "description": "Product's metric: pipelinek.boundary_duration_ms, operation_kind=step.dispatch. Question: how long does a dispatched step take? Decision: the step that dominates the run is the one to parallelise, cache or move to a faster runner.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(pipelinek_boundary_duration_ms_milliseconds_bucket{operation_kind=\"step.dispatch\"}[5m])))",
+          "legendFormat": "step p95"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Queue and provisioning (p95)",
+      "description": "Product's metric: pipelinek.boundary_duration_ms, operation_kind=step.preparation. Question: how long did a step wait before it was allowed to run? Decision: this time is the cost of admission and of the wait, not the step's own time.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(pipelinek_boundary_duration_ms_milliseconds_bucket{operation_kind=\"step.preparation\"}[5m])))",
+          "legendFormat": "queue p95"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Recovery duration (p95)",
+      "description": "Product's metric: pipelinek.boundary_duration_ms, operation_kind=recovery. Question: how long does recovering an unobserved operation take? Decision: a recovery that grows is a durability problem, and the run's result does not depend on it.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(pipelinek_boundary_duration_ms_milliseconds_bucket{operation_kind=\"recovery\"}[5m])))",
+          "legendFormat": "recovery p95"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Failures by class",
+      "description": "Product's metric: pipelinek.boundary_total. Question: which failures happened, and of which class? Decision: the class says who has to act, so it is what routes the alert and not the count alone.",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2, "stacking": { "mode": "normal" } }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (operation_kind, status, failure_class) (rate(pipelinek_boundary_total{status!=\"success\"}[5m]))",
+          "legendFormat": "{{operation_kind}} / {{failure_class}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Telemetry loss",
+      "description": "Product's metric: pipelinek.export_loss_total. Question: did the telemetry itself fail to leave the process? Decision: a growing loss means the picture is incomplete; the run's own result does not change, so this is a question about trust.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(pipelinek_export_loss_total[5m]))",
+          "legendFormat": "loss"
+        }
+      ]
+    }
+  ]
+}

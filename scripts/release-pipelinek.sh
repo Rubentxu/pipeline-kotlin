@@ -3,7 +3,7 @@
 # corrective: a release MUST NOT be published unless the
 # releaseGate produced a PASS receipt bound to the SHA of the ZIP the script
 # then uploads. This script is the only path that calls `gh release create`;
-# it refuses to advance without the seven signals:
+# it refuses to advance without the eight signals:
 #   1. Gradle:pipeline-release:releaseGate exits 0 (admission passed)
 #   2. The candidateAdmission receipt (build/candidate/distribution-manifest.json)
 #      names a candidate_id whose sha256 matches the distZip artifact the
@@ -28,6 +28,12 @@
 #      battery, and about every scenario of it. A receipt that names another
 #      candidate is the receipt of another candidate, and a receipt that
 #      covers less than the battery that was asked for is not a certification.
+#   8. The publication leaves behind the certification request event. The RC
+#      is published and only then the receiver is asked to certify the bytes
+#      that were published: an event emitted before the publication would ask
+#      about bytes the receiver cannot download yet. The event carries the
+#      very request the admission gate evaluated, so the receiver is asked
+#      about the same bytes and the same battery that were admitted.
 # Usage:
 #   PIPELINEK_RELEASE_TAG=v0.56.0-rc5 PIPELINEK_RELEASE_TRAIN=0.56.0 \
 #./scripts/release-pipelinek.sh
@@ -39,6 +45,9 @@
 # reintroduced a tree this repository's policy forbids and duplicated
 # information the release page already carries.
 # On any refusal: non-zero exit, no upload, no Prerelease, no commit.
+# A refusal AFTER the publication — the certification request could not be
+# emitted — also exits non-zero, and says in so many words that the release
+# WAS published: the RC exists and must not be published again.
 # Published asset set (fixed)
 # ---------------------------------
 # The publisher reads the asset set from the receipt the gate writes: the
@@ -834,6 +843,55 @@ if ! "${REPO_ROOT}/scripts/release/publish-github-release.sh" "${GH_RELEASE_ARGS
     exit 1
 fi
 echo "release-pipelinek: published asset set verified complete (${#STAGED_PATHS[@]} assets, manifest-driven)."
+
+# ----------------------------------------------------------------------------
+# 8. The certification request event. The RC is PUBLISHED, and only now is the
+#    receiver told that the bytes are out there and asked to certify them.
+#
+#    The event is emitted HERE and not at the build: a request about bytes the
+#    receiver cannot download yet is worse than no request. The receipt of the
+#    publication is one of the inputs, so a candidate that was built and never
+#    published leaves no event behind — and a published one leaves exactly one,
+#    because the event is named after the candidate and an event that is
+#    already there is not written twice.
+#
+#    The request that travels inside is THE SAME document the admission gate
+#    evaluated in 4b (PIPELINEK_CERTIFICATION_REQUEST): the receiver is asked
+#    about the same bytes and the same battery that were admitted, and there is
+#    no second derivation of the request that could disagree with the first.
+#
+#    The moment is taken HERE, right after the publication was observed to have
+#    succeeded: it is the instant the release became real.
+# ----------------------------------------------------------------------------
+
+PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+CERTIFICATION_EVENT="${EVIDENCE_DIR}/rc.certification.requested.${LOCAL_SHA}.json"
+CERTIFICATION_RECEIPT="${EVIDENCE_DIR}/rc.certification.requested.txt"
+
+set +e
+"${REPO_ROOT}/scripts/release/emit-certification-requested.sh" \
+    --handoff "pipelinek/pipeline-release/build/candidate/candidate-handoff.json" \
+    --request "$CERTIFICATION_REQUEST" \
+    --publication-receipt "${EVIDENCE_DIR}/github-release.txt" \
+    --published-at "$PUBLISHED_AT" \
+    --event-file "$CERTIFICATION_EVENT" \
+    --receipt-file "$CERTIFICATION_RECEIPT"
+CERTIFICATION_EXIT=$?
+set -e
+
+if [ "$CERTIFICATION_EXIT" -ne 0 ]; then
+    if [ "$CERTIFICATION_EXIT" -eq 1 ]; then
+        echo "release-pipelinek: the certification request was REFUSED." >&2
+    else
+        echo "release-pipelinek: the certification request could not be emitted (the instrument failed)." >&2
+    fi
+    echo "    The RC WAS published as ${PIPELINEK_RELEASE_TAG}; do NOT publish it again." >&2
+    echo "    The request can be emitted on its own, once the cause is fixed, with:" >&2
+    echo "        scripts/release/emit-certification-requested.sh" >&2
+    exit 1
+fi
+
+echo "release-pipelinek: certification request emitted at ${CERTIFICATION_EVENT}"
 
 # Nothing is committed here. The four text artefacts were already delivered:
 # they are release assets, and HANDOFF.md is the release notes body (see the

@@ -531,6 +531,27 @@ if want_stage 1; then
         fail "stage 1: the contract KDoc coverage guard"
     fi
 
+    # --- The KDoc names the exception the code throws --------------------------
+    # A `@throws` is part of the contract of a function: it is what a consumer
+    # reads to know which exception to expect and to catch. A `@throws` that
+    # names an exception the code never produces is a promise the product does
+    # not keep — the catcher waits for a class that never arrives, and the
+    # exception that does arrive goes uncaught.
+    #
+    # The guard reads the tree and resolves the calls BY RECEIVER, so it can
+    # tell a promise the code keeps from one it does not: a receiver it cannot
+    # type resolves to nothing, because `connection.close()` is not the
+    # project's `close()`. A promise it cannot check is COUNTED and not called
+    # broken: a guard that accused the exceptions of the JDK of being false
+    # would be a guard nobody reads.
+    if python3 scripts/check-kdoc-throws.py > "$log_dir/throws.out" 2>&1; then
+        log "stage 1/5  the exceptions the KDoc promises"
+        cat "$log_dir/throws.out"
+    else
+        cat "$log_dir/throws.out" >&2
+        fail "stage 1: the exception-promise guard"
+    fi
+
     # --- Only the entry point may end the process ------------------------------
     # A helper that ends the process takes a decision that belongs to somebody
     # else, and the price is paid in the places that cannot be tested: the

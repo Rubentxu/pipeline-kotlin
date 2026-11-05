@@ -1,8 +1,8 @@
 package dev.rubentxu.pipeline.v2.credentials.multipart
 
-import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceNotFoundException
 import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceTypeMismatchException
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException
 import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
 import dev.rubentxu.pipeline.v2.credentials.spi.MaterializedCredential
 import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKindUnsupportedException
@@ -53,7 +53,7 @@ class CredentialMaterializer(
      * @param kind The materialization kind (must match credential type)
      * @return [MaterializedCredential] with path or handle
      * @throws MaterializationKindUnsupportedException if kind doesn't match credential type
-     * @throws LinkedSecretReferenceNotFoundException if referenced credential doesn't exist
+     * @throws SecretStoreException if the referenced credential is not there
      * @throws LinkedSecretReferenceTypeMismatchException if referenced credential is wrong type
 */
     fun materialize(credential: Credential, kind: MaterializationKind): MaterializedCredential {

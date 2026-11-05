@@ -45,7 +45,10 @@ object SqliteConnectionFactory {
                 stmt.executeQuery("PRAGMA journal_mode").use { rs ->
                     if (rs.next()) {
                         val mode = rs.getString(1)
-                        require(mode == "wal") {
+                        // The journal mode is a state of the database, and not
+                        // an argument of the caller, so the refusal is a state
+                        // and not an invalid argument.
+                        check(mode == "wal") {
                             "Expected WAL journal mode but got '$mode'. " +
                                 "WAL mode is required for operation journal durability."
                         }

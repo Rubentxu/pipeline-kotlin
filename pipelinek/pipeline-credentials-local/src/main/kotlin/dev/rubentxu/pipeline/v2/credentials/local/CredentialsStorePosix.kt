@@ -34,8 +34,12 @@ object CredentialsStorePosix {
 
     /**
      * Asserts that the filesystem supports POSIX permissions.
-     * @throws LocalSecretStore.CredentialsStorePosixPermissionsException
-     * if POSIX is not supported
+     *
+     * The refusal names the state that was found, and not an argument of the
+     * caller, so it is a state and not an invalid argument. The store's own
+     * permissions exception belongs to the store that raises it.
+     *
+     * @throws IllegalStateException if POSIX is not supported
 */
     fun assertSupported(fileSystem: java.nio.file.FileSystem) {
         check(fileSystem.supportedFileAttributeViews().contains("posix")) {

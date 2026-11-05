@@ -201,6 +201,15 @@ The gate also reads the tree before it builds anything, and it refuses a green
 over nothing: a module that has a test source and produces no JUnit report
 fails the run, because Gradle reports SUCCESS over an empty result set.
 
+The gate reviews the documentation it publishes. The reference of the
+published contracts is generated again on every run and analysed, and a KDoc
+link that names a symbol the reader cannot open fails the run: the reference
+is the document a third party reads to learn the API, so a broken link in it
+is a broken promise in the product's own words. It is not a second gate — it
+is a leg of `scripts/verify-all.sh`, and `scripts/check-published-reference.py`
+answers the same question when it is run by hand. The receipt of the review
+travels with the change, in the commit or in the task card.
+
 The gate certifies a **batch of ten tasks** from the backlog board, not every
 change: the board is the unit of delivery, and between two batches the loop is
 the scoped run of the module that changed. The gate does not re-run what
@@ -208,8 +217,9 @@ Gradle already knows is unchanged — the verdict says which reports it wrote
 and which it read from disk — so a batch costs what the batch changed and no
 more.
 
-For the inner loop, the gate takes filters — `--module` and `--test` — and a
-filtered run says `PASS (subset)`, because it measured less than the whole:
+For the inner loop, the gate takes filters — `--stage`, `--module` and
+`--test` — and a filtered run says `PASS (subset)`, because it measured less
+than the whole:
 
 ```bash
 scripts/verify-all.sh --stage 3 --module ':pipeline-domain' --test '*ResolveTest'

@@ -5,8 +5,9 @@
 #   1. the checks that read only the tree: the comment-provenance guard, the
 #      process-exit guard, the durable-path cost guard, the census of Kotlin
 #      source sets, and the LOC census;
-#   2. the build with its static analysis, its public-API compatibility check
-#      and the development distribution;
+#   2. the build with its static analysis, its public-API compatibility check,
+#      the development distribution, and the reference of the published
+#      contracts with the review of the links it does not resolve;
 #   3. the permanent unit tests of every module that has any;
 #   4. the integration tests of every module that has any;
 #   5. the mutants, over the seams the mutated modules declare;
@@ -36,8 +37,12 @@
 # module. A subset is a legitimate and cheap instrument; it is never evidence
 # about the whole.
 #
+# A change that only touches the documentation is certified by the stage that
+# carries the review of the documentation, and by no other: it does not pay
+# the three legs.
+#
 #   scripts/verify-all.sh --stage 1           # the checks that read the tree
-#   scripts/verify-all.sh --stage 2           # + the build
+#   scripts/verify-all.sh --stage 2           # + the build and the reference
 #   scripts/verify-all.sh --stage 3           # + the unit tests
 #   scripts/verify-all.sh --stage 4           # + the integration tests
 #   scripts/verify-all.sh --stage 5           # + the mutants
@@ -192,13 +197,173 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
+# --- The state of this run -------------------------------------------------------
+#
+# Every counter the verdict reports is declared HERE, before the first stage
+# runs, and not next to the stage that fills it. A red run prints its verdict
+# too, and a verdict that asks for a counter the run never reached reads an
+# unset name as a missing value.
+
+stage1_ran=0; stage2_ran=0; stage3_ran=0; stage4_ran=0; stage5_ran=0
+stage1_wall_ms=0; stage2_wall_ms=0; stage3_wall_ms=0; stage4_wall_ms=0; stage5_wall_ms=0
+stage1_started_ms=0; stage2_started_ms=0; stage3_started_ms=0
+stage4_started_ms=0; stage5_started_ms=0
+
+unit_tests_ran=0; unit_reports=0; unit_executed=0; unit_failed=0; unit_skipped=0
+unit_rewritten=0; unit_read=0
+integration_tests_ran=0; integration_reports=0; integration_executed=0
+integration_failed=0; integration_skipped=0; integration_rewritten=0; integration_read=0
+mutants_ran=0; mutants_killed=0; mutants_survived=0; mutants_no_coverage=0
+mutants_equivalent=0; mutants_timeout=0; mutants_memory=0; mutants_run=0
+mutants_rewritten=0; mutants_read=0
+
+reference_ran=0
+reference_summary=""
+
+# The stage and the reason of the failure, when there is one.
+gate_failed_stage=""
+gate_failed_reason=""
+
+# Whether this run measured less than the whole gate. A stage filter measures
+# less than the whole just as a module filter does, and a run that measured
+# less says so in the same words.
+gate_is_subset=0
+if [[ -n "$module_filter" || ${#test_filters[@]} -gt 0 || "$want_stage_upto" -lt 5 ]]; then
+    gate_is_subset=1
+fi
+
 # --- The helpers ---------------------------------------------------------------
 
 now_ms() { date +%s%3N; }
 
 log()  { printf '\n=== %s\n' "$*"; }
-fail() { printf 'verify-all: FAILED at %s\n' "$*" >&2; exit 1; }
 elapsed() { printf '%s' "$(( $(date +%s) - $1 ))"; }
+
+# The verdict of a run, on one line.
+#
+# One line, and every number on it is a number THIS run earned. A leg that did
+# not run says NOT_RUN, because a silent field reads like a zero: a gate that
+# skipped its tests and printed nothing about them is the same line as a gate
+# that ran none and found none.
+#
+# A red run prints a verdict as well. The line that names the stage that is
+# red, with the evidence of that stage, says more than a message that says
+# something failed and leaves the reader to guess which: the stage that names
+# the failure is the stage the reader has to open.
+#
+# A stage that did not run says NOT_RUN and not zero seconds. A stage that
+# never started cost nothing, and a zero there reads as a stage that ran and
+# was quick.
+
+reference_field() {
+    if [[ "$reference_ran" == 1 && -n "$reference_summary" ]]; then
+        printf '%s' "$reference_summary"
+    else
+        printf 'reference=NOT_RUN'
+    fi
+}
+
+tests_field() {
+    if [[ "$gate_failed_stage" == "3" ]]; then
+        printf 'tests=FAILED'
+    elif [[ "$unit_tests_ran" == 1 ]]; then
+        printf 'tests=executed:%d failed:%d skipped:%d rewritten:%d read:%d' \
+            "$unit_executed" "$unit_failed" "$unit_skipped" "$unit_rewritten" "$unit_read"
+    else
+        printf 'tests=NOT_RUN'
+    fi
+}
+
+integration_field() {
+    if [[ "$gate_failed_stage" == "4" ]]; then
+        printf 'integration=FAILED'
+    elif [[ "$integration_tests_ran" == 1 ]]; then
+        printf 'integration=executed:%d failed:%d skipped:%d rewritten:%d read:%d' \
+            "$integration_executed" "$integration_failed" "$integration_skipped" \
+            "$integration_rewritten" "$integration_read"
+    else
+        printf 'integration=NOT_RUN'
+    fi
+}
+
+mutants_field() {
+    if [[ "$gate_failed_stage" == "5" ]]; then
+        printf 'mutants=FAILED'
+    elif [[ "$mutants_ran" == 1 ]]; then
+        printf 'mutants=run:%d killed:%d survived:%d rewritten:%d read:%d' \
+            "$mutants_run" "$mutants_killed" "$mutants_survived" \
+            "$mutants_rewritten" "$mutants_read"
+    else
+        printf 'mutants=NOT_RUN'
+    fi
+}
+
+stages_field() {
+    local parts="" n ran ms
+    for n in 1 2 3 4 5; do
+        case "$n" in
+            1) ran=$stage1_ran; ms=$stage1_wall_ms ;;
+            2) ran=$stage2_ran; ms=$stage2_wall_ms ;;
+            3) ran=$stage3_ran; ms=$stage3_wall_ms ;;
+            4) ran=$stage4_ran; ms=$stage4_wall_ms ;;
+            5) ran=$stage5_ran; ms=$stage5_wall_ms ;;
+        esac
+        if [[ "$ran" == 1 ]]; then
+            parts+=" $n:$(( ms / 1000 ))"
+        else
+            parts+=" $n:NOT_RUN"
+        fi
+    done
+    printf 'stages=%s' "${parts# }"
+}
+
+print_verdict() {
+    local status="$1"
+    printf '\n'
+    if [[ "$status" == "FAIL" ]]; then
+        printf 'FAIL %s stage=%s reason="%s" %s %s %s %s %s\n' \
+            "$(identity_fields)" "$gate_failed_stage" "$gate_failed_reason" \
+            "$(reference_field)" "$(tests_field)" "$(integration_field)" \
+            "$(mutants_field)" "$(stages_field)"
+        return
+    fi
+    if [[ "$gate_is_subset" == 1 ]]; then
+        printf 'PASS (subset) %s %s %s %s %s %s\n' \
+            "$(identity_fields)" "$(reference_field)" "$(tests_field)" \
+            "$(integration_field)" "$(mutants_field)" "$(stages_field)"
+        printf 'filters in effect: module=%s test=%s stage=%s\n' \
+            "${module_filter:-none}" "${test_filters[*]:-none}" "$want_stage_upto"
+    else
+        printf 'PASS %s %s %s %s %s %s\n' \
+            "$(identity_fields)" "$(reference_field)" "$(tests_field)" \
+            "$(integration_field)" "$(mutants_field)" "$(stages_field)"
+    fi
+}
+
+# A red run names the stage that is red and prints the verdict of the run.
+#
+# The stage is the FIRST word of the message, so it can be read back from it:
+# the verdict says which stage failed without the caller having to say it
+# twice.
+fail() {
+    local rest="${1#stage }"
+    gate_failed_stage="${rest%%[^0-9]*}"
+    if [[ "$rest" == *": "* ]]; then
+        gate_failed_reason="${rest#*: }"
+    else
+        gate_failed_reason="${rest#* }"
+    fi
+    case "$gate_failed_stage" in
+        1) stage1_wall_ms=$(( $(now_ms) - stage1_started_ms )); stage1_ran=1 ;;
+        2) stage2_wall_ms=$(( $(now_ms) - stage2_started_ms )); stage2_ran=1 ;;
+        3) stage3_wall_ms=$(( $(now_ms) - stage3_started_ms )); stage3_ran=1 ;;
+        4) stage4_wall_ms=$(( $(now_ms) - stage4_started_ms )); stage4_ran=1 ;;
+        5) stage5_wall_ms=$(( $(now_ms) - stage5_started_ms )); stage5_ran=1 ;;
+    esac
+    printf 'verify-all: FAILED at %s\n' "$1" >&2
+    print_verdict FAIL
+    exit 1
+}
 
 # Whether the stage $1 is part of this run.
 want_stage() {
@@ -272,7 +437,7 @@ if [[ "$list_only" == 1 ]]; then
     discover_modules
     printf 'the gate would run, in this order:\n'
     printf '  1. the checks that read only the tree\n'
-    printf '  2. the build, the static analysis and the API check\n'
+    printf '  2. the build, the static analysis, the API check and the published reference\n'
     printf '  3. the unit tests of %d module(s)\n' "${#modules_with_unit_tests[@]}"
     printf '  4. the integration tests of %d module(s)\n' "${#modules_with_integration_tests[@]}"
     printf '  5. the mutants of %d module(s)\n' "${#modules_with_mutants[@]}"
@@ -309,6 +474,7 @@ trap cleanup_run_dir EXIT
 stage1_started_ms="$(now_ms)"
 
 if want_stage 1; then
+    stage1_ran=1
     log "stage 1/5  the checks that read only the tree"
 
     # --- The LOC census -------------------------------------------------------
@@ -432,7 +598,7 @@ fi
 
 stage1_wall_ms=$(( $(now_ms) - stage1_started_ms ))
 
-# --- Stage 2: the build, its static analysis and its API check ------------------
+# --- Stage 2: the build, its static analysis, its API check and the reference ---
 #
 # ONE Gradle invocation, so the distribution is assembled exactly once and the
 # static analysis and the API compatibility check see the same compiled bytes
@@ -447,10 +613,20 @@ stage1_wall_ms=$(( $(now_ms) - stage1_started_ms ))
 # `apiCheck` is the public-API compatibility check, and it is wired into each
 # published module's own `check`, so it is named here to run in the same
 # invocation as the rest of the build.
+#
+# The review of the published reference comes AFTER that invocation, in a
+# second one, and the reason is the measurement: the reference has to be
+# generated again for this tree, and the generation has to be forced, because
+# a generation the build holds emits no warning at all. Sharing the
+# invocation would put the review's warnings in the build's log, where the
+# count of them is one more number among many, and the cost of the review
+# would be a difference between two runs instead of a number this run
+# measured.
 
 stage2_started_ms="$(now_ms)"
 
 if want_stage 2; then
+    stage2_ran=1
     log "stage 2/5  the build, the static analysis and the API check"
 
     gradle_tasks=(
@@ -467,6 +643,28 @@ if want_stage 2; then
         fail "stage 2 (the tail of the stage log is above)"
     fi
     log "stage 2/5  the build, the static analysis and the API check"
+
+    # --- The published reference: does every link resolve? --------------------
+    # A published contract is read through its reference, and a link in that
+    # reference which names a symbol the reader cannot open is a promise the
+    # artifact does not keep. The generator emits a warning for each of those
+    # links, and this check counts them and fails when there is one.
+    #
+    # The reference is the ONLY document a third party reads to learn the API,
+    # so a broken link in it is a broken link in the product's own words. It
+    # is here, in the gate that already reads the tree, and not in a review
+    # somebody has to remember to run.
+    if python3 scripts/check-published-reference.py > "$log_dir/reference.out" 2>&1; then
+        reference_ran=1
+        reference_summary="$(grep -m1 '^reference=' "$log_dir/reference.out" || true)"
+        log "stage 2/5  the published reference"
+        cat "$log_dir/reference.out"
+    else
+        reference_ran=1
+        reference_summary="$(grep -m1 '^reference=' "$log_dir/reference.out" || true)"
+        cat "$log_dir/reference.out" >&2
+        fail "stage 2: the published reference"
+    fi
 fi
 
 stage2_wall_ms=$(( $(now_ms) - stage2_started_ms ))
@@ -529,16 +727,10 @@ census_reports() {
 
 stage3_started_ms="$(now_ms)"
 stage3_started_s=$(( stage3_started_ms / 1000 ))
-unit_tests_ran=0
-unit_reports=0
-unit_executed=0
-unit_failed=0
-unit_skipped=0
-unit_rewritten=0
-unit_read=0
 silent_modules=()
 
 if want_stage 3; then
+    stage3_ran=1
     log "stage 3/5  the permanent unit tests"
 
     discover_modules
@@ -617,16 +809,10 @@ stage3_wall_ms=$(( $(now_ms) - stage3_started_ms ))
 
 stage4_started_ms="$(now_ms)"
 stage4_started_s=$(( stage4_started_ms / 1000 ))
-integration_tests_ran=0
-integration_reports=0
-integration_executed=0
-integration_failed=0
-integration_skipped=0
-integration_rewritten=0
-integration_read=0
 silent_integration_modules=()
 
 if want_stage 4; then
+    stage4_ran=1
     log "stage 4/5  the integration tests"
 
     discover_modules
@@ -696,18 +882,9 @@ stage4_wall_ms=$(( $(now_ms) - stage4_started_ms ))
 
 stage5_started_ms="$(now_ms)"
 stage5_started_s=$(( stage5_started_ms / 1000 ))
-mutants_ran=0
-mutants_killed=0
-mutants_survived=0
-mutants_no_coverage=0
-mutants_equivalent=0
-mutants_timeout=0
-mutants_memory=0
-mutants_run=0
-mutants_rewritten=0
-mutants_read=0
 
 if want_stage 5; then
+    stage5_ran=1
     log "stage 5/5  the mutants"
 
     discover_modules
@@ -796,58 +973,5 @@ fi
 
 stage5_wall_ms=$(( $(now_ms) - stage5_started_ms ))
 
-# --- The verdict ------------------------------------------------------------------
-#
-# One line, and every number on it is a number THIS run earned. A leg that did
-# not run says NOT_RUN, because a silent field reads like a zero: a gate that
-# skipped its tests and printed nothing about them is the same line as a gate
-# that ran none and found none.
+print_verdict PASS
 
-tests_field() {
-    if [[ "$unit_tests_ran" == 1 ]]; then
-        printf 'tests=executed:%d failed:%d skipped:%d rewritten:%d read:%d' \
-            "$unit_executed" "$unit_failed" "$unit_skipped" "$unit_rewritten" "$unit_read"
-    else
-        printf 'tests=NOT_RUN'
-    fi
-}
-
-integration_field() {
-    if [[ "$integration_tests_ran" == 1 ]]; then
-        printf 'integration=executed:%d failed:%d skipped:%d rewritten:%d read:%d' \
-            "$integration_executed" "$integration_failed" "$integration_skipped" \
-            "$integration_rewritten" "$integration_read"
-    else
-        printf 'integration=NOT_RUN'
-    fi
-}
-
-mutants_field() {
-    if [[ "$mutants_ran" == 1 ]]; then
-        printf 'mutants=run:%d killed:%d survived:%d rewritten:%d read:%d' \
-            "$mutants_run" "$mutants_killed" "$mutants_survived" \
-            "$mutants_rewritten" "$mutants_read"
-    else
-        printf 'mutants=NOT_RUN'
-    fi
-}
-
-stages_field() {
-    printf 'stages=1:%d 2:%d 3:%d 4:%d 5:%d' \
-        "$((stage1_wall_ms / 1000))" "$((stage2_wall_ms / 1000))" \
-        "$((stage3_wall_ms / 1000))" "$((stage4_wall_ms / 1000))" \
-        "$((stage5_wall_ms / 1000))"
-}
-
-printf '\n'
-if [[ -n "$module_filter" || ${#test_filters[@]} -gt 0 ]]; then
-    printf 'PASS (subset) %s %s %s %s %s\n' \
-        "$(identity_fields)" "$(tests_field)" "$(integration_field)" \
-        "$(mutants_field)" "$(stages_field)"
-    printf 'filters in effect: module=%s test=%s\n' \
-        "${module_filter:-none}" "${test_filters[*]:-none}"
-else
-    printf 'PASS %s %s %s %s %s\n' \
-        "$(identity_fields)" "$(tests_field)" "$(integration_field)" \
-        "$(mutants_field)" "$(stages_field)"
-fi

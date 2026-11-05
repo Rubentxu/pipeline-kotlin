@@ -1,8 +1,5 @@
 package dev.rubentxu.pipeline.v2.release
 
-import java.io.IOException
-import java.nio.file.Files
-import java.nio.file.Path
 import java.nio.file.Paths
 import java.time.DateTimeException
 import java.time.Instant
@@ -14,7 +11,7 @@ import kotlin.system.exitProcess
  * The task that runs this main resolves the paths and hands the arguments
  * over; it re-derives no rule, so the build and the tested model cannot drift
  * apart. Everything this main decides, it decides by calling
- * [certificationRequestedEmission]: it reads the documents, asks the model what
+ * [CertificationEmissionProducer]: it reads the documents, asks the model what
  * to do with them, writes what the model produced, and maps the outcome to an
  * exit code.
  *
@@ -23,9 +20,14 @@ import kotlin.system.exitProcess
  * receipt, and a request about bytes the receiver cannot download is worse
  * than no request.
  *
+ * The reception contract is one of the inputs because it is where the message
+ * goes. The caller does not name the inbox: the contract declares it, and a
+ * caller that named a different place would put the message where the
+ * receiver does not look.
+ *
  * ```text
  * usage: certification-requested <handoff> <request> <publicationReceipt>
- *                               <publishedAt> <eventFile> <receiptFile>
+ *                               <publishedAt> <contract> <receiptFile>
  * exit  0 = emitted, or already emitted; 1 = refused; 2 = usage error
  * ```
  */
@@ -33,16 +35,10 @@ fun main(args: Array<String>) {
     if (args.size < 6) {
         System.err.println(
             "usage: certification-requested <handoff> <request> <publicationReceipt> " +
-                "<publishedAt> <eventFile> <receiptFile>",
+                "<publishedAt> <contract> <receiptFile>",
         )
         exitProcess(2)
     }
-
-    val handoffPath = Paths.get(args[0])
-    val requestPath = Paths.get(args[1])
-    val publicationReceiptPath = Paths.get(args[2])
-    val eventFile = Paths.get(args[4])
-    val receiptFile = Paths.get(args[5])
 
     val publishedAt = try {
         Instant.parse(args[3])
@@ -53,85 +49,40 @@ fun main(args: Array<String>) {
         exitProcess(2)
     }
 
-    val handoffText = readDocument(handoffPath, "the candidate handoff")
-    val requestText = readDocument(requestPath, "the certification request")
-    val publicationReceipt = readDocument(publicationReceiptPath, "the publication receipt")
-    if (handoffText == null || requestText == null || publicationReceipt == null) {
-        exitProcess(2)
-    }
+    val outcome = CertificationEmissionProducer.emit(
+        handoffPath = Paths.get(args[0]),
+        requestPath = Paths.get(args[1]),
+        publicationReceiptPath = Paths.get(args[2]),
+        publishedAt = publishedAt,
+        contractPath = Paths.get(args[4]),
+        receiptPath = Paths.get(args[5]),
+        environment = System.getenv(),
+    )
 
-    // What an earlier emission of this candidate left behind. The event file
-    // is named after the candidate, so the file that is there is the one
-    // emission this candidate may have.
-    val alreadyEmitted = if (Files.isRegularFile(eventFile)) {
-        Files.readString(eventFile)
-    } else {
-        null
-    }
-
-    when (
-        val outcome = certificationRequestedEmission(
-            handoffText = handoffText,
-            requestText = requestText,
-            publicationReceipt = publicationReceipt,
-            publishedAt = publishedAt,
-            alreadyEmitted = alreadyEmitted,
-        )
-    ) {
-        is CertificationEmission.Ready -> {
-            writeFile(eventFile, outcome.document)
-            writeFile(receiptFile, outcome.receipt)
+    when (outcome) {
+        is CertificationEmissionOutcome.Emitted -> {
             println("[release] rc.certification.requested EMITTED")
-            println("[release]   event: $eventFile")
-            println("[release]   receipt: $receiptFile")
+            println("[release]   event: ${outcome.eventFile}")
+            println("[release]   receipt: ${outcome.receiptFile}")
             exitProcess(0)
         }
 
-        is CertificationEmission.AlreadyEmitted -> {
-            writeFile(receiptFile, outcome.receipt)
+        is CertificationEmissionOutcome.AlreadyEmitted -> {
             println("[release] rc.certification.requested ALREADY emitted — nothing was written twice")
-            println("[release]   event: $eventFile")
+            println("[release]   receipt: ${outcome.receiptFile}")
             exitProcess(0)
         }
 
-        is CertificationEmission.Refused -> {
+        is CertificationEmissionOutcome.Refused -> {
             System.err.println("[release] rc.certification.requested NOT emitted")
             System.err.println(outcome.reason)
             exitProcess(1)
         }
-    }
-}
 
-/**
- * The contents of a document the emission reads, or null when it cannot be
- * read.
- *
- * The reason is printed here and not returned: the caller has one decision to
- * make — the emission cannot go on — and the diagnostic belongs to the place
- * that observed the failure. Nothing but the entry point ends the process.
- */
-private fun readDocument(path: Path, what: String): String? {
-    if (!Files.isRegularFile(path)) {
-        System.err.println(
-            "[release] certification request NOT emitted — $what at $path does not exist.",
-        )
-        return null
+        is CertificationEmissionOutcome.Failed -> {
+            System.err.println("[release] rc.certification.requested NOT emitted")
+            System.err.println(outcome.reason)
+            exitProcess(2)
+        }
     }
-    return try {
-        Files.readString(path)
-    } catch (e: IOException) {
-        System.err.println(
-            "[release] certification request NOT emitted — $what at $path could not be read: " +
-                (e.message ?: e::class.java.simpleName),
-        )
-        null
-    }
-}
-
-/**
- * Write a document, creating the directory that holds it.
- */
-private fun writeFile(path: Path, content: String) {
-    path.parent?.let { Files.createDirectories(it) }
-    Files.writeString(path, content)
 }

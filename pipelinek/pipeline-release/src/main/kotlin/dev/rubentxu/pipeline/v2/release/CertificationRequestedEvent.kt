@@ -72,6 +72,32 @@ data class CertificationRequestedEvent internal constructor(
 
         /** The version of the cross-repository event protocol this build speaks. */
         const val PROTOCOL_VERSION: String = "1"
+
+        /**
+         * The name of the file that carries the event, with the digest of the
+         * candidate as a placeholder.
+         *
+         * The file is named by the candidate and by nothing else, so a
+         * receiver can tell two messages apart by their names and can name
+         * the file of one candidate from that candidate alone.
+         */
+        const val FILE_NAME_TEMPLATE: String = "$NAME.<candidate_digest>.json"
+
+        /**
+         * The pattern every name of a file that carries an event follows.
+         *
+         * It is derived from [NAME] and not written by hand, so a change of
+         * the name of the event cannot leave the pattern behind. The name is
+         * escaped one metacharacter at a time and not quoted as a whole: a
+         * quoted literal is unreadable for a receiver that has to recognise
+         * the name of the message in it.
+         */
+        val FILE_NAME_PATTERN: String = "^" + escapeForPattern(NAME) + "\\.[0-9a-f]{64}\\.json$"
+
+        /**
+         * The name of the file that carries the event about [candidateId].
+         */
+        fun fileNameFor(candidateId: CandidateId): String = "$NAME.${candidateId.digest}.json"
     }
 }
 
@@ -151,3 +177,21 @@ fun buildCertificationRequestedEvent(
         ),
     )
 }
+
+/**
+ * The characters of a regular expression that are not literal.
+ *
+ * They are listed instead of quoted so that the pattern this product
+ * publishes is one a receiver can read: `rc\.certification\.requested` says
+ * what it matches, and `\Qrc.certification.requested\E` says it in a way only
+ * the writer of the pattern can read.
+ */
+private val REGEX_METACHARACTERS: Set<Char> =
+    setOf('.', '\\', '+', '*', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|')
+
+/**
+ * [literal] as a regular expression that matches it and nothing else.
+ */
+private fun escapeForPattern(literal: String): String =
+    literal.map { character -> if (character in REGEX_METACHARACTERS) "\\$character" else "$character" }
+        .joinToString("")

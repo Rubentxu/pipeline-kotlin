@@ -17,10 +17,16 @@
 # composition, and propagates the exit code. It derives no rule, so the
 # release path and the tested model cannot disagree.
 #
+# The script does NOT say where the message lands. The reception contract
+# does: it declares the inbox the receiver observes and the name the file
+# carries, and the product lands the message there. A script that named the
+# inbox would be a second authority about the same fact, and the two would
+# disagree the day somebody changed one of them.
+#
 # Usage:
 #   emit-certification-requested.sh --handoff <file> --request <file>
 #       --publication-receipt <file> --published-at <instant>
-#       --event-file <file> --receipt-file <file>
+#       --contract <file> --receipt-file <file>
 #
 # Exit codes: 0 = the event was emitted, or it was already emitted; 1 = the
 # request was refused; 2 = usage error.
@@ -33,7 +39,7 @@ HANDOFF=""
 REQUEST=""
 PUBLICATION_RECEIPT=""
 PUBLISHED_AT=""
-EVENT_FILE=""
+CONTRACT=""
 RECEIPT_FILE=""
 
 usage() {
@@ -50,14 +56,14 @@ while [[ $# -gt 0 ]]; do
         --request)           REQUEST="${2:-}"; shift 2 ;;
         --publication-receipt) PUBLICATION_RECEIPT="${2:-}"; shift 2 ;;
         --published-at)      PUBLISHED_AT="${2:-}"; shift 2 ;;
-        --event-file)        EVENT_FILE="${2:-}"; shift 2 ;;
+        --contract)          CONTRACT="${2:-}"; shift 2 ;;
         --receipt-file)      RECEIPT_FILE="${2:-}"; shift 2 ;;
         -h|--help)           usage ;;
         *) printf 'emit-certification-requested: unknown argument %s\n' "$1" >&2; usage ;;
     esac
 done
 
-for required in HANDOFF REQUEST PUBLICATION_RECEIPT PUBLISHED_AT EVENT_FILE RECEIPT_FILE; do
+for required in HANDOFF REQUEST PUBLICATION_RECEIPT PUBLISHED_AT CONTRACT RECEIPT_FILE; do
     if [[ -z "${!required}" ]]; then
         printf 'emit-certification-requested: --%s is required\n' \
             "$(printf '%s' "$required" | tr '[:upper:]' '[:lower:]')" >&2
@@ -65,7 +71,7 @@ for required in HANDOFF REQUEST PUBLICATION_RECEIPT PUBLISHED_AT EVENT_FILE RECE
     fi
 done
 
-for document in "$HANDOFF" "$REQUEST" "$PUBLICATION_RECEIPT"; do
+for document in "$HANDOFF" "$REQUEST" "$PUBLICATION_RECEIPT" "$CONTRACT"; do
     if [[ ! -f "$document" ]]; then
         printf 'emit-certification-requested: the document %s does not exist\n' "$document" >&2
         printf '           an emission that reads nothing emits nothing, and says so\n' >&2
@@ -73,7 +79,7 @@ for document in "$HANDOFF" "$REQUEST" "$PUBLICATION_RECEIPT"; do
     fi
 done
 
-mkdir -p -- "$(dirname -- "$EVENT_FILE")" "$(dirname -- "$RECEIPT_FILE")"
+mkdir -p -- "$(dirname -- "$RECEIPT_FILE")"
 
 "${repo_root}/pipelinek/gradlew" --no-daemon -p "${repo_root}/pipelinek" \
     :pipeline-release:certificationRequested \
@@ -81,5 +87,5 @@ mkdir -p -- "$(dirname -- "$EVENT_FILE")" "$(dirname -- "$RECEIPT_FILE")"
     -Pcertification.request="$REQUEST" \
     -Pcertification.publicationReceipt="$PUBLICATION_RECEIPT" \
     -Pcertification.publishedAt="$PUBLISHED_AT" \
-    -Pcertification.eventFile="$EVENT_FILE" \
+    -Pcertification.contract="$CONTRACT" \
     -Pcertification.receiptFile="$RECEIPT_FILE"

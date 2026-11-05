@@ -1094,6 +1094,26 @@
       ],
       "removal_boundary": "n/a - no member removed; this is a change in the CONTENT of the published vocabulary, not a deletion of a member. The key `compile.outcome` may not return as an attribute, because the outcome of a span is its status and a second copy of the same fact is a second place for the two to disagree; the key `script.origin` may not return with a value spelled in upper case, because the published words travel in lower case",
       "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "a31a0db0a",
+      "surface": "PluginManifestRejection.PrivateCopyNotSecured",
+      "change": "added a case `PrivateCopyNotSecured(String artifact, String detail)` to the sealed interface PluginManifestRejection; the interface itself is unchanged and the new class is additive in the ABI dump",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "A SOURCE break, not a binary one: the ABI dump only grows (13 lines added, none removed), so apiCheck passes, but a consumer that writes an EXHAUSTIVE `when` over PluginManifestRejection stops compiling until it says what a copy that could not be kept private means.",
+        "",
+        "The alternatives considered and rejected: refuse the copy with a case that already existed. `ArtifactNotMeasurable` would be a lie (the artifact's bytes were read perfectly well; what failed is the place they were going to be put) and `ArtifactChangedDuringAdmission` would be a lie (nothing changed). A refusal that names the wrong reason is worse than no refusal, because the reader acts on it: the operator would go looking for a corrupt plugin instead of a filesystem that cannot hold a private directory.",
+        "",
+        "What it buys: the refusal says WHICH artifact was not copied and WHY the directory could not hold the copies. The copy exists so that the bytes the runtime verifies are the bytes it loads, and a copy that cannot be hidden from the other users of the machine can be swapped between the verification and the load, which is the one thing the copy prevents. Failing closed there is the guarantee and not a nicety.",
+        "",
+        "The cost is bounded and measured: nothing in this repository enumerates the cases of PluginManifestRejection (the CLI prints the refusal and its detail, and the durable row carries the class name as a string), so the tree keeps compiling; a consumer with an exhaustive `when` has to add one branch, and the compiler says exactly where.",
+        "",
+        "Nothing about the DURABLE WIRE changed: the admission rows written before this SHA are read by the same statement and decode to the same values, and a row that carries this kind could only have been written by a build that already has the case."
+      ],
+      "removal_boundary": "n/a — no member removed; this is an added case on a sealed interface",
+      "supersedes": null
     }
   ]
 }

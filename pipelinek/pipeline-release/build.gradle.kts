@@ -831,3 +831,40 @@ tasks.register<JavaExec>("certificationAdmission") {
     // the publisher MUST NOT continue.
     isIgnoreExitValue = false
 }
+
+tasks.register<JavaExec>("promotionCertification") {
+    group = "distribution"
+    description = "decide whether a promotion certification admits the candidate."
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.PromotionCertificationMainKt")
+
+    val certification = providers.gradleProperty("promotion.certification").orElse("").get()
+    val candidate = providers.gradleProperty("promotion.candidate").orElse("").get()
+    val verdict = providers.gradleProperty("promotion.verdict").orElse("").get()
+
+    inputs.property("promotion.certification", certification)
+    inputs.property("promotion.candidate", candidate)
+    if (certification.isNotBlank()) inputs.files(certification)
+
+    doFirst {
+        listOf(
+            "promotion.certification" to certification,
+            "promotion.candidate" to candidate,
+        ).forEach { (name, value) ->
+            if (value.isBlank()) {
+                throw GradleException(
+                    "promotionCertification: -P$name is required. A stable release is promoted " +
+                        "only against the complete certification of the candidate it carries, " +
+                        "and the certification is judged against the candidate being promoted.",
+                )
+            }
+        }
+    }
+
+    args = listOf(certification, candidate, verdict)
+
+    // Any non-zero exit means the certification does not admit the candidate,
+    // and the promoter MUST NOT continue.
+    isIgnoreExitValue = false
+}

@@ -34,9 +34,14 @@ interface SecretStore : AutoCloseable {
     fun add(id: CredentialsId, credential: Credential)
 
     /**
-     * Legacy single-blob storage (compatibility)
-     * Internally wraps the bytes as a [dev.rubentxu.pipeline.v2.domain.credentials.SecretText]
-     * and delegates to [add].
+     * Stores bytes as ONE secret.
+     *
+     * The bytes are the secret of a
+     * [dev.rubentxu.pipeline.v2.domain.credentials.SecretText]. Internally the
+     * store wraps them as that credential and delegates to [add]: the bytes
+     * are written the way the store writes a typed credential, and reading
+     * the credential back gives those bytes and not a serialization of them.
+     *
      * @param id The credential ID
      * @param bytes The secret bytes
      * @throws SecretStoreException on storage failure
@@ -103,9 +108,15 @@ interface SecretStore : AutoCloseable {
     fun rotate(id: CredentialsId, credential: Credential)
 
     /**
-     * Re-encrypts a credential with new bytes, preserving the DEK (v1 compatibility).
-     * Internally wraps the bytes as [dev.rubentxu.pipeline.v2.domain.credentials.SecretText]
-     * and delegates to [rotate].
+     * Replaces the bytes of ONE secret.
+     *
+     * The bytes are the secret of a
+     * [dev.rubentxu.pipeline.v2.domain.credentials.SecretText]. Internally the
+     * store wraps them as that credential and delegates to [rotate], so the
+     * bytes are written the way the store writes a typed credential. A store
+     * that holds no credential under that name is refused and nothing is
+     * written.
+     *
      * @param id The credential ID
      * @param newBytes The new secret bytes
      * @throws SecretStoreException if the credential doesn't exist

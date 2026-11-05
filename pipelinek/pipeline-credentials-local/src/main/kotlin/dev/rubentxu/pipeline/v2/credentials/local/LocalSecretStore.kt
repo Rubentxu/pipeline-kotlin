@@ -564,65 +564,25 @@ class LocalSecretStore(
     }
 
     /**
-     * Stores a credential.
+     * Stores bytes as ONE secret, in the format the store writes.
+     *
+     * The bytes are wrapped as a [SecretText] and handed to [add], which is
+     * the one authority that writes this store: it knows which version the
+     * store is in, and it seals every entry under the header the store is
+     * published with. A store that holds the legacy format is migrated by
+     * that write, so the store this leaves behind is in the current format
+     * and holds every credential it held before.
+     *
      * @param id The credential ID
      * @param bytes The secret bytes
      * @throws CredentialsStoreEmptySecretException if bytes is empty
      * @throws CredentialsStoreCommitException when the store could not be
      *   replaced. The store keeps the content it had.
-*/
+     */
     override fun put(id: CredentialsId, bytes: ByteArray) {
         if (bytes.isEmpty()) throw CredentialsStoreEmptySecretException()
 
-        withExclusiveLock { writeBytes(id, bytes) }
-    }
-
-    /**
-     * The bytes of a credential, written into a store that may not exist yet.
-     *
-     * The caller holds the lock. This is the writing half of [put], kept
-     * apart so that a rotation which finds no store can create one without
-     * asking for the lock a second time: the operating system's lock is not
-     * reentrant, and a nested one would be refused instead of waited for.
-     */
-    private fun writeBytes(id: CredentialsId, bytes: ByteArray) {
-        val existingFileBytes = if (Files.exists(file) && Files.size(file) > 0) readStoreFile() else null
-        val hdr = if (existingFileBytes != null) {
-            readHeader(existingFileBytes)
-        } else {
-            // Fresh store for legacy backward-compat contract
-            val salt = ByteArray(SALT_SIZE); secureRandom.nextBytes(salt)
-            StoreHeader(MAGIC, VERSION_V1, OWASP_M, OWASP_T, OWASP_P, salt, ByteArray(WRAPPED_DEK_SIZE))
-        }
-        val kek = deriveKek(hdr.kdfSalt)
-
-        // Load existing DEK from header, or generate new one for a FRESH store only.
-        val dek = if (hdr.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
-            ByteArray(DEK_SIZE).also { secureRandom.nextBytes(it) }
-        } else {
-            CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
-        }
-
-        val wrappedDek = CredentialCrypto.wrapDek(kek, dek)
-        val aad = CredentialCrypto.buildAad(hdr, id)
-        val sealed = AeadCipher.encrypt(dek, bytes, aad)
-
-        val out = ByteArrayOutputStream()
-        writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, wrappedDek)
-
-        // Parse existing entries and rebuild with new/updated entry
-        if (existingFileBytes != null && existingFileBytes.size > HEADER_SIZE_V1) {
-            val existingEntries = CredentialCrypto.readEntriesV1(existingFileBytes).toMutableMap()
-            existingEntries[id.value] = EntryData(id, sealed, bytes.size)
-            for ((_, entryData) in existingEntries) {
-                out.write(CredentialCrypto.encodeEntry(entryData.id, entryData.sealed))
-            }
-        } else {
-            // New store: just write the single entry
-            out.write(CredentialCrypto.encodeEntry(id, sealed))
-        }
-
-        commit(out.toByteArray())
+        add(id, SecretText(id, CredentialScope.GLOBAL, bytes))
     }
 
     /**
@@ -954,47 +914,30 @@ class LocalSecretStore(
     }
 
     /**
-     * Rotates a credential with new bytes, preserving the DEK (v1 compatibility).
-     * Full implementation - same as behavior
+     * Replaces the bytes of ONE secret, in the format the store writes.
+     *
+     * The bytes are wrapped as a [SecretText] and handed to [rotate], which
+     * is the one authority that writes this store: it knows which version the
+     * store is in, and it seals every entry under the header the store is
+     * published with. A store that holds the legacy format is migrated by
+     * that write.
+     *
+     * A rotation needs a credential to rotate. A store that holds none under
+     * that name is refused and nothing is written, so a rotation never
+     * brings a credential into existence.
+     *
+     * @param id The credential ID
+     * @param newBytes The new secret bytes
+     * @throws CredentialsStoreEmptySecretException if newBytes is empty
+     * @throws SecretStoreTamperException if the store holds no credential
+     *   under that name
      * @throws CredentialsStoreCommitException when the store could not be
      *   replaced. The store keeps the content it had.
-*/
+     */
     override fun rotateBytes(id: CredentialsId, newBytes: ByteArray) {
         if (newBytes.isEmpty()) throw CredentialsStoreEmptySecretException()
-        withExclusiveLock {
-            if (!Files.exists(file)) {
-                // A store that is not there yet is CREATED by the rotation, with
-                // the same bytes a first write would store. The write happens
-                // HERE and not in another call, because the lock this rotation
-                // holds is not reentrant at the operating system's level: a
-                // nested lock would be refused instead of waited for.
-                writeBytes(id, newBytes)
-                return@withExclusiveLock
-            }
-            val fileBytes = readStoreFile()
-            val hdr = readHeader(fileBytes)
-            val kek = deriveKek(hdr.kdfSalt)
 
-            val entries = CredentialCrypto.readEntriesV1(fileBytes)
-            entries[id.value]
-                ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
-
-            // Decrypt existing DEK from header
-            val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
-            val aad = CredentialCrypto.buildAad(hdr, id)
-            val sealed = AeadCipher.encrypt(dek, newBytes, aad)
-
-            // Update entry
-            val updatedEntries = entries.toMutableMap()
-            updatedEntries[id.value] = EntryData(id, sealed, newBytes.size)
-
-            val out = ByteArrayOutputStream()
-            writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
-            for ((_, entryData) in updatedEntries) {
-                out.write(CredentialCrypto.encodeEntry(entryData.id, entryData.sealed))
-            }
-            commit(out.toByteArray())
-        }
+        rotate(id, SecretText(id, CredentialScope.GLOBAL, newBytes))
     }
 
     /**

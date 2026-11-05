@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.sdk.files
 
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
-import java.nio.file.Files
 import java.nio.file.Path
 import java.util.regex.PatternSyntaxException
 
@@ -39,6 +38,13 @@ data class CleanWsResult(
  * ## Path Safety
  * - Operates only within workspace root
  * - Never touches `.v2/artifacts/` per the invariant
+ * - The walk does not descend into the target of a symbolic link, so a link
+ *   inside the workspace is removed as a link and never followed
+ * - Empties the marker name (`.cleaned`) when a link occupies it: a marker
+ *   read through that link belongs to whatever is on the other side, and a
+ *   marker written through it would land outside the workspace
+ * - A link is an entry, not a directory to clean up: the emptiness of the
+ *   directory a link points at is not the workspace's business
  * - Refuses the pattern-less form when [rootDestruction] does not permit it.
  *   `cleanWs(patterns = null)` means "delete every non-.v2 file", so against a
  *   `--workspace` root that is the user's whole project. See [CleanWsExecutor].
@@ -49,10 +55,12 @@ data class CleanWsResult(
  * let one be wired to scratch while the other stayed user-owned, with nothing
  * observing the divergence. One [RootDestruction] makes that unrepresentable.
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
+ * @param fileSystem The filesystem the cleanup is applied to.
  * @param rootDestruction Whether a wholesale root sweep may run.
 */
 class CleanWsExecutor(
     private val workspaceResolver: (stageName: String, stageIndex: Int) -> Path,
+    private val fileSystem: WorkspaceFileSystem = JdkWorkspaceFileSystem,
     val rootDestruction: RootDestruction = RootDestruction.DecidedElsewhere,
 ) {
 
@@ -62,7 +70,7 @@ class CleanWsExecutor(
      * @param stageIndex The stage index
      * @param spec The cleanWs step specification
      * @return [CleanWsResult]
-*/
+    */
     fun execute(stageName: String, stageIndex: Int, spec: StepSpec.CleanWs): CleanWsResult {
         val workspace = workspaceResolver(stageName, stageIndex)
         val v2ArtifactsRoot = workspace.resolve(".v2").resolve("artifacts")
@@ -90,8 +98,21 @@ class CleanWsExecutor(
         val markerFile = workspace.resolve(".cleaned")
         val effectivePatterns = spec.patterns ?: emptyList()
 
+        // The marker name is the product's own, and the workspace is writable,
+        // so the name can be occupied by a link. A digest read THROUGH that
+        // link belongs to whatever is on the other side, and honouring it would
+        // turn this cleanup into a no-op that reports itself as done; a marker
+        // WRITTEN through it would land outside the authorized root. The link
+        // is removed instead: the marker is then simply not there, and the
+        // write at the end of this cleanup cannot follow it either. The sweep
+        // does not always match the marker name, so the link can still be
+        // there when the marker is written.
+        if (fileSystem.isSymbolicLink(markerFile)) {
+            fileSystem.deleteIfExists(markerFile)
+        }
+
         // Check MEMOIZED marker for idempotent re-run
-        if (Files.exists(markerFile)) {
+        if (fileSystem.exists(markerFile)) {
             // A marker this executor wrote is a SHA-256 of the marker content; anything else in
             // the file was not written here (a hand edit, a truncated write, a different producer).
             // Such a file is treated as NOT a marker, and the cleanup proceeds normally, rather
@@ -103,7 +124,8 @@ class CleanWsExecutor(
             // `isNotEmpty()` gate did: any non-empty text reached CleanWsOutput.sha256 and
             // then the journal, where it could never match a real digest.
             val existingSha = try {
-                Files.readString(markerFile).trim().takeIf(Sha256::isSha256Hex).orEmpty()
+                String(fileSystem.readAllBytes(markerFile), Charsets.UTF_8)
+                    .trim().takeIf(Sha256::isSha256Hex).orEmpty()
             } catch (_: Exception) {
                 ""
             }
@@ -121,7 +143,7 @@ class CleanWsExecutor(
         var deletedFiles = 0
         var deletedDirs = 0
 
-        if (!Files.exists(workspace)) {
+        if (!fileSystem.exists(workspace)) {
             return CleanWsResult(0, 0, effectivePatterns, sha256("".toByteArray()))
         }
 
@@ -136,19 +158,17 @@ class CleanWsExecutor(
             }
         } else {
             // Delete all non-.v2 files
-            Files.walk(workspace).use { walk ->
-                walk
-                    .filter { it != workspace }
-                    .filter { !it.startsWith(v2ArtifactsRoot) }
-                    .filter { Files.isRegularFile(it) }
-                    .forEach { filesToDelete.add(it) }
-            }
+            fileSystem.walk(workspace)
+                .filter { it != workspace }
+                .filter { !it.startsWith(v2ArtifactsRoot) }
+                .filter { fileSystem.isRegularFile(it) }
+                .forEach { filesToDelete.add(it) }
         }
 
         // Delete files
         for (file in filesToDelete) {
             try {
-                Files.deleteIfExists(file)
+                fileSystem.deleteIfExists(file)
                 deletedFiles++
             } catch (_: Exception) {
                 // Ignore individual file deletion errors
@@ -160,10 +180,12 @@ class CleanWsExecutor(
             deletedDirs = deleteEmptyParents(workspace, v2ArtifactsRoot)
         }
 
-        // Write MEMOIZED marker
+        // Write MEMOIZED marker. The name was emptied above, so the write
+        // lands on the name the product emptied and not on the target of a
+        // link.
         val markerContent = "cleaned:${System.currentTimeMillis()}:${effectivePatterns.joinToString(",")}"
         val sha256 = sha256(markerContent.toByteArray())
-        Files.writeString(markerFile, sha256)
+        fileSystem.writeBytes(markerFile, sha256.toByteArray(Charsets.UTF_8))
 
         return CleanWsResult(
             deletedFiles = deletedFiles,
@@ -179,7 +201,7 @@ class CleanWsExecutor(
      * - all .class files recursively
      * - everything under build/
      * - all .tmp files in root
-*/
+    */
     private fun resolveAntPattern(workspace: Path, pattern: String, v2ArtifactsRoot: Path): List<Path> {
         val results = mutableListOf<Path>()
 
@@ -191,18 +213,16 @@ class CleanWsExecutor(
             return emptyList()
         }
 
-        Files.walk(workspace).use { walk ->
-            walk
-                .filter { it != workspace }
-                .filter { !it.startsWith(v2ArtifactsRoot) }
-                .filter { Files.isRegularFile(it) }
-                .forEach { file ->
-                    val relPath = workspace.relativize(file).toString()
-                    if (regexPattern.matcher(relPath).matches()) {
-                        results.add(file)
-                    }
+        fileSystem.walk(workspace)
+            .filter { it != workspace }
+            .filter { !it.startsWith(v2ArtifactsRoot) }
+            .filter { fileSystem.isRegularFile(it) }
+            .forEach { file ->
+                val relPath = workspace.relativize(file).toString()
+                if (regexPattern.matcher(relPath).matches()) {
+                    results.add(file)
                 }
-        }
+            }
 
         return results
     }
@@ -220,7 +240,7 @@ class CleanWsExecutor(
                             // ** at the end. Nothing follows it to anchor on, so it is
                             // "everything", including separators.
                             sb.append(".*")
-                            i += 2
+                            i += 3
                         } else if (pattern[i + 2] == '/') {
                             // **/ — `(.*/)*` already ends in `/`, so the separator is
                             // consumed together with it and nothing is left to emit.
@@ -274,29 +294,30 @@ class CleanWsExecutor(
 
     /**
      * Deletes empty parent directories bottom-up, excluding workspace root and .v2 tree.
-*/
+    */
     private fun deleteEmptyParents(workspace: Path, v2ArtifactsRoot: Path): Int {
         var deleted = 0
-        Files.walk(workspace).use { walk ->
-            walk
-                .filter { it != workspace }
-                .filter { Files.isDirectory(it) }
-                .filter { !it.startsWith(v2ArtifactsRoot) }
-                .sorted(Comparator.reverseOrder()) // depth-first (deepest first)
-                .forEach { dir ->
-                    if (Files.exists(dir)) {
-                        try {
-                            val entries = dir.toFile().listFiles()
-                            if (entries != null && entries.isEmpty()) {
-                                Files.deleteIfExists(dir)
-                                deleted++
-                            }
-                        } catch (_: Exception) {
-                            // Ignore
+        fileSystem.walk(workspace)
+            .filter { it != workspace }
+            // A link is an entry, not a directory to clean up. Its target is
+            // not the workspace's to look into, and whether the target is
+            // empty says nothing about the link.
+            .filter { !fileSystem.isSymbolicLink(it) }
+            .filter { fileSystem.isDirectory(it) }
+            .filter { !it.startsWith(v2ArtifactsRoot) }
+            .sortedWith(Comparator.reverseOrder<Path>()) // depth-first (deepest first)
+            .forEach { dir ->
+                if (fileSystem.exists(dir)) {
+                    try {
+                        if (fileSystem.listFiles(dir).isEmpty()) {
+                            fileSystem.deleteIfExists(dir)
+                            deleted++
                         }
+                    } catch (_: Exception) {
+                        // Ignore
                     }
                 }
-        }
+            }
         return deleted
     }
 
@@ -306,7 +327,7 @@ class CleanWsExecutor(
          * Byte-identical to the local implementation this replaces: same algorithm, same
          * lowercase hex, same input. The value is emitted in the Step's observability event,
          * so an external observer comparing digests keeps matching.
-*/
+    */
         fun sha256(bytes: ByteArray): String = Sha256.ofBytes(bytes)
     }
 }

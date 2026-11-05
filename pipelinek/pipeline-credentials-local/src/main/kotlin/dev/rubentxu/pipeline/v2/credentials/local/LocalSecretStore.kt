@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
+import dev.rubentxu.pipeline.v2.credentials.api.CredentialsStoreCommitException
 import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceNotFoundException
 import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceTypeMismatchException
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
@@ -282,6 +283,22 @@ class LocalSecretStore(
         val id: CredentialsId,
         val sealed: AeadCipher.SealedBlob,
         val kindId: Short,
+    )
+
+    /**
+     * The store a mutation publishes: the header it will carry and the
+     * entries it will hold under that header.
+     *
+     * @property header the header the store will carry once the mutation is done
+     * @property entries the entries the store will hold under that header
+     * @property migrated whether every one of those entries was sealed by this
+     *   mutation, and so can be opened before the store replaces the one that
+     *   is there
+     */
+    private class Upgrade(
+        val header: StoreHeader,
+        val entries: MutableMap<String, V2EntryData>,
+        val migrated: Boolean,
     )
 
     /**
@@ -605,59 +622,52 @@ class LocalSecretStore(
      * Stores a typed credential in v2 format
      * On first add to a v1 file: migrates existing v1 entries to v2.
      * @throws CredentialsStoreCommitException when the store could not be
-     *   replaced. The store keeps the content it had.
+     *   replaced, or when the migrated store would not open. The store keeps
+     *   the content it had.
+     * @throws SecretStoreTamperException when an entry of the v1 store does
+     *   not open. The store is not migrated and keeps the content it had.
 */
     override fun add(id: CredentialsId, credential: Credential) {
         withExclusiveLock {
-            val hdr = loadOrCreateHeader()
-            val kek = deriveKek(hdr.kdfSalt)
+            val source = loadOrCreateHeader()
+            val kek = deriveKek(source.kdfSalt)
 
             // Load or generate DEK
-            val dek = if (hdr.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
+            val dek = if (source.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
                 ByteArray(DEK_SIZE).also { secureRandom.nextBytes(it) }
             } else {
-                CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
+                CredentialCrypto.unwrapDek(kek, source.wrappedDek)
             }
 
             // Serialize credential to bytes
             val credentialBytes = CredentialSerializer.serializeCredential(credential)
             val kindId = kindIdFor(credential)
 
-            // Encrypt with DEK - AAD includes kind for anti-swap
-            val aad = CredentialCrypto.buildV2Aad(hdr, id, kindId)
-            val sealed = AeadCipher.encrypt(dek, credentialBytes, aad)
-
             // Atomic write
             val existingBytes = if (Files.exists(file) && Files.size(file) > 0) readStoreFile() else null
 
+            // The header the store will carry and the entries it will hold
+            // under it. The upgrade is decided in ONE place, so the rule that
+            // seals an entry cannot be one thing here and another there.
+            val upgrade = upgrade(dek, source, existingBytes)
+
+            // Encrypt with DEK - AAD includes kind for anti-swap
+            val sealed = AeadCipher.encrypt(dek, credentialBytes, CredentialCrypto.buildV2Aad(upgrade.header, id, kindId))
+            upgrade.entries[id.value] = V2EntryData(id, sealed, kindId)
+
             val out = ByteArrayOutputStream()
             // Always write header for new entries; migrate entries to
-            writeHeader(out, hdr.magic, VERSION_V2, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, CredentialCrypto.wrapDek(kek, dek))
-
-            if (existingBytes != null && existingBytes.size > HEADER_SIZE_V1) {
-                // Route to correct reader based on header version of existing file
-                val existingEntries: MutableMap<String, V2EntryData> = if (hdr.version == VERSION_V1.toShort()) {
-                    // Decrypt as SecretText and re-encrypt as V2
-                    val v1Entries = CredentialCrypto.readEntriesV1(existingBytes)
-                    v1Entries.mapValues { (entryId, v1Entry) ->
-                        val v1Hdr = readHeader(existingBytes)
-                        val v1Aad = CredentialCrypto.buildAad(v1Hdr, CredentialsId.from(entryId))
-                        val plaintext = AeadCipher.decrypt(dek, v1Entry.sealed, v1Aad)
-                        val migratedSealed = AeadCipher.encrypt(dek, plaintext, CredentialCrypto.buildV2Aad(hdr, CredentialsId.from(entryId), KIND_SECRET_TEXT))
-                        V2EntryData(CredentialsId.from(entryId), migratedSealed, KIND_SECRET_TEXT)
-                    }.toMutableMap()
-                } else {
-                    CredentialCrypto.readEntries(existingBytes).toMutableMap()
-                }
-                existingEntries[id.value] = V2EntryData(id, sealed, kindId)
-                for ((_, entryData) in existingEntries) {
-                    out.write(CredentialCrypto.encodeV2Entry(entryData))
-                }
-            } else {
-                out.write(CredentialCrypto.encodeV2Entry(V2EntryData(id, sealed, kindId)))
+            writeHeader(
+                out,
+                upgrade.header.magic, upgrade.header.version, upgrade.header.kdfM,
+                upgrade.header.kdfT, upgrade.header.kdfP, upgrade.header.kdfSalt,
+                CredentialCrypto.wrapDek(kek, dek),
+            )
+            for (entry in upgrade.entries.values) {
+                out.write(CredentialCrypto.encodeV2Entry(entry))
             }
 
-            commit(out.toByteArray())
+            commit(publishable(out.toByteArray(), upgrade, dek))
         }
     }
 
@@ -840,9 +850,12 @@ class LocalSecretStore(
      * This preserves the ability to decrypt existing entries while updating the credential.
      * @param id The credential ID (must already exist)
      * @param credential The new typed credential to store
-     * @throws SecretStoreTamperException if the credential doesn't exist
+     * @throws SecretStoreTamperException if the credential doesn't exist, or
+     *   when an entry of the v1 store does not open. The store is not
+     *   migrated and keeps the content it had.
      * @throws CredentialsStoreCommitException when the store could not be
-     *   replaced. The store keeps the content it had.
+     *   replaced, or when the migrated store would not open. The store keeps
+     *   the content it had.
 */
     override fun rotate(id: CredentialsId, credential: Credential) {
         withExclusiveLock {
@@ -854,47 +867,42 @@ class LocalSecretStore(
             }
 
             val fileBytes = readStoreFile()
-            val hdr = readHeader(fileBytes)
-            val kek = deriveKek(hdr.kdfSalt)
-
-            // Route based on header version; rotate always upgrades to v2
-            val entries: MutableMap<String, V2EntryData> = if (hdr.version == VERSION_V1.toShort()) {
-                // Migrate V1 entries to V2
-                val v1Entries = CredentialCrypto.readEntriesV1(fileBytes)
-                val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
-                v1Entries.mapValues { (entryId, v1Entry) ->
-                    val v1Aad = CredentialCrypto.buildAad(hdr, CredentialsId.from(entryId))
-                    val plaintext = AeadCipher.decrypt(dek, v1Entry.sealed, v1Aad)
-                    val migratedSealed = AeadCipher.encrypt(dek, plaintext, CredentialCrypto.buildV2Aad(hdr, CredentialsId.from(entryId), KIND_SECRET_TEXT))
-                    V2EntryData(CredentialsId.from(entryId), migratedSealed, KIND_SECRET_TEXT)
-                }.toMutableMap()
-            } else {
-                CredentialCrypto.readEntries(fileBytes).toMutableMap()
-            }
-
-            if (!entries.containsKey(id.value)) {
-                throw SecretStoreTamperException("Credential not found: ${id.value}")
-            }
+            val source = readHeader(fileBytes)
+            val kek = deriveKek(source.kdfSalt)
 
             // Get DEK from header (reuse existing DEK)
-            val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
+            val dek = CredentialCrypto.unwrapDek(kek, source.wrappedDek)
+
+            // The header the store will carry and the entries it will hold
+            // under it. The upgrade is decided in ONE place, so the rule that
+            // seals an entry cannot be one thing here and another there.
+            val upgrade = upgrade(dek, source, fileBytes)
+
+            if (!upgrade.entries.containsKey(id.value)) {
+                throw SecretStoreTamperException("Credential not found: ${id.value}")
+            }
 
             // Serialize and encrypt the new credential
             val credentialBytes = CredentialSerializer.serializeCredential(credential)
             val kindId = kindIdFor(credential)
-            val aad = CredentialCrypto.buildV2Aad(hdr, id, kindId)
-            val sealed = AeadCipher.encrypt(dek, credentialBytes, aad)
+            val sealed = AeadCipher.encrypt(dek, credentialBytes, CredentialCrypto.buildV2Aad(upgrade.header, id, kindId))
 
             // Update entries
-            entries[id.value] = V2EntryData(id, sealed, kindId)
+            upgrade.entries[id.value] = V2EntryData(id, sealed, kindId)
 
             // Atomic write - always write header
             val out = ByteArrayOutputStream()
-            writeHeader(out, hdr.magic, VERSION_V2, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
-            for ((_, entryData) in entries) {
-                out.write(CredentialCrypto.encodeV2Entry(entryData))
+            writeHeader(
+                out,
+                upgrade.header.magic, upgrade.header.version, upgrade.header.kdfM,
+                upgrade.header.kdfT, upgrade.header.kdfP, upgrade.header.kdfSalt,
+                source.wrappedDek,
+            )
+            for (entry in upgrade.entries.values) {
+                out.write(CredentialCrypto.encodeV2Entry(entry))
             }
-            commit(out.toByteArray())
+
+            commit(publishable(out.toByteArray(), upgrade, dek))
         }
     }
 
@@ -953,6 +961,97 @@ class LocalSecretStore(
     }
 
     // === Private helpers ===
+
+    /**
+     * The upgrade of the store to the header it will carry.
+     *
+     * The header is built BEFORE anything is encrypted, because the AAD of an
+     * entry carries the version of the header it lives under: an entry sealed
+     * under one version and published under another cannot be opened by
+     * anybody, and the store would answer with a diagnostic that blames
+     * tampering for a mistake of its own.
+     *
+     * The v1 entries are read with the header they were sealed under and
+     * re-sealed under the one the store will carry. `add` and `rotate` both
+     * publish through here, so the rule that decides how an entry is sealed
+     * is ONE rule and not two that can drift apart.
+     *
+     * @param dek the key that opens the entries
+     * @param source the header the store carries now
+     * @param fileBytes the bytes of the store file, or null when there is none
+     * @throws SecretStoreTamperException when an entry of the v1 store does
+     *   not open. The store is not migrated and keeps the content it had.
+     */
+    private fun upgrade(dek: ByteArray, source: StoreHeader, fileBytes: ByteArray?): Upgrade {
+        val destination = source.copy(version = VERSION_V2)
+        val migrating = source.version == VERSION_V1.toShort()
+        val entries: MutableMap<String, V2EntryData> = when {
+            fileBytes == null || fileBytes.size <= HEADER_SIZE_V1 -> mutableMapOf()
+            migrating -> CredentialCrypto.readEntriesV1(fileBytes).mapValues { (entryId, entry) ->
+                val id = CredentialsId.from(entryId)
+                val plaintext = try {
+                    AeadCipher.decrypt(dek, entry.sealed, CredentialCrypto.buildAad(source, id))
+                } catch (e: javax.crypto.AEADBadTagException) {
+                    throw SecretStoreTamperException(
+                        "the v1 entry '${id.value}' does not open; the store was not migrated " +
+                            "and keeps the content it had",
+                        e,
+                    )
+                }
+                // A v1 entry holds the secret itself; a v2 entry holds the
+                // credential in the canonical part form its reader
+                // deserializes. The migration moves the secret from one form
+                // to the other, so the entry reads back as the credential it
+                // was instead of as a blob nobody can interpret.
+                val canonical = CredentialSerializer.serializeCredential(
+                    SecretText(id, CredentialScope.GLOBAL, plaintext),
+                )
+                V2EntryData(
+                    id,
+                    AeadCipher.encrypt(dek, canonical, CredentialCrypto.buildV2Aad(destination, id, KIND_SECRET_TEXT)),
+                    KIND_SECRET_TEXT,
+                )
+            }.toMutableMap()
+            else -> CredentialCrypto.readEntries(fileBytes).toMutableMap()
+        }
+        return Upgrade(destination, entries, migrating)
+    }
+
+    /**
+     * The bytes a mutation is about to publish, once they have been opened.
+     *
+     * An upgrade re-seals every entry the store will carry, so every entry
+     * of these bytes was sealed by this mutation and every one of them can be
+     * opened before they replace the store: a store that cannot be opened is
+     * a store nobody can use, and a store that is half upgraded is worse than
+     * one that was not upgraded at all.
+     *
+     * The entries are opened with the header the READER will read, taken from
+     * the bytes that are about to be published and not from the header this
+     * mutation built. The guarantee is that the file opens, and the reader
+     * reads the file.
+     *
+     * @throws CredentialsStoreCommitException when the store would not open
+     *   under the header it would be published with. The store keeps the
+     *   content it had.
+     */
+    private fun publishable(bytes: ByteArray, upgrade: Upgrade, dek: ByteArray): ByteArray {
+        if (!upgrade.migrated) return bytes
+        val published = readHeader(bytes)
+        for (entry in CredentialCrypto.readEntries(bytes).values) {
+            try {
+                AeadCipher.decrypt(dek, entry.sealed, CredentialCrypto.buildV2Aad(published, entry.id, entry.kindId))
+            } catch (e: javax.crypto.AEADBadTagException) {
+                throw CredentialsStoreCommitException(
+                    "the migrated store does not open: the entry '${entry.id.value}' cannot be " +
+                        "read under the header it would be published with; the store keeps the " +
+                        "content it had",
+                    e,
+                )
+            }
+        }
+        return bytes
+    }
 
     private fun enforcePosixPermissions(file: Path) {
         try {

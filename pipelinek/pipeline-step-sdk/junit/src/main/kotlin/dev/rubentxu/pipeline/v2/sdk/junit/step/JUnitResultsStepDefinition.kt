@@ -166,7 +166,7 @@ class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResult
                         outcome = StepOutcome.Failure(
                             PipelineFailure(
                                 kind = FailureKind.USER,
-                                message = "junit.results: malformed XML at $reportPath: ${e.message ?: "unknown"}",
+                                message = "junit.results: refusing the report at $reportPath: ${e.message ?: "unknown"}",
                                 cause = e,
                             ),
                         ),

@@ -35,6 +35,9 @@ class JUnitReportParserTest {
 
     private val reportPath = "/workspace/target/surefire-reports/TEST-suite.xml"
 
+    /** The counter attribute the refusals name. */
+    private val counterAttribute = "tests"
+
     private fun parse(xml: String): JUnitReportSummary =
         JUnitReportParser.parse(ByteArrayInputStream(xml.toByteArray()), reportPath)
 
@@ -174,5 +177,177 @@ class JUnitReportParserTest {
             failure.message?.contains("testsuite") == true,
             "the refusal did not say what it expected: ${failure.message}",
         )
+    }
+
+    @Test
+    fun `a document whose root is not a report is refused even when it carries a suite`() {
+        // The ROOT is what makes a document a report. A wrapper the parser does
+        // not know, holding a suite somewhere inside, is not a JUnit report: the
+        // totals it would publish are a claim about a document nobody agreed to
+        // read as one, and the step publishes them as the outcome of a run.
+        val failure = assertThrows(JUnitReportParseException::class.java) {
+            parse("""<report><testsuite name="suite" tests="7"/></report>""")
+        }
+
+        assertTrue(
+            failure.message?.contains("<report>") == true,
+            "the refusal did not name the root it found: ${failure.message}",
+        )
+        assertTrue(
+            failure.message?.contains(reportPath) == true,
+            "the refusal did not name the report: ${failure.message}",
+        )
+    }
+
+    @Test
+    fun `a suite nested in another suite is counted once`() {
+        // The parent declares the totals of its whole subtree; the nested suite
+        // is a PART of that subtree. Adding the two reports twice the tests the
+        // run had, and the step publishes that figure as the outcome of the run.
+        val summary = parse(
+            """
+            <testsuite name="parent" tests="7" failures="1" errors="0" skipped="2" time="2.0">
+              <testsuite name="child" tests="2" failures="0" errors="0" skipped="0" time="0.5"/>
+            </testsuite>
+            """.trimIndent(),
+        )
+
+        assertEquals(7, summary.tests)
+        assertEquals(1, summary.failures)
+        assertEquals(2, summary.skipped)
+        assertEquals(2.0, summary.durationSeconds)
+    }
+
+    @Test
+    fun `a suite takes what it declares and what its nested suites leave out`() {
+        // Per axis: the parent's own declaration wins, and where the parent
+        // declares nothing the nested suites fill it in. The parent declares
+        // one failure and the nested suite declares two — the nested suite does
+        // not add its failures to the parent's, it is part of the parent's run.
+        val summary = parse(
+            """
+            <testsuite name="parent" failures="1">
+              <testsuite name="child" tests="2" failures="2" time="0.5"/>
+            </testsuite>
+            """.trimIndent(),
+        )
+
+        assertEquals(2, summary.tests)
+        assertEquals(1, summary.failures)
+        assertEquals(0, summary.errors)
+        assertEquals(0.5, summary.durationSeconds)
+    }
+
+    @Test
+    fun `a report that declares a negative counter is refused`() {
+        // A negative count is not a run with no tests: it is a document that
+        // says something impossible. Reading it as a zero publishes a count
+        // the report never declared.
+        val failure = assertThrows(JUnitReportParseException::class.java) {
+            parse("""<testsuite name="suite" tests="-3" failures="0" errors="0" skipped="0" time="1.0"/>""")
+        }
+
+        assertTrue(
+            failure.message?.contains(counterAttribute) == true,
+            "the refusal did not name the attribute: ${failure.message}",
+        )
+        assertTrue(
+            failure.message?.contains("-3") == true,
+            "the refusal did not name the value: ${failure.message}",
+        )
+    }
+
+    @Test
+    fun `a report that declares a duration that is not finite is refused`() {
+        // A duration that is not a number of seconds is not a duration, and a
+        // NaN that reaches the summary turns every comparison against it into
+        // a comparison that is never true.
+        val nan = assertThrows(JUnitReportParseException::class.java) {
+            parse("""<testsuite name="suite" tests="1" failures="0" errors="0" skipped="0" time="NaN"/>""")
+        }
+
+        assertTrue(
+            nan.message?.contains("time") == true,
+            "the refusal did not name the attribute: ${nan.message}",
+        )
+        assertTrue(
+            nan.message?.contains("NaN") == true,
+            "the refusal did not name the value: ${nan.message}",
+        )
+
+        val infinite = assertThrows(JUnitReportParseException::class.java) {
+            parse("""<testsuite name="suite" tests="1" failures="0" errors="0" skipped="0" time="Infinity"/>""")
+        }
+
+        assertTrue(
+            infinite.message?.contains("Infinity") == true,
+            "the refusal did not name the value: ${infinite.message}",
+        )
+    }
+
+    @Test
+    fun `a report that declares a counter too large to be a count is refused`() {
+        // A counter that does not fit in a whole number is not a count of
+        // zero: it is a count the parser could not read, and reading it as
+        // zero turns a report it cannot understand into a green run.
+        val failure = assertThrows(JUnitReportParseException::class.java) {
+            parse("""<testsuite name="suite" tests="99999999999999" failures="0" errors="0" skipped="0" time="1.0"/>""")
+        }
+
+        assertTrue(
+            failure.message?.contains(counterAttribute) == true,
+            "the refusal did not name the attribute: ${failure.message}",
+        )
+        assertTrue(
+            failure.message?.contains("99999999999999") == true,
+            "the refusal did not name the value: ${failure.message}",
+        )
+    }
+
+    @Test
+    fun `a report that declares a counter that is not a number is refused`() {
+        // The same silence, spelled differently: a counter the parser cannot
+        // read is not a counter of zero.
+        val failure = assertThrows(JUnitReportParseException::class.java) {
+            parse("""<testsuite name="suite" tests="many" failures="0" errors="0" skipped="0" time="1.0"/>""")
+        }
+
+        assertTrue(
+            failure.message?.contains(counterAttribute) == true,
+            "the refusal did not name the attribute: ${failure.message}",
+        )
+        assertTrue(
+            failure.message?.contains("many") == true,
+            "the refusal did not name the value: ${failure.message}",
+        )
+    }
+
+    @Test
+    fun `a wrapper that is not the root of the report is refused`() {
+        // The wrapper carries the totals of the whole run, so it belongs at the
+        // root and nowhere else. A wrapper inside a suite would declare a
+        // second, competing total for the same run.
+        val failure = assertThrows(JUnitReportParseException::class.java) {
+            parse("""<testsuite name="suite" tests="1"><testsuites tests="1"/></testsuite>""")
+        }
+
+        assertTrue(
+            failure.message?.contains("testsuites") == true,
+            "the refusal did not name the element it refused: ${failure.message}",
+        )
+    }
+
+    @Test
+    fun `a report that declares an empty counter declares nothing`() {
+        // An attribute with no value carries no information about the run: it
+        // is not a count of zero, it is the absence of a count. The parser
+        // reads it as the absence, and the axis it leaves open is filled by
+        // whatever the rest of the document declares.
+        val summary = parse(
+            """<testsuite name="suite" tests="" failures="1" errors="0" skipped="0" time="1.0"/>""",
+        )
+
+        assertEquals(0, summary.tests)
+        assertEquals(1, summary.failures)
     }
 }

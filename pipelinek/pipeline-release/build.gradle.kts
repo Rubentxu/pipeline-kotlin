@@ -868,3 +868,63 @@ tasks.register<JavaExec>("promotionCertification") {
     // and the promoter MUST NOT continue.
     isIgnoreExitValue = false
 }
+
+/**
+ * Receive a `defect.reported` document and record the defect in the task board of this
+ * repository.
+ *
+ * The task resolves the paths and hands the arguments over; it re-derives no
+ * rule, so the build and the tested model cannot drift apart. The candidate
+ * in course is a property and not something the task reads from the tree: a
+ * reception that guessed which candidate is in course would mix the defects
+ * of one cycle with the defects of another.
+ */
+tasks.register<JavaExec>("defectReception") {
+    group = "distribution"
+    description = "receive a defect.reported document and record it in the task board of this repository."
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.DefectReceptionMainKt")
+
+    val eventFile = providers.gradleProperty("defect.eventFile").orElse("").get()
+    val currentCandidate = providers.gradleProperty("defect.currentCandidate").orElse("").get()
+    val board = providers.gradleProperty("defect.board").orElse("").get()
+    val milestone = providers.gradleProperty("defect.milestone").orElse("").get()
+
+    inputs.property("defect.eventFile", eventFile)
+    inputs.property("defect.currentCandidate", currentCandidate)
+    inputs.property("defect.board", board)
+    inputs.property("defect.milestone", milestone)
+    if (eventFile.isNotBlank()) inputs.files(eventFile)
+
+    doFirst {
+        listOf(
+            "defect.eventFile" to eventFile,
+            "defect.currentCandidate" to currentCandidate,
+        ).forEach { (name, value) ->
+            if (value.isBlank()) {
+                throw GradleException(
+                    "defectReception: -P$name is required. A defect is recorded against the " +
+                        "candidate it was observed against, and a reception with no document to " +
+                        "read and no candidate in course records nothing.",
+                )
+            }
+        }
+    }
+
+    // The board and the milestone are optional: the board defaults to the
+    // directory the task runs in, and a defect can belong to no milestone.
+    args = listOf(eventFile, currentCandidate, board, milestone)
+
+    // The reception is NEVER up to date, and that is not a workaround: what it
+    // decides depends on the state of the board, and the board is not one of
+    // its inputs. A build that considered the reception up to date would answer
+    // "the defect is already recorded" from a cache instead of from the board,
+    // and the idempotence of the reception would be the idempotence of the
+    // cache and not the rule.
+    outputs.upToDateWhen { false }
+
+    // Any non-zero exit means the defect was NOT recorded, and the caller
+    // MUST NOT treat it as recorded.
+    isIgnoreExitValue = false
+}

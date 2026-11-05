@@ -12,9 +12,11 @@ import org.junit.jupiter.api.Test
  * Its rules are tiny but the consequences are not: an env value leaked to stdout becomes a
  * secret; a TTY read not zeroed becomes a secret; a wrong precedence order strands an
  * automation run.
- * The tests cover the three branches through the public [resolve] function, and pin the two
- * security rules declared in the source KDoc: the env value is never echoed back, and the
- * returned array is always a defensive copy.
+ * The tests cover the three branches through the public [resolve] function, pin the two
+ * security rules declared in the source KDoc —the env value is never echoed back, and the
+ * returned array is always a defensive copy— and partition the refusal by what the CALLER
+ * can do: a caller that can ask at a terminal is told about the terminal, and a caller that
+ * cannot ask anybody is told about the environment variable and nothing else.
 */
 class PassphraseResolverTest {
 
@@ -161,6 +163,26 @@ class PassphraseResolverTest {
         assertTrue(
             ex.message == exAgain.message,
             "the diagnostic must be a stable template, not interpolated from any input",
+        )
+    }
+
+    @Test
+    fun `a caller that cannot ask at a terminal is told only about the environment variable`() {
+        // A caller with NO reader has no terminal to offer: a pipeline run must
+        // refuse instead of waiting for a human who is not there. Telling that
+        // caller to run in a TTY would be a promise it cannot keep — the wait
+        // it starts never ends.
+        val ex = assertThrows(
+            PassphraseResolver.CredentialsStorePassphraseUnavailableException::class.java,
+        ) { PassphraseResolver.resolve(env = emptyMap()) }
+
+        assertTrue(
+            ex.message?.contains("PIPELINE_STORE_PASSPHRASE") == true,
+            "the diagnostic must name the env var, got: ${ex.message}",
+        )
+        assertFalse(
+            ex.message?.contains("TTY", ignoreCase = true) == true,
+            "a caller that cannot ask at a terminal must not be told to run in one, got: ${ex.message}",
         )
     }
 }

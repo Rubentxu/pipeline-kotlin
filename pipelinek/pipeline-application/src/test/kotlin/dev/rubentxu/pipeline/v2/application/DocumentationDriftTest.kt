@@ -287,6 +287,58 @@ class DocumentationDriftTest {
     }
 
     /**
+     * The promise to ask for a passphrase at a terminal is made in ONE place.
+     *
+     * The resolver owns the diagnostic that names the alternatives, and it
+     * names the terminal only when the caller offered a reader to ask with. A
+     * second source that repeats the promise makes it somewhere it may not be
+     * kept: a caller that cannot ask anybody would be sending the operator to
+     * a terminal that changes nothing.
+     */
+    @Test
+    fun `the promise to ask at a terminal is made only by the resolver`() {
+        val owner = requireNotNull(mainSources().firstOrNull { it.text.contains(RESOLVER_DECLARATION) }) {
+            "the resolver was not found among the main sources, so this rule proves nothing"
+        }
+
+        val offenders = mainSources().filter { it.name != owner.name && it.text.contains(TERMINAL_PROMISE) }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "these sources promise to ask at a terminal, and the promise is the resolver's to make: " +
+                offenders.joinToString { it.name },
+        )
+    }
+
+    /**
+     * A run does not ask anybody for the passphrase.
+     *
+     * A run that waited for a human to type the passphrase would wait forever
+     * in the place runs usually happen, and a run triggered by a scheduler has
+     * nobody to ask. The run therefore hands the resolver no reader at all,
+     * and the diagnostic it gets names the environment variable and nothing
+     * else.
+     */
+    @Test
+    fun `the runtime resolves the passphrase without asking anybody`() {
+        val runtime = requireNotNull(mainSources().firstOrNull { it.text.contains(RUNTIME_SEAM_DECLARATION) }) {
+            "the source that composes the credential seam was not found, so this rule proves nothing"
+        }
+
+        val calls = RESOLVER_CALL.findAll(runtime.text).map { it.groupValues[1].trim() }.toList()
+
+        assertTrue(
+            calls.isNotEmpty(),
+            "the runtime does not resolve the passphrase, so this rule proves nothing",
+        )
+        assertTrue(
+            calls.all { it.isEmpty() },
+            "the runtime hands the resolver something to ask with, so a run asks at a terminal: " +
+                "a run that waits for a human waits forever",
+        )
+    }
+
+    /**
      * The signal names the sources of the product declare.
      *
      * The declaration is spread over several files, and this rule reads all of
@@ -308,6 +360,32 @@ class DocumentationDriftTest {
                 .map { Files.readString(it) }
                 .flatMap { text -> SIGNAL_NAME.findAll(text).map { match -> match.value } }
                 .toSet()
+        }
+    }
+
+    /**
+     * A source of the product, by name and text.
+     */
+    private data class Source(val name: String, val text: String)
+
+    /**
+     * The main sources of the product.
+     *
+     * The main source set and not the tests: a test may QUOTE a promise to
+     * assert on it, and a quoted promise is not a promise made.
+     */
+    private fun mainSources(): List<Source> {
+        val root = repositoryRoot().resolve("pipelinek")
+        if (!Files.isDirectory(root)) {
+            return emptyList()
+        }
+        return Files.walk(root).use { paths ->
+            paths.iterator().asSequence()
+                .filter { Files.isRegularFile(it) }
+                .filter { it.fileName.toString().endsWith(".kt") }
+                .filter { it.toString().contains("${File.separator}src${File.separator}main${File.separator}") }
+                .map { Source(it.fileName.toString(), Files.readString(it)) }
+                .toList()
         }
     }
 
@@ -464,6 +542,21 @@ class DocumentationDriftTest {
     private companion object {
         /** The name of this instrument, as the README has to name it. */
         const val INSTRUMENT_NAME = "DocumentationDriftTest"
+
+        /** How the resolver declares itself, which is how its owner is found. */
+        const val RESOLVER_DECLARATION = "object PassphraseResolver"
+
+        /** How the runtime's credential seam declares itself. */
+        const val RUNTIME_SEAM_DECLARATION = "fun composeCredentialSeam"
+
+        /**
+         * The promise to ask for a passphrase at a terminal, as the product
+         * spells it. The phrase is the promise, and the promise has one owner.
+         */
+        const val TERMINAL_PROMISE = "interactively in a TTY"
+
+        /** A call to the passphrase resolver, with its arguments. */
+        val RESOLVER_CALL = Regex("PassphraseResolver\\.resolve\\(([^)]*)\\)")
 
         /** The directory the example plugins live in, relative to the repository root. */
         const val EXAMPLES_DIRECTORY = "examples"

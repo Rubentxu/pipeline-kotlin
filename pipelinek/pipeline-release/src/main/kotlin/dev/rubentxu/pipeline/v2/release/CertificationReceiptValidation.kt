@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.release
 
+import kotlinx.serialization.Serializable
+
 /**
  * Whether a receipt admits the candidate the request asked about.
  *
@@ -37,7 +39,15 @@ sealed interface CertificationAdmissionVerdict {
     ) : CertificationAdmissionVerdict
 }
 
-/** One specific reason a receipt was refused. */
+/**
+ * One specific reason a receipt was refused.
+ *
+ * It is serialisable because the receipt of the cycle carries the admission
+ * verbatim: the violation is part of the answer to "what happened to this
+ * artifact", and an answer that keeps the code but drops the detail — or the
+ * other way round — is half an answer.
+ */
+@Serializable
 data class CertificationAdmissionViolation(
     val code: CertificationAdmissionViolationCode,
     val detail: String,

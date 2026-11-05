@@ -804,6 +804,71 @@ tasks.register<JavaExec>("certificationRequest") {
     isIgnoreExitValue = false
 }
 
+/**
+ * Compose the receipt of the certification cycle.
+ *
+ * The receipt binds the documents of a cycle — the candidate, the request, the
+ * certification receipt, the defects and the promotion — into ONE document
+ * that says which artifact they are all about, and it is NOT written when they
+ * disagree about it.
+ *
+ * The extra documents are a `;`-separated list because their number is not
+ * fixed: a cycle may find no defect and one promotion, or three defects and
+ * no promotion. Each one is classified by what it says, so the list does not
+ * have to be ordered.
+ *
+ * Like the tasks above, it resolves the paths and propagates the exit code.
+ * It re-derives no rule: the composition lives in the model, and the tests pin
+ * the model.
+ */
+tasks.register<JavaExec>("cycleReceipt") {
+    group = "distribution"
+    description = "compose the receipt of the certification cycle."
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.CycleReceiptMainKt")
+
+    val candidate = providers.gradleProperty("cycle.candidate").orElse("").get()
+    val request = providers.gradleProperty("cycle.request").orElse("").get()
+    val certification = providers.gradleProperty("cycle.certification").orElse("").get()
+    val out = providers.gradleProperty("cycle.out").orElse("").get()
+    val extras = providers.gradleProperty("cycle.extras").orElse("").get()
+
+    inputs.property("cycle.candidate", candidate)
+    inputs.property("cycle.request", request)
+    inputs.property("cycle.certification", certification)
+    inputs.property("cycle.extras", extras)
+    if (candidate.isNotBlank()) inputs.files(candidate)
+    if (request.isNotBlank()) inputs.files(request)
+    if (certification.isNotBlank()) inputs.files(certification)
+    if (extras.isNotBlank()) inputs.files(extras.split(";").filter { it.isNotBlank() })
+
+    doFirst {
+        listOf(
+            "cycle.candidate" to candidate,
+            "cycle.request" to request,
+            "cycle.certification" to certification,
+            "cycle.out" to out,
+        ).forEach { (name, value) ->
+            if (value.isBlank()) {
+                throw GradleException(
+                    "cycleReceipt: -P$name is required. The receipt of a cycle names the " +
+                        "candidate, the request and the certification it binds, and it cannot be " +
+                        "composed without them.",
+                )
+            }
+        }
+    }
+
+    args = listOf(candidate, request, certification, out) +
+        extras.split(";").filter { it.isNotBlank() }
+
+    // A non-zero exit means the documents disagree, and the receipt was NOT
+    // written. The publisher MUST NOT continue on the strength of a receipt
+    // that does not exist.
+    isIgnoreExitValue = false
+}
+
 tasks.register<JavaExec>("certificationAdmission") {
     group = "distribution"
     description = "decide whether a certification receipt admits the candidate."

@@ -9,7 +9,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.AgentRendezvous
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputChannel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShellProtocolLayout
 import java.nio.ByteBuffer
-import java.nio.channels.SeekableByteChannel
+import java.nio.channels.ReadableByteChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
@@ -74,11 +74,19 @@ import java.nio.file.StandardOpenOption
  * `canary=GHS_DBG_SECRET`, the reader saw EOF the instant it looked
  * at an empty file, declared itself drained, and the Output Plane
  * stayed empty.
- * ## Coverage
- * Nothing in this tree drives the agent end to end, so the guarantees
- * above are stated by construction — the FIFO type is checked, the
- * redaction happens in memory before the commit — and no test in this
- * repository witnesses them: they are a declared gap.
+ * ## What witnesses the guarantees
+ * The type of the rendezvous is witnessed where the type lives: a rendezvous
+ * that is not a named pipe is refused, and the bytes of that path never reach
+ * the Output Plane. The redaction is witnessed where the bytes cross: what the
+ * agent commits carries the child's transcript and not the secret the child
+ * was given. Both are integration checks, because both are about a boundary
+ * the agent does not own — the filesystem on one side, the Output Plane on the
+ * other.
+ *
+ * The agent that the runtime launches as a process of its own runs no
+ * end-to-end scenario: that would need a real named pipe and a second
+ * process. What the two checks hold is the agent itself, at both of its
+ * edges: where its bytes come from, and what it commits.
 */
 object ObsPc2IngestAgent {
 
@@ -93,12 +101,42 @@ object ObsPc2IngestAgent {
     @JvmStatic
     fun main(args: Array<String>) {
         val rendezvous = AgentRendezvous.Args.fromArgv(args)
+        ingest(rendezvous, System.getenv(), ::openChannels)
+    }
+
+    /**
+     * The agent's drain: the bytes of the rendezvous are redacted in memory and
+     * committed to the Output Plane.
+     *
+     * ## The two arguments that are not the operation's identity
+     * The environment carries the secret, and the secret is the one thing the
+     * agent cannot be handed by its caller: it belongs to the process, and the
+     * process is the one the runtime launches. The channel source says where
+     * the bytes come from, and it is an argument because the source is a
+     * boundary of the agent and not a part of it: the rendezvous is a named
+     * pipe the child writes to, and the agent drains whatever the source hands
+     * it.
+     *
+     * ## The order of the two boundaries
+     * The store is opened and the sinks are built BEFORE the rendezvous is
+     * opened, so a rendezvous that is refused leaves the Output Plane as the
+     * agent found it: nothing declared, nothing committed.
+     *
+     * @param rendezvous the operation this agent drains.
+     * @param environment the environment of the process, which carries the secret.
+     * @param openChannels opens the rendezvous of each channel, and refuses one that is
+     *   not a named pipe.
+     */
+    internal fun ingest(
+        rendezvous: AgentRendezvous.Args,
+        environment: Map<String, String>,
+        openChannels: (AgentRendezvous.Args) -> Map<ProcessOutputChannel, ReadableByteChannel>,
+    ) {
         val controlDirRoot = rendezvous.controlDirRoot
         val runId = rendezvous.runId
         val opId = rendezvous.opId
-        val fifoDir = rendezvous.fifoDir
         val readyMarker = rendezvous.readyMarker
-        val secret = AgentRendezvous.secretFromEnvironment(System.getenv())
+        val secret = AgentRendezvous.secretFromEnvironment(environment)
 
         val registry = SecretPatternRegistry().apply { addSecret(SecretHandle.plain(secret)) }
         val store = OutputPlaneProvider.storeForWriting(controlDirRoot)
@@ -136,18 +174,6 @@ object ObsPc2IngestAgent {
             RedactingOutputIngress({ store.open(address.stream) }, frameIndex, address)
         }
 
-        // The FIFO names come from the protocol's single authority. The agent was handed the
-        // FIFO DIRECTORY in its argv, so it joins the names itself instead of being handed the
-        // two paths as well: a second copy of the names here would be a copy that can drift
-        // from the writer's, and the symptom would be a channel that never opens.
-        val stdoutFifo = fifoDir.resolve(ShellProtocolLayout.STDOUT_FIFO)
-        val stderrFifo = fifoDir.resolve(ShellProtocolLayout.STDERR_FIFO)
-
-        System.err.println(
-            "pc2-agent-start pid=$agentPid runId=$runId opId=$opId fifoDir=$fifoDir " +
-                "stdoutFifo=$stdoutFifo stderrFifo=$stderrFifo",
-        )
-
         // The channels are opened O_RDONLY, which BLOCKS until a writer
         // appears -- see [openRendezvous]. This comment previously said
         // O_RDWR and "never blocks, and keeps this process a writer",
@@ -155,10 +181,7 @@ object ObsPc2IngestAgent {
         // holding a write reference is what stopped the pipe from ever
         // reaching a zero-writers state, so the redactor waited forever
         // for an EOF that could not arrive.
-        val channels = mapOf(
-            ProcessOutputChannel.STDOUT to openRendezvous(stdoutFifo),
-            ProcessOutputChannel.STDERR to openRendezvous(stderrFifo),
-        )
+        val channels = openChannels(rendezvous)
         System.err.println("pc2-agent-fifos-opened pid=$agentPid")
 
         // Both descriptors are open. From here this process can
@@ -271,6 +294,40 @@ object ObsPc2IngestAgent {
     }
 
     /**
+     * The rendezvous of each channel: one named pipe per channel, opened for reading.
+     *
+     * ## Where the names come from
+     * The FIFO names come from the protocol's single authority. The agent was handed the
+     * FIFO DIRECTORY in its argv, so it joins the names itself instead of being handed the
+     * two paths as well: a second copy of the names here would be a copy that can drift
+     * from the writer's, and the symptom would be a channel that never opens.
+     *
+     * ## What it refuses
+     * A path that is not a named pipe is refused, and the refusal is the whole point of the
+     * FIFO: a regular file at that path would hold the child's bytes on disk, unredacted,
+     * and the drain would report EOF at the end of the file instead of at the end of the
+     * child's output.
+     */
+    internal fun openChannels(
+        rendezvous: AgentRendezvous.Args,
+    ): Map<ProcessOutputChannel, ReadableByteChannel> {
+        val fifoDir = rendezvous.fifoDir
+        val stdoutFifo = fifoDir.resolve(ShellProtocolLayout.STDOUT_FIFO)
+        val stderrFifo = fifoDir.resolve(ShellProtocolLayout.STDERR_FIFO)
+
+        System.err.println(
+            "pc2-agent-start pid=${ProcessHandle.current().pid()} runId=${rendezvous.runId} " +
+                "opId=${rendezvous.opId} fifoDir=$fifoDir " +
+                "stdoutFifo=$stdoutFifo stderrFifo=$stderrFifo",
+        )
+
+        return mapOf(
+            ProcessOutputChannel.STDOUT to openRendezvous(stdoutFifo),
+            ProcessOutputChannel.STDERR to openRendezvous(stderrFifo),
+        )
+    }
+
+    /**
      * Open the rendezvous, refusing anything that is not a named
      * pipe.
      * ## Why this refuses instead of opening
@@ -294,7 +351,7 @@ object ObsPc2IngestAgent {
      * The type is the security invariant here, so it is checked
      * rather than assumed.
 */
-    private fun openRendezvous(path: Path): SeekableByteChannel {
+    private fun openRendezvous(path: Path): ReadableByteChannel {
         require(AgentRendezvous.isFifo(path)) {
             "$path is not a FIFO. Draining it would accept a plaintext spool on disk, " +
                 "which the raw_secret_on_disk == 0 invariant is meant to catch."

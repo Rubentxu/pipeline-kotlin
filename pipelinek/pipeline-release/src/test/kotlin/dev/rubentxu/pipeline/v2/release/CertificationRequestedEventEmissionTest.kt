@@ -48,12 +48,16 @@ class CertificationRequestedEventEmissionTest {
     private fun handoffText(candidateDigest: String = digest): String =
         CandidateHandoffCodec.encode(handoff(candidateDigest))
 
-    private fun requestText(candidateDigest: String = digest): String {
+    private fun requestText(
+        candidateDigest: String = digest,
+        batteryId: String = "harness-certification-battery",
+        batteryVersion: String = "1",
+    ): String {
         val outcome = buildCertificationRequest(
             handoff = handoff(candidateDigest),
             catalogue = CertificationBatteryCatalogue(
-                id = "harness-certification-battery",
-                version = "1",
+                id = batteryId,
+                version = batteryVersion,
                 scenarios = listOf("alpha", "beta", "gamma"),
             ),
             requestedAt = requestedAt,
@@ -76,6 +80,7 @@ class CertificationRequestedEventEmissionTest {
         handoff: String = handoffText(),
         request: String = requestText(),
         receipt: String = publicationReceipt(),
+        publishedAt: Instant = this.publishedAt,
         alreadyEmitted: String? = null,
     ) = certificationRequestedEmission(
         handoffText = handoff,
@@ -207,11 +212,12 @@ class CertificationRequestedEventEmissionTest {
     }
 
     @Test
-    fun `a different request already emitted for the same candidate is refused`() {
+    fun `the same question asked at a later instant is still the same question`() {
         val first = assertInstanceOf(CertificationEmission.Ready::class.java, emission())
-        // A later emission of the same candidate says a different moment, so it
-        // is a different document: the request on disk and the request that is
-        // about to be written would contradict each other.
+
+        // A publication that is replayed publishes the same bytes under the
+        // same tag. The moment changes and the question does not, so the
+        // emitter must not deny its own successful retry.
         val later = assertInstanceOf(
             CertificationEmission.Ready::class.java,
             certificationRequestedEmission(
@@ -223,12 +229,58 @@ class CertificationRequestedEventEmissionTest {
         )
         assertTrue(first.document != later.document)
 
+        val again = assertInstanceOf(
+            CertificationEmission.AlreadyEmitted::class.java,
+            emission(
+                alreadyEmitted = first.document,
+                publishedAt = Instant.parse("2026-11-05T19:30:00Z"),
+            ),
+        )
+        // The receipt describes what is on disk, not what was about to be
+        // written: nothing was rewritten, so the first moment is the truth.
+        assertTrue(again.receipt.contains("occurred_at: 2026-11-05T18:04:00Z"))
+        assertTrue(!again.receipt.contains("2026-11-05T19:30:00Z"))
+    }
+
+    @Test
+    fun `the same candidate published under another tag is another question`() {
+        val first = assertInstanceOf(CertificationEmission.Ready::class.java, emission())
+
         val refused = assertInstanceOf(
             CertificationEmission.Refused::class.java,
-            emission(alreadyEmitted = later.document),
+            emission(
+                alreadyEmitted = first.document,
+                receipt = publicationReceipt(tag = "v0.44.0-rc2"),
+            ),
         )
         assertTrue(refused.reason.contains("already emitted"))
-        assertTrue(refused.reason.contains("2026-11-05T19:30:00Z"))
+        assertTrue(refused.reason.contains("v0.44.0-rc1"))
+        assertTrue(refused.reason.contains("v0.44.0-rc2"))
+    }
+
+    @Test
+    fun `the same candidate certified against another battery is another question`() {
+        val first = assertInstanceOf(CertificationEmission.Ready::class.java, emission())
+
+        val refused = assertInstanceOf(
+            CertificationEmission.Refused::class.java,
+            emission(
+                alreadyEmitted = first.document,
+                request = requestText(batteryId = "other-battery"),
+            ),
+        )
+        assertTrue(refused.reason.contains("already emitted"))
+        assertTrue(refused.reason.contains("harness-certification-battery"))
+        assertTrue(refused.reason.contains("other-battery"))
+    }
+
+    @Test
+    fun `a document that cannot be read is not overwritten`() {
+        val refused = assertInstanceOf(
+            CertificationEmission.Refused::class.java,
+            emission(alreadyEmitted = "{\"not\": \"an event\"}"),
+        )
+        assertTrue(refused.reason.contains("cannot read"))
     }
 
     @Test

@@ -15,7 +15,7 @@ sealed interface CertificationEmission {
         val receipt: String,
     ) : CertificationEmission
 
-    /** The very same event was already emitted; there is nothing left to write. */
+    /** The very same question was already asked of the receiver; there is nothing left to write. */
     data class AlreadyEmitted(val receipt: String) : CertificationEmission
 
     /** The event cannot be emitted, and [reason] says why. */
@@ -63,10 +63,15 @@ fun CertificationEmission.render(): String = when (this) {
  * carrying it.
  *
  * [alreadyEmitted] is what an emission of the same candidate left behind. The
- * same document is not emitted twice, and a DIFFERENT document for the same
- * candidate is refused rather than written over: two requests for one
- * candidate would leave the receiver with no way to tell which one is the
- * request.
+ * same ASK is not emitted twice, and a DIFFERENT ask for the same candidate is
+ * refused rather than written over: two questions for one candidate would
+ * leave the receiver with no way to tell which one it is being asked.
+ *
+ * The ask is the candidate, the release it is published under and the battery
+ * it is certified against — not the instants. A publication that is replayed
+ * and a request that is re-stated after an interruption ask the same
+ * question, and a rule that let the clock decide would make the emitter deny
+ * its own successful retry.
  *
  * Pure: it reads the values it is given and returns a decision. It touches no
  * filesystem and no clock — the moment is supplied.
@@ -140,14 +145,22 @@ fun certificationRequestedEmission(
     val receipt = receiptOf(event, published.tag)
 
     if (alreadyEmitted != null) {
-        return if (alreadyEmitted == document) {
-            CertificationEmission.AlreadyEmitted(receipt)
+        val previous = when (val decoded = CertificationRequestedEventCodec.decode(alreadyEmitted)) {
+            is CertificationEventDecode.Accepted -> decoded.event
+            is CertificationEventDecode.Rejected -> return CertificationEmission.Refused(
+                "something was already emitted for this candidate, and this build cannot read " +
+                    "it: ${describeRejection(decoded.rejection)}. A document nobody can read is " +
+                    "not overwritten with one nobody could compare it to.",
+            )
+        }
+        return if (previous.asksTheSameAs(event)) {
+            CertificationEmission.AlreadyEmitted(receiptOf(previous, previous.release.tag))
         } else {
             CertificationEmission.Refused(
                 "something was already emitted for this candidate " +
-                    "(${describeEmission(alreadyEmitted)}), and this one would be a different " +
-                    "one. Two requests for one candidate leave the receiver with no way to tell " +
-                    "which of them is the request.",
+                    "(${describeAsk(previous)}), and this one asks for something else " +
+                    "(${describeAsk(event)}). Two different asks for one candidate leave the " +
+                    "receiver with no way to tell which one to act on.",
             )
         }
     }
@@ -156,17 +169,46 @@ fun certificationRequestedEmission(
 }
 
 /**
- * What the document that is already on disk says, for a refusal that has to
- * name it instead of guessing.
+ * Whether two events ask for the same certification.
+ *
+ * The ASK is the candidate, the release the candidate is published under and
+ * the battery the certification is asked against. The instants are NOT part of
+ * it, and that is the whole point: a request that is re-stated after an
+ * interruption asks the same question, and a publication that is replayed
+ * publishes the same bytes under the same tag. If the instants counted, a
+ * retried publication would look like a second question, and the emitter would
+ * refuse its own successful retry — the certification would be asked once and
+ * then denied for having been asked.
+ *
+ * A different tag or a different battery IS a different ask: the receiver
+ * would not know which of the two to act on, so those are refused rather than
+ * written over.
  */
-private fun describeEmission(document: String): String =
-    when (val decoded = CertificationRequestedEventCodec.decode(document)) {
-        is CertificationEventDecode.Accepted ->
-            "candidate ${decoded.event.candidateId.canonical}, emitted at " +
-                decoded.event.occurredAt.canonical
+private fun CertificationRequestedEvent.asksTheSameAs(other: CertificationRequestedEvent): Boolean =
+    candidateId == other.candidateId &&
+        release == other.release &&
+        request.battery == other.request.battery
 
-        is CertificationEventDecode.Rejected ->
-            "a document that is not a certification request this build can read"
+/**
+ * What an event asks for, in words, for a refusal that has to name it
+ * instead of guessing.
+ */
+private fun describeAsk(event: CertificationRequestedEvent): String {
+    val battery = event.request.battery
+    return "candidate ${event.candidateId.canonical}, release ${event.release.tag} " +
+        "(${event.release.version}), battery ${battery.id} ${battery.version} " +
+        "(${battery.scenarioCount} scenarios)"
+}
+
+/**
+ * Why a document was refused, in words.
+ */
+private fun describeRejection(rejection: CertificationRequestRejection): String =
+    when (rejection) {
+        is CertificationRequestRejection.UnknownField ->
+            "unknown field(s) ${rejection.fields.joinToString()}"
+
+        is CertificationRequestRejection.MalformedDocument -> rejection.detail
     }
 
 /**

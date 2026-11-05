@@ -94,6 +94,32 @@ class SandboxConfinement(
         const val TOOL: String = "bwrap"
 
         /**
+         * The plan a CONFINED run gets.
+         *
+         * ## Why this is the ONE way to build the plan
+         *
+         * TWO things need the same confinement: the launcher, which starts the run inside
+         * it, and the provider, which probes the host to find out whether this host can
+         * confine at all. A probe that measured a different plan than the one that runs
+         * would attest to nothing — it would measure one boundary and promise another.
+         *
+         * So the plan is built HERE, once, and both sides ask for it. Two identical
+         * argument lists at two call sites are two answers to the same question, and the
+         * day they differ, the provider certifies a boundary that never runs.
+         *
+         * @param binary the absolute path of the tool that applies the confinement.
+         * @param workspace the only place of the operator's the run may write.
+         * @param controlDir the directory of control, which the run reads and never writes.
+         * @return the plan, with the directory of control bound read-only.
+         */
+        fun forRun(binary: Path, workspace: Path, controlDir: Path): SandboxConfinement =
+            SandboxConfinement(
+                binary = binary,
+                workspace = workspace,
+                readablePaths = listOf(controlDir),
+            )
+
+        /**
          * The namespaces the run gets its own.
          *
          * The user namespace is what makes the rest mean anything: inside it the

@@ -262,11 +262,7 @@ internal class ShellProcessLauncher(
                 "the confined profile needs '${SandboxConfinement.TOOL}', " +
                     "which this host does not have",
             )
-        return SandboxConfinement(
-            binary = binary,
-            workspace = workspace,
-            readablePaths = listOf(controlDir),
-        )
+        return SandboxConfinement.forRun(binary, workspace, controlDir)
     }
 
     /**

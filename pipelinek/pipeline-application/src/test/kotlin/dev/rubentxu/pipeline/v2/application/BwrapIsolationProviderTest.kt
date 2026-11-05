@@ -1,9 +1,16 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.isolation.ExecutionRequirements
+import dev.rubentxu.pipeline.v2.domain.isolation.FilesystemAccess
+import dev.rubentxu.pipeline.v2.domain.isolation.IsolationAttestation
 import dev.rubentxu.pipeline.v2.domain.isolation.IsolationCapability
+import dev.rubentxu.pipeline.v2.domain.isolation.NetworkAccess
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfinement
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.nio.file.Path
@@ -153,6 +160,54 @@ class BwrapIsolationProviderTest {
         assertNull(
             BwrapIsolationProvider.Facts.parse("CAPS|CapEff:0000000000000000"),
             "a fact that is missing is a fact that cannot be reasoned about",
+        )
+    }
+
+    @Test
+    fun `the plan the provider probes is the plan a run gets`() {
+        val binary = Path.of("/usr/bin/bwrap")
+        val workspace = Path.of("/tmp/pipelinek-workspace")
+        val controlDir = Path.of("/tmp/pipelinek-control")
+        val command = listOf("/tmp/control/script.sh")
+
+        val probed = BwrapIsolationProvider.confinementFor(binary, workspace, controlDir)
+        val run = SandboxConfinement.forRun(binary, workspace, controlDir)
+
+        assertEquals(
+            run.argv(command),
+            probed.argv(command),
+            "the provider measures a boundary that is not the boundary a run gets, so what it " +
+                "proves is not what runs",
+        )
+    }
+
+    @Test
+    fun `the provider proves the boundary of a real run`() {
+        assumeTrue(
+            SandboxConfinement.locate() != null,
+            "this host has no '${SandboxConfinement.TOOL}', so the provider has nothing to measure",
+        )
+
+        val attestation = BwrapIsolationProvider.attest(
+            ExecutionRequirements(
+                filesystem = FilesystemAccess.ConfinedWorkspace,
+                network = NetworkAccess.Isolated,
+            ),
+        )
+
+        val provider = assertInstanceOf(
+            IsolationAttestation.Provider::class.java,
+            attestation,
+            "the provider could not measure this host, so it proves nothing about it",
+        )
+        val proven = provider.proven.map { it.capability }
+        assertTrue(
+            IsolationCapability.FilesystemConfinement in proven,
+            "the provider did not prove the filesystem confinement it measured: $proven",
+        )
+        assertTrue(
+            IsolationCapability.NetworkConfinement in proven,
+            "the provider did not prove the network confinement it measured: $proven",
         )
     }
 }

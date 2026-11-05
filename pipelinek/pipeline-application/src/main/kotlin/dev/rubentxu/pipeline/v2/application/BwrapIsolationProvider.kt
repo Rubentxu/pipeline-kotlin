@@ -183,11 +183,7 @@ internal object BwrapIsolationProvider : IsolationProvider {
             program.toFile().setExecutable(true)
 
             val builder = ProcessBuilder(
-                SandboxConfinement(
-                    binary = binary,
-                    workspace = workspace,
-                    readablePaths = listOf(controlDir),
-                ).argv(listOf(program.toString())),
+                confinementFor(binary, workspace, controlDir).argv(listOf(program.toString())),
             )
             // The child's bytes go to a file, not to a pipe this process reads: a probe
             // that hung would otherwise hang the parse that asked for it.
@@ -208,6 +204,27 @@ internal object BwrapIsolationProvider : IsolationProvider {
             Files.deleteIfExists(output)
         }
     }
+
+    /**
+     * The plan the probe measures.
+     *
+     * It is THE plan of a run, built by the same factory the launcher builds it with:
+     * the probe and the launcher ask the same question, and two plans would be two
+     * answers to it. A probe that measured a plan the launcher does not apply would
+     * attest to a boundary that never runs.
+     *
+     * Internal and not private so that the rows of the test can read the plan the
+     * provider really uses: the rule that the probe and the launcher share a plan is
+     * one of the rules that must not be wrong, and it can only be checked against the
+     * plan the product builds.
+     *
+     * @param binary the absolute path of the tool that applies the confinement.
+     * @param workspace the disposable workspace the probe confines.
+     * @param controlDir the disposable control directory the probe reads its program from.
+     * @return the plan.
+     */
+    internal fun confinementFor(binary: Path, workspace: Path, controlDir: Path): SandboxConfinement =
+        SandboxConfinement.forRun(binary, workspace, controlDir)
 
     /**
      * The program the probe runs inside the boundary.

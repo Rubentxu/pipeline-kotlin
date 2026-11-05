@@ -1,40 +1,56 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 /**
- * Sandbox profile for shell execution — controls cwd, environment, and PATH policy.
- * Four values are defined:
- * - [NONE]: Default behaviour. No sandboxing applied. Cwd = control dir (legacy).
- * Env passthrough unchanged. PATH unchanged. Full back-compat
- * - [LOCAL]: Cwd = per-stage workspace. Env deny-list applied to pb.environment.
- *   PATH normalised to keep-set prefixes + JAVA_HOME/bin +_HOME/bin prepends.
- *   Local profile is NOT a filesystem jail — JDK has no portable chroot.
- * OS-level sandbox remains/ (see [])
- * [OS]: Recognised but not instantiable in. The factory constructor throws
- *   [SandboxProfileUnsupportedException] citing/.
- * ## Jenkins-wrapper mapping
- * | Profile | Jenkins equivalent | Notes |
- * |---------|-------------------|-------|
- * | NONE    | Default sh        | cwd = control dir, no env filter |
- * | LOCAL   | `withEnv` block  | cwd = workspace, env deny-list, PATH normalise |
- * | CONFINED | Container profile | the run is put inside a boundary (namespaces, read-only rootfs, no egress) |
- * | OS | Container profile | Not available in |
+ * The sandbox profile of a shell step: what the step's process may see and
+ * where it may write.
+ *
+ * ## A value is not a capability
+ *
+ * This enum is the CLOSED vocabulary of the profiles a caller may name. Naming
+ * a value says what the caller ASKS for; it does not say what the host can DO.
+ * The two are different facts with different answers — one is answered by a
+ * different build, the other by a different host — and reading a value as the
+ * promise of the behaviour is how a product ends up claiming a boundary it
+ * does not apply.
+ *
+ * Each constant below says what the value asks for and what this build can do
+ * with it.
+ *
+ * ## Where the truth about the host lives
+ *
+ * This file does not restate what a host can confine, because that is a fact
+ * about the host and it is measured rather than declared:
+ *
+ * - the profiles this runtime may run under are the ones
+ *   [RunnerTrustProfile.TrustedSingleTenant] admits, and the configuration
+ *   refuses anything else ([SandboxConfig]);
+ * - whether a boundary can be applied is decided by the admission core, which
+ *   refuses with the capabilities the host could not prove
+ *   ([dev.rubentxu.pipeline.v2.domain.isolation.DenialReason.UnsupportedCapability]).
+ *
  * @see SandboxConfig
- * Durable sh Pattern</a>
- * Sandbox Profile Local</a>
- * Scope Firewall</a>
-*/
+ * @see RunnerTrustProfile
+ */
 enum class SandboxProfile {
-    /** No sandboxing. Cwd = control dir; env passthrough; PATH unchanged. Full back-compat */
+    /**
+     * The legacy behaviour, and the default.
+     *
+     * It asks for nothing: the control directory as the working directory, the
+     * environment unchanged and the PATH unchanged. This build does it, and
+     * every run that says nothing about the profile runs under it.
+     */
     NONE,
 
     /**
-     * Local sandbox. Cwd = per-stage workspace.
-     * Env deny-list applied before user putAll (invariant)
-     * PATH normalised to keep-set + JAVA_HOME/bin +_HOME/bin prepends.
-     * NOTE: local profile is NOT a filesystem jail. JDK has no portable chroot.
-     * Write attempts outside workspace are reported but not blocked.
-     * OS-level sandbox requires/ (see [])
-*/
+     * The stage's workspace as the working directory, the environment
+     * deny-list and the normalised PATH.
+     *
+     * This build does it, and it confines NOTHING: the JDK has no portable
+     * chroot, so a write outside the workspace is reported and not blocked.
+     * The deny-list applies to the inherited environment, before the caller's
+     * own variables are merged into it, and the PATH is normalised to the
+     * keep-set plus JAVA_HOME/bin and M2_HOME/bin.
+     */
     LOCAL,
 
     /**
@@ -55,20 +71,27 @@ enum class SandboxProfile {
     CONFINED,
 
     /**
-     * OS-level sandbox profile. Recognised but NOT instantiable in
-     * Instantiation throws [SandboxProfileUnsupportedException] citing/
-     * OS-level sandbox (container, seccomp, unshare) is deferred to/
-*/
+     * An OS-level boundary for code the product does not trust with the
+     * machine.
+     *
+     * The word is recognised and this build has NO runtime profile for it: the
+     * request it states is refused by the admission core, which names the
+     * capabilities a host would have to prove. Asking for it as a runtime
+     * profile is refused as well: the companion factory throws
+     * [SandboxProfileUnsupportedException], and [SandboxConfig] refuses the
+     * value.
+     */
     OS;
 
     /**
-     * Factory for [OS] profile. Throws because OS profile is not available in
+     * The factory for the OS profile, which cannot be built.
+     *
      * @throws SandboxProfileUnsupportedException always
-*/
+     */
     companion object {
         /**
          * @throws SandboxProfileUnsupportedException always
-*/
+         */
         fun OS(): Nothing = throw SandboxProfileUnsupportedException(
             "sandbox-profile 'os' requires OS-level isolation, which is out of scope here. " +
                 "Accepted: {none, local, confined}. Got: 'os'."
@@ -80,7 +103,7 @@ enum class SandboxProfile {
  * Exception thrown when an unsupported sandbox profile is requested.
  * Used when:
  * - the CLI is passed `--sandbox-profile os` (which it rejects)
- * - the [SandboxProfile.OS] factory is called directly (not available yet)
+ * - the OS profile is asked for directly as a runtime profile (which it refuses)
  * The message names the offending value and the set of accepted profiles, so a
  * caller can tell a refused profile from an unknown one without parsing prose.
  * @param message The error message.

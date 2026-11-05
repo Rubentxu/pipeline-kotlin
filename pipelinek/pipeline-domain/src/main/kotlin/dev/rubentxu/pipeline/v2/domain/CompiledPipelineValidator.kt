@@ -58,9 +58,16 @@ object CompiledPipelineValidator {
                         visitStage(branch)
                     }
                 }
-                is StageBody.Matrix -> require(body.matrix.axes.isNotEmpty()) {
-                    "Matrix stage '${stage.name}' must define at least one axis"
-                }
+                // A matrix body is REPRESENTABLE and this build does not plan it: no
+                // planner expands a matrix into the units of the plan. So it is refused
+                // here, at the door where the plan is accepted, and the refusal names the
+                // capability that is missing. Admitting it would make the acceptance a
+                // success and the failure arrive later, generic, and attributed to
+                // something that is not the cause.
+                is StageBody.Matrix -> throw MissingPlanningCapabilityException(
+                    capability = PlanningCapability.MatrixExpansion,
+                    stage = stage.name,
+                )
                 // A scripted body is validated BY CONSTRUCTION. `ScriptedStageRef`'s init
                 // rejects a blank artifact key or entry point, so there is nothing left to assert
                 // here and inventing an assertion would only be a restatement of the type. What

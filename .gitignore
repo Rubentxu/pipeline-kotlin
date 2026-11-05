@@ -162,3 +162,9 @@ htmlcov/
 *~
 .DS_Store
 Thumbs.db
+
+### Backlog.md CLI state (config, tasks, milestones, drafts) ###
+# Mismo criterio que ya aplica a BACKLOG.md en este repositorio: el tablero
+# es estado local de gestion y no documentacion del producto. Se ignora en
+# vez de borrarse, para que siga en disco.
+backlog/

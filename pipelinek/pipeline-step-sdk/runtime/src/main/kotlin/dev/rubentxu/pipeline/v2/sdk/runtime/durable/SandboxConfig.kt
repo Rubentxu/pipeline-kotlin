@@ -1,9 +1,15 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 /**
- * Sandbox configuration record — carries profile + escape-hatch sets.
- * Encapsulates the active [SandboxProfile] plus the allowExtra and pathKeep
- * sets populated from sysprop / controller-JVM env var resolution.
+ * The sandbox configuration of a run: the profile it runs under and the two
+ * escape hatches that profile allows.
+ *
+ * The configuration is built where the run's request is read, and it refuses a
+ * profile that the runner's posture does not admit
+ * ([RunnerTrustProfile.TrustedSingleTenant]). A configuration that carried a
+ * profile this runtime cannot honour would run with the behaviour of a profile
+ * that confines nothing, and it would do it silently.
+ *
  * Use [SandboxConfig.NONE] for no sandboxing (full back-compat)
  * Use [SandboxConfig.LOCAL] for local sandbox (cwd = workspace, env deny-list, PATH normalise).
  * @property profile The active sandbox profile.
@@ -16,7 +22,6 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  *                     `pipeline.sandbox.path.keep` sysprop.
  * @see SandboxProfile
  * @see SandboxConfigResolver
- * Sandbox Profile Local</a>
 */
 data class SandboxConfig(
     val profile: SandboxProfile,

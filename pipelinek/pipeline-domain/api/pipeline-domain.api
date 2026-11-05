@@ -5352,6 +5352,13 @@ public final class dev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess$Ap
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess$ConfinedWorkspace : dev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess$ConfinedWorkspace;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess$WorkspaceScoped : dev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/FilesystemAccess$WorkspaceScoped;
 	public fun equals (Ljava/lang/Object;)Z
@@ -5432,6 +5439,13 @@ public final class dev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess$Allow
 
 public final class dev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess$Denied : dev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess$Denied;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess$Isolated : dev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/isolation/NetworkAccess$Isolated;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;

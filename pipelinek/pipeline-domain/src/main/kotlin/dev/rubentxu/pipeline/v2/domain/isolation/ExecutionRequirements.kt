@@ -72,6 +72,19 @@ sealed interface FilesystemAccess {
      * names it is refused by a host that cannot.
      */
     data class ApprovedReadonly(val paths: List<String>) : FilesystemAccess
+
+    /**
+     * The run writes inside its own workspace, and the rest of the system is
+     * read-only to it.
+     *
+     * This is the difference between [WorkspaceScoped] and a boundary.
+     * [WorkspaceScoped] is a rule about which paths the runtime hands to the
+     * step: a process the step starts is not itself confined to them. This one
+     * is a claim about the run as a whole, and only a provider that confines
+     * the filesystem can make it — so a request that names it is refused by a
+     * host that cannot.
+     */
+    data object ConfinedWorkspace : FilesystemAccess
 }
 
 /** What the run is allowed to reach on the network. */
@@ -96,6 +109,16 @@ sealed interface NetworkAccess {
      * honour it.
      */
     data class Allowlisted(val destinations: List<String>) : NetworkAccess
+
+    /**
+     * No socket leaves the run, and the fact is enforced rather than declared.
+     *
+     * [Denied] is the legacy behaviour and it is a weaker statement: no step
+     * asked for the network, and the runtime refuses a step that declares the
+     * capability. This one is a demand — the provider has to prove that the run
+     * has no network at all, because "nothing asked" is not "nothing left".
+     */
+    data object Isolated : NetworkAccess
 }
 
 /** A CPU budget, in cores. */

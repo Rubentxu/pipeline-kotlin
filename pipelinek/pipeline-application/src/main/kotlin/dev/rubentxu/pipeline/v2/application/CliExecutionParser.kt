@@ -39,13 +39,16 @@ internal object CliExecutionParser {
      * that verb's business; this refusal is about the verbs that come through
      * HERE.
      */
-    fun parse(args: Array<String>): CliParseResult {
+    fun parse(
+        args: Array<String>,
+        provider: IsolationProvider = BwrapIsolationProvider,
+    ): CliParseResult {
         if (args.isEmpty()) return CliParseResult.Rejected(CliError.MissingCommand)
 
         val command = CLI_PARSER_COMMANDS[args[0]]?.command
             ?: return CliParseResult.Rejected(CliError.InvalidCommand(args[0]))
 
-        val state = ParseState()
+        val state = ParseState(provider = provider)
         var index = 1
 
         while (index < args.size && args[index].startsWith("--")) {

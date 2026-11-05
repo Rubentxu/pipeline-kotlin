@@ -56,6 +56,25 @@ class ShellLaunchPreparationTest {
     )
 
     /**
+     * The preparation of a run that says it is confined.
+     *
+     * The confinement is the same plan the provider probes, built here from the same
+     * value, so the wrapper runs the user's script inside the very boundary the
+     * admission asked about.
+     */
+    private fun confinedPreparation(workspace: Path = Path.of("/tmp/pipelinek-workspace")) =
+        ShellLaunchPreparation(
+            protocol = protocol,
+            opId = "op-42",
+            heartbeatCheckInterval = 300L,
+            pumpedViaAgent = false,
+            confinement = SandboxConfinement(
+                binary = Path.of("/usr/bin/bwrap"),
+                workspace = workspace,
+            ),
+        )
+
+    /**
      * The environment the launcher inherits, in miniature. The path carries one entry outside the
      * keep-set (`/opt/rogue/bin`), so a filter that does nothing and a filter that drops too much
      * are distinguishable.
@@ -312,5 +331,61 @@ class ShellLaunchPreparationTest {
         // passphrase it says nothing anybody can use. Filtering it would break the flows that
         // point the product at a store without opening it.
         assertEquals("/home/pipeline/.pipeline/credentials.bin", child["PIPELINE_CREDENTIALS_STORE"])
+    }
+
+    @Test
+    fun `the confined run executes the user's script inside the confinement`() {
+        val script = Path.of("/tmp/pipelinek-shell-preparation/op-42/script.sh")
+        val wrapper = confinedPreparation().wrapperContent(script)
+
+        assertTrue(
+            wrapper.contains("'/usr/bin/bwrap'") && wrapper.contains("'--ro-bind' '/' '/'"),
+            "the user's script runs inside the boundary: $wrapper",
+        )
+        assertTrue(
+            wrapper.contains("'${script}'"),
+            "the script is the command the confinement runs: $wrapper",
+        )
+    }
+
+    @Test
+    fun `the protocol of the run stays outside the boundary`() {
+        val script = Path.of("/tmp/pipelinek-shell-preparation/op-42/script.sh")
+        val wrapper = confinedPreparation().wrapperContent(script)
+
+        val confinementCommand = wrapper
+            .substringAfter("'/usr/bin/bwrap'")
+            .substringBefore("'${script}'")
+
+        assertTrue(
+            "result.txt" !in confinementCommand && ".cookie" !in confinementCommand,
+            "the exit code and the cookie are written by the wrapper, outside the boundary: $wrapper",
+        )
+    }
+
+    @Test
+    fun `the exit code is taken from the confined command`() {
+        val script = Path.of("/tmp/pipelinek-shell-preparation/op-42/script.sh")
+        val wrapper = confinedPreparation().wrapperContent(script)
+
+        val confinementAt = wrapper.indexOf("'/usr/bin/bwrap'")
+        val scriptAt = wrapper.indexOf("'${script}'")
+        val exitCodeAt = wrapper.indexOf("EXIT_CODE=\$?")
+
+        assertTrue(
+            confinementAt >= 0 && confinementAt < scriptAt && scriptAt < exitCodeAt,
+            "the exit code the run publishes is the one the confinement returned: $wrapper",
+        )
+    }
+
+    @Test
+    fun `the legacy run is not confined`() {
+        val script = Path.of("/tmp/pipelinek-shell-preparation/op-42/script.sh")
+        val wrapper = preparation().wrapperContent(script)
+
+        assertTrue(
+            "bwrap" !in wrapper,
+            "a run that did not ask for a boundary does not get one: $wrapper",
+        )
     }
 }

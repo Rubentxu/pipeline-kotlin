@@ -36,6 +36,14 @@ class SandboxConfigTest {
     }
 
     @Test
+    fun `the confined profile is accepted by the posture`() {
+        // The posture admits it, so the configuration does not refuse it. Whether THIS
+        // host can honour it is the admission's question, and it is answered with the
+        // provider's evidence, not by the configuration.
+        assertEquals(SandboxProfile.CONFINED, SandboxConfig(SandboxProfile.CONFINED).profile)
+    }
+
+    @Test
     fun `a profile outside the posture fails closed`() {
         val refused = assertThrows<SandboxProfileUnsupportedException> {
             SandboxConfig(SandboxProfile.valueOf("OS"))

@@ -1114,6 +1114,26 @@
       ],
       "removal_boundary": "n/a — no member removed; this is an added case on a sealed interface",
       "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "5db2130f2",
+      "surface": "FilesystemAccess.ConfinedWorkspace and NetworkAccess.Isolated",
+      "change": "added a case `ConfinedWorkspace` (a data object) to the sealed interface FilesystemAccess and a case `Isolated` (a data object) to the sealed interface NetworkAccess; both interfaces are unchanged and the new classes are additive in the ABI dump (14 lines added, none removed)",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "A SOURCE break, not a binary one: the ABI dump only grows (14 lines added, none removed), so apiCheck passes, but a consumer that writes an EXHAUSTIVE `when` over FilesystemAccess or over NetworkAccess stops compiling until it says what a confined workspace and an isolated network mean.",
+        "",
+        "The alternatives considered and rejected: express the same request with the cases that already existed. `WorkspaceScoped` would be a lie (it is a rule about which paths the runtime HANDS to the step, and a process the step starts is not confined to them), and `Denied` would be a lie about the network (it says that no step ASKED for the network, which is a statement about the steps and not about the run, while the request is that no socket LEAVES the run). A vocabulary whose words mean something else than the fact they state is worse than no vocabulary: the operator would read 'workspace scoped' and believe the run is confined when nothing confines it.",
+        "",
+        "What it buys: the request can now say WHICH boundary it asks for, so the core can name the capability that is missing (FilesystemConfinement, NetworkConfinement) instead of refusing everything a trusted author asks for, and the provider can prove exactly the boundary that was asked for. The word 'confined' of the CLI is this request, and it is admitted only against a measured attestation.",
+        "",
+        "The cost is bounded and measured: nothing in this repository enumerates the cases of FilesystemAccess or of NetworkAccess (the CLI maps a profile word to a request and the durable row carries the profile name as a string), so the tree keeps compiling; a consumer with an exhaustive `when` has to add one branch, and the compiler says exactly where.",
+        "",
+        "Nothing about the DURABLE WIRE changed: a run recorded before this SHA declared its profile by name, and the same statement reads the same name; a row that carried one of these cases could only have been written by a build that already has the case."
+      ],
+      "removal_boundary": "n/a — no member removed; this is an added case on a sealed interface",
+      "supersedes": null
     }
   ]
 }

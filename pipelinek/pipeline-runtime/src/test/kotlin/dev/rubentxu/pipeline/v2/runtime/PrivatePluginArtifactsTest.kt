@@ -65,7 +65,6 @@ class PrivatePluginArtifactsTest {
 
         val outcome = PrivatePluginArtifacts.copyAll(
             admitted = listOf(admittedArtifact(artifact, digest)),
-            measured = mapOf(artifact to digest),
             into = copies,
         )
 
@@ -90,7 +89,6 @@ class PrivatePluginArtifactsTest {
 
         val outcome = PrivatePluginArtifacts.copyAll(
             admitted = listOf(admittedArtifact(artifact, digest)),
-            measured = mapOf(artifact to digest),
             into = copies,
         )
 
@@ -120,7 +118,6 @@ class PrivatePluginArtifactsTest {
 
         val outcome = PrivatePluginArtifacts.copyAll(
             admitted = listOf(admittedArtifact(artifact, digest)),
-            measured = mapOf(artifact to digest),
             into = root.resolve("copies"),
         )
 
@@ -145,7 +142,6 @@ class PrivatePluginArtifactsTest {
 
         val outcome = PrivatePluginArtifacts.copyAll(
             admitted = listOf(admittedArtifact(artifact, digest)),
-            measured = mapOf(artifact to digest),
             into = copies,
         )
 
@@ -175,7 +171,6 @@ class PrivatePluginArtifactsTest {
 
         val outcome = PrivatePluginArtifacts.copyAll(
             admitted = listOf(admittedArtifact(artifact, digest)),
-            measured = mapOf(artifact to digest),
             into = root.resolve("copies"),
             permissions = RefusingPermissions(),
         )
@@ -199,7 +194,6 @@ class PrivatePluginArtifactsTest {
 
         val outcome = PrivatePluginArtifacts.copyAll(
             admitted = listOf(admittedArtifact(artifact, digest)),
-            measured = mapOf(artifact to digest),
             into = root.resolve("copies"),
             permissions = LyingPermissions(),
         )
@@ -226,7 +220,6 @@ class PrivatePluginArtifactsTest {
 
         val outcome = PrivatePluginArtifacts.copyAll(
             admitted = listOf(admittedArtifact(artifact, digest)),
-            measured = mapOf(artifact to digest),
             into = root.resolve("copies"),
         )
 
@@ -266,6 +259,7 @@ class PrivatePluginArtifactsTest {
                     origin = ArtifactOrigin.LocalClasspathEntry(artifact.toString()),
                 ),
             ),
+            measuredDigest = digest,
         )
     }
 

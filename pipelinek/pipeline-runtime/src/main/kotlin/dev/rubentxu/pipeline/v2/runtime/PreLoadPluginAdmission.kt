@@ -179,14 +179,31 @@ object PreLoadPluginAdmission {
                 TrustOutcome.Absent -> null
             }
 
+            // The artifact's bytes ARE the artifact's identity: the runtime compares artifacts
+            // by their content, and an artifact whose bytes were never measured has no content
+            // to compare. It is refused HERE, where the refusal can still name the artifact
+            // and where nothing of it has run — rather than later, where the comparison would
+            // have nothing to compare against and the artifact would already be on its way to
+            // being loaded.
+            val digest = measuredDigest ?: return AdmittedArtifacts.Refused(
+                artifact = artifact,
+                rejection = PluginManifestRejection.ArtifactNotMeasurable(
+                    artifact = artifact.toString(),
+                    detail = "the artifact's bytes were not measured, so nothing about it can be " +
+                        "established; an artifact whose bytes are unknown is not one that may be loaded",
+                ),
+                detail = "the artifact $artifact carries no measured digest, so it cannot be " +
+                    "admitted: the runtime identifies artifacts by their content, and this one's " +
+                    "content is unknown",
+            )
+
             // The operator asked for verification and this artifact carries none. The
             // refusal is the SAME one the policy produces when it has no row for the
             // plugin: the operator has not pinned these bytes, so they are not approved by
             // anybody. The detail says which of the two facts produced it, because an
             // operator who is told only the kind has to go and read the code to find out
             // which one they hit.
-            val operatorNamed = measuredDigest != null &&
-                operatorDigests.contains(measuredDigest.value.lowercase())
+            val operatorNamed = operatorDigests.contains(digest.value.lowercase())
             if (requireTrust && operatorNamed && trusted == null) {
                 return AdmittedArtifacts.Refused(
                     artifact = artifact,
@@ -215,7 +232,13 @@ object PreLoadPluginAdmission {
                 is PluginAdmissionResult.Admitted -> {
                     alreadyAdmitted.add(result.plugin.pluginId)
                     admittedByIdentity[result.plugin.pluginId] = artifact
-                    val admittedArtifact = AdmittedArtifact(artifact, result.plugin, trusted, operatorNamed)
+                    val admittedArtifact = AdmittedArtifact(
+                        path = artifact,
+                        plugin = result.plugin,
+                        trust = trusted,
+                        operatorNamed = operatorNamed,
+                        measuredDigest = digest,
+                    )
                     admitted.add(admittedArtifact)
                     reportTrustDecision(admittedArtifact, err)
                 }
@@ -492,6 +515,21 @@ data class AdmittedArtifact(
      * without saying so has told the operator nothing about what they brought.
      */
     val operatorNamed: Boolean = false,
+    /**
+     * The digest of the artifact's BYTES, as they were measured before the artifact was
+     * admitted.
+     *
+     * This is the artifact's identity, and it is the identity the runtime compares artifacts
+     * by. It is not the digest the manifest declares about itself: a manifest declares a digest
+     * of the plugin's PAYLOAD, the runtime measures a digest of the FILE that carries it, and
+     * those two magnitudes never agree.
+     *
+     * It travels with the artifact because the artifact's identity does not change when the
+     * artifact moves. The copy the runtime loads lives at another address by design, and it is
+     * verified against this digest before it is loaded, so the digest that travels is the
+     * digest of the copy as well.
+     */
+    val measuredDigest: Digest,
 )
 
 /**

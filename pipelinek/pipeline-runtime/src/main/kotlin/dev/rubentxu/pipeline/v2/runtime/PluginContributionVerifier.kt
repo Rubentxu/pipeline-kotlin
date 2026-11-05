@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.runtime
 
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveContributor
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
+import dev.rubentxu.pipeline.v2.domain.step.Digest
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
@@ -37,6 +38,16 @@ import java.util.ServiceLoader
  * contributions, so providers are attributed to the artifact whose code source they came from,
  * the same scoping the admission gate applies. All THREE families are scoped by that one rule:
  * a Step is not "this plugin's" in some looser sense a Directive is not.
+ * ## Why the bucket is keyed by CONTENT and not by address
+ * The same artifact lives at more than one address by design. The installation bundles the
+ * plugin in its own JAR, the runtime loads a VERIFIED COPY of it, and the delegation is
+ * parent-first — so the provider's class is fetched by the parent and its code source is the
+ * bundled JAR, while the artifact that was admitted is the copy. Keying the bucket by the
+ * address put the copy's contributions in one bucket and the copy's manifest in another, and
+ * the comparison then read that manifest against an empty bucket and refused a plugin that
+ * declares exactly what it provides. The identity of an artifact is its content, so the bucket
+ * is keyed by the digest of the bytes, and the admitted artifact is looked up by the digest of
+ * ITS bytes. The two addresses then agree on the one fact that identifies an artifact.
  * ## Why a provider that cannot say where it came from stops the composition
  * Bucketing by artifact only means something when every provider can say which artifact it is.
  * A provider whose origin cannot be measured has no bucket, and a contribution with no bucket
@@ -45,6 +56,12 @@ import java.util.ServiceLoader
  * Such a provider is refused, by name, instead of being skipped. It is not attributed to every
  * artifact either: that would compare one plugin's manifest against a neighbour's contributions
  * and hide a real drift behind somebody else's implementation.
+ * ## Why a provider from an artifact that was NOT admitted stops the composition
+ * Its artifact has no manifest of its own: nothing was admitted, so nothing declares what it
+ * provides, and its contributions cannot be compared against anything. The same argument as
+ * above applies — a contribution that cannot be judged is invisible in both directions — and
+ * the refusal names the provider, because the artifact it came from is not one this
+ * composition admitted.
  * ## Fail-closed, symmetrically
  * The check is exact in BOTH directions — a declared Step with no definition AND a definition with
  * no declaration are both refusals — and it never warns. A malformed event declaration aborts here
@@ -94,32 +111,47 @@ internal object PluginContributionVerifier {
 
         // Bucket each family's contributions by the ARTIFACT that produced them, in one pass per
         // family, so a plugin is only ever compared against its own output.
-        val stepsByArtifact = mutableMapOf<Path, MutableList<StepDefinition<*, *>>>()
-        val directivesByArtifact = mutableMapOf<Path, MutableSet<DirectiveKey>>()
-        val eventsByArtifact = mutableMapOf<Path, MutableSet<String>>()
+        //
+        // The bucket is keyed by the CONTENT of that artifact — the digest of the bytes the
+        // provider's class was loaded from — and the admitted artifact is looked up by the
+        // digest of ITS bytes. The key is the content and not the address because the same
+        // artifact lives at more than one address by design: the installation bundles the
+        // plugin in its own JAR, and the runtime loads a verified COPY of it, so the provider's
+        // code source and the admitted artifact are two addresses holding the same bytes. An
+        // address-keyed bucket would hold the copy's contributions apart from the manifest
+        // that declares them, and the comparison would read that manifest against an empty
+        // bucket and report a drift that does not exist.
+        val admittedIdentities = admitted.map { it.measuredDigest }.toSet()
+
+        val stepsByArtifact = mutableMapOf<Digest, MutableList<StepDefinition<*, *>>>()
+        val directivesByArtifact = mutableMapOf<Digest, MutableSet<DirectiveKey>>()
+        val eventsByArtifact = mutableMapOf<Digest, MutableSet<String>>()
 
         for (attributed in steps) {
-            val origin = attributed.artifact()
+            val artifact = attributed.artifact()
+            requireAdmitted(attributed, artifact, admittedIdentities)
             for (registration in attributed.provider.registrations()) {
-                stepsByArtifact.getOrPut(origin) { mutableListOf() }.add(registration.definition)
+                stepsByArtifact.getOrPut(artifact.digest) { mutableListOf() }.add(registration.definition)
             }
         }
 
         for (attributed in directives) {
-            val origin = attributed.artifact()
-            val keys = directivesByArtifact.getOrPut(origin) { mutableSetOf() }
+            val artifact = attributed.artifact()
+            requireAdmitted(attributed, artifact, admittedIdentities)
+            val keys = directivesByArtifact.getOrPut(artifact.digest) { mutableSetOf() }
             for (definition in attributed.provider.definitions()) {
                 keys.add(definition.key)
             }
         }
 
         for (attributed in events) {
-            val origin = attributed.artifact()
-            val kinds = eventsByArtifact.getOrPut(origin) { mutableSetOf() }
+            val artifact = attributed.artifact()
+            requireAdmitted(attributed, artifact, admittedIdentities)
+            val kinds = eventsByArtifact.getOrPut(artifact.digest) { mutableSetOf() }
             for (creation in attributed.provider.definitions()) {
                 when (creation) {
                     is EventDefinitionCreation.Invalid -> throw PluginContributionRefusal.Drift(
-                        artifact = origin,
+                        artifact = artifact.artifact,
                         rejection = PluginManifestRejection.MalformedDocument(
                             "contributor ${attributed.provider.id} declared a malformed event: " +
                                 creation.problems.joinToString("; "),
@@ -132,11 +164,11 @@ internal object PluginContributionVerifier {
         }
 
         for (artifact in admitted) {
-            val origin = artifact.path.toAbsolutePath().normalize()
+            val identity = artifact.measuredDigest
             val crossCheck = artifact.plugin.admitContributions(
-                definitions = stepsByArtifact[origin].orEmpty(),
-                directiveKeys = directivesByArtifact[origin].orEmpty(),
-                eventKinds = eventsByArtifact[origin].orEmpty(),
+                definitions = stepsByArtifact[identity].orEmpty(),
+                directiveKeys = directivesByArtifact[identity].orEmpty(),
+                eventKinds = eventsByArtifact[identity].orEmpty(),
             )
             if (!crossCheck.isConsistent) {
                 throw PluginContributionRefusal.Drift(
@@ -148,6 +180,33 @@ internal object PluginContributionVerifier {
                 )
             }
         }
+    }
+
+
+    /**
+     * A provider whose artifact is not among the admitted ones cannot be judged.
+     *
+     * Its contributions have no manifest to be compared against: the artifact it came from was
+     * never admitted, so nothing declares what it provides. Waving it through would make it
+     * invisible to the comparison in BOTH directions — a Step nobody declared would go
+     * unnoticed, and a manifest nobody implemented would look implemented. Attributing it to
+     * every artifact instead would compare one plugin's manifest against another's
+     * contributions and hide a real drift behind a neighbour's implementation.
+     *
+     * @throws PluginContributionRefusal.Unattributed naming the provider, because no artifact
+     *   can be named for it.
+     */
+    private fun <T : Any> requireAdmitted(
+        attributed: Attributed<T>,
+        artifact: ProviderOrigin.Resolved,
+        admittedIdentities: Set<Digest>,
+    ) {
+        if (artifact.digest in admittedIdentities) return
+        throw PluginContributionRefusal.Unattributed(
+            providerClass = attributed.provider.javaClass.name,
+            reason = "the artifact that provides it (${artifact.artifact}) is not among the " +
+                "admitted artifacts, so its contributions cannot be compared against any manifest",
+        )
     }
 
     /** Every provider of one family in the window, each with the origin measured for it. */
@@ -166,11 +225,16 @@ internal data class Attributed<T : Any>(val provider: T, val origin: ProviderOri
 
     /**
      * The artifact that provides this contribution, which is the bucket it belongs to.
+     *
+     * The artifact carries its digest, and the digest is what the bucket is keyed by: the
+     * identity of an artifact is its content, so a provider loaded from one address and an
+     * artifact admitted at another address are the same artifact when their bytes agree.
+     *
      * @throws PluginContributionRefusal.Unattributed when the origin could not be measured. The
      *   provider is named, because no artifact can be named for it.
     */
-    fun artifact(): Path = when (val measured = origin) {
-        is ProviderOrigin.Resolved -> measured.artifact
+    fun artifact(): ProviderOrigin.Resolved = when (val measured = origin) {
+        is ProviderOrigin.Resolved -> measured
         is ProviderOrigin.Missing -> throw PluginContributionRefusal.Unattributed(
             providerClass = provider.javaClass.name,
             reason = "the class declares no code source, so no artifact can be named for it",
@@ -178,7 +242,7 @@ internal data class Attributed<T : Any>(val provider: T, val origin: ProviderOri
 
         is ProviderOrigin.Unreadable -> throw PluginContributionRefusal.Unattributed(
             providerClass = provider.javaClass.name,
-            reason = "its code source ${measured.location} is not a file on disk (${measured.reason})",
+            reason = "its code source ${measured.location} cannot be read as an artifact: ${measured.reason}",
         )
     }
 }

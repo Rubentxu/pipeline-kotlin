@@ -80,10 +80,9 @@ internal object PrivatePluginArtifacts {
     /**
      * Copy every admitted artifact into [into], and verify each copy.
      *
-     * @param admitted the artifacts the admission approved, in the order they were admitted.
-     * @param measured the digest the runtime measured over each artifact's bytes, by path. These
-     *   are the digests the admission decided on, so a copy is verified against the DECISION and
-     *   not against a fresh reading of the same file.
+     * @param admitted the artifacts the admission approved, in the order they were admitted. Each
+     *   one carries the digest of the bytes that were admitted, so a copy is verified against
+     *   the DECISION and not against a fresh reading of the same file.
      * @param into the directory the copies go into. It is created with the permissions the
      *   profile requires, and it is the only thing standing between the copies and the other
      *   users of the machine.
@@ -94,7 +93,6 @@ internal object PrivatePluginArtifacts {
      */
     fun copyAll(
         admitted: List<AdmittedArtifact>,
-        measured: Map<Path, Digest>,
         into: Path,
         permissions: DirectoryPermissions = PosixDirectoryPermissions,
     ): CopyOutcome {
@@ -120,17 +118,11 @@ internal object PrivatePluginArtifacts {
         val copied = mutableListOf<AdmittedArtifact>()
 
         for (artifact in admitted) {
-            val expected = measured[artifact.path]
-                ?: return CopyOutcome.Refused(
-                    artifact = artifact.path,
-                    rejection = PluginManifestRejection.ArtifactNotMeasurable(
-                        artifact = artifact.path.toString(),
-                        detail = "the artifact was admitted without a measurement, so no copy of it " +
-                            "can be verified against the bytes that were admitted",
-                    ),
-                    detail = "the artifact $artifact was admitted without a measured digest, so " +
-                        "there is nothing to verify a copy against",
-                )
+            // The digest the artifact carries is the digest of the bytes that were admitted, and
+            // it is the only thing the copy is verified against. Nothing is measured a second
+            // time to find it: the artifact's identity travels with the artifact, and the copy
+            // is checked against that identity.
+            val expected = artifact.measuredDigest
 
             val copy = directory.resolve(copyNameOf(artifact.path, expected))
             try {

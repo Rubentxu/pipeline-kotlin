@@ -270,7 +270,6 @@ object PluginCompositionAdmitter {
                 val copies = when (
                     val outcome = PrivatePluginArtifacts.copyAll(
                         admitted = admission.artifacts,
-                        measured = measuredByPath,
                         into = copyRoot ?: Files.createTempDirectory("pipelinek-plugin-copies"),
                     )
                 ) {

@@ -125,6 +125,21 @@ Exit codes:
     }
 
     /**
+     * The refusal for a database path that names no store, or null when it names one.
+     *
+     * A path with no text in it is not "no path": the storage engine reads an empty name as a
+     * TEMPORARY database, and a temporary database cannot be in the journal mode a writer needs.
+     * That precondition is correct where it lives, but it lives far below this boundary, and it
+     * answers a value the operator typed with a fact about the storage engine.
+     *
+     * The absence and the emptiness are two facts and they are answered in two words: a path that
+     * was never written is a missing argument, and a path that was written with nothing in it is a
+     * value that cannot be used.
+     */
+    private fun blankDbRefusal(dbPath: String): CliError? =
+        if (dbPath.isBlank()) CliError.InvalidOptionValue("--db", "must not be blank") else null
+
+    /**
      * `runs cancel` — close a run that no live process is working on.
      *
      * ## It takes its OWN options
@@ -166,6 +181,15 @@ Exit codes:
                 CliError.MissingRequiredArgument("--db <path>", "to read the run's durable state"),
                 "runs cancel", err = err
             )
+            err.println(USAGE)
+            return code
+        }
+
+        // The path names the store this verb reads the run from. A path that
+        // names no store is refused here, before the admission opens anything,
+        // so the answer is the one the CLI owes the operator.
+        blankDbRefusal(options.dbPath)?.let { error ->
+            val code = refuse(error, "runs cancel", err = err)
             err.println(USAGE)
             return code
         }
@@ -290,6 +314,15 @@ Exit codes:
                 CliError.MissingRequiredArgument("--db <path>", "to read the run's durable state"),
                 "runs recover", err = err
             )
+            err.println(USAGE)
+            return code
+        }
+
+        // The path names the store this verb reads the run from. A path that
+        // names no store is refused here, before the admission opens anything,
+        // so the answer is the one the CLI owes the operator.
+        blankDbRefusal(options.dbPath)?.let { error ->
+            val code = refuse(error, "runs recover", err = err)
             err.println(USAGE)
             return code
         }

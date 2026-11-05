@@ -49,6 +49,13 @@ data class OutputCursor(
         require(committedOffset >= 0) { "committedOffset must be non-negative, got $committedOffset" }
     }
 
+    /**
+     * The positions and the wire form a cursor travels in.
+     *
+     * The token prefix belongs to this plane alone, so a cursor from another plane cannot be
+     * mistaken for one of these: the decode of a foreign token fails rather than producing an
+     * offset into bytes it never named.
+     */
     companion object {
         /** The position before the first committed byte of [stream]. */
         fun start(stream: OutputStreamId): OutputCursor = OutputCursor(stream, 0L)

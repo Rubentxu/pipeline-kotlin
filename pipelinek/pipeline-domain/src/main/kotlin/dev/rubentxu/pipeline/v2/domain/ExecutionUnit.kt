@@ -19,10 +19,26 @@ package dev.rubentxu.pipeline.v2.domain
 sealed interface ExecutionUnit {
     val steps: List<StepDescriptor>
 
+    /**
+     * A wave that holds exactly one step.
+     *
+     * The step runs alone: it has no sibling to be ordered against, so the
+     * fold over the wave's outcomes has nothing to choose between.
+     */
     data class Single(val step: StepDescriptor) : ExecutionUnit {
         override val steps: List<StepDescriptor> = listOf(step)
     }
 
+    /**
+     * A wave of two or more steps that may run at the same time.
+     *
+     * The steps carry no ordering constraint between them, and the list
+     * keeps the order they were declared in, so that the outcomes of the
+     * wave fold the same way whatever order they finish in.
+     *
+     * A wave of fewer than two steps is refused: a lone step has no sibling
+     * to run beside it and belongs in [Single].
+     */
     data class Concurrent(override val steps: List<StepDescriptor>) : ExecutionUnit {
         init {
             require(steps.size >= 2) {

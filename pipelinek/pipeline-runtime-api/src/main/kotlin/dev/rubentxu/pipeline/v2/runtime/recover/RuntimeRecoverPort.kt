@@ -74,11 +74,20 @@ interface RuntimeRecoverPort {
         options: RecoverOptions,
     ): RecoverOutcome
 
+    /**
+     * The deadline the port publishes for the wait a recover may take.
+     *
+     * The value is a declared bound rather than an enforced one: the shipped
+     * adapter answers [RecoverOutcome.ReattachPending] with a window of its
+     * own, and nothing reads this number, so a caller that needs a bounded
+     * wait reads the outcome.
+     */
     companion object {
         /**
          * Upper bound on a single `recover` call's wall time.
-         * Implementation default, NOT a contract surface. The recover port must
-         * return [RecoverOutcome.ReattachPending] before this bound expires.
+         * Implementation default, NOT a contract surface. The shipped adapter
+         * answers [RecoverOutcome.ReattachPending] with a window of its own,
+         * and it does not read this number.
 */
         const val DEFAULT_RECOVER_DEADLINE_MS: Long = 2_000L
     }

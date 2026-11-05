@@ -157,6 +157,15 @@ sealed interface ScriptedCallKind {
         val returnMode: ScriptedShellReturnMode,
     ) : ScriptedCallKind
 
+    /**
+     * A scripted query of whether the execution target is Unix-like.
+     *
+     * The call takes no arguments, so the case carries none: the answer
+     * depends on the target, not on the source. It is runtime-returning, so
+     * the answer is a durable runtime value — observed through the registry
+     * step on a fresh execution, reproduced from the persisted observation on
+     * a reuse — and a failure never fabricates `false`.
+     */
     data object IsUnix : ScriptedCallKind
 
     /**
@@ -320,6 +329,14 @@ data class ScriptedLoopScope(
 
 /** Closed result of parsing source for generated scripted calls. */
 sealed interface ScriptedSourceMapping {
+    /**
+     * The source parsed, and every generated call in it was located.
+     *
+     * Each entry names the call and the exact extent of the original
+     * expression, which is what a lowering needs to replace that span and
+     * nothing else. The loop scopes list the `for` bodies that need a
+     * structural scope, and is empty when the source has no loop.
+     */
     data class Mapped(
         val calls: List<ScriptedMappedCall>,
         /**
@@ -334,6 +351,13 @@ sealed interface ScriptedSourceMapping {
             get() = calls.filter { it.kind is ScriptedCallKind.Shell }.map { it.location }
     }
 
+    /**
+     * The source did not parse, so no call was located.
+     *
+     * The diagnostics say where the source breaks and why. A caller must
+     * treat this as a refusal to map rather than as a mapping that found
+     * nothing: the two mean opposite things about the source.
+     */
     data class InvalidSyntax(
         val diagnostics: List<ScriptedSourceDiagnostic>,
     ) : ScriptedSourceMapping

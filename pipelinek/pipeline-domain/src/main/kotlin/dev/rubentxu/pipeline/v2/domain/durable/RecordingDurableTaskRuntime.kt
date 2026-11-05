@@ -34,6 +34,14 @@ class RecordingDurableTaskRuntime(
     /** Number of executed requests (diagnostics/testing). */
     fun dispatchCount(): Int = synchronized(calls) { calls.size }
 
+    /**
+     * Holds the ready-made runtime for the common case.
+     *
+     * A test that only needs the port to answer without a process asks for
+     * the runtime that succeeds silently. Anything else is built explicitly,
+     * because a runtime that recorded a failure nobody asked for would hide
+     * the case under test.
+     */
     companion object {
         /** Convenience factory: a runtime that always exits 0 with no output. */
         fun successOnly(): RecordingDurableTaskRuntime = RecordingDurableTaskRuntime()

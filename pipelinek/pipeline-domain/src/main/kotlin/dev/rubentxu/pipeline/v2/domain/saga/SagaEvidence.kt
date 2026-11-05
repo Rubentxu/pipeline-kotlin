@@ -104,6 +104,16 @@ enum class SagaTerminalState {
 
     ;
 
+    /**
+     * The words this runtime accepts for a terminal state, and the mapping
+     * from a word to the state it names.
+     *
+     * The word on the Event Plane is the name of the case, so the mapping is
+     * derived from the cases themselves and there is no second list of
+     * spellings to drift. The parse never defaults: a word this build does
+     * not know yields `null`, because a reader that cannot read a terminal
+     * state must not read it as a settled one.
+     */
     companion object {
 
         /** The word this state is written as on the Event Plane is its own name. */
@@ -239,6 +249,16 @@ enum class InterventionReason {
 
     ;
 
+    /**
+     * The words this runtime accepts for a reason, and the mapping from a
+     * word to the reason it names.
+     *
+     * The Event Plane carries the reason as the name of the case, so the
+     * mapping is derived from the cases themselves. The parse never
+     * defaults: a word this build does not know yields `null`, because a
+     * default would turn a word this build does not know into a decision it
+     * appears to have made.
+     */
     companion object {
 
         /**

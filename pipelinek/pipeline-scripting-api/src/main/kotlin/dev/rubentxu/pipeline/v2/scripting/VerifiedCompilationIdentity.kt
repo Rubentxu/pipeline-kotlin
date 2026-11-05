@@ -53,11 +53,29 @@ data class CompilationInputManifest(
 sealed interface CacheIdentity {
     val key: CacheKey
 
+    /**
+     * The identity was established: every required entry was readable, and the
+     * manifest describes what the compilation consumed.
+     *
+     * The key is the cache key of that manifest, so two compilations with the
+     * same manifest share it and two compilations with different manifests do
+     * not. A verified identity is the only one a cache may serve from.
+     */
     data class Verified(
         val manifest: CompilationInputManifest,
         override val key: CacheKey,
     ) : CacheIdentity
 
+    /**
+     * The identity could not be established: at least one required entry
+     * could not be read.
+     *
+     * The key is a reporting key, not a cache key. It is derived from what
+     * was observable plus the mark that says the identity is incomplete and
+     * the path that could not be read, so two different failures do not share
+     * a key and no incomplete key can collide with a verified one. A cache
+     * MUST NOT serve from an unavailable identity.
+     */
     data class Unavailable(
         val reason: String,
         override val key: CacheKey,

@@ -39,8 +39,28 @@ const val DIMENSION_OVERFLOW: String = "__overflow__"
 sealed interface TelemetryAttribute {
     val key: String
 
+    /**
+     * A textual value, subject to the policy's text budget.
+     *
+     * A value longer than the budget is shortened, and one whose shortening
+     * leaves nothing readable is dropped rather than exported empty.
+     */
     data class Text(override val key: String, val value: String) : TelemetryAttribute
+
+    /**
+     * A counted value, carried as an exact integer.
+     *
+     * The text budget does not touch a count: it is either exact or it does
+     * not travel.
+     */
     data class Count(override val key: String, val value: Long) : TelemetryAttribute
+
+    /**
+     * A value that is either present or absent.
+     *
+     * It carries no magnitude, so a reader learns the fact and nothing about
+     * how much of it there was.
+     */
     data class Flag(override val key: String, val value: Boolean) : TelemetryAttribute
 }
 
@@ -53,6 +73,13 @@ sealed interface TelemetryAttribute {
 sealed interface TelemetrySignal {
     val name: String
 
+    /**
+     * A span opened at [startedAtMs], optionally inside a parent span.
+     *
+     * Its attributes travel only when the policy allows their keys, and only
+     * up to the per-signal budget: a span that starts says what it is, not
+     * what it happens to carry.
+     */
     data class SpanStarted(
         override val name: String,
         val spanId: String,
@@ -61,6 +88,12 @@ sealed interface TelemetrySignal {
         val attributes: List<TelemetryAttribute>,
     ) : TelemetrySignal
 
+    /**
+     * A span closed at [endedAtMs], with a coarse [status] for how it ended.
+     *
+     * The status is a word, not a payload: it says how the span closed and
+     * nothing about what happened inside it.
+     */
     data class SpanEnded(
         override val name: String,
         val spanId: String,
@@ -68,12 +101,26 @@ sealed interface TelemetrySignal {
         val status: String,
     ) : TelemetrySignal
 
+    /**
+     * A counter reading, tagged with the dimensions it was counted under.
+     *
+     * The dimensions are the free-form part of a signal, so the policy
+     * governs them key-wise and by how many distinct values one key may
+     * carry across the whole export.
+     */
     data class Counter(
         override val name: String,
         val value: Long,
         val dimensions: Map<String, String>,
     ) : TelemetrySignal
 
+    /**
+     * One observed duration in milliseconds, tagged with its dimensions.
+     *
+     * It is a single sample rather than a distribution: the value is the elapsed
+     * time between the start and the end of what was measured, and the dimensions
+     * say what it was measured for.
+     */
     data class Histogram(
         override val name: String,
         val milliseconds: Long,
@@ -87,8 +134,27 @@ sealed interface TelemetrySignal {
  * the export outcome is reported, never swallowed and never thrown.
  */
 sealed interface TelemetryExport {
+    /**
+     * Every signal the exporter was handed was written out.
+     *
+     * The export holds every signal it was given; what the policy shortened or
+     * dropped lives inside a signal, not among them.
+     */
     data object Exported : TelemetryExport
+
+    /**
+     * The export could not be written, and the reason says why.
+     *
+     * The failure is reported rather than thrown: telemetry fails open for
+     * the pipeline, so a consumer learns that the data is missing instead
+     * of the run failing over it.
+     */
     data class Dropped(val reason: String) : TelemetryExport
+
+    /**
+     * Telemetry is switched off for this run, so there was nothing to
+     * export.
+     */
     data object Disabled : TelemetryExport
 }
 
@@ -109,6 +175,14 @@ data class TelemetryTrace(
     val traceId: String,
     val signals: List<TelemetrySignal>,
 ) {
+    /**
+     * The derivation every consumer of an export shares.
+     *
+     * [traceIdOf] is the one place the trace id is computed, so a consumer
+     * that correlates its own signals with the product's derives the same
+     * value the product does instead of guessing a second derivation that
+     * would not match.
+     */
     companion object {
         /**
          * The trace id of a run: a digest of the run id.
@@ -145,10 +219,17 @@ data class TelemetryPolicy(
     val maxAttributesPerSignal: Int = 8,
     val maxDistinctValuesPerDimension: Int = 16,
 ) {
+    /**
+     * The policy the product ships and the one every consumer starts from.
+     *
+     * It is deliberately small: widening the shipped default is a product
+     * decision, not a configuration one. A caller that needs another key
+     * builds its own [TelemetryPolicy] and passes it to the exporter.
+     */
     companion object {
         /**
          * The shipped policy: durable identities and coarse classes only.
-         * Deliberately small, and deliberately not extensible by callers —
+         * Deliberately small, and deliberately not widened by callers —
          * widening it is a product decision, not a configuration one.
          *
          * The allowlists are READ from the identity table rather than
@@ -169,11 +250,11 @@ data class TelemetryPolicy(
  * Apply the policy to a signal's free parts. Pure, and fail-closed in the
  * direction that matters: a text attribute whose key is not allowed is
  * dropped, not truncated into something that looks allowed; a value that is
- * too long is shortened to the budget with a marker, because length is not a
- * secret but bulk is a cost; and when trimming would leave nothing readable,
- * the attribute goes. Dimensions follow the same rule key-wise and, beyond
- * the per-signal budget, the surplus is dropped — never the whole signal,
- * which would hide that the signal existed.
+ * too long is shortened to the budget, because length is not a secret but bulk
+ * is a cost; and when trimming would leave nothing readable, the attribute
+ * goes. Dimensions follow the same rule key-wise and, beyond the per-signal
+ * budget, the surplus is dropped — never the whole signal, which would hide
+ * that the signal existed.
  *
  * A dimension **value** is shortened by the same budget as an attribute
  * value: the value is text, and text that is too long is bulk whether it

@@ -69,10 +69,33 @@ sealed interface PluginManifestRejection : AdmissionRejection {
 */
 sealed interface PluginManifestDecodeResult {
 
+    /**
+     * The document was read and is one this release understands.
+     *
+     * Acceptance is a statement about the TEXT alone: it says the codec could read
+     * it, and nothing about the artifact that carries it, about the plugin's
+     * trustworthiness, or about whether the plugin may join the runtime. Those are
+     * the gate's questions, and it asks them over the accepted document.
+     */
     data class Accepted(val manifest: PluginManifest) : PluginManifestDecodeResult
 
+    /**
+     * The document was refused, and the refusal names which fact refused it.
+     *
+     * Every case of the refusal vocabulary is something the caller can switch on,
+     * which is the reason the refusal is typed and not a sentence to be parsed.
+     */
     data class Rejected(val rejection: PluginManifestRejection) : PluginManifestDecodeResult
 
+    /**
+     * The two answers a read of a manifest document can give.
+     *
+     * Both are total and neither throws: a reader hands over either the document
+     * it read — or nothing, when the document was missing or unreadable — or the
+     * refusal it decided on, and gets a result back. A missing document is answered
+     * as a refusal rather than as an absent value, because the reader still has to
+     * say WHY it could not read what it was given.
+     */
     companion object {
         fun accept(manifest: PluginManifest?): PluginManifestDecodeResult =
             if (manifest == null) {

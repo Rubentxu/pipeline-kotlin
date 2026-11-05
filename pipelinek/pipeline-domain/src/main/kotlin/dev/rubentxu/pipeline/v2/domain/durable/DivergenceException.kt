@@ -23,6 +23,15 @@ class DivergenceException(
 ) : RuntimeException(
     buildErrorMessage(expected, actual, opId, runId, stageIndex)
 ) {
+    /**
+     * Holds the wording of the divergence message.
+     *
+     * The message names the operation, the run and the stage where the
+     * divergence was found, and prints both fingerprints — the one the journal
+     * holds and the one the current input computes — so the reader can see
+     * which side moved. It is built before the exception exists, because the
+     * message IS the exception.
+     */
     companion object {
         private fun buildErrorMessage(
             expected: Fingerprint,

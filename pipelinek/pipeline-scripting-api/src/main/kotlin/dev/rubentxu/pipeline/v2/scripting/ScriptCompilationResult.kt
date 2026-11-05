@@ -24,6 +24,14 @@ sealed interface ScriptCompilationResult {
     val scriptInstance: Any?
         get() = (this as? Success)?.scriptInstance
 
+    /**
+     * The script compiled and evaluated, and it produced a value.
+     *
+     * [output] is the value the script yielded and the only thing a new
+     * caller needs. [scriptInstance] is the host's own technical handle,
+     * kept for the quarantined legacy static runner; a caller that reads it
+     * depends on a host implementation this API does not promise.
+     */
     data class Success(
         val output: ScriptEvaluationOutput,
         override val scriptInstance: Any?,
@@ -31,6 +39,14 @@ sealed interface ScriptCompilationResult {
         override val cacheKey: CacheKey,
     ) : ScriptCompilationResult
 
+    /**
+     * The script did not compile, or it compiled and did not evaluate.
+     *
+     * The diagnostics say why; a failure without one gives the caller
+     * nothing to report and nothing to act on. The cache key still names
+     * the inputs the failure belongs to, so the same broken inputs are
+     * recognisable as the same failure.
+     */
     data class Failure(
         override val diagnostics: List<ScriptingDiagnostic>,
         override val cacheKey: CacheKey,

@@ -30,6 +30,14 @@ data class PipelineDiagnostic(
         require(message.isNotBlank()) { "PipelineDiagnostic.message must not be blank" }
     }
 
+    /**
+     * How much a diagnostic weighs on the compilation it came from.
+     *
+     * A compilation stops on any [CompileResult.Failure], whatever severities
+     * it carries; the severity says how loud a diagnostic is, not whether it
+     * blocks. A successful compilation yields a definition and no diagnostics
+     * at all.
+     */
     enum class Severity { ERROR, WARNING, INFO }
 }
 
@@ -42,7 +50,21 @@ data class PipelineDiagnostic(
  * those are bugs and must be surfaced as exceptions, not diagnostics.
  */
 sealed interface CompileResult {
+    /**
+     * The definition the compiler produced, and nothing to report.
+     *
+     * Its presence is the whole answer: a caller that receives one may
+     * execute the definition without reading a single diagnostic.
+     */
     data class Success(val definition: PipelineDefinition) : CompileResult
+
+    /**
+     * The diagnostics that explain why no definition could be produced.
+     *
+     * A failure that carried no diagnostic would say nothing about the
+     * source, so the list is never empty; every entry holds a message the
+     * caller may print as it stands.
+     */
     data class Failure(val diagnostics: List<PipelineDiagnostic>) : CompileResult {
         init {
             require(diagnostics.isNotEmpty()) { "CompileResult.Failure must carry at least one diagnostic" }

@@ -136,7 +136,20 @@ object WorkspacePathResolver {
  * information is lost.
 */
 sealed interface DirDerivation {
+
+    /**
+     * The `dir(...)` scope was derived: the location carries the resolved
+     * child directory as its current directory, and the workspace root and
+     * its ownership are those of the parent. Leaving the scope is a matter of
+     * discarding this value, because no global state was changed.
+     */
     data class Derived(val location: ExecutionLocation) : DirDerivation
+
+    /**
+     * The scope was refused, and the reason says why the path was refused.
+     * The parent location is untouched: a rejected derivation leaves the
+     * caller exactly where it was.
+     */
     data class Rejected(val reason: WorkspacePathError) : DirDerivation
 }
 

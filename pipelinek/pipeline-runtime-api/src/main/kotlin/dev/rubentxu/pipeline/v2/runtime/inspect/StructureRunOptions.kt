@@ -31,6 +31,14 @@ data class StructureRunOptions(
         }
     }
 
+    /**
+     * The bounds and the default the product ships with.
+     *
+     * It holds the page size a call uses when the caller names none, the
+     * ceiling a call may not exceed, and the options themselves. A caller
+     * that wants a bounded scan says so by naming a page size; the default
+     * is the bound the product considers safe for a call nobody bounded.
+     */
     companion object {
         /** Default page size; matches the design's `DEFAULT_INSPECT_TIMEOUT_MS` discipline */
         const val DEFAULT_STRUCTURE_PAGE_SIZE: Int = 64

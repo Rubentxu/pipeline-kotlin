@@ -31,10 +31,28 @@ data class PluginStepContribution(
     val declaredCapabilities: Set<StepCapability>,
 )
 
+/**
+ * The declaration of one Directive the plugin contributes.
+ *
+ * A Directive declares a key and nothing else: it requires no capabilities, so it
+ * carries none, and its meaning comes from the definition the plugin registers
+ * under that key. The key is the join between the plugin that provides the
+ * directive and the engine that resolves it, so the plugin's manifest and its
+ * contributor have to name the same one.
+ */
 data class PluginDirectiveContribution(
     val directiveKey: DirectiveKey,
 )
 
+/**
+ * The declaration of one event kind the plugin emits.
+ *
+ * The kind is the wire name of the event, and it is the join between the plugin
+ * that emits the event and whatever reads it, so it must be a non-blank string
+ * that the plugin and its consumers spell identically. It names a kind of event,
+ * not an instance of one: how often the event happens is not part of the
+ * declaration.
+ */
 data class PluginEventContribution(
     val eventKind: String,
 ) {
@@ -129,6 +147,17 @@ value class ManifestSchemaVersion(val value: Int) {
 
     override fun toString(): String = "manifest/v$value"
 
+    /**
+     * The one schema this release admits, and the way a document's version
+     * text is read.
+     *
+     * The companion is where the vocabulary of schema versions lives: the
+     * constant is the version a document has to declare, and the parse accepts
+     * the version this release admits under the one legal spelling, and
+     * answers `null` for anything else. Nothing here guesses a version, so a
+     * decoder that meets an unknown schema refuses the document instead of
+     * reading it under an interpretation it cannot vouch for.
+     */
     companion object {
         /** The only schema this release admits. Unknown versions are rejected, not guessed. */
         val CURRENT: ManifestSchemaVersion = ManifestSchemaVersion(1)

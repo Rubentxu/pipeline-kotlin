@@ -215,6 +215,13 @@ class RedactingEventSink(
         }
     }
 
+    /**
+     * The vocabulary a scrubbed event carries.
+     *
+     * [SCRUB_MARKER] is what a secret found in free text is replaced by, and [REDACTED_PREFIX]
+     * opens the marker that replaces a credential reference. Both are public so a reader of a
+     * transcript can tell a redacted value from one that was never secret.
+     */
     companion object {
         /**
          * Marker used to replace scrubbed secret values.

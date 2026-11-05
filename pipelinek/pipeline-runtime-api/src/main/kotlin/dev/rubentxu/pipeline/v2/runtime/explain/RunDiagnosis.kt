@@ -79,6 +79,14 @@ data class Completeness(
     val outputLane: LaneState,
     val leaseLane: LaneState,
 ) {
+    /**
+     * The completeness profiles a diagnosis may carry.
+     *
+     * It holds the profile of a reading built from the event journal alone,
+     * which is the shape a consumer gets when the other two lanes were not
+     * consulted. A consumer weighs the findings by the lanes behind them,
+     * so the profile belongs to the diagnosis and not to the reader.
+     */
     companion object {
         /** The lanes a diagnosis built only from the event journal read. */
         val EventsOnly: Completeness = Completeness(
@@ -89,8 +97,24 @@ data class Completeness(
     }
 }
 
+/**
+ * Whether a diagnosis consulted one lane of the run's records.
+ *
+ * The answer is closed: a lane was read or it was not. It is what lets a
+ * consumer tell a finding that rests on evidence apart from one that rests
+ * on what nobody looked at.
+ */
 sealed interface LaneState {
+    /** The lane was read, so findings may rest on it. */
     data object Read : LaneState
+
+    /**
+     * The lane was not read, so nothing about it backs a finding.
+     *
+     * A consumer that weighs findings by completeness weighs this lane as
+     * absent: a lane that was not read is not a lane that was read and
+     * found nothing.
+     */
     data object NotConsulted : LaneState
 }
 
@@ -112,12 +136,27 @@ data class DiagnosisFacts(
 
 /** The diagnosis: an explained set of findings, or a typed refusal. */
 sealed interface Diagnosis {
+    /**
+     * The diagnosis the classifier reached, and the findings behind it.
+     *
+     * The status is the outcome word the records themselves use, and the
+     * findings say which of them are observed facts and which are
+     * inferences. A consumer that ignores that split weighs the two the
+     * same way, and an inference that outweighed a fact would decide a
+     * case the evidence does not.
+     */
     data class Explained(
         val status: String,
         val findings: List<Finding>,
         val completeness: Completeness,
     ) : Diagnosis
 
+    /**
+     * No diagnosis could be produced, and the code names why.
+     *
+     * The code is a word of the closed vocabulary the caller reads, so a
+     * consumer reacts to the reason instead of to the absence of a finding.
+     */
     data class Refused(val code: String) : Diagnosis
 }
 

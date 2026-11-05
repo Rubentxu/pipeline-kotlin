@@ -163,6 +163,14 @@ sealed interface BodyExecutionPolicy {
             is Parallel -> BodyExecutionPolicyShape.PARALLEL
         }
 
+    /**
+     * The policy a Step family declares when it does not reshape execution.
+     *
+     * The default runs the body once, in the caller's own context, and
+     * leaves its outcome as the scope's outcome. A body declaration carries
+     * its policy explicitly, so no descriptor receives this shape by
+     * omission.
+     */
     companion object {
         /** The body-less/sequential default: a Step that does not reshape execution. */
         val DEFAULT: BodyExecutionPolicy = Sequential
@@ -373,6 +381,15 @@ data class BodyExecutionSupport(val shapes: Set<BodyExecutionPolicyShape>) {
 
     fun supports(policy: BodyExecutionPolicy): Boolean = policy.shape in shapes
 
+    /**
+     * The engine capability sets this product ships.
+     *
+     * Each constant names the shapes one engine build admits, except `NONE`
+     * and `FULL`, which are the representability extremes; the set the product
+     * runs is the one that names every shape the canonical engine can execute.
+     * A Step declaring a shape outside the set is rejected with
+     * [BodyPolicyRejection.UnsupportedByEngine] rather than executed wrongly.
+     */
     companion object {
         /** No body execution supported: every body-bearing Step is rejected. */
         val NONE: BodyExecutionSupport = BodyExecutionSupport(emptySet())
@@ -380,7 +397,6 @@ data class BodyExecutionSupport(val shapes: Set<BodyExecutionPolicyShape>) {
         /**
          * The engine support: the coordinator still executes bodies through its
          * concrete scope switch, so only `Sequential` bodies are policy-addressable.
-         * widens this as it routes scoped/retrying/parallel bodies behind the policy.
 */
         val SEQUENTIAL_ONLY: BodyExecutionSupport =
             BodyExecutionSupport(setOf(BodyExecutionPolicyShape.SEQUENTIAL))
@@ -391,7 +407,7 @@ data class BodyExecutionSupport(val shapes: Set<BodyExecutionPolicyShape>) {
          * from the declared policy instead of from a StepKey switch.
          * `PARALLEL` is deliberately absent: branch fan-out is still executed as a plain
          * sequence, so a Step declaring `Parallel` is rejected fail-closed rather than
-         * Silently run sequentially (owns the fan-out)
+         * run sequentially and losing the fan-out.
          * `FOLDING` is deliberately absent too: an engine that does not implement the
          * fold must refuse a folding body rather than run it and drop the effect.
 */
@@ -447,18 +463,18 @@ sealed interface BodyPolicyRejection {
      * [key] is a terminal Step ([StepBody.None]): it has no body, so it has no body
      * execution policy to resolve. Asking for one is a caller error, reported instead of
      * answered with a default.
-     * Since the contradictory shape this case used to describe — "declares a reshaping
-     * policy while taking no body" — is no longer constructible: a terminal Step has
-     * nowhere to declare a policy. The case stays because the QUESTION remains answerable
-     * and must stay answerable fail-closed.
+     * A terminal Step has nowhere to declare a policy, so the question has no answer
+     * other than a refusal; the case exists because the question remains askable, and it
+     * must stay askable fail-closed.
 */
     data class NotABodyStep(val key: PluginStepId) : BodyPolicyRejection
 
     /**
      * The declared policy contradicts other descriptor metadata: the execution
-     * shape cannot hold bodies [count] times, or a projected scope requires a
-     * context kind the descriptor does not declare. Fail closed rather than
-     * silently honouring one of two contradictory declarations.
+     * shape cannot hold the bodies the descriptor declares, or a projected scope
+     * or a fold requires a context kind the descriptor does not declare. Fail
+     * closed rather than silently honouring one of two contradictory
+     * declarations.
 */
     data class IncoherentMetadata(
         val key: PluginStepId,
@@ -482,8 +498,7 @@ sealed interface BodyPolicyRejection {
      * declare [BODY_CONTINUATION_CAPABILITY] has no way to reach its own body, and
      * a Step that declares the capability under any other owner was handed a
      * continuation it must not drive. Both are rejected before any effect instead of
-     * being papered over by the engine executing the body on the Step's behalf, which
-     * Is exactly the substitution (as amended) forbids
+     * being papered over by the engine executing the body on the Step's behalf.
 */
     data class IncoherentCapabilities(
         val key: PluginStepId,
@@ -500,8 +515,22 @@ sealed interface BodyPolicyRejection {
 */
 sealed interface BodyPolicyResolution {
 
+    /**
+     * The policy was admitted: the Step declares a shape this engine can
+     * execute, and [policy] is the declaration to run it with.
+     *
+     * The resolution carries no effect of its own: the body still runs under
+     * the rules the declared policy names, and the engine decides how.
+     */
     data class Resolved(val key: PluginStepId, val policy: BodyExecutionPolicy) : BodyPolicyResolution
 
+    /**
+     * The policy was refused: the Step keeps its identity and [reason] says
+     * why no policy was resolved.
+     *
+     * A refusal is an answer, not a failure to answer: the caller receives a
+     * typed cause instead of an exception, and no body runs.
+     */
     data class Rejected(val key: PluginStepId, val reason: BodyPolicyRejection) : BodyPolicyResolution
 
     /** The policy when resolved, or `null`. For ergonomic call sites, not for control flow. */

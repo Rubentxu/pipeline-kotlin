@@ -176,10 +176,18 @@ interface OutputRetentionPort {
     fun canPrune(intent: OutputPruneIntent): PruneAuthorisation =
         PruneAuthorisation.Granted
 
+    /**
+     * The wall-clock bound a single consult declares.
+     *
+     * The value states how long a consult may take, and nothing in the tree
+     * reads it: it does not bound the wait a caller actually has.
+     */
     companion object {
         /**
          * Upper bound on a single `canPrune` call's wall time.
-         * Parallel to 's `DEFAULT_INSPECT_TIMEOUT_MS`
+         * Parallel to `DEFAULT_INSPECT_TIMEOUT_MS`. Nothing reads it: the
+         * shipped store consult walks the run's directories, and the wait a
+         * caller has is whatever that walk takes.
 */
         const val DEFAULT_CAN_PRUNE_TIMEOUT_MS: Long = 5_000L
     }

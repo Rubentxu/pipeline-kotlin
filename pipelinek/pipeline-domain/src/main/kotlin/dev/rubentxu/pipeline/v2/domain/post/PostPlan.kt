@@ -12,10 +12,50 @@ import kotlinx.serialization.Serializable
 */
 @Serializable
 sealed interface StageOutcome {
+    /**
+     * The stage finished, and every step that ran reported success.
+     *
+     * The finalizers guarded by [PostCondition.SUCCESS], by
+     * [PostCondition.ALWAYS] and by [PostCondition.CLEANUP] run;
+     * [PostCondition.UNSUCCESSFUL] does not.
+     */
     data object Succeeded : StageOutcome
+
+    /**
+     * The stage finished with a warning: it ran, and something went wrong
+     * without failing it.
+     *
+     * An unstable stage counts as unsuccessful, so the finalizers guarded by
+     * [PostCondition.UNSTABLE], by [PostCondition.UNSUCCESSFUL], by
+     * [PostCondition.ALWAYS] and by [PostCondition.CLEANUP] run.
+     */
     data object Unstable : StageOutcome
+
+    /**
+     * The stage finished with a failure.
+     *
+     * The finalizers guarded by [PostCondition.FAILURE], by
+     * [PostCondition.UNSUCCESSFUL], by [PostCondition.ALWAYS] and by
+     * [PostCondition.CLEANUP] run.
+     */
     data object Failed : StageOutcome
+
+    /**
+     * The stage was stopped before it finished.
+     *
+     * An aborted stage is not an unsuccessful one: the finalizers guarded by
+     * [PostCondition.ABORTED], by [PostCondition.ALWAYS] and by
+     * [PostCondition.CLEANUP] run, and [PostCondition.UNSUCCESSFUL] does not.
+     */
     data object Aborted : StageOutcome
+
+    /**
+     * The stage never ran, because a condition skipped it.
+     *
+     * A stage that did not happen did not fail either: only the
+     * unconditional finalizers, [PostCondition.ALWAYS] and
+     * [PostCondition.CLEANUP], run.
+     */
     data object Skipped : StageOutcome
 }
 
@@ -37,6 +77,17 @@ enum class PostCondition {
     CLEANUP,
     ;
 
+    /**
+     * The order the planner walks, and the mapping from a durable outcome
+     * word to the stage outcome it names.
+     *
+     * Walking that order is what makes the same program produce the same
+     * finalizer sequence on every run. The mapping is total and refuses to
+     * guess: a word it does not know yields `null` instead of being read as a
+     * success, which would skip the failure finalizers at the moment they
+     * matter. No production caller reads that mapping: the planner receives
+     * the typed outcome directly.
+     */
     companion object {
         /**
          * The versioned execution order.

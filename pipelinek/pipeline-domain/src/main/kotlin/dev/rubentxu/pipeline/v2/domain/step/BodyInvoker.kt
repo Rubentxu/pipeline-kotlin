@@ -84,7 +84,26 @@ enum class CancellationReason {
 */
 @Serializable
 sealed interface BodyOutcome {
+
+    /**
+     * The body ran to its end and produced a step outcome.
+     *
+     * A failure inside is a CONTAINED result, not an invoker defect: the body
+     * failed and the enclosing block Step folds it under its own declared policy.
+     * The caller must not reclassify it as a pipeline abort, and it must not
+     * read it as a cancellation either.
+     */
     data class Completed(val outcome: StepOutcome) : BodyOutcome
+
+    /**
+     * The body did not run to its end because something cancelled it.
+     *
+     * Cancellation keeps its own case because it is an execution mechanism, not
+     * a step failure: the caller has to decide whether it propagates, and a
+     * failure would tell it the opposite. The reason names which mechanism
+     * cancelled the body, so a deadline is distinguishable from a parent that
+     * was cancelled itself.
+     */
     data class Cancelled(val reason: CancellationReason) : BodyOutcome
 }
 
@@ -134,6 +153,14 @@ data class AttemptSegment(val index: Int, val key: PluginStepId = PluginStepId("
 */
 @Serializable
 sealed interface ExecutionContextPatch {
+
+    /**
+     * No scope to project: the body runs in the context its caller handed it.
+     *
+     * It is a case and not the absence of one so that "nothing to project" is a
+     * thing the runner switches on, rather than something it infers from a
+     * nullable field or from a default.
+     */
     data object None : ExecutionContextPatch
 
     /** Runs the body inside [path] (`dir` projection). */

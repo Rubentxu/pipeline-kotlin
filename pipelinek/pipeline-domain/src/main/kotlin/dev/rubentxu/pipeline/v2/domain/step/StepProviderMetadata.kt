@@ -45,6 +45,17 @@ data class StepProviderMetadata internal constructor(
         }
     }
 
+    /**
+     * The one place the metadata is built.
+     *
+     * The factory is the only public path, and the cross-field invariants it
+     * enforces are stated in the constructor's `init` block. The constructor is
+     * internal so that the factory is the way the product builds this value,
+     * and so that a rule about how the plugin, the release, the publisher and
+     * the families fit together lives in one place instead of in each caller's
+     * head. A caller that hands the factory an incoherent pair is refused there
+     * and not later, at the moment a consumer asks where a Step came from.
+     */
     companion object {
         /**
          * Public factory enforcing all cross-field invariants in one place.

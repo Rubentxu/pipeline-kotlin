@@ -349,6 +349,11 @@ data class TelemetryIdentityTable(
         TelemetryTravel.Nowhere -> "nowhere"
     }
 
+    /**
+     * The table this product ships, and the only one a consumer needs to
+     * consult to know which identity it may join on, which one it may not,
+     * and where each of them travels.
+     */
     companion object {
         /**
          * The shipped table.
@@ -499,6 +504,11 @@ data class LiveTraceContext(
         }
     }
 
+    /**
+     * The shapes a live trace id and a live span id must have: 32 and 16
+     * lowercase hexadecimal characters, the shape W3C trace context gives
+     * them.
+     */
     companion object {
         private val TRACE_ID: Regex = Regex("^[0-9a-f]{32}$")
         private val SPAN_ID: Regex = Regex("^[0-9a-f]{16}$")

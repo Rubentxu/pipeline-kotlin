@@ -54,6 +54,7 @@ RULES: list[tuple[str, str, str]] = [
     # tool, and a guard caught by it would make the ratio look better than the
     # truth -- the same reason the two release checks are named above.
     ("verify", "source guard", "scripts/check-comment-provenance.py"),
+    ("verify", "source guard", "scripts/check-kdoc-coverage.py"),
     ("verify", "source guard", "scripts/check-process-exits.py"),
     ("verify", "source guard", "scripts/check-durable-shell-cost.py"),
     # The external-consumer check verifies the published artifacts against a

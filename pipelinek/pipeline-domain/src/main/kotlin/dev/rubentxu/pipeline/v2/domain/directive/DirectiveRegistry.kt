@@ -41,6 +41,13 @@ interface DirectiveDefinition<I, O> {
  * operational outcome, and the engine reports the two differently.
 */
 sealed interface DirectiveDecodeResult<out I> {
+    /**
+     * The arguments were read into the definition's own typed input.
+     *
+     * The payload is the value the definition works with, so a caller that
+     * holds one never has to decode the arguments itself. The opposite case,
+     * [Malformed], says the arguments did not match the definition's shape.
+     */
     data class Decoded<out I>(val input: I) : DirectiveDecodeResult<I>
 
     /** The arguments did not match this definition's shape. */
@@ -123,8 +130,24 @@ class DirectiveRegistry private constructor(
     /** Every registered key, for diagnostics and fitness assertions. */
     fun keys(): Set<DirectiveKey> = byKey.keys
 
+    /**
+     * Raised when two definitions claim the same key.
+     *
+     * The registry refuses to shadow: the key identifies one definition, so a
+     * collision is a composition error the contributor has to resolve, not a
+     * precedence question the registry may decide on its own.
+     */
     class DuplicateKeyException(message: String) : IllegalStateException(message)
 
+    /**
+     * Collects definitions into a registry.
+     *
+     * Every definition enters through [add] or one of its siblings, and every
+     * one of them checks the key against the rows already collected, so a
+     * duplicate is refused at the moment it is offered rather than when the
+     * registry is built. [build] hands over an immutable table whose rows keep
+     * the order they were added in.
+     */
     class Builder {
         private val byKey = LinkedHashMap<DirectiveKey, DirectiveDefinitionAny>()
 

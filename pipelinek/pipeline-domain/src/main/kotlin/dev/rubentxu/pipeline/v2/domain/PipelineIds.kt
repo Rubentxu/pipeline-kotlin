@@ -30,6 +30,17 @@ value class RunId(val value: String) {
         require(value.isNotBlank()) { "RunId value must not be blank" }
     }
 
+    /**
+     * The authority on what may stand as a run identity.
+     *
+     * A border that needs to know whether a raw string names a run, or may
+     * name a durable location, asks here instead of keeping its own copy of
+     * the rule. Two authorities answer the same question, and they drift
+     * apart the first time one of them refuses a value the other accepted.
+     *
+     * The alphabet that decides the answer is private, so a store cannot
+     * read it and build a second one from it.
+     */
     companion object {
 
         /**
@@ -231,6 +242,19 @@ fun interface RunIdGenerator {
     fun next(): RunId
 }
 
+/**
+ * The facts a definition's identity is derived from.
+ *
+ * The identity is a pure function of these three: the same facts always
+ * yield the same identity, and a change in any of them yields a different
+ * one. The source is read canonically — a leading byte-order mark is
+ * dropped and the line endings are folded — so a file that only changed its
+ * line endings keeps the identity it had.
+ *
+ * The source and the compatibility version must not be blank, and no
+ * semantic input may carry a blank key. The order of the semantic inputs
+ * does not matter: they are sorted before the identity is derived.
+ */
 data class DefinitionIdentityInput(
     val source: String,
     val compatibilityVersion: String,

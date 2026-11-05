@@ -32,6 +32,13 @@ sealed interface GateEnvironmentPrecedence {
         }
     }
 
+    /**
+     * The precedence the product ships.
+     *
+     * [DEFAULT] is [DeclarationWins]: the stage's own declaration wins over
+     * a host variable of the same name, so the same script evaluates the
+     * same way on two machines for a reason the author wrote down.
+     */
     companion object {
         val DEFAULT: GateEnvironmentPrecedence = DeclarationWins
     }

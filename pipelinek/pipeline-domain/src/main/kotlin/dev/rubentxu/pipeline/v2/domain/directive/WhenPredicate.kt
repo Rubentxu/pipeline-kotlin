@@ -104,12 +104,47 @@ data class GateContext(
         else -> Resolution.Unset
     }
 
+    /**
+     * What one variable name turned out to be, as far as this context knows.
+     *
+     * The three cases are distinct facts and the difference between them
+     * decides what a predicate may conclude: a name that resolves to a value
+     * can be compared, a name that is unset is a decided negative, and a name
+     * that no source can supply leaves the predicate unverifiable.
+     */
     sealed interface Resolution {
+        /**
+         * The name is known and carries a value.
+         *
+         * The value may be empty: emptiness is a fact about the value, not
+         * about the presence of the name, and a predicate that asks for a
+         * non-empty value has to ask for it on its own.
+         */
         data class Present(val value: String) : Resolution
+
+        /**
+         * No source supplied the name, but one could have.
+         *
+         * The name is a decided negative for every predicate that reads it.
+         */
         data object Unset : Resolution
+
+        /**
+         * No configured source can supply the name.
+         *
+         * The predicate cannot be decided at all, so the gate fails closed
+         * rather than reading the name as absent.
+         */
         data object Unresolvable : Resolution
     }
 
+    /**
+     * The context that holds no facts at all.
+     *
+     * Every name a predicate asks about comes back unset, so a predicate
+     * evaluated against it reaches a decided negative rather than an
+     * unverifiable one.
+     */
     companion object {
         val EMPTY = GateContext()
     }
@@ -122,10 +157,29 @@ data class GateContext(
  * program text is exactly the work this type exists to save.
 */
 sealed interface GateVerdict {
+    /**
+     * The predicate holds, so the stage runs.
+     *
+     * The verdict carries no reason: there is nothing to explain about a
+     * predicate that holds.
+     */
     data object Satisfied : GateVerdict
 
+    /**
+     * The predicate was decided and does not hold, so the stage is skipped.
+     *
+     * The reason names the fact that decided it, so a reader of the run learns
+     * why the stage did not run without reconstructing the program.
+     */
     data class NotSatisfied(val reason: String) : GateVerdict
 
+    /**
+     * Nobody could decide the predicate, so the gate fails closed.
+     *
+     * This is not a negative: the stage does not run and the run does not
+     * report success for work that never happened. The reason names what
+     * could not be resolved.
+     */
     data class Unverifiable(val reason: String) : GateVerdict
 }
 

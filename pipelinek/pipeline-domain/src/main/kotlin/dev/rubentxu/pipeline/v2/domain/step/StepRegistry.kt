@@ -126,31 +126,37 @@ interface StepDefinition<I : Any, O : Any> {
  * Step, a decode failure, or a missing capability (rejected before the handler runs).
 */
 sealed interface StepInvocationOutcome<out O : Any> {
+
+    /**
+     * The handler ran and returned a value of the output type the contract
+     * declares. This is the only case that carries a payload: every other case
+     * is a refusal decided before the handler ran.
+     */
     data class Success<out O : Any>(val value: O) : StepInvocationOutcome<O>
+
+    /**
+     * The registry carries no registration under that key. Nothing ran and no
+     * effect was applied. The key is the one the caller asked for, so the
+     * diagnostic can name the Step family that is missing.
+     */
     data class UnknownStep(val key: PluginStepId) : StepInvocationOutcome<Nothing>
+
+    /**
+     * The registered contract's input codec refused the encoded payload. The
+     * handler did not run, so no effect was applied, and the reason is the
+     * codec's own message, or `decode failed` when the codec threw without
+     * one.
+     */
     data class DecodeFailure(val key: PluginStepId, val reason: String) : StepInvocationOutcome<Nothing>
+
+    /**
+     * The contract declares capabilities the invocation's context does not
+     * supply. Admission is fail-closed, so the handler did not run, and the
+     * missing set names exactly which capabilities were absent.
+     */
     data class MissingCapability(val key: PluginStepId, val missing: Set<StepCapability>) : StepInvocationOutcome<Nothing>
 }
 
-/**
- * Open registry of Step families, as an immutable READ VIEW
- * Composition is open to core Steps and external plugins alike; there is no privileged
- * registration path. A duplicate key MUST fail deterministically so a plugin cannot
- * silently shadow a core Step — and that refusal now belongs to [StepRegistryBuilder],
- * the only type that can register anything.
- * This interface has no mutation method, and that is deliberate rather than incidental. A
- * registry handed to the runtime cannot grow afterwards, so a reader never observes a
- * registry changing shape underneath it. Two additive registration shapes are supported on
- * the builder:
- * - [StepRegistryBuilder.add] of a bare [StepDefinition] — the legacy path used by the CORE
- *   Steps and by `example.uppercase`; provider metadata is unknown to the registry, and
- * [providerOf] returns null for that key (backwards-compat)
- * - [StepRegistryBuilder.add] of a [StepRegistration] — the additive path used by the new
- * Plugin shape; the registry stores the provider metadata and
- * Exposes it via [providerOf] (, O(1))
- * Both share the same underlying map. A duplicate key is rejected on either path, naming the
- * StepKey in the diagnostic. No plugin can shadow a CORE Step via either path.
-*/
 /**
  * One registered Step, with the provider metadata that came with it or null for the legacy
  * shape that carries none. File-level rather than nested in [StepRegistryBuilder] because the
@@ -162,6 +168,23 @@ internal data class StepRegistryEntry(
     val provider: StepProviderMetadata?,
 )
 
+/**
+ * The read view over the Step families a composition registered.
+ *
+ * An implementor promises that every lookup answers from one fixed set of
+ * keys: nothing is added or removed behind a reader, so a caller may hold
+ * the view for the whole life of a run and still see a stable registry. An
+ * implementor MUST NOT expose any way to register a Step — registration
+ * belongs to [StepRegistryBuilder], and a view that could grow would let a
+ * reader observe the registry changing shape underneath it.
+ *
+ * A key that names no registered Step is absent, not an error: [definition]
+ * answers `null`, [providerOf] answers `null`, and [contains] answers
+ * `false`. A caller that asks for an unknown key gets that answer, not an
+ * exception and not a fabricated Step. A `null` from [providerOf] does not
+ * mean the key is absent: a registration made on the legacy path carries no
+ * provider and answers `null` too.
+ */
 interface StepRegistry {
     /** Returns the registered definition for [key], or null. */
     fun definition(key: PluginStepId): StepDefinition<*, *>?

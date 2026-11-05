@@ -188,6 +188,15 @@ data class ShPatch(
     val workingDirectory: Path? = null,
     val env: Map<String, String>? = null,
 ) {
+    /**
+     * The shared patches a runner can name without building one.
+     *
+     * The companion holds the identity patch — the patch that overrides nothing —
+     * so a scope with nothing to project says so by naming it instead of spelling
+     * an empty set of overrides at every use. The patch stays a value: a field
+     * left unset means "inherit from the parent", and nothing here is applied
+     * until the runner materializes it onto its own options type.
+     */
     companion object {
         /** Identity patch: every field `null`, no fields overridden. */
         val NONE: ShPatch = ShPatch()

@@ -98,7 +98,22 @@ sealed interface BodyContextRejection {
  * single-step derivation result: parent + projection + payload -> next-context-or-reject.
 */
 sealed interface BodyContextDerivation {
+    /**
+     * The derivation succeeded: [context] is the child context.
+     *
+     * The parent it was derived from is untouched, so the two are
+     * independent values and siblings derived from one parent are equal but
+     * distinct.
+     */
     data class Derived(val context: ExecutionContext) : BodyContextDerivation
+
+    /**
+     * The derivation was refused, for [reason].
+     *
+     * A rejection is a value and not an exception: routing a payload to the
+     * wrong projection is a defect at the seam, and the seam reports it in
+     * the form its caller matches on.
+     */
     data class Rejected(val reason: BodyContextRejection) : BodyContextDerivation
 }
 

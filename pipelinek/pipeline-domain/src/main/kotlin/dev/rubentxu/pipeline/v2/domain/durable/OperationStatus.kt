@@ -184,6 +184,14 @@ enum class OperationStatus {
             PENDING, RUNNING, SUCCEEDED, UNSTABLE -> false
         }
 
+    /**
+     * Holds the rule that says which status may follow which.
+     *
+     * The companion is the one place transitions are decided: a caller that
+     * wants to move an operation asks here, and the answer is a value rather
+     * than an exception, because a refused transition is a fact the caller
+     * may act on.
+     */
     companion object {
         /**
          * Enforces the closed state machine transition rules.

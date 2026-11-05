@@ -29,6 +29,13 @@ value class CredentialsId(@NotNull val value: String) {
         require(value.isNotBlank()) { "CredentialsId value must not be blank" }
     }
 
+    /**
+     * The factory that turns text into an identifier.
+     *
+     * [from] is the way to build one from a value that came from outside,
+     * such as a string the user typed. It refuses a blank value exactly as
+     * the constructor does, so both routes agree on what an identifier is.
+     */
     companion object {
         /**
          * Factory for creating a CredentialsId from a string value.

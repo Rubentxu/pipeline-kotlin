@@ -47,6 +47,11 @@ class ObservationName private constructor(val value: String) {
 
     override fun toString(): String = value
 
+    /**
+     * The rules that decide what a plugin may call one of its observations:
+     * the length budget, the shape, and the factory that refuses a name it
+     * would have to rewrite.
+     */
     companion object {
         /** The longest name a plugin may give to one of its observations. */
         const val MAX_LENGTH: Int = 64

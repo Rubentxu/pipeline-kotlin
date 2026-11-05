@@ -16,6 +16,12 @@ value class OutputPinId(val value: String) {
     }
     override fun toString(): String = value
 
+    /**
+     * The minting of a fresh pin identity.
+     *
+     * The id is opaque to its holder: a consumer carries it back to the port that issued it and
+     * does not read anything into it.
+     */
     companion object {
         /** Mint a new UUID-based pin id. */
         fun newId(): OutputPinId = OutputPinId(UUID.randomUUID().toString())
@@ -63,6 +69,12 @@ data class OutputPin(
     /** Whether this pin has expired given the supplied wall-clock epoch-ms. */
     fun isExpiredAt(epochMs: Long): Boolean = expiresAtMs?.let { it <= epochMs } ?: false
 
+    /**
+     * The bounds a pin record places on the two free-text fields it carries.
+     *
+     * A holder name and a reason are written by a caller and stored as one line each, so the
+     * record refuses a value that would break that shape instead of storing it.
+     */
     companion object {
         const val PIN_HOLDER_MAX_LEN: Int = 256
         const val PIN_REASON_MAX_LEN: Int = 256
@@ -108,7 +120,7 @@ sealed interface PinRefusal {
     ) : PinRefusal
 
     /**
-     * The cap on the number of active pins per `(stream, runId)` was
+     * The cap on the number of active pins per stream was
      * exceeded. The default cap is
      * [OutputPinPort.DEFAULT_MAX_PINS_PER_STREAM]; a custom cap is
      * permitted at construction.

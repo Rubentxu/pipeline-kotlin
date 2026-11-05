@@ -28,6 +28,14 @@ class EventDefinition<P : Any> private constructor(
     val codec: EventPayloadCodec<P>,
     val emittedBy: String,
 ) {
+    /**
+     * The floor for schema versions, and the only construction path of a
+     * definition.
+     *
+     * Every declaration is validated here before a registry sees it, so a
+     * malformed one is a creation outcome with named reasons and never a
+     * registration that half-succeeded.
+     */
     companion object {
         const val MIN_SCHEMA_VERSION: Int = 1
 

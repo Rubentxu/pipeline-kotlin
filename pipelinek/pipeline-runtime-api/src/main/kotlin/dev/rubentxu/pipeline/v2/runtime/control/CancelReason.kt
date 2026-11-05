@@ -23,6 +23,14 @@ sealed interface CancelReason {
         }
     }
 
+    /**
+     * The reason a caller may leave out.
+     *
+     * It holds the one reason the product substitutes when a caller cancels
+     * without stating a cause, so the terminal event of every cancelled run
+     * names a reason instead of carrying an empty field, and every consumer
+     * reads the same word.
+     */
     companion object {
         /** The default `reason` carried in the terminal `RunFinished` event. */
         val Default: CancelReason = UserRequested

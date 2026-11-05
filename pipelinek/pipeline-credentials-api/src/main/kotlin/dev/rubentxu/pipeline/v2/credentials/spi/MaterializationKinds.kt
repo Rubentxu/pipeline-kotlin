@@ -54,11 +54,27 @@ data class MaterializedCredential(
         handle?.let { /* handle cleanup if needed */ }
     }
 
+    /**
+     * The two factories that say where a materialized credential lives.
+     *
+     * A credential reaches a consumer either as a file on disk or as bytes in
+     * memory, and the two are cleaned up differently: [close] deletes the file
+     * and leaves the handle alone. These factories make the choice explicit by
+     * setting the other side to null, so a consumer never has to ask which of
+     * the two it holds.
+     */
     companion object {
+        /**
+         * A credential materialized to a file the consumer opens by path.
+         */
         fun fromPath(credentialsId: CredentialsId, kind: MaterializationKind, path: Path): MaterializedCredential {
             return MaterializedCredential(credentialsId, kind, path, null)
         }
 
+        /**
+         * A credential materialized to bytes the consumer reads through the
+         * handle.
+         */
         fun fromHandle(credentialsId: CredentialsId, kind: MaterializationKind, handle: SecretHandle): MaterializedCredential {
             return MaterializedCredential(credentialsId, kind, null, handle)
         }

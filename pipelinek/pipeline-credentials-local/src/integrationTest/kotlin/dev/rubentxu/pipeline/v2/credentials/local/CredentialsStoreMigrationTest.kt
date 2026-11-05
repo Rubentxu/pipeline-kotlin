@@ -151,19 +151,21 @@ class CredentialsStoreMigrationTest {
     }
 
     /**
-     * A store in the v1 format, holding [ids] with the bytes of their own
+     * A store in the legacy format, holding [ids] with the bytes of their own
      * name as the secret.
      *
-     * The v1 format is the one [LocalSecretStore.put] writes, and it is the
-     * only way a store comes to hold a v1 body: the product has no other
-     * writer of that shape.
+     * The store writes one format; the fixture writes the other one, which
+     * the store still opens and migrates.
      */
     private fun v1Store(ids: List<CredentialsId>) {
-        val store = openStore()
-        for (id in ids) {
-            store.put(id, id.value.toByteArray())
-        }
-        store.close()
+        LegacyV1StoreFixture.write(
+            storeFile(),
+            PassphraseResolver.resolve(
+                env = mapOf(PASSPHRASE_ENV to passphrase),
+                ttyReader = { null },
+            ),
+            ids.associateWith { it.value.toByteArray() },
+        )
     }
 
     /**

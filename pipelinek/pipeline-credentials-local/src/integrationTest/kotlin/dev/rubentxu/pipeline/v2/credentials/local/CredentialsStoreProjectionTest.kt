@@ -102,18 +102,23 @@ class CredentialsStoreProjectionTest {
     }
 
     @Test
-    fun `a store written in v1 hands over the secret it holds`() {
+    fun `a legacy store hands over the secret it holds`() {
         val id = CredentialsId("api-key")
-        val store = openStore()
-        store.put(id, "s3cr3t".toByteArray())
-        store.close()
+        LegacyV1StoreFixture.write(
+            storeFile(),
+            PassphraseResolver.resolve(
+                env = mapOf(PASSPHRASE_ENV to passphrase),
+                ttyReader = { null },
+            ),
+            mapOf(id to "s3cr3t".toByteArray()),
+        )
 
         val carried = openStore().getAsSecretHandle(id).bytesView()
 
         assertArrayEquals(
             "s3cr3t".toByteArray(),
             carried,
-            "the v1 entry did not hand over the secret it holds: ${carried.toList()}",
+            "the legacy entry did not hand over the secret it holds: ${carried.toList()}",
         )
     }
 

@@ -108,6 +108,32 @@ class CliBlankValueRefusalTest {
     }
 
     @Test
+    fun `the saga read family names the empty run it was given`() {
+        val unknownRun = sagaInspectUnknownRun("", "/tmp/run.sqlite")
+        val nothingOwed = sagaInspectNothingOwed("")
+        val header = sagaInspectRunHeader("")
+
+        assertShowsTheEmptyValue(unknownRun, "the refusal of a run the store does not know")
+        assertFalse(
+            unknownRun.contains("no run  in"),
+            "the refusal leaves a hole where the run goes: $unknownRun",
+        )
+        assertShowsTheEmptyValue(nothingOwed, "the answer for a run that owes nothing")
+        assertShowsTheEmptyValue(header, "the heading of the report of a run")
+    }
+
+    @Test
+    fun `the inspect family names the empty run it was given`() {
+        val unknownOp = inspectUnknownLogTailOp("op-1", "", emptyList())
+
+        assertShowsTheEmptyValue(unknownOp, "the refusal of a tail that names no operation")
+        assertFalse(
+            unknownOp.contains("of run ."),
+            "the refusal leaves a hole where the run goes: $unknownOp",
+        )
+    }
+
+    @Test
     fun `a value of only spaces is named as the spaces it is`() {
         // A value of only spaces is NOT empty, and a refusal that draws it as
         // the empty value would be saying something false about it. It is drawn
@@ -152,6 +178,24 @@ class CliBlankValueRefusalTest {
         assertEquals(
             "unexpected extra argument: extra",
             reasonOf(CliEventsParser.parse(arrayOf("run-1", "--db", "/tmp/run.sqlite", "extra"))),
+        )
+        assertEquals(
+            "saga inspect: no run run-1 in /tmp/run.sqlite. " +
+                "Nothing was read, so nothing can be said about what it owes.",
+            sagaInspectUnknownRun("run-1", "/tmp/run.sqlite"),
+        )
+        assertEquals(
+            "inspect: --log-tail-op op-1 is not an operation of run run-1. " +
+                "This run's step operations: step-a, step-b",
+            inspectUnknownLogTailOp("op-1", "run-1", listOf("step-a", "step-b")),
+        )
+        assertEquals(
+            "saga inspect: run run-1 armed no saga promise; there is nothing owed.",
+            sagaInspectNothingOwed("run-1"),
+        )
+        assertEquals(
+            "saga inspect: run run-1",
+            sagaInspectRunHeader("run-1"),
         )
     }
 

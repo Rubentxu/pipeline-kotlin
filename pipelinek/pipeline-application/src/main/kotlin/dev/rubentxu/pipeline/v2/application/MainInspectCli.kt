@@ -257,21 +257,15 @@ object MainInspectCli {
         // tail belongs to the operation and not to the run.
         val opIds: List<OpId?> = InspectionSelection.operationIdPerEvent(events, runId)
 
-        if (compiled.logTail > 0 && compiled.opId != null &&
-            opIds.none { it?.format() == compiled.opId }
+        val tailOpId = compiled.opId
+        if (compiled.logTail > 0 && tailOpId != null &&
+            opIds.none { it?.format() == tailOpId }
         ) {
             // Fail closed rather than render an empty transcript for every row. Without this an
             // operator who mistypes an opId cannot tell "no such operation" from "this step
             // printed nothing", which is the one distinction the field exists to make.
             val owned = opIds.filterNotNull().map { it.format() }.distinct()
-            err.println(
-                "inspect: --log-tail-op ${compiled.opId} is not an operation of run $runId. " +
-                    if (owned.isEmpty()) {
-                        "This run declares no step operations, so it has nothing to attach a tail to."
-                    } else {
-                        "This run's step operations: ${owned.joinToString(", ")}"
-                    },
-            )
+            err.println(inspectUnknownLogTailOp(tailOpId, runId, owned))
             return CliExit.INVALID_ARGUMENT.code
         }
 
@@ -545,3 +539,22 @@ object MainInspectCli {
         return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
 }
+
+/**
+ * The refusal for a tail that names an operation this run does not have.
+ *
+ * The operation and the run are the two things the operator wrote, and the
+ * refusal names both: an operation drawn RAW stops naming itself the moment
+ * it is empty, and the sentence would read "is not an operation of run ." —
+ * a phrase with a hole where the run should be.
+ *
+ * The sentence is a function of its arguments and of nothing else, so it can
+ * be read without opening a store.
+ */
+internal fun inspectUnknownLogTailOp(opId: String, runId: String, owned: List<String>): String =
+    "inspect: --log-tail-op ${renderValue(opId)} is not an operation of run ${renderValue(runId)}. " +
+        if (owned.isEmpty()) {
+            "This run declares no step operations, so it has nothing to attach a tail to."
+        } else {
+            "This run's step operations: ${owned.joinToString(", ")}"
+        }

@@ -81,8 +81,8 @@ sealed interface BodyContextRejection {
 
     /**
      * The projection's context carry intentionally lives in another seam: deadlines
-     * are projected onto [dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions.timeoutMs]
-     * and credential leases are projected by the [executeCredentialLeasedBody]
+     * are projected onto `ShOptions.timeoutMs`
+     * and credential leases are projected by the `executeCredentialLeasedBody`
      * preamble. The seam is honest about what it does not do.
 */
     data class HandledOutsideOverlay(val projection: BodyContextProjection, val at: String) :

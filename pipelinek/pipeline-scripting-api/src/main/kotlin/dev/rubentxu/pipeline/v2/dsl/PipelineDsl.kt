@@ -56,7 +56,7 @@ internal fun currentRuntimeConfig(): dev.rubentxu.pipeline.v2.domain.RuntimeConf
     DslRuntimeConfigScope.current()
 
 /**
- * Variant of [pipeline] that accepts an explicit [RuntimeConfig] so the DSL
+ * Variant of [pipeline] that accepts an explicit `RuntimeConfig` so the DSL
  * stays decoupled from global JVM state.
  * Production callers (the `pipeline-application` CLI) should pass the
  * `SystemRuntimeConfig` adapter. Tests can pass a deterministic
@@ -288,7 +288,7 @@ class PostScope {
     }
 
     /**
-     * The declared blocks, keyed by the closed [PostCondition] set.
+     * The declared blocks, keyed by the closed `PostCondition` set.
      * Multiple blocks under the same condition CONCATENATE in declaration
      * order, which is the author's intent; the execution ORDER across different
      * conditions is not decided here but by the pure

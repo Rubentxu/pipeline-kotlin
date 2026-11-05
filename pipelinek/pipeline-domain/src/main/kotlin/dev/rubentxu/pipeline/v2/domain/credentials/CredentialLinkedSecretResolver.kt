@@ -9,14 +9,14 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
  * without dragging in `:pipeline-credentials-api`. Same pattern as the gemelo
  * [CredentialMaterializationDomain] (the SPI in `:pipeline-credentials-api/spi/CredentialMaterialization`
  * extends the domain port by subtyping; here, the impl lives in
- * `:pipeline-credentials-executor` and delegates to [SecretStore.getAsSecretHandle]).
+ * `:pipeline-credentials-executor` and delegates to `SecretStore.getAsSecretHandle`).
  * Contract (single method):
  *  - [resolve]: turn a [LinkedSecretRef] into a [SecretHandle] carrying the
  *    referenced [SecretText] bytes. The default impl in
  *    `:pipeline-credentials-executor` queries `SecretStore.getAsSecretHandle(ref.id)`.
  * Errors are typed (no string exceptions):
- *  - [LinkedSecretReferenceNotFoundException] if the credential id is absent.
- *  - [LinkedSecretReferenceTypeMismatchException] if the referenced credential
+ *  - `LinkedSecretReferenceNotFoundException` if the credential id is absent.
+ *  - `LinkedSecretReferenceTypeMismatchException` if the referenced credential
  *    is not a [SecretText].
  * [ThrowingCredentialLinkedSecretResolver] is the safe default for tests/call sites
  * that do not exercise [LinkedSecretRef]: it surfaces accidental unconfigured

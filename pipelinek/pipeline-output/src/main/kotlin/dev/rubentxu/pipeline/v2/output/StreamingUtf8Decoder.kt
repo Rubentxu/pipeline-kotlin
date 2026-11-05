@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.output
 /**
  * Incremental UTF-8 decoder that holds half-codepoint state across page reads.
  * ## Why this exists
- * The Output Plane frames bytes in [page] entries whose boundaries fall wherever a write happens,
+ * The Output Plane frames bytes in `page` entries whose boundaries fall wherever a write happens,
  * Not wherever a code-point ends. The read pipeline concatenates page bytes into a transcript
  * with [java.nio.charset.CharsetDecoder] re-decoded PER PAGE — which means a multi-byte codepoint
  * straddling two pages produces two replacement characters (or one `null` + one base64) instead of

@@ -298,9 +298,9 @@ data class StageNode(
     /**
      * Directives declared on this stage, in declaration order.
      * Declarative data only: a key plus its already-encoded arguments. The
-     * canonical coordinator admits every entry against the [DirectiveRegistry]
+     * canonical coordinator admits every entry against the [dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry]
      * BEFORE the stage starts (fail-closed); interpretation per phase is read
-     * from the closed [DirectiveExecutionPolicy], never from the key.
+     * from the closed [dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy], never from the key.
 */
     val directives: List<StageDirective> = emptyList(),
 ) {

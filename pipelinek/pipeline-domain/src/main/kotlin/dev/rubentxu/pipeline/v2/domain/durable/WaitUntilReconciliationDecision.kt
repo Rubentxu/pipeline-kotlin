@@ -6,14 +6,14 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * carrying the minimum evidence a downstream caller needs to act. There are
  * NO nullable booleans, no `attempt: Int?` flag bags. The variant IS the state.
  * ## Variants
- * - [ScheduleAttempt] — execute the body as a fresh poll attempt at [attempt].
+ * - [ScheduleAttempt] — execute the body as a fresh poll attempt at `attempt`.
  *   The journal MUST persist the control row BEFORE any child effect is launched.
- * - [ResumeAttempt] — re-attach to an in-flight attempt [attempt] whose child
+ * - [ResumeAttempt] — re-attach to an in-flight attempt `attempt` whose child
  *   journal evidence is mid-run. NO new child is launched.
  * - [AdvanceAfterPredicateSatisfied] — predicate was true; close the aggregate
  *   as success without scheduling any new child execution.
  * - [AdvanceAfterPredicateUnsatisfied] — predicate was false; advance to the
- *   next poll with [nextBackoffMs] backoff. The journal persists the transition
+ *   next poll with [WaitUntilReconciliationDecision.AdvanceAfterPredicateUnsatisfied.nextBackoffMs] backoff. The journal persists the transition
  *   BEFORE the delay is entered.
  * - [DeadlineExceeded] — the backoff ceiling was reached; terminate with failure.
  * - [Aborted] — waitUntil was explicitly aborted by the caller.
@@ -21,27 +21,27 @@ package dev.rubentxu.pipeline.v2.domain.durable
  *   ZERO child execution. The caller MUST surface this as a step failure.
  * ## Backoff discipline
  * Unlike the retry aggregate (which counts attempts), waitUntil counts polls
- * with exponential backoff toward a [maxBackoffMs] ceiling. The reconciler
+ * with exponential backoff toward a [WaitUntilReconciliationInput.maxBackoffMs] ceiling. The reconciler
  * computes the next backoff from the persisted control rows so a second binary
  * invocation can resume from the correct backoff state.
 */
 sealed interface WaitUntilReconciliationDecision {
 
-    /** Execute the body as a fresh poll attempt at [attempt]. */
+    /** Execute the body as a fresh poll attempt at `attempt`. */
     data class ScheduleAttempt(val attempt: Int) : WaitUntilReconciliationDecision
 
-    /** Re-attach to an in-flight attempt [attempt] without launching a new child. */
+    /** Re-attach to an in-flight attempt `attempt` without launching a new child. */
     data class ResumeAttempt(val attempt: Int) : WaitUntilReconciliationDecision
 
     /**
-     * Predicate was true at attempt [attempt]; close the aggregate as success
+     * Predicate was true at attempt `attempt`; close the aggregate as success
      * without scheduling any new child execution.
 */
     data class AdvanceAfterPredicateSatisfied(val attempt: Int) : WaitUntilReconciliationDecision
 
     /**
-     * Predicate was false at attempt [attempt]; advance to the next poll with
-     * [nextBackoffMs] backoff. The journal persists this transition BEFORE
+     * Predicate was false at attempt `attempt`; advance to the next poll with
+     * [WaitUntilReconciliationDecision.AdvanceAfterPredicateUnsatisfied.nextBackoffMs] backoff. The journal persists this transition BEFORE
      * the delay is entered.
 */
     data class AdvanceAfterPredicateUnsatisfied(
@@ -50,18 +50,18 @@ sealed interface WaitUntilReconciliationDecision {
     ) : WaitUntilReconciliationDecision
 
     /**
-     * The backoff ceiling was reached at attempt [attempt]; terminate with failure.
+     * The backoff ceiling was reached at attempt `attempt`; terminate with failure.
      *
-     * The ceiling IS the deadline: the poll at [attempt] ran with an interval
+     * The ceiling IS the deadline: the poll at `attempt` ran with an interval
      * that had reached it, so it was the last poll, and the condition had not
-     * held. [attempt] is the poll that was actually run, not the one that would
+     * held. `attempt` is the poll that was actually run, not the one that would
      * have come next: the terminal names the poll the operator can count.
      */
     data class DeadlineExceeded(val attempt: Int) : WaitUntilReconciliationDecision
 
     /**
      * WaitUntil was explicitly aborted by the caller.
-     * [attempt] is the control row the reconciler actually READ as ABORTED.
+     * `attempt` is the control row the reconciler actually READ as ABORTED.
      * It is deliberately NOT defaulted. The reconciler has the value in hand — it is the
      * loop variable it is iterating over — and carrying it here is what lets the engine
      * report a real `totalAttempts` and treat the row as read-only. A default would have

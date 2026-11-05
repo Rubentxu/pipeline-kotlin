@@ -20,7 +20,8 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
  * - SecretStore: storage format/crypto changes
  * - CredentialScope: lifecycle/binding changes
  * - SecretPatternRegistry: pattern matching changes
- * @see LocalSecretStore for the filesystem implementation using Argon2id + envelope encryption
+ * The filesystem implementation is `LocalSecretStore`, with Argon2id and envelope
+ * encryption.
 */
 interface SecretStore : AutoCloseable {
 
@@ -28,7 +29,7 @@ interface SecretStore : AutoCloseable {
      * Stores a typed credential
      * @param id The credential ID (structural carrier, not secret)
      * @param credential The typed credential to store
-     * @throws CredentialsStoreException on storage failure
+     * @throws SecretStoreException on storage failure
 */
     fun add(id: CredentialsId, credential: Credential)
 
@@ -38,7 +39,7 @@ interface SecretStore : AutoCloseable {
      * and delegates to [add].
      * @param id The credential ID
      * @param bytes The secret bytes
-     * @throws CredentialsStoreException on storage failure
+     * @throws SecretStoreException on storage failure
 */
     fun put(id: CredentialsId, bytes: ByteArray)
 
@@ -62,7 +63,7 @@ interface SecretStore : AutoCloseable {
 
     /**
      * Retrieves a specific part of a multipart credential as a [SecretHandle].
-     * Used by [dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer] for
+     * Used by `CredentialMaterializer` for
      * file-based credential kinds that need to materialize to temp files.
      * @param id The credential ID
      * @param partName The name of the part to retrieve
@@ -89,7 +90,7 @@ interface SecretStore : AutoCloseable {
      * Re-encrypts a credential with new bytes, preserving the DEK
      * @param id The credential ID
      * @param credential The new typed credential
-     * @throws CredentialsStoreException if the credential doesn't exist
+     * @throws SecretStoreException if the credential doesn't exist
 */
     fun rotate(id: CredentialsId, credential: Credential)
 
@@ -99,7 +100,7 @@ interface SecretStore : AutoCloseable {
      * and delegates to [rotate].
      * @param id The credential ID
      * @param newBytes The new secret bytes
-     * @throws CredentialsStoreException if the credential doesn't exist
+     * @throws SecretStoreException if the credential doesn't exist
 */
     fun rotateBytes(id: CredentialsId, newBytes: ByteArray)
 

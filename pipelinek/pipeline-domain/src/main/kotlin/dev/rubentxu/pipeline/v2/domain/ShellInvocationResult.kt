@@ -106,10 +106,10 @@ fun classifyShellTerminal(
  * `(true, true)` case is rejected at the codec boundary because the shell
  * cannot simultaneously project stdout and a status code). The 2x2 -> 3
  * projection is split into a typed precondition ([require]) and a 3-way
- * [when] over a single boolean at a time, so future readers do not have
+ * `when` over a single boolean at a time, so future readers do not have
  * to re-derive the rejection from the silent collapse of an `else` arm.
  * `require` (not `check`) preserves the original `IllegalArgumentException`
- * contract that the [CoreShellStep] codec and its callers rely on.
+ * contract that the `CoreShellStep` codec and its callers rely on.
 */
 fun decideShellReturnMode(returnStdout: Boolean, returnStatus: Boolean): ShellReturnMode {
     require(!(returnStdout && returnStatus)) {

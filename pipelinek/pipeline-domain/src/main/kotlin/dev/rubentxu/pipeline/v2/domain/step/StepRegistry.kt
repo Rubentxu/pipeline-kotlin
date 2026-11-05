@@ -179,9 +179,9 @@ internal data class StepRegistryEntry(
  * reader observe the registry changing shape underneath it.
  *
  * A key that names no registered Step is absent, not an error: [definition]
- * answers `null`, [providerOf] answers `null`, and [contains] answers
+ * answers `null`, [StepRegistry.providerOf] answers `null`, and [contains] answers
  * `false`. A caller that asks for an unknown key gets that answer, not an
- * exception and not a fabricated Step. A `null` from [providerOf] does not
+ * exception and not a fabricated Step. A `null` from [StepRegistry.providerOf] does not
  * mean the key is absent: a registration made on the legacy path carries no
  * provider and answers `null` too.
  */
@@ -222,7 +222,7 @@ class StepRegistryBuilder {
 
     /**
      * Adds a bare [StepDefinition] — the legacy shape used by the CORE Steps and by
-     * `example.uppercase`, where the registry learns no provider metadata and [providerOf]
+     * `example.uppercase`, where the registry learns no provider metadata and [StepRegistry.providerOf]
      * Returns null for that key (backwards-compat)
 */
     fun add(definition: StepDefinition<*, *>): StepRegistryBuilder = apply {

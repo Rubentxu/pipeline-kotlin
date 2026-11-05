@@ -23,12 +23,12 @@ sealed interface EnvValue {
      * A secret-bearing environment variable value.
      * The [ref] is an opaque identifier that must be resolved via the
      * Typed channel: either
-     * [dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider.resolve]
+     * `CredentialProvider.resolve`
      * (returns [dev.rubentxu.pipeline.v2.domain.SecretHandle] directly),
      * or
-     * [dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor.bind]
-     * (returns [dev.rubentxu.pipeline.v2.credentials.executor.BoundCredentials]
-     * whose [dev.rubentxu.pipeline.v2.credentials.executor.BoundCredentials.env]
+     * `WithCredentialsExecutor.bind`
+     * (returns `BoundCredentials`
+     * whose `BoundCredentials.env`
      * accessor returns `Map<String, SecretHandle>`).
      * The resolved [dev.rubentxu.pipeline.v2.domain.SecretHandle] provides
      * the secret bytes through a `borrow { bytes -> ... }` channel — the
@@ -41,7 +41,7 @@ sealed interface EnvValue {
 /**
  * Type alias for a credential identifier used as a secret reference in [EnvValue.Secret].
  * This is an alias for [CredentialsId] to make the intent explicit: a [SecretRef]
- * is used only to reference a secret stored in the [dev.rubentxu.pipeline.v2.credentials.api.SecretStore],
+ * is used only to reference a secret stored in the `SecretStore`,
  * never to carry the secret value itself.
  * The alias lives alongside [dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec]
  * and [dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef] in the domain layer,

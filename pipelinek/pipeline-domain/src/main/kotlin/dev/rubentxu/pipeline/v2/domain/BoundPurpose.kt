@@ -6,8 +6,7 @@ import kotlinx.serialization.Serializable
  * Records how a credential is bound to a step at runtime.
  * ## Purpose
  * [BoundPurpose] documents the injection method for audit trail purposes.
- * It is carried in [CredentialBound][dev.rubentxu.pipeline.v2.events.CredentialBound],
- * [CredentialUsed][dev.rubentxu.pipeline.v2.events.CredentialUsed] events.
+ * It is carried in the `CredentialBound` and `CredentialUsed` events.
  * The purpose is informational only - it does not affect security.
  * ## Variants
  * Maps to Jenkins credentials-binding kinds as follows:
@@ -18,9 +17,6 @@ import kotlinx.serialization.Serializable
  * - [CERTIFICATE]: Keystore certificate — `certificate` binding
  * - [ZIP]: ZIP archive credential — `zip` binding
  * - [USERNAME_COLON_PASSWORD]: Colon-joined credentials — `usernameColonPassword` binding
- * ## Deprecation aliases
- * [ENV] is deprecated — renamed to [API_KEY] (semantically equivalent for callers)
- * [VALUE] is deprecated — no direct replacement in; reserved for future `returnStdout` interplay
 */
 @Serializable
 enum class BoundPurpose {

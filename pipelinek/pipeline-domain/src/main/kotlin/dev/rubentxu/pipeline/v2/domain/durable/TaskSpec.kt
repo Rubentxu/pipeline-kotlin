@@ -31,7 +31,7 @@ enum class InterpreterPolicy(val binary: String) {
  *   through stdin or `bash -c`), and executed with the chosen
  *   [InterpreterPolicy].
  * - Tasks carry no secrets in plaintext: environment values are typed
- *   [SecretHandle]s at the request boundary so redaction happens BEFORE
+ *   [dev.rubentxu.pipeline.v2.domain.SecretHandle]s at the request boundary so redaction happens BEFORE
  *   persisting or transmitting (spec invariant).
  *
  * @see DurableTaskRuntime

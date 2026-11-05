@@ -114,7 +114,7 @@ sealed class EventQuery {
 
 /**
  * A page of history plus the continuation cursor. Never claims completeness:
- * [remaining] distinguishes a definite end from a truncated page. Absence of a
+ * `remaining` distinguishes a definite end from a truncated page. Absence of a
  * RunFinished event is NOT interpreted as "complete" (law)
 */
 data class EventPage(

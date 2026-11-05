@@ -24,7 +24,7 @@ package dev.rubentxu.pipeline.v2.domain
  * The two legacy `PipelineDefinition(id = "hello", ...)` fixtures in
  * `:pipeline-testkit` keep compiling because the new fields default to
  * empty lists and the new typed [DefinitionId] accepts the legacy literal
- * Via [DefinitionId.invoke]. A dedicated migration slice is
+ * Via `DefinitionId.invoke`. A dedicated migration slice is
  * @see PipelineCompiler
  * @see StepDescriptor
  * @see Edge

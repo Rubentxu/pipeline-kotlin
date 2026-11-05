@@ -256,7 +256,7 @@ enum class BodyExecutionOwner {
      * is NOT about who executes the children. The engine remains the only
      * executor, through the same durable body loop, with the same journal,
      * events and replay law as any other body.
-     * The handler never receives a [StepNode], never iterates children and never
+     * The handler never receives a [dev.rubentxu.pipeline.v2.domain.StepNode], never iterates children and never
      * executes a body itself. It receives a bound continuation and nothing else.
 */
     HANDLER_CONTINUATION,

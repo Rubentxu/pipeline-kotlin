@@ -16,7 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
  * companion object preserve credentialsId-first ordering for call sites.
  * ## Module placement
  * Lives in `:pipeline-domain` so that:
- *  - [CredentialProjection][dev.rubentxu.pipeline.v2.domain.credentials.CredentialProjection]
+ *  - [CredentialProjector]
  *    (which consumes the spec) can sit in domain.
  *  - `:pipeline-credentials-executor` can depend on the domain type instead of
  *    the DSL type.
@@ -42,7 +42,7 @@ data class StringBindingSpec(
  * Username/password binding — maps to Jenkins "Username with password" credential.
  * Jenkins verbatim field order: credentialsId, usernameVariable, passwordVariable.
  * Two different env vars are injected — usernameVariable and passwordVariable are
- * NOT the same handle (see [dev.rubentxu.pipeline.v2.domain.credentials.CredentialProjection]).
+ * NOT the same handle (see [CredentialProjector]).
 */
 data class UsernamePasswordBindingSpec(
     override val credentialsId: CredentialsId,

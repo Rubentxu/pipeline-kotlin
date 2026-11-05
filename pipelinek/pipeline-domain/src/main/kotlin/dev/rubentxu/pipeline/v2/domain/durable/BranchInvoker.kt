@@ -44,7 +44,7 @@ fun interface BranchInvoker {
      * `(decision, branches) -> BranchPlan`. Pure, total, no effects.
      * @param decision The reconciler's verdict on the parallel aggregate.
      * @param branches The named branches of the parallel stage, indexed by
-     *   the integer in [StageBody.Parallel.branches]. The names are carried
+     *   the integer in [dev.rubentxu.pipeline.v2.domain.StageBody.Parallel.branches]. The names are carried
      *   into the plan so the runner can emit `ParallelBranchStarted(name=...)`
      *   events with stable human-readable identifiers.
 */

@@ -71,11 +71,11 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
  * 2. **Credential ID substitution**: `$${credentialsId.X}` placeholders are
  *    replaced with `[REDACTED:CREDENTIALS:…]` before the event reaches
  *    the delegate sink.
- * Both layers run BEFORE [delegate.append] is called — the delegate
+ * Both layers run BEFORE `delegate.append` is called — the delegate
  * receives already-sanitized events.
  *
  * ## Performance
- * - Naive [Pattern.quote] alternation for ≤ 20 active secrets
+ * - Naive `Pattern.quote` alternation for ≤ 20 active secrets
  * - Aho-Corasick single-pass for > 20 secrets
  * - One scrub per free-text field the event has, so a wider list does not
  *   make an event more expensive to write

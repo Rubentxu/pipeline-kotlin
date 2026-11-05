@@ -29,7 +29,7 @@ import dev.rubentxu.pipeline.v2.events.EventRecordSlice
  * project envelopes themselves.
  * [EventRecordReadPort] is the new port. It is a thin wrapper around
  * [dev.rubentxu.pipeline.v2.events.EventStore.readRecords] that omits
- * the write side. Adding this port does NOT change [EventStore] or
+ * the write side. Adding this port does NOT change [dev.rubentxu.pipeline.v2.events.EventStore] or
  * [EventTail]; both stay where they are.
  * ## Stability
  * The shape of this port may still change, and it carries no capability id

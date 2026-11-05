@@ -7,7 +7,7 @@ import org.jetbrains.annotations.NotNull
 /**
  * Value class wrapper for a credentials identifier.
  * The ID itself is NOT a secret - it is a public identifier that safely
- * references credentials stored in the [SecretStore][dev.rubentxu.pipeline.v2.credentials.api.SecretStore].
+ * references credentials stored in the `SecretStore`.
  * This is structural redaction: credentials cannot leak through the ID type alone
  * ## Structural Redaction Role
  * [CredentialsId] is the ONLY public reference type for credentials.

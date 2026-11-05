@@ -10,7 +10,7 @@ package dev.rubentxu.pipeline.v2.domain.step
  * a [StepRegistryBuilder] at composition time; [StepRegistry] itself is frozen and has no mutator.
  * The builder's [StepRegistryBuilder.add] fails closed on a duplicate StepKey, so a duplicate
  * contribution (core + plugin, or plugin A + plugin B) is rejected rather than first-wins/last-wins.
- * The distinction is not cosmetic. While this paragraph still said "[StepRegistry.register]", it
+ * The distinction is not cosmetic. While this paragraph still said "`StepRegistry.register`", it
  * named a method that no longer exists, and it was the file a plugin author reads FIRST to learn
  * how to contribute — so the seam's own documentation pointed at an API that could not be called.
  * It survived because no test compiles a sentence: KDoc correctness is not mechanical, and this is
@@ -33,7 +33,7 @@ interface StepDefinitionContributor {
      * `core.`, otherwise `legacy-external`), preserving
      * backwards-compatibility: legacy contributors continue to work
      * without explicit provider metadata, and their events arrive
-     * without [ProviderProvenance] in envelopes.
+     * without `ProviderProvenance` in envelopes.
      * New contributors (OFFICIAL_PLUGIN and beyond) MUST override this
      * method to return a [StepRegistration] per Step with real
      * [StepProviderMetadata] built from a manifest, so envelopes

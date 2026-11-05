@@ -86,7 +86,7 @@ data class ProjectionResult(
 /**
  * Port that maps a typed [CredentialBindingSpec] + resolved
  * [Credential] into the env-var shape that
- * [dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor]
+ * `WithCredentialsExecutor`
  * hands to the durable step.
  * ## Why this exists
  * The previous path inlined a `when (binding.kind)` switch inside the executor

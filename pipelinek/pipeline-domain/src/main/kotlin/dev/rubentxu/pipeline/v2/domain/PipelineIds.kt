@@ -131,12 +131,12 @@ value class RunId(val value: String) {
  * A [CorrelationId] is the identity an EXTERNAL invoker (CI, Fabric, a
  * script) assigns to a single invocation. PipelineK preserves it through
  * the durable state and emits it in:
- *  - The [dev.rubentxu.pipeline.v2.events.RunCorrelated] event.
+ *  - The `RunCorrelated` event.
  *  ## Where it lands in the timeline, and why it is stated rather than inferred
  *  `RunCorrelated` is the FIRST event of a run: it precedes
  *  `CompilationStarted`, which in turn precedes `RunStarted`. That is a
  *  promise this document now makes explicitly, because the previous wording —
- *  "before the first [RunStarted]" — was true but under-determined. It left the
+ *  "before the first `RunStarted`" — was true but under-determined. It left the
  *  position relative to compilation unstated, and three UATs filled the gap by
  *  asserting an order no document had ever promised.
  *  The reason it goes first is not tidiness. `RunCorrelated` is emitted at the

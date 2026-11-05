@@ -152,7 +152,7 @@ data class GateContext(
 
 /**
  * The typed outcome of evaluating a [WhenPredicate].
- * [reason] is carried on the negative cases because "why did my stage not
+ * `reason` is carried on the negative cases because "why did my stage not
  * run" is the first question an operator asks, and reconstructing it from the
  * program text is exactly the work this type exists to save.
 */

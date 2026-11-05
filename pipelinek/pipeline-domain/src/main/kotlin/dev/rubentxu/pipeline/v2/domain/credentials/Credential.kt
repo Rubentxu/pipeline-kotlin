@@ -25,7 +25,7 @@ enum class CredentialScope {
  * Secret bytes (passwords, private keys, file contents) are NEVER present in toString.
  * This sealed hierarchy IS the kind system
  * Kind is the static type, never inferred from byte content.
- * @see dev.rubentxu.pipeline.v2.credentials.api.SecretStore for the store interface
+ * The store that holds them is the `SecretStore` interface.
 */
 sealed interface Credential {
     /**

@@ -46,7 +46,7 @@ interface EventFollower {
      * state) or an [EventFollowEvent.Refused] (declaring why the follow
      * cannot start).
      * Refusal rows in the underlying store are surfaced inside
-     * [EventFollowEvent.Page.slice.refusals] (carried by
+     * [EventRecordSlice.refusals] (carried by
      * [EventRecordSlice.refusals]); the follow itself does not refuse on
      * a single undecodable row.
      * The handle is single-observer: a second consumer that wants to
@@ -166,7 +166,7 @@ data class EventFollowOptions(
      * the last [EventRecordSlice.nextCursor] it observed and reopens
      * with `after = lastCursor`; the implementation begins polling
      * from there. The
-     * [EventRecordReadPort.readRecords] call is the existing primitive
+     * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort.readRecords] call is the existing primitive
      * that backs this.
 */
     val after: EventCursor? = null,

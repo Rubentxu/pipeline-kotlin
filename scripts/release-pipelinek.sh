@@ -3,7 +3,7 @@
 # corrective: a release MUST NOT be published unless the
 # releaseGate produced a PASS receipt bound to the SHA of the ZIP the script
 # then uploads. This script is the only path that calls `gh release create`;
-# it refuses to advance without the six signals:
+# it refuses to advance without the seven signals:
 #   1. Gradle:pipeline-release:releaseGate exits 0 (admission passed)
 #   2. The candidateAdmission receipt (build/candidate/distribution-manifest.json)
 #      names a candidate_id whose sha256 matches the distZip artifact the
@@ -22,6 +22,12 @@
 #      remote published on its own: the published stable tag v0.90.0 was
 #      created by the publishing command itself, and every local check was
 #      green while the release page showed an unsigned tag.
+#   7. The certification receipt ADMITS this candidate. The request that asked
+#      for the certification and the receipt that came back are read by the
+#      admission gate, and the receipt has to be about these bytes, about that
+#      battery, and about every scenario of it. A receipt that names another
+#      candidate is the receipt of another candidate, and a receipt that
+#      covers less than the battery that was asked for is not a certification.
 # Usage:
 #   PIPELINEK_RELEASE_TAG=v0.56.0-rc5 PIPELINEK_RELEASE_TRAIN=0.56.0 \
 #./scripts/release-pipelinek.sh
@@ -250,6 +256,42 @@ LOCAL_SHA=$(sha256sum "$DIST_ZIP" | awk '{print $1}')
 if [ "$RECEIPT_SHA" != "$LOCAL_SHA" ]; then
     echo "release-pipelinek: receipt sha256 ($RECEIPT_SHA) != local ZIP sha256 ($LOCAL_SHA)." >&2
     echo "    The gate admitted different bytes than the file we are about to upload." >&2
+    exit 1
+fi
+
+# ----------------------------------------------------------------------------
+# 4b. The certification receipt must admit this candidate.
+#
+#    The request names the candidate and the battery it was certified against;
+#    the receipt comes back with what was actually executed. The admission gate
+#    reads both and decides, and the decision is the model's: this script only
+#    asks and refuses. A receipt that names another candidate, that names
+#    another battery, that covers less than the battery that was asked for, or
+#    that reports a scenario as anything but passed, does not publish.
+#
+#    Both documents are required. There is no "there was no receipt, carry on"
+#    path: a candidate that was never certified is exactly the candidate this
+#    signal exists to keep out of a release.
+# ----------------------------------------------------------------------------
+
+CERTIFICATION_REQUEST="${PIPELINEK_CERTIFICATION_REQUEST:-}"
+CERTIFICATION_RECEIPT="${PIPELINEK_CERTIFICATION_RECEIPT:-}"
+
+if [ -z "$CERTIFICATION_REQUEST" ] || [ -z "$CERTIFICATION_RECEIPT" ]; then
+    echo "release-pipelinek: refusing to publish a candidate without a certification receipt." >&2
+    echo "    PIPELINEK_CERTIFICATION_REQUEST names the request that asked for the" >&2
+    echo "    certification, and PIPELINEK_CERTIFICATION_RECEIPT names the receipt that" >&2
+    echo "    came back. A candidate is published only when its receipt admits it." >&2
+    exit 1
+fi
+
+if ! ./pipelinek/gradlew --no-daemon -p pipelinek :pipeline-release:certificationAdmission \
+    -Pcertification.request="$CERTIFICATION_REQUEST" \
+    -Pcertification.receipt="$CERTIFICATION_RECEIPT"; then
+    echo "release-pipelinek: the certification receipt does not admit this candidate." >&2
+    echo "    Nothing is published. The reason is above, violation by violation;" >&2
+    echo "    certify this candidate against the requested battery and hand the receipt" >&2
+    echo "    back. Do not edit the receipt by hand." >&2
     exit 1
 fi
 

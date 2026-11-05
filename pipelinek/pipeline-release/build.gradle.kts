@@ -638,3 +638,96 @@ tasks.register("releaseGate") {
 // (`:pipeline-application:installDist`) and then runs the unit tests, the integration tests and
 // the mutants against it. That path executes the shipped bytes, so it certifies the artifact
 // instead of asserting a tag over an empty classpath.
+
+// ----------------------------------------------------------------------------
+// The certification request and the certification admission.
+//
+// The request says WHAT is certified and AGAINST WHICH battery; the admission
+// says whether the receipt that came back admits the candidate that was
+// asked about. Both are pure decisions in this module -- the request is built
+// from a candidate handoff and a published catalogue, and the admission is
+// derived from a request and a receipt -- so these two tasks only resolve
+// paths, hand the arguments over and propagate the exit code.
+//
+// The admission task's exit code IS the gate: a non-zero exit means the
+// candidate is not certified, and the publisher that asks for it fails on the
+// spot with the model's own diagnostic.
+//
+// The properties are read at configuration time and stored as inputs, so a
+// run over different documents re-runs the task instead of reusing a verdict
+// that was reached over other bytes.
+tasks.register<JavaExec>("certificationRequest") {
+    group = "distribution"
+    description = "state the certification request for the candidate and the published battery."
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.CertificationRequestMainKt")
+
+    val handoff = providers.gradleProperty("certification.handoff").orElse("").get()
+    val catalogue = providers.gradleProperty("certification.catalogue").orElse("").get()
+    val out = providers.gradleProperty("certification.out").orElse("").get()
+
+    inputs.property("certification.handoff", handoff)
+    inputs.property("certification.catalogue", catalogue)
+    if (handoff.isNotBlank()) inputs.files(handoff)
+    if (catalogue.isNotBlank()) inputs.files(catalogue)
+
+    doFirst {
+        listOf(
+            "certification.handoff" to handoff,
+            "certification.catalogue" to catalogue,
+            "certification.out" to out,
+        ).forEach { (name, value) ->
+            if (value.isBlank()) {
+                throw GradleException(
+                    "certificationRequest: -P$name is required. A request names a candidate and " +
+                        "the battery it is asked against, and it cannot be stated without both.",
+                )
+            }
+        }
+    }
+
+    args = listOf(handoff, catalogue, out)
+
+    // Any non-zero exit means the request could not be stated. Propagate it
+    // verbatim: the diagnostic printed by the model is the operator-facing
+    // message.
+    isIgnoreExitValue = false
+}
+
+tasks.register<JavaExec>("certificationAdmission") {
+    group = "distribution"
+    description = "decide whether a certification receipt admits the candidate."
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.CertificationAdmissionMainKt")
+
+    val request = providers.gradleProperty("certification.request").orElse("").get()
+    val receipt = providers.gradleProperty("certification.receipt").orElse("").get()
+
+    inputs.property("certification.request", request)
+    inputs.property("certification.receipt", receipt)
+    if (request.isNotBlank()) inputs.files(request)
+    if (receipt.isNotBlank()) inputs.files(receipt)
+
+    doFirst {
+        listOf(
+            "certification.request" to request,
+            "certification.receipt" to receipt,
+        ).forEach { (name, value) ->
+            if (value.isBlank()) {
+                throw GradleException(
+                    "certificationAdmission: -P$name is required. A candidate is published only " +
+                        "with a receipt that admits it, and a receipt is judged against the " +
+                        "request that asked for it.",
+                )
+            }
+        }
+    }
+
+    args = listOf(request, receipt)
+
+    // Any non-zero exit means the receipt does not admit the candidate, and
+    // the publisher MUST NOT continue.
+    isIgnoreExitValue = false
+}

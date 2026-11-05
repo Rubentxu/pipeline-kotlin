@@ -52,12 +52,20 @@ interface SecretStore : AutoCloseable {
     fun get(id: CredentialsId): Credential
 
     /**
-     * Retrieves a credential as [SecretHandle] (v1 compatibility).
-     * This is the compatibility method. Prefer [get] which returns
-     * the typed [Credential].
+     * Retrieves a credential as [SecretHandle].
+     *
+     * The handle carries the SECRET of the credential and nothing else: the
+     * bytes of a [dev.rubentxu.pipeline.v2.domain.credentials.SecretText], and
+     * never the store's own serialization of it. A credential that is not one
+     * secret -- a username and a password, a private key and its owner, an
+     * archive of several entries -- is refused, because a single opaque value
+     * cannot say which of its parts it carries.
+     *
      * @param id The credential ID
      * @return [SecretHandle] wrapping the secret bytes
      * @throws SecretStoreException if not found or tampered
+     * @throws CredentialsStoreProjectionException if the credential is not a
+     *   single secret
 */
     fun getAsSecretHandle(id: CredentialsId): SecretHandle
 
@@ -151,6 +159,33 @@ open class CredentialsStorePosixPermissionsException(message: String) : SecretSt
 */
 open class CredentialsStoreCommitException(message: String, cause: Throwable? = null) :
     SecretStoreException(message, cause)
+
+/**
+ * Thrown when a credential is asked for as ONE secret and the kind it holds is
+ * not one secret.
+ *
+ * A credential that carries a username AND a password, a private key AND its
+ * owner, or an archive of several entries cannot be delivered as a single
+ * opaque value: the blob would have to pick one of its parts without saying
+ * which, and the caller would hold bytes it cannot interpret. The store
+ * refuses rather than guesses, and it never hands out its own serialization of
+ * the credential as if it were the secret.
+ *
+ * The refusal names the kind the store holds, so the operator knows what is
+ * there. A caller that wants the typed credential asks for it
+ * ([SecretStore.get]); a caller that wants one part asks for it by name
+ * ([SecretStore.getAsHandle]).
+ *
+ * @param credentialId The credential the store holds
+ * @param foundKind The kind it holds, named as the credential names it
+*/
+open class CredentialsStoreProjectionException(
+    val credentialId: CredentialsId,
+    val foundKind: String,
+) : SecretStoreException(
+    "Credential '${credentialId.value}' is of kind '$foundKind', which is not a single secret: " +
+        "it is not delivered as one opaque value. Read the typed credential, or the part by name.",
+)
 
 /**
  * Thrown when a [dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef]

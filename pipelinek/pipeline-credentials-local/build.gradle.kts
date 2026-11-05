@@ -23,6 +23,13 @@ dependencies {
 
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    // The credential scope's constructor names an EventSink, and the api
+    // module keeps pipeline-events on its own lane rather than exposing it.
+    // A consumer that BUILDS a scope has to name the sink's type, so the lane
+    // that builds one has to see the module that declares it. The dependency
+    // is test-only: nothing this module publishes depends on it.
+    testImplementation(project(":pipeline-events"))
 }
 
 tasks.test {

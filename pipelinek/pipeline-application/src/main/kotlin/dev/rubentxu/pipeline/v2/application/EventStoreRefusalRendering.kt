@@ -12,8 +12,8 @@ import dev.rubentxu.pipeline.v2.events.durable.EventStoreRefusal
  * make one verb's meaning the default for all the others.
 */
 internal fun EventStoreRefusal.render(): String = when (this) {
-    is EventStoreRefusal.Absent -> "Error: db not found: $path"
-    is EventStoreRefusal.NoDirectory -> "Error: no directory for db: $path"
-    is EventStoreRefusal.NotReadable -> "Error: db is not readable: $path ($detail)"
-    is EventStoreRefusal.NoEventHistory -> "Error: db has no event history: $path"
+    is EventStoreRefusal.Absent -> "Error: db not found: ${renderValue(path)}"
+    is EventStoreRefusal.NoDirectory -> "Error: no directory for db: ${renderValue(path)}"
+    is EventStoreRefusal.NotReadable -> "Error: db is not readable: ${renderValue(path)} ($detail)"
+    is EventStoreRefusal.NoEventHistory -> "Error: db has no event history: ${renderValue(path)}"
 }

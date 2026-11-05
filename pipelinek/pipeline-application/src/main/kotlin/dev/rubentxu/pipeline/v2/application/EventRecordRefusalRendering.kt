@@ -19,10 +19,10 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal
  */
 internal fun EventRecordReadRefusal.render(): String = when (this) {
     is EventRecordReadRefusal.UnknownRun ->
-        "Error: unknown run: $runId"
+        "Error: unknown run: ${renderValue(runId)}"
 
     is EventRecordReadRefusal.CursorBeyondTail ->
-        "Error: cursor $requestedSequence is past the tail of run $runId (tail $tailSequence)"
+        "Error: cursor $requestedSequence is past the tail of run ${renderValue(runId)} (tail $tailSequence)"
 
     is EventRecordReadRefusal.StorageError ->
         "Error: event store failed: $cause"

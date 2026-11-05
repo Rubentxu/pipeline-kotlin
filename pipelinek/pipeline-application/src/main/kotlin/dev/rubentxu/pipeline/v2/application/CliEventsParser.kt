@@ -31,7 +31,7 @@ internal object CliEventsParser {
         val parsedLimit = if (limitArg != null) {
             val p = limitArg.toIntOrNull()
             if (p == null || p <= 0) {
-                return EventsCliParseResult.Rejected("--limit must be a positive integer, got: $limitArg")
+                return EventsCliParseResult.Rejected("--limit must be a positive integer, got: ${renderValue(limitArg)}")
             }
             p
         } else EVENTS_DEFAULT_LIMIT
@@ -135,9 +135,9 @@ internal object CliEventsParser {
                 }
 
                 else -> when {
-                    arg.startsWith("--") -> return EventsScanResult.Rejected("unknown option: $arg")
+                    arg.startsWith("--") -> return EventsScanResult.Rejected("unknown option: ${renderValue(arg)}")
                     options.runId != null ->
-                        return EventsScanResult.Rejected("unexpected extra argument: $arg")
+                        return EventsScanResult.Rejected("unexpected extra argument: ${renderValue(arg)}")
 
                     else -> options.runId = arg
                 }

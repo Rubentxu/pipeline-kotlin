@@ -48,7 +48,7 @@ fun CliError.toCliExit(): CliExit = when (this) {
         hint = "run 'pipelinek --help'",
     )
     is CliError.InvalidCommand -> CliExit.InvalidArgument(
-        message = "unknown command: $value",
+        message = "unknown command: ${renderValue(value)}",
         hint = "expected one of: ${CLI_VERBS.joinToString(", ") { it.label }}; run 'pipelinek --help'",
     )
     is CliError.MissingOptionValue -> CliExit.InvalidArgument(
@@ -58,31 +58,31 @@ fun CliError.toCliExit(): CliExit = when (this) {
         message = "--resume and --rerun are mutually exclusive",
     )
     is CliError.ConflictingWorkspaceModes -> CliExit.InvalidArgument(
-        message = "conflicting workspace modes: $workspace",
+        message = "conflicting workspace modes: ${renderValue(workspace)}",
         hint = "--isolated requests a PipelineK-managed scratch workspace while --workspace attaches a " +
             "user directory; choose one",
     )
     is CliError.InvalidSandboxProfile -> CliExit.InvalidArgument(
-        message = "invalid sandbox profile: $value",
+        message = "invalid sandbox profile: ${renderValue(value)}",
     )
     is CliError.UnsupportedSandboxProfile -> CliExit.RuntimeNotAvailable(
-        message = "sandbox profile not supported in this build: $value",
+        message = "sandbox profile not supported in this build: ${renderValue(value)}",
         hint = "use 'none', 'local' or 'confined' instead, or rebuild the runtime with the requested " +
             "profile enabled",
     )
     is CliError.IsolationRequestRefused -> isolationRefusalExit(reason, required)
     is CliError.UnknownOption -> CliExit.InvalidArgument(
-        message = "unknown option: $value",
+        message = "unknown option: ${renderValue(value)}",
     )
     CliError.MissingScriptPath -> CliExit.InvalidArgument(
         message = "missing script path",
     )
     is CliError.TrailingOption -> CliExit.InvalidArgument(
-        message = "trailing option without value: $value",
+        message = "trailing option without value: ${renderValue(value)}",
         hint = "options must appear before the script path, not after it",
     )
     is CliError.InvalidView -> CliExit.InvalidArgument(
-        message = "invalid view: $value",
+        message = "invalid view: ${renderValue(value)}",
         hint = "known views: ${ObservationView.entries.joinToString(", ") { it.name.lowercase() }}",
     )
     is CliError.UnavailableView -> CliExit.RuntimeNotAvailable(
@@ -91,7 +91,7 @@ fun CliError.toCliExit(): CliExit = when (this) {
             "'pipeline console'",
     )
     is CliError.InvalidFormat -> CliExit.InvalidArgument(
-        message = "invalid format: $value",
+        message = "invalid format: ${renderValue(value)}",
         hint = "known formats: ${ObservationFormat.entries.joinToString(", ") { it.wire }}",
     )
     is CliError.EmptyTextFilter -> CliExit.InvalidArgument(
@@ -104,7 +104,7 @@ fun CliError.toCliExit(): CliExit = when (this) {
         hint = "--grep-invert needs at least one --grep/--grep-regex to negate",
     )
     is CliError.InvalidChannel -> CliExit.InvalidArgument(
-        message = "invalid channel: $value",
+        message = "invalid channel: ${renderValue(value)}",
         hint = "known channels: ${OutputChannel.entries.joinToString(", ") { it.token }}",
     )
     is CliError.OptionNotReadable -> CliExit.InvalidArgument(
@@ -114,7 +114,7 @@ fun CliError.toCliExit(): CliExit = when (this) {
     )
     is CliError.InvalidQuery -> CliExit.InvalidArgument(message = "invalid query: $reason")
     is CliError.FollowNeedsAnIncrementalFormat -> CliExit.InvalidArgument(
-        message = "--follow requires an incremental format; got $format",
+        message = "--follow requires an incremental format; got ${renderValue(format)}",
         hint = "use --format jsonl, where every line stands alone and needs no closing bracket",
     )
     is CliError.OptionBelongsToObserve -> CliExit.InvalidArgument(
@@ -126,35 +126,35 @@ fun CliError.toCliExit(): CliExit = when (this) {
         hint = "use --view console",
     )
     is CliError.InvalidTailBytes -> CliExit.InvalidArgument(
-        message = "invalid --tail-bytes value: $value",
+        message = "invalid --tail-bytes value: ${renderValue(value)}",
         hint = "omit it to read the whole plane",
     )
     is CliError.InvalidOutcome -> CliExit.InvalidArgument(
-        message = "invalid --outcome filter: $value",
+        message = "invalid --outcome filter: ${renderValue(value)}",
         hint = "known outcomes: ${ObservedOutcome.tokens.joinToString(", ")}",
     )
     is CliError.InvalidLimit -> CliExit.InvalidArgument(
-        message = "invalid --limit value: $value",
+        message = "invalid --limit value: ${renderValue(value)}",
         hint = "omit it to show everything",
     )
     is CliError.OptionValueIsAnOption -> CliExit.InvalidArgument(
-        message = "value for option $option looks like another option: $value",
+        message = "value for option $option looks like another option: ${renderValue(value)}",
         hint = "this build refuses a value spelled like one of its own options; quoting it or writing " +
             "'$option=$value' does not change that, so pass a different value",
     )
     is CliError.UnexpectedPositional -> CliExit.InvalidArgument(
-        message = "unexpected argument: $value",
+        message = "unexpected argument: ${renderValue(value)}",
         hint = "this command takes no positional argument",
     )
     is CliError.TooManyPositionals -> CliExit.InvalidArgument(
-        message = "unexpected argument: $value",
+        message = "unexpected argument: ${renderValue(value)}",
         hint = "this command takes one positional argument",
     )
     is CliError.MissingRequiredArgument -> CliExit.InvalidArgument("missing required argument: $argument", why)
     is CliError.InvalidOptionValue -> CliExit.InvalidArgument("invalid value for $option: $reason")
     is CliError.InvalidCombination -> CliExit.InvalidArgument("invalid combination: $reason")
     is CliError.OptionBelongsToVerb -> CliExit.InvalidArgument("option $option belongs to '$owner': $why")
-    is CliError.UnknownSubcommand -> CliExit.InvalidArgument("unknown subcommand: $value", "expected one of: ${expected.joinToString(", ") { "'$it'" }}")
+    is CliError.UnknownSubcommand -> unknownSubcommandExit(value, expected)
     is CliError.RunIdCannotNameADirectory -> CliExit.InvalidArgument(
         message = "run id '$runId' cannot name a durable directory",
         hint = "a run id may contain only letters, digits, '.', '_' and '-'",
@@ -176,6 +176,19 @@ private fun isolationRefusalExit(
     message = isolationRefusalMessage(reason, required),
     hint = isolationRefusalHint(reason),
 )
+
+/**
+ * The exit a refusal about a subcommand the command does not have becomes.
+ *
+ * The word the operator wrote is named, and the words the command DOES take are
+ * named after it: a refusal that names the mistake without naming the way out
+ * leaves the operator to guess.
+ */
+private fun unknownSubcommandExit(value: String, expected: List<String>): CliExit =
+    CliExit.InvalidArgument(
+        message = "unknown subcommand: ${renderValue(value)}",
+        hint = "expected one of: ${expected.joinToString(", ") { "'$it'" }}",
+    )
 
 /**
  * The hint a refusal carries.

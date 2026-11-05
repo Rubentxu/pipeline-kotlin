@@ -296,14 +296,14 @@ object MainSagaInspectCli {
  */
 private fun SagaInspectionRefusal.render(): String = when (this) {
     is SagaInspectionRefusal.NoSuchDatabase ->
-        "there is no database at $path"
+        "there is no database at ${renderValue(path)}"
 
     is SagaInspectionRefusal.NotAStore ->
-        "$path is not a pipeline store: it has no event log"
+        "${renderValue(path)} is not a pipeline store: it has no event log"
 
     is SagaInspectionRefusal.NoSagaObligations ->
-        "$path has no saga promise table, so it cannot say what any saga owes"
+        "${renderValue(path)} has no saga promise table, so it cannot say what any saga owes"
 
     is SagaInspectionRefusal.Unreadable ->
-        "the durable state at $path could not be read: $detail"
+        "the durable state at ${renderValue(path)} could not be read: $detail"
 }

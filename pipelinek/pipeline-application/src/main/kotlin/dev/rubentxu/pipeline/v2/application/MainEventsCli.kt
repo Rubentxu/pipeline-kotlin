@@ -237,7 +237,7 @@ object MainEventsCli {
         }
         val cursor = p.afterCursor?.let { token ->
             EventCursor.decode(token) ?: run {
-                err.println("Error: invalid cursor token: $token")
+                err.println("Error: invalid cursor token: ${renderValue(token)}")
                 return CliExit.INVALID_ARGUMENT.code
             }
         }

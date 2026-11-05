@@ -318,13 +318,13 @@ object MainInspectCli {
         dbPath: String,
         wholeRunReport: Boolean,
         err: PrintStream,
-    ): List<DomainEvent>? = foldRunEvents(runId, dbPath, wholeRunReport, fold = { it.toList() }, err = err)
+    ): List<DomainEvent>? = foldRunEvents(runId, dbPath, wholeRunReport, fold = { it.events().toList() }, err = err)
 
     private fun <T> foldRunEvents(
         runId: String,
         dbPath: String,
         wholeRunReport: Boolean,
-        fold: (Sequence<DomainEvent>) -> T,
+        fold: (RunEventSource) -> T,
         err: PrintStream,
     ): T? {
         return when (val read = InspectionReader.foldRunEvents(runId, dbPath, wholeRunReport, fold)) {
@@ -441,7 +441,13 @@ object MainInspectCli {
 
         // Read-only admission: a missing store is refused here and no file is
         // created, so profiling a mistyped run id cannot fabricate a database.
-        val costInput = foldRunEvents(runId, dbPath, wholeRunReport = true, RunCostProjection::project, err = err) ?: return CliExit.INVALID_ARGUMENT.code
+        val costInput = foldRunEvents(
+            runId,
+            dbPath,
+            wholeRunReport = true,
+            fold = { RunCostProjection.project(it.events()) },
+            err = err,
+        ) ?: return CliExit.INVALID_ARGUMENT.code
 
         val outcome = summarize(costInput)
         val lines = when (query.format) {
@@ -470,7 +476,13 @@ object MainInspectCli {
 
         // Read-only admission: a missing store is refused and no file is
         // created, so explaining a mistyped run id cannot fabricate a database.
-        val diagnosis = foldRunEvents(runId, dbPath, wholeRunReport = true, RunExplainProjection::project, err = err) ?: return CliExit.INVALID_ARGUMENT.code
+        val diagnosis = foldRunEvents(
+            runId,
+            dbPath,
+            wholeRunReport = true,
+            fold = { RunExplainProjection.project(it.events()) },
+            err = err,
+        ) ?: return CliExit.INVALID_ARGUMENT.code
         val lines = when (query.format) {
             MainInspectCli.InspectFormat.JSON -> RunExplainReport.jsonLines(runId, diagnosis)
             MainInspectCli.InspectFormat.TEXT -> RunExplainReport.textLines(runId, diagnosis)
@@ -505,16 +517,21 @@ object MainInspectCli {
                 "inspect", err = err
             )
 
-        val trace = foldRunEvents(runId, dbPath, wholeRunReport = true, fold = { events ->
-            RunTelemetryProjection.fromEvents(runId, events)
+        foldRunEvents(runId, dbPath, wholeRunReport = true, fold = { events ->
+            // The export is produced INSIDE the read: the source replays the
+            // run, and the store is admitted only for as long as this scope
+            // lasts. A projection that held the run instead of reading it
+            // twice would not need the scope — and that is the whole point.
+            val source = RunTelemetryProjection.source(runId, events::events)
+            if (query.otlp) {
+                RunTelemetryOtlp.write(source.traceId, source.signals(), out)
+            } else {
+                RunTelemetryReport.forEachJsonLine(source.runId, source.traceId, source.signals()) { line ->
+                    out.println(line)
+                }
+            }
         }, err = err) ?: return CliExit.INVALID_ARGUMENT.code
-        if (query.otlp) {
-            RunTelemetryOtlp.writeSpans(trace, out)
-            RunTelemetryOtlp.writeMetrics(trace, out)
-            out.flush()
-            return CliExit.SUCCESS.code
-        }
-        RunTelemetryReport.forEachJsonLine(trace) { line -> out.println(line) }
+        out.flush()
         return CliExit.SUCCESS.code
     }
 

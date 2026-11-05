@@ -4,7 +4,6 @@ import dev.rubentxu.pipeline.v2.runtime.TelemetrySource
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TELEMETRY_SCHEMA
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetrySignal
-import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryTrace
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.SpanContext
 import io.opentelemetry.api.trace.SpanKind
@@ -157,7 +156,8 @@ object RunTelemetryOtlp {
     private val SCOPE: InstrumentationScopeInfo = InstrumentationScopeInfo.create(SCOPE_NAME)
 
     /**
-     * The spans of [trace] that COMPLETED, in the shape the format reads.
+     * The spans of a stream of signals that COMPLETED, in the shape the
+     * format reads.
      *
      * A span with no end, or with an end that precedes its own start, is
      * not a measurement and does not become one here.
@@ -174,76 +174,25 @@ object RunTelemetryOtlp {
      * That is not a loss: a span is a fact about an interval that is over,
      * and the interval is over when it closes.
      */
-    fun spans(trace: TelemetryTrace): Sequence<SpanData> = sequence {
-        val inDoubt = LinkedHashMap<String, TelemetrySignal.SpanStarted>()
-        for (signal in trace.signals) {
-            when (signal) {
-                is TelemetrySignal.SpanStarted -> {
-                    // A repeated opening is not a new fact: the span keeps
-                    // the opening it was first measured against.
-                    if (signal.spanId !in inDoubt) inDoubt[signal.spanId] = signal
-                }
-
-                is TelemetrySignal.SpanEnded -> {
-                    val start = inDoubt.remove(signal.spanId) ?: continue
-                    if (signal.endedAtMs < start.startedAtMs) continue
-                    yield(HistoricalSpan(start, signal, trace.traceId))
-                }
-
-                else -> Unit
-            }
+    fun spans(traceId: String, signals: Sequence<TelemetrySignal>): Sequence<SpanData> = sequence {
+        val joiner = SpanJoiner(traceId)
+        for (signal in signals) {
+            val span = joiner.join(signal) ?: continue
+            yield(span)
         }
     }
 
     /**
-     * The metrics of [trace], in the shape the format reads.
-     *
-     * The counters are monotonic sums, one data point per distinct
-     * dimension set, with the values summed; the durations are histograms,
-     * with the count of samples, their sum, and the bucket counts over the
-     * bounds of this object.
-     *
-     * The signals are folded as they are read: a sample is counted and then
-     * forgotten, so the memory this costs is the set of DISTINCT dimension
-     * sets and not the number of samples.
-     */
-    fun metrics(trace: TelemetryTrace): List<MetricData> {
-        val window = window(trace)
-        val counters = LinkedHashMap<MetricKey, Long>()
-        val histograms = LinkedHashMap<MetricKey, DurationTally>()
-        for (signal in trace.signals) {
-            when (signal) {
-                is TelemetrySignal.Counter -> {
-                    val key = MetricKey(signal.name, signal.dimensions)
-                    counters[key] = (counters[key] ?: 0L) + signal.value
-                }
-
-                is TelemetrySignal.Histogram -> {
-                    val key = MetricKey(signal.name, signal.dimensions)
-                    (histograms[key] ?: DurationTally().also { histograms[key] = it }).add(signal.milliseconds)
-                }
-
-                else -> Unit
-            }
-        }
-        return counters.map { (key, value) ->
-            counterMetric(key.name, key.dimensions, value, window)
-        } + histograms.map { (key, tally) ->
-            histogramMetric(key.name, key.dimensions, tally, window)
-        }
-    }
-
-    /**
-     * Writes the spans of [trace] as OTLP requests, one per line.
+     * Writes the spans of a stream of signals as OTLP requests, one per line.
      *
      * Only the spans that COMPLETED travel: a span with no end, or with an
      * end that precedes its own start, is not a measurement and does not
      * become one here.
      */
-    fun writeSpans(trace: TelemetryTrace, out: OutputStream) {
+    fun writeSpans(traceId: String, signals: Sequence<TelemetrySignal>, out: OutputStream) {
         val batch = ArrayList<SpanData>(SPANS_PER_REQUEST)
         var written = false
-        for (span in spans(trace)) {
+        for (span in spans(traceId, signals)) {
             batch.add(span)
             if (batch.size == SPANS_PER_REQUEST) {
                 writeSpanRequest(batch, out)
@@ -258,12 +207,60 @@ object RunTelemetryOtlp {
     }
 
     /**
-     * Writes the metrics of [trace] as OTLP requests, one per line.
+     * Writes the metrics of a stream of signals as OTLP requests, one per
+     * line.
+     *
+     * The metrics are the ones that need the WHOLE export folded, so the
+     * signals are counted as they are read and then forgotten: what this
+     * holds is the set of DISTINCT dimension sets and not the number of
+     * samples.
      */
-    fun writeMetrics(trace: TelemetryTrace, out: OutputStream) {
+    fun writeMetrics(signals: Sequence<TelemetrySignal>, out: OutputStream): Unit {
+        val folder = MetricFolder()
+        for (signal in signals) folder.accept(signal)
+        writeMetricRequests(folder, out)
+    }
+
+    /**
+     * Writes the spans AND the metrics of a stream of signals as OTLP
+     * requests, one per line, in ONE traversal.
+     *
+     * The two documents are the same two the trace-based writer writes, and
+     * in the same order: the spans first, and the metrics after them. The
+     * reason to write them together is the traversal: the metrics are the
+     * ones that need the whole export folded, and a reader that had to
+     * traverse the run once per document would read it twice for nothing.
+     */
+    fun write(traceId: String, signals: Sequence<TelemetrySignal>, out: OutputStream) {
+        val joiner = SpanJoiner(traceId)
+        val folder = MetricFolder()
+        val batch = ArrayList<SpanData>(SPANS_PER_REQUEST)
+        var written = false
+        for (signal in signals) {
+            folder.accept(signal)
+            val span = joiner.join(signal) ?: continue
+            batch.add(span)
+            if (batch.size == SPANS_PER_REQUEST) {
+                writeSpanRequest(batch, out)
+                written = true
+                batch.clear()
+            }
+        }
+        if (batch.isNotEmpty() || !written) writeSpanRequest(batch, out)
+        writeMetricRequests(folder, out)
+    }
+
+    /** The metric requests of a folded export, one per line. */
+    private fun writeMetricRequests(folder: MetricFolder, out: OutputStream) {
+        val window = folder.window()
+        val metrics = folder.counters.map { (key, value) ->
+            counterMetric(key.name, key.dimensions, value, window)
+        } + folder.histograms.map { (key, tally) ->
+            histogramMetric(key.name, key.dimensions, tally, window)
+        }
         val batch = ArrayList<MetricData>(METRICS_PER_REQUEST)
         var written = false
-        for (metric in metrics(trace)) {
+        for (metric in metrics) {
             batch.add(metric)
             if (batch.size == METRICS_PER_REQUEST) {
                 writeMetricRequest(batch, out)
@@ -318,25 +315,88 @@ object RunTelemetryOtlp {
     }
 
     /**
-     * The window the metrics belong to: the first and the last moment the
-     * export's spans name. A metric without a window is a metric nobody can
-     * place on a timeline, and the export's own timestamps are the only
-     * window it can honestly claim.
+     * The metrics of an export, folded as its signals are read.
+     *
+     * The counters are monotonic sums, one data point per distinct
+     * dimension set, with the values summed; the durations are histograms,
+     * with the count of samples, their sum, and the bucket counts over the
+     * bounds of this object.
+     *
+     * A sample is counted and then forgotten, so what this holds is the set
+     * of DISTINCT dimension sets and not the number of samples.
      */
-    private fun window(trace: TelemetryTrace): Window {
-        var first = Long.MAX_VALUE
-        var last = Long.MIN_VALUE
-        for (signal in trace.signals) {
+    private class MetricFolder {
+
+        /** The counters, one sum per dimension set. */
+        val counters = LinkedHashMap<MetricKey, Long>()
+
+        /** The durations, one tally per dimension set. */
+        val histograms = LinkedHashMap<MetricKey, DurationTally>()
+
+        private var first = Long.MAX_VALUE
+        private var last = Long.MIN_VALUE
+
+        /** Count one signal into the export's metrics. */
+        fun accept(signal: TelemetrySignal) {
             val moment = when (signal) {
                 is TelemetrySignal.SpanStarted -> signal.startedAtMs
                 is TelemetrySignal.SpanEnded -> signal.endedAtMs
-                else -> continue
+                else -> null
             }
-            if (moment < first) first = moment
-            if (moment > last) last = moment
+            if (moment != null) {
+                if (moment < first) first = moment
+                if (moment > last) last = moment
+            }
+            when (signal) {
+                is TelemetrySignal.Counter -> {
+                    val key = MetricKey(signal.name, signal.dimensions)
+                    counters[key] = (counters[key] ?: 0L) + signal.value
+                }
+
+                is TelemetrySignal.Histogram -> {
+                    val key = MetricKey(signal.name, signal.dimensions)
+                    (histograms[key] ?: DurationTally().also { histograms[key] = it }).add(signal.milliseconds)
+                }
+
+                else -> Unit
+            }
         }
-        if (first == Long.MAX_VALUE) return Window(0L, 0L)
-        return Window(first * NANOS_PER_MILLI, last * NANOS_PER_MILLI)
+
+        /** The window the export's spans name. */
+        fun window(): Window =
+            if (first == Long.MAX_VALUE) Window(0L, 0L) else Window(first * NANOS_PER_MILLI, last * NANOS_PER_MILLI)
+    }
+
+    /**
+     * Joins the openings of the spans with their endings.
+     *
+     * A span is published the moment its ending arrives, and the opening it
+     * is measured against is forgotten at that same moment. The only thing
+     * this holds is the set of spans still in doubt — the ones that opened
+     * and have not closed yet — so its memory is proportional to how DEEP
+     * the run is, and not to how long its history is.
+     */
+    private class SpanJoiner(private val traceId: String) {
+
+        private val inDoubt = LinkedHashMap<String, TelemetrySignal.SpanStarted>()
+
+        /** The span this signal completes, or nothing when it completes none. */
+        fun join(signal: TelemetrySignal): SpanData? = when (signal) {
+            is TelemetrySignal.SpanStarted -> {
+                // A repeated opening is not a new fact: the span keeps
+                // the opening it was first measured against.
+                if (signal.spanId !in inDoubt) inDoubt[signal.spanId] = signal
+                null
+            }
+
+            is TelemetrySignal.SpanEnded -> {
+                val start = inDoubt.remove(signal.spanId)
+                if (start == null || signal.endedAtMs < start.startedAtMs) null
+                else HistoricalSpan(start, signal, traceId)
+            }
+
+            else -> null
+        }
     }
 
     /** The span of the export, in the shape the format reads. */
@@ -394,6 +454,35 @@ object RunTelemetryOtlp {
         override fun getInstrumentationScopeInfo(): InstrumentationScopeInfo = SCOPE
 
         override fun getResource(): Resource = RESOURCE
+
+        /** The attributes this span carries, in the format's own value types. */
+        private fun spanAttributes(attributes: List<TelemetryAttribute>): Attributes {
+            val builder = Attributes.builder()
+            for (attribute in attributes) {
+                when (attribute) {
+                    is TelemetryAttribute.Text -> builder.put(attribute.key, attribute.value)
+                    is TelemetryAttribute.Count -> builder.put(attribute.key, attribute.value)
+                    is TelemetryAttribute.Flag -> builder.put(attribute.key, attribute.value)
+                }
+            }
+            return builder.build()
+        }
+
+        /**
+         * The context of this span: the trace it belongs to and its own id.
+         *
+         * The ids are the export's own hexadecimal identifiers, and the
+         * format reads them as bytes. A context that cannot be built would
+         * publish a span with an identifier of zeros — an identifier that
+         * belongs to no span — so a malformed id yields the invalid context
+         * instead, and the document says nothing about that span.
+         */
+        private fun spanContext(traceId: String, spanId: String): SpanContext =
+            if (TRACE_ID.matches(traceId) && SPAN_ID.matches(spanId)) {
+                SpanContext.create(traceId, spanId, TraceFlags.getSampled(), TraceState.getDefault())
+            } else {
+                SpanContext.getInvalid()
+            }
     }
 
     /** The metric of the export, in the shape the format reads. */
@@ -452,39 +541,10 @@ object RunTelemetryOtlp {
     /** The name and the dimensions that tell one metric from another. */
     private data class MetricKey(val name: String, val dimensions: Map<String, String>)
 
-    /** The attributes a span carries, in the format's own value types. */
-    private fun spanAttributes(attributes: List<TelemetryAttribute>): Attributes {
-        val builder = Attributes.builder()
-        for (attribute in attributes) {
-            when (attribute) {
-                is TelemetryAttribute.Text -> builder.put(attribute.key, attribute.value)
-                is TelemetryAttribute.Count -> builder.put(attribute.key, attribute.value)
-                is TelemetryAttribute.Flag -> builder.put(attribute.key, attribute.value)
-            }
-        }
-        return builder.build()
-    }
-
     /** The attributes a metric carries: the dimensions, as text. */
     private fun dimensionAttributes(dimensions: Map<String, String>): Attributes {
         val builder = Attributes.builder()
         dimensions.forEach { (key, value) -> builder.put(key, value) }
         return builder.build()
     }
-
-    /**
-     * The context of one span: the trace it belongs to and its own id.
-     *
-     * The ids are the export's own hexadecimal identifiers, and the format
-     * reads them as bytes. A context that cannot be built would publish a
-     * span with an identifier of zeros — an identifier that belongs to no
-     * span — so a malformed id yields the invalid context instead, and the
-     * document says nothing about that span.
-     */
-    private fun spanContext(traceId: String, spanId: String): SpanContext =
-        if (TRACE_ID.matches(traceId) && SPAN_ID.matches(spanId)) {
-            SpanContext.create(traceId, spanId, TraceFlags.getSampled(), TraceState.getDefault())
-        } else {
-            SpanContext.getInvalid()
-        }
 }

@@ -17,10 +17,12 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TELEMETRY_INVALID_INTERVAL_COUNTER
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TELEMETRY_SCHEMA
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
+import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryDimensionCap
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryPolicy
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetrySignal
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryTrace
 import dev.rubentxu.pipeline.v2.runtime.telemetry.redactAndLimit
+import kotlin.sequences.SequenceScope
 
 /**
  * Projects a run's persisted events into telemetry signals.
@@ -52,6 +54,14 @@ import dev.rubentxu.pipeline.v2.runtime.telemetry.redactAndLimit
  *    impossible instead of inventing a number.
  *  - **The trace is a field.** The trace id is part of the export, not a
  *    derivation each consumer repeats.
+ *
+ * ## Two shapes, one projection
+ *
+ * The projection produces its signals one at a time, and there are two ways
+ * to take them: [fromEvents] collects them into a [TelemetryTrace] —a
+ * published shape that carries its signals in a list— and [source] hands them
+ * over as they are produced, without holding any of them. The second is what
+ * an export of a long run uses: the run behind it is read, not kept.
  */
 object RunTelemetryProjection {
 
@@ -60,25 +70,88 @@ object RunTelemetryProjection {
     private const val SPAN_STAGE = "stage"
     private const val SPAN_STEP = "step"
 
+    /**
+     * The run's telemetry as a trace that holds every signal of the export.
+     *
+     * The trace is a published shape and it carries its signals in a list, so
+     * this path holds the whole export. A consumer that wants the run's
+     * telemetry as a document reads it this way; a consumer that wants it as
+     * a stream reads it from [source].
+     */
     fun fromEvents(
         runId: String,
         events: List<DomainEvent>,
         policy: TelemetryPolicy = TelemetryPolicy.Default,
     ): TelemetryTrace = fromEvents(runId, events.asSequence(), policy)
 
-    /** Project an ordered event stream without retaining a second copy of the journal. */
+    /**
+     * The run's telemetry as a trace that holds every signal of the export.
+     *
+     * The event stream is read once and consumed once: the caller handed a
+     * stream it cannot replay, so the signals are collected as they are
+     * produced.
+     */
     fun fromEvents(
         runId: String,
         events: Sequence<DomainEvent>,
         policy: TelemetryPolicy = TelemetryPolicy.Default,
     ): TelemetryTrace {
         val traceId = TelemetryTrace.traceIdOf(runId)
-        val signals = buildSignals(runId, traceId, events)
+        val signals = buildSignals(runId, traceId, events).toList()
         return redactAndLimit(TelemetryTrace(runId, traceId, signals), policy)
     }
 
-    private fun buildSignals(runId: String, traceId: String, events: Sequence<DomainEvent>): List<TelemetrySignal> {
-        val signals = mutableListOf<TelemetrySignal>()
+    /**
+     * The projection as a SOURCE of signals: the run is read, never held.
+     *
+     * The source holds no signal of the run: it produces them one at a time,
+     * and a consumer that stops after five signals has made the projection
+     * read five signals' worth of the journal — not the whole run. That is
+     * the difference between a projection whose cost follows the length of
+     * the history and one whose cost follows the depth of the run.
+     *
+     * ## Why the run is read twice
+     *
+     * The cardinality cap is a decision about the WHOLE export: how many
+     * distinct values one dimension key may carry is not known until the
+     * export is over, so the decision cannot be taken while the export is
+     * being produced. The source therefore reads the run once to LEARN the
+     * decision — and forgets everything it saw, keeping only the decision —
+     * and once more to produce the signals that decision applies to.
+     *
+     * The second read is a re-read of the journal, and the source asks for
+     * it: [events] is a factory, not a stream, so every traversal starts at
+     * the beginning of the run.
+     *
+     * What the source holds between the two is the decision itself, whose
+     * size is a function of the policy and not of the length of the run.
+     */
+    fun source(
+        runId: String,
+        events: () -> Sequence<DomainEvent>,
+        policy: TelemetryPolicy = TelemetryPolicy.Default,
+    ): TelemetrySignalSource {
+        val traceId = TelemetryTrace.traceIdOf(runId)
+        val cap = TelemetryDimensionCap.plan(policy)
+        buildSignals(runId, traceId, events()).forEach { signal ->
+            cap.observe(redactAndLimit(signal, policy))
+        }
+        return TelemetrySignalSource(runId, traceId) {
+            buildSignals(runId, traceId, events()).map { signal ->
+                cap.apply(redactAndLimit(signal, policy))
+            }
+        }
+    }
+
+    /**
+     * The signals the run's events describe, produced one at a time.
+     *
+     * The projection is a generator: what it holds is the spans that are
+     * OPEN and the table that tells a repeated scope from a first one. It
+     * does not hold the signals it produced, and it does not hold the
+     * journal it read.
+     */
+    private fun buildSignals(runId: String, traceId: String, events: Sequence<DomainEvent>): Sequence<TelemetrySignal> = sequence {
         val ids = SpanIdAllocator(traceId)
         var runSpan: OpenSpan? = null
         var compileSpan: OpenSpan? = null
@@ -91,7 +164,7 @@ object RunTelemetryProjection {
                 is RunStarted -> {
                     val span = OpenSpan(ids.next(TRACE), at)
                     runSpan = span
-                    signals.add(
+                    yield(
                         started(
                             "pipelinek.run",
                             span.spanId,
@@ -108,8 +181,8 @@ object RunTelemetryProjection {
                         // A run ends once. Clearing the open span keeps a
                         // second terminal from closing the same run twice.
                         runSpan = null
-                        closeSpan("pipelinek.run", "run", span, at, event.outcome, signals)
-                        signals.add(counter("pipelinek.run_outcome_total", mapOf("status" to outcomeClass(event.outcome))))
+                        closeSpan("pipelinek.run", "run", span, at, event.outcome)
+                        yield(counter("pipelinek.run_outcome_total", mapOf("status" to outcomeClass(event.outcome))))
                     }
                 }
 
@@ -128,7 +201,7 @@ object RunTelemetryProjection {
                         // the same fact the console states in words. The
                         // word travels in lower case, like every other word
                         // the export publishes.
-                        signals.add(
+                        yield(
                             started(
                                 "pipelinek.script.compile",
                                 span.spanId,
@@ -149,14 +222,14 @@ object RunTelemetryProjection {
                     compileSpan = null
                     if (span != null) {
                         val outcome = compileOutcome(event)
-                        if (closeSpan("pipelinek.script.compile", "compile", span, at, outcome, signals)) {
+                        if (closeSpan("pipelinek.script.compile", "compile", span, at, outcome)) {
                             // The duration carries the dimensions every other
                             // duration carries: what was measured, and how it
                             // came out. Without them a consumer could measure
                             // how long compiles take but not how many of them
                             // failed, and the live measurement answers exactly
                             // that question with exactly these two keys.
-                            signals.add(
+                            yield(
                                 histogram(
                                     "pipelinek.compile_duration_ms",
                                     at - span.startedAtMs,
@@ -172,7 +245,7 @@ object RunTelemetryProjection {
                     if (parent != null) {
                         val span = OpenSpan(ids.next("$SPAN_STAGE/${event.stageIndex}"), at)
                         stageSpans.getOrPut(event.stageIndex) { ArrayDeque() }.addLast(span)
-                        signals.add(
+                        yield(
                             started(
                                 "pipelinek.stage",
                                 span.spanId,
@@ -189,7 +262,7 @@ object RunTelemetryProjection {
                     // ran twice closes its first occurrence first.
                     val span = stageSpans[event.stageIndex]?.removeFirstOrNull()
                     if (span != null) {
-                        closeSpan("pipelinek.stage", "stage", span, at, event.outcome, signals)
+                        closeSpan("pipelinek.stage", "stage", span, at, event.outcome)
                     }
                 }
 
@@ -199,7 +272,7 @@ object RunTelemetryProjection {
                         val scope = "$SPAN_STEP/${event.stageIndex}/${event.stepIndex}/${event.stepName}"
                         val span = OpenSpan(ids.next(scope), at)
                         stepSpans.addLast(OpenStepSpan(event.stageIndex, event.stepIndex, event.stepName, span))
-                        signals.add(
+                        yield(
                             started(
                                 "pipelinek.step",
                                 span.spanId,
@@ -215,15 +288,14 @@ object RunTelemetryProjection {
                 }
 
                 is StepFinished ->
-                    closeStep(stepSpans, event.stageIndex, event.stepIndex, event.stepName, at, event.outcome ?: "unknown", signals)
+                    closeStep(stepSpans, event.stageIndex, event.stepIndex, event.stepName, at, event.outcome ?: "unknown")
 
                 is StepFailed ->
-                    closeStep(stepSpans, event.stageIndex, event.stepIndex, event.stepName, at, "failure", signals, event.failureKind.name)
+                    closeStep(stepSpans, event.stageIndex, event.stepIndex, event.stepName, at, "failure", event.failureKind.name)
 
                 else -> {}
             }
         }
-        return signals
     }
 
     /** An open span: what it is, and when it began. */
@@ -269,17 +341,16 @@ object RunTelemetryProjection {
      *
      * Returns whether the span ended normally.
      */
-    private fun closeSpan(
+    private suspend fun SequenceScope<TelemetrySignal>.closeSpan(
         name: String,
         operationKind: String,
         span: OpenSpan,
         endedAtMs: Long,
         status: String,
-        signals: MutableList<TelemetrySignal>,
         failureClass: String? = null,
     ): Boolean {
         if (endedAtMs < span.startedAtMs) {
-            signals.add(
+            yield(
                 counter(
                     TELEMETRY_INVALID_INTERVAL_COUNTER,
                     buildMap {
@@ -291,7 +362,7 @@ object RunTelemetryProjection {
             )
             return false
         }
-        signals.add(ended(name, span.spanId, endedAtMs, status))
+        yield(ended(name, span.spanId, endedAtMs, status))
         return true
     }
 
@@ -308,14 +379,13 @@ object RunTelemetryProjection {
      * parallel stage are open at the same time: they share the stage and
      * the ordinal, and only their names tell them apart.
      */
-    private fun closeStep(
+    private suspend fun SequenceScope<TelemetrySignal>.closeStep(
         open: ArrayDeque<OpenStepSpan>,
         stageIndex: Int?,
         stepIndex: Int,
         stepName: String,
         endedAtMs: Long,
         status: String,
-        signals: MutableList<TelemetrySignal>,
         failureClass: String? = null,
     ) {
         val attribution = StepAttribution.resolve(open, stageIndex, stepIndex, stepName) {
@@ -323,13 +393,13 @@ object RunTelemetryProjection {
         }
         if (attribution !is StepAttribution.Matched) return
         val step = open.removeAt(attribution.openIndex)
-        if (!closeSpan("pipelinek.step", "step", step.span, endedAtMs, status, signals, failureClass)) return
+        if (!closeSpan("pipelinek.step", "step", step.span, endedAtMs, status, failureClass)) return
         val dimensions = buildMap(2) {
             put("operation_kind", "step")
             put("status", status)
             failureClass?.let { put("failure_class", it) }
         }
-        signals.add(histogram("pipelinek.step_duration_ms", endedAtMs - step.span.startedAtMs, dimensions))
+        yield(histogram("pipelinek.step_duration_ms", endedAtMs - step.span.startedAtMs, dimensions))
     }
 
     private fun started(name: String, span: String, parent: String?, at: Long, attributes: List<TelemetryAttribute>) =
@@ -370,6 +440,33 @@ object RunTelemetryProjection {
 }
 
 /**
+ * A telemetry export whose signals are produced on demand.
+ *
+ * The source is the shape an export takes when the run behind it is too
+ * long to hold: it carries the run and the trace the export describes, and
+ * it produces the signals of that export one at a time. A consumer that
+ * reads the whole export and a consumer that reads five signals of it pay
+ * for what they read.
+ */
+class TelemetrySignalSource internal constructor(
+    /** The run the export describes. */
+    val runId: String,
+    /** The trace the export's signals belong to. */
+    val traceId: String,
+    private val produce: () -> Sequence<TelemetrySignal>,
+) {
+
+    /**
+     * The signals of the export, in the order they were produced.
+     *
+     * Each call projects the run again: the signals are not kept, so they
+     * are produced again for whoever asks. A caller that needs them twice
+     * reads them twice, and the export says the same thing both times.
+     */
+    fun signals(): Sequence<TelemetrySignal> = produce()
+}
+
+/**
  * Renders a telemetry export as one JSON object per line. Line-delimited
  * JSON is the whole choice: a collector or agent can tail the stream, and a
  * truncated last line is dropped by the reader without losing the lines
@@ -388,29 +485,49 @@ object RunTelemetryReport {
     }
 
     /** Emit the unchanged JSONL contract one complete line at a time. */
-    fun forEachJsonLine(trace: TelemetryTrace, emit: (String) -> Unit) {
-        emit("{\"schema\":\"$TELEMETRY_SCHEMA\",\"runId\":\"${escape(trace.runId)}\",\"traceId\":\"${escape(trace.traceId)}\"}")
-        trace.signals.forEach { signal ->
-            val traceField = "\"traceId\":\"${escape(trace.traceId)}\","
-            val line = when (signal) {
-                is TelemetrySignal.SpanStarted ->
-                    "{\"kind\":\"span_started\",$traceField\"name\":\"${escape(signal.name)}\",\"spanId\":\"${signal.spanId}\"," +
-                        "\"parentSpanId\":${signal.parentSpanId?.let { "\"$it\"" } ?: "null"}," +
-                        "\"startedAtMs\":${signal.startedAtMs},\"attributes\":${attributes(signal.attributes)}}"
+    fun forEachJsonLine(trace: TelemetryTrace, emit: (String) -> Unit): Unit =
+        forEachJsonLine(trace.runId, trace.traceId, trace.signals.asSequence(), emit)
 
-                is TelemetrySignal.SpanEnded ->
-                    "{\"kind\":\"span_ended\",$traceField\"name\":\"${escape(signal.name)}\",\"spanId\":\"${signal.spanId}\"," +
-                        "\"endedAtMs\":${signal.endedAtMs},\"status\":\"${escape(signal.status)}\"}"
+    /**
+     * Emit the unchanged JSONL contract one complete line at a time, from a
+     * stream of signals.
+     *
+     * The contract is the same one the trace-based writer emits: the header
+     * first, then one line per signal, and every line naming the trace it
+     * belongs to.
+     */
+    fun forEachJsonLine(
+        runId: String,
+        traceId: String,
+        signals: Sequence<TelemetrySignal>,
+        emit: (String) -> Unit,
+    ) {
+        emit("{\"schema\":\"$TELEMETRY_SCHEMA\",\"runId\":\"${escape(runId)}\",\"traceId\":\"${escape(traceId)}\"}")
+        for (signal in signals) {
+            emit(line(signal, traceId))
+        }
+    }
 
-                is TelemetrySignal.Counter ->
-                    "{\"kind\":\"counter\",$traceField\"name\":\"${escape(signal.name)}\",\"value\":${signal.value}," +
-                        "\"dimensions\":${dimensions(signal.dimensions)}}"
+    /** The line one signal travels as. */
+    private fun line(signal: TelemetrySignal, traceId: String): String {
+        val traceField = "\"traceId\":\"${escape(traceId)}\","
+        return when (signal) {
+            is TelemetrySignal.SpanStarted ->
+                "{\"kind\":\"span_started\",$traceField\"name\":\"${escape(signal.name)}\",\"spanId\":\"${signal.spanId}\"," +
+                    "\"parentSpanId\":${signal.parentSpanId?.let { "\"$it\"" } ?: "null"}," +
+                    "\"startedAtMs\":${signal.startedAtMs},\"attributes\":${attributes(signal.attributes)}}"
 
-                is TelemetrySignal.Histogram ->
-                    "{\"kind\":\"histogram\",$traceField\"name\":\"${escape(signal.name)}\",\"milliseconds\":${signal.milliseconds}," +
-                        "\"dimensions\":${dimensions(signal.dimensions)}}"
-            }
-            emit(line)
+            is TelemetrySignal.SpanEnded ->
+                "{\"kind\":\"span_ended\",$traceField\"name\":\"${escape(signal.name)}\",\"spanId\":\"${signal.spanId}\"," +
+                    "\"endedAtMs\":${signal.endedAtMs},\"status\":\"${escape(signal.status)}\"}"
+
+            is TelemetrySignal.Counter ->
+                "{\"kind\":\"counter\",$traceField\"name\":\"${escape(signal.name)}\",\"value\":${signal.value}," +
+                    "\"dimensions\":${dimensions(signal.dimensions)}}"
+
+            is TelemetrySignal.Histogram ->
+                "{\"kind\":\"histogram\",$traceField\"name\":\"${escape(signal.name)}\",\"milliseconds\":${signal.milliseconds}," +
+                    "\"dimensions\":${dimensions(signal.dimensions)}}"
         }
     }
 

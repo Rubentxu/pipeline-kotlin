@@ -38,6 +38,26 @@ internal sealed interface InspectionEventRead<out T> {
 }
 
 /**
+ * The run's events, REPLAYABLE.
+ *
+ * The source is a factory and not a stream: every call starts at the
+ * beginning of the run. A projection that has to decide something about the
+ * WHOLE run —the cardinality cap of the telemetry export, for instance— reads
+ * it twice, and a stream it could read only once would force it to hold
+ * what it read.
+ *
+ * The source is handed to the fold inside the read that opened the store,
+ * and that is where it is meant to be read: the admission that sanctioned
+ * the read is the one the fold runs under, and it lasts exactly as long as
+ * the fold does.
+ */
+internal fun interface RunEventSource {
+
+    /** The run's events, in the journal's order, from the beginning. */
+    fun events(): Sequence<DomainEvent>
+}
+
+/**
  * The READ of an inspection: the two durable lanes `inspect` reads, and nothing else.
  *
  * ## What this owns
@@ -69,21 +89,22 @@ internal object InspectionReader {
      * would make the same refusal readable two ways.
     */
     fun readRunEvents(runId: String, dbPath: String): InspectionEventRead<List<DomainEvent>> =
-        foldRunEvents(runId, dbPath, wholeRunReport = false) { it.toList() }
+        foldRunEvents(runId, dbPath, wholeRunReport = false) { it.events().toList() }
 
     /**
      * Consume a run's history in bounded, store-authoritative pages.
      *
      * The page limit is an allocation bound, not a claim that the run is complete. The cursor
      * and `hasMore` come from EventStore, so ordering and progress remain the store's authority.
-     * The callback must consume the single-use sequence before it returns; the store remains
-     * admitted for that whole scope and is closed even when projection fails.
+     * The callback is handed a [RunEventSource] it may read as many times as it needs, and it
+     * must read what it needs before it returns: the store remains admitted for that whole scope
+     * and is closed even when projection fails.
      */
     fun <T> foldRunEvents(
         runId: String,
         dbPath: String,
         wholeRunReport: Boolean,
-        fold: (Sequence<DomainEvent>) -> T,
+        fold: (RunEventSource) -> T,
     ): InspectionEventRead<T> {
         val admission = admitEventStore(dbPath, EventStorePurpose.Read)
         if (admission is EventStoreAdmission.Refused) {
@@ -97,15 +118,17 @@ internal object InspectionReader {
                         "inspect: this event store holds no events for run '$runId'.",
                     )
                 }
-                val events = sequence {
-                    var page = firstPage
-                    while (true) {
-                        yieldAll(page.events)
-                        if (!page.hasMore) break
-                        page = store.readSlice(runId, page.nextCursor, EVENT_PAGE_SIZE)
+                val source = RunEventSource {
+                    sequence {
+                        var page = store.readSlice(runId, after = null, limit = EVENT_PAGE_SIZE)
+                        while (true) {
+                            yieldAll(page.events)
+                            if (!page.hasMore) break
+                            page = store.readSlice(runId, page.nextCursor, EVENT_PAGE_SIZE)
+                        }
                     }
                 }
-                InspectionEventRead.Admitted(fold(events))
+                InspectionEventRead.Admitted(fold(source))
             }
         } catch (e: java.io.IOException) {
             InspectionEventRead.Refused(

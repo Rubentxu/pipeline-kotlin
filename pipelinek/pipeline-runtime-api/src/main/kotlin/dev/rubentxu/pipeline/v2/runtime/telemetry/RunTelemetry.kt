@@ -357,52 +357,147 @@ fun redactAndLimit(signal: TelemetrySignal, policy: TelemetryPolicy): TelemetryS
  */
 fun redactAndLimit(trace: TelemetryTrace, policy: TelemetryPolicy): TelemetryTrace {
     val perSignal = trace.signals.map { redactAndLimit(it, policy) }
-    val budget = policy.maxDistinctValuesPerDimension
-    if (budget <= 0) {
-        // No slot for any value, and none for the overflow marker either:
-        // the keys do not travel at all. The signals still travel — dropping
-        // them would hide that they existed.
-        return trace.copy(signals = perSignal.map { it.withDimensions(emptyMap()) })
-    }
-
-    val distinct = distinctValues(perSignal)
-    val admitted = distinct.mapValues { (_, values) -> if (values.size > budget) budget - 1 else values.size }
-    return trace.copy(signals = perSignal.map { signal -> signal.withDimensions(cappedDimensions(signal, distinct, admitted)) })
+    val cap = TelemetryDimensionCap.plan(policy)
+    perSignal.forEach { cap.observe(it) }
+    return trace.copy(signals = perSignal.map { cap.apply(it) })
 }
 
 /**
- * The distinct values of each dimension key, in the order they first appear.
+ * The cardinality decision for one export: how many distinct values one
+ * dimension key may carry, and which of them travel as themselves.
+ *
+ * The cardinality cap is the one rule a single signal cannot decide, because
+ * it is not about one signal: it is about how many **distinct** values one
+ * key may carry across the whole export. The decision therefore belongs to
+ * the export, and this class is that decision — learned by observing the
+ * export's signals, and asked about each of them afterwards.
+ *
+ * ## What it holds
+ *
+ * Learning it is bounded, and the bound is the point: a key keeps the first
+ * [TelemetryPolicy.maxDistinctValuesPerDimension] values it was seen with,
+ * and one flag saying whether a value beyond them ever arrived. The keys it
+ * learns are the ones [TelemetryPolicy.allowedDimensionKeys] allows, so what
+ * it holds is a function of the **policy** and not of the length of the
+ * export: an export of ten million signals learns exactly what an export of
+ * ten signals learns.
+ *
+ * ## The order
+ *
  * The order matters because the budget keeps the **first** values it sees:
  * the export is a function of the run it describes, and the run's order is
- * part of the journal.
+ * part of the journal. A value that appears more than once travels as itself
+ * whichever of its appearances comes first.
+ *
+ * ## The one rule
+ *
+ * This class is where the rule lives, and both ways of applying it — the
+ * export that holds every signal and the export that streams them — go
+ * through here. A second reading of the rule would be a second rule, and two
+ * rules about the same limit drift apart exactly where nobody looks.
  */
-private fun distinctValues(signals: List<TelemetrySignal>): Map<String, List<String>> {
-    val distinct = LinkedHashMap<String, LinkedHashSet<String>>()
-    for (signal in signals) {
+class TelemetryDimensionCap private constructor(
+    private val budget: Int,
+    private val allowedKeys: Set<String>,
+) {
+
+    /** What one key was seen with: the values it may still admit, and whether more came. */
+    private class KeyState {
+
+        /** The first values the key was seen with, in the order they appeared. */
+        val values = LinkedHashSet<String>()
+
+        /** Whether a value beyond the budget ever arrived. */
+        var exceeded = false
+    }
+
+    /** What each key was seen with, in the order the keys appeared. */
+    private val observed = LinkedHashMap<String, KeyState>()
+
+    /**
+     * The number of distinct values this cap is holding.
+     *
+     * The bound is what makes the cap usable on an export of any size: a key
+     * holds at most [TelemetryPolicy.maxDistinctValuesPerDimension] values,
+     * and only the keys [TelemetryPolicy.allowedDimensionKeys] allows are
+     * held at all, so this number is a function of the policy and never of
+     * the length of the export.
+     */
+    val retainedValues: Int
+        get() = observed.values.sumOf { it.values.size }
+
+    /**
+     * Learn one signal's dimensions.
+     *
+     * The signal is expected to be redacted already: the cap counts the
+     * values that would travel, and a value the policy drops never travels.
+     * A key the policy does not allow is not learned at all — it could not
+     * travel, so it cannot spend the budget of the export.
+     */
+    fun observe(signal: TelemetrySignal) {
+        if (budget <= 0) return
         for ((key, value) in signal.dimensionsOrEmpty()) {
-            distinct.getOrPut(key) { LinkedHashSet() }.add(value)
+            if (key !in allowedKeys) continue
+            val state = observed.getOrPut(key) { KeyState() }
+            if (value in state.values) continue
+            if (state.values.size < budget) {
+                state.values.add(value)
+            } else {
+                // One value too many for the budget: the key has more values
+                // than it may carry, and the marker takes a slot of its own.
+                state.exceeded = true
+            }
         }
     }
-    return distinct.mapValues { (_, values) -> values.toList() }
-}
 
-/**
- * The dimensions of a signal after the cardinality cap: a value the key
- * still admits travels as it is, and a value the key no longer admits
- * travels as [DIMENSION_OVERFLOW].
- */
-private fun cappedDimensions(
-    signal: TelemetrySignal,
-    distinct: Map<String, List<String>>,
-    admitted: Map<String, Int>,
-): Map<String, String> = signal.dimensionsOrEmpty().mapValues { (key, value) ->
-    val values = distinct[key]
-    val kept = admitted[key]
-    if (values == null || kept == null || kept >= values.size) {
-        value
-    } else {
-        val index = values.indexOf(value)
-        if (index in 0 until kept) value else DIMENSION_OVERFLOW
+    /**
+     * The signal with the dimensions this cap admits.
+     *
+     * A value the key still admits travels as it is, and a value the key no
+     * longer admits travels as [DIMENSION_OVERFLOW]. A key the cap never saw
+     * travels whole: it was never at risk. With no slot for any value the
+     * dimensions do not travel at all — and the signals still do, because
+     * dropping them would hide that they existed.
+     */
+    fun apply(signal: TelemetrySignal): TelemetrySignal {
+        if (budget <= 0) return signal.withDimensions(emptyMap())
+        val dimensions = signal.dimensionsOrEmpty()
+        if (dimensions.isEmpty()) return signal
+        return signal.withDimensions(dimensions.mapValues { (key, value) -> travel(key, value) })
+    }
+
+    /**
+     * The value a key's value travels as.
+     *
+     * While the key has not exceeded the budget, every value it was seen
+     * with still fits: the budget keeps them all. Once it has, the values
+     * that came after the ones it keeps travel as the marker.
+     */
+    private fun travel(key: String, value: String): String {
+        val state = observed[key] ?: return value
+        if (!state.exceeded) return value
+        val index = state.values.indexOf(value)
+        return if (index in 0 until (budget - 1)) value else DIMENSION_OVERFLOW
+    }
+
+    /**
+     * The one way to obtain a cap.
+     *
+     * A cap is not a thing a caller builds with numbers of its own: it is
+     * the decision a policy makes, and the policy is what the caller holds.
+     * A cap built any other way could exist without a policy behind it, and
+     * then it would decide about a budget nobody published.
+     */
+    companion object {
+
+        /**
+         * A cap that decides under [policy].
+         *
+         * The cap starts empty: it learns what the export carries as the
+         * export is observed, and it answers only about what it has seen.
+         */
+        fun plan(policy: TelemetryPolicy): TelemetryDimensionCap =
+            TelemetryDimensionCap(policy.maxDistinctValuesPerDimension, policy.allowedDimensionKeys)
     }
 }
 

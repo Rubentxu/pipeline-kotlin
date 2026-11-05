@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
+import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StageFinished
@@ -11,7 +12,9 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.runtime.TelemetrySource
+import dev.rubentxu.pipeline.v2.runtime.telemetry.DIMENSION_OVERFLOW
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
+import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryPolicy
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetrySignal
 import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TELEMETRY_SCHEMA
@@ -69,8 +72,8 @@ class RunTelemetryTest {
     private fun stepStart(at: Long, stage: Int, step: Int, name: String = "deploy") =
         StepStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, name, "sh")
 
-    private fun stepFinish(at: Long, stage: Int, step: Int, name: String = "deploy") =
-        StepFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, name, "sh", "success")
+    private fun stepFinish(at: Long, stage: Int, step: Int, name: String = "deploy", outcome: String = "success") =
+        StepFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, name, "sh", outcome)
 
     private fun stepFail(at: Long, stage: Int, step: Int) =
         StepFailed("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, "deploy", "sh", FailureKind.SCRIPT, "exit 1")
@@ -633,7 +636,7 @@ class RunTelemetryTest {
         val trace = completedRunTrace()
 
         val bytes = ByteArrayOutputStream()
-        TraceRequestMarshaler.create(RunTelemetryOtlp.spans(trace).toList()).writeBinaryTo(bytes)
+        TraceRequestMarshaler.create(RunTelemetryOtlp.spans(trace.traceId, trace.signals.asSequence()).toList()).writeBinaryTo(bytes)
         val request = ExportTraceServiceRequest.parseFrom(bytes.toByteArray())
 
         val scopeSpans = request.resourceSpansList.single().scopeSpansList.single()
@@ -755,7 +758,7 @@ class RunTelemetryTest {
         )
 
         assertTrue(
-            RunTelemetryOtlp.spans(trace).count() == 0,
+            RunTelemetryOtlp.spans(trace.traceId, trace.signals.asSequence()).count() == 0,
             "un span cuyo final precede a su inicio no se publica: su duración sería negativa, " +
                 "y una duración negativa no es una medida",
         )
@@ -841,6 +844,237 @@ class RunTelemetryTest {
     }
 
     /**
+     * The export the run is read back into, and the export the run is
+     * STREAMED into, are the same export.
+     *
+     * The streaming path is a different way of producing the signals, not a
+     * different export: a consumer that reads the two and compares them line
+     * by line, and document by document, must find no difference. The
+     * formats are the contract, and the streaming path is not allowed to
+     * have a format of its own.
+     */
+    @Test
+    fun `the streamed export is the export the materialized projection produces`() {
+        val events = listOf(
+            runStart(at = 0),
+            compileStart(at = 10),
+            compileFinish(at = 110),
+            stageStart(at = 120, index = 0),
+            stepStart(at = 130, stage = 0, step = 0),
+            stepFinish(at = 230, stage = 0, step = 0),
+            stageFinish(at = 240, index = 0),
+            runFinish("success", at = 250),
+        )
+
+        val materialized = RunTelemetryProjection.fromEvents("run-1", events)
+        val source = RunTelemetryProjection.source("run-1", { events.asSequence() })
+
+        assertEquals(RunTelemetryReport.jsonLines(materialized), jsonLinesOf(source))
+        assertEquals(otlpDocuments(materialized), otlpDocumentsOf(source))
+    }
+
+    /**
+     * The writer that writes both documents in ONE traversal writes what the
+     * two writers write.
+     *
+     * The two documents are the contract the collector reads, and the order
+     * they travel in is part of it: the spans first, the metrics after
+     * them.
+     */
+    @Test
+    fun `the writer that writes both documents writes what the two writers write`() {
+        val trace = completedRunTrace()
+
+        assertEquals(otlpDocuments(trace), otlpDocumentsInOnePass(trace))
+    }
+
+    /**
+     * The streamed export collapses the dimensions exactly like the
+     * materialized one does.
+     *
+     * The cardinality cap is a decision about the WHOLE export, and the
+     * streamed path takes it with the same rule the materialized path takes
+     * it: a key that carried more distinct values than the budget admits
+     * travels its surplus as the marker, in both paths. A streamed export
+     * that collapsed nothing would say a run carried a value it did not.
+     */
+    @Test
+    fun `the streamed export collapses the dimensions the same way the materialized one does`() {
+        val tight = TelemetryPolicy.Default.copy(maxDistinctValuesPerDimension = 2)
+        val events = listOf(
+            runStart(at = 0),
+            stageStart(at = 10, index = 0),
+            stepStart(at = 20, stage = 0, step = 0),
+            stepFinish(at = 30, stage = 0, step = 0, outcome = "alpha"),
+            stepStart(at = 40, stage = 0, step = 1),
+            stepFinish(at = 50, stage = 0, step = 1, outcome = "beta"),
+            stepStart(at = 60, stage = 0, step = 2),
+            stepFinish(at = 70, stage = 0, step = 2, outcome = "gamma"),
+            stageFinish(at = 80, index = 0),
+            runFinish("success", at = 90),
+        )
+
+        val materialized = RunTelemetryProjection.fromEvents("run-1", events, tight)
+        val source = RunTelemetryProjection.source("run-1", { events.asSequence() }, tight)
+
+        assertEquals(RunTelemetryReport.jsonLines(materialized), jsonLinesOf(source))
+        assertTrue(
+            jsonLinesOf(source).any { it.contains(DIMENSION_OVERFLOW) },
+            "el colapso no viaja en el camino transmitido: una clave que paso el presupuesto " +
+                "tiene que decir que lo paso",
+        )
+    }
+
+    /**
+     * The projection must not hold the run it projects.
+     *
+     * The guarantee is that the cost of the projection follows what the
+     * CONSUMER takes and not the length of the history: a consumer that
+     * takes five signals makes the projection read five signals' worth of
+     * the journal. The counter says how far the projection ran ahead, and a
+     * projection that holds the run reads all of it before it hands over
+     * the first signal.
+     */
+    @Test
+    fun `the projection hands the signals over as the consumer asks for them`() {
+        val events = longRun(steps = 500)
+        val counter = CountingEvents(events)
+
+        val source = RunTelemetryProjection.source("run-1", { counter.sequence() })
+
+        // The cardinality cap is a decision about the whole export, so the
+        // projection reads the run once to learn it. What it keeps from that
+        // read is the decision and nothing else.
+        assertEquals(events.size, counter.produced)
+
+        val five = source.signals().take(5).toList()
+
+        assertEquals(5, five.size)
+        assertTrue(
+            counter.produced <= 10,
+            "the projection read ${counter.produced} events to hand over five signals: it ran " +
+                "ahead of the consumer, which is the same as holding the run",
+        )
+    }
+
+    /**
+     * The trace the streamed export names is the trace the run's id derives,
+     * and the export carries nothing of the run's payload.
+     */
+    @Test
+    fun `the streamed export names the trace of the run and carries no run payload`() {
+        val events = listOf(
+            runStart(scriptPath = "/workspace/secret/script.kts", at = 0),
+            stageStart(at = 10, index = 0),
+            stepStart(at = 20, stage = 0, step = 0),
+            stepFinish(at = 30, stage = 0, step = 0),
+            stageFinish(at = 40, index = 0),
+            runFinish("success", at = 50),
+        )
+        val source = RunTelemetryProjection.source("run-1", { events.asSequence() })
+
+        val lines = jsonLinesOf(source)
+
+        assertEquals(TelemetryTrace.traceIdOf("run-1"), source.traceId)
+        assertTrue(lines.all { it.contains("\"traceId\":\"${source.traceId}\"") })
+        assertTrue(!lines.any { it.contains("secret") })
+        assertTrue(!lines.any { it.contains("deploy") })
+    }
+
+    /**
+     * The streamed export applies the policy it was given.
+     *
+     * The policy is the export's contract with the data: a key it does not
+     * allow does not travel. The path that streams the signals applies the
+     * same rule the path that materializes them applies — a streamed export
+     * that skipped the policy would carry whatever the run happened to say.
+     */
+    @Test
+    fun `the streamed export applies the policy that forbids a key`() {
+        val narrow = TelemetryPolicy.Default.copy(
+            allowedAttributeKeys = emptySet(),
+            allowedDimensionKeys = emptySet(),
+        )
+        val events = listOf(
+            runStart(at = 0),
+            stageStart(at = 10, index = 0),
+            stepStart(at = 20, stage = 0, step = 0),
+            stepFinish(at = 30, stage = 0, step = 0),
+            stageFinish(at = 40, index = 0),
+            runFinish("success", at = 50),
+        )
+
+        val source = RunTelemetryProjection.source("run-1", { events.asSequence() }, narrow)
+
+        val lines = jsonLinesOf(source)
+
+        val dimensions = lines.mapNotNull { line ->
+            Regex("\"dimensions\":(\\{[^}]*\\})").find(line)?.groupValues?.get(1)
+        }
+        val attributes = lines.mapNotNull { line ->
+            Regex("\"attributes\":(\\{[^}]*\\})").find(line)?.groupValues?.get(1)
+        }
+
+        assertTrue(
+            dimensions.isNotEmpty(),
+            "el export no lleva dimensiones: la fila no miraria nada",
+        )
+        assertTrue(
+            attributes.isNotEmpty(),
+            "el export no lleva atributos: la fila no miraria nada",
+        )
+        assertTrue(
+            dimensions.all { it == "{}" },
+            "el camino transmitido no aplico la politica: una dimension que la politica no " +
+                "admite no puede viajar, y la que veia era $dimensions",
+        )
+        assertTrue(
+            attributes.all { it == "{}" },
+            "el camino transmitido no aplico la politica: un atributo que la politica no " +
+                "admite no puede viajar, y el que veia era $attributes",
+        )
+    }
+
+    /**
+     * The export of a failed run says the run failed.
+     *
+     * The export reads a run that already happened: it cannot make it
+     * better, and a path that softened the outcome would report a run that
+     * did not happen. The run's own verdict is the one the journal states.
+     */
+    @Test
+    fun `the streamed export of a failed run says the run failed`() {
+        val events = listOf(runStart(at = 0), runFinish("failure", at = 250))
+        val source = RunTelemetryProjection.source("run-1", { events.asSequence() })
+
+        val outcome = source.signals()
+            .filterIsInstance<TelemetrySignal.Counter>()
+            .first { it.name.endsWith("run_outcome_total") }
+
+        assertEquals("failure", outcome.dimensions["status"])
+    }
+
+    /**
+     * The source is read more than once —the cardinality cap is learned in
+     * one traversal and the signals are produced in another— and both reads
+     * say the same thing.
+     */
+    @Test
+    fun `the source says the same thing every time it is read`() {
+        val events = listOf(
+            runStart(at = 0),
+            stageStart(at = 10, index = 0),
+            stepStart(at = 20, stage = 0, step = 0),
+            stepFinish(at = 30, stage = 0, step = 0),
+            stageFinish(at = 40, index = 0),
+            runFinish("success", at = 50),
+        )
+        val source = RunTelemetryProjection.source("run-1", { events.asSequence() })
+
+        assertEquals(jsonLinesOf(source), jsonLinesOf(source))
+    }
+
+    /**
      * The export as the CLI writes it: two standard OTLP documents, one per
      * line. The reader here is the one that already reads the product's
      * other line-delimited output, so the export keeps the shape a consumer
@@ -848,12 +1082,84 @@ class RunTelemetryTest {
      */
     private fun otlpDocuments(trace: TelemetryTrace): List<JsonObject> {
         val out = ByteArrayOutputStream()
-        RunTelemetryOtlp.writeSpans(trace, out)
-        RunTelemetryOtlp.writeMetrics(trace, out)
+        RunTelemetryOtlp.writeSpans(trace.traceId, trace.signals.asSequence(), out)
+        RunTelemetryOtlp.writeMetrics(trace.signals.asSequence(), out)
         return out.toString(StandardCharsets.UTF_8)
             .trim()
             .lines()
             .map { Json.parseToJsonElement(it).jsonObject }
+    }
+
+    /**
+     * The same export written in ONE traversal: the spans and the metrics
+     * together, in the order they travel.
+     */
+    private fun otlpDocumentsInOnePass(trace: TelemetryTrace): List<JsonObject> {
+        val out = ByteArrayOutputStream()
+        RunTelemetryOtlp.write(trace.traceId, trace.signals.asSequence(), out)
+        return out.toString(StandardCharsets.UTF_8)
+            .trim()
+            .lines()
+            .map { Json.parseToJsonElement(it).jsonObject }
+    }
+
+    /** The JSONL export of a source of signals. */
+    private fun jsonLinesOf(source: TelemetrySignalSource): List<String> = buildList {
+        RunTelemetryReport.forEachJsonLine(source.runId, source.traceId, source.signals()) { add(it) }
+    }
+
+    /** The OTLP export of a source of signals, written in one traversal. */
+    private fun otlpDocumentsOf(source: TelemetrySignalSource): List<JsonObject> {
+        val out = ByteArrayOutputStream()
+        RunTelemetryOtlp.write(source.traceId, source.signals(), out)
+        return out.toString(StandardCharsets.UTF_8)
+            .trim()
+            .lines()
+            .map { Json.parseToJsonElement(it).jsonObject }
+    }
+
+    /**
+     * A long run: many steps, each one opened and closed.
+     *
+     * The length is what makes the measurement meaningful. A projection that
+     * holds the run reads every event before it hands over the first signal,
+     * and the difference between "the whole run" and "what the consumer
+     * asked for" is only visible when the run is long.
+     */
+    private fun longRun(steps: Int): List<DomainEvent> {
+        val events = mutableListOf<DomainEvent>()
+        events.add(runStart(at = 0))
+        events.add(stageStart(at = 10, index = 0))
+        repeat(steps) { index ->
+            val at = 20L + index * 2
+            events.add(stepStart(at = at, stage = 0, step = index, name = "step-$index"))
+            events.add(stepFinish(at = at + 1, stage = 0, step = index, name = "step-$index"))
+        }
+        events.add(stageFinish(at = 20L + steps * 2, index = 0))
+        events.add(runFinish("success", at = 20L + steps * 2 + 1))
+        return events
+    }
+
+    /**
+     * A source of events that counts what it produced.
+     *
+     * The count is per traversal: the projection reads the run twice, and
+     * what the test measures is how far the projection RAN AHEAD of the
+     * consumer in the traversal that is producing the signals.
+     */
+    private class CountingEvents(private val events: List<DomainEvent>) {
+
+        /** The events the last traversal produced. */
+        var produced: Int = 0
+            private set
+
+        fun sequence(): Sequence<DomainEvent> = sequence {
+            produced = 0
+            for (event in events) {
+                produced++
+                yield(event)
+            }
+        }
     }
 
     /** Los spans que un documento de trazas lleva, en el orden en que viajan. */

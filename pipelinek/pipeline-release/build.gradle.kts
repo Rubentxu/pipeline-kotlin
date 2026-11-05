@@ -24,7 +24,22 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-step-sdk:runtime"))
+    // The durable ports of the product: `OperationJournal` and `RunLeasePort`, with the pure
+    // decider that decides ownership and fencing. The state of the certification cycle is filed
+    // in the product's own journal and guarded by the product's own lease, so this module reaches
+    // the PORTS and not the stores: the SQLite journal and the file-backed lease live in
+    // `:pipeline-events-store` and stay behind their ports.
+    //
+    // This module is not published and carries no ABI baseline, so the edge does not change any
+    // published surface. The distribution already ships the JDBC driver through
+    // `:pipeline-application`, so nothing new enters the candidate ZIP.
+    implementation(project(":pipeline-runtime-api"))
 
+    // The stores, for the tests only: `InMemoryOperationJournal` is a REAL implementation of the
+    // journal port (not a mock of it), and it is what lets the checkpoint's guarantees be witnessed
+    // without a database. The edge is a test edge; the production classpath of this module reaches
+    // the ports and nothing else.
+    testImplementation(project(":pipeline-events-store"))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
 }

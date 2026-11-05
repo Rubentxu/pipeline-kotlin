@@ -13,6 +13,7 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.runtime.TelemetrySource
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetrySignal
 import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
+import dev.rubentxu.pipeline.v2.runtime.telemetry.TELEMETRY_SCHEMA
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryTrace
 import io.opentelemetry.exporter.internal.otlp.traces.TraceRequestMarshaler
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest
@@ -634,6 +635,65 @@ class RunTelemetryTest {
             "el documento dice QUIÉN lo publicó: sin esa etiqueta un backend no puede distinguir " +
                 "una ejecución observada en vivo de la misma ejecución leída del diario",
         )
+    }
+
+    /**
+     * El recurso de un export nombra el producto, el esquema que habla y el
+     * productor que lo publicó — y nada más.
+     *
+     * Un colector agrupa por el recurso, así que el CONJUNTO de atributos es
+     * el contrato: un atributo que se suma cambia lo que un backend agrupa, y
+     * uno que falta deja al consumidor sin un nombre por el que agrupar. La
+     * comparación es sobre el conjunto y no sobre el orden: el orden en que se
+     * escriben los atributos no es parte de lo que un lector puede usar.
+     *
+     * Los dos documentos de un export llevan el mismo recurso, porque
+     * describen al mismo productor: un backend que recibiera las trazas de una
+     * ejecución y las métricas de otra mostraría una imagen que ninguna
+     * ejecución produjo.
+     */
+    @Test
+    fun `the export's resource names the product, its schema and its producer, and nothing else`() {
+        val trace = completedRunTrace()
+
+        val documents = otlpDocuments(trace)
+        val expected = mapOf(
+            "service.name" to "pipelinek",
+            "telemetry.schema" to TELEMETRY_SCHEMA,
+            TelemetrySource.KEY to TelemetrySource.HISTORICAL,
+        )
+
+        assertEquals(
+            expected,
+            resourceAttributes(documents[0]),
+            "el recurso de las trazas es por lo que un colector agrupa: tiene que nombrar el " +
+                "producto, el esquema que habla el export y el productor que lo publicó, y nada " +
+                "más",
+        )
+        assertEquals(
+            expected,
+            resourceAttributes(documents[1]),
+            "las métricas de un export describen al mismo productor que sus trazas: un backend " +
+                "que recibiera las trazas de una ejecución y las métricas de otra mostraría una " +
+                "imagen que ninguna ejecución produjo",
+        )
+    }
+
+    /**
+     * Los atributos del recurso de un documento, por nombre.
+     */
+    private fun resourceAttributes(document: JsonObject): Map<String, String> {
+        val resource = document["resourceSpans"]?.jsonArray?.single()
+            ?.jsonObject?.get("resource")?.jsonObject
+            ?: document["resourceMetrics"]?.jsonArray?.single()?.jsonObject?.get("resource")?.jsonObject
+            ?: error("the document carries no resource")
+
+        return resource["attributes"]!!.jsonArray
+            .map { it.jsonObject }
+            .associate { attribute ->
+                attribute["key"]!!.jsonPrimitive.content to
+                    attribute["value"]!!.jsonObject["stringValue"]!!.jsonPrimitive.content
+            }
     }
 
     /**

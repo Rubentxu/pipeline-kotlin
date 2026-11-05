@@ -59,6 +59,15 @@ tasks.test {
     // result set — a green gate that ran nothing. Mirrors the guard in
     // `:pipeline-runtime`.
     useJUnitPlatform()
+
+    // The version catalog is an INPUT of this task, and not a file the test
+    // happens to read. A test that reads a file Gradle does not know about is
+    // not re-run when that file changes: the task is UP TO DATE, the green is
+    // a cache, and the comparison the test exists to make is never made. The
+    // catalog declares the version of the OpenTelemetry BOM that the published
+    // compatibility contract names, so moving the version in the catalog has
+    // to move the task too.
+    inputs.files(rootProject.file("gradle/libs.versions.toml"))
 }
 
 // This module is now on `publishedContractModules` in

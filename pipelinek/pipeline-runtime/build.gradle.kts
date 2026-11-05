@@ -151,4 +151,18 @@ dependencies {
 // left to the integration lane, are stated with the dependencies it belongs to.
 tasks.test {
     useJUnitPlatform()
+
+    // The published ABI dumps are an INPUT of this task, and not files a test
+    // happens to read. A test that reads a file Gradle does not know about is
+    // not re-run when that file changes: the task is UP TO DATE, the green is
+    // a cache, and the rule the test exists to enforce is never applied to the
+    // tree it guards. The dumps are the ABI a consumer compiles against, and
+    // the rule that no published ABI names an OpenTelemetry Java type reads
+    // them.
+    inputs.files(
+        fileTree(rootProject.projectDir) {
+            include("**/*.api")
+            exclude("**/build/**")
+        },
+    )
 }

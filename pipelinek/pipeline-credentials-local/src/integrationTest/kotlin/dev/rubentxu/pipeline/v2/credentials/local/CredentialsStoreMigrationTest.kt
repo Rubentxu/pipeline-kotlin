@@ -133,7 +133,7 @@ class CredentialsStoreMigrationTest {
         }
 
         assertTrue(
-            failure.message!!.contains("does not open"),
+            failure.message?.contains("does not open") == true,
             "the refusal does not say that the entry did not open; it said: ${failure.message}",
         )
         assertArrayEquals(

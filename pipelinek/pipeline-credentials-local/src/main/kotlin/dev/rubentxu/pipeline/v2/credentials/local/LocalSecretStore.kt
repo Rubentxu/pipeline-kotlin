@@ -17,6 +17,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.security.SecureRandom
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * Local credential store using envelope encryption.
@@ -26,6 +28,12 @@ import java.security.SecureRandom
  * Per-entry: with random 96-bit nonce + AAD
  * - AAD = magic ‖ version ‖ kdfParams ‖ credentialId (anti-rename/swap)
  * - re-Argon2id only on unlock, never on every put
+ * ## The commit
+ * A mutation writes a temporary file with a name of its own and replaces the
+ * store with it. The replacement is atomic where the filesystem offers it,
+ * and a replacement that does not happen is REPORTED: a mutation that says it
+ * worked has changed the file. Two writers of the same store wait for each
+ * other, in this process and in another one.
  * ## File Format
  * ```
  * Header:
@@ -47,6 +55,7 @@ import java.security.SecureRandom
 class LocalSecretStore(
     private val file: Path,
     private val passphrase: CharArray,
+    private val committer: StoreCommit = AtomicStoreCommit,
 ) : SecretStore {
     private val secureRandom = SecureRandom()
 
@@ -153,6 +162,15 @@ class LocalSecretStore(
         private val MAGIC = byteArrayOf(0x50, 0x4B, 0x43, 0x52) // "PKCR"
         private const val VERSION_V1: Short = 1
         private const val VERSION_V2: Short = 2
+
+        /**
+         * The monitor each store file's writers share inside one JVM.
+         *
+         * It lives in the companion because it belongs to the FILE: two
+         * instances of the store over the same path have to wait for each
+         * other exactly like two processes do.
+         */
+        private val jvmMonitors = ConcurrentHashMap<Path, ReentrantLock>()
 
         /** OWASP floor KDF params (2023 recommendation) */
         const val OWASP_M = 19456  // KiB
@@ -287,17 +305,29 @@ class LocalSecretStore(
     private fun lockFile(): Path = file.resolveSibling(file.fileName.toString() + ".lock")
 
     /**
-     * Executes a mutation operation with an exclusive file lock.
-     * Uses synchronized for JVM-level mutual exclusion (handles same-JVM thread contention)
-     * and FileChannel.lock for OS-level inter-process locking (handles crash consistency).
-*/
-    private val mutationLock = Any()
+     * The monitor every writer of this store file shares inside one JVM.
+     *
+     * The monitor belongs to the FILE and not to the instance: two stores over
+     * the same path are two views of one store, and the operating system's
+     * lock is not reentrant, so the second view would be told that the lock is
+     * already held instead of being made to wait for its turn.
+     */
+    private fun jvmMonitor(): ReentrantLock =
+        jvmMonitors.computeIfAbsent(lockFile().toAbsolutePath().normalize()) { ReentrantLock() }
 
+    /**
+     * Executes a mutation operation with an exclusive file lock.
+     *
+     * The monitor of the JVM serializes the writers that share this file
+     * inside this JVM, and the file lock serializes the writers of other
+     * processes. Both are needed: the file lock alone refuses a second
+     * writer of the same JVM instead of making it wait, and the monitor alone
+     * says nothing to a process.
+*/
     private inline fun <T> withExclusiveLock(block: () -> T): T {
-        synchronized(mutationLock) {
-            // Inside synchronized block, perform the actual file mutation with file-level locking
-            // The synchronized ensures same-JVM threads don't conflict
-            // FileChannel.lock provides OS-level inter-process locking for crash consistency
+        val monitor = jvmMonitor()
+        monitor.lock()
+        try {
             val lock = lockFile()
             val channel = FileChannel.open(lock,
                 StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)
@@ -309,6 +339,55 @@ class LocalSecretStore(
             } finally {
                 channel.close()
             }
+        } finally {
+            monitor.unlock()
+        }
+    }
+
+    /**
+     * Puts what a mutation wrote in the store's place.
+     *
+     * This is the ONE place where the store file is replaced. A mutation that
+     * calls it either sees the new store or sees the failure, and never sees
+     * a success it did not achieve: the question of whether the replacement
+     * happened is asked here and nowhere else, so every mutation of the store
+     * gets the same answer.
+     */
+    private fun commit(bytes: ByteArray) {
+        val temporary = writeTemporary(bytes)
+        try {
+            committer.commit(temporary, file)
+        } catch (e: Throwable) {
+            // A temporary that will never be committed must not stay in the
+            // store's directory: it holds the secret in clear, and the next
+            // writer would find it there.
+            Files.deleteIfExists(temporary)
+            throw e
+        }
+    }
+
+    /**
+     * The temporary file a mutation writes before it replaces the store.
+     *
+     * The name is PRIVATE to the write: two writers of the same store never
+     * meet on the same file, and a reader that lists the directory sees a
+     * name that says nothing about the store it belongs to. The permissions
+     * are the ones the store demands, so the secret is not readable by
+     * another user while it waits to be put in place, and the content is
+     * forced to the device before the replacement, so what the replacement
+     * publishes is already on the disk.
+     */
+    private fun writeTemporary(bytes: ByteArray): Path {
+        val directory = file.toAbsolutePath().parent ?: Path.of(".")
+        val temporary = Files.createTempFile(directory, "${file.fileName}.tmp-", ".tmp")
+        try {
+            Files.write(temporary, bytes)
+            CredentialsStorePosix.setFilePermissions(temporary)
+            FileChannel.open(temporary, StandardOpenOption.WRITE).use { it.force(true) }
+            return temporary
+        } catch (e: Throwable) {
+            Files.deleteIfExists(temporary)
+            throw e
         }
     }
 
@@ -317,58 +396,68 @@ class LocalSecretStore(
      * @param id The credential ID
      * @param bytes The secret bytes
      * @throws CredentialsStoreEmptySecretException if bytes is empty
+     * @throws CredentialsStoreCommitException when the store could not be
+     *   replaced. The store keeps the content it had.
 */
     override fun put(id: CredentialsId, bytes: ByteArray) {
         if (bytes.isEmpty()) throw CredentialsStoreEmptySecretException()
 
-        withExclusiveLock {
-            val existingFileBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
-            val hdr = if (existingFileBytes != null) {
-                readHeader(existingFileBytes)
-            } else {
-                // Fresh store for legacy backward-compat contract
-                val salt = ByteArray(SALT_SIZE); secureRandom.nextBytes(salt)
-                StoreHeader(MAGIC, VERSION_V1, OWASP_M, OWASP_T, OWASP_P, salt, ByteArray(WRAPPED_DEK_SIZE))
-            }
-            val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
+        withExclusiveLock { writeBytes(id, bytes) }
+    }
 
-            // Load existing DEK from header, or generate new one for a FRESH store only.
-            val dek = if (hdr.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
-                ByteArray(DEK_SIZE).also { secureRandom.nextBytes(it) }
-            } else {
-                CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
-            }
-
-            val wrappedDek = CredentialCrypto.wrapDek(kek, dek)
-            val aad = CredentialCrypto.buildAad(hdr, id)
-            val sealed = AeadCipher.encrypt(dek, bytes, aad)
-
-            val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
-            val out = ByteArrayOutputStream()
-            writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, wrappedDek)
-
-            // Parse existing entries and rebuild with new/updated entry
-            if (existingFileBytes != null && existingFileBytes.size > HEADER_SIZE_V1) {
-                val existingEntries = CredentialCrypto.readEntriesV1(existingFileBytes).toMutableMap()
-                existingEntries[id.value] = EntryData(id, sealed, bytes.size)
-                for ((_, entryData) in existingEntries) {
-                    out.write(CredentialCrypto.encodeEntry(entryData.id, entryData.sealed))
-                }
-            } else {
-                // New store: just write the single entry
-                out.write(CredentialCrypto.encodeEntry(id, sealed))
-            }
-
-            val written = out.toByteArray()
-            Files.write(tempFile, written)
-            CredentialsStorePosix.setFilePermissions(tempFile)
-            tempFile.toFile().renameTo(file.toFile())
+    /**
+     * The bytes of a credential, written into a store that may not exist yet.
+     *
+     * The caller holds the lock. This is the writing half of [put], kept
+     * apart so that a rotation which finds no store can create one without
+     * asking for the lock a second time: the operating system's lock is not
+     * reentrant, and a nested one would be refused instead of waited for.
+     */
+    private fun writeBytes(id: CredentialsId, bytes: ByteArray) {
+        val existingFileBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
+        val hdr = if (existingFileBytes != null) {
+            readHeader(existingFileBytes)
+        } else {
+            // Fresh store for legacy backward-compat contract
+            val salt = ByteArray(SALT_SIZE); secureRandom.nextBytes(salt)
+            StoreHeader(MAGIC, VERSION_V1, OWASP_M, OWASP_T, OWASP_P, salt, ByteArray(WRAPPED_DEK_SIZE))
         }
+        val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
+
+        // Load existing DEK from header, or generate new one for a FRESH store only.
+        val dek = if (hdr.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
+            ByteArray(DEK_SIZE).also { secureRandom.nextBytes(it) }
+        } else {
+            CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
+        }
+
+        val wrappedDek = CredentialCrypto.wrapDek(kek, dek)
+        val aad = CredentialCrypto.buildAad(hdr, id)
+        val sealed = AeadCipher.encrypt(dek, bytes, aad)
+
+        val out = ByteArrayOutputStream()
+        writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, wrappedDek)
+
+        // Parse existing entries and rebuild with new/updated entry
+        if (existingFileBytes != null && existingFileBytes.size > HEADER_SIZE_V1) {
+            val existingEntries = CredentialCrypto.readEntriesV1(existingFileBytes).toMutableMap()
+            existingEntries[id.value] = EntryData(id, sealed, bytes.size)
+            for ((_, entryData) in existingEntries) {
+                out.write(CredentialCrypto.encodeEntry(entryData.id, entryData.sealed))
+            }
+        } else {
+            // New store: just write the single entry
+            out.write(CredentialCrypto.encodeEntry(id, sealed))
+        }
+
+        commit(out.toByteArray())
     }
 
     /**
      * Stores a typed credential in v2 format
      * On first add to a v1 file: migrates existing v1 entries to v2.
+     * @throws CredentialsStoreCommitException when the store could not be
+     *   replaced. The store keeps the content it had.
 */
     override fun add(id: CredentialsId, credential: Credential) {
         withExclusiveLock {
@@ -391,7 +480,6 @@ class LocalSecretStore(
             val sealed = AeadCipher.encrypt(dek, credentialBytes, aad)
 
             // Atomic write
-            val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
             val existingBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
 
             val out = ByteArrayOutputStream()
@@ -421,10 +509,7 @@ class LocalSecretStore(
                 out.write(CredentialCrypto.encodeV2Entry(V2EntryData(id, sealed, kindId)))
             }
 
-            val written = out.toByteArray()
-            Files.write(tempFile, written)
-            CredentialsStorePosix.setFilePermissions(tempFile)
-            tempFile.toFile().renameTo(file.toFile())
+            commit(out.toByteArray())
         }
     }
 
@@ -874,6 +959,8 @@ class LocalSecretStore(
      *   match the store. The key is the authorization to change what is inside,
      *   so it is checked before anything is written: a passphrase that does not
      *   match leaves the store exactly as it was.
+     * @throws CredentialsStoreCommitException when the store could not be
+     *   replaced. The store keeps the content it had.
 */
     override fun remove(id: CredentialsId) {
         withExclusiveLock {
@@ -891,7 +978,6 @@ class LocalSecretStore(
             entries.remove(id.value) ?: return // Not found, no-op
 
             // Rewrite without the removed entry
-            val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
             val out = ByteArrayOutputStream()
             writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
             for ((_, entryData) in entries) {
@@ -900,9 +986,7 @@ class LocalSecretStore(
                     is V2EntryData -> out.write(CredentialCrypto.encodeV2Entry(entryData))
                 }
             }
-            Files.write(tempFile, out.toByteArray())
-            CredentialsStorePosix.setFilePermissions(tempFile)
-            tempFile.toFile().renameTo(file.toFile())
+            commit(out.toByteArray())
         }
     }
 
@@ -914,6 +998,8 @@ class LocalSecretStore(
      * @param id The credential ID (must already exist)
      * @param credential The new typed credential to store
      * @throws SecretStoreTamperException if the credential doesn't exist
+     * @throws CredentialsStoreCommitException when the store could not be
+     *   replaced. The store keeps the content it had.
 */
     override fun rotate(id: CredentialsId, credential: Credential) {
         withExclusiveLock {
@@ -960,54 +1046,57 @@ class LocalSecretStore(
             entries[id.value] = V2EntryData(id, sealed, kindId)
 
             // Atomic write - always write header
-            val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
             val out = ByteArrayOutputStream()
             writeHeader(out, hdr.magic, VERSION_V2, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
             for ((_, entryData) in entries) {
                 out.write(CredentialCrypto.encodeV2Entry(entryData))
             }
-            Files.write(tempFile, out.toByteArray())
-            CredentialsStorePosix.setFilePermissions(tempFile)
-            tempFile.toFile().renameTo(file.toFile())
+            commit(out.toByteArray())
         }
     }
 
     /**
      * Rotates a credential with new bytes, preserving the DEK (v1 compatibility).
      * Full implementation - same as behavior
+     * @throws CredentialsStoreCommitException when the store could not be
+     *   replaced. The store keeps the content it had.
 */
     override fun rotateBytes(id: CredentialsId, newBytes: ByteArray) {
         if (newBytes.isEmpty()) throw CredentialsStoreEmptySecretException()
-        if (!Files.exists(file)) {
-            put(id, newBytes)
-            return
+        withExclusiveLock {
+            if (!Files.exists(file)) {
+                // A store that is not there yet is CREATED by the rotation, with
+                // the same bytes a first write would store. The write happens
+                // HERE and not in another call, because the lock this rotation
+                // holds is not reentrant at the operating system's level: a
+                // nested lock would be refused instead of waited for.
+                writeBytes(id, newBytes)
+                return@withExclusiveLock
+            }
+            val fileBytes = Files.readAllBytes(file)
+            val hdr = readHeader(fileBytes)
+            val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
+
+            val entries = CredentialCrypto.readEntriesV1(fileBytes)
+            entries[id.value]
+                ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
+
+            // Decrypt existing DEK from header
+            val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
+            val aad = CredentialCrypto.buildAad(hdr, id)
+            val sealed = AeadCipher.encrypt(dek, newBytes, aad)
+
+            // Update entry
+            val updatedEntries = entries.toMutableMap()
+            updatedEntries[id.value] = EntryData(id, sealed, newBytes.size)
+
+            val out = ByteArrayOutputStream()
+            writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
+            for ((_, entryData) in updatedEntries) {
+                out.write(CredentialCrypto.encodeEntry(entryData.id, entryData.sealed))
+            }
+            commit(out.toByteArray())
         }
-        val fileBytes = Files.readAllBytes(file)
-        val hdr = readHeader(fileBytes)
-        val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
-
-        val entries = CredentialCrypto.readEntriesV1(fileBytes)
-        entries[id.value]
-            ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
-
-        // Decrypt existing DEK from header
-        val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
-        val aad = CredentialCrypto.buildAad(hdr, id)
-        val sealed = AeadCipher.encrypt(dek, newBytes, aad)
-
-        // Update entry
-        val updatedEntries = entries.toMutableMap()
-        updatedEntries[id.value] = EntryData(id, sealed, newBytes.size)
-
-        val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
-        val out = ByteArrayOutputStream()
-        writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
-        for ((_, entryData) in updatedEntries) {
-            out.write(CredentialCrypto.encodeEntry(entryData.id, entryData.sealed))
-        }
-        Files.write(tempFile, out.toByteArray())
-        CredentialsStorePosix.setFilePermissions(tempFile)
-        tempFile.toFile().renameTo(file.toFile())
     }
 
     /**

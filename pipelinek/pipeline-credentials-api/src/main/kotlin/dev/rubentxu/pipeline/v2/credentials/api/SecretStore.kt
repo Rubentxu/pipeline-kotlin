@@ -141,6 +141,18 @@ open class CredentialsStoreEmptySecretException(message: String = "Cannot store 
 open class CredentialsStorePosixPermissionsException(message: String) : SecretStoreException(message)
 
 /**
+ * Thrown when a mutation could not be committed to the store file.
+ *
+ * The store was reachable and the mutation was understood, but the change
+ * never reached the file. The answer is about the write and not about the
+ * store: the store may be perfectly healthy, and what failed is the
+ * replacement of its content. A caller that reads this as a tampered store is
+ * diagnosing the wrong thing.
+*/
+open class CredentialsStoreCommitException(message: String, cause: Throwable? = null) :
+    SecretStoreException(message, cause)
+
+/**
  * Thrown when a [dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef]
  * references a credential ID that does not exist in the store.
 */

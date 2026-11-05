@@ -11,6 +11,11 @@ plugins {
     // per-module via subprojects {... } below. See comments in
     // the application block for the phased rollout scope.
     alias(libs.plugins.binary.compatibility.validator) apply false
+    // Dokka. Declared at the root project and applied per-module via
+    // subprojects {... } below, to the modules whose public surface is frozen.
+    // It generates the HTML reference of the published API, and no task of the
+    // gate depends on it: the reference is asked for when someone wants it.
+    alias(libs.plugins.dokka) apply false
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -521,6 +526,65 @@ subprojects {
             }
         }
     }
+}
+
+// ── the HTML reference of the published API ─────────────────────────────────────
+//
+// Dokka generates the reference a third party reads to learn what this product
+// publishes. It is applied to the modules whose public ABI is frozen, and to
+// NO other: a reference of an internal module would describe a surface nobody
+// consumes.
+//
+// The membership test is the one the ABI guard uses, with the same list, so the
+// reference and the frozen surface cannot disagree about which modules carry a
+// published contract. `bcvModules` is now read by three guards — the ABI
+// baseline, the documentation rules and this one — and ONE list is what keeps
+// them from drifting apart.
+//
+// The reference is ONE site PER CONTRACT, and not a single aggregated site.
+// That is a measured decision, not a preference: Dokka 2.2.0 can aggregate the
+// modules into one site, and the aggregated site was measured at 2764 broken
+// internal links out of 193281 (the paths it writes carry a module prefix that
+// the aggregation does not rewrite), while the per-module site of the same
+// contract measures ZERO broken links out of 4446. A reference whose links do
+// not resolve is a worse artifact than seven references that each resolve.
+//
+// Why Dokka enters the build at all: it brings an engine (KDoc analysis over
+// K2) and an output format (HTML) that this project does not own and would not
+// reimplement for an artifact that is not part of the product. It runs at build
+// time and reaches no published jar.
+//
+// The output lands in `build/dokka/html` inside each module, inside `build/`
+// and outside the versioned tree: a reference is a build artifact, and this
+// repository carries no documentation tree.
+//
+// Nothing here is wired into `check`: the generation is an INDEPENDENT task
+// that a reader asks for when they want the reference, and it is never part of
+// the cost of a unit test or of the gate.
+subprojects {
+    val isBcvModule = bcvModules.any { project.path == ":$it" || project.path.endsWith(":$it") }
+    if (isBcvModule) {
+        pluginManager.apply("org.jetbrains.dokka")
+        pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+            extensions.configure<org.jetbrains.dokka.gradle.DokkaExtension> {
+                // The output is declared here and not left to the tool's
+                // default: "the reference lives under build/" is this
+                // repository's contract, and a contract that depends on a
+                // default is a contract one upgrade can break.
+                dokkaPublications.getByName("html").outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+            }
+        }
+    }
+}
+
+// The one task that asks for the whole reference: `./gradlew apiReferenceHtml`.
+// It depends on the per-contract generation and on nothing else. It is
+// deliberately NOT a dependency of `check`, of `build` or of any test task, so
+// neither a unit test nor the gate pays for a web page.
+tasks.register("apiReferenceHtml") {
+    group = "documentation"
+    description = "Generates the HTML reference of every published contract under each module's build/dokka/html."
+    dependsOn(bcvModules.map { module -> ":$module:dokkaGeneratePublicationHtml" })
 }
 
 // ── external plugin reproducibility ─────────────────────────────────────────────

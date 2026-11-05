@@ -178,11 +178,12 @@ object PluginCompositionAdmitter {
         // The READING happens here; the DECISION about what the readings mean lives in
         // `PluginArtifactIntegrity`, where it can be exercised without touching a file.
         val measurements = candidates.map { candidate ->
-            val digest = PluginManifestResourceReader.digestOfArtifactAt(candidate)
-            if (digest == null) {
-                PluginArtifactIntegrity.Measurement.Unreadable(candidate)
-            } else {
-                PluginArtifactIntegrity.Measurement.Measured(candidate, digest)
+            when (val outcome = PluginArtifactDigest.measure(candidate)) {
+                is PluginArtifactDigest.Outcome.Measured ->
+                    PluginArtifactIntegrity.Measurement.Measured(candidate, outcome.digest)
+
+                is PluginArtifactDigest.Outcome.Refused ->
+                    PluginArtifactIntegrity.Measurement.Unreadable(candidate, outcome.reason)
             }
         }
 
@@ -193,7 +194,8 @@ object PluginCompositionAdmitter {
                 rejection = PluginManifestRejection.ArtifactNotMeasurable(
                     artifact = selection.artifact.toString(),
                     detail = "the artifact could not be read, so its bytes cannot be measured; " +
-                        "an artifact whose bytes are unknown is not one that may be loaded",
+                        "an artifact whose bytes are unknown is not one that may be loaded: " +
+                        selection.reason.describe(),
                 ),
             )
 

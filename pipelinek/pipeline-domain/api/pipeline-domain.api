@@ -8554,6 +8554,19 @@ public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$PrivateCopyNotSecured : dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$PrivateCopyNotSecured;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$PrivateCopyNotSecured;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$PrivateCopyNotSecured;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifact ()Ljava/lang/String;
+	public final fun getDetail ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$UnknownCodec : dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
 	public fun <init> (Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;

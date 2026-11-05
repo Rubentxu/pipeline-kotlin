@@ -92,4 +92,34 @@ internal object OperatorPluginFixture {
         }
         return jar
     }
+
+    /**
+     * A REAL plugin artifact as an exploded directory: the same manifest, where a shaded build
+     * puts it.
+     *
+     * An exploded build is a legitimate artifact — the manifest is a plain file inside it — and
+     * it is the case whose IDENTITY has to survive being measured at one address and again at
+     * another, because the runtime copies it before it loads it.
+     *
+     * @param into the directory the artifact is written into.
+     * @param name the name of the artifact's directory.
+     * @param files the files it holds besides the manifest, by path relative to the artifact.
+     */
+    fun directory(
+        into: Path,
+        name: String = "operator-plugin",
+        files: Map<String, String> = emptyMap(),
+    ): Path {
+        val artifact = into.resolve(name)
+        val document = artifact.resolve(PluginManifestCodec.RESOURCE_PATH)
+        Files.createDirectories(document.parent)
+        Files.writeString(document, PluginManifestCodec.encode(manifest()))
+
+        for ((relative, content) in files) {
+            val file = artifact.resolve(relative)
+            Files.createDirectories(file.parent)
+            Files.writeString(file, content)
+        }
+        return artifact
+    }
 }

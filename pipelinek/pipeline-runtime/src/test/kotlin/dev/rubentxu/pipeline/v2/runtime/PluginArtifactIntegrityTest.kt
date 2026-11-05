@@ -34,11 +34,20 @@ class PluginArtifactIntegrityTest {
 
     private fun digest(seed: Char): Digest = Digest("sha256:" + seed.toString().repeat(64))
 
+    /**
+     * The reason an artifact has no identity.
+     *
+     * The reason is part of the measurement and not a note about it: the operator's next
+     * question is WHY the artifact could not be read, and "a tree that reaches outside itself"
+     * and "the bytes could not be read" are different facts with different remedies.
+     */
+    private val reason = PluginArtifactDigest.Refusal.Unreadable("the artifact's bytes could not be read")
+
     private fun measured(path: Path, digest: Digest): PluginArtifactIntegrity.Measurement.Measured =
         PluginArtifactIntegrity.Measurement.Measured(path, digest)
 
     private fun unreadable(path: Path): PluginArtifactIntegrity.Measurement.Unreadable =
-        PluginArtifactIntegrity.Measurement.Unreadable(path)
+        PluginArtifactIntegrity.Measurement.Unreadable(path, reason)
 
     @Test
     @DisplayName("an artifact whose bytes cannot be read is refused, and the refusal names it")
@@ -46,7 +55,7 @@ class PluginArtifactIntegrityTest {
         val selection = PluginArtifactIntegrity.select(listOf(unreadable(first)))
 
         assertEquals(
-            PluginArtifactIntegrity.Selection.NotMeasurable(first),
+            PluginArtifactIntegrity.Selection.NotMeasurable(first, reason),
             selection,
         )
     }
@@ -62,7 +71,7 @@ class PluginArtifactIntegrityTest {
         // through either. A selection that carried on past an unreadable artifact would compose
         // over two plugins and report success while one of them was never verified.
         assertEquals(
-            PluginArtifactIntegrity.Selection.NotMeasurable(second),
+            PluginArtifactIntegrity.Selection.NotMeasurable(second, reason),
             selection,
         )
     }

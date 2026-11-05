@@ -60,6 +60,25 @@ sealed interface PluginManifestRejection : AdmissionRejection {
         val measuredDigest: String,
         val foundDigest: String,
     ) : PluginManifestRejection
+
+    /**
+     * The private copy of the artifact could not be put where only the operator can reach it.
+     *
+     * The runtime copies every artifact before loading it, so that the bytes it verifies are
+     * the bytes it loads, and it puts the copies in a directory only the operator can read. When
+     * that directory's permissions cannot be imposed and verified, the copy cannot be made
+     * private, and a copy that cannot be made private can be swapped between the moment it is
+     * verified and the moment it is loaded — which is the one thing the copy exists to prevent.
+     *
+     * The refusal is therefore about the artifact that was not copied, and not about the
+     * artifact's bytes: the bytes may be perfectly sound, and what failed is the place they
+     * were going to be put. A caller reading this as a corrupt artifact is diagnosing the
+     * wrong thing.
+    */
+    data class PrivateCopyNotSecured(
+        val artifact: String,
+        val detail: String,
+    ) : PluginManifestRejection
 }
 
 /**

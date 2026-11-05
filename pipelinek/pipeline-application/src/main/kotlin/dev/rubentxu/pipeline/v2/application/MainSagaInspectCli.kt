@@ -100,13 +100,10 @@ object MainSagaInspectCli {
         // thing.
         if (state.rows.isEmpty()) {
             if (!state.runExists) {
-                err.println(
-                    "saga inspect: no run $runId in ${options.dbPath}. " +
-                        "Nothing was read, so nothing can be said about what it owes.",
-                )
+                err.println(sagaInspectUnknownRun(runId, options.dbPath))
                 return CliExit.INVALID_ARGUMENT.code
             }
-            out.println("saga inspect: run $runId armed no saga promise; there is nothing owed.")
+            out.println(sagaInspectNothingOwed(runId))
             return CliExit.SUCCESS.code
         }
 
@@ -129,7 +126,7 @@ object MainSagaInspectCli {
     private fun renderText(report: SagaInspectionReport): String {
         val view = report.view
         val builder = StringBuilder()
-        builder.append("saga inspect: run ").append(view.runId)
+        builder.append(sagaInspectRunHeader(view.runId))
         builder.append(" — ").append(view.actions.size).append(" obligation")
         if (view.actions.size != 1) builder.append('s')
         builder.append(", operator needed: ").append(if (view.needsOperator) "yes" else "no")
@@ -307,3 +304,36 @@ private fun SagaInspectionRefusal.render(): String = when (this) {
     is SagaInspectionRefusal.Unreadable ->
         "the durable state at ${renderValue(path)} could not be read: $detail"
 }
+
+/**
+ * The refusal for a run this store does not know.
+ *
+ * The run id and the store are the two things the operator wrote, and the
+ * refusal names both of them: a run id drawn RAW stops naming itself the
+ * moment it is empty, and the sentence would read "no run  in ..." — a
+ * phrase with a hole where the run should be, next to another hole where the
+ * store should be.
+ *
+ * The sentence is a function of its two arguments and of nothing else, so it
+ * can be read without opening a store.
+ */
+internal fun sagaInspectUnknownRun(runId: String, dbPath: String): String =
+    "saga inspect: no run ${renderValue(runId)} in ${renderValue(dbPath)}. " +
+        "Nothing was read, so nothing can be said about what it owes."
+
+/**
+ * The answer for a run this store knows and that owes nothing.
+ *
+ * The run id is drawn the same way the refusals draw it, so that the two
+ * families of sentences about a run agree on how a run is named.
+ */
+internal fun sagaInspectNothingOwed(runId: String): String =
+    "saga inspect: run ${renderValue(runId)} armed no saga promise; there is nothing owed."
+
+/**
+ * The heading of the report of a run.
+ *
+ * The run id is drawn the same way the refusals draw it, so that the two
+ * families of sentences about a run agree on how a run is named.
+ */
+internal fun sagaInspectRunHeader(runId: String): String = "saga inspect: run ${renderValue(runId)}"

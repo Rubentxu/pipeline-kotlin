@@ -82,7 +82,14 @@ object CompiledExecutionPlanner {
                     }
                     units += CompiledExecutionUnit.Concurrent(branchSteps)
                 }
-                is StageBody.Matrix -> error("Matrix planning is not supported yet for stage '${stage.name}'")
+                // The validation refuses this body before the planner reaches it, and it
+                // refuses it by name. This branch exists because the shape of a body is
+                // closed, and it refuses the same way so that a caller that comes
+                // through this door is told the same fact.
+                is StageBody.Matrix -> throw MissingPlanningCapabilityException(
+                    capability = PlanningCapability.MatrixExpansion,
+                    stage = stage.name,
+                )
 
                 // A scripted body contributes NO static unit, and that is a fact rather
                 // than a gap. The planner enumerates structure known at COMPILE time, and a

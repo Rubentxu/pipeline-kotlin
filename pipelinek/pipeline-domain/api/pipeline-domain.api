@@ -1213,6 +1213,12 @@ public final class dev/rubentxu/pipeline/v2/domain/MismatchedSecretException : j
 public final class dev/rubentxu/pipeline/v2/domain/MismatchedSecretException$Companion {
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/MissingPlanningCapabilityException : java/lang/IllegalArgumentException {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/PlanningCapability;Ljava/lang/String;)V
+	public final fun getCapability ()Ldev/rubentxu/pipeline/v2/domain/PlanningCapability;
+	public final fun getStage ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/NetworkStepException : dev/rubentxu/pipeline/v2/domain/PipelineStepException {
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/PipelineFailure;Ljava/lang/Throwable;)V
 	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/PipelineFailure;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -1424,6 +1430,13 @@ public class dev/rubentxu/pipeline/v2/domain/PipelineStepException : dev/rubentx
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/PipelineFailure;Ljava/lang/Throwable;)V
 	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/PipelineFailure;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getFailure ()Ldev/rubentxu/pipeline/v2/domain/PipelineFailure;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/PlanningCapability : java/lang/Enum {
+	public static final field MatrixExpansion Ldev/rubentxu/pipeline/v2/domain/PlanningCapability;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/PlanningCapability;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/PlanningCapability;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/PluginStepException : dev/rubentxu/pipeline/v2/domain/PipelineStepException {

@@ -366,8 +366,11 @@ sealed interface StageBody {
     /**
      * A body declared over a matrix's axis values.
      *
-     * The planner does not expand it yet: a matrix stage is refused at
-     * planning time.
+     * This build does not serve the matrix-expansion capability: no planner
+     * expands a matrix into the units of the plan, so a stage with this body
+     * is refused by the structural validation, by name, before the plan is
+     * accepted. The shape is representable because the IR carries it, not
+     * because this build can run it.
      */
     @Serializable
     data class Matrix(val matrix: MatrixSpec) : StageBody

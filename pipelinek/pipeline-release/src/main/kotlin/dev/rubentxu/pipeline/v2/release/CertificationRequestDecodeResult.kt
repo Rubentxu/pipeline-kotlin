@@ -43,6 +43,19 @@ sealed interface CertificationRejection {
 }
 
 /**
+ * Why a document was refused, in the words the refusal uses.
+ *
+ * The wording lives here and not in each reader, because the documents that
+ * cross the boundary between repositories are refused in the same words: a
+ * receiver that has to log a refusal has one vocabulary to learn and not two
+ * that could drift apart.
+ */
+fun CertificationRejection.describe(): String = when (this) {
+    is CertificationRejection.UnknownField -> "unknown field(s) ${fields.joinToString()}"
+    is CertificationRejection.MalformedDocument -> detail
+}
+
+/**
  * Operator-facing diagnostic for a document that was read.
  *
  * The refusal has to name what was wrong in words somebody can act on: a
@@ -55,11 +68,6 @@ fun CertificationRequestDecodeResult.render(): String = when (this) {
             "${request.battery.id} ${request.battery.version} " +
             "(${request.battery.scenarioCount} scenarios)"
 
-    is CertificationRequestDecodeResult.Rejected -> when (val r = rejection) {
-        is CertificationRejection.UnknownField ->
-            "certification request REJECTED: unknown field(s) ${r.fields.joinToString()}"
-
-        is CertificationRejection.MalformedDocument ->
-            "certification request REJECTED: ${r.detail}"
-    }
+    is CertificationRequestDecodeResult.Rejected ->
+        "certification request REJECTED: ${rejection.describe()}"
 }

@@ -2,6 +2,8 @@ package dev.rubentxu.pipeline.v2.release
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Instant
 
@@ -19,6 +21,14 @@ import java.time.Instant
  *
  * Pure: no filesystem, no clock, no subprocess. The instant the request
  * declares is supplied, not read.
+ *
+ * The second guarantee under test is the CORRECTION: a candidate that is the
+ * answer to a defect says which defect and the candidate the defect was seen
+ * against, and a candidate that is not a correction says nothing about any
+ * defect. That second one matters because the receiver revalidates the
+ * scenario the defect was in: a request that carried a correction nobody can
+ * place, or none at all when there is one, would leave the receiver with no
+ * way to know which scenario to revalidate first.
  */
 class CertificationRequestTest {
 
@@ -58,13 +68,34 @@ class CertificationRequestTest {
         scenarios = scenarios,
     )
 
+    /** The footprint of a defect, as the receiver that observed it stated it. */
+    private fun fingerprint() = DefectFingerprint(
+        contract = "contract.alpha",
+        scenario = "scenario.beta",
+        failureType = DefectFailureType.REPRODUCIBLE_DEFECT,
+        signature = "sig-123",
+    )
+
+    /**
+     * The correction of a defect that was seen against another candidate.
+     *
+     * The other candidate is a different one on purpose: a correction names
+     * the candidate the defect was in, and that is never the candidate the
+     * correction produces.
+     */
+    private fun correction(
+        observedAgainst: CandidateId = CandidateId.fromDigest("b".repeat(64)),
+    ) = CandidateCorrection(defect = fingerprint(), observedAgainst = observedAgainst)
+
     private fun request(
         scenarios: List<String> = listOf("alpha", "beta", "gamma"),
+        correction: CandidateCorrection? = null,
     ): CertificationRequest {
         val outcome = buildCertificationRequest(
             handoff = handoff(),
             catalogue = catalogue(scenarios),
             requestedAt = instant,
+            correction = correction,
         )
         return assertInstanceOf(CertificationRequestOutcome.Accepted::class.java, outcome).request
     }
@@ -210,7 +241,71 @@ class CertificationRequestTest {
         val encoded = CertificationRequestCodec.encode(request())
         val tampered = encoded.replace(
             CertificationRequest.SCHEMA_VERSION,
-            "pipelinek-certification-request-2",
+            "pipelinek-certification-request-3",
+        )
+
+        val result = CertificationRequestCodec.decode(tampered)
+
+        val rejected = assertInstanceOf(CertificationRequestDecodeResult.Rejected::class.java, result)
+        assertInstanceOf(CertificationRejection.MalformedDocument::class.java, rejected.rejection)
+    }
+
+    @Test
+    fun `a request that answers a defect names it and the candidate the defect was seen against`() {
+        val request = request(correction = correction())
+
+        val correction = assertInstanceOf(
+            CandidateCorrection::class.java,
+            request.correction,
+        )
+        assertEquals("contract.alpha", correction.defect.contract)
+        assertEquals("scenario.beta", correction.defect.scenario)
+        assertEquals(DefectFailureType.REPRODUCIBLE_DEFECT, correction.defect.failureType)
+        assertEquals("sig-123", correction.defect.signature)
+        assertEquals(CandidateId.fromDigest("b".repeat(64)).canonical, correction.observedAgainst.canonical)
+    }
+
+    @Test
+    fun `a candidate that is not a correction says nothing about any defect`() {
+        assertNull(request().correction)
+    }
+
+    @Test
+    fun `a correction that names the candidate itself produces no request`() {
+        val outcome = buildCertificationRequest(
+            handoff = handoff(),
+            catalogue = catalogue(listOf("alpha")),
+            requestedAt = instant,
+            correction = correction(observedAgainst = CandidateId.fromDigest(digest)),
+        )
+
+        val refused = assertInstanceOf(CertificationRequestOutcome.Refused::class.java, outcome)
+        assertTrue(refused.reason.contains("corrects itself"))
+    }
+
+    @Test
+    fun `the correction survives the wire`() {
+        val encoded = CertificationRequestCodec.encode(request(correction = correction()))
+
+        val decoded = assertInstanceOf(
+            CertificationRequestDecodeResult.Accepted::class.java,
+            CertificationRequestCodec.decode(encoded),
+        )
+
+        assertEquals(correction(), decoded.request.correction)
+    }
+
+    @Test
+    fun `a document that says a candidate corrects itself is refused`() {
+        // The composition refuses to state such a request, but the READER has
+        // to refuse it too: a document written elsewhere can carry anything,
+        // and the rule that a candidate cannot correct itself is the reader's
+        // to apply. The document is tampered rather than built, because the
+        // value itself refuses to exist in that state.
+        val encoded = CertificationRequestCodec.encode(request(correction = correction()))
+        val tampered = encoded.replace(
+            CandidateId.fromDigest("b".repeat(64)).canonical,
+            CandidateId.fromDigest(digest).canonical,
         )
 
         val result = CertificationRequestCodec.decode(tampered)

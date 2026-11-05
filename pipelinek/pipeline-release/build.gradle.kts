@@ -756,6 +756,12 @@ tasks.register("releaseGate") {
 // The properties are read at configuration time and stored as inputs, so a
 // run over different documents re-runs the task instead of reusing a verdict
 // that was reached over other bytes.
+//
+// `certification.correction` is the report of the defect this candidate
+// answers, and it is OPTIONAL: a candidate that is not a correction states a
+// request that says nothing about any defect. When it is there, the request
+// carries the defect and the candidate the defect was seen against, so the
+// receiver knows which scenario it has to revalidate first.
 tasks.register<JavaExec>("certificationRequest") {
     group = "distribution"
     description = "state the certification request for the candidate and the published battery."
@@ -766,11 +772,14 @@ tasks.register<JavaExec>("certificationRequest") {
     val handoff = providers.gradleProperty("certification.handoff").orElse("").get()
     val catalogue = providers.gradleProperty("certification.catalogue").orElse("").get()
     val out = providers.gradleProperty("certification.out").orElse("").get()
+    val correction = providers.gradleProperty("certification.correction").orElse("").get()
 
     inputs.property("certification.handoff", handoff)
     inputs.property("certification.catalogue", catalogue)
+    inputs.property("certification.correction", correction)
     if (handoff.isNotBlank()) inputs.files(handoff)
     if (catalogue.isNotBlank()) inputs.files(catalogue)
+    if (correction.isNotBlank()) inputs.files(correction)
 
     doFirst {
         listOf(
@@ -787,7 +796,7 @@ tasks.register<JavaExec>("certificationRequest") {
         }
     }
 
-    args = listOf(handoff, catalogue, out)
+    args = listOf(handoff, catalogue, out, correction)
 
     // Any non-zero exit means the request could not be stated. Propagate it
     // verbatim: the diagnostic printed by the model is the operator-facing

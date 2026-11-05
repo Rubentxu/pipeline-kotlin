@@ -268,7 +268,8 @@ internal sealed interface RecoveryRequirement {
  * These are genuinely distinct protocol states with distinct terminal semantics, so each carries only
  * the data its own handling needs; incoherent combinations (e.g. a reuse that also re-executes) are not
  * representable.
- * @property operationId Reproduced for error messages only; no journal/cursor is touched by the resolver.
+ * The cases that name an invocation do so with the same field, `operationId`: it is reproduced for
+ * error messages only, and no journal or cursor is touched by the resolver.
 */
 internal sealed interface InvocationReconciliation {
     /** Fingerprint divergence was detected; the invocation must fail closed without executing. */

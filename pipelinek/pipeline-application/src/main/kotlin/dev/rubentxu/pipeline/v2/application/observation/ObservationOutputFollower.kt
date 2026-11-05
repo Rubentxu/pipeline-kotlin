@@ -46,11 +46,11 @@ class ObservationOutputFollower(
 
     /**
      * Reads everything pending right now, and says whether more can still arrive.
+     * @param afterOrdinal where to resume. `-1` reads the run from its first frame.
      * @param query compiled once and applied per record; `null` selects every record. A query that
      *   rejects most records does NOT shorten the drain: filtering is read-side, so the index is
      *   still traversed to its end and only then does the bound on KEPT records apply. A reader
      *   counting frames it kept would be counting a view of the run, not the run.
-     * @param afterOrdinal where to resume. `-1` reads the run from its first frame.
 */
     fun replay(
         runId: String,

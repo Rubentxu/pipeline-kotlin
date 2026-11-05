@@ -101,11 +101,11 @@ sealed interface CredentialScopeCleanup {
  * The result of a successful [CredentialScopePort.acquire]. Carries the
  * typed env overlay and the cleanup handle. Cleanup is idempotent and
  * owned exclusively by this scope (reverse-LIFO, no shared resources).
- * @property env Map of env var name to [SecretHandle]. May be empty but
- *               never null.
- * @property credentials The credential IDs that were acquired.
- * @property close Releases all retained materialization resources.
- *                 Idempotent: multiple calls are safe.
+ *
+ * The overlay maps an environment variable name to its [SecretHandle]; it may be
+ * empty but it is never null. The credential list names the credentials that were
+ * acquired. Releasing the scope releases all retained materialization resources,
+ * and it is idempotent: multiple calls are safe.
 */
 interface AcquiredCredentialScope {
     val env: Map<String, SecretHandle>

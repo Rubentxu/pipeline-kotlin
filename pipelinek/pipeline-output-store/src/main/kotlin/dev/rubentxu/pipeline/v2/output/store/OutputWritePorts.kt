@@ -63,8 +63,9 @@ interface OutputStreamHandle {
 
 /**
  * A durable, not-yet-visible byte range inside a stream.
- * @property base  stream offset the range starts at
- * @property limit stream offset one past the last byte this reservation may occupy
+ *
+ * The range starts at [base] and ends before [limit]: the offset one past the last byte
+ * this reservation may occupy.
 */
 interface OutputReservation {
     val stream: OutputStreamId

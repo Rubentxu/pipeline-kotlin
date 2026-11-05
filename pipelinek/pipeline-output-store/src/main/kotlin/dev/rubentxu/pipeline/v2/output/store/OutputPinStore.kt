@@ -21,7 +21,7 @@ import java.util.concurrent.locks.ReentrantLock
  * 1024 pins per stream means the file stays small (a few hundred KiB
  * even at max), and an atomic temp-write-rename is a few-ms operation.
  * ## Threading
- * All public methods take a single [lock]. The lock is held for the
+ * All public methods take a single lock. The lock is held for the
  * duration of the I/O so two concurrent pin ops cannot observe a torn
  * read. This mirrors the per-stream lock discipline
  * [SegmentOutputStore] uses.

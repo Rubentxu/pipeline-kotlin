@@ -322,6 +322,91 @@ tasks.register<JavaExec>("candidateAdmission") {
 
 
 /**
+ * Emit the certification request event for a release candidate that has just
+ * been published.
+ *
+ * The event asks the receiver to certify the bytes that were published, and
+ * it is emitted at the publication and not at the build: a request about bytes
+ * the receiver cannot download yet is worse than no request.
+ *
+ * The task is intentionally thin, like the admission above. It resolves the
+ * paths, hands the arguments over and propagates a non-zero exit. It re-derives
+ * no rule, so the build and the tested model cannot drift apart: the decision
+ * to emit or to refuse lives in `certificationRequestedEmission`, and the
+ * diagnostic the operator reads is the one that model produced.
+ *
+ * The publication receipt is an input, not an argument: it is the fact of the
+ * publication, and a task that carried only its path could consider itself up
+ * to date while the publication changed underneath it.
+ *
+ * The request it carries is the SAME document the admission gate evaluated
+ * (`:pipeline-release:certificationAdmission`): the receiver is asked about the
+ * bytes and the battery that were admitted, and there is no second derivation
+ * of the request that could disagree with the first.
+ */
+tasks.register<JavaExec>("certificationRequested") {
+    group = "distribution"
+    description = "emit the rc.certification.requested event for a published release candidate."
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.CertificationRequestedEventMainKt")
+
+    val handoff = providers.gradleProperty("certification.handoff").orNull
+    val request = providers.gradleProperty("certification.request").orNull
+    val publicationReceipt = providers.gradleProperty("certification.publicationReceipt").orNull
+    val publishedAt = providers.gradleProperty("certification.publishedAt").orNull
+    val eventFile = providers.gradleProperty("certification.eventFile").orNull
+    val receiptFile = providers.gradleProperty("certification.receiptFile").orNull
+
+    // The documents the decision depends on are INPUTS: a command line carries
+    // a path, not the bytes behind it.
+    listOfNotNull(handoff, request, publicationReceipt).forEach { path ->
+        inputs.file(project.file(path))
+    }
+    inputs.property("publishedAt", publishedAt ?: "")
+    inputs.property("eventFile", eventFile ?: "")
+    inputs.property("receiptFile", receiptFile ?: "")
+
+    // The arguments are fixed while the task is CONFIGURED, not while it runs.
+    // A task whose arguments are set inside a `doFirst` cannot declare them as
+    // its inputs, and an emission that cannot see its own arguments cannot say
+    // what it emitted.
+    args = listOf(
+        handoff ?: "",
+        request ?: "",
+        publicationReceipt ?: "",
+        publishedAt ?: "",
+        eventFile ?: "",
+        receiptFile ?: "",
+    )
+
+    doFirst {
+        val missing = listOf(
+            "certification.handoff" to handoff,
+            "certification.request" to request,
+            "certification.publicationReceipt" to publicationReceipt,
+            "certification.publishedAt" to publishedAt,
+            "certification.eventFile" to eventFile,
+            "certification.receiptFile" to receiptFile,
+        ).filter { (_, value) -> value.isNullOrBlank() }.map { (name, _) -> name }
+
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "certificationRequested needs ${missing.joinToString(", ")}. The event is " +
+                    "emitted from the publication, and an emission with no document to read and " +
+                    "no place to write it certifies nothing.",
+            )
+        }
+    }
+
+    // A refusal is a defect in the inputs or in the cycle, and the diagnostic
+    // the model printed is the message the operator reads. Propagate it
+    // verbatim rather than wrapping it.
+    isIgnoreExitValue = false
+}
+
+
+/**
  * The second ABI reading: the candidate's PUBLISHED surface against the
  * surface the PREVIOUS release published.
  *

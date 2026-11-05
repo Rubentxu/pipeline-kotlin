@@ -171,6 +171,10 @@ DECLARED_EXECUTABLES = {
     "scripts/release/sdkman-publish.sh": (
         "publication: it publishes the release to the SDKMAN channel"
     ),
+    "scripts/release/verify-promotion-certification.sh": (
+        "publication: it verifies that the certification of a candidate "
+        "admits it to a stable release"
+    ),
     "scripts/release/verify-external-compatibility.sh": (
         "the compatibility gate of the publication: it compares the PUBLISHED "
         "artifact against the PREVIOUSLY published one, so what is under test "

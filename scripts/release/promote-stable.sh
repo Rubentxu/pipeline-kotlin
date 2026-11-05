@@ -36,6 +36,13 @@
 #      about that digest, not a second authority: it is checked against the
 #      RC tag's own message, and a promotion whose claim does not match it
 #      is refused instead of publishing a digest of nothing.
+#   6. the candidate is CERTIFIED, and the certification covers it COMPLETELY.
+#      Everything above proves that the RC is real; none of it proves that
+#      anybody ran the certification battery over those bytes. An RC can be
+#      perfectly signed, perfectly coherent and never certified, and without
+#      this the promotion would publish it. The certification is judged
+#      against the candidate the RC names, and a partial one — the canaries
+#      and nothing else — is refused with the missing part named.
 #
 # The tag itself is cut by scripts/release/publish-tag.sh, which signs it,
 # verifies the signature and only then pushes it. This file does not re-implement
@@ -48,7 +55,7 @@
 # door rather than by a convention:
 #
 #   promote-stable.sh --rc-tag v1.2.3-rc1 --stable-tag v1.2.3 \
-#       --candidate-id sha256:<digest> --out <file>
+#       --candidate-id sha256:<digest> --certification <file> --out <file>
 #   publish-github-release.sh --tag v1.2.3 --title '...' --notes-file <file> \
 #       --asset <rc asset>... --expect-sums <rc SHA256SUMS>
 #
@@ -65,11 +72,19 @@
 #
 # Usage:
 #   promote-stable.sh --rc-tag <name> --stable-tag <name> \
-#       --candidate-id <sha256:...> --out <file> [--remote <name>]
+#       --candidate-id <sha256:...> --certification <file> --out <file> \
+#       [--remote <name>]
 #
 # --candidate-id is the digest of the candidate the stable release carries. It
 # is not free text: the RC tag names the same digest, and this script refuses
 # a claim that does not match it.
+#
+# --certification is the certification of THAT candidate: the document that
+# says the canaries, the mandatory scenarios and the re-validation of the fix
+# (or that there was no fix to re-validate) were run over these bytes and all
+# of them passed. It is not optional: without it the promotion does not
+# happen, because a promotion of bytes nobody certified is exactly what this
+# cycle exists to prevent.
 #
 # Exit codes: 0 = the stable tag was signed, verified and pushed; 1 = refused;
 # 2 = usage error.
@@ -81,6 +96,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 RC_TAG=""
 STABLE_TAG=""
 CANDIDATE_ID=""
+CERTIFICATION=""
 OUT_FILE=""
 REMOTE="origin"
 
@@ -97,6 +113,7 @@ while [[ $# -gt 0 ]]; do
         --rc-tag)       RC_TAG="${2:-}"; shift 2 ;;
         --stable-tag)   STABLE_TAG="${2:-}"; shift 2 ;;
         --candidate-id) CANDIDATE_ID="${2:-}"; shift 2 ;;
+        --certification) CERTIFICATION="${2:-}"; shift 2 ;;
         --out)          OUT_FILE="${2:-}"; shift 2 ;;
         --remote)       REMOTE="${2:-}"; shift 2 ;;
         -h|--help)      usage ;;
@@ -104,8 +121,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$RC_TAG" || -z "$STABLE_TAG" || -z "$CANDIDATE_ID" || -z "$OUT_FILE" ]]; then
-    printf 'promote-stable: --rc-tag, --stable-tag, --candidate-id and --out are all required\n' >&2
+if [[ -z "$RC_TAG" || -z "$STABLE_TAG" || -z "$CANDIDATE_ID" || -z "$CERTIFICATION" || -z "$OUT_FILE" ]]; then
+    printf 'promote-stable: --rc-tag, --stable-tag, --candidate-id, --certification and --out are all required\n' >&2
     usage
 fi
 
@@ -303,7 +320,54 @@ if ! "${repo_root}/scripts/release/verify-tag-signature.sh" \
 fi
 
 # ----------------------------------------------------------------------------
-# 6. Cut the stable tag: sign it, verify it, push it. The ordering lives in
+# 6. The candidate must be CERTIFIED, and the certification must cover it
+#    COMPLETELY.
+#    Everything above proves that the RC is real: that its tag is on the
+#    remote, that it is annotated, that it is signed by the declared key, and
+#    that it names the digest the stable release is about to carry. None of
+#    that says anybody RAN the certification battery over those bytes. An RC
+#    can be perfectly signed, perfectly coherent and never certified, and the
+#    promotion would happily publish it.
+#
+#    So the promotion requires the certification, and it requires it COMPLETE:
+#    the canaries, the mandatory scenarios and the re-validation of the fix
+#    (or the statement that there was no fix to re-validate). A partial
+#    certification is refused, and the refusal NAMES the part that is
+#    missing, because "the certification is not complete" is not something an
+#    operator can act on.
+#
+#    The certification is judged against the candidate the RC names, not
+#    against whatever the document claims about itself: a certification of
+#    other bytes is the certification of another candidate.
+#
+#    It runs HERE, and not earlier, because this is the expensive check: it
+#    builds the module that decides. Everything above is a read of the remote
+#    and of a tag object, and a promotion that fails on one of those must not
+#    pay for a build first. And it runs before anything is created, because
+#    a stable tag that exists cannot be taken back.
+#
+#    What this gate does NOT do: it does not judge whether the certifier
+#    certified well. It checks the STRUCTURE of the certification — which
+#    candidate, which parts, which verdicts — and the honesty of the
+#    certifier is answered where the trust anchor lives.
+# ----------------------------------------------------------------------------
+
+CERTIFICATION_VERDICT_FILE="$(mktemp "${TMPDIR:-/tmp}/promote-stable-certification.XXXXXX")"
+
+if ! "${repo_root}/scripts/release/verify-promotion-certification.sh" \
+    --certification "$CERTIFICATION" \
+    --expect-candidate "$RC_CANDIDATE_ID" \
+    --out "$CERTIFICATION_VERDICT_FILE"; then
+    printf 'promote-stable: refusing — the certification does not admit %s.\n' "$RC_CANDIDATE_ID" >&2
+    printf '           A stable release is promoted only against the complete certification\n' >&2
+    printf '           of the candidate it carries. The verdict is at %s\n' >&2
+    printf '           %s\n' "$CERTIFICATION_VERDICT_FILE" >&2
+    rm -f -- "$RC_VERDICT_FILE" "$CERTIFICATION_VERDICT_FILE"
+    exit 1
+fi
+
+# ----------------------------------------------------------------------------
+# 7. Cut the stable tag: sign it, verify it, push it. The ordering lives in
 #    publish-tag.sh, which is the shipping code for that ordering.
 # ----------------------------------------------------------------------------
 
@@ -320,12 +384,12 @@ if ! "${repo_root}/scripts/release/publish-tag.sh" \
     --out "$TAG_VERDICT_FILE"; then
     printf 'promote-stable: refusing — the stable tag %s was not published.\n' "$STABLE_TAG" >&2
     printf '           The verdict is at %s\n' "$TAG_VERDICT_FILE" >&2
-    rm -f -- "$RC_VERDICT_FILE"
+    rm -f -- "$RC_VERDICT_FILE" "$CERTIFICATION_VERDICT_FILE"
     exit 1
 fi
 
 # ----------------------------------------------------------------------------
-# 7. The closing audit: what does the REMOTE hold now? The promotion is only
+# 8. The closing audit: what does the REMOTE hold now? The promotion is only
 #    complete when the remote's own listing shows an annotated, signed tag.
 #    The audit is the same script that would have caught v0.90.0.
 # ----------------------------------------------------------------------------
@@ -341,12 +405,12 @@ if ! "${repo_root}/scripts/release/verify-published-tags.sh" \
     printf 'promote-stable: refusing — the published-tag audit does not pass for %s.\n' "$STABLE_TAG" >&2
     printf '           The tag was pushed; the audit says what the remote holds. Verdict at %s\n' \
         "$AUDIT_VERDICT_FILE" >&2
-    rm -f -- "$RC_VERDICT_FILE" "$TAG_VERDICT_FILE"
+    rm -f -- "$RC_VERDICT_FILE" "$CERTIFICATION_VERDICT_FILE" "$TAG_VERDICT_FILE"
     exit 1
 fi
 
 # ----------------------------------------------------------------------------
-# 8. The verdict. It carries what was checked, not only that it passed.
+# 9. The verdict. It carries what was checked, not only that it passed.
 # ----------------------------------------------------------------------------
 
 VERDICT_FILE="$(mktemp "${TMPDIR:-/tmp}/promote-stable-verdict.XXXXXX")"
@@ -362,10 +426,14 @@ trap cleanup EXIT
     printf '  the stable tag points at the RC commit and names the RC it promotes\n'
     printf '  the candidate_id %s is the one the RC tag names, and the claim was checked against it\n' \
         "$RC_CANDIDATE_ID"
+    printf '  the certification of %s covers every part the promotion demands\n' "$RC_CANDIDATE_ID"
     printf '  the published-tag audit on the remote agrees\n'
     printf '\n'
     printf '%s\n' '--- the RC signature check ---'
     cat "$RC_VERDICT_FILE"
+    printf '\n'
+    printf '%s\n' '--- the certification check ---'
+    cat "$CERTIFICATION_VERDICT_FILE"
     printf '\n'
     printf '%s\n' '--- the stable tag signature check ---'
     cat "$TAG_VERDICT_FILE"
@@ -380,7 +448,7 @@ trap cleanup EXIT
     printf '      --asset <rc asset>... --expect-sums <rc SHA256SUMS>\n'
 } > "$VERDICT_FILE"
 
-rm -f -- "$RC_VERDICT_FILE" "$TAG_VERDICT_FILE" "$AUDIT_VERDICT_FILE"
+rm -f -- "$RC_VERDICT_FILE" "$CERTIFICATION_VERDICT_FILE" "$TAG_VERDICT_FILE" "$AUDIT_VERDICT_FILE"
 
 mkdir -p -- "$(dirname -- "$OUT_FILE")"
 cp "$VERDICT_FILE" "$OUT_FILE"

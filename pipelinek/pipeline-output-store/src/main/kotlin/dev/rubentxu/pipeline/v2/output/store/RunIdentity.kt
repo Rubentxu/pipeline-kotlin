@@ -41,3 +41,28 @@ internal fun runDirectoryName(runId: String): String {
     if (!RunId.isNameable(runId)) throw UnnameableRunIdentity(runId)
     return runId
 }
+
+/**
+ * The on-disk namespace of a run: its identity, and the prefix every directory it owns carries.
+ *
+ * The prefix is the run's name and the separator that follows it. The identity is NOT folded, and an
+ * identity that cannot name a directory is refused rather than repaired — see [runDirectoryName].
+ *
+ * ## What the prefix is not
+ * A prefix is a filter, and a filter that authorises a deletion is an identity whether it was meant
+ * to be one or not: "run_" is also the beginning of "run_x_". So the prefix is only ever a LAST
+ * resort, and the rule that uses it says which evidence answers first.
+ *
+ * @property runId the run's identity, as the caller stated it.
+ */
+internal data class RunNamespace(val runId: String) {
+
+    /**
+     * The prefix every directory of this run's streams carries.
+     *
+     * It is derived from the identity by the one rule that names a run's directories, so a namespace
+     * cannot be built whose prefix belongs to another run, and an identity that cannot name a
+     * directory is refused here rather than repaired.
+     */
+    val prefix: String = runDirectoryName(runId) + "_"
+}

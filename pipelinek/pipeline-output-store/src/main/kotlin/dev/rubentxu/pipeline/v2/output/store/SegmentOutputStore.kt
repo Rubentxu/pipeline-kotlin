@@ -458,64 +458,25 @@ class SegmentOutputStore(
 
     /**
      * The directories this run owns.
-     * ## The defect this predicate had
-     * Selection used to be `fileName.startsWith(safe(runId) + "_")`, justified here as "the prefix is
-     * a *filter*, never a parse". The reasoning was about not *inverting* the name, and it was true
-     * — but it answered the wrong question. A filter is still an IDENTITY when it is the only thing
-     * authorising a `deleteRecursively`, and the shorter safe name is a prefix of the longer one:
-     * ```text
-     *   runId "run"    -> prefix "run_"
-     *   runId "run_x"  -> directory "run_x_step1_stdout"   which STARTS WITH "run_"
-     *   prune("run")   -> deletes run_x's stream. Another run's bytes, gone.
-     * ```
-     * That is a PREFIX COLLISION, not a fold: making `safe` injective would NOT have closed it, so
-     * no durable-format decision was ever needed — only the SELECTION predicate had to change. The
-     * on-disk layout is untouched.
-     * ## Why selection alone is not "declared streams only"
-     * The obvious repair — prune exactly what [SegmentFrameIndex.streamsOfRun] lists — is wrong too,
-     * and it was wrong in a way that measured as **a retention leak rather than a lost guarantee**.
-     * [SegmentFrameIndex.declareStream] refuses an id whose last segment is not a channel token, by
-     * design: streams written before the channels were separated carry no channel and must not be
-     * given a guessed one. But they are still written:
-     * `ShExecution.ingestTranscriptIntoOutputPlane` opened `OutputPlaneProvider.streamId(runId, opId)`
-     * — the `.../transcript` shape — on every `sh` step. That producer is gone: the durable route
-     * writes channel-addressed streams (`OutputPlaneProvider.streamsOf`), and the `.../transcript`
-     * shape is no longer produced by anything. Selecting by declaration alone made that production
-     * transcript permanently unprunable, which is the failure a retention port exists to
-     * prevent, and it fails silently: nothing is deleted and no caller is told.
-     * So ownership has three answers, not two:
-     * ```text
-     *   directory declared to THIS run          -> ours, unconditionally
-     *   directory declared to ANOTHER run       -> NOT ours, even if our prefix matches it
-     *   directory nobody declared (legacy shape) -> ours if our prefix matches; nobody can prove
-     *                                               otherwise, and the bytes are still this run's
-     * ```
-     * The middle line is what closes the collision: `prune("run")` still scans by prefix, but a
-     * directory `run_x` has declared is excluded before the scan can claim it.
-     * ## The residual, stated rather than papered over
-     * Two runs whose safe names collide by prefix and whose streams are BOTH undeclared are
-     * indistinguishable on disk — there is no byte inside the directory carrying the run id
-     * ([Layout] holds only segment, commit, reservation, seal and ownership-lock files, and the
-     * ownership lock is never read as content). Pruning the shorter id deletes the longer one's
-     * legacy transcript. That remainder is irreducible without changing the on-disk layout, and it
-     * is narrower than the original defect by exactly the set of streams any run declared.
-*/
+     *
+     * The scan is the IO; the rule is [decideRunDirectoryOwnership], which is where the three
+     * answers and the residual live. This walks the streams directory and asks the rule about every
+     * directory it finds, with what the frame index declares about it.
+    */
     private fun runStreamDirs(runId: String): List<Path> {
         val streamRoot = root.resolve(STREAMS_DIR)
         if (!Files.isDirectory(streamRoot)) return emptyList()
 
         val declaredTo: Map<String, String> = frameIndex().declaredDirOwners()
-        val prefix = runPrefix(runId)
+        val namespace = RunNamespace(runId)
 
         return Files.newDirectoryStream(streamRoot).use { entries ->
             entries.asSequence()
                 .filter { Files.isDirectory(it) }
                 .filter { dir ->
-                    when (declaredTo[dir.fileName.toString()]) {
-                        runId -> true
-                        null -> dir.fileName.toString().startsWith(prefix)
-                        else -> false
-                    }
+                    val name = dir.fileName.toString()
+                    decideRunDirectoryOwnership(name, declaredTo[name], namespace) ==
+                        RunDirectoryOwnership.ClaimingRun
                 }
                 .toList()
         }
@@ -827,20 +788,6 @@ class SegmentOutputStore(
      * in one place so the two sites cannot drift apart again, which is the defect fixes.
 */
     private fun streamKey(stream: OutputStreamId): String = safe(stream.value)
-
-    /**
-     * The prefix every directory of this run's streams starts with: the run identity and the
-     * separator that follows it.
-     * The identity is NOT folded, and an identity that cannot name a directory is refused rather
-     * than repaired — see [runDirectoryName]. This prefix is what a retention pass matches
-     * directories by, so an identity that lost its name would put one run's directories within
-     * another run's reach.
-     * Deliberately NOT sufficient to identify a stream, and used only where the declaration cannot
-     * answer — see [runStreamDirs], which excludes any directory another run has declared before
-     * this prefix gets to claim it. The trailing separator is what makes it a prefix of *this run's*
-     * names rather than of any run whose id merely starts with the same characters.
-*/
-    private fun runPrefix(runId: String): String = runDirectoryName(runId) + "_"
 
     /**
      * Drop any uncommitted bytes and return how many were dropped.

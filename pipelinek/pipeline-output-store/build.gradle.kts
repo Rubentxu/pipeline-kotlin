@@ -43,14 +43,15 @@ tasks.test {
 }
 
 // Tests cover the PURE half of this module: the sealed-segment name format, its reader, the
-// `SealedSegment` extent, the decision about who owns a stream directory, and the lifetime of the
-// per-stream exclusions. The first three are the contract between the writer that rotates a
-// segment and the reader that serves it back; the last two are the rules that decide which
-// directory a stream lands in and how long its exclusion lives. All of them are pure functions
-// over a file NAME, a record and a counter — the tests build `Path` values by hand and never open
-// one. The segment files' IO (`readChunk`, `readRange`, `readRangeDigested`) is exercised by the
-// integration lane, not by JUnit; the AGENTS.md rule against filesystem persistence in unit
-// tests is what scopes the unit suite.
+// `SealedSegment` extent, the decision about who owns a stream directory, the decision about which
+// run owns a directory, and the lifetime of the per-stream exclusions. The first three are the
+// contract between the writer that rotates a segment and the reader that serves it back; the last
+// three are the rules that decide which directory a stream lands in, which run a directory
+// belongs to, and how long its exclusion lives. All of them are pure functions over a file NAME, a
+// record and a counter — the tests build `Path` values by hand and never open one. The segment
+// files' IO (`readChunk`, `readRange`, `readRangeDigested`) and the retention pass over a real
+// directory are exercised by the integration lane, not by JUnit; the AGENTS.md rule against
+// filesystem persistence in unit tests is what scopes the unit suite.
 
 // This module has NO performance lane. A Gradle test task that discovers no tests reports
 // SUCCESS -- Gradle 8.14 has no `failOnNoDiscoveredTests` property at all -- so a lane over

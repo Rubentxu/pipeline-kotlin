@@ -61,6 +61,15 @@ internal object CliExecutionParser {
         val scriptPath = args.getOrNull(index)
             ?: return CliParseResult.Rejected(CliError.MissingScriptPath)
 
+        // A script path that is BLANK is not "no script path": the filesystem
+        // resolves an empty path to the working directory, and the refusal that
+        // comes back names that directory — a path the operator never wrote.
+        // Decided here, at the boundary that read the argument, it names the
+        // argument instead.
+        if (scriptPath.isBlank()) {
+            return CliParseResult.Rejected(blankNamedValueRefusal("script path"))
+        }
+
         // Fail closed on trailing options. The scan above stops at the first
         // non-`--` argument, so before this check `run s.kts --format text`
         // discarded everything after the script and still ran, producing the
@@ -119,21 +128,12 @@ internal object CliExecutionParser {
         // `--receipt` is the account a run keeps of itself: it names a file the RUN writes.
         // `validate` compiles a script and publishes nothing, so accepting the option there
         // would promise a file that never appears. Refused by naming the verb that owns it.
-        if (state.receiptPath != null && command == CliCommand.VALIDATE) {
-            return CliParseResult.Rejected(
-                CliError.OptionBelongsToVerb("--receipt", "run", RECEIPT_BELONGS_TO_RUN),
-            )
-        }
-
+        //
         // `--compile-only` asks for a compilation WITHOUT running the author's body, and that
         // is a promise only `validate` can keep: `run` executes the script, so "compile it
         // without running it" is not a run the operator can ask for. Refused by naming the
         // verb that owns it, exactly as `--receipt` is refused on the other side.
-        if (state.compileOnly && command == CliCommand.RUN) {
-            return CliParseResult.Rejected(
-                CliError.OptionBelongsToVerb("--compile-only", "validate", COMPILE_ONLY_BELONGS_TO_VALIDATE),
-            )
-        }
+        foreignVerbOptionRefusal(state, command)?.let { return CliParseResult.Rejected(it) }
 
         // `--require-plugin-trust` demands that every plugin the operator brought carries a
         // trust decision. Only a verb that LOADS plugins can keep that promise: `validate`
@@ -190,6 +190,25 @@ internal object CliExecutionParser {
                 compileOnly = state.compileOnly,
             ),
         )
+    }
+
+    /**
+     * The refusal an option that belongs to the OTHER verb of this pair earns here, or nothing.
+     *
+     * The two verbs share one option vocabulary, and two of the options are promises only one of
+     * them can keep: `--receipt` names a file the RUN writes, and `--compile-only` asks for a
+     * compilation without running the author's body. Each is refused by naming the verb that
+     * owns it.
+     *
+     * They are one fact with two faces, so they are asked together and the first one the
+     * request carries is the one that is named.
+     */
+    private fun foreignVerbOptionRefusal(state: ParseState, command: CliCommand): CliError? = when {
+        state.receiptPath != null && command == CliCommand.VALIDATE ->
+            CliError.OptionBelongsToVerb("--receipt", "run", RECEIPT_BELONGS_TO_RUN)
+        state.compileOnly && command == CliCommand.RUN ->
+            CliError.OptionBelongsToVerb("--compile-only", "validate", COMPILE_ONLY_BELONGS_TO_VALIDATE)
+        else -> null
     }
 
     /** Why `--receipt` is refused by the verb that never runs anything. */

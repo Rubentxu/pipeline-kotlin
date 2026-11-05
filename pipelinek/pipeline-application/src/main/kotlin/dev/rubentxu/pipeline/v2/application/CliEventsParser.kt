@@ -27,6 +27,18 @@ internal object CliEventsParser {
         if (db == null || runId == null) {
             return EventsCliParseResult.Rejected(EVENTS_USAGE_TEXT)
         }
+
+        // A run id that names NOTHING is not "no run id": the store reads an
+        // empty run as a run nobody has heard of, and this verb would answer
+        // about that run instead of refusing the request. The refusal is
+        // decided here, at the boundary that read the value, and it names the
+        // argument the operator has to write.
+        //
+        // The words come from the ONE mapping, because this verb answers in
+        // sentences and the sentence about a blank value is not its own.
+        if (runId.isBlank()) {
+            return EventsCliParseResult.Rejected(blankNamedValueRefusal("run id").toCliExit().message)
+        }
         val limitArg = scan.values["--limit"]
         val parsedLimit = if (limitArg != null) {
             val p = limitArg.toIntOrNull()

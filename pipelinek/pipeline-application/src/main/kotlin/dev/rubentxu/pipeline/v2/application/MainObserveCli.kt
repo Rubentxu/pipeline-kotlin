@@ -108,6 +108,20 @@ object MainObserveCli {
             return code
         }
 
+        // A run id that names NOTHING is not "no run id": the store reads an
+        // empty run as a run nobody has heard of, and this verb would answer
+        // about that run instead of refusing the request. The refusal is
+        // decided here, at the boundary that read the value, and it names the
+        // argument the operator has to write.
+        if (runId.isBlank()) {
+            val code = refuse(
+                blankNamedValueRefusal("run id"),
+                "observe", err = err
+            )
+            err.println(USAGE)
+            return code
+        }
+
         // The admission is decided ONCE, here, and the lane receives its outcome. `forRequest`
         // used to build the store itself and therefore re-asked the question in a place that had
         // no way to answer it: a `--db` pointing at a missing directory escaped as a raw

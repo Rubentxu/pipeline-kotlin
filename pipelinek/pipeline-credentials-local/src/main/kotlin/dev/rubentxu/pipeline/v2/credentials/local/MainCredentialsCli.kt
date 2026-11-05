@@ -42,10 +42,21 @@ import java.nio.file.Path
  * asking for a passphrase there would be asking for the key to a door that
  * does not exist. The rule lives in [CredentialsVerb] and [CredentialsOutcome],
  * where it can be stated once and checked.
+ * ## Asking for the passphrase
+ * The passphrase that opens the store is asked for at the terminal when the
+ * environment does not name one: an operator who is sitting at a terminal is
+ * asked for the key rather than told to go and export it, and the key they
+ * give is the key the store is opened with. The environment keeps the first
+ * word -- it is the automation path, and a script that names the passphrase
+ * never sees a prompt -- and a caller that cannot ask anybody, such as a
+ * pipeline run, offers no reader at all and is told only about the
+ * environment variable. Which alternatives a refusal names is the resolver's
+ * decision, because the resolver is what knows whether this caller had a
+ * terminal to offer.
  * ## Seeding without a terminal
  * `--from-stdin` exists so a store can be prepared by a script. The passphrase
- * already arrives through the environment, but the value itself used to have
- * exactly one possible source, an interactive terminal, which left every
+ * arrives through the environment, and the value itself used to have exactly
+ * one possible source, an interactive terminal, which left every
  * non-interactive use of `add` -- provisioning, containers, continuous
  * integration -- with no way in. The value never reaches a log either way: it
  * is read once, held in memory for as long as the call takes, and handed
@@ -136,39 +147,48 @@ object MainCredentialsCli {
      * not use.
      *
      * The world this command READS is the ambient one: the environment that names the store and
-     * the passphrase, and the standard input that carries a value written for the terminal. The
-     * variant that takes them as arguments is the one that can be driven over a store the
-     * caller owns.
+     * the passphrase, the standard input that carries a value written for the terminal, and the
+     * terminal that carries the passphrase when the environment does not name one. The variant
+     * that takes them as arguments is the one that can be driven over a store the caller owns.
      */
     @JvmStatic
     fun main(args: Array<String>, out: PrintStream): Int =
-        main(args, out, System.getenv(), System.`in`)
+        main(args, out, System.getenv(), System.`in`, ConsolePassphraseReader::read)
 
     /**
      * The command, with the world it reads handed to it.
      *
-     * The environment names the store and the passphrase, and the stream carries the value of a
-     * credential written with `--from-stdin`. Both are arguments because both are the world
-     * OUTSIDE the command: the command does not decide where the store is nor where the value
-     * comes from, it is told. A caller that hands it a store of its own sees the command act
-     * on that store, and one that hands it a stream of its own sees it read that value.
+     * The environment names the store and the passphrase, the stream carries the value of a
+     * credential written with `--from-stdin`, and the reader carries the passphrase when the
+     * environment does not name one. All three are arguments because all three are the world
+     * OUTSIDE the command: the command does not decide where the store is, nor where the value
+     * comes from, nor how the operator is asked for the key, it is told. A caller that hands it a
+     * store of its own sees the command act on that store, and one that hands it a reader of its
+     * own sees the command ask that reader.
+     *
+     * The reader is asked ONLY when the environment names no passphrase, and only by the verbs
+     * that need the key: the environment is the automation path and it wins, and a request the
+     * command refuses never asks anybody for anything.
      *
      * @param args the argv, whose first token names the verb.
      * @param out where the command says what it did.
      * @param environment the environment that names the store and the passphrase.
      * @param stdin where the value of a credential comes from when the request names it.
+     * @param passphraseReader how the operator is asked for the passphrase when the environment
+     *   does not name one. It answers null when there is nobody to ask.
      */
     internal fun main(
         args: Array<String>,
         out: PrintStream,
         environment: Map<String, String>,
         stdin: InputStream,
+        passphraseReader: () -> CharArray?,
     ): Int {
         return when (CredentialsVerb.from(args.firstOrNull())) {
-            CredentialsVerb.ADD -> add(args.drop(1), out, environment, stdin)
-            CredentialsVerb.LIST -> list(args.drop(1), out, environment)
-            CredentialsVerb.REMOVE -> remove(args.drop(1), out, environment)
-            CredentialsVerb.ROTATE -> rotate(args.drop(1), out, environment, stdin)
+            CredentialsVerb.ADD -> add(args.drop(1), out, environment, stdin, passphraseReader)
+            CredentialsVerb.LIST -> list(args.drop(1), out, environment, passphraseReader)
+            CredentialsVerb.REMOVE -> remove(args.drop(1), out, environment, passphraseReader)
+            CredentialsVerb.ROTATE -> rotate(args.drop(1), out, environment, stdin, passphraseReader)
             null -> {
                 out.println(CredentialsRefusal.ofUnknownVerb(args.firstOrNull()))
                 CredentialsOutcome.NOT_CARRIED_OUT.exitCode
@@ -181,10 +201,11 @@ object MainCredentialsCli {
         out: PrintStream,
         environment: Map<String, String>,
         stdin: InputStream,
+        passphraseReader: () -> CharArray?,
     ): Int {
         val parsed = parseWriteArguments(args, CredentialsVerb.ADD, out) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         return try {
-            val store = openStore(environment)
+            val store = openStore(environment, passphraseReader)
             // The key is checked before the operator is asked for a secret: a
             // passphrase that does not match should not cost them the typing.
             store.verifyPassphrase()
@@ -223,6 +244,7 @@ object MainCredentialsCli {
         args: List<String>,
         out: PrintStream,
         environment: Map<String, String>,
+        passphraseReader: () -> CharArray?,
     ): Int {
         val foreign = args.firstOrNull()
         if (foreign != null) {
@@ -237,7 +259,7 @@ object MainCredentialsCli {
             return CredentialsOutcome.ANSWERED.exitCode
         }
         return try {
-            val store = openStore(environment)
+            val store = openStore(environment, passphraseReader)
             val ids = store.list()
             if (ids.isEmpty()) {
                 out.println("No credentials stored.")
@@ -276,6 +298,7 @@ object MainCredentialsCli {
         args: List<String>,
         out: PrintStream,
         environment: Map<String, String>,
+        passphraseReader: () -> CharArray?,
     ): Int {
         // `remove` owns NO option, so a token that looks like one is not the
         // credential id: it is refused naming it, BEFORE the store is looked
@@ -303,7 +326,7 @@ object MainCredentialsCli {
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         return try {
-            val store = openStore(environment)
+            val store = openStore(environment, passphraseReader)
             val credentialsId = CredentialsId.from(id)
             // Listing is also how the passphrase gets checked, so a key that
             // does not match is refused here, before anything is removed.
@@ -334,6 +357,7 @@ object MainCredentialsCli {
         out: PrintStream,
         environment: Map<String, String>,
         stdin: InputStream,
+        passphraseReader: () -> CharArray?,
     ): Int {
         val parsed = parseWriteArguments(args, CredentialsVerb.ROTATE, out) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         if (!storeHoldsAnything(environment)) {
@@ -341,7 +365,7 @@ object MainCredentialsCli {
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         return try {
-            val store = openStore(environment)
+            val store = openStore(environment, passphraseReader)
             // The key is checked before the operator is asked for a secret: a
             // passphrase that does not match should not cost them the typing.
             store.verifyPassphrase()
@@ -449,8 +473,21 @@ object MainCredentialsCli {
         return WriteArguments(kind ?: CredentialKind.SECRET_TEXT, idArg, fromStdin)
     }
 
-    private fun openStore(environment: Map<String, String>): LocalSecretStore =
-        LocalSecretStore(resolveStoreFile(environment), PassphraseResolver.resolve(environment))
+    /**
+     * Opens the store with the passphrase this request resolved.
+     *
+     * The passphrase comes from the environment when the environment names one,
+     * and from the reader when it does not: the operator is asked once, and the
+     * key they give is the key the store is opened with.
+     */
+    private fun openStore(
+        environment: Map<String, String>,
+        passphraseReader: () -> CharArray?,
+    ): LocalSecretStore =
+        LocalSecretStore(
+            resolveStoreFile(environment),
+            PassphraseResolver.resolve(environment, passphraseReader),
+        )
 
     /**
      * Whether there is a store with something in it.

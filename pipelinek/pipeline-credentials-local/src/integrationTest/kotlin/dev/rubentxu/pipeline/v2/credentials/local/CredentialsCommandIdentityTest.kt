@@ -91,7 +91,8 @@ class CredentialsCommandIdentityTest {
      * The command, with the world it reads.
      *
      * The argv is the argv an operator writes, the stream is the terminal the operator types
-     * into, and the exit code is the outcome the caller sees.
+     * into, and the exit code is the outcome the caller sees. The passphrase comes from the
+     * environment here, so the reader that would ask for one at a terminal is never consulted.
      */
     private fun run(vararg args: String, stdin: String = ""): Answer {
         val said = ByteArrayOutputStream()
@@ -100,6 +101,7 @@ class CredentialsCommandIdentityTest {
             out = PrintStream(said, true, Charsets.UTF_8),
             environment = environment(),
             stdin = ByteArrayInputStream(stdin.toByteArray(Charsets.UTF_8)),
+            passphraseReader = { null },
         )
         return Answer(exit, said.toString(Charsets.UTF_8))
     }

@@ -7,7 +7,6 @@ import dev.rubentxu.pipeline.v2.domain.step.MeasuredArtifactIdentity
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestDecodeResult
 import java.io.InputStream
-import java.nio.file.Files
 
 /**
  * Reads a plugin's manifest DOCUMENT out of its artifact.
@@ -187,37 +186,29 @@ object PluginManifestResourceReader {
      * This is the same question asked one step earlier — same [hashArtifactAt] implementation, so a
      * path measured here and a class measured there yield the SAME digest for the same file. That is
      * the property that makes the two measurements composable rather than two independent opinions.
+     * The digest of an exploded directory covers the RELATIVE path of each of its files and the
+     * content of each file, so the same artifact measured at another address measures the same.
      * Returns `null` when the artifact cannot be read. Callers treat that as its own refusal case:
      * an artifact whose bytes cannot be measured is not an artifact that may be loaded.
      * @param path a JAR on a classpath entry, or an exploded directory for shaded builds.
 */
     fun digestOfArtifactAt(path: java.nio.file.Path): Digest? = hashArtifactAt(path)
 
-    private fun hashArtifactAt(path: java.nio.file.Path): Digest? {
-        if (!path.toFile().exists()) return null
-        val sha = java.security.MessageDigest.getInstance("SHA-256")
-        if (path.toFile().isDirectory) {
-            val files = walkSorted(path)
-            for (file in files) {
-                sha.update(file.toString().toByteArray(Charsets.UTF_8))
-                sha.update(0)
-                Files.readAllBytes(file).let { sha.update(it) }
-            }
-        } else {
-            Files.readAllBytes(path).let { sha.update(it) }
+    /**
+     * The digest of an artifact's bytes, measured by the ONE component that measures them.
+     *
+     * The measurement is [PluginArtifactDigest]'s, and not a second implementation of the same
+     * arithmetic: the digest of a directory artifact covers the RELATIVE paths of its files and
+     * their content, so it names the artifact wherever the artifact is read, and a copy measured
+     * at another address measures the same. Returns `null` when the artifact has no digest at
+     * all, which the callers treat as its own refusal case: an artifact whose bytes cannot be
+     * measured is not an artifact that may be loaded.
+     */
+    private fun hashArtifactAt(path: java.nio.file.Path): Digest? =
+        when (val outcome = PluginArtifactDigest.measure(path)) {
+            is PluginArtifactDigest.Outcome.Measured -> outcome.digest
+            is PluginArtifactDigest.Outcome.Refused -> null
         }
-        return Digest("sha256:" + sha.digest().joinToString("") { "%02x".format(it) })
-    }
-
-    private fun walkSorted(root: java.nio.file.Path): List<java.nio.file.Path> {
-        val out = mutableListOf<java.nio.file.Path>()
-        Files.walk(root).use { stream ->
-            stream.forEach { p ->
-                if (p.toFile().isFile) out.add(p)
-            }
-        }
-        return out.sortedBy { it.toString() }
-    }
 
     /**
      * The artifact that CONTAINS a resource URL.

@@ -29,6 +29,11 @@ import java.nio.file.attribute.PosixFilePermission
  * read, the COPY is measured and compared with the digest that was admitted, and the COPY is
  * what the composition is given. What was verified is what runs.
  *
+ * Two facts make that comparison mean something, and both are here: the digest of an artifact
+ * is the digest of its CONTENT, so measuring the copy at another address measures the same,
+ * and the directory the copies live in either holds the permissions the profile requires or
+ * the copies are not made at all.
+ *
  * ## Why this instrument
  *
  * The copy is a decision over bytes and a filesystem, and the cheapest instrument that can
@@ -132,6 +137,110 @@ class PrivatePluginArtifactsTest {
         )
     }
 
+    @Test
+    fun `a directory artifact is copied, and the copy measures the same as the artifact`() {
+        val artifact = OperatorPluginFixture.directory(root.resolve("exploded"), files = mapOf("lib/thing.txt" to "the plugin's bytes"))
+        val digest = measuredDigestOf(artifact)
+        val copies = root.resolve("copies")
+
+        val outcome = PrivatePluginArtifacts.copyAll(
+            admitted = listOf(admittedArtifact(artifact, digest)),
+            measured = mapOf(artifact to digest),
+            into = copies,
+        )
+
+        val copied = assertInstanceOf(
+            PrivatePluginArtifacts.CopyOutcome.Copied::class.java,
+            outcome,
+            "a directory artifact was refused as if it had changed between the measurement and " +
+                "the copy",
+        ).artifacts.single()
+
+        assertEquals(
+            digest.value,
+            PluginManifestResourceReader.digestOfArtifactAt(copied.path)?.value,
+            "the copy does not hold the bytes that were admitted",
+        )
+        assertEquals(
+            "the plugin's bytes",
+            Files.readString(copied.path.resolve("lib/thing.txt")),
+            "the copy does not hold the files the artifact carried",
+        )
+    }
+
+    @Test
+    fun `a directory whose permissions cannot be imposed is refused`() {
+        val artifact = artifact("plugin.jar", "the plugin's bytes")
+        val digest = measuredDigestOf(artifact)
+
+        val outcome = PrivatePluginArtifacts.copyAll(
+            admitted = listOf(admittedArtifact(artifact, digest)),
+            measured = mapOf(artifact to digest),
+            into = root.resolve("copies"),
+            permissions = RefusingPermissions(),
+        )
+
+        val refused = assertInstanceOf(
+            PrivatePluginArtifacts.CopyOutcome.Refused::class.java,
+            outcome,
+            "copies were made in a directory that could not be kept private",
+        )
+        assertInstanceOf(
+            PluginManifestRejection.PrivateCopyNotSecured::class.java,
+            refused.rejection,
+            "the refusal does not say that the copy could not be kept private",
+        )
+    }
+
+    @Test
+    fun `a directory whose permissions do not hold is refused`() {
+        val artifact = artifact("plugin.jar", "the plugin's bytes")
+        val digest = measuredDigestOf(artifact)
+
+        val outcome = PrivatePluginArtifacts.copyAll(
+            admitted = listOf(admittedArtifact(artifact, digest)),
+            measured = mapOf(artifact to digest),
+            into = root.resolve("copies"),
+            permissions = LyingPermissions(),
+        )
+
+        val refused = assertInstanceOf(
+            PrivatePluginArtifacts.CopyOutcome.Refused::class.java,
+            outcome,
+            "copies were made in a directory whose permissions were never checked",
+        )
+        assertInstanceOf(
+            PluginManifestRejection.PrivateCopyNotSecured::class.java,
+            refused.rejection,
+            "the refusal does not say that the copy could not be kept private",
+        )
+    }
+
+    @Test
+    fun `an artifact with a symbolic link is not copied`() {
+        val artifact = OperatorPluginFixture.directory(root.resolve("exploded"))
+        Files.createSymbolicLink(artifact.resolve("elsewhere.txt"), Path.of("/etc/hostname"))
+        // The measurement refuses an artifact that reaches outside itself, so this row asks the
+        // SECOND line of defence: even handed a digest, the copy does not follow the link.
+        val digest = Digest("sha256:" + "0".repeat(64))
+
+        val outcome = PrivatePluginArtifacts.copyAll(
+            admitted = listOf(admittedArtifact(artifact, digest)),
+            measured = mapOf(artifact to digest),
+            into = root.resolve("copies"),
+        )
+
+        val refused = assertInstanceOf(
+            PrivatePluginArtifacts.CopyOutcome.Refused::class.java,
+            outcome,
+            "an artifact that reaches outside itself was copied",
+        )
+        assertTrue(
+            refused.detail.contains("symbolic link"),
+            "the refusal does not name the link: ${refused.detail}",
+        )
+    }
+
     /** An artifact on disk, with the bytes it holds. */
     private fun artifact(name: String, content: String): Path {
         val path = root.resolve(name)
@@ -158,5 +267,22 @@ class PrivatePluginArtifactsTest {
                 ),
             ),
         )
+    }
+
+    /**
+     * Permissions the filesystem refuses: the profile cannot be imposed at all.
+     */
+    private class RefusingPermissions : DirectoryPermissions {
+        override fun impose(directory: Path): String? =
+            "the filesystem of $directory does not support POSIX permissions"
+        override fun verify(directory: Path): Boolean = true
+    }
+
+    /**
+     * Permissions that are imposed and do not hold: the claim was not the fact.
+     */
+    private class LyingPermissions : DirectoryPermissions {
+        override fun impose(directory: Path): String? = null
+        override fun verify(directory: Path): Boolean = false
     }
 }

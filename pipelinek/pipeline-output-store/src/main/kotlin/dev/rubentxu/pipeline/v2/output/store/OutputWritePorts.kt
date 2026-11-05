@@ -11,6 +11,8 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
 // Second potential authority over the bytes, which is exactly what this split removes. Fabric
 // reads committed bytes; the runtime owns writing them. The split is enforced by the module graph,
 // and the package boundary (`output` published / `output.store` not) is what the fitness checks.
+// What an external consumer may read, and what it may not do, is the contract the root README
+// states under "Reading a run from outside".
 
 /**
  * The **append** side of the Output Plane: a writer takes a durable reservation, writes bytes into

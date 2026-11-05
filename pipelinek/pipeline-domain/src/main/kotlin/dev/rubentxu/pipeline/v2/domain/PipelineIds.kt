@@ -150,12 +150,14 @@ value class RunId(val value: String) {
  *  - The `last-run.json` file in the control dir.
  * A [CorrelationId] is NOT a [RunId] — two concurrent invocations with
  * the same [CorrelationId] get different [RunId]s, because the
- * [RunId] remains's authority. The [CorrelationId] is the
+ * [RunId] remains the authority. The [CorrelationId] is the
  * invoker-side join key: it groups runs a single CI job initiated, or
- * a single Fabric workflow executes.
- *  generates a UUIDv4 if the invoker does not supply one via
- * `--correlation-id`. The value is opaque to; only the non-blank
- * invariant is enforced.
+ * a single Fabric workflow executes. What an external invoker may do with
+ * the runs it correlates is the contract the root README states under
+ * "Reading a run from outside".
+ * The CLI generates a UUIDv4 when the invoker supplies none;
+ * `--correlation-id` is how the invoker supplies one. The value is opaque
+ * to the product: only the non-blank invariant is enforced.
 */
 @JvmInline
 @Serializable

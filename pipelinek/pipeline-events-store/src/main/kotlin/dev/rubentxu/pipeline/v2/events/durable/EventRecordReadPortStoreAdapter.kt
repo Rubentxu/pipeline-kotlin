@@ -15,7 +15,9 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  * [EventRecordReadPort] is the public read-only port. The contract says
  * Fabric consumes through it, not through [EventStore] directly, because
  * [EventStore] exposes `append` and `appendAssigned` (the write side) and
- * is therefore not a safe surface for a remote consumer.
+ * is therefore not a safe surface for a remote consumer. What an external
+ * consumer may read, and what it may not do, is the contract the root
+ * README states under "Reading a run from outside".
  *
  * [EventRecordReadPortStoreAdapter] is the one and only implementation
  * that backs the port. It holds a single authority for sequence,
@@ -36,9 +38,11 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  *    is the composed callback. Without this distinction, a consumer
  *    cannot tell whether `readRecords` returned zero rows because the
  *    run does not exist or because the run exists but has not yet
- *    produced any event. The operator's correction #6 in the
- *    review made this distinction mandatory; correction
- *    #3 in the follow-up made the lease authority primary.
+ *    produced any event. The distinction is mandatory: a consumer that
+ *    cannot tell the two apart cannot decide whether to read the run or to
+ *    declare it unknown. The lease authority leads in the composed
+ *    callback, so a run that ever held a lease counts as known even before
+ *    it produces an event.
  *
  *  - the **cursor-past-tail distinction** ([EventRecordReadRefusal.CursorBeyondTail]
  *    vs an empty [EventRecordReadResult.Page]). The underlying

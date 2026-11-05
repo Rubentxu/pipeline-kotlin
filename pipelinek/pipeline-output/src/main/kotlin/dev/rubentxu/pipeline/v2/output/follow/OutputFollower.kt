@@ -114,7 +114,9 @@ data class OutputFollowOptions(
      * [dev.rubentxu.pipeline.v2.output.OutputFrameIndex.streamsOfRun] and
      * follow every declared stream. The empty default exists so a Fabric
      * consumer can subscribe by run alone without naming the channels
-     * up front.
+     * up front. What a consumer outside this process may follow, and what
+     * it may not do, is the contract the root README states under "Reading a
+     * run from outside".
 */
     val streams: List<OutputStreamAddress> = emptyList(),
     val pageMaxBytes: Int = 64 * 1024,

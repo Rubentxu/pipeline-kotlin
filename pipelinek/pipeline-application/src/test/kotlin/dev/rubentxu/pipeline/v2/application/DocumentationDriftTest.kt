@@ -1,8 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.runtime.telemetry.OTEL_SEMCONV_CICD_VERSION
+import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryIdentityTable
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.stream.Collectors
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -143,6 +147,106 @@ class DocumentationDriftTest {
         }
     }
 
+    @Test
+    fun `the README names only source files this repository has`() {
+        val named = KOTLIN_FILE.findAll(readme()).map { it.groupValues[1] }.distinct().toList()
+
+        assertTrue(
+            named.isNotEmpty(),
+            "the README names no Kotlin source file, so this rule proves nothing",
+        )
+
+        val present = kotlinFileNames()
+        assertTrue(
+            present.isNotEmpty(),
+            "no Kotlin source file was found in the repository, so this rule proves nothing",
+        )
+
+        named.forEach { reference ->
+            assertTrue(
+                present.contains(reference.substringAfterLast('/')),
+                "the README names the source file '$reference', which this repository does not have",
+            )
+        }
+    }
+
+    @Test
+    fun `the README states the telemetry vocabulary this build exports`() {
+        val section = readme()
+            .substringAfter(TELEMETRY_HEADING)
+            .substringBefore(PLUGIN_HEADING)
+
+        val attributes = tableRow(section, "Attributes")
+        val dimensions = tableRow(section, "Dimensions")
+
+        assertTrue(
+            attributes.isNotEmpty(),
+            "the README states no telemetry attribute, so this rule proves nothing",
+        )
+        assertTrue(
+            dimensions.isNotEmpty(),
+            "the README states no telemetry dimension, so this rule proves nothing",
+        )
+
+        assertEquals(
+            TelemetryIdentityTable.Default.allowedAttributeKeys(),
+            attributes.toSet(),
+            "the README states an attribute vocabulary that is not the one this build exports",
+        )
+        assertEquals(
+            TelemetryIdentityTable.Default.allowedDimensionKeys(),
+            dimensions.toSet(),
+            "the README states a dimension vocabulary that is not the one this build exports",
+        )
+
+        assertTrue(
+            section.contains("`$OTEL_SEMCONV_CICD_VERSION`"),
+            "the README does not state the version of the semantic conventions this build pins",
+        )
+    }
+
+    /**
+     * The Kotlin source files this repository has, by file name.
+     *
+     * The name and not the path: a document may point at a file by its bare
+     * name or by a path relative to a module, and both name the same file.
+     * The directories a build produces are pruned, because a generated file is
+     * not a file the repository has.
+     */
+    private fun kotlinFileNames(): Set<String> {
+        val root = repositoryRoot()
+        return Files.walk(root).use { paths ->
+            paths
+                .filter { Files.isRegularFile(it) }
+                .filter { it.fileName.toString().endsWith(".kt") }
+                .filter { path ->
+                    PRUNED_DIRECTORIES.none { pruned ->
+                        path.toString().contains("${java.io.File.separator}$pruned${java.io.File.separator}")
+                    }
+                }
+                .map { it.fileName.toString() }
+                .collect(Collectors.toSet())
+        }
+    }
+
+    /**
+     * The values of one row of a table, by its label.
+     *
+     * The row is the unit a list of values lives in, and the label is how the
+     * row is told apart from the others: a table that carries the same list
+     * twice under two labels is two claims, and only the label says which is
+     * which.
+     */
+    private fun tableRow(section: String, label: String): List<String> {
+        val line = section.lines().firstOrNull { it.trimStart().startsWith("| $label |") } ?: return emptyList()
+        return line.split("|")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && it != label }
+            .flatMap { it.split(",") }
+            .map { it.trim().removeSurrounding("`") }
+            .filter { it.isNotEmpty() }
+    }
+
     /**
      * The root of this repository.
      *
@@ -223,6 +327,18 @@ class DocumentationDriftTest {
 
         /** A test lane the policy names. */
         val TEST_LANE = Regex("src/(test|integrationTest)")
+
+        /** A Kotlin source file the README names, with the path it names it under. */
+        val KOTLIN_FILE = Regex("`([A-Za-z0-9_./-]+\\.kt)`")
+
+        /** The section of the README that states the telemetry contract. */
+        const val TELEMETRY_HEADING = "### Telemetry"
+
+        /** The section that follows it, which ends the one this rule reads. */
+        const val PLUGIN_HEADING = "### Writing a plugin"
+
+        /** The directories a build produces, whose files the repository does not have. */
+        val PRUNED_DIRECTORIES = setOf("build", ".git", ".gradle", ".idea", "node_modules")
 
         /** The lanes this repository runs. */
         val ALLOWED_LANES = setOf("test", "integrationTest")

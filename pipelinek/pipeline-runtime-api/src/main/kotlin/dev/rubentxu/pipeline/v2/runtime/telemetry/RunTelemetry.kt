@@ -132,6 +132,11 @@ sealed interface TelemetrySignal {
  * What an exporter did with the signals it was handed. Not a run decision:
  * telemetry fail-open for the pipeline and fail-closed for the data, and
  * the export outcome is reported, never swallowed and never thrown.
+ *
+ * These three cases are the vocabulary of that outcome rather than a value
+ * this product hands over: the runtime reports a failed export as an export
+ * metric and a warning on stderr, and the run's result does not change either
+ * way.
  */
 sealed interface TelemetryExport {
     /**
@@ -211,6 +216,67 @@ data class TelemetryTrace(
  * the overflow marker among the values it admits: a key that exceeds the
  * budget travels at most that many **distinct** values, one of which may be
  * [DIMENSION_OVERFLOW].
+ *
+ * ## What is exported
+ *
+ * A signal carries timing, a count or a bucket: a span that opened and
+ * closed, a counter reading, a duration sample. It never carries payload —
+ * no script text, no command, no transcript. Those live in the output plane
+ * and in the journal, and a second copy of them here would be a second place
+ * a secret could hide. The four shapes and the boundary they share are
+ * [TelemetrySignal]'s.
+ *
+ * ## The vocabulary, and the conventions it speaks
+ *
+ * The keys that travel are the product's own: `run.id`, `stage.index`,
+ * `step.index`, `compile.outcome` and `failure.class` as attributes, and
+ * `operation_kind`, `status` and `failure_class` as dimensions.
+ * [TelemetryIdentityTable] is where that vocabulary is decided, and the
+ * allowlists below are read from it, so the vocabulary of the export and the
+ * vocabulary of the product cannot drift apart.
+ *
+ * The conventions the product speaks are the OpenTelemetry CI/CD ones, pinned
+ * at [OTEL_SEMCONV_CICD_VERSION] and declared a release candidate: their
+ * names may still move between two versions of the specification, so the pin
+ * is part of what the product promises. The pin is read from the product and
+ * not from the payload — an exported document states the schema it speaks,
+ * and the conventions version is not part of it.
+ *
+ * ## Which identities travel
+ *
+ * The run id travels, under `run.id`. The correlation id, the operation id,
+ * the attempt id and the fencing token do not travel at all: the correlation
+ * id belongs to the invoker, the operation id and the attempt id are
+ * idempotency facts, and the fencing token is write authority. None of them
+ * may be used for causality, and none of them grants a permission.
+ *
+ * The historical trace id is a digest of the run id: it groups the signals of
+ * one run for anyone holding the journal, and it is not an identity of its
+ * own ([TelemetryTrace.traceIdOf]). The live W3C trace id is the only
+ * carrier of causality, and a live context refuses to hold the derived one
+ * ([LiveTraceContext]).
+ *
+ * ## The limits
+ *
+ * A signal carries at most [maxAttributesPerSignal] attributes, a text value
+ * is at most [maxTextLength] characters long, and one dimension key may hold
+ * at most [maxDistinctValuesPerDimension] distinct values across the whole
+ * export. The surplus travels as [DIMENSION_OVERFLOW], visibly: an export
+ * that hid the collapse would look exactly like one where the surplus never
+ * existed.
+ *
+ * ## Off, and failed
+ *
+ * The OpenTelemetry SDK is an optional dependency: without the operator's
+ * opt-in no SDK, no exporter and no worker exist, and the run emits no
+ * telemetry at all. A finished run can also be projected into the same
+ * vocabulary and exported on demand, which is the path that does not need the
+ * SDK.
+ *
+ * An export that cannot be written, or a shutdown that fails, is reported:
+ * the runtime records the loss as an export metric and says so on stderr,
+ * and the run's result does not change either way. Telemetry fails open for
+ * the pipeline and fails closed for the data.
  */
 data class TelemetryPolicy(
     val allowedAttributeKeys: Set<String>,

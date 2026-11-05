@@ -3,9 +3,7 @@ package dev.rubentxu.pipeline.v2.sdk.files
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.workspace.PathResolution
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
-import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 
 /**
  * Result of a file write operation.
@@ -32,7 +30,12 @@ data class FileWriteResult(
  * - Enforces the path traversal guard on REAL paths, so a symlink out of the
  *   workspace is refused rather than written through
  * - Enforces reserved .v2 directory guard
- * - Auto-creates parent directories
+ * - Auto-creates parent directories, and refuses to create them through a
+ *   symbolic link: a link that appears between the decision and the effect
+ *   would put the bytes outside the workspace
+ * - Judges the staging name (`<file>.tmp`) the same way it judges the target:
+ *   the workspace is writable, so an actor can occupy that name with a link,
+ *   and a write follows a link
  * ## Encoding
  * - `encoding = "UTF-8"` (default): `text.toByteArray(UTF_8)`
  * - `encoding = "Base64"`: decodes text via `Base64.getDecoder().decode(text)`
@@ -40,9 +43,11 @@ data class FileWriteResult(
  * - Event emission is handled by the dispatcher which has access to DomainEvent types.
  *   The [FileWriteResult] carries all data needed for event creation.
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
+ * @param fileSystem The filesystem the write is applied to.
 */
 class FileWriteExecutor(
     private val workspaceResolver: (stageName: String, stageIndex: Int) -> Path,
+    private val fileSystem: WorkspaceFileSystem = JdkWorkspaceFileSystem,
 ) {
 
     /**
@@ -52,7 +57,7 @@ class FileWriteExecutor(
      * @param spec The writeFile step specification
      * @return [FileWriteResult] on success
      * @throws IllegalArgumentException if path escapes workspace or targets .v2 directory
-*/
+    */
     fun execute(stageName: String, stageIndex: Int, spec: StepSpec.WriteFile): FileWriteResult {
         val workspace = workspaceResolver(stageName, stageIndex)
         // Two paths, deliberately not one. `declaredPath` is what the caller wrote and is what
@@ -62,22 +67,29 @@ class FileWriteExecutor(
         // `<workspace>/link/anything` for any link, so a `link` pointing outside the workspace used
         // to authorise writing through it: the mkdir landed in-workspace and the bytes landed out.
         val declaredPath = workspace.resolve(spec.file).normalize()
-        val realWorkspace = WorkspaceAnchoring.realWorkspace(workspace)
-        val realPath = when (val resolution = WorkspaceAnchoring.authorize(workspace, declaredPath)) {
+        val anchor = WorkspaceAnchoring(fileSystem)
+        val realPath = when (val resolution = anchor.authorize(workspace, declaredPath)) {
             is PathResolution.Resolved -> resolution.path
             is PathResolution.Rejected -> throw IllegalArgumentException(
                 "writeFile path '${spec.file}' escapes workspace",
             )
         }
 
+        val realWorkspace = anchor.realWorkspace(workspace)
         // Reserved directory guard, on real paths, so a link pointing at `.v2` cannot write into the
         // reserved area under another name.
         require(!realPath.startsWith(realWorkspace.resolve(".v2"))) {
             "writeFile path '${spec.file}' targets reserved .v2 directory"
         }
 
-        // Auto-create parent directories
-        Files.createDirectories(realPath.parent)
+        // The directories the write needs, prepared immediately before the effect. The
+        // decision above resolved the parts of the path that were there; a part that
+        // was NOT there is a name, and the name is created here as a directory or
+        // refused. Creating it through a link is the escape this refuses: the bytes
+        // would land on the target of the link, outside the workspace.
+        require(anchor.prepareDirectoryChain(realWorkspace, realPath.parent)) {
+            "writeFile path '${spec.file}' escapes workspace"
+        }
 
         // Decode content if Base64
         val bytes = if (spec.encoding == "Base64") {
@@ -86,21 +98,29 @@ class FileWriteExecutor(
             spec.text.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
         }
 
-        // Atomic write: temp file in same directory, then atomic rename
+        // Atomic write: temp file in same directory, then atomic rename. The rename
+        // replaces the ENTRY at the target, so a target that is a link is replaced
+        // rather than followed.
         val tmpPath = realPath.resolveSibling("${realPath.fileName}.tmp")
-        var atomicallyMoved = true
-
-        try {
-            Files.write(tmpPath, bytes)
-            Files.move(tmpPath, realPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-        } catch (e: java.nio.file.AtomicMoveNotSupportedException) {
-            // Cross-filesystem mount point: fall back to non-atomic move
-            Files.move(tmpPath, realPath, StandardCopyOption.REPLACE_EXISTING)
-            atomicallyMoved = false
+        // The staging name is a path of the product's own choosing, and the
+        // workspace is writable: an actor that can write inside it can occupy
+        // that name with a link before the write, and a write FOLLOWS a link, so
+        // the bytes would land on the target of it, outside the root. The
+        // staging path is therefore judged the way the target was — the chain,
+        // looked at immediately before the effect — and a link anywhere in it
+        // stops the write.
+        require(anchor.chainIsFreeOfLinks(realWorkspace, tmpPath)) {
+            "writeFile path '${spec.file}' escapes workspace"
         }
+        fileSystem.writeBytes(tmpPath, bytes)
+        val atomicallyMoved = fileSystem.move(tmpPath, realPath)
 
-        val sha256 = sha256(Files.readAllBytes(realPath))
-        val size = Files.size(realPath)
+        // The bytes that are on disk after the move are the bytes the digest
+        // and the size are taken from: one reading, and the two values cannot
+        // describe different contents.
+        val written = fileSystem.readAllBytes(realPath)
+        val sha256 = sha256(written)
+        val size = written.size.toLong()
 
         return FileWriteResult(
             path = declaredPath,
@@ -116,7 +136,7 @@ class FileWriteExecutor(
          * Byte-identical to the local implementation this replaces: same algorithm, same
          * lowercase hex, same input. The value is emitted in the Step's observability event,
          * so an external observer comparing digests keeps matching.
-*/
+    */
         fun sha256(bytes: ByteArray): String = Sha256.ofBytes(bytes)
     }
 }

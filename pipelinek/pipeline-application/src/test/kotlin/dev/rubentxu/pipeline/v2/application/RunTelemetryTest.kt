@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.runtime.TelemetrySource
+import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryAttribute
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetrySignal
 import dev.rubentxu.pipeline.v2.scripting.ScriptOrigin
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TELEMETRY_SCHEMA
@@ -51,8 +52,8 @@ class RunTelemetryTest {
     private fun runFinish(outcome: String, at: Long) =
         RunFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), outcome, emptyList())
 
-    private fun compileStart(at: Long) =
-        CompilationStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), ScriptOrigin.COMPILED)
+    private fun compileStart(at: Long, origin: ScriptOrigin = ScriptOrigin.COMPILED) =
+        CompilationStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), origin)
 
     private fun compileFinish(at: Long) =
         CompilationFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), cacheKey(), emptyList(), ScriptOrigin.COMPILED)
@@ -146,6 +147,13 @@ class RunTelemetryTest {
 
         val compileHistogram = signals.filterIsInstance<TelemetrySignal.Histogram>().first { it.name.endsWith("compile_duration_ms") }
         assertEquals(100L, compileHistogram.milliseconds)
+        assertEquals(
+            mapOf("operation_kind" to "compile", "status" to "success"),
+            compileHistogram.dimensions,
+            "the compilation is measured with the dimensions every other measurement carries: " +
+                "what was measured and how it came out. Without them a consumer could measure " +
+                "how long compiles take but not how many of them failed",
+        )
 
         val stepHistogram = signals.filterIsInstance<TelemetrySignal.Histogram>().first { it.name.endsWith("step_duration_ms") }
         assertEquals(100L, stepHistogram.milliseconds)
@@ -154,6 +162,37 @@ class RunTelemetryTest {
 
         val outcome = signals.filterIsInstance<TelemetrySignal.Counter>().first { it.name.endsWith("run_outcome_total") }
         assertEquals("failure", outcome.dimensions["status"])
+    }
+
+    /**
+     * The origin of a compilation travels on the span of that compilation.
+     *
+     * The origin says whether the compiler ran or the cache served a stored
+     * artifact, and a consumer that cannot read it cannot tell a cheap run
+     * from an expensive one. The word travels in lower case, like every other
+     * word the export publishes.
+     */
+    @Test
+    fun `the compile span carries the origin of the compilation`() {
+        val signals = RunTelemetryProjection.fromEvents(
+            "run-1",
+            listOf(
+                runStart(at = 0),
+                compileStart(at = 10, origin = ScriptOrigin.REUSED),
+                compileFinish(at = 110),
+                runFinish("success", at = 120),
+            ),
+        ).signals
+
+        val compile = signals.filterIsInstance<TelemetrySignal.SpanStarted>()
+            .first { it.name == "pipelinek.script.compile" }
+
+        assertEquals(
+            listOf(TelemetryAttribute.Text("script.origin", "reused")),
+            compile.attributes,
+            "the compilation that reused a stored artifact says so on its span: the key is " +
+                "published, and the word is published in lower case like every other published word",
+        )
     }
 
     /**

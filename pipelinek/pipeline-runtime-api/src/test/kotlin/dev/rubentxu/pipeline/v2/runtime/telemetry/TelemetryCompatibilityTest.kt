@@ -55,7 +55,7 @@ class TelemetryCompatibilityTest {
                 "run.id" to "cicd.pipeline.run.id",
                 "stage.index" to null,
                 "step.index" to null,
-                "compile.outcome" to null,
+                "script.origin" to null,
                 "failure.class" to null,
             ),
             TelemetryCompatibility.attributeMap.associate { it.key to it.upstreamAttribute },

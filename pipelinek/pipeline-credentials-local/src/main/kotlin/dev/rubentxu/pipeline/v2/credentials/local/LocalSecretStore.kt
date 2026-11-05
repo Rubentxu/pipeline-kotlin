@@ -1,15 +1,22 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
 import dev.rubentxu.pipeline.v2.credentials.api.CredentialsStoreCommitException
+import dev.rubentxu.pipeline.v2.credentials.api.CredentialsStoreProjectionException
 import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceNotFoundException
 import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceTypeMismatchException
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreTamperException
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope
+import dev.rubentxu.pipeline.v2.domain.credentials.SecretFile
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
+import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
+import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
+import dev.rubentxu.pipeline.v2.domain.credentials.Zip
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -709,8 +716,24 @@ class LocalSecretStore(
     }
 
     /**
-     * Retrieves a credential as SecretHandle (v1 compatibility).
-     * Full implementation - same as behavior
+     * Retrieves a credential as a [SecretHandle].
+     *
+     * The handle carries the SECRET of the credential and nothing else. A V1
+     * entry holds the secret itself, so its bytes ARE the secret. A V2 entry
+     * holds the credential in the store's canonical form, and that form is
+     * NOT the secret: it carries the part count, the part names and their
+     * lengths. Only a credential that IS one secret -- a SecretText -- is
+     * delivered as its own bytes; every other kind is refused, because a
+     * single opaque value cannot say which of its parts it carries. The
+     * caller that wants one part asks for it by name, and the caller that
+     * wants the credential asks for it typed.
+     *
+     * @param id The credential ID
+     * @return [SecretHandle] wrapping the secret bytes
+     * @throws SecretStoreTamperException if the credential is not there, or
+     *   the store has been tampered with
+     * @throws CredentialsStoreProjectionException if the credential is not a
+     *   single secret
 */
     override fun getAsSecretHandle(id: CredentialsId): SecretHandle {
         val snapshot = snapshot()
@@ -726,24 +749,48 @@ class LocalSecretStore(
         // is wrong: the answer does not depend on the order of the checks.
         val dek = snapshot.dek()
 
-        // Decrypt secret - build AAD based on version
-        val plaintext = try {
-            if (hdr.version == VERSION_V1.toShort()) {
-                // Decrypt using V1 AAD
-                val v1Entry = entry as? EntryData ?: throw ClassCastException("Expected EntryData but got ${entry::class.simpleName}")
-                val aad = CredentialCrypto.buildAad(hdr, id)
-                AeadCipher.decrypt(dek, v1Entry.sealed, aad)
-            } else {
-                // Decrypt using V2 AAD with kindId
-                val v2Entry = entry as? V2EntryData ?: throw ClassCastException("Expected V2EntryData but got ${entry::class.simpleName}")
-                val aad = CredentialCrypto.buildV2Aad(hdr, id, v2Entry.kindId)
-                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
+        if (hdr.version == VERSION_V1.toShort()) {
+            // A V1 entry holds the secret itself: its bytes ARE the secret.
+            val v1Entry = entry as? EntryData
+                ?: throw ClassCastException("Expected EntryData but got ${entry::class.simpleName}")
+            val plaintext = try {
+                AeadCipher.decrypt(dek, v1Entry.sealed, CredentialCrypto.buildAad(hdr, id))
+            } catch (e: javax.crypto.AEADBadTagException) {
+                throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
             }
+            return SecretHandle.secret(plaintext)
+        }
+
+        // A V2 entry holds the credential in the canonical form. Reading it
+        // with the SAME reader `get` uses is what keeps the two paths from
+        // disagreeing about what the store holds.
+        val v2Entry = entry as? V2EntryData
+            ?: throw ClassCastException("Expected V2EntryData but got ${entry::class.simpleName}")
+        val plaintext = try {
+            AeadCipher.decrypt(dek, v2Entry.sealed, CredentialCrypto.buildV2Aad(hdr, id, v2Entry.kindId))
         } catch (e: javax.crypto.AEADBadTagException) {
             throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
         }
 
-        return SecretHandle.secret(plaintext)
+        val credential = CredentialSerializer.deserializeCredential(plaintext, v2Entry.kindId, id)
+        return when (credential) {
+            is SecretText -> SecretHandle.secret(credential.bytes)
+            // Every kind that is not one secret is refused, and the refusal
+            // names the kind. The `when` has no `else` ON PURPOSE: the
+            // compiler is the instrument that makes a NEW credential kind
+            // decide what it projects to, instead of inheriting a refusal
+            // nobody wrote.
+            is UsernamePassword,
+            is SshPrivateKey,
+            is SecretFile,
+            is Certificate,
+            is Zip,
+            is UsernameColonPassword,
+            -> throw CredentialsStoreProjectionException(
+                id,
+                credential::class.simpleName ?: "an unrecognised credential kind",
+            )
+        }
     }
 
     /**

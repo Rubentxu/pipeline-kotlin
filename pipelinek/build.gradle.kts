@@ -587,6 +587,45 @@ tasks.register("apiReferenceHtml") {
     dependsOn(bcvModules.map { module -> ":$module:dokkaGeneratePublicationHtml" })
 }
 
+// The review of the published reference, as the gate asks for it.
+//
+// A contract is read through its reference, and a link in that reference which
+// names a symbol the reader cannot open is a promise the artifact does not
+// keep. The generator emits a warning for each of those links, and a warning
+// that nobody counts is a warning nobody fixes.
+//
+// The generation is FORCED when this task is what was asked for. A generation
+// Gradle finds up to date emits no warning at all, so reading the log of one
+// would report zero unresolved links whatever the tree says. The generator
+// has no `failOnWarning` of its own, and the re-run is what makes the
+// measurement real.
+//
+// The contracts are the SAME ones the ABI guard freezes, from the SAME list,
+// so the reference and the frozen surface cannot disagree about which modules
+// carry a published contract.
+tasks.register("publishedReferenceCheck") {
+    group = "documentation"
+    description = "Generates the reference of every published contract and reports the KDoc links that do not resolve."
+    dependsOn(bcvModules.map { module -> ":$module:dokkaGeneratePublicationHtml" })
+}
+
+// The re-run is forced for the review alone. A reader who asks for the
+// reference gets the one Gradle already holds, because an unchanged input
+// produces an unchanged reference; and the review asks for a fresh one,
+// because it counts warnings that a held reference no longer emits.
+gradle.projectsEvaluated {
+    val asksForTheReview = gradle.startParameter.taskNames.any {
+        it.substringAfterLast(':') == "publishedReferenceCheck"
+    }
+    if (asksForTheReview) {
+        bcvModules.forEach { module ->
+            project(":$module").tasks.named("dokkaGeneratePublicationHtml").configure {
+                outputs.upToDateWhen { false }
+            }
+        }
+    }
+}
+
 // ── external plugin reproducibility ─────────────────────────────────────────────
 // example-uppercase-plugin is an INDEPENDENT Gradle build (its own settings file),
 // not a subproject of the build: that independence is the property it certifies. It

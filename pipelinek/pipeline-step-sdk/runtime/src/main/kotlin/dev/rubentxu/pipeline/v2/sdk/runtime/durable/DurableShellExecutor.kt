@@ -146,9 +146,23 @@ class DurableShellExecutor {
      * A failed execution keeps its directory WHOLE: the exit code, the timeout marker and the
      * heartbeat are the protocol's evidence, and the reconciler reads them to tell an expired
      * execution from a lost one.
+     *
+     * A directory that still holds its CAPTURE is kept too, and for the same reason: the
+     * captured value's only durable copy is that file, and the journal does not hold the value
+     * until after the execution ended. Releasing the directory here would destroy a value that
+     * nobody recorded yet, and a resumed run would find a hole where the value was. The
+     * confirmation releases it (see [confirmCapture]).
+     *
+     * The fact that decides it is the capture's own presence, read from the filesystem: the
+     * directory holds a capture or it does not, and nothing else has to be told for the rule to
+     * be applied.
     */
     fun cleanup(controlDir: Path, exitCode: Int, keepTranscriptLog: Boolean) {
-        ShellResourceCleanup(controlDir).dispose(exitCode = exitCode, keepTranscriptLog = keepTranscriptLog)
+        ShellResourceCleanup(controlDir).dispose(
+            exitCode = exitCode,
+            keepTranscriptLog = keepTranscriptLog,
+            capturePending = Files.exists(ShellProtocolLayout(controlDir).outputFile),
+        )
     }
 
     /**
@@ -178,6 +192,15 @@ class DurableShellExecutor {
      * HERE is the RETENTION, which is this executor's to own: under
      * [CaptureRetainPolicy.READ_THEN_DELETE] the channel is disposed of here and nowhere else.
      *
+     * The DEFAULT is [DurableShConfig.CAPTURE_RETAIN_POLICY_DEFAULT], and that is the ONE home of
+     * the decision: the reader's default parameter and the configuration's default are the same
+     * fact, so a caller that names no policy gets the policy the product ships. The default is
+     * not a detail: the channel is the captured value's only durable home, and the journal does
+     * not hold that value until after the execution ended. Disposing of it at the reading
+     * destroys the evidence of an execution that DID happen, and a resumed run then finds a hole
+     * where the value was. The default therefore leaves it where it is, and the confirmation
+     * releases it.
+     *
      * The RESULT is a [CapturedStdoutRead], and it is a closed set of facts. A channel that could
      * not be READ, and a channel that could not be DISPOSED of, are facts of their own: this
      * method reports them and never answers with an empty text on their behalf. An empty text is
@@ -194,7 +217,7 @@ class DurableShellExecutor {
 */
     fun readOutputText(
         controlDir: Path,
-        captureRetainPolicy: CaptureRetainPolicy = CaptureRetainPolicy.READ_THEN_DELETE,
+        captureRetainPolicy: CaptureRetainPolicy = DurableShConfig.CAPTURE_RETAIN_POLICY_DEFAULT,
     ): CapturedStdoutRead {
         val content = try {
             ShellCapturedStdout.read(controlDir)
@@ -421,21 +444,73 @@ class DurableShellExecutor {
             // child is alive (the test holds GO until after the kill), the
             // child becomes the only writer, and the agent's read continues
             // until the child exits and the kernel closes its O_WRONLY.
-            val cleanup = ShellResourceCleanup(controlDir)
-            cleanup.release(launchedShell)
+            val resources = ShellResourceCleanup(controlDir)
+            resources.release(launchedShell)
             // Cleanup based on final state. A watchdog timeout is a failure, not a
             // success: the surviving wrapper can publish exit code 0 after its child
             // was SIGKILLed, so cleanup MUST NOT read that code as success and
             // delete the control dir (which would erase the authoritative
             // timeout.flag). The decision is the watch's, and it follows the same
             // authority the terminal followed.
-            cleanup.dispose(
+            //
+            // The release goes through this class's own door, so the rule that says
+            // what survives is applied in ONE place: a directory that still holds its
+            // capture is kept, because the journal does not hold that value until
+            // after this method returns. The confirmation releases it (see
+            // [confirmCapture]).
+            cleanup(
+                controlDir = controlDir,
                 exitCode = watchdog.cleanupExitCode(exitCode),
                 keepTranscriptLog = watchdog.keepsTranscriptLog(exitCode, request.outputProjection),
             )
         }
     }
 
+    /**
+     * The journal confirmed the execution: the capture's home may go.
+     *
+     * The captured value reaches the journal AFTER the execution ended, so the control directory
+     * that holds it outlives the execution itself until this confirmation arrives. That is the
+     * whole point of the deferral: a process that dies between the end of the execution and the
+     * journal's write leaves the capture where a resumed run can still read it, instead of
+     * leaving a hole where the value used to be.
+     *
+     * The RULE that says what may be disposed of is still [ShellResourceCleanup]'s, and this
+     * method does not restate it: the outcome is read from the protocol's own file, the rule
+     * decides, and an outcome nobody published keeps the directory as evidence.
+     *
+     * The call is idempotent: confirming twice disposes of the directory once, and confirming a
+     * directory that is already gone is a no-op.
+     *
+     * @param controlDir The control directory of the confirmed execution.
+     * @return Whether the capture's home was released. `false` means the directory was kept: the
+     *   execution did not publish a result, or it published a failure, and its evidence stays.
+     */
+    fun confirmCapture(controlDir: Path): Boolean {
+        val protocol = ShellProtocolLayout(controlDir)
+        val published = try {
+            if (!Files.exists(protocol.resultFile)) {
+                null
+            } else {
+                Files.readString(protocol.resultFile).trim().toIntOrNull()
+            }
+        } catch (_: IOException) {
+            null
+        }
+        // Nobody published an outcome: the execution's fate is unknown, so the directory is kept.
+        if (published == null) return false
+        // The timeout marker is the DURABLE authority on an expiry, and it is written before the
+        // kill: a wrapper that published a zero AFTER its child was killed did not succeed. The
+        // confirmation folds it the same way the executor's own release folds it, or it would
+        // dispose of the very evidence that tells an expired execution from a lost one.
+        val expired = Files.exists(protocol.timeoutFlag)
+        val exitCode = ShellWatchdog.exitCodeForCleanup(expired, published)
+        val cleanup = ShellResourceCleanup(controlDir)
+        val fate = ShellResourceCleanup.fateOf(exitCode = exitCode, keepTranscriptLog = false, capturePending = false)
+        if (fate is ShellResourceCleanup.ControlDirFate.Retained) return false
+        cleanup.dispose(exitCode = exitCode, keepTranscriptLog = false, capturePending = false)
+        return true
+    }
 }
 
 /**

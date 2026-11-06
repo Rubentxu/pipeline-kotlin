@@ -133,6 +133,9 @@ class DurableStepExecutorSpanLineageTest {
         telemetry = ledger,
         clock = FixedClock,
         idGenerator = SequentialIdGenerator(),
+        // These rows observe the LINEAGE, and the confirmation is a release of the substrate's
+        // leftovers: there are none here, so it does nothing.
+        journalConfirmation = JournalConfirmation { },
     )
 
     /** The durable input of the invocation under observation. */

@@ -747,28 +747,69 @@ stage2_wall_ms=$(( $(now_ms) - stage2_started_ms ))
 # A report whose test class no longer exists cannot be counted: any change to
 # the sources changes the task's inputs, the task re-runs, and the task clears
 # its own results directory before it writes.
+#
+# The counters are read by GRAMMAR, not by shape. The reader parses the report
+# and looks at its root element, so a report whose root sits anywhere in the
+# file is read the same way as one whose root opens it. A report that declares
+# no counter is REFUSED, because a counter that is absent declares nothing and
+# a zero is a claim about the run: reading the absence as a zero would publish
+# a run that nobody declared.
+#
+# The census answers with a VERDICT, and the verdict names which of the three
+# shapes it found:
+#
+#   OK <reports> <tests> <failed> <skipped> <rewritten> <module>
+#   NO_REPORT    the lane wrote no report at all
+#   NO_COUNTERS  a report declares no counter, so the run cannot be counted
+#   NOTHING_RAN  the reports are there and declare no executed test
+#
+# The last two are refusals, and they are refusals of the MEASURE, not of the
+# presence of files: a green over nothing has three shapes and all three are
+# refused here.
 census_reports() {
     local module="$1" lane="$2" results_dir="$3" since="$4"
     local reports=0 total=0 failed=0 skipped=0 rewritten=0 xml
+    local paths=()
     while IFS= read -r xml; do
         [[ -n "$xml" ]] || continue
-        reports=$((reports + 1))
+        paths+=("$xml")
         if [[ "$(stat -c %Y "$xml")" -ge "$since" ]]; then
             rewritten=$((rewritten + 1))
         fi
-        local line
-        line="$(head -3 "$xml" | tr '\n' ' ')"
-        local t f e s
-        t=$(sed -nE 's/.*tests="([0-9]+)".*/\1/p' <<<"$line"); t=${t:-0}
-        f=$(sed -nE 's/.*failures="([0-9]+)".*/\1/p' <<<"$line"); f=${f:-0}
-        e=$(sed -nE 's/.*errors="([0-9]+)".*/\1/p' <<<"$line"); e=${e:-0}
-        s=$(sed -nE 's/.*skipped="([0-9]+)".*/\1/p' <<<"$line"); s=${s:-0}
+    done < <(find "$results_dir" -name 'TEST-*.xml' 2>/dev/null | LC_ALL=C sort)
+    reports=${#paths[@]}
+
+    if [[ $reports -eq 0 ]]; then
+        printf 'NO_REPORT %s\n' "$module"
+        return 1
+    fi
+
+    local measured
+    # The reader is asked once for the whole set of reports of the module,
+    # and it is asked over every report there is: a report it refuses is a
+    # report whose counters cannot be measured, and the census does not
+    # measure the rest of them and call that a count. The refusal names the
+    # file and the attribute, and it is written where the reader writes it:
+    # on the error stream of the run.
+    if ! measured="$(python3 scripts/read-junit-reports.py "${paths[@]}")"; then
+        printf 'NO_COUNTERS %s\n' "$module"
+        return 1
+    fi
+
+    local path t f e s
+    while read -r path t f e s; do
+        [[ -n "$path" ]] || continue
         total=$((total + t))
         failed=$((failed + f + e))
         skipped=$((skipped + s))
-    done < <(find "$results_dir" -name 'TEST-*.xml' 2>/dev/null | LC_ALL=C sort)
+    done <<< "$measured"
 
-    printf '%s %s %s %s %s %s' \
+    if [[ "$total" -eq 0 ]]; then
+        printf 'NOTHING_RAN %s\n' "$module"
+        return 1
+    fi
+
+    printf 'OK %s %s %s %s %s %s\n' \
         "$reports" "$total" "$failed" "$skipped" "$rewritten" "$module"
 }
 
@@ -782,6 +823,8 @@ census_reports() {
 stage3_started_ms="$(now_ms)"
 stage3_started_s=$(( stage3_started_ms / 1000 ))
 silent_modules=()
+undeclared_modules=()
+empty_modules=()
 
 if want_stage 3; then
     stage3_ran=1
@@ -825,17 +868,21 @@ if want_stage 3; then
 
         for m in "${modules_with_unit_tests[@]}"; do
             module_selected "$(gradle_path_of "$m")" || continue
-            read -r reports total failed skipped rewritten _ \
-                < <(census_reports "$m" unit "$m/build/test-results/test" "$stage3_started_s")
+            census_verdict="$(census_reports "$m" unit "$m/build/test-results/test" "$stage3_started_s")" || {
+                case "$census_verdict" in
+                    NO_COUNTERS*) undeclared_modules+=("$m") ;;
+                    NOTHING_RAN*) empty_modules+=("$m") ;;
+                    *) silent_modules+=("$m") ;;
+                esac
+                continue
+            }
+            read -r _ reports total failed skipped rewritten _ <<< "$census_verdict"
             unit_reports=$((unit_reports + reports))
             unit_executed=$((unit_executed + total))
             unit_failed=$((unit_failed + failed))
             unit_skipped=$((unit_skipped + skipped))
             unit_rewritten=$((unit_rewritten + rewritten))
             unit_read=$((unit_read + reports - rewritten))
-            if [[ "$reports" -eq 0 ]]; then
-                silent_modules+=("$m")
-            fi
         done
 
         if [[ ${#silent_modules[@]} -gt 0 ]]; then
@@ -843,6 +890,26 @@ if want_stage 3; then
             printf '    tests in it did NOT run. Gradle reports SUCCESS over an empty\n' >&2
             printf '    result set, and a green over nothing is not a green.\n' >&2
             printf '  %s\n' "${silent_modules[@]}" >&2
+            fail "stage 3: a module with tests executed none of them"
+        fi
+
+        if [[ ${#undeclared_modules[@]} -gt 0 ]]; then
+            printf '    a module with a unit test source produced a JUnit report that\n' >&2
+            printf '    declares no counter, so the run it describes cannot be counted.\n' >&2
+            printf '    A counter that is absent is not a zero, and the reader named the\n' >&2
+            printf '    file and the attribute above.\n' >&2
+            printf '  %s\n' "${undeclared_modules[@]}" >&2
+            fail "stage 3: a JUnit report does not declare its counters"
+        fi
+
+        # The other half of the same green: the reports are there and they
+        # declare no executed test. The guard is armed on the MEASURED count,
+        # because a report that exists is not evidence that a test ran.
+        if [[ ${#empty_modules[@]} -gt 0 ]]; then
+            printf '    a module with a unit test source produced JUnit XML that declares\n' >&2
+            printf '    no executed test, so the tests in it did NOT run. A report that\n' >&2
+            printf '    exists is not evidence that a test ran.\n' >&2
+            printf '  %s\n' "${empty_modules[@]}" >&2
             fail "stage 3: a module with tests executed none of them"
         fi
 
@@ -864,6 +931,8 @@ stage3_wall_ms=$(( $(now_ms) - stage3_started_ms ))
 stage4_started_ms="$(now_ms)"
 stage4_started_s=$(( stage4_started_ms / 1000 ))
 silent_integration_modules=()
+undeclared_integration_modules=()
+empty_integration_modules=()
 
 if want_stage 4; then
     stage4_ran=1
@@ -893,23 +962,46 @@ if want_stage 4; then
 
         for m in "${modules_with_integration_tests[@]}"; do
             module_selected "$(gradle_path_of "$m")" || continue
-            read -r reports total failed skipped rewritten _ \
-                < <(census_reports "$m" integration "$m/build/test-results/integrationTest" "$stage4_started_s")
+            census_verdict="$(census_reports "$m" integration "$m/build/test-results/integrationTest" "$stage4_started_s")" || {
+                case "$census_verdict" in
+                    NO_COUNTERS*) undeclared_integration_modules+=("$m") ;;
+                    NOTHING_RAN*) empty_integration_modules+=("$m") ;;
+                    *) silent_integration_modules+=("$m") ;;
+                esac
+                continue
+            }
+            read -r _ reports total failed skipped rewritten _ <<< "$census_verdict"
             integration_reports=$((integration_reports + reports))
             integration_executed=$((integration_executed + total))
             integration_failed=$((integration_failed + failed))
             integration_skipped=$((integration_skipped + skipped))
             integration_rewritten=$((integration_rewritten + rewritten))
             integration_read=$((integration_read + reports - rewritten))
-            if [[ "$reports" -eq 0 ]]; then
-                silent_integration_modules+=("$m")
-            fi
         done
 
         if [[ ${#silent_integration_modules[@]} -gt 0 ]]; then
             printf '    a module with an integration-test source produced no JUnit XML,\n' >&2
             printf '    so the tests in it did NOT run.\n' >&2
             printf '  %s\n' "${silent_integration_modules[@]}" >&2
+            fail "stage 4: a module with integration tests executed none of them"
+        fi
+
+        if [[ ${#undeclared_integration_modules[@]} -gt 0 ]]; then
+            printf '    a module with an integration-test source produced a JUnit report\n' >&2
+            printf '    that declares no counter, so the run it describes cannot be\n' >&2
+            printf '    counted. A counter that is absent is not a zero, and the reader\n' >&2
+            printf '    named the file and the attribute above.\n' >&2
+            printf '  %s\n' "${undeclared_integration_modules[@]}" >&2
+            fail "stage 4: a JUnit report does not declare its counters"
+        fi
+
+        # The other half of the same green: the reports are there and they
+        # declare no executed test. The guard is armed on the MEASURED count,
+        # because a report that exists is not evidence that a test ran.
+        if [[ ${#empty_integration_modules[@]} -gt 0 ]]; then
+            printf '    a module with an integration-test source produced JUnit XML that\n' >&2
+            printf '    declares no executed test, so the tests in it did NOT run.\n' >&2
+            printf '  %s\n' "${empty_integration_modules[@]}" >&2
             fail "stage 4: a module with integration tests executed none of them"
         fi
 

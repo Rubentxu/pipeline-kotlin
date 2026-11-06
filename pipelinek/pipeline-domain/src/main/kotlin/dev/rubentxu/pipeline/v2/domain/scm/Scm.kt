@@ -31,33 +31,3 @@ data class GitScm(
  * Wrapper for checkout step spec.
 */
 data class CheckoutSpec(val scm: Scm)
-
-/**
- * Typed carrier for secret handle reference.
- * Credentials carried as typed refs, never Map<String,String>.
- * @param id The CredentialsId referencing the secret in SecretStore
- * @param kind Optional kind hint ("string", "usernamePassword", etc.)
-*/
-data class SecretHandleRef(
-    val id: CredentialsId,
-    val kind: String? = null,
-)
-
-/**
- * Git credentials — three-channel auth.
- * Typed carriers only, no Map<String,String>.
- * Credentials NEVER enter argv — temp files + GIT_CONFIG_GLOBAL only.
- * Git credential scope decided by git itself — no host literals.
- * @param string SecretHandleRef for API token (string channel)
- * @param user SecretHandleRef for username (usernamePassword channel)
- * @param pass SecretHandleRef for password (usernamePassword channel)
- * @param sshKey SecretHandleRef for SSH private key (SSH channel)
- * @param sshPassphrase Optional SecretHandleRef for SSH key passphrase (SSH channel)
-*/
-data class GitCredentials(
-    val string: SecretHandleRef? = null,
-    val user: SecretHandleRef? = null,
-    val pass: SecretHandleRef? = null,
-    val sshKey: SecretHandleRef? = null,
-    val sshPassphrase: SecretHandleRef? = null,
-)

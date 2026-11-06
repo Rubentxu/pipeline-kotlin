@@ -49,6 +49,17 @@ import java.util.concurrent.locks.ReentrantLock
  * how an entry is framed, with what AAD it is sealed and what its bytes mean
  * once they are open are properties of the VERSION, and [StoreCodec] is where
  * the version lives.
+ * ## The session
+ * A session of credentials has an end, and the end is visible.
+ * - The store keeps NO decrypted key between operations. The key that opens
+ *   the entries is derived and unwrapped by the operation that needs it, and it
+ *   dies with that operation, even when the operation fails. What the store
+ *   remembers between operations is the FACT that the passphrase was accepted.
+ * - [close] is idempotent, wipes the passphrase it was given, and leaves the
+ *   store in a state it does not leave: every later operation is refused,
+ *   naming that state. A store that answers after its close is a store whose
+ *   passphrase was destroyed and whose answers still come out.
+ * - The refusal never blames the operator for a mistake of the product.
  * ## File Format
  * ```
  * Header (74 bytes, the same layout in every version):
@@ -80,11 +91,44 @@ class LocalSecretStore(
     private val secureRandom = SecureRandom()
 
     /**
-     * The key that opens this store, once the passphrase that wraps it has been
-     * accepted. Kept so that the passphrase is checked once per store and not
-     * once per operation.
+     * Whether the passphrase of this store has been accepted.
+     *
+     * The store keeps the FACT and not the key: the key that opens the entries
+     * is derived and unwrapped again by every operation that needs it, and it
+     * dies with that operation. What is worth keeping is that the passphrase
+     * was right, so that a second operation does not pay for the derivation
+     * again.
      */
-    private var openedDek: ByteArray? = null
+    private var passphraseAccepted = false
+
+    /**
+     * Whether this store has been closed.
+     *
+     * A closed store is a state the store does not leave: every operation is
+     * refused from here on, and the refusal names the state instead of
+     * blaming the passphrase of the operator.
+     */
+    @Volatile
+    private var closed = false
+
+    /**
+     * The secret buffers this store holds open right now.
+     *
+     * A buffer is in here while it holds key material, and it leaves when it is
+     * wiped: [SecretBuffer.wipe] is what takes it out, so «the bytes are
+     * wiped» and «the buffer is no longer held» are the same fact.
+     */
+    private val liveSecrets = ConcurrentHashMap.newKeySet<SecretBuffer>()
+
+    /**
+     * How many secret buffers this store holds open right now.
+     *
+     * It counts and nothing else. No buffer is skipped, delayed or made
+     * cheaper because of it. It is what lets a caller see that an operation
+     * ended with no key left behind, without reaching into the private fields
+     * of the store.
+     */
+    internal val liveSecretBuffers: Int get() = liveSecrets.size
 
     /**
      * How many times this store derived a key from the passphrase.
@@ -139,15 +183,47 @@ class LocalSecretStore(
     internal val entryParses = AtomicInteger()
 
     /**
-     * Derives the key that wraps this store's data key.
+     * Derives the key that wraps this store's data key, as a buffer this store
+     * owns.
      *
      * Every derivation this store performs goes through here, so the counter
      * above counts all of them and not only the ones somebody remembered to
+     * count. The key comes back in a buffer, because a key that nobody owns is
+     * a key nobody wipes.
+     */
+    private fun deriveKek(salt: ByteArray): SecretBuffer {
+        passphraseValidations.incrementAndGet()
+        return secret(CredentialCrypto.deriveKek(passphrase, salt))
+    }
+
+    /**
+     * Takes ownership of a secret buffer.
+     *
+     * The store holds the buffer while it lives and lets it go when it is
+     * wiped, so that what the store holds and what it has wiped are the same
      * count.
      */
-    private fun deriveKek(salt: ByteArray): ByteArray {
-        passphraseValidations.incrementAndGet()
-        return CredentialCrypto.deriveKek(passphrase, salt)
+    private fun secret(bytes: ByteArray): SecretBuffer {
+        val buffer = SecretBuffer.of(bytes) { liveSecrets.remove(it) }
+        liveSecrets.add(buffer)
+        return buffer
+    }
+
+    /**
+     * Refuses an operation asked of a store that has been closed.
+     *
+     * The session of a store ends when it is closed, and a store that keeps
+     * answering after its close would answer with a passphrase it no longer
+     * has. The refusal names the state and no secret.
+     *
+     * @throws SecretStoreClosedException when this store has been closed
+     */
+    private fun requireOpen() {
+        if (closed) {
+            throw SecretStoreClosedException(
+                "the credential store is closed: it holds no passphrase and it opens for nothing",
+            )
+        }
     }
 
     /**
@@ -157,28 +233,39 @@ class LocalSecretStore(
      * passphrase can unwrap, and unwrapping it is the only way to know that the
      * passphrase is right. A store that holds nothing has nothing to check.
      *
+     * @throws SecretStoreClosedException when this store has been closed
      * @throws SecretStorePassphraseMismatchException if the passphrase does not
      *   match the store
      */
     fun verifyPassphrase() {
+        requireOpen()
         if (!Files.exists(file) || Files.size(file) == 0L) return
-        open(readStoreFile())
+        validatePassphrase(readStoreFile())
     }
 
     /**
-     * Unwraps the key that opens the store and remembers it.
+     * Checks that the passphrase opens this store, and forgets the key it used.
      *
-     * Every operation that reads or changes what the store holds goes through
-     * here first, so a passphrase that does not match is refused before
-     * anything is read out or written back.
+     * The key that wraps the data key is derived and the data key is unwrapped:
+     * that unwrap IS the proof that the passphrase is the right one. Neither key
+     * is kept. What the store remembers is that the passphrase was accepted, so
+     * that a second operation does not pay for the derivation again, and the key
+     * that opens the entries is derived again by the operation that needs it.
+     *
+     * @param fileBytes the bytes of the store file
+     * @throws SecretStorePassphraseMismatchException when the passphrase does not
+     *   match the store
      */
-    private fun open(fileBytes: ByteArray): ByteArray {
-        openedDek?.let { return it }
+    private fun validatePassphrase(fileBytes: ByteArray) {
+        if (passphraseAccepted) return
         val hdr = readHeader(fileBytes)
         val kek = deriveKek(hdr.kdfSalt)
-        val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
-        openedDek = dek
-        return dek
+        try {
+            secret(CredentialCrypto.unwrapDek(kek.bytes(), hdr.wrappedDek)).wipe()
+        } finally {
+            kek.wipe()
+        }
+        passphraseAccepted = true
     }
 
     /**
@@ -191,8 +278,10 @@ class LocalSecretStore(
      * with the length of the chain.
      *
      * The key lives in the snapshot and in nothing else: the snapshot is a
-     * local value, so the key dies with the operation that took it, and no
-     * key outlives the operation that opened it.
+     * local value, and it wipes the keys it holds when its operation ends, so
+     * no key outlives the operation that opened it. A snapshot that is closed
+     * is a snapshot whose keys are unreadable, whether the operation ended
+     * well or badly.
      *
      * The header is read when the snapshot is taken, and the key and the
      * entries are opened WHEN THEY ARE NEEDED, because the paths that need
@@ -204,9 +293,9 @@ class LocalSecretStore(
     private inner class Snapshot(
         val header: StoreHeader,
         private val fileBytes: ByteArray,
-        private val kek: ByteArray,
-    ) {
-        private var unwrappedDek: ByteArray? = null
+        private val kek: SecretBuffer,
+    ) : AutoCloseable {
+        private var unwrappedDek: SecretBuffer? = null
         private var parsedEntries: Map<String, StoreEntry>? = null
 
         /**
@@ -217,11 +306,11 @@ class LocalSecretStore(
          */
         fun dek(): ByteArray {
             val already = unwrappedDek
-            if (already != null) return already
+            if (already != null) return already.bytes()
             keyUnwraps.incrementAndGet()
-            val fresh = CredentialCrypto.unwrapDek(kek, header.wrappedDek)
+            val fresh = secret(CredentialCrypto.unwrapDek(kek.bytes(), header.wrappedDek))
             unwrappedDek = fresh
-            return fresh
+            return fresh.bytes()
         }
 
         /**
@@ -241,6 +330,19 @@ class LocalSecretStore(
             val fresh = StoreCodec.of(header.version).read(fileBytes)
             parsedEntries = fresh
             return fresh
+        }
+
+        /**
+         * Ends this snapshot: the keys it holds become unreadable.
+         *
+         * The snapshot is closed by the operation that took it, in a `finally`,
+         * so the keys die with the operation even when the operation fails.
+         * Closing it twice is not an error.
+         */
+        override fun close() {
+            unwrappedDek?.wipe()
+            unwrappedDek = null
+            kek.wipe()
         }
     }
 
@@ -361,13 +463,19 @@ class LocalSecretStore(
         }
     }
 
-    // Cached derived key (set on first access, wiped on close)
-    private var cachedKek: ByteArray? = null
-    private var cachedSalt: ByteArray? = null
+    /**
+     * Exception thrown when an operation is asked of a store that has been
+     * closed.
+     *
+     * The message says what happened, because a store that answered a closed
+     * session with a passphrase mismatch would blame the operator for a
+     * mistake of the product: the passphrase was destroyed by the close.
+    */
+    class SecretStoreClosedException(message: String) : IllegalStateException(message)
 
     /**
      * Exception thrown when the store file is corrupted or tampered.
-*/
+    */
     class SecretStoreTamperException(message: String, cause: Throwable? = null) :
         dev.rubentxu.pipeline.v2.credentials.api.SecretStoreTamperException(message, cause)
 
@@ -516,6 +624,7 @@ class LocalSecretStore(
      *   replaced. The store keeps the content it had.
      */
     override fun put(id: CredentialsId, bytes: ByteArray) {
+        requireOpen()
         if (bytes.isEmpty()) throw CredentialsStoreEmptySecretException()
 
         add(id, SecretText(id, CredentialScope.GLOBAL, bytes))
@@ -531,46 +640,59 @@ class LocalSecretStore(
      *   not open. The store is not migrated and keeps the content it had.
 */
     override fun add(id: CredentialsId, credential: Credential) {
+        requireOpen()
         withExclusiveLock {
             val source = loadOrCreateHeader()
             val kek = deriveKek(source.kdfSalt)
+            try {
+                // Load or generate DEK
+                val dek = secret(
+                    if (source.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
+                        ByteArray(DEK_SIZE).also { secureRandom.nextBytes(it) }
+                    } else {
+                        CredentialCrypto.unwrapDek(kek.bytes(), source.wrappedDek)
+                    },
+                )
+                try {
+                    // Serialize credential to bytes
+                    val credentialBytes = CredentialSerializer.serializeCredential(credential)
+                    val kindId = CredentialKinds.idOf(credential)
 
-            // Load or generate DEK
-            val dek = if (source.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
-                ByteArray(DEK_SIZE).also { secureRandom.nextBytes(it) }
-            } else {
-                CredentialCrypto.unwrapDek(kek, source.wrappedDek)
+                    // Atomic write
+                    val existingBytes = if (Files.exists(file) && Files.size(file) > 0) readStoreFile() else null
+
+                    // The header the store will carry and the entries it will hold
+                    // under it. The upgrade is decided in ONE place, so the rule that
+                    // seals an entry cannot be one thing here and another there.
+                    val upgrade = upgrade(dek.bytes(), source, existingBytes)
+
+                    // The format of the header the store will carry. It decides how
+                    // the entry is framed and with what AAD it is sealed.
+                    val format = StoreCodec.of(upgrade.header.version)
+                    val sealed = AeadCipher.encrypt(
+                        dek.bytes(),
+                        credentialBytes,
+                        format.aad(upgrade.header, id, kindId),
+                    )
+                    upgrade.entries[id.value] = StoreEntry(id, sealed, kindId)
+
+                    val out = ByteArrayOutputStream()
+                    // Always write header for new entries; migrate entries to
+                    StoreCodec.writeHeader(
+                        out,
+                        upgrade.header.copy(wrappedDek = CredentialCrypto.wrapDek(kek.bytes(), dek.bytes())),
+                    )
+                    for (entry in upgrade.entries.values) {
+                        out.write(format.encode(entry))
+                    }
+
+                    commit(publishable(out.toByteArray(), upgrade, dek.bytes()))
+                } finally {
+                    dek.wipe()
+                }
+            } finally {
+                kek.wipe()
             }
-
-            // Serialize credential to bytes
-            val credentialBytes = CredentialSerializer.serializeCredential(credential)
-            val kindId = CredentialKinds.idOf(credential)
-
-            // Atomic write
-            val existingBytes = if (Files.exists(file) && Files.size(file) > 0) readStoreFile() else null
-
-            // The header the store will carry and the entries it will hold
-            // under it. The upgrade is decided in ONE place, so the rule that
-            // seals an entry cannot be one thing here and another there.
-            val upgrade = upgrade(dek, source, existingBytes)
-
-            // The format of the header the store will carry. It decides how
-            // the entry is framed and with what AAD it is sealed.
-            val format = StoreCodec.of(upgrade.header.version)
-            val sealed = AeadCipher.encrypt(dek, credentialBytes, format.aad(upgrade.header, id, kindId))
-            upgrade.entries[id.value] = StoreEntry(id, sealed, kindId)
-
-            val out = ByteArrayOutputStream()
-            // Always write header for new entries; migrate entries to
-            StoreCodec.writeHeader(
-                out,
-                upgrade.header.copy(wrappedDek = CredentialCrypto.wrapDek(kek, dek)),
-            )
-            for (entry in upgrade.entries.values) {
-                out.write(format.encode(entry))
-            }
-
-            commit(publishable(out.toByteArray(), upgrade, dek))
         }
     }
 
@@ -580,15 +702,20 @@ class LocalSecretStore(
      * holds; this method does not decide which format that is.
 */
     override fun get(id: CredentialsId): Credential {
+        requireOpen()
         val snapshot = snapshot()
-        val hdr = snapshot.header
-        val dek = snapshot.dek()
+        try {
+            val hdr = snapshot.header
+            val dek = snapshot.dek()
 
-        val entry = snapshot.entries()[id.value]
-            ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
+            val entry = snapshot.entries()[id.value]
+                ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
-        val format = StoreCodec.of(hdr.version)
-        return format.credential(entry, openEntry(entry, hdr, id, format, dek), id)
+            val format = StoreCodec.of(hdr.version)
+            return format.credential(entry, openEntry(entry, hdr, id, format, dek), id)
+        } finally {
+            snapshot.close()
+        }
     }
 
     /**
@@ -641,43 +768,48 @@ class LocalSecretStore(
      *   single secret
 */
     override fun getAsSecretHandle(id: CredentialsId): SecretHandle {
+        requireOpen()
         val snapshot = snapshot()
-        val hdr = snapshot.header
+        try {
+            val hdr = snapshot.header
 
-        // The lookup comes BEFORE the key is unwrapped, so a store that does
-        // not hold the credential answers "it is not there" even when the
-        // passphrase is wrong: the answer does not depend on the order of the
-        // checks.
-        val entry = snapshot.entries()[id.value]
-            ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
+            // The lookup comes BEFORE the key is unwrapped, so a store that does
+            // not hold the credential answers "it is not there" even when the
+            // passphrase is wrong: the answer does not depend on the order of the
+            // checks.
+            val entry = snapshot.entries()[id.value]
+                ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
-        val dek = snapshot.dek()
+            val dek = snapshot.dek()
 
-        // The format of the header decides what the open bytes MEAN: in the
-        // legacy format the bytes ARE the secret, and in the current one they
-        // hold the credential in the canonical form. Reading the entry with
-        // the SAME reader `get` uses is what keeps the two paths from
-        // disagreeing about what the store holds.
-        val format = StoreCodec.of(hdr.version)
-        val plaintext = openEntry(entry, hdr, id, format, dek)
-        val credential = format.credential(entry, plaintext, id)
-        return when (credential) {
-            is SecretText -> SecretHandle.secret(credential.bytes)
-            // Every kind that is not one secret is refused, and the refusal
-            // names the kind. The `when` has no `else` ON PURPOSE: the
-            // compiler is the instrument that makes a NEW credential kind
-            // decide what it projects to, instead of inheriting a refusal
-            // nobody wrote.
-            is UsernamePassword,
-            is SshPrivateKey,
-            is SecretFile,
-            is Certificate,
-            is Zip,
-            is UsernameColonPassword,
-            -> throw CredentialsStoreProjectionException(
-                id,
-                credential::class.simpleName ?: "an unrecognised credential kind",
-            )
+            // The format of the header decides what the open bytes MEAN: in the
+            // legacy format the bytes ARE the secret, and in the current one they
+            // hold the credential in the canonical form. Reading the entry with
+            // the SAME reader `get` uses is what keeps the two paths from
+            // disagreeing about what the store holds.
+            val format = StoreCodec.of(hdr.version)
+            val plaintext = openEntry(entry, hdr, id, format, dek)
+            val credential = format.credential(entry, plaintext, id)
+            return when (credential) {
+                is SecretText -> SecretHandle.secret(credential.bytes)
+                // Every kind that is not one secret is refused, and the refusal
+                // names the kind. The `when` has no `else` ON PURPOSE: the
+                // compiler is the instrument that makes a NEW credential kind
+                // decide what it projects to, instead of inheriting a refusal
+                // nobody wrote.
+                is UsernamePassword,
+                is SshPrivateKey,
+                is SecretFile,
+                is Certificate,
+                is Zip,
+                is UsernameColonPassword,
+                -> throw CredentialsStoreProjectionException(
+                    id,
+                    credential::class.simpleName ?: "an unrecognised credential kind",
+                )
+            }
+        } finally {
+            snapshot.close()
         }
     }
 
@@ -694,28 +826,33 @@ class LocalSecretStore(
      * @throws SecretStoreTamperException if the credential is tampered
 */
     override fun getAsHandle(id: CredentialsId, partName: String): SecretHandle {
+        requireOpen()
         val snapshot = snapshot()
-        val hdr = snapshot.header
-        val dek = snapshot.dek()
+        try {
+            val hdr = snapshot.header
+            val dek = snapshot.dek()
 
-        val format = StoreCodec.of(hdr.version)
+            val format = StoreCodec.of(hdr.version)
 
-        // A format whose entries have no part by name says so BEFORE the
-        // credential is looked up: a store that cannot answer the question at
-        // all does not answer it about a credential that is not there.
-        val refusal = format.partsRefusal()
-        if (refusal != null) throw SecretStoreTamperException(refusal)
+            // A format whose entries have no part by name says so BEFORE the
+            // credential is looked up: a store that cannot answer the question at
+            // all does not answer it about a credential that is not there.
+            val refusal = format.partsRefusal()
+            if (refusal != null) throw SecretStoreTamperException(refusal)
 
-        val entry = snapshot.entries()[id.value]
-            ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
+            val entry = snapshot.entries()[id.value]
+                ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
-        val plaintext = openEntry(entry, hdr, id, format, dek)
+            val plaintext = openEntry(entry, hdr, id, format, dek)
 
-        // The walk over the chain of linked secrets. It reads ONE view of the
-        // store, and the visited set is what detects a chain that closes on
-        // itself.
-        return LinkedSecretResolver(hdr, format, { snapshot.dek() }, { snapshot.entries() })
-            .extract(plaintext, entry.kindId, id, partName, mutableSetOf(id))
+            // The walk over the chain of linked secrets. It reads ONE view of the
+            // store, and the visited set is what detects a chain that closes on
+            // itself.
+            return LinkedSecretResolver(hdr, format, { snapshot.dek() }, { snapshot.entries() })
+                .extract(plaintext, entry.kindId, id, partName, mutableSetOf(id))
+        } finally {
+            snapshot.close()
+        }
     }
 
     /**
@@ -726,9 +863,10 @@ class LocalSecretStore(
      *   passphrase that does not match gets an answer, not a list
 */
     override fun list(): List<CredentialsId> {
+        requireOpen()
         if (!Files.exists(file) || Files.size(file) == 0L) return emptyList()
         val fileBytes = readStoreFile()
-        open(fileBytes)
+        validatePassphrase(fileBytes)
         val hdr = readHeader(fileBytes)
         // The codec reads the body in the framing of the version the header
         // declares, and refuses a body that is not that body.
@@ -746,10 +884,11 @@ class LocalSecretStore(
      *   replaced. The store keeps the content it had.
 */
     override fun remove(id: CredentialsId) {
+        requireOpen()
         withExclusiveLock {
             if (!Files.exists(file) || Files.size(file) == 0L) return
             val fileBytes = readStoreFile()
-            open(fileBytes)
+            validatePassphrase(fileBytes)
             val hdr = readHeader(fileBytes)
 
             // The store keeps the format it has: the entries are read and
@@ -783,6 +922,7 @@ class LocalSecretStore(
      *   the content it had.
 */
     override fun rotate(id: CredentialsId, credential: Credential) {
+        requireOpen()
         withExclusiveLock {
             if (!Files.exists(file)) {
                 throw SecretStoreTamperException("Store file does not exist")
@@ -794,39 +934,49 @@ class LocalSecretStore(
             val fileBytes = readStoreFile()
             val source = readHeader(fileBytes)
             val kek = deriveKek(source.kdfSalt)
+            try {
+                // Get DEK from header (reuse existing DEK)
+                val dek = secret(CredentialCrypto.unwrapDek(kek.bytes(), source.wrappedDek))
+                try {
+                    // The header the store will carry and the entries it will hold
+                    // under it. The upgrade is decided in ONE place, so the rule that
+                    // seals an entry cannot be one thing here and another there.
+                    val upgrade = upgrade(dek.bytes(), source, fileBytes)
 
-            // Get DEK from header (reuse existing DEK)
-            val dek = CredentialCrypto.unwrapDek(kek, source.wrappedDek)
+                    if (!upgrade.entries.containsKey(id.value)) {
+                        throw SecretStoreTamperException("Credential not found: ${id.value}")
+                    }
 
-            // The header the store will carry and the entries it will hold
-            // under it. The upgrade is decided in ONE place, so the rule that
-            // seals an entry cannot be one thing here and another there.
-            val upgrade = upgrade(dek, source, fileBytes)
+                    // Serialize and encrypt the new credential
+                    val credentialBytes = CredentialSerializer.serializeCredential(credential)
+                    val kindId = CredentialKinds.idOf(credential)
 
-            if (!upgrade.entries.containsKey(id.value)) {
-                throw SecretStoreTamperException("Credential not found: ${id.value}")
+                    // The format of the header the store will carry decides how the
+                    // entry is framed and with what AAD it is sealed.
+                    val format = StoreCodec.of(upgrade.header.version)
+                    val sealed = AeadCipher.encrypt(
+                        dek.bytes(),
+                        credentialBytes,
+                        format.aad(upgrade.header, id, kindId),
+                    )
+
+                    // Update entries
+                    upgrade.entries[id.value] = StoreEntry(id, sealed, kindId)
+
+                    // Atomic write - always write header
+                    val out = ByteArrayOutputStream()
+                    StoreCodec.writeHeader(out, upgrade.header)
+                    for (entry in upgrade.entries.values) {
+                        out.write(format.encode(entry))
+                    }
+
+                    commit(publishable(out.toByteArray(), upgrade, dek.bytes()))
+                } finally {
+                    dek.wipe()
+                }
+            } finally {
+                kek.wipe()
             }
-
-            // Serialize and encrypt the new credential
-            val credentialBytes = CredentialSerializer.serializeCredential(credential)
-            val kindId = CredentialKinds.idOf(credential)
-
-            // The format of the header the store will carry decides how the
-            // entry is framed and with what AAD it is sealed.
-            val format = StoreCodec.of(upgrade.header.version)
-            val sealed = AeadCipher.encrypt(dek, credentialBytes, format.aad(upgrade.header, id, kindId))
-
-            // Update entries
-            upgrade.entries[id.value] = StoreEntry(id, sealed, kindId)
-
-            // Atomic write - always write header
-            val out = ByteArrayOutputStream()
-            StoreCodec.writeHeader(out, upgrade.header)
-            for (entry in upgrade.entries.values) {
-                out.write(format.encode(entry))
-            }
-
-            commit(publishable(out.toByteArray(), upgrade, dek))
         }
     }
 
@@ -852,19 +1002,30 @@ class LocalSecretStore(
      *   replaced. The store keeps the content it had.
      */
     override fun rotateBytes(id: CredentialsId, newBytes: ByteArray) {
+        requireOpen()
         if (newBytes.isEmpty()) throw CredentialsStoreEmptySecretException()
 
         rotate(id, SecretText(id, CredentialScope.GLOBAL, newBytes))
     }
 
     /**
-     * Closes the store, wiping the passphrase and cached keys from memory.
-*/
+     * Closes the store, wiping the passphrase and every key it holds.
+     *
+     * The close is idempotent: closing a closed store is not an error, and the
+     * second close does not wipe anything twice. The store stays closed: every
+     * later operation is refused, naming that state, because a store that
+     * answers after its close answers with a passphrase it no longer has.
+     *
+     * The passphrase that is wiped is the one the caller gave: it is the same
+     * array, so the caller can see that it is gone.
+    */
     override fun close() {
+        if (closed) return
+        closed = true
         passphrase.fill('\u0000')
-        cachedKek?.fill(0)
-        cachedKek = null
-        cachedSalt = null
+        for (buffer in liveSecrets.toList()) {
+            buffer.wipe()
+        }
     }
 
     // === Private helpers ===

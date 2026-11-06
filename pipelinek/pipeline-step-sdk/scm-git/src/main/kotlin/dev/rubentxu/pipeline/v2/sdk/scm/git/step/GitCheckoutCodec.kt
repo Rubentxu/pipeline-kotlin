@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.sdk.scm.git.step
 
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
+import dev.rubentxu.pipeline.v2.sdk.scm.git.GitLocalState
 import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.boolOrNull
 import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredBoolean
 import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredString
@@ -77,6 +78,7 @@ object GitCheckoutOutputCodec : StepCodec<GitCheckoutOutput> {
             put("wasCloned", value.wasCloned)
             put("credentialApplied", value.credentialApplied)
             put("remotePolled", value.remotePolled)
+            put("localState", value.localState.name)
         }
     )
 
@@ -93,7 +95,28 @@ object GitCheckoutOutputCodec : StepCodec<GitCheckoutOutput> {
             // those payloads states the fact they were produced under; assuming
             // `false` would claim a remote consultation that never happened.
             remotePolled = obj.boolOrNull("remotePolled") ?: true,
+            localState = decodeLocalState(obj.stringOrNull("localState")),
         )
+    }
+
+    /**
+     * The local state a payload carries, or [GitLocalState.UNKNOWN] when it carries
+     * none.
+     *
+     * A payload encoded before this field existed says nothing about the state of
+     * the tree: that checkout never looked. UNKNOWN is what that is, and it is
+     * NOT `CLEAN` — a payload that says "clean" about a tree nobody inspected is
+     * the claim this card exists to remove.
+     *
+     * A payload that DOES carry the field and names a state that does not exist is
+     * refused: an unreadable value is not rounded to a nearby value.
+     */
+    private fun decodeLocalState(token: String?): GitLocalState {
+        if (token == null) {
+            return GitLocalState.UNKNOWN
+        }
+        return GitLocalState.entries.firstOrNull { it.name == token }
+            ?: error("scm-git.checkout: the payload names a local state that does not exist: $token")
     }
 }
 

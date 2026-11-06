@@ -80,7 +80,7 @@ class GitCheckoutStepDefinition(
     private val eventSink: EventSink? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? = null,
-) : StepDefinition<GitCheckoutInput, GitCheckoutOutput> {
+) : StepDefinition<GitScm, GitCheckoutOutput> {
 
     override val contract = StepContract(
         key = ScmGitCheckoutKey.VALUE,
@@ -116,8 +116,9 @@ class GitCheckoutStepDefinition(
 
     /**
      * Typed handler that bridges the registry seam to the SDK executor.
-     * - Decodes the credentialsRef into a typed [GitScm.credentialsId]
-     *   carrier (no Map<String, Any?> smuggling).
+     * - The input IS the domain's SCM carrier ([GitScm]), so there is nothing to
+     *   translate: the credential reference arrives typed, with no
+     *   Map<String, Any?> smuggling.
      * - Builds a workspace-scoped executor so per-Step cleanup is bounded.
      * - The handler returns a typed [GitCheckoutOutput]; failures surface
      *   through the [PluginStepException] typed algebra defined by the
@@ -143,7 +144,7 @@ class GitCheckoutStepDefinition(
      * runs never hit this branch because the canonical engine threads
      * a valid workspace identity through the registry.
 */
-    override val handler = StepHandler<GitCheckoutInput, GitCheckoutOutput> { input, ctx ->
+    override val handler = StepHandler<GitScm, GitCheckoutOutput> { input, ctx ->
         // Read the canonical workspace root from the typed
         // capability seam. The capability access is fail-closed: the
         // boundary re-checks the declared capabilities before the handler
@@ -186,14 +187,10 @@ class GitCheckoutStepDefinition(
         // destination never reaches this line.
         val transcript: GitTranscript = ctx.capabilities.get(SCM_GIT_TRANSCRIPT_CAPABILITY, GitTranscript::class)
         val spec = CheckoutSpec(
-            scm = GitScm(
-                url = input.url,
-                branch = input.branch,
-                credentialsId = input.toDomainCredentialsId(),
-                changelog = input.changelog,
-                poll = input.poll,
-                relativeTargetDir = input.relativeTargetDir,
-            ),
+            // The input IS the SCM carrier: the handler projects it, it does not
+            // rebuild it. A handler that re-listed the fields would be a second
+            // place where "what a checkout is" is written down.
+            scm = input,
         )
         val sink: EventSink = this.eventSink ?: NullEventSink
         // The executor owns the temporary roots: the credential directory (the SSH key,

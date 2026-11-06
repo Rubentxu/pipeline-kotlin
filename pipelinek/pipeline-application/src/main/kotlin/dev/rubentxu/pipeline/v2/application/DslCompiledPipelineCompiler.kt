@@ -31,9 +31,13 @@ import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.SourceDescriptor
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcomeFold
+import dev.rubentxu.pipeline.v2.domain.scm.GitScm
+import dev.rubentxu.pipeline.v2.domain.scm.Scm
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.dsl.toSpec
+import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInputCodec
+import dev.rubentxu.pipeline.v2.sdk.scm.git.step.ScmGitCheckoutKey
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -49,6 +53,11 @@ import kotlinx.serialization.json.put
  * canonical executable IR. It deliberately bypasses PipelineDefinition and
  * SpecDefinitionMapper; validator/planner migration is
  * StepSpec.WriteFile is re-mapped to `core.file.writeFile` with typed payload.
+ * The checkout lowers to the SCM/Git plugin's own step (`scm-git.checkout`):
+ * the plugin owns that key and the wire format of its input, and this compiler
+ * projects the domain's SCM carrier onto the plugin's codec instead of writing
+ * the payload itself. The compiler therefore never invents a key for a step it
+ * does not implement — it asks the step's owner for the one it registered.
  * Body-aware steps:
  * - catchError / warnError: compiled to [BlockStepNode] with canonical Body-execution IR.
  *   The scope's contract travels in the block payload ([CoreWorkflowControlWireCodec]) and
@@ -345,6 +354,28 @@ object DslCompiledPipelineCompiler {
             // `milestone(ordinal, label)` now lowers directly to StepSpec.RegistryStepSpec
             // (open-world registry path); no dedicated compiler branch needed. Legacy
             // milestonePayload removed at.
+            // The checkout is NOT a core Step: the SCM/Git plugin IMPLEMENTS it, under
+            // the key `scm-git.checkout`, and the plugin owns that key AND the wire
+            // format of its input. The core DSL's surface (`git(..)`, `checkout(..)`)
+            // is what lowers to it, so the compiler names the key the step is
+            // REGISTERED under — the one `RegistryStepMetadataResolver` can resolve —
+            // instead of minting a `core.checkout` that no registry has ever contained.
+            //
+            // The old shape had two defects and they were the same defect seen twice:
+            // the key it minted belonged to no step, and the payload it wrote by hand
+            // was a second version of a format the plugin's codec already owned. A
+            // checkout built by the core DSL compiled to a step that could not run.
+            //
+            // This branch is NOT a dispatch mechanism for plugin steps: a NEW official
+            // step still arrives through `registryStep` (the plugin's own façade) and
+            // needs no case here. What lowers here is the CORE's own surface.
+            is StepSpec.Checkout -> listOf(
+                OpaqueStepNode(
+                    id = StepId("$parentToken/${scope.tokenFor(step.name)}-$occurrence"),
+                    pluginStepId = ScmGitCheckoutKey.VALUE,
+                    payload = VersionedStepPayload(PAYLOAD_SCHEMA_VERSION, checkoutPayload(step.scm)),
+                ),
+            )
             else -> listOf(
                 OpaqueStepNode(
                     id = StepId("$parentToken/${scope.tokenFor(step.name)}-$occurrence"),
@@ -698,6 +729,27 @@ object DslCompiledPipelineCompiler {
     private fun shellPayload(command: String, isScriptBlock: Boolean, returnStdout: Boolean): String =
         CoreShellWireCodec.encodeDeclarative(coreShellInput(command, isScriptBlock, returnStdout)).value
 
+    /**
+     * The payload of a checkout step: the bytes the SCM plugin's OWN codec writes.
+     *
+     * The compiler does not translate the carrier field by field. It projects the
+     * domain's [GitScm] onto the codec that owns the format, so the bytes a
+     * checkout built by the core DSL carries are the SAME bytes the plugin's own
+     * façade produces for the same checkout — which is what makes the two paths
+     * one step instead of two spellings that can drift apart.
+     *
+     * The projection is EXHAUSTIVE over the sealed [Scm] family on purpose. A
+     * second kind of SCM breaks this compilation instead of falling into a
+     * default that would compile somebody else's checkout with the wrong
+     * defaults and a URL nobody declared.
+     */
+    private fun checkoutPayload(scm: Scm): String {
+        val git: GitScm = when (scm) {
+            is GitScm -> scm
+        }
+        return GitCheckoutInputCodec.encode(git).value
+    }
+
     @Suppress(
         "CyclomaticComplexMethod",
         "reason: dispatch table over a closed StepSpec hierarchy — one branch " +
@@ -711,6 +763,12 @@ object DslCompiledPipelineCompiler {
         // bytes it writes are the ones this branch has always written.
         if (step is StepSpec.Shell) {
             return CoreShellWireCodec.encodeDeclarative(step.toCoreShellInput()).value
+        }
+        // The checkout is the same case: GitCheckoutInputCodec is THE single
+        // authority for the `scm-git.checkout` input format, and the bytes it
+        // writes are the bytes the plugin's own handler decodes.
+        if (step is StepSpec.Checkout) {
+            return checkoutPayload(step.scm)
         }
         val payload = buildJsonObject {
             put("kind", step.name)
@@ -798,28 +856,11 @@ object DslCompiledPipelineCompiler {
                     put("deleteDirs", JsonPrimitive(step.deleteDirs))
                     put("patterns", JsonArray((step.patterns ?: emptyList()).map { JsonPrimitive(it) }))
                 }
-                // Canonical envelope for core.checkout. The
-                // GitCheckoutInputCodec (scm-git plugin) decodes
-                // {"url":<str>,"branch":<str>,"credentialsRef":<str|null>,
-                //  "changelog":<bool>,"poll":<bool>,"relativeTargetDir":<str>}.
-                // The outer kind field is preserved by the registry seam
-                // via the OpaqueStepNode.pluginStepId; the payload itself must
-                // carry the typed fields verbatim. The DSL `checkout(scm)` /
-                // `scmGit(...)` lowers to StepSpec.Checkout; this branch keeps
-                // the envelope canonical regardless of whether the registry key
-                // is `core.checkout`, `scm-git.checkout`, or a future alias —
-                // the envelope shape is the contract.
-                is StepSpec.Checkout -> {
-                    val scm = step.scm as dev.rubentxu.pipeline.v2.domain.scm.Scm
-                    val git = scm as? dev.rubentxu.pipeline.v2.domain.scm.GitScm
-                    put("kind", "checkout")
-                    put("url", git?.url ?: "")
-                    put("branch", git?.branch ?: "master")
-                    git?.credentialsId?.value?.let { put("credentialsRef", it) }
-                    put("changelog", JsonPrimitive(git?.changelog ?: true))
-                    put("poll", JsonPrimitive(git?.poll ?: true))
-                    put("relativeTargetDir", git?.relativeTargetDir ?: ".")
-                }
+                // `StepSpec.Checkout` has NO branch here, on purpose. Its payload
+                // is the SCM plugin's codec's bytes, and the early return in
+                // `encodePayload` is the only path that produces them: a branch in
+                // this table would be a SECOND writer of a format that already has
+                // one owner, and the two would be free to disagree.
                 // Canonical envelope for core.load.
                 // core.load is DEFERRED + UNSUPPORTED (no CoreLoadStep exists,
                 // admission fail-closes); the envelope must still be canonical

@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git.step
 
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 
@@ -8,7 +10,7 @@ import dev.rubentxu.pipeline.v2.dsl.StageScope
  * Ergonomic Kotlin DSL extension for the `scm-git.checkout` Step
  * .
  * The façade is intentionally narrow:
- *   - constructs the typed [GitCheckoutInput] from positional/named
+ *   - constructs the typed [GitScm] carrier from positional/named
  *     arguments (no Map<String, Any?> smuggling);
  *   - encodes it with the plugin's own [GitCheckoutInputCodec];
  *   - lowers to the generic [StageScope.registryStep] primitive that
@@ -32,10 +34,10 @@ fun StageScope.scmGitCheckout(
     poll: Boolean = true,
     relativeTargetDir: String = ".",
 ) {
-    val input = GitCheckoutInput(
+    val input = GitScm(
         url = url,
         branch = branch,
-        credentialsRef = credentialsRef,
+        credentialsId = credentialsRef?.let { CredentialsId.from(it) },
         changelog = changelog,
         poll = poll,
         relativeTargetDir = relativeTargetDir,

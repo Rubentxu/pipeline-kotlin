@@ -74,6 +74,24 @@ import java.util.UUID
  * therefore in the COMMAND as well as in the decision, and neither of the two can
  * be the only place that knows about it.
  *
+ * **THE CREDENTIAL CONTRACT: the channel is the TYPED credential.**
+ *
+ * A checkout that declares a credential asks the store for that credential and
+ * reads the KIND it gets back: a secret text is a token for a remote over HTTPS,
+ * a user name and a password are a Basic header, and a private key is an SSH
+ * identity. The kind is declared by the credential itself and is never inferred
+ * from its bytes, and it is the only thing that decides the transport.
+ *
+ * The credential is NOT received as a set of handles, one per channel. A handle
+ * carries ONE secret, and a credential that is more than one secret — a user
+ * name and a password live in ONE credential — cannot be projected into one
+ * handle by any store. A seam that took handles would therefore be a seam that
+ * no store can honour, and the checkout would fail before it wrote a single
+ * byte. The published carrier of handle references that used to sit between the
+ * two was withdrawn for exactly that reason; the withdrawal is recorded in
+ * `contract/published-contract-exceptions.json`, with the census of the
+ * consumers it reached.
+ *
  * @param poll GitPollExecutor for ls-remote
  * @param changelog GitChangelogWriter for changelog.txt
  * @param credentialsApplier GitCredentialsApplier for temp file auth. Null means "this checkout

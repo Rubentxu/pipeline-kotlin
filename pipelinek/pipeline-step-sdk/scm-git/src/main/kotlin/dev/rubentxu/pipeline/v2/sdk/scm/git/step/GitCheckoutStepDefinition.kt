@@ -57,6 +57,13 @@ val SCM_GIT_OPERATIONS_CAPABILITY: StepCapability = StepCapability("scm-git.oper
  * if the path is absolute it is honoured verbatim (legacy callers that
  * supplied an absolute path keep that behaviour); if it is relative
  * (the default) it is resolved against the typed workspace root.
+ *
+ * The credential this Step declares is resolved by the executor from the
+ * store, and the KIND of the credential decides the transport: a secret text
+ * is a token, a user name and a password are a Basic header, and a private
+ * key is an SSH identity. The Step does not receive handles, and it does not
+ * choose the channel: the credential declares its own kind. See
+ * [GitCheckoutExecutor] for the contract in full.
 */
 class GitCheckoutStepDefinition(
     executorFactory: (workspaceRoot: Path, transcript: GitTranscript?) -> GitCheckoutExecutor =

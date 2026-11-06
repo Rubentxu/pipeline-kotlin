@@ -30,13 +30,18 @@ import java.util.UUID
  * Git checkout executor with idempotent SHA-equality.
  *  sequence:
  * 1. If `<workspace>/<rel>/.git` exists: git rev-parse HEAD → current SHA
- * 2. git ls-remote <url> <branch> → remote SHA (with credentials)
- * 3. SHA equal? → emit GitCheckoutCompleted (no-op)
- * 4. SHA different? → git fetch + git reset --hard <remoteSha>
+ * 2. git ls-remote <url> <ref> → remote SHA (with credentials), ONLY when the run asked for it
+ * 3. SHA equal? → emit GitCheckoutCompleted (nothing to do)
+ * 4. SHA different? → git fetch <url> <ref> + git checkout --force -B <branch> <sha>
  * 5. No.git? → git clone --branch <branch> <url> <rel>
  * 6. Append changelog via GitChangelogWriter.append(prevSha..HEAD)
  * 7. Emit lifecycle events
  * 8. Classify failures per
+ * The published SHA is always the commit the WORKING TREE holds, read back after the
+ * materialisation: the commit the remote announced is what the remote had, and the state
+ * of the checkout is what the tree has.
+ * `poll=false` does not probe the remote at all, and over an existing checkout it does
+ * not download from it either: it publishes the local state and says that it is local.
  * Idempotency <2s on SHA-equal no-op.
  * No JGit imports.
  * Argv guard fail-closed on extraHeader/Authorization.
@@ -154,18 +159,22 @@ open class GitCheckoutExecutor(
             return Result.failure(GitRemotePolicy.GitRemoteRefused(refusal))
         }
 
+        // The remote and the branch the run declared, in the ONE form every command
+        // of this checkout will ask about them.
+        val selection = GitRemoteSelection(spec.url, spec.branch)
+
         // Guard argv: the credential rule, over the arguments the poll is GOING TO RUN.
         //
-        // The list is the poll's own (`GitPollExecutor.lsRemoteArgv`), not a copy of it:
-        // a guard over a hand-built argv checks a command that was never examined, and
-        // the two lists are free to drift apart the day somebody edits one of them.
+        // The list is the selection's own (`selection.lsRemoteArgv()`), not a copy of
+        // it: a guard over a hand-built argv checks a command that was never examined,
+        // and the two lists are free to drift apart the day somebody edits one of them.
         //
         // A refusal here is a FAILURE of the checkout, not a crash of the run: the
         // remote carries a credential in a place git would publish it to the whole
         // machine, and the checkout must say so and stop. It travels as a typed
         // failure so the caller classifies it by type, like every other refusal.
         try {
-            guardProcessBuilderArgs(GitPollExecutor.lsRemoteArgv(spec.url, spec.branch))
+            guardProcessBuilderArgs(selection.lsRemoteArgv())
         } catch (refused: IllegalArgumentException) {
             return Result.failure(refused)
         }
@@ -294,45 +303,22 @@ open class GitCheckoutExecutor(
         val url = spec.url
         val branch = spec.branch
         val workspaceRoot = req.workspaceRoot
+        // The remote and the ref every command of this checkout asks about.
+        val selection = GitRemoteSelection(url, branch)
 
-        // Step 2: ls-remote to get remote SHA (with buildEnv wired into ProcessBuilder)
-        val remoteShaResult = poll.execute(url, branch, credentialsApplier, transcript)
-        if (remoteShaResult.isFailure) {
-            val errorMsg = remoteShaResult.exceptionOrNull()?.message ?: "Unknown"
-            emitEvent(req, GitCheckoutFailed(
-                eventId = newEventId(),
-                runId = req.runId,
-                sequence = 0L,
-                occurredAt = Instant.now(clock),
-                url = url,
-                branch = branch,
-                reason = scrubReason(errorMsg.take(256)),
-                exitCode = 128
-            ))
-            return Result.failure(remoteShaResult.exceptionOrNull() ?: IllegalStateException(errorMsg))
-        }
-        val remoteSha = remoteShaResult.getOrNull()!!
-
-        // Check for poll changed
-        if (previousRemoteSha != null && previousRemoteSha != remoteSha) {
-            emitEvent(req, GitPollChanged(
-                eventId = newEventId(),
-                runId = req.runId,
-                sequence = 0L,
-                occurredAt = Instant.now(clock),
-                url = url,
-                branch = branch,
-                previousSha = previousRemoteSha,
-                newSha = remoteSha
-            ))
-        }
+        // THE PROBE, and only when the run asked for it.
+        val remotePolled = spec.poll
+        val probed = probeRemote(req, spec, selection, previousRemoteSha)
+        val remoteSha = probed.getOrElse { return Result.failure(it) }
 
         // Step 1: Check if.git exists
         if (Files.exists(gitDir)) {
-            // Existing checkout - check SHA equality
+            // Existing checkout: what the tree holds NOW.
             val currentSha = revParse(workspace, "HEAD", env)
-            if (currentSha != null && currentSha == remoteSha) {
-                // SHA equal - no-op
+
+            if (remoteSha != null && currentSha == remoteSha) {
+                // The tree already holds the commit the remote declared: there is
+                // nothing to download and nothing to move.
                 val durationMs = System.currentTimeMillis() - startMs
                 emitEvent(req, GitCheckoutCompleted(
                     eventId = newEventId(),
@@ -345,11 +331,63 @@ open class GitCheckoutExecutor(
                     changelogPath = if (spec.changelog) workspaceRoot.resolve("changelog.txt").toString() else "",
                     durationMs = durationMs
                 ))
-                return Result.success(GitCheckoutResult(currentSha, durationMs, "no-op"))
+                return Result.success(
+                    GitCheckoutResult(
+                        sha = currentSha,
+                        durationMs = durationMs,
+                        outcome = GitCheckoutOutcome.ALREADY_CURRENT,
+                        remotePolled = remotePolled,
+                    )
+                )
             }
 
-            // SHA different - fetch and reset
-            val fetchResult = gitFetch(workspace, env)
+            if (remoteSha == null) {
+                // `poll=false` over an existing checkout: the remote was not asked and
+                // NOTHING is downloaded from it either. What the checkout can still
+                // say is the state of the tree it found, and it says THAT, labelled as
+                // the local state it is. A checkout that published a remote SHA here
+                // would be publishing a fact it never established.
+                if (currentSha == null) {
+                    val message = "scm-git.checkout: the working tree has no commit to publish: " +
+                        "the remote was not consulted (poll=false) and there is no HEAD to read"
+                    val failure = IllegalStateException(message)
+                    emitEvent(req, GitCheckoutFailed(
+                        eventId = newEventId(),
+                        runId = req.runId,
+                        sequence = 0L,
+                        occurredAt = Instant.now(clock),
+                        url = url,
+                        branch = branch,
+                        reason = scrubReason(message.take(256)),
+                        exitCode = 128
+                    ))
+                    return Result.failure(failure)
+                }
+                val durationMs = System.currentTimeMillis() - startMs
+                emitEvent(req, GitCheckoutCompleted(
+                    eventId = newEventId(),
+                    runId = req.runId,
+                    sequence = 0L,
+                    occurredAt = Instant.now(clock),
+                    url = url,
+                    branch = branch,
+                    sha = currentSha,
+                    changelogPath = if (spec.changelog) workspaceRoot.resolve("changelog.txt").toString() else "",
+                    durationMs = durationMs
+                ))
+                return Result.success(
+                    GitCheckoutResult(
+                        sha = currentSha,
+                        durationMs = durationMs,
+                        outcome = GitCheckoutOutcome.LOCAL_ONLY,
+                        remotePolled = remotePolled,
+                    )
+                )
+            }
+
+            // The remote declared a commit the tree does not hold: download it FROM
+            // THE DECLARED REMOTE and materialise it ON THE DECLARED BRANCH.
+            val fetchResult = gitFetch(workspace, selection, env)
             if (fetchResult.isFailure) {
                 emitEvent(req, GitCheckoutFailed(
                     eventId = newEventId(),
@@ -364,8 +402,8 @@ open class GitCheckoutExecutor(
                 return Result.failure(fetchResult.exceptionOrNull() ?: IllegalStateException("Fetch failed"))
             }
 
-            val resetResult = gitResetHard(workspace, remoteSha, env)
-            if (resetResult.isFailure) {
+            val materialiseResult = gitMaterialise(workspace, selection, remoteSha, env)
+            if (materialiseResult.isFailure) {
                 emitEvent(req, GitCheckoutFailed(
                     eventId = newEventId(),
                     runId = req.runId,
@@ -373,10 +411,55 @@ open class GitCheckoutExecutor(
                     occurredAt = Instant.now(clock),
                     url = url,
                     branch = branch,
-                    reason = scrubReason("Reset failed: ${resetResult.exceptionOrNull()?.message}".take(256)),
+                    reason = scrubReason(
+                        "Materialisation failed: ${materialiseResult.exceptionOrNull()?.message}".take(256)
+                    ),
                     exitCode = 128
                 ))
-                return Result.failure(resetResult.exceptionOrNull() ?: IllegalStateException("Reset failed"))
+                return Result.failure(
+                    materialiseResult.exceptionOrNull() ?: IllegalStateException("Materialisation failed")
+                )
+            }
+
+            // The published SHA is the commit the TREE holds, read back after the
+            // materialisation. The probed SHA is what the remote HAD when it was
+            // asked; the state of the checkout is what the tree has now. A checkout
+            // that published the former without reading the latter would announce a
+            // commit it did not materialise.
+            val materialisedSha = revParse(workspace, "HEAD", env)
+            if (materialisedSha == null) {
+                val message = "scm-git.checkout: the commit the checkout materialised could not " +
+                    "be read back from the working tree, so the checkout cannot say what state " +
+                    "it left"
+                val failure = IllegalStateException(message)
+                emitEvent(req, GitCheckoutFailed(
+                    eventId = newEventId(),
+                    runId = req.runId,
+                    sequence = 0L,
+                    occurredAt = Instant.now(clock),
+                    url = url,
+                    branch = branch,
+                    reason = scrubReason(message.take(256)),
+                    exitCode = 128
+                ))
+                return Result.failure(failure)
+            }
+            if (materialisedSha != remoteSha) {
+                val message = "scm-git.checkout: the working tree holds $materialisedSha after the " +
+                    "checkout materialised the commit the remote declared ($remoteSha): the " +
+                    "checkout did not obtain the objects it announced"
+                val failure = IllegalStateException(message)
+                emitEvent(req, GitCheckoutFailed(
+                    eventId = newEventId(),
+                    runId = req.runId,
+                    sequence = 0L,
+                    occurredAt = Instant.now(clock),
+                    url = url,
+                    branch = branch,
+                    reason = scrubReason(message.take(256)),
+                    exitCode = 128
+                ))
+                return Result.failure(failure)
             }
 
             // Append changelog
@@ -395,16 +478,23 @@ open class GitCheckoutExecutor(
                 occurredAt = Instant.now(clock),
                 url = url,
                 branch = branch,
-                sha = remoteSha,
+                sha = materialisedSha,
                 changelogPath = if (spec.changelog) workspaceRoot.resolve("changelog.txt").toString() else "",
                 durationMs = durationMs
             ))
-            return Result.success(GitCheckoutResult(remoteSha, durationMs, "fetch+reset"))
+            return Result.success(
+                GitCheckoutResult(
+                    sha = materialisedSha,
+                    durationMs = durationMs,
+                    outcome = GitCheckoutOutcome.UPDATED,
+                    remotePolled = remotePolled,
+                )
+            )
         }
 
         // No.git - clone
         Files.createDirectories(workspace)
-        val cloneResult = gitClone(url, branch, workspace, env)
+        val cloneResult = gitClone(selection, workspace, env)
         if (cloneResult.isFailure) {
             emitEvent(req, GitCheckoutFailed(
                 eventId = newEventId(),
@@ -419,8 +509,27 @@ open class GitCheckoutExecutor(
             return Result.failure(cloneResult.exceptionOrNull() ?: IllegalStateException("Clone failed"))
         }
 
-        // Get cloned SHA
-        val sha = revParse(workspace, "HEAD", env) ?: remoteSha
+        // The SHA of the clone is the one the TREE holds, read back. The probed
+        // SHA is NOT a fallback: it is the commit the remote had when it was asked,
+        // and publishing it when the tree cannot be read would publish a commit
+        // nobody materialised.
+        val sha = revParse(workspace, "HEAD", env)
+        if (sha == null) {
+            val message = "scm-git.checkout: the commit the clone materialised could not be read " +
+                "back from the working tree, so the checkout cannot say what state it left"
+            val failure = IllegalStateException(message)
+            emitEvent(req, GitCheckoutFailed(
+                eventId = newEventId(),
+                runId = req.runId,
+                sequence = 0L,
+                occurredAt = Instant.now(clock),
+                url = url,
+                branch = branch,
+                reason = scrubReason(message.take(256)),
+                exitCode = 128
+            ))
+            return Result.failure(failure)
+        }
 
         // Append changelog
         if (spec.changelog) {
@@ -439,7 +548,77 @@ open class GitCheckoutExecutor(
             changelogPath = if (spec.changelog) workspaceRoot.resolve("changelog.txt").toString() else "",
             durationMs = durationMs
         ))
-        return Result.success(GitCheckoutResult(sha, durationMs, "clone"))
+        return Result.success(
+            GitCheckoutResult(
+                sha = sha,
+                durationMs = durationMs,
+                outcome = GitCheckoutOutcome.CLONED,
+                remotePolled = remotePolled,
+            )
+        )
+    }
+
+    /**
+     * The commit the remote declares for the declared branch, or null when the
+     * run said not to ask.
+     *
+     * **Why the flag is read HERE.** `poll=false` means "do not ask the remote
+     * what the head of the declared branch is". The flag travelled from the step
+     * input all the way here and was never read: the checkout probed the remote
+     * anyway, and published the remote's answer as if it were the state of the
+     * checkout. It is read before any process is spawned, so a checkout that was
+     * told not to ask does not ask.
+     *
+     * A NULL here means "the remote was not consulted", and it is a different
+     * fact from "the remote was consulted and declared nothing": the first is a
+     * checkout that honoured the flag, the second is a checkout that failed.
+     * The two never share a value.
+     */
+    private fun probeRemote(
+        req: GitCheckoutRequest,
+        spec: dev.rubentxu.pipeline.v2.domain.scm.GitScm,
+        selection: GitRemoteSelection,
+        previousRemoteSha: String?,
+    ): Result<String?> {
+        if (!spec.poll) {
+            return Result.success(null)
+        }
+        val probe = poll.execute(selection, credentialsApplier, transcript)
+        val remoteSha = probe.getOrNull()
+        if (remoteSha == null) {
+            // The remote did not answer with a commit. The checkout says so and
+            // stops: a checkout that carried on would publish a state it never
+            // established.
+            val error = probe.exceptionOrNull()
+                ?: IllegalStateException("git ls-remote did not answer the question it was asked")
+            val reason = error.message ?: "git ls-remote did not answer the question it was asked"
+            emitEvent(req, GitCheckoutFailed(
+                eventId = newEventId(),
+                runId = req.runId,
+                sequence = 0L,
+                occurredAt = Instant.now(clock),
+                url = spec.url,
+                branch = spec.branch,
+                reason = scrubReason(reason.take(256)),
+                exitCode = 128
+            ))
+            return Result.failure(error)
+        }
+
+        // Check for poll changed
+        if (previousRemoteSha != null && previousRemoteSha != remoteSha) {
+            emitEvent(req, GitPollChanged(
+                eventId = newEventId(),
+                runId = req.runId,
+                sequence = 0L,
+                occurredAt = Instant.now(clock),
+                url = spec.url,
+                branch = spec.branch,
+                previousSha = previousRemoteSha,
+                newSha = remoteSha
+            ))
+        }
+        return Result.success(remoteSha)
     }
 
     /**
@@ -560,9 +739,21 @@ open class GitCheckoutExecutor(
         }
     }
 
-    private fun gitFetch(workspace: Path, env: Map<String, String>): Result<Unit> {
+    /**
+     * Downloads the declared branch FROM THE DECLARED REMOTE.
+     *
+     * The remote is named in the argv: a `git fetch` without a remote asks the
+     * repository for its own `origin`, and the checkout would then download from
+     * a remote the run never declared — and reset to a commit that remote may
+     * not have.
+     */
+    private fun gitFetch(
+        workspace: Path,
+        selection: GitRemoteSelection,
+        env: Map<String, String>,
+    ): Result<Unit> {
         return try {
-            val args = listOf("git", "-C", workspace.toString(), "fetch")
+            val args = selection.fetchArgv(workspace)
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
             if (captured.succeeded) Result.success(Unit)
             else Result.failure(IllegalStateException("git fetch failed${captured.stderr.prependIndent()}"))
@@ -571,24 +762,41 @@ open class GitCheckoutExecutor(
         }
     }
 
-    private fun gitResetHard(workspace: Path, sha: String, env: Map<String, String>): Result<Unit> {
+    /**
+     * Puts the DECLARED branch at [sha].
+     *
+     * The branch is named in the argv because `git reset --hard <sha>` moves the
+     * branch the checkout HAPPENS to be on: a workspace on `feature` would have
+     * `feature` rewritten to the remote's commit while the declared branch never
+     * materialised (measured with git 2.56.0).
+     */
+    private fun gitMaterialise(
+        workspace: Path,
+        selection: GitRemoteSelection,
+        sha: String,
+        env: Map<String, String>,
+    ): Result<Unit> {
         return try {
-            val args = listOf("git", "-C", workspace.toString(), "reset", "--hard", sha)
+            val args = selection.materialiseArgv(workspace, sha)
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
             if (captured.succeeded) Result.success(Unit)
-            else Result.failure(IllegalStateException("git reset --hard failed${captured.stderr.prependIndent()}"))
+            else Result.failure(IllegalStateException("git checkout failed${captured.stderr.prependIndent()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    private fun gitClone(url: String, branch: String, workspace: Path, env: Map<String, String>): Result<Unit> {
+    private fun gitClone(
+        selection: GitRemoteSelection,
+        workspace: Path,
+        env: Map<String, String>,
+    ): Result<Unit> {
         return try {
             // `--` before the positionals: git stops reading options there, so a remote
             // or a branch that looks like an option is a VALUE and never an instruction.
             // The remote is refused earlier (see `execute`), so this is the second line of
             // the same defence, not the only one.
-            val args = listOf("git", "clone", "--branch", branch, "--", url, workspace.toString())
+            val args = selection.cloneArgv(workspace)
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 2 * 1000)
             if (captured.succeeded) Result.success(Unit)
             else Result.failure(IllegalStateException("git clone failed${captured.stderr.prependIndent()}"))
@@ -692,7 +900,18 @@ data class GitCheckoutRequest(
 data class GitCheckoutResult(
     val sha: String,
     val durationMs: Long,
-    val classification: String, // "no-op", "fetch+reset", "clone"
+    /**
+     * What the checkout did with the workspace.
+     */
+    val outcome: GitCheckoutOutcome,
+    /**
+     * Whether the checkout asked the remote for the head of the declared branch.
+     *
+     * FALSE means the remote was not consulted, and the published [sha] is the
+     * commit the LOCAL working tree held: a consumer that reads this field knows
+     * whether the state it was given is a remote fact or a local one.
+     */
+    val remotePolled: Boolean,
     /**
      * The credential helper the checkout wrote (string channel).
      *

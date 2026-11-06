@@ -76,17 +76,17 @@ class GitTranscriptTest {
     @DisplayName("what git printed reaches the host's destination, and a refusing destination ends the command")
     fun `the publication delivers the transcript and turns a refusal into a failure`() {
         val transcript = RecordingTranscript()
-        val runtime = FakeTaskRuntime(stdout = "deadbeef\tHEAD\n")
+        val runtime = FakeTaskRuntime(stdout = "dddddddddddddddddddddddddddddddddddddddd\tHEAD\n")
 
         poll(runtime, transcript)
 
         assertEquals(
-            "deadbeef\tHEAD\n",
+            "dddddddddddddddddddddddddddddddddddddddd\tHEAD\n",
             transcript.text(ProcessOutputChannel.STDOUT),
             "what the command printed must be readable in the host's destination",
         )
 
-        val refused = poll(FakeTaskRuntime(stdout = "deadbeef\tHEAD\n"), RefusingTranscript())
+        val refused = poll(FakeTaskRuntime(stdout = "dddddddddddddddddddddddddddddddddddddddd\tHEAD\n"), RefusingTranscript())
 
         val cause = refused.exceptionOrNull()
         assertTrue(
@@ -133,12 +133,12 @@ class GitTranscriptTest {
     @DisplayName("the poll still answers with the SHA it read")
     fun `the poll still answers with the sha it read`() {
         val transcript = RecordingTranscript()
-        val runtime = FakeTaskRuntime(stdout = "deadbeef\tHEAD\n")
+        val runtime = FakeTaskRuntime(stdout = "dddddddddddddddddddddddddddddddddddddddd\tHEAD\n")
 
         val result = poll(runtime, transcript)
 
         assertTrue(result.isSuccess, "the poll must succeed: $result")
-        assertEquals("deadbeef", result.getOrNull())
+        assertEquals("dddddddddddddddddddddddddddddddddddddddd", result.getOrNull())
     }
 
     /**
@@ -213,8 +213,7 @@ class GitTranscriptTest {
                 taskRuntime = runtime,
                 controlRoot = Path.of("/nonexistent/git-poll-control-root"),
             ).execute(
-                url = "file:///nowhere/repo.git",
-                branch = "main",
+                selection = GitRemoteSelection(url = "file:///nowhere/repo.git", branch = "main"),
                 credentialsApplier = null,
                 transcript = transcript,
             )

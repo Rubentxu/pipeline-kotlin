@@ -76,6 +76,7 @@ object GitCheckoutOutputCodec : StepCodec<GitCheckoutOutput> {
             put("localPath", value.localPath)
             put("wasCloned", value.wasCloned)
             put("credentialApplied", value.credentialApplied)
+            put("remotePolled", value.remotePolled)
         }
     )
 
@@ -86,6 +87,12 @@ object GitCheckoutOutputCodec : StepCodec<GitCheckoutOutput> {
             localPath = obj.requiredString("localPath"),
             wasCloned = obj.requiredBoolean("wasCloned"),
             credentialApplied = obj.requiredBoolean("credentialApplied"),
+            // A payload encoded before this field existed comes from a checkout that
+            // ALWAYS asked the remote for the head of the declared branch: the flag
+            // was carried from the step input and never read. Assuming `true` for
+            // those payloads states the fact they were produced under; assuming
+            // `false` would claim a remote consultation that never happened.
+            remotePolled = obj.boolOrNull("remotePolled") ?: true,
         )
     }
 }

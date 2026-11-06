@@ -60,22 +60,25 @@ class GitCheckoutHardeningTest {
 
     @Test
     fun `the ls-remote argv separates the positionals from the options`() {
-        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val runtime = CapturingRuntime(stdout = "dddddddddddddddddddddddddddddddddddddddd\trefs/heads/main\n")
         val poll = GitPollExecutor(taskRuntime = runtime, controlRoot = temp.resolve("poll"))
 
-        poll.execute("https://github.com/org/repo.git", "main")
+        poll.execute(GitRemoteSelection(url = "https://github.com/org/repo.git", branch = "main"))
 
         assertEquals(
-            listOf("git", "ls-remote", "--", "https://github.com/org/repo.git", "main"),
+            listOf("git", "ls-remote", "--", "https://github.com/org/repo.git", "refs/heads/main"),
             runtime.argvs.single(),
             "the remote and the branch are positionals, and without `--` git reads a " +
-                "remote that starts with `-` as an option",
+                "remote that starts with `-` as an option. The branch is asked for as " +
+                "`refs/heads/<branch>` because `git ls-remote` matches its patterns by " +
+                "TAIL: a bare `main` also matches `refs/tags/main`, so a branch that " +
+                "exists as a tag would be probed as the tag",
         )
     }
 
     @Test
     fun `the clone argv separates the positionals from the options`() {
-        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val runtime = CapturingRuntime(stdout = "dddddddddddddddddddddddddddddddddddddddd\trefs/heads/main\n")
         val executor = executor(runtime = runtime)
         val url = "https://github.com/org/repo.git"
 
@@ -92,7 +95,7 @@ class GitCheckoutHardeningTest {
 
     @Test
     fun `a remote that looks like an option is refused before any process is spawned`() {
-        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val runtime = CapturingRuntime(stdout = "dddddddddddddddddddddddddddddddddddddddd\trefs/heads/main\n")
         val executor = executor(runtime = runtime)
 
         val result = executor.execute(request("--upload-pack=touch /tmp/pwned"))
@@ -115,7 +118,7 @@ class GitCheckoutHardeningTest {
 
     @Test
     fun `a branch that looks like an option is refused before any process is spawned`() {
-        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val runtime = CapturingRuntime(stdout = "dddddddddddddddddddddddddddddddddddddddd\trefs/heads/main\n")
         val executor = executor(runtime = runtime)
 
         val result = executor.execute(
@@ -143,7 +146,7 @@ class GitCheckoutHardeningTest {
 
     @Test
     fun `a remote whose transport is not one of the three is refused before any process is spawned`() {
-        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val runtime = CapturingRuntime(stdout = "dddddddddddddddddddddddddddddddddddddddd\trefs/heads/main\n")
         val executor = executor(runtime = runtime)
 
         val result = executor.execute(request("ftp://github.com/org/repo.git"))
@@ -165,7 +168,7 @@ class GitCheckoutHardeningTest {
 
     @Test
     fun `a remote that carries a credential is refused before the checkout announces itself`() {
-        val runtime = CapturingRuntime(stdout = "deadbeef\trefs/heads/main\n")
+        val runtime = CapturingRuntime(stdout = "dddddddddddddddddddddddddddddddddddddddd\trefs/heads/main\n")
         val executor = executor(runtime = runtime)
         val events = mutableListOf<DomainEvent>()
 

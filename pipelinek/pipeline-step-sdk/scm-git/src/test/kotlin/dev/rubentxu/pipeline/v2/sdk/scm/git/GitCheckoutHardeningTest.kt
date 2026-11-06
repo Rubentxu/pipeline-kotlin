@@ -326,7 +326,7 @@ class GitCheckoutHardeningTest {
 
     /** The directory an applier of this test owns, so the test can look inside it. */
     private fun applierRoot(applier: GitCredentialsApplier): Path =
-        Path.of(applier.credentialsFilePath()).parent
+        Path.of(applier.answerFilePath()).parent
 
     private fun executor(runtime: CapturingRuntime): GitCheckoutExecutor = GitCheckoutExecutor(
         poll = GitPollExecutor(taskRuntime = runtime, controlRoot = temp.resolve("poll")),

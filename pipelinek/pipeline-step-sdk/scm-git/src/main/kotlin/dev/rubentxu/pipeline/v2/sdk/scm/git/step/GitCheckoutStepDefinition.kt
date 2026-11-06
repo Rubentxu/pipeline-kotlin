@@ -234,7 +234,7 @@ class GitCheckoutStepDefinition(
                 // the checkout wrote to, by construction and not by coincidence.
                 localPath = authorizedTarget.path.toString(),
                 wasCloned = resolved.classification == "clone",
-                credentialApplied = resolved.credentialsFilePath != null || resolved.gitConfigFilePath != null,
+                credentialApplied = resolved.credentialHelperPath != null || resolved.gitConfigFilePath != null,
             )
         }
     }

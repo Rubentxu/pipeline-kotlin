@@ -193,7 +193,7 @@ open class GitCheckoutExecutor(
         // NOTE: close is NOT called here — it is deferred to GitCheckoutExecutor.close
         // so the file persists for the duration of execute and is available
         // for verification by the caller AFTER execute returns.
-        var credentialsFilePath: String? = null
+        var credentialHelperPath: String? = null
         var gitConfigFilePath: String? = null
         val gitCreds: GitCredentials? = try {
             resolveGitCredentials(req, spec)
@@ -230,7 +230,7 @@ open class GitCheckoutExecutor(
             when {
                 stringCred != null -> {
                     applier.apply(stringCred, spec.url)
-                    credentialsFilePath = applier.credentialsFilePath()
+                    credentialHelperPath = applier.credentialHelperPath()
                 }
                 userCred != null && passCred != null -> {
                     applier.apply(userCred, passCred, spec.url)
@@ -248,7 +248,7 @@ open class GitCheckoutExecutor(
 
         return try {
             executeInternal(req, spec, workspace, gitDir, startMs, req.previousRemoteSha, env)
-                .map { it.copy(credentialsFilePath = credentialsFilePath, gitConfigFilePath = gitConfigFilePath) }
+                .map { it.copy(credentialHelperPath = credentialHelperPath, gitConfigFilePath = gitConfigFilePath) }
         } catch (e: Exception) {
             // GitCheckoutFailed.reason must be scrubbed before emission.
             // Scrub removes registered secret patterns (canaries + real credentials).
@@ -682,10 +682,14 @@ data class GitCheckoutResult(
     val durationMs: Long,
     val classification: String, // "no-op", "fetch+reset", "clone"
     /**
-     * Path.git-credentials file (string channel).
-     * Non-null when string credentials were applied.
+     * The credential helper the checkout wrote (string channel).
+     *
+     * Non-null when a token credential was applied to a remote that can
+     * authenticate with one, and null otherwise: a remote that cannot is given
+     * no helper and no token, and the record says that no credential was applied
+     * rather than pointing at a file that was never written.
 */
-    val credentialsFilePath: String? = null,
+    val credentialHelperPath: String? = null,
     /**
      * Path.gitconfig file (usernamePassword channel).
      * Non-null when usernamePassword credentials were applied.

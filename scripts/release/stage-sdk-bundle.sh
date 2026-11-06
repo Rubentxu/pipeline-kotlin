@@ -28,7 +28,7 @@
 # It does not publish anything anywhere. The staging repository is a directory under the
 # build tree, there is no remote repository in the build, and the bundle is not among the
 # assets the product publishes. Publishing it is somebody else's decision, on a contract
-# that does not exist yet (TASK-188).
+# that does not exist yet.
 #
 # The private key never leaves the keyring: `gpg` is asked to sign with the key the trust
 # set declares, and the only thing that reaches the repository is the detached signature.
@@ -166,7 +166,7 @@ done < <(find "$STAGING_REPO" -type f -name '*.asc' -print0)
 
 # ── 6. the checker ─────────────────────────────────────────────────────────────
 #
-# It RECOMPUTES the digests and RE-VERIFIES the signatures: a checksum file that agrees
+# It recomputes the digests and re-verifies the signatures: a checksum file that agrees
 # with itself is not a checksum, and a signature that was written but never verified is
 # not a signature.
 checker_args=(

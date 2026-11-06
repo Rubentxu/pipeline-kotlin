@@ -1078,7 +1078,8 @@ val sdkPomMetadata = mapOf(
 // that what a consumer resolves from it is what it would resolve from the network. It lives
 // under the build directory, which is not versioned and is not among the published assets:
 // nothing here can be published by accident, because publishing is somebody else's decision
-// (TASK-188 declares that contract) and this path has no remote repository to publish to.
+// (the publication contract does not exist yet) and this path has no remote repository to
+// publish to.
 val sdkBundleRepositoryDir = layout.buildDirectory.dir("sdk-repo-staging")
 
 subprojects {

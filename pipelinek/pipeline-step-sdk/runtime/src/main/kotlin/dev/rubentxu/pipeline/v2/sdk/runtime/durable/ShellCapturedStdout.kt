@@ -57,9 +57,9 @@ object ShellCapturedStdout {
      * @param controlDir The control directory of one durable shell operation.
      * @return `null` when the captured channel is absent; the captured text when it is present.
      * @throws java.io.IOException when the channel is present but cannot be read. Each caller
-     *   decides what an unreadable channel means for it: the executor answers with an empty
-     *   value and never throws, and the observer lets the failure surface rather than claim
-     *   that the program printed nothing.
+     *   decides what an unreadable channel means for it: the executor publishes a REFUSAL and
+     *   never an empty value, and the observer lets the failure surface rather than claim that
+     *   the program printed nothing.
      */
     fun read(controlDir: Path): String? {
         val outputFile = ShellProtocolLayout(controlDir).outputFile

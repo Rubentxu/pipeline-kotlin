@@ -3,14 +3,18 @@ package dev.rubentxu.pipeline.v2.runtime.durable
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.CaptureRetainPolicy
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.CapturedStdoutRead
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShellProtocolLayout
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.io.TempDir
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -35,7 +39,8 @@ import java.time.Instant
  * `result.txt`" and "the executor deleted `output.txt`" is microseconds wide, so a test that
  * tried to kill a worker inside it would be flaky by construction. The seam, on the other hand,
  * is fully observable in process: the observer takes a control directory and returns a terminal,
- * and the executor's reader takes a control directory and returns a string.
+ * and the executor's reader takes a control directory and returns what is known about the
+ * capture.
  *
  * **Why the value is compared against the absolute text too.** A comparison between the two
  * readers alone would also pass if both were wrong in the same way. The rows below therefore pin
@@ -93,6 +98,21 @@ class CapturedStdoutSingleRuleTest {
         )
     }
 
+    @Test
+    fun `a capture that cannot be read does not reach the consumer as an empty value`() {
+        // The channel is a DIRECTORY: the read fails. The recovered path has no shape for a
+        // refusal, so the failure SURFACES, and what it never does is publish an empty value:
+        // an empty value says the program printed nothing, and nobody knows that here.
+        val root = controlRootWith(captured = "hello\n")
+        val channel = ShellProtocolLayout(root.resolve(OP_ID)).outputFile
+        Files.delete(channel)
+        Files.createDirectories(channel)
+
+        assertThrows<IOException> {
+            ExternalSubprocessRecovery(FixedClock, root).observe(OP_ID)
+        }
+    }
+
     /**
      * The value the RECOVERED path publishes: the observer's terminal, read through the Step's
      * own vocabulary. The observer has no policy and no notion of a step outcome, so the
@@ -111,9 +131,20 @@ class CapturedStdoutSingleRuleTest {
      * The retention policy is RETAIN, not the default READ_THEN_DELETE, because the default
      * deletes the file it read — and this test reads the SAME file through both paths. The
      * retention is not what is under test here; the VALUE is.
+     *
+     * The reader answers with a FACT about the channel, and this projects that fact into the
+     * vocabulary of the comparison: an absence is no value, a value is the value. A refusal is
+     * neither, and it fails the row loudly instead of being read as an empty value — which is
+     * exactly what the reader must never do.
      */
     private fun freshCapturedStdout(root: Path): String? =
-        DurableShellExecutor().readOutputText(root.resolve(OP_ID), CaptureRetainPolicy.RETAIN)
+        when (val read = DurableShellExecutor().readOutputText(root.resolve(OP_ID), CaptureRetainPolicy.RETAIN)) {
+            is CapturedStdoutRead.Absent -> null
+            is CapturedStdoutRead.Present -> read.text
+            is CapturedStdoutRead.Unreadable -> fail("the capture could not be read: ${read.reason}")
+            is CapturedStdoutRead.NotDisposed ->
+                fail("the capture could not be disposed of: ${read.reason}")
+        }
 
     /**
      * A control directory holding a finished operation: `result.txt` publishes the exit code, so

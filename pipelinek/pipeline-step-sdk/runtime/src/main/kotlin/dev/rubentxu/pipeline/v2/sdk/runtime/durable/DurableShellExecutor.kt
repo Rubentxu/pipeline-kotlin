@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -169,37 +170,51 @@ class DurableShellExecutor {
     }
 
     /**
-     * Reads the captured stdout from output.txt.
+     * Reads the captured stdout of [controlDir] and, under
+     * [CaptureRetainPolicy.READ_THEN_DELETE], disposes of the channel afterwards.
      *
      * The VALUE comes from [ShellCapturedStdout], the authority the resumed path reads too, so
      * a fresh execution and a resumed one publish the same text for the same file. What stays
      * HERE is the RETENTION, which is this executor's to own: under
-     * [CaptureRetainPolicy.READ_THEN_DELETE] the file is disposed of here and nowhere else.
+     * [CaptureRetainPolicy.READ_THEN_DELETE] the channel is disposed of here and nowhere else.
+     *
+     * The RESULT is a [CapturedStdoutRead], and it is a closed set of facts. A channel that could
+     * not be READ, and a channel that could not be DISPOSED of, are facts of their own: this
+     * method reports them and never answers with an empty text on their behalf. An empty text is
+     * the answer to "the program printed nothing", and a failure to read is not that.
      *
      * Per: read AFTER result.txt (poll result.txt first)
-     * Per: single-flight read-then-delete (when captureRetainPolicy == READ_THEN_DELETE)
-     * Per: on timeout/kill/non-zero, returns "" (never throws, never blocks)
+     * Per: single-flight dispose (when captureRetainPolicy == READ_THEN_DELETE)
+     * Per: never answers with an empty text on behalf of a failure
+     *
      * @param controlDir The control directory path.
-     * @param captureRetainPolicy Whether to delete output.txt after reading.
-     * @return The captured stdout content, or null if output.txt doesn't exist.
+     * @param captureRetainPolicy Whether to dispose of the channel after reading it.
+     * @return What is known about the captured stdout: nothing was recorded, a value was read, the
+     *   channel could not be read, or the value was read and the channel could not be disposed of.
 */
-    fun readOutputText(controlDir: Path, captureRetainPolicy: CaptureRetainPolicy = CaptureRetainPolicy.READ_THEN_DELETE): String? {
-        val outputFile = ShellProtocolLayout(controlDir).outputFile
-        return try {
-            val content = ShellCapturedStdout.read(controlDir)
-            if (content == null) {
-                return null
-            }
-            // Single-flight delete on success when policy is READ_THEN_DELETE
-            if (captureRetainPolicy == CaptureRetainPolicy.READ_THEN_DELETE) {
-                Files.deleteIfExists(outputFile)
-            }
-            content
-        } catch (_: Exception) {
-            // On any error reading/deleting, return empty string
-            // (never throws, never blocks)
-            ""
+    fun readOutputText(
+        controlDir: Path,
+        captureRetainPolicy: CaptureRetainPolicy = CaptureRetainPolicy.READ_THEN_DELETE,
+    ): CapturedStdoutRead {
+        val content = try {
+            ShellCapturedStdout.read(controlDir)
+        } catch (e: IOException) {
+            return CapturedStdoutRead.Unreadable(reason = e.refusalReason())
         }
+        if (content == null) {
+            return CapturedStdoutRead.Absent
+        }
+        // The disposal happens once, after the reading, and only under the policy that asks for
+        // it. A refusal here does not un-read the value: the value was read, and the refusal is
+        // a fact about the channel, not about the text.
+        if (captureRetainPolicy == CaptureRetainPolicy.READ_THEN_DELETE) {
+            try {
+                Files.deleteIfExists(ShellProtocolLayout(controlDir).outputFile)
+            } catch (e: IOException) {
+                return CapturedStdoutRead.NotDisposed(text = content, reason = e.refusalReason())
+            }
+        }
+        return CapturedStdoutRead.Present(content)
     }
 
     /**
@@ -361,7 +376,9 @@ class DurableShellExecutor {
             // present only in capture mode.
             val capturedStdout = when (request.outputProjection) {
                 DurableShellOutputProjection.CAPTURE_FILE -> readOutputText(controlDir, config.captureRetainPolicy)
-                DurableShellOutputProjection.JENKINS_LOG -> null
+                // No capture was asked for, so nobody recorded anything: the absence is the
+                // observation, and it is not a value.
+                DurableShellOutputProjection.JENKINS_LOG -> CapturedStdoutRead.Absent
             }
 
             // When the watchdog triggered, the
@@ -374,7 +391,7 @@ class DurableShellExecutor {
             // The rule belongs to the classification, not to this call site.
             return decision.forPollOutcome(
                 outcome = outcome,
-                capturedStdout = capturedStdout,
+                captured = capturedStdout,
             )
         } catch (e: LinuxRequiredException) {
             throw e
@@ -420,4 +437,15 @@ class DurableShellExecutor {
     }
 
 }
+
+/**
+ * What the filesystem said when it refused.
+ *
+ * The class of the failure names WHAT refused and its message names WHERE it refused: an access
+ * refusal carries the path it would not touch, and a path on its own does not say that the
+ * refusal was one. A failure with no message of its own still names its class, so the reason is
+ * never empty and never says less than the refusal did.
+ */
+private fun IOException.refusalReason(): String =
+    "${javaClass.simpleName}: ${message ?: "the operation was refused without a message"}"
 

@@ -224,17 +224,32 @@ data class ShOptions(
 }
 
 /**
- * Policy for output.txt retention after capture.
-*/
+ * Policy for the retention of the captured channel once it has been read.
+ *
+ * ## What this owns
+ *
+ * Whether the CAPTURE is disposed of after the reading. It does not own the fate of the control
+ * directory, which is [ShellResourceCleanup]'s, and the two are not the same decision: a policy
+ * that promises to keep the capture cannot keep it when the directory that holds it is given up.
+ */
 enum class CaptureRetainPolicy {
     /**
-     * After reading output.txt, delete it immediately.
-     * This is the default policy for single-flight capture.
-*/
+     * The channel is disposed of as soon as it has been read.
+     *
+     * This is the default policy for a single-flight capture. A refusal to dispose of the channel
+     * is reported as a refusal: the value was read, and the protocol's promise that the channel
+     * is gone is broken. It is never reported as an empty value.
+     */
     READ_THEN_DELETE,
 
     /**
-     * Retain output.txt after reading (for forensics/debugging).
-*/
+     * The channel is left where it is once it has been read.
+     *
+     * What this promises is narrower than "the capture is kept": the capture survives WHILE THE
+     * CONTROL DIRECTORY SURVIVES, and the directory is given up when the execution succeeds. So
+     * the capture is kept in a failed execution, whose directory is retained whole, and it goes
+     * with the directory in a successful one. A reader that wants the capture after a successful
+     * execution has to keep the directory, and that is not this policy's decision to make.
+     */
     RETAIN,
 }

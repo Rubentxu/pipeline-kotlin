@@ -7,6 +7,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
@@ -19,8 +21,9 @@ import java.nio.file.Path
  * **The guarantee.** The terminal published for a durable shell execution names what actually
  * happened: an execution that ran out of time is a TIMEOUT whatever exit code its dying child
  * published, a failure before the launch is a LAUNCH FAILURE because nothing ran, a failure that
- * cannot be reconciled is LOST and never a success, and an execution whose output could not be
- * persisted says so instead of publishing a plausible transcript. The terminal agrees with the
+ * cannot be reconciled is LOST and never a success, an execution whose output could not be
+ * persisted says so instead of publishing a plausible transcript, and a captured value that could
+ * not be read says so instead of publishing an empty one. The terminal agrees with the
  * reconciler, which reads the same mark of the expiry from the control directory.
  *
  * **The observable capacity it serves.** A reader of a durable run can tell an execution that
@@ -54,7 +57,7 @@ class ShellTerminalDecisionTest {
     fun `an execution that published an exit code is an exit`() {
         val terminal = decision().forPollOutcome(
             outcome = ShellPollOutcome.Published(exitCode = 0),
-            capturedStdout = null,
+            captured = CapturedStdoutRead.Absent,
         )
 
         val exited = assertInstanceOf(
@@ -76,7 +79,7 @@ class ShellTerminalDecisionTest {
         // with a non-zero code, not a failure of the launch: the child DID run.
         val terminal = decision().forPollOutcome(
             outcome = ShellPollOutcome.Published(exitCode = 7),
-            capturedStdout = null,
+            captured = CapturedStdoutRead.Absent,
         )
 
         val exited = assertInstanceOf(
@@ -91,7 +94,7 @@ class ShellTerminalDecisionTest {
     fun `the captured value reaches the exit terminal`() {
         val terminal = decision().forPollOutcome(
             outcome = ShellPollOutcome.Published(exitCode = 0),
-            capturedStdout = "hello",
+            captured = CapturedStdoutRead.Present("hello"),
         )
 
         val exited = assertInstanceOf(
@@ -113,7 +116,7 @@ class ShellTerminalDecisionTest {
         // observed.
         val terminal = decision().forPollOutcome(
             outcome = ShellPollOutcome.WrapperEnded(exitCode = null),
-            capturedStdout = null,
+            captured = CapturedStdoutRead.Absent,
         )
 
         val lost = assertInstanceOf(
@@ -134,7 +137,7 @@ class ShellTerminalDecisionTest {
         // found and a host that refused to run it.
         val terminal = decision().forPollOutcome(
             outcome = ShellPollOutcome.WrapperEnded(exitCode = 3),
-            capturedStdout = null,
+            captured = CapturedStdoutRead.Absent,
         )
 
         val lost = assertInstanceOf(
@@ -155,7 +158,7 @@ class ShellTerminalDecisionTest {
         // fabrication the reconciler refuses too.
         val terminal = decision().forPollOutcome(
             outcome = ShellPollOutcome.ResultNotAnExitCode,
-            capturedStdout = null,
+            captured = CapturedStdoutRead.Absent,
         )
 
         assertInstanceOf(
@@ -171,7 +174,7 @@ class ShellTerminalDecisionTest {
         // so it is a loss and not an exit with a made-up code.
         val terminal = decision().forPollOutcome(
             outcome = ShellPollOutcome.CeilingElapsed,
-            capturedStdout = null,
+            captured = CapturedStdoutRead.Absent,
         )
 
         assertInstanceOf(
@@ -187,7 +190,7 @@ class ShellTerminalDecisionTest {
         // its child died does not get to decide whether the execution succeeded.
         val terminal = decision().forPollOutcome(
             outcome = ShellPollOutcome.Expired,
-            capturedStdout = null,
+            captured = CapturedStdoutRead.Absent,
         )
 
         val cancelled = assertInstanceOf(
@@ -450,6 +453,143 @@ class ShellTerminalDecisionTest {
             "transcript-drain-out-of-time",
             failed.failure.details["cause"],
             "a drain that ran out of time was not named as a drain that ran out of time",
+        )
+    }
+
+    @Test
+    fun `a channel nobody wrote is an exit without a value`() {
+        // Nobody recorded anything. That is not a value, and the terminal says so by carrying
+        // none: an empty value would say the program printed nothing.
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.Published(exitCode = 0),
+            captured = CapturedStdoutRead.Absent,
+        )
+
+        val exited = assertInstanceOf(
+            DurableTaskTerminal.Exited::class.java,
+            terminal,
+            "an execution with no capture was not published as an exit",
+        )
+        assertNull(
+            exited.output.capturedStdout,
+            "a channel nobody wrote was published as a value",
+        )
+    }
+
+    @Test
+    fun `a capture that could not be read is a refusal and not an empty value`() {
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.Published(exitCode = 0),
+            captured = CapturedStdoutRead.Unreadable(reason = "AccessDeniedException: /tmp/op-42"),
+        )
+
+        val failed = assertInstanceOf(
+            DurableTaskTerminal.LaunchFailed::class.java,
+            terminal,
+            "a capture that could not be read was published as a value",
+        )
+        assertEquals(
+            "CAPTURE_READ_REFUSED",
+            failed.failure.code,
+            "the refusal does not carry the capture refusal code",
+        )
+        assertEquals(
+            FailureKind.INFRASTRUCTURE,
+            failed.failure.kind,
+            "the refusal is not an infrastructure failure",
+        )
+        assertEquals(
+            FailureOrigin.DURABLE_TASK,
+            failed.failure.origin,
+            "the refusal does not come from the durable task",
+        )
+        assertFalse(
+            failed.failure.retryable,
+            "a capture that could not be read was published as retryable",
+        )
+        assertTrue(
+            failed.failure.message.contains("AccessDeniedException"),
+            "the refusal does not say what the filesystem refused: ${failed.failure.message}",
+        )
+        assertEquals(
+            controlDir.toString(),
+            failed.failure.details["controlDir"],
+            "the refusal does not point at the control directory",
+        )
+    }
+
+    @Test
+    fun `a capture that could not be disposed of is a refusal that keeps the value known`() {
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.Published(exitCode = 0),
+            captured = CapturedStdoutRead.NotDisposed(
+                text = "hello",
+                reason = "AccessDeniedException: /tmp/op-42",
+            ),
+        )
+
+        val failed = assertInstanceOf(
+            DurableTaskTerminal.LaunchFailed::class.java,
+            terminal,
+            "a capture that could not be disposed of was published as a plain value",
+        )
+        assertEquals(
+            "CAPTURE_DISPOSAL_REFUSED",
+            failed.failure.code,
+            "the refusal does not carry the disposal refusal code",
+        )
+        assertFalse(
+            failed.failure.retryable,
+            "a capture that could not be disposed of was published as retryable: the value is " +
+                "known, so a retry has nothing to produce",
+        )
+        assertEquals(
+            controlDir.toString(),
+            failed.failure.details["controlDir"],
+            "the refusal does not point at the control directory where the channel is",
+        )
+    }
+
+    @Test
+    fun `a refusal of the capture is not a refusal of the transcript`() {
+        // The two refusals are different facts, and the reader that decides whether the output
+        // may be sealed keys on the code of the transcript: a capture that could not be read
+        // leaves the transcript complete, and claiming otherwise withholds a seal that is owed.
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.Published(exitCode = 0),
+            captured = CapturedStdoutRead.Unreadable(reason = "AccessDeniedException: /tmp/op-42"),
+        )
+
+        val failed = assertInstanceOf(
+            DurableTaskTerminal.LaunchFailed::class.java,
+            terminal,
+            "a capture that could not be read was published as a value",
+        )
+        assertNotEquals(
+            OUTPUT_PERSISTENCE_REFUSED,
+            failed.failure.code,
+            "a refusal of the capture was published as a refusal of the transcript",
+        )
+    }
+
+    @Test
+    fun `an expired execution stays a timeout even when the capture could not be read`() {
+        // The reconciler reads the mark of the expiry from the control directory. A terminal
+        // that said the capture was the problem would contradict it.
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.Expired,
+            captured = CapturedStdoutRead.Unreadable(reason = "AccessDeniedException: /tmp/op-42"),
+        )
+
+        val cancelled = assertInstanceOf(
+            DurableTaskTerminal.Cancelled::class.java,
+            terminal,
+            "an expired execution was published as something other than a timeout",
+        )
+        assertEquals(
+            InterruptionKind.TIMEOUT,
+            cancelled.interruption.kind,
+            "the interruption of an expired execution is not a timeout",
         )
     }
 }

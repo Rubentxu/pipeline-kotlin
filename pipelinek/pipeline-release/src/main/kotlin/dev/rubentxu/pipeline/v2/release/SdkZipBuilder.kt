@@ -32,6 +32,27 @@ object SdkZipBuilder {
     const val BOM_SCHEMA_VERSION: String = "pipelinek-bom-1"
 
     /**
+     * The time every entry of the SDK ZIP carries.
+     *
+     * It is FIXED, and it is the earliest moment the timestamp of a ZIP can
+     * express without being clamped, so that the ZIP is a function of what
+     * it contains and not of WHEN it was built.
+     *
+     * The measurement that forced this: two builds of the SAME tree produced
+     * two SDK ZIPs whose 85 entries had identical names and identical
+     * bytes, and whose digests differed (`74f7a204…` and `1e1fb3e9…`). The
+     * only difference between them was the time stamped on each entry.
+     *
+     * That is not a cosmetic defect. The candidate's handoff names the
+     * digest of this ZIP, the certification covers the candidate, and the
+     * published release names the digest in its own digest authority. A ZIP
+     * whose digest moves with the clock cannot be certified for long: the
+     * next rebuild produces bytes that no certification covers, and the only
+     * way to publish them again would be to certify them again.
+     */
+    internal const val ZIP_ENTRY_TIME: Long = 318211200000L // 1980-02-01T00:00:00Z
+
+    /**
      * Build both artifacts and write them under [distDir].
      * @param sdkRepo the local Maven repo produced by
      *   `publishSdkForExternalPlugin` (typically `pipelinek/build/sdk-repo/`).
@@ -157,6 +178,13 @@ object SdkZipBuilder {
             for (ref in entries) {
                 val entry = ZipEntry(ref.relativePath)
                 entry.size = Files.size(ref.absolutePath)
+                // The time of the entry is FIXED, not the time of the build.
+                // Without this, `putNextEntry` stamps the current time on
+                // every entry and the digest of the ZIP becomes a function
+                // of the clock: two builds of the same bytes produced two
+                // digests, and the handoff that named one of them could not
+                // be checked against the other.
+                entry.time = ZIP_ENTRY_TIME
                 zip.putNextEntry(entry)
                 Files.copy(ref.absolutePath, zip)
                 zip.closeEntry()

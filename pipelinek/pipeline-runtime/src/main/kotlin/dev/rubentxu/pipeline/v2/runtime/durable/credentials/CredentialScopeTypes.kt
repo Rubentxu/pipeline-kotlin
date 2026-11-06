@@ -71,6 +71,22 @@ sealed interface CredentialScopeFailure {
     /** Projection or materialization failed. */
     data class AcquisitionFailed(val message: String) : CredentialScopeFailure
 
+    /**
+     * A bound secret that the product CANNOT mask, in a run that demands masked secrets.
+     *
+     * The run asked for a secret whose value would reach the output IN THE CLEAR, and the
+     * product refused to hand the binding over: the body MUST NOT run. The values are named
+     * by credential and length, never by content — the refusal about a secret never carries
+     * the secret.
+     *
+     * @property unmaskable the values that exist and cannot be masked.
+     * @property minimumLength the length a value needs to be masked.
+     */
+    data class SecretNotMaskable(
+        val unmaskable: List<dev.rubentxu.pipeline.v2.credentials.executor.UnmaskableSecret>,
+        val minimumLength: Int,
+    ) : CredentialScopeFailure
+
     /** Replay of an in-flight credential scope is not supported. */
     data object ReplayUnsupported : CredentialScopeFailure
 }

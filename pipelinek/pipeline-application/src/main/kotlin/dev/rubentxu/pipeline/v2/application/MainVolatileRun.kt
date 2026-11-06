@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.runtime.durable.analyzeCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.credentials.executor.SecretMaskingStrictness
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -154,7 +155,11 @@ private fun runVolatilePipelineOwned(
     // durable branch composes it, so both worlds answer the same refusal when
     // two things are wrong at once. The reason and the measurement are in the
     // durable branch, where the order was already published.
-    val credentialSeam = composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec)
+    // THE BRANCH THAT PERSISTS NOTHING ASKS FOR THE ADVISORY POSTURE. Nothing it produces
+    // outlives the process, so a secret it cannot mask is not written to disk; the operator
+    // is told, exactly as before. The operator may ask for the strict posture here too with
+    // PIPELINE_CREDENTIALS_MASKING=required.
+    val credentialSeam = composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec, SecretMaskingStrictness.ADVISORY)
     // compose registry BEFORE the gate so contributed keys are eligible.
     // the admission happens inside ONE function, so the in-memory and
     // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now

@@ -12,6 +12,7 @@ import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.credentials.executor.SecretMaskingStrictness
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -199,7 +200,10 @@ private fun runDurablePipelineOwned(
     // the same code for the same situation; with the admission first, the
     // in-memory world answered 2 and this one answered 3, and the two worlds
     // told the operator different stories about a single run.
-    val credentials = composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec)
+    // THE DURABLE BRANCH ASKS FOR THE STRICT POSTURE: this branch persists the transcript, so a
+    // secret it cannot mask is a secret written to disk in the clear. The operator may accept that
+    // fact explicitly with PIPELINE_CREDENTIALS_MASKING=best-effort.
+    val credentials = composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec, SecretMaskingStrictness.STRICT)
 
     // The legacy PipelineOrchestrator was constructed here but
     // never invoked. The CLI reaches the durable runtime ONLY through the canonical

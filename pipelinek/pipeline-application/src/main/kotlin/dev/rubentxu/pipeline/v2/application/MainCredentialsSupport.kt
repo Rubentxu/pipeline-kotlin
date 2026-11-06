@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
+import dev.rubentxu.pipeline.v2.credentials.executor.SecretMaskingStrictness
 import dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor
 import dev.rubentxu.pipeline.v2.credentials.local.CredentialsStorePath
 import dev.rubentxu.pipeline.v2.credentials.local.LocalCredentialProvider
@@ -53,6 +54,7 @@ internal fun composeCredentialSeam(
     redactionRegistry: SecretPatternRegistry?,
     clock: Clock,
     pipelineSpec: PipelineSpec?,
+    maskingStrictness: SecretMaskingStrictness,
 ): CredentialSeam {
     // [controlDirRoot] is deliberately NOT a parameter of this function. A control
     // root would put the store under the run's own directory, and the documented
@@ -65,6 +67,22 @@ internal fun composeCredentialSeam(
     if (!storeNeeded || !credentialsStorePath.toFile().exists()) {
         return CredentialSeam(provider = null, executor = null)
     }
+
+    // THE POSTURE OF THE RUN, ONCE. The branch asks for the posture it needs — the durable
+    // branch persists the transcript, so a secret it cannot mask becomes a secret on disk —
+    // and the operator may move it in either direction with one variable. A variable that
+    // names a posture this product does not have is a decision that cannot be honoured, and
+    // guessing what the operator meant is not honouring it: the run is refused instead.
+    val strictness = resolveMaskingStrictness(
+        requested = maskingStrictness,
+        declared = System.getenv(SecretMaskingStrictness.ENVIRONMENT_VARIABLE),
+    ) ?: throw CommandRefused(
+        CliExit.InvalidArgument(
+            message = "the masking posture named by ${SecretMaskingStrictness.ENVIRONMENT_VARIABLE} " +
+                "cannot be read: the postures are '${SecretMaskingStrictness.REQUIRED}' and " +
+                "'${SecretMaskingStrictness.BEST_EFFORT}'",
+        ),
+    )
 
     val secretStore: SecretStore = try {
         val passphraseChars = PassphraseResolver.resolve()
@@ -107,7 +125,13 @@ internal fun composeCredentialSeam(
     // -> LocalFileMaterialization -> WithCredentialsExecutor
     val provider: CredentialProvider = LocalCredentialProvider(secretStore)
     val materialization: CredentialMaterialization = LocalFileMaterialization(CredentialMaterializer(secretStore))
-    val executor = WithCredentialsExecutor(provider, materialization, clock, redactionRegistry)
+    val executor = WithCredentialsExecutor(
+        provider,
+        materialization,
+        clock,
+        redactionRegistry,
+        maskingStrictness = strictness,
+    )
     // The process opened the store and wrote the credential material to disk, so
     // the process is what gives both back. The materializer removes the files
     // it wrote and the provider closes the store; without this the material of
@@ -138,3 +162,29 @@ private fun closeQuietly(resource: AutoCloseable) {
         // Shutdown path.
     }
 }
+
+/**
+ * The masking posture this run applies.
+ *
+ * The branch asks for the posture it needs and the operator may move it with one
+ * variable, so the two decisions meet in ONE place instead of one overriding the
+ * other somewhere else.
+ *
+ * A variable that names a posture this product does not have is a decision that
+ * cannot be honoured, and reading it as the nearest posture it resembles would be
+ * guessing with a security switch. So the answer is `null` and the caller refuses
+ * the run.
+ *
+ * @param requested the posture the branch asks for.
+ * @param declared what the operator wrote, or `null` when they wrote nothing.
+ * @return the posture to apply, or `null` when the declaration cannot be read.
+ */
+internal fun resolveMaskingStrictness(
+    requested: SecretMaskingStrictness,
+    declared: String?,
+): SecretMaskingStrictness? =
+    if (declared.isNullOrBlank()) {
+        requested
+    } else {
+        SecretMaskingStrictness.fromDeclaration(declared)
+    }

@@ -66,7 +66,14 @@ dependencies {
     implementation(project(":pipeline-step-sdk:scm-git"))
     // The credential scope the engine admits and leases.
     implementation(project(":pipeline-credentials-api"))
-    implementation(project(":pipeline-credentials-executor"))
+    // `api`, not `implementation`: [CredentialScopeFailure.SecretNotMaskable] is part of this
+    // module's PUBLIC type signature and it names the executor's [UnmaskableSecret], the value
+    // that says WHICH credential cannot be masked and how short it is. With `implementation` an
+    // importer that did not also declare `:pipeline-credentials-executor` would hold a contract
+    // whose own value types it cannot resolve at compile time — the same failure mode the
+    // `api` declarations above exist to prevent. The executor module publishes no contract of
+    // its own, so this edge widens the compile classpath without publishing anything new.
+    api(project(":pipeline-credentials-executor"))
     // The scripting contract the scripted frontend and the DSL steps speak.
     implementation(project(":pipeline-scripting-api"))
     // The local artifact index the engine reads and writes.

@@ -7,6 +7,15 @@ import java.io.PrintStream
 import java.nio.file.Path
 
 /**
+ * How the command opens the store it works on.
+ *
+ * The command decides WHERE the store is and WITH WHAT key, and this turns those two into a
+ * store. A caller that brings a factory of its own sees the command act on the store that
+ * factory built, and can hold it afterwards.
+ */
+internal typealias StoreFactory = (Path, CharArray) -> LocalSecretStore
+
+/**
  * Main credentials CLI — subcommand dispatcher for credential store operations.
  * ## The outcome, and the code the CLI gives it
  * The command answers with the FACT — [CredentialsOutcome] — and the code the
@@ -65,6 +74,11 @@ import java.nio.file.Path
  * environment variable. Which alternatives a refusal names is the resolver's
  * decision, because the resolver is what knows whether this caller had a
  * terminal to offer.
+ * ## The session
+ * A command that opens a store ends its session when the request is over: the store is
+ * released, and the key the operator gave it goes with it. The release happens AFTER the
+ * answer is published, so the end of a session never changes what the command said, and it
+ * happens even when the request was not carried out.
  * ## Seeding without a terminal
  * `--from-stdin` exists so a store can be prepared by a script. The passphrase
  * arrives through the environment, and the value itself used to have exactly
@@ -181,9 +195,13 @@ object MainCredentialsCli {
      * credential written with `--from-stdin`, and the reader carries the passphrase when the
      * environment does not name one. All three are arguments because all three are the world
      * OUTSIDE the command: the command does not decide where the store is, nor where the value
-     * comes from, nor how the operator is asked for the key, it is told. A caller that hands it a
-     * store of its own sees the command act on that store, and one that hands it a reader of its
-     * own sees the command ask that reader.
+     * comes from, nor how the operator is asked for the key, it is told. One that hands it a
+     * reader of its own sees the command ask that reader.
+     *
+     * The factory that opens the store is an argument for the same reason. The command decides
+     * WHERE the store is and WITH WHAT key, and the factory turns those two into a store: a
+     * caller that hands it a factory of its own sees the command act on the store that factory
+     * built.
      *
      * The reader is asked ONLY when the environment names no passphrase, and only by the verbs
      * that need the key: the environment is the automation path and it wins, and a request the
@@ -196,6 +214,8 @@ object MainCredentialsCli {
      * @param stdin where the value of a credential comes from when the request names it.
      * @param passphraseReader how the operator is asked for the passphrase when the environment
      *   does not name one. It answers null when there is nobody to ask.
+     * @param storeFactory how the store is opened. The default opens the product's own store
+     *   over the file the environment names.
      */
     internal fun main(
         args: Array<String>,
@@ -204,12 +224,13 @@ object MainCredentialsCli {
         environment: Map<String, String>,
         stdin: InputStream,
         passphraseReader: () -> CharArray?,
+        storeFactory: StoreFactory = { file, passphrase -> LocalSecretStore(file, passphrase) },
     ): CredentialsOutcome {
         return when (CredentialsVerb.from(args.firstOrNull())) {
-            CredentialsVerb.ADD -> add(args.drop(1), out, err, environment, stdin, passphraseReader)
-            CredentialsVerb.LIST -> list(args.drop(1), out, err, environment, passphraseReader)
-            CredentialsVerb.REMOVE -> remove(args.drop(1), out, err, environment, passphraseReader)
-            CredentialsVerb.ROTATE -> rotate(args.drop(1), out, err, environment, stdin, passphraseReader)
+            CredentialsVerb.ADD -> add(args.drop(1), out, err, environment, stdin, passphraseReader, storeFactory)
+            CredentialsVerb.LIST -> list(args.drop(1), out, err, environment, passphraseReader, storeFactory)
+            CredentialsVerb.REMOVE -> remove(args.drop(1), out, err, environment, passphraseReader, storeFactory)
+            CredentialsVerb.ROTATE -> rotate(args.drop(1), out, err, environment, stdin, passphraseReader, storeFactory)
             null -> {
                 err.println(CredentialsRefusal.ofUnknownVerb(args.firstOrNull()))
                 CredentialsOutcome.NOT_CARRIED_OUT
@@ -224,16 +245,18 @@ object MainCredentialsCli {
         environment: Map<String, String>,
         stdin: InputStream,
         passphraseReader: () -> CharArray?,
+        storeFactory: StoreFactory,
     ): CredentialsOutcome {
         val parsed = parseWriteArguments(args, CredentialsVerb.ADD, err) ?: return CredentialsOutcome.NOT_CARRIED_OUT
         return try {
-            val store = openStore(environment, passphraseReader)
-            // The key is checked before the operator is asked for a secret: a
-            // passphrase that does not match should not cost them the typing.
-            store.verifyPassphrase()
-            store.add(CredentialsId.from(parsed.id), readCredential(parsed.kind, parsed.fromStdin, stdin))
-            out.println("Credential '${parsed.id}' stored successfully.")
-            CredentialsOutcome.ANSWERED
+            withStore(environment, passphraseReader, storeFactory) { store ->
+                // The key is checked before the operator is asked for a secret: a
+                // passphrase that does not match should not cost them the typing.
+                store.verifyPassphrase()
+                store.add(CredentialsId.from(parsed.id), readCredential(parsed.kind, parsed.fromStdin, stdin))
+                out.println("Credential '${parsed.id}' stored successfully.")
+                CredentialsOutcome.ANSWERED
+            }
         } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
             err.println("Error: ${e.message}")
             CredentialsOutcome.NO_PASSPHRASE
@@ -268,6 +291,7 @@ object MainCredentialsCli {
         err: PrintStream,
         environment: Map<String, String>,
         passphraseReader: () -> CharArray?,
+        storeFactory: StoreFactory,
     ): CredentialsOutcome {
         val foreign = args.firstOrNull()
         if (foreign != null) {
@@ -282,26 +306,27 @@ object MainCredentialsCli {
             return CredentialsOutcome.ANSWERED
         }
         return try {
-            val store = openStore(environment, passphraseReader)
-            val ids = store.list()
-            if (ids.isEmpty()) {
-                out.println("No credentials stored.")
-            } else {
-                out.println("Stored credentials:")
-                out.println("%-40s %-20s %-10s".format("ID", "KIND", "SCOPE"))
-                out.println("-".repeat(70))
-                for (id in ids) {
-                    try {
-                        val cred = store.get(id)
-                        val kind = cred::class.simpleName ?: "Unknown"
-                        val scope = cred.scope.name
-                        out.println("%-40s %-20s %-10s".format(id.value, kind, scope))
-                    } catch (e: Exception) {
-                        out.println("%-40s %-20s %-10s".format(id.value, "Unknown", "Unknown"))
+            withStore(environment, passphraseReader, storeFactory) { store ->
+                val ids = store.list()
+                if (ids.isEmpty()) {
+                    out.println("No credentials stored.")
+                } else {
+                    out.println("Stored credentials:")
+                    out.println("%-40s %-20s %-10s".format("ID", "KIND", "SCOPE"))
+                    out.println("-".repeat(70))
+                    for (id in ids) {
+                        try {
+                            val cred = store.get(id)
+                            val kind = cred::class.simpleName ?: "Unknown"
+                            val scope = cred.scope.name
+                            out.println("%-40s %-20s %-10s".format(id.value, kind, scope))
+                        } catch (e: Exception) {
+                            out.println("%-40s %-20s %-10s".format(id.value, "Unknown", "Unknown"))
+                        }
                     }
                 }
+                CredentialsOutcome.ANSWERED
             }
-            CredentialsOutcome.ANSWERED
         } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
             err.println("Error: ${e.message}")
             CredentialsOutcome.NO_PASSPHRASE
@@ -323,6 +348,7 @@ object MainCredentialsCli {
         err: PrintStream,
         environment: Map<String, String>,
         passphraseReader: () -> CharArray?,
+        storeFactory: StoreFactory,
     ): CredentialsOutcome {
         // `remove` owns NO option, so a token that looks like one is not the
         // credential id: it is refused naming it, BEFORE the store is looked
@@ -350,17 +376,19 @@ object MainCredentialsCli {
             return CredentialsOutcome.NOT_CARRIED_OUT
         }
         return try {
-            val store = openStore(environment, passphraseReader)
-            val credentialsId = CredentialsId.from(id)
-            // Listing is also how the passphrase gets checked, so a key that
-            // does not match is refused here, before anything is removed.
-            if (credentialsId !in store.list()) {
-                err.println("No credential named '$id'.")
-                return CredentialsOutcome.NOT_CARRIED_OUT
+            withStore(environment, passphraseReader, storeFactory) { store ->
+                val credentialsId = CredentialsId.from(id)
+                // Listing is also how the passphrase gets checked, so a key that
+                // does not match is refused here, before anything is removed.
+                if (credentialsId !in store.list()) {
+                    err.println("No credential named '$id'.")
+                    CredentialsOutcome.NOT_CARRIED_OUT
+                } else {
+                    store.remove(credentialsId)
+                    out.println("Credential '$id' removed.")
+                    CredentialsOutcome.ANSWERED
+                }
             }
-            store.remove(credentialsId)
-            out.println("Credential '$id' removed.")
-            CredentialsOutcome.ANSWERED
         } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
             err.println("Error: ${e.message}")
             CredentialsOutcome.NO_PASSPHRASE
@@ -383,6 +411,7 @@ object MainCredentialsCli {
         environment: Map<String, String>,
         stdin: InputStream,
         passphraseReader: () -> CharArray?,
+        storeFactory: StoreFactory,
     ): CredentialsOutcome {
         val parsed = parseWriteArguments(args, CredentialsVerb.ROTATE, err) ?: return CredentialsOutcome.NOT_CARRIED_OUT
         if (!storeHoldsAnything(environment)) {
@@ -390,18 +419,20 @@ object MainCredentialsCli {
             return CredentialsOutcome.NOT_CARRIED_OUT
         }
         return try {
-            val store = openStore(environment, passphraseReader)
-            // The key is checked before the operator is asked for a secret: a
-            // passphrase that does not match should not cost them the typing.
-            store.verifyPassphrase()
-            val credentialsId = CredentialsId.from(parsed.id)
-            if (credentialsId !in store.list()) {
-                err.println("No credential named '${parsed.id}'.")
-                return CredentialsOutcome.NOT_CARRIED_OUT
+            withStore(environment, passphraseReader, storeFactory) { store ->
+                // The key is checked before the operator is asked for a secret: a
+                // passphrase that does not match should not cost them the typing.
+                store.verifyPassphrase()
+                val credentialsId = CredentialsId.from(parsed.id)
+                if (credentialsId !in store.list()) {
+                    err.println("No credential named '${parsed.id}'.")
+                    CredentialsOutcome.NOT_CARRIED_OUT
+                } else {
+                    store.rotate(credentialsId, readCredential(parsed.kind, parsed.fromStdin, stdin))
+                    out.println("Credential '${parsed.id}' rotated successfully.")
+                    CredentialsOutcome.ANSWERED
+                }
             }
-            store.rotate(credentialsId, readCredential(parsed.kind, parsed.fromStdin, stdin))
-            out.println("Credential '${parsed.id}' rotated successfully.")
-            CredentialsOutcome.ANSWERED
         } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
             err.println("Error: ${e.message}")
             CredentialsOutcome.NO_PASSPHRASE
@@ -499,20 +530,34 @@ object MainCredentialsCli {
     }
 
     /**
-     * Opens the store with the passphrase this request resolved.
+     * Runs the work of a verb over the store this request opens, and ends the
+     * session when the work is over.
      *
-     * The passphrase comes from the environment when the environment names one,
-     * and from the reader when it does not: the operator is asked once, and the
-     * key they give is the key the store is opened with.
+     * The store is opened with the passphrase the request resolved: the
+     * passphrase comes from the environment when the environment names one, and
+     * from the reader when it does not. The operator is asked once, and the key
+     * they give is the key the store is opened with.
+     *
+     * The store is released when the work ends, whether it ended well or by a
+     * refusal: a request that is not carried out still opened a store, and a
+     * store that is not released keeps the key the operator gave it.
      */
-    private fun openStore(
+    private fun withStore(
         environment: Map<String, String>,
         passphraseReader: () -> CharArray?,
-    ): LocalSecretStore =
-        LocalSecretStore(
+        storeFactory: StoreFactory,
+        work: (LocalSecretStore) -> CredentialsOutcome,
+    ): CredentialsOutcome {
+        val store = storeFactory(
             resolveStoreFile(environment),
             PassphraseResolver.resolve(environment, passphraseReader),
         )
+        try {
+            return work(store)
+        } finally {
+            closeQuietly(store)
+        }
+    }
 
     /**
      * Whether there is a store with something in it.
@@ -531,4 +576,18 @@ object MainCredentialsCli {
     private fun readCredential(kind: CredentialKind, fromStdin: Boolean, stdin: InputStream): Credential =
         if (fromStdin) StreamCredentialPrompts.read(kind, stdin)
         else CredentialPrompts.read(kind)
+}
+
+/**
+ * Releases the store, ignoring whatever it throws.
+ *
+ * The answer of a verb is published before the store is released, and a failure
+ * while releasing must not turn a good answer into a failed one.
+ */
+private fun closeQuietly(store: LocalSecretStore) {
+    try {
+        store.close()
+    } catch (_: Exception) {
+        // The session is over either way.
+    }
 }

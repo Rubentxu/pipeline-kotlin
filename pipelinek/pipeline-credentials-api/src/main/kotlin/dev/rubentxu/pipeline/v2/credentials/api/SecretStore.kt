@@ -124,8 +124,13 @@ interface SecretStore : AutoCloseable {
     fun rotateBytes(id: CredentialsId, newBytes: ByteArray)
 
     /**
-     * Closes the store, wiping cached keys from memory.
-*/
+     * Closes the store, wiping from memory the secrets it holds: the
+     * passphrase it was given and any key it derived.
+     *
+     * What an implementation does with the store after the close is its own
+     * business. An implementation that holds neither a passphrase nor a
+     * derived key has nothing to wipe, and closing it is still a close.
+    */
     override fun close()
 }
 

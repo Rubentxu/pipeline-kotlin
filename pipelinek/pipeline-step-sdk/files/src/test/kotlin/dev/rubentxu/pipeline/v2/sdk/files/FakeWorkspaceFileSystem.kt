@@ -31,7 +31,11 @@ import java.nio.file.Path
  *  - `stageBytes` creates a file whose name no entry held — the name is the
  *    filesystem's own — and the write into it refuses to follow a link: a
  *    link that took the name between the creation and the write is a
- *    REFUSAL, and a staging file whose write failed does not survive.
+ *    REFUSAL, and a staging file whose write failed does not survive;
+ *  - `readUpTo` reads at most the limit: a file that does not fit is not
+ *    read at all, and the answer carries its size and no bytes. A read with
+ *    no limit is a read that could take the whole file, and the fake
+ *    remembers which of the two the product asked for.
  *
  * What the fake does NOT model is the concurrency of a real filesystem: it
  * answers one question at a time, and the change it is asked to make happens
@@ -74,6 +78,18 @@ class FakeWorkspaceFileSystem : WorkspaceFileSystem {
 
     /** An action to run just before the next read, so two operations can overlap. */
     private var beforeNextRead: (() -> Unit)? = null
+
+    /** How many bytes the last bounded read was asked for. */
+    private var lastReadMaxBytes: Long? = null
+
+    /** How many bytes the last read handed over to the product. */
+    private var lastReadHandedOverBytes = 0
+
+    /** The size the file grows to, when it grows between the measurement and the read. */
+    private var growsBeforeTheRead: Long? = null
+
+    /** Whether the next read fails the way a storage layer does. */
+    private var nextReadFails = false
 
     init {
         entries[Path.of("/")] = Entry.Directory()
@@ -152,6 +168,38 @@ class FakeWorkspaceFileSystem : WorkspaceFileSystem {
      * test sees that two operations did not share one.
      */
     fun stagedPaths(): List<Path> = staged.toList()
+
+    /**
+     * How many bytes the last read was asked for, or null when it asked for
+     * no limit at all.
+     *
+     * A read with no limit is a read that could take the whole file, and a
+     * product that means to bound its memory asks for a limit. This is how a
+     * test sees WHICH read the product made.
+     */
+    fun lastReadMaxBytes(): Long? = lastReadMaxBytes
+
+    /**
+     * How many bytes the last read handed over to the product.
+     *
+     * A read of a file that does not fit hands over nothing: the file never
+     * becomes bytes on this side of the boundary.
+     */
+    fun lastReadBytesHandedOver(): Int = lastReadHandedOverBytes
+
+    /**
+     * Arms the file at the next read to grow, between the measurement of its
+     * size and the reading of its bytes.
+     *
+     * The two are two moments, and a file that changes between them comes
+     * back short. That is the case a product that publishes the bytes
+     * without looking at the size would get wrong.
+     *
+     * @param sizeBytes the size the file grows to.
+     */
+    fun theFileGrowsBeforeTheRead(sizeBytes: Long): FakeWorkspaceFileSystem = apply {
+        growsBeforeTheRead = sizeBytes
+    }
 
     /**
      * Arms a link to take the NEXT staging name, before the bytes go into it.
@@ -242,7 +290,63 @@ class FakeWorkspaceFileSystem : WorkspaceFileSystem {
         }
         val entry = entries[resolve(path.normalize())]
         check(entry is Entry.File) { "not a file: $path" }
+        // A read with no limit is a read that can take the whole file.
+        lastReadMaxBytes = null
+        lastReadHandedOverBytes = entry.bytes.size
         return entry.bytes
+    }
+
+    /**
+     * Arms the next read to fail the way a storage layer does.
+     *
+     * The failure is not the user's input: the request was well formed and
+     * the file was there, and the layer refused to hand it over.
+     */
+    fun theNextReadFailsWithAnIoError(): FakeWorkspaceFileSystem = apply {
+        nextReadFails = true
+    }
+
+    /**
+     * The bytes of the file, at most the number that were asked for, and the
+     * size the file has.
+     *
+     * The JDK's own behaviour, measured against it: the size is measured
+     * first, a file that does not fit is not read at all, and the read that
+     * follows is bounded — so a file that grows between the measurement and
+     * the read comes back short, with the size it had when it was measured.
+     */
+    override fun readUpTo(path: Path, maxBytes: Long): BoundedBytes {
+        if (nextReadFails) {
+            nextReadFails = false
+            throw IOException("the read failed: $path")
+        }
+        val armed = beforeNextRead
+        if (armed != null) {
+            beforeNextRead = null
+            armed()
+        }
+        val resolved = resolve(path.normalize())
+        val entry = entries[resolved]
+        check(entry is Entry.File) { "not a file: $path" }
+        lastReadMaxBytes = maxBytes
+        val size = entry.bytes.size.toLong()
+        if (size > maxBytes) {
+            // The file does not fit: it is not read, and the answer carries
+            // the size that says so.
+            lastReadHandedOverBytes = 0
+            return BoundedBytes(bytes = ByteArray(0), sizeBytes = size)
+        }
+        // The file may grow now, between the measurement and the read: the
+        // bytes that come back are then a prefix of a bigger file.
+        val growth = growsBeforeTheRead
+        if (growth != null) {
+            growsBeforeTheRead = null
+            entries[resolved] = Entry.File(ByteArray(growth.toInt()) { 'g'.code.toByte() })
+        }
+        val bytes = (entries[resolved] as Entry.File).bytes
+        val handed = bytes.copyOf(minOf(bytes.size, maxBytes.toInt()))
+        lastReadHandedOverBytes = handed.size
+        return BoundedBytes(bytes = handed, sizeBytes = size)
     }
 
     override fun writeBytes(path: Path, bytes: ByteArray) {

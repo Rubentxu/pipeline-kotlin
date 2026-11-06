@@ -27,6 +27,30 @@ object JdkWorkspaceFileSystem : WorkspaceFileSystem, WorkspacePathSystem by JdkW
 
     override fun readAllBytes(path: Path): ByteArray = Files.readAllBytes(path)
 
+    /**
+     * The bytes of the file, at most the number that were asked for, and the
+     * size the file has.
+     *
+     * The size is measured first, because it is cheap and because a file
+     * that does not fit is not read at all: the answer then carries the size
+     * and no bytes, and the caller refuses on the size. The read that follows
+     * is BOUNDED — it asks for no more than it was told to — so a file that
+     * grew while it was being read comes back short instead of whole.
+     *
+     * Measured on temurin 21.0.8: `readNBytes(n)` returns at most `n` bytes,
+     * a file of exactly `n` bytes returns all of them, and a 64 MiB file read
+     * with a limit of 100 bytes returns 100 bytes without walking the file.
+     */
+    override fun readUpTo(path: Path, maxBytes: Long): BoundedBytes {
+        require(maxBytes in 0..Int.MAX_VALUE.toLong()) {
+            "the read limit is beyond what a byte array can hold: $maxBytes"
+        }
+        val size = Files.size(path)
+        if (size > maxBytes) return BoundedBytes(bytes = ByteArray(0), sizeBytes = size)
+        val bytes = Files.newInputStream(path).use { it.readNBytes(maxBytes.toInt()) }
+        return BoundedBytes(bytes = bytes, sizeBytes = size)
+    }
+
     override fun writeBytes(path: Path, bytes: ByteArray) {
         Files.write(path, bytes)
     }

@@ -53,6 +53,11 @@ interface WorkspaceOperations {
      * reserved-.v2, or missing targets — the substrate owns the path guard).
      * The adapter is the single `FileRead` event emitter; content NEVER enters
      * the event channel.
+     *
+     * A file that IS there but does not fit the substrate's read limit is not
+     * an observation: the read is refused with a USER failure that names the
+     * limit and the size, and no event is emitted for a read that did not
+     * happen.
 */
     fun readFile(file: String, encoding: String): FileReadResult
 

@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git.step
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.sdk.scm.git.GitLocalState
 
 /**
  * Typed input for the `scm-git.checkout` Step
@@ -55,6 +56,21 @@ data class GitCheckoutOutput(
      * ALWAYS asked the remote, so that is what the decoder assumes for it.
     */
     val remotePolled: Boolean,
+    /**
+     * The state of the tracked content of the tree the checkout left behind.
+     *
+     * It says what the checkout FOUND, and it is the field that keeps the two
+     * idempotencies apart: a checkout that leaves the tree alone because it
+     * already holds the declared commit ([GitLocalState.CLEAN]) and one that
+     * leaves it alone over a tree that carries changes that are not the run's
+     * ([GitLocalState.MODIFIED]) did the same thing to the COMMIT and not the same
+     * thing to the TREE.
+     *
+     * [GitLocalState.UNKNOWN] means the state is not known: the payload was
+     * encoded before this field existed, or the checkout could not read the state
+     * of the tree. It is not a synonym for "clean".
+    */
+    val localState: GitLocalState,
 )
 
 /**

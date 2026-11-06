@@ -81,7 +81,18 @@ data class GitRemoteSelection(
      * a workspace on `feature` would have `feature` rewritten to the remote's
      * commit and the declared branch would never materialise (measured with git
      * 2.56.0).
+     *
+     * **Why there is no `--force`.** With `--force`, git OVERWRITES the local
+     * changes of the tree: a modified tracked file is replaced by the content of
+     * the target commit and a staged change is reverted (measured with git
+     * 2.56.0). The checkout was therefore destroying work nobody asked it to
+     * destroy. Without `--force`, git refuses the checkout when the target would
+     * overwrite a local change ("Los cambios locales de los siguientes archivos
+     * serán sobrescritos por checkout … Abortando"), and that refusal is the
+     * policy the product wants: the COMMAND can no longer discard anything, and
+     * the decision about a tree that carries work is taken before the command
+     * runs, not by its error message.
      */
     fun materialiseArgv(workspace: Path, sha: String): List<String> =
-        listOf("git", "-C", workspace.toString(), "checkout", "--force", "-B", localBranch, sha)
+        listOf("git", "-C", workspace.toString(), "checkout", "-B", localBranch, sha)
 }

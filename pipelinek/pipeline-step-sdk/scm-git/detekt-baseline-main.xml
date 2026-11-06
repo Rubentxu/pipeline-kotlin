@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>LongMethod:GitCheckoutExecutor.kt:GitCheckoutExecutor$private fun executeInternal: Result&lt;GitCheckoutResult&gt;</ID>
     <ID>UnnecessarySafeCall:GitCredentialsApplier.kt:GitCredentialsApplier$repoUrl?.let { extractHost(it) }</ID>
     <ID>UnsafeCallOnNullableType:GitCheckoutExecutor.kt:GitCheckoutExecutor$effectiveStore!!</ID>
     <ID>UseCheckOrError:GitCheckoutExecutor.kt:GitCheckoutExecutor$throw IllegalStateException( "SecretStore is required when credentials are configured on GitCredentialsApplier, " + "but none was provided. Pass SecretStore to GitCheckoutExecutor or include it in GitCheckoutRequest." )</ID>

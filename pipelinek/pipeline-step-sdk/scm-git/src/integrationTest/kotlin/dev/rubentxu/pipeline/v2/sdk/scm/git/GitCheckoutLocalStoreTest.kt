@@ -243,6 +243,12 @@ class GitCheckoutLocalStoreTest {
      * command with the same text would answer the second question with a line
      * of `ls-remote`, and the checkout would publish a state that is not a
      * commit at all.
+     *
+     * The STATUS is answered too, and its answer is an empty output: the tree
+     * holds nothing that is not its commit, so the checkout finds it clean. A
+     * runtime that left the status to the `else` branch would answer it with
+     * whatever the last command happened to print, and the checkout would read
+     * a tree that is clean as one that carries work.
      */
     private class AnsweringRuntime : DurableTaskRuntime {
         override suspend fun execute(
@@ -263,6 +269,7 @@ class GitCheckoutLocalStoreTest {
                         data = "$SHA\n".toByteArray(),
                     ),
                 )
+                argv.contains("status") -> Unit
                 else -> Unit
             }
             return TaskExecutionResult(

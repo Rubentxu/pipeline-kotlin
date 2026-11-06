@@ -21,6 +21,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.scm.git.AuthorizedCheckoutTarget
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutExecutor
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutOutcome
+import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutRefused
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutRequest
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCredentialsApplier
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitPollExecutor
@@ -222,7 +223,7 @@ class GitCheckoutStepDefinition(
             ).getOrElse { throwable ->
                 throw PluginStepException(
                     failure = PipelineFailure(
-                        kind = classifyFailureKind(throwable),
+                        kind = classifyCheckoutFailure(throwable),
                         message = throwable.message ?: "scm-git checkout failed",
                     ),
                 )
@@ -244,37 +245,50 @@ class GitCheckoutStepDefinition(
                 // A reader that does not know it cannot tell a remote fact from a
                 // local one, and the two are published by the same field.
                 remotePolled = resolved.remotePolled,
+                // The state of the tracked content the checkout found. A reader that
+                // only knows the outcome cannot tell a checkout that left a clean
+                // tree alone from one that left a tree carrying changes alone.
+                localState = resolved.localState,
             )
         }
     }
+}
 
-    /**
-     * Maps a checkout exception to a [FailureKind] from the public
-     * [FailureKind] algebra. The classifier does NOT inspect the
-     * exception message (which may carry a credential that the
-     * SecretPatternRegistry already scrubbed); it inspects only the
-     * exception class.
-*/
-    private fun classifyFailureKind(throwable: Throwable): FailureKind = when {
-        // The transcript could not be persisted. This is INFRASTRUCTURE by TYPE, not by
-        // message: the bytes of the checkout's own output are missing, so the run's
-        // record is incomplete — that is an infrastructure fault whatever the git
-        // command said, and reading the message here would let a word in the
-        // command's output decide the kind.
-        throwable is GitTranscriptRefused -> FailureKind.INFRASTRUCTURE
-        // The remote was refused by the policy. It is USER by TYPE: the author wrote a
-        // remote that may not be used, and nothing about the machine or the network
-        // decides it. Reading the message here would be wrong for the same reason.
-        throwable is GitRemotePolicy.GitRemoteRefused -> FailureKind.USER
-        // Heuristic: the SCM/Git executor wraps auth failures in a
-        // dedicated exception type. Until the SCM domain grows a typed
-        // FailureKind, we use the throwable message prefix as a
-        // last-resort discriminator (the message itself is already
-        // scrubbed upstream by GitCredentialsApplier/SecretPatternRegistry).
-        throwable.message?.startsWith("auth", ignoreCase = true) == true -> FailureKind.NETWORK
-        throwable.message?.contains("not found", ignoreCase = true) == true -> FailureKind.USER
-        else -> FailureKind.INFRASTRUCTURE
-    }
+/**
+ * Maps a checkout exception to a [FailureKind] from the public [FailureKind]
+ * algebra.
+ *
+ * The classifier does NOT inspect the exception message (which may carry a
+ * credential that the SecretPatternRegistry already scrubbed); it inspects only
+ * the exception class. A word in the output of a git command must not decide
+ * what kind of failure the run had.
+ */
+internal fun classifyCheckoutFailure(throwable: Throwable): FailureKind = when {
+    // The transcript could not be persisted. This is INFRASTRUCTURE by TYPE, not by
+    // message: the bytes of the checkout's own output are missing, so the run's
+    // record is incomplete — that is an infrastructure fault whatever the git
+    // command said, and reading the message here would let a word in the
+    // command's output decide the kind.
+    throwable is GitTranscriptRefused -> FailureKind.INFRASTRUCTURE
+    // The remote was refused by the policy. It is USER by TYPE: the author wrote a
+    // remote that may not be used, and nothing about the machine or the network
+    // decides it. Reading the message here would be wrong for the same reason.
+    throwable is GitRemotePolicy.GitRemoteRefused -> FailureKind.USER
+    // The checkout refused to move a tree that carries local work. It is USER by
+    // TYPE: the tree the run was pointed at holds changes the run did not make,
+    // and the remedy is a decision about that tree (clean it, or point the run at
+    // another one). No retry and no machine fault resolves it, and calling it
+    // INFRASTRUCTURE would tell the caller to look for a broken machine where
+    // there is a decision to make.
+    throwable is GitCheckoutRefused -> FailureKind.USER
+    // Heuristic: the SCM/Git executor wraps auth failures in a
+    // dedicated exception type. Until the SCM domain grows a typed
+    // FailureKind, we use the throwable message prefix as a
+    // last-resort discriminator (the message itself is already
+    // scrubbed upstream by GitCredentialsApplier/SecretPatternRegistry).
+    throwable.message?.startsWith("auth", ignoreCase = true) == true -> FailureKind.NETWORK
+    throwable.message?.contains("not found", ignoreCase = true) == true -> FailureKind.USER
+    else -> FailureKind.INFRASTRUCTURE
 }
 
 /**

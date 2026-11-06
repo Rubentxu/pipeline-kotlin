@@ -31,12 +31,13 @@ import java.util.UUID
  *  sequence:
  * 1. If `<workspace>/<rel>/.git` exists: git rev-parse HEAD → current SHA
  * 2. git ls-remote <url> <ref> → remote SHA (with credentials), ONLY when the run asked for it
- * 3. SHA equal? → emit GitCheckoutCompleted (nothing to do)
- * 4. SHA different? → git fetch <url> <ref> + git checkout --force -B <branch> <sha>
- * 5. No.git? → git clone --branch <branch> <url> <rel>
- * 6. Append changelog via GitChangelogWriter.append(prevSha..HEAD)
- * 7. Emit lifecycle events
- * 8. Classify failures per
+ * 3. git status --porcelain --untracked-files=no → the state of the tracked content
+ * 4. The decision (GitCheckoutDecision): clone / leave alone / move / refuse
+ * 5. SHA different? → git fetch <url> <ref> + git checkout -B <branch> <sha>
+ * 6. No.git? → git clone --branch <branch> <url> <rel>
+ * 7. Append changelog via GitChangelogWriter.append(prevSha..HEAD)
+ * 8. Emit lifecycle events
+ * 9. Classify failures per
  * The published SHA is always the commit the WORKING TREE holds, read back after the
  * materialisation: the commit the remote announced is what the remote had, and the state
  * of the checkout is what the tree has.
@@ -46,6 +47,33 @@ import java.util.UUID
  * No JGit imports.
  * Argv guard fail-closed on extraHeader/Authorization.
  * Events route through injected EventSink.
+ *
+ * **THE POLICY: the checkout never discards local changes.**
+ *
+ * A checkout over a tree that carries changes the run did not make does two things,
+ * and both of them are part of the contract this class offers:
+ *
+ * 1. It does NOT move that tree. It refuses, with a typed reason
+ *    ([GitCheckoutRefused]), before the fetch and before the checkout: nothing is
+ *    downloaded on its behalf and nothing is overwritten. A checkout that does not
+ *    force carries those changes over to the new commit instead — git moves the
+ *    branch and leaves the modified file as it was (measured with git 2.56.0) — and
+ *    the tree it leaves behind is then neither the old commit nor the new one: a
+ *    commit published over a tree that does not hold it.
+ * 2. It PUBLISHES the state of the tracked content ([GitLocalState]) next to the
+ *    outcome. The outcome says what the checkout did; the state says what it found.
+ *    A tree that already holds the declared commit and still carries changes is not
+ *    a clean checkout, and the record says so instead of letting the reader assume
+ *    it. A tree whose state could not be read is published as UNKNOWN and is not
+ *    moved: the checkout does not guess, because the guess it would have to make is
+ *    "there is nothing to lose".
+ *
+ * The command that moves a tree cannot overwrite a local change either: it is
+ * `git checkout -B <branch> <sha>` and not `git checkout --force -B …`, so git
+ * itself refuses when the destination would overwrite local work. The policy is
+ * therefore in the COMMAND as well as in the decision, and neither of the two can
+ * be the only place that knows about it.
+ *
  * @param poll GitPollExecutor for ls-remote
  * @param changelog GitChangelogWriter for changelog.txt
  * @param credentialsApplier GitCredentialsApplier for temp file auth. Null means "this checkout
@@ -300,197 +328,281 @@ open class GitCheckoutExecutor(
         previousRemoteSha: String?,
         env: Map<String, String> = emptyMap(),
     ): Result<GitCheckoutResult> {
-        val url = spec.url
-        val branch = spec.branch
-        val workspaceRoot = req.workspaceRoot
-        // The remote and the ref every command of this checkout asks about.
-        val selection = GitRemoteSelection(url, branch)
+        val selection = GitRemoteSelection(spec.url, spec.branch)
 
         // THE PROBE, and only when the run asked for it.
-        val remotePolled = spec.poll
         val probed = probeRemote(req, spec, selection, previousRemoteSha)
         val remoteSha = probed.getOrElse { return Result.failure(it) }
 
-        // Step 1: Check if.git exists
-        if (Files.exists(gitDir)) {
-            // Existing checkout: what the tree holds NOW.
-            val currentSha = revParse(workspace, "HEAD", env)
+        // Two facts about the tree that is already there: the commit it holds, and
+        // the state of its tracked content. The decision needs both: a tree that
+        // holds the declared commit is left alone, and a tree that carries work
+        // this run did not make is NOT moved.
+        val treeExists = Files.exists(gitDir)
+        val currentSha = if (treeExists) revParse(workspace, "HEAD", env) else null
+        val localState = if (treeExists) readLocalState(workspace, env) else GitLocalState.CLEAN
 
-            if (remoteSha != null && currentSha == remoteSha) {
-                // The tree already holds the commit the remote declared: there is
-                // nothing to download and nothing to move.
-                val durationMs = System.currentTimeMillis() - startMs
-                emitEvent(req, GitCheckoutCompleted(
-                    eventId = newEventId(),
-                    runId = req.runId,
-                    sequence = 0L,
-                    occurredAt = Instant.now(clock),
-                    url = url,
-                    branch = branch,
-                    sha = currentSha,
-                    changelogPath = if (spec.changelog) workspaceRoot.resolve("changelog.txt").toString() else "",
-                    durationMs = durationMs
-                ))
-                return Result.success(
-                    GitCheckoutResult(
-                        sha = currentSha,
-                        durationMs = durationMs,
-                        outcome = GitCheckoutOutcome.ALREADY_CURRENT,
-                        remotePolled = remotePolled,
+        val decision = GitCheckoutDecision.decide(
+            treeExists = treeExists,
+            headSha = currentSha,
+            declaredSha = remoteSha,
+            localState = localState,
+        )
+        return actOnDecision(req, spec, workspace, currentSha, startMs, env, decision)
+    }
+
+    /**
+     * Carries out the decision the checkout made about the tree it found.
+     *
+     * The DECISION is the only place that decides; this function only carries it
+     * out. Every branch publishes what it did AND the state it found the tree in,
+     * because those are two facts and a reader needs both to tell an idempotency
+     * of the commit from an idempotency of the tree.
+     */
+    private fun actOnDecision(
+        req: GitCheckoutRequest,
+        spec: dev.rubentxu.pipeline.v2.domain.scm.GitScm,
+        workspace: Path,
+        currentSha: String?,
+        startMs: Long,
+        env: Map<String, String>,
+        decision: GitCheckoutDecision,
+    ): Result<GitCheckoutResult> = when (decision) {
+        is GitCheckoutDecision.Proceed -> when (decision.outcome) {
+            GitCheckoutOutcome.CLONED -> cloneTree(req, spec, workspace, startMs, env)
+            GitCheckoutOutcome.UPDATED ->
+                updateTree(req, spec, workspace, startMs, env, decision, currentSha)
+            GitCheckoutOutcome.ALREADY_CURRENT, GitCheckoutOutcome.LOCAL_ONLY -> {
+                val sha = currentSha ?: return Result.failure(
+                    IllegalStateException(
+                        "scm-git.checkout: the checkout decided to publish the tree it found, " +
+                            "but the tree holds no commit to publish"
                     )
                 )
+                publishExisting(req, spec, sha, startMs, decision)
             }
+        }
+        is GitCheckoutDecision.Refuse -> refuseTree(req, spec, decision)
+    }
 
-            if (remoteSha == null) {
-                // `poll=false` over an existing checkout: the remote was not asked and
-                // NOTHING is downloaded from it either. What the checkout can still
-                // say is the state of the tree it found, and it says THAT, labelled as
-                // the local state it is. A checkout that published a remote SHA here
-                // would be publishing a fact it never established.
-                if (currentSha == null) {
-                    val message = "scm-git.checkout: the working tree has no commit to publish: " +
-                        "the remote was not consulted (poll=false) and there is no HEAD to read"
-                    val failure = IllegalStateException(message)
-                    emitEvent(req, GitCheckoutFailed(
-                        eventId = newEventId(),
-                        runId = req.runId,
-                        sequence = 0L,
-                        occurredAt = Instant.now(clock),
-                        url = url,
-                        branch = branch,
-                        reason = scrubReason(message.take(256)),
-                        exitCode = 128
-                    ))
-                    return Result.failure(failure)
-                }
-                val durationMs = System.currentTimeMillis() - startMs
-                emitEvent(req, GitCheckoutCompleted(
-                    eventId = newEventId(),
-                    runId = req.runId,
-                    sequence = 0L,
-                    occurredAt = Instant.now(clock),
-                    url = url,
-                    branch = branch,
-                    sha = currentSha,
-                    changelogPath = if (spec.changelog) workspaceRoot.resolve("changelog.txt").toString() else "",
-                    durationMs = durationMs
-                ))
-                return Result.success(
-                    GitCheckoutResult(
-                        sha = currentSha,
-                        durationMs = durationMs,
-                        outcome = GitCheckoutOutcome.LOCAL_ONLY,
-                        remotePolled = remotePolled,
-                    )
-                )
-            }
+    /**
+     * Publishes the tree the checkout found, without moving it.
+     *
+     * The commit it publishes is the one the tree holds, and the state it publishes
+     * is the state the tree is in: a tree that already holds the declared commit
+     * and still carries changes is NOT a clean checkout, and the record says so
+     * instead of letting the reader assume it.
+     */
+    private fun publishExisting(
+        req: GitCheckoutRequest,
+        spec: dev.rubentxu.pipeline.v2.domain.scm.GitScm,
+        sha: String,
+        startMs: Long,
+        decision: GitCheckoutDecision.Proceed,
+    ): Result<GitCheckoutResult> {
+        val durationMs = System.currentTimeMillis() - startMs
+        emitEvent(req, GitCheckoutCompleted(
+            eventId = newEventId(),
+            runId = req.runId,
+            sequence = 0L,
+            occurredAt = Instant.now(clock),
+            url = spec.url,
+            branch = spec.branch,
+            sha = sha,
+            changelogPath = if (spec.changelog) req.workspaceRoot.resolve("changelog.txt").toString() else "",
+            durationMs = durationMs
+        ))
+        return Result.success(
+            GitCheckoutResult(
+                sha = sha,
+                durationMs = durationMs,
+                outcome = decision.outcome,
+                remotePolled = spec.poll,
+                localState = decision.localState,
+            )
+        )
+    }
 
-            // The remote declared a commit the tree does not hold: download it FROM
-            // THE DECLARED REMOTE and materialise it ON THE DECLARED BRANCH.
-            val fetchResult = gitFetch(workspace, selection, env)
-            if (fetchResult.isFailure) {
-                emitEvent(req, GitCheckoutFailed(
-                    eventId = newEventId(),
-                    runId = req.runId,
-                    sequence = 0L,
-                    occurredAt = Instant.now(clock),
-                    url = url,
-                    branch = branch,
-                    reason = scrubReason("Fetch failed: ${fetchResult.exceptionOrNull()?.message}".take(256)),
-                    exitCode = 128
-                ))
-                return Result.failure(fetchResult.exceptionOrNull() ?: IllegalStateException("Fetch failed"))
-            }
+    /**
+     * Moves the tree to the commit the run declared.
+     *
+     * The tree reaches this function only when its tracked content IS its commit:
+     * a tree that carries work this run did not make is refused by the decision
+     * before it gets here. The command that moves it cannot overwrite a local
+     * change either, so a state read wrongly cannot turn into a destroyed tree.
+     */
+    private fun updateTree(
+        req: GitCheckoutRequest,
+        spec: dev.rubentxu.pipeline.v2.domain.scm.GitScm,
+        workspace: Path,
+        startMs: Long,
+        env: Map<String, String>,
+        decision: GitCheckoutDecision.Proceed,
+        currentSha: String?,
+    ): Result<GitCheckoutResult> {
+        val declaredSha = decision.declaredSha ?: return Result.failure(
+            IllegalStateException(
+                "scm-git.checkout: the checkout decided to move the working tree, but the run " +
+                    "declared no commit to move it to"
+            )
+        )
+        val selection = GitRemoteSelection(spec.url, spec.branch)
 
-            val materialiseResult = gitMaterialise(workspace, selection, remoteSha, env)
-            if (materialiseResult.isFailure) {
-                emitEvent(req, GitCheckoutFailed(
-                    eventId = newEventId(),
-                    runId = req.runId,
-                    sequence = 0L,
-                    occurredAt = Instant.now(clock),
-                    url = url,
-                    branch = branch,
-                    reason = scrubReason(
-                        "Materialisation failed: ${materialiseResult.exceptionOrNull()?.message}".take(256)
-                    ),
-                    exitCode = 128
-                ))
-                return Result.failure(
-                    materialiseResult.exceptionOrNull() ?: IllegalStateException("Materialisation failed")
-                )
-            }
-
-            // The published SHA is the commit the TREE holds, read back after the
-            // materialisation. The probed SHA is what the remote HAD when it was
-            // asked; the state of the checkout is what the tree has now. A checkout
-            // that published the former without reading the latter would announce a
-            // commit it did not materialise.
-            val materialisedSha = revParse(workspace, "HEAD", env)
-            if (materialisedSha == null) {
-                val message = "scm-git.checkout: the commit the checkout materialised could not " +
-                    "be read back from the working tree, so the checkout cannot say what state " +
-                    "it left"
-                val failure = IllegalStateException(message)
-                emitEvent(req, GitCheckoutFailed(
-                    eventId = newEventId(),
-                    runId = req.runId,
-                    sequence = 0L,
-                    occurredAt = Instant.now(clock),
-                    url = url,
-                    branch = branch,
-                    reason = scrubReason(message.take(256)),
-                    exitCode = 128
-                ))
-                return Result.failure(failure)
-            }
-            if (materialisedSha != remoteSha) {
-                val message = "scm-git.checkout: the working tree holds $materialisedSha after the " +
-                    "checkout materialised the commit the remote declared ($remoteSha): the " +
-                    "checkout did not obtain the objects it announced"
-                val failure = IllegalStateException(message)
-                emitEvent(req, GitCheckoutFailed(
-                    eventId = newEventId(),
-                    runId = req.runId,
-                    sequence = 0L,
-                    occurredAt = Instant.now(clock),
-                    url = url,
-                    branch = branch,
-                    reason = scrubReason(message.take(256)),
-                    exitCode = 128
-                ))
-                return Result.failure(failure)
-            }
-
-            // Append changelog
-            if (spec.changelog) {
-                // The changelog reads the SAME authorised destination the checkout
-                // wrote to, and it no longer resolves a path of its own: a second
-                // resolver is a second rule about the same directory.
-                changelog.append(workspace, workspaceRoot.resolve("changelog.txt"), currentSha, "HEAD", transcript)
-            }
-
-            val durationMs = System.currentTimeMillis() - startMs
-            emitEvent(req, GitCheckoutCompleted(
+        // The remote declared a commit the tree does not hold: download it FROM
+        // THE DECLARED REMOTE and materialise it ON THE DECLARED BRANCH.
+        val fetchResult = gitFetch(workspace, selection, env)
+        if (fetchResult.isFailure) {
+            emitEvent(req, GitCheckoutFailed(
                 eventId = newEventId(),
                 runId = req.runId,
                 sequence = 0L,
                 occurredAt = Instant.now(clock),
-                url = url,
-                branch = branch,
-                sha = materialisedSha,
-                changelogPath = if (spec.changelog) workspaceRoot.resolve("changelog.txt").toString() else "",
-                durationMs = durationMs
+                url = spec.url,
+                branch = spec.branch,
+                reason = scrubReason("Fetch failed: ${fetchResult.exceptionOrNull()?.message}".take(256)),
+                exitCode = 128
             ))
-            return Result.success(
-                GitCheckoutResult(
-                    sha = materialisedSha,
-                    durationMs = durationMs,
-                    outcome = GitCheckoutOutcome.UPDATED,
-                    remotePolled = remotePolled,
-                )
+            return Result.failure(fetchResult.exceptionOrNull() ?: IllegalStateException("Fetch failed"))
+        }
+
+        val materialiseResult = gitMaterialise(workspace, selection, declaredSha, env)
+        if (materialiseResult.isFailure) {
+            emitEvent(req, GitCheckoutFailed(
+                eventId = newEventId(),
+                runId = req.runId,
+                sequence = 0L,
+                occurredAt = Instant.now(clock),
+                url = spec.url,
+                branch = spec.branch,
+                reason = scrubReason(
+                    "Materialisation failed: ${materialiseResult.exceptionOrNull()?.message}".take(256)
+                ),
+                exitCode = 128
+            ))
+            return Result.failure(
+                materialiseResult.exceptionOrNull() ?: IllegalStateException("Materialisation failed")
             )
         }
+
+        // The published SHA is the commit the TREE holds, read back after the
+        // materialisation. The probed SHA is what the remote HAD when it was
+        // asked; the state of the checkout is what the tree has now. A checkout
+        // that published the former without reading the latter would announce a
+        // commit it did not materialise.
+        val materialisedSha = revParse(workspace, "HEAD", env)
+        if (materialisedSha == null) {
+            val message = "scm-git.checkout: the commit the checkout materialised could not " +
+                "be read back from the working tree, so the checkout cannot say what state " +
+                "it left"
+            val failure = IllegalStateException(message)
+            emitEvent(req, GitCheckoutFailed(
+                eventId = newEventId(),
+                runId = req.runId,
+                sequence = 0L,
+                occurredAt = Instant.now(clock),
+                url = spec.url,
+                branch = spec.branch,
+                reason = scrubReason(message.take(256)),
+                exitCode = 128
+            ))
+            return Result.failure(failure)
+        }
+        if (materialisedSha != declaredSha) {
+            val message = "scm-git.checkout: the working tree holds $materialisedSha after the " +
+                "checkout materialised the commit the remote declared ($declaredSha): the " +
+                "checkout did not obtain the objects it announced"
+            val failure = IllegalStateException(message)
+            emitEvent(req, GitCheckoutFailed(
+                eventId = newEventId(),
+                runId = req.runId,
+                sequence = 0L,
+                occurredAt = Instant.now(clock),
+                url = spec.url,
+                branch = spec.branch,
+                reason = scrubReason(message.take(256)),
+                exitCode = 128
+            ))
+            return Result.failure(failure)
+        }
+
+        // Append changelog
+        if (spec.changelog) {
+            // The changelog reads the SAME authorised destination the checkout
+            // wrote to, and it no longer resolves a path of its own: a second
+            // resolver is a second rule about the same directory.
+            changelog.append(workspace, req.workspaceRoot.resolve("changelog.txt"), currentSha, "HEAD", transcript)
+        }
+
+        val durationMs = System.currentTimeMillis() - startMs
+        emitEvent(req, GitCheckoutCompleted(
+            eventId = newEventId(),
+            runId = req.runId,
+            sequence = 0L,
+            occurredAt = Instant.now(clock),
+            url = spec.url,
+            branch = spec.branch,
+            sha = materialisedSha,
+            changelogPath = if (spec.changelog) req.workspaceRoot.resolve("changelog.txt").toString() else "",
+            durationMs = durationMs
+        ))
+        return Result.success(
+            GitCheckoutResult(
+                sha = materialisedSha,
+                durationMs = durationMs,
+                outcome = GitCheckoutOutcome.UPDATED,
+                remotePolled = spec.poll,
+                localState = decision.localState,
+            )
+        )
+    }
+
+    /**
+     * Refuses to act on the tree the checkout found, and says why.
+     *
+     * The refusal travels as a TYPED failure: the caller reads the reason, not a
+     * sentence. Nothing was destroyed and nothing was moved — the refusal arrives
+     * before the fetch and before the checkout, so the tree the run found is still
+     * the tree the run left.
+     */
+    private fun refuseTree(
+        req: GitCheckoutRequest,
+        spec: dev.rubentxu.pipeline.v2.domain.scm.GitScm,
+        decision: GitCheckoutDecision.Refuse,
+    ): Result<GitCheckoutResult> {
+        val failure = GitCheckoutRefused(
+            reason = decision.reason,
+            declaredSha = decision.declaredSha,
+            localState = decision.localState,
+        )
+        val message = failure.message
+            ?: "scm-git.checkout: the checkout refused to move the working tree"
+        emitEvent(req, GitCheckoutFailed(
+            eventId = newEventId(),
+            runId = req.runId,
+            sequence = 0L,
+            occurredAt = Instant.now(clock),
+            url = spec.url,
+            branch = spec.branch,
+            reason = scrubReason(message.take(256)),
+            exitCode = 128
+        ))
+        return Result.failure(failure)
+    }
+
+    /**
+     * Materialises a checkout that is not there yet.
+     *
+     * The tree a clone leaves behind is clean by construction: nothing was there to
+     * carry over.
+     */
+    private fun cloneTree(
+        req: GitCheckoutRequest,
+        spec: dev.rubentxu.pipeline.v2.domain.scm.GitScm,
+        workspace: Path,
+        startMs: Long,
+        env: Map<String, String>,
+    ): Result<GitCheckoutResult> {
+        val selection = GitRemoteSelection(spec.url, spec.branch)
 
         // No.git - clone
         Files.createDirectories(workspace)
@@ -501,8 +613,8 @@ open class GitCheckoutExecutor(
                 runId = req.runId,
                 sequence = 0L,
                 occurredAt = Instant.now(clock),
-                url = url,
-                branch = branch,
+                url = spec.url,
+                branch = spec.branch,
                 reason = scrubReason("Clone failed: ${cloneResult.exceptionOrNull()?.message}".take(256)),
                 exitCode = 128
             ))
@@ -523,8 +635,8 @@ open class GitCheckoutExecutor(
                 runId = req.runId,
                 sequence = 0L,
                 occurredAt = Instant.now(clock),
-                url = url,
-                branch = branch,
+                url = spec.url,
+                branch = spec.branch,
                 reason = scrubReason(message.take(256)),
                 exitCode = 128
             ))
@@ -533,7 +645,7 @@ open class GitCheckoutExecutor(
 
         // Append changelog
         if (spec.changelog) {
-            changelog.append(workspace, workspaceRoot.resolve("changelog.txt"), null, "HEAD", transcript)
+            changelog.append(workspace, req.workspaceRoot.resolve("changelog.txt"), null, "HEAD", transcript)
         }
 
         val durationMs = System.currentTimeMillis() - startMs
@@ -542,10 +654,10 @@ open class GitCheckoutExecutor(
             runId = req.runId,
             sequence = 0L,
             occurredAt = Instant.now(clock),
-            url = url,
-            branch = branch,
+            url = spec.url,
+            branch = spec.branch,
             sha = sha,
-            changelogPath = if (spec.changelog) workspaceRoot.resolve("changelog.txt").toString() else "",
+            changelogPath = if (spec.changelog) req.workspaceRoot.resolve("changelog.txt").toString() else "",
             durationMs = durationMs
         ))
         return Result.success(
@@ -553,9 +665,38 @@ open class GitCheckoutExecutor(
                 sha = sha,
                 durationMs = durationMs,
                 outcome = GitCheckoutOutcome.CLONED,
-                remotePolled = remotePolled,
+                remotePolled = spec.poll,
+                localState = GitLocalState.CLEAN,
             )
         )
+    }
+
+    /**
+     * The state of the tracked content of the tree the checkout found.
+     *
+     * The tree is asked, and the answer is a fact the decision needs: a tree that
+     * carries changes this run did not make is not moved. A status the checkout
+     * could NOT read is [GitLocalState.UNKNOWN] and not a clean tree: the checkout
+     * does not read an unreadable tree as a clean one, and a tree it could not
+     * inspect is not moved either.
+     */
+    private fun readLocalState(workspace: Path, env: Map<String, String>): GitLocalState {
+        return try {
+            val args = GitLocalState.statusArgv(workspace)
+            val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
+            if (!captured.succeeded) {
+                GitLocalState.UNKNOWN
+            } else {
+                GitLocalState.stateOf(captured.stdout)
+            }
+        } catch (refused: GitTranscriptRefused) {
+            // A refusal is not "the tree is clean": the run lost the record of what
+            // git printed, and a clean tree here would be a fact nobody established.
+            // The refusal travels instead.
+            throw refused
+        } catch (e: Exception) {
+            GitLocalState.UNKNOWN
+        }
     }
 
     /**
@@ -728,7 +869,10 @@ open class GitCheckoutExecutor(
         return try {
             val args = listOf("git", "-C", workspace.toString(), "rev-parse", ref)
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
-            if (captured.succeeded) captured.stdout.trim() else null
+            // An EMPTY answer is not a commit id: it is the absence of one. Publishing
+            // it as the state of the checkout would announce a commit that does not
+            // exist, and a reader of that state would take it for a fact about a tree.
+            if (captured.succeeded) captured.stdout.trim().ifEmpty { null } else null
         } catch (refused: GitTranscriptRefused) {
             // A refusal is not "the command said nothing": the run lost the record of what git
             // printed, and a null here would read like an absent SHA — a fact the checkout
@@ -912,6 +1056,17 @@ data class GitCheckoutResult(
      * whether the state it was given is a remote fact or a local one.
      */
     val remotePolled: Boolean,
+    /**
+     * The state of the tracked content of the tree the checkout leaves behind.
+     *
+     * It travels next to the [outcome] because the two are different facts: the
+     * outcome says WHAT the checkout did and this says WHAT it found. An
+     * [GitCheckoutOutcome.ALREADY_CURRENT] over a [GitLocalState.MODIFIED] tree is
+     * a checkout that found the declared commit AND changes that are not the run's
+     * — not a clean checkout, and a consumer that only reads the outcome would say
+     * it was.
+     */
+    val localState: GitLocalState,
     /**
      * The credential helper the checkout wrote (string channel).
      *

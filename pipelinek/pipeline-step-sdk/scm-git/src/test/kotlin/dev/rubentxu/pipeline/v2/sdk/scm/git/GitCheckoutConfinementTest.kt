@@ -1,23 +1,15 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
-import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepException
 import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.StepCapability
-import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputChannel
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputRefusal
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputSink
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInput
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutStepDefinition
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.reflect.KClass
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -83,7 +75,7 @@ class GitCheckoutConfinementTest {
                     StepHandlerContext(
                         runId = RunId("run-1"),
                         stepIndex = 0,
-                        capabilities = TestCapabilities(location(workspace)),
+                        capabilities = GitCheckoutTestCapabilities(location(workspace)),
                     ),
                 )
             }
@@ -144,33 +136,4 @@ class GitCheckoutConfinementTest {
     /** The location a checkout runs in: the workspace root, and the directory inside it. */
     private fun location(workspace: Path): ExecutionLocation =
         ExecutionLocation(WorkspaceLease.Attached(workspace), workspace)
-
-    /** The two capabilities the Step reads, and nothing else. */
-    private class TestCapabilities(private val location: ExecutionLocation) : StepCapabilityAccess {
-
-        override fun available(): Set<StepCapability> =
-            setOf(EXECUTION_LOCATION_CAPABILITY, SCM_GIT_TRANSCRIPT_CAPABILITY)
-
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : Any> get(key: StepCapability, type: KClass<T>): T = when (key) {
-            EXECUTION_LOCATION_CAPABILITY -> location as T
-            SCM_GIT_TRANSCRIPT_CAPABILITY -> QuietTranscript as T
-            else -> throw IllegalArgumentException("unexpected capability: $key")
-        }
-    }
-
-    /** A transcript that keeps the bytes and refuses nothing: the refusal is not what this test is about. */
-    private object QuietTranscript : GitTranscript {
-
-        override val secretPatterns: SecretPatternRegistry? = null
-
-        override fun sink(channel: ProcessOutputChannel): ProcessOutputSink =
-            object : ProcessOutputSink {
-                override fun write(bytes: ByteArray, offset: Int, length: Int) = Unit
-
-                override fun refusal(): ProcessOutputRefusal? = null
-
-                override fun close() = Unit
-            }
-    }
 }

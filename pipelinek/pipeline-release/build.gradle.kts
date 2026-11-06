@@ -62,6 +62,33 @@ tasks.test {
     }
 }
 
+// The contract of the reception, read by the lanes of this module.
+//
+// The contract is a document of the repository and NOT a file of this module:
+// the reader compares it with what this build emits and refuses what does not
+// agree, so a contract that changed and a contract that did not are two
+// different contracts. The lanes read it WHEN THEY RUN, through a path the
+// build hands over, and Gradle's up-to-date check only sees DECLARED inputs.
+// A lane that does not declare the document it reads stays UP-TO-DATE after
+// the document changes, and the report it leaves on disk is the report of a
+// contract that is no longer the one in the tree — a green over a document
+// nobody looked at. The subject of the rule is the document, so the document
+// is an input of the task that reads it.
+//
+// The path travels with the declaration, so the file the lane watches is the
+// file the lane reads: the two cannot drift apart, and a reader that composes
+// its own path is a second derivation of a fact the build already knows.
+//
+// `withType<Test>()` reaches both lanes of this module: the unit one and the
+// integration one. The integration lane reads the same contract and would
+// otherwise keep a report of a contract that no longer exists.
+val receptionContract = rootProject.file("contract/reception-contract.json")
+
+tasks.withType<Test>().configureEach {
+    inputs.file(receptionContract)
+    systemProperty("pipeline.receptionContract", receptionContract.absolutePath)
+}
+
 // ---------------------------------------------------------------------------
 // The cheap identity gate.
 // This task is the boundary. It runs AFTER the distribution ZIP exists, asks

@@ -388,12 +388,6 @@ subprojects {
 // resolves to zero coverage, so it reported a number that could not fail and could not
 // pass either.
 
-// Expose the repository root to tests. Tests that must read files from the
-// repository previously hardcoded a developer-specific absolute path such as
-// /var/home/<user>/Proyectos/kotlin/pipeline-kotlin, which pinned the suite to one
-// machine and to one worktree. rootDir is the build root; its parent is the repository.
-val repositoryRoot: String = rootDir.parentFile.absolutePath
-
 // The modules whose unit tests carry enough work to be worth a second JVM.
 //
 // The parallelism this build already has is BETWEEN the modules: `org.gradle.parallel`
@@ -434,9 +428,18 @@ val modulesWithTestVolume = setOf(
 )
 
 subprojects {
-    // Expose the repository root to tests that must read files from the repository.
+    // A lane that reads a document of the repository receives the PATH of that
+    // document from the module that declares it as an input of the lane.
+    //
+    // The repository root used to be handed over here instead, as a system
+    // property, and the lanes composed the path of the document out of that
+    // property and a relative path of their own. That made two derivations of
+    // one path, and the document stayed invisible to Gradle: a task is
+    // invalidated by its DECLARED inputs, and a document read at runtime
+    // through a property is not one of them. The lane stayed UP-TO-DATE after
+    // the document changed, and the report it left on disk was the report of a
+    // document that no longer existed.
     tasks.withType<Test>().configureEach {
-        systemProperty("pipeline.repoRoot", repositoryRoot)
         if (project.name in modulesWithTestVolume) {
             maxParallelForks = 4
         }

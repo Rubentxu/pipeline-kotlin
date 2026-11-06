@@ -357,6 +357,16 @@ tasks.test {
     })
 }
 
+// The integration lane reads the README as well: it checks that every command
+// form the README's quickstart names is a form this CLI dispatches. The lane
+// declares the document it reads for the same reason the unit lane does — a
+// document that is not an input is a document the lane does not look at, and
+// the report it leaves behind is the report of a README that is no longer
+// there.
+tasks.named<Test>("integrationTest") {
+    inputs.file(rootProject.file("../README.md"))
+}
+
 // TEST LANES REMOVED. Five separate registrations were deleted
 // from this build file, all of them reading a source set that is now empty:
 //   * `pluginContractTest`            -- its own SourceSet + `Test` task + `check` wiring.

@@ -298,14 +298,20 @@ class ReceptionContractTest {
         )
     }
 
-    /** The contract of this repository, read from where this repository keeps it. */
+    /**
+     * The contract of this repository, at the path the build handed over.
+     *
+     * The path arrives with the build instead of being composed here, so the
+     * document this witness reads is the very document the build declares as
+     * an input of this lane. Two derivations of one path would be two facts,
+     * and the build's is the one that decides whether this lane runs again.
+     */
     private fun contractPath(): Path {
-        val repoRoot = System.getProperty("pipeline.repoRoot")
+        val contract = System.getProperty("pipeline.receptionContract")
             ?: error(
-                "the test needs the repository root to find the contract, and the build did not " +
-                    "hand it over. A witness that cannot find the document it is about proves " +
-                    "nothing.",
+                "the test needs the contract of the repository, and the build did not hand it " +
+                    "over. A witness that cannot find the document it is about proves nothing.",
             )
-        return Paths.get(repoRoot, "pipelinek", "contract", "reception-contract.json")
+        return Paths.get(contract)
     }
 }

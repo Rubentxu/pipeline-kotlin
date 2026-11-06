@@ -18,23 +18,14 @@ import java.nio.ByteOrder
 /**
  * Canonical part serialization of a credential into the local store format
  * Pure and state-free: it reads no file, takes no lock and touches no cached
- * value. The credential kind ids are duplicated here rather than widened in
- * [LocalSecretStore] so that both sides of the format stay explicit and the
- * shared values cannot drift apart silently.
+ * value.
+ *
+ * The kind of a credential is a value of the FORMAT, and there is ONE table
+ * of it: [CredentialKinds]. The serializer reads that table to know what a
+ * credential is, and the codec reads it to frame the entry that holds it, so
+ * the two cannot say different things about the same kind.
 */
 internal object CredentialSerializer {
-
-    private const val KIND_SECRET_TEXT: Short = 1
-    private const val KIND_USERNAME_PASSWORD: Short = 2
-    private const val KIND_SSH_PRIVATE_KEY: Short = 3
-    private const val KIND_SECRET_FILE: Short = 4
-    private const val KIND_CERTIFICATE: Short = 5
-    private const val KIND_ZIP: Short = 6
-    private const val KIND_USERNAME_COLON_PASSWORD: Short = 7
-
-    // === Credential serialization ===
-
-// === Credential serialization ===
 
 // Canonical part format:
 //   normal part:  [nameLen:1][name][len:4 BE][bytes]
@@ -178,7 +169,7 @@ fun readPartMarker(buf: ByteBuffer): Int {
 fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): Credential {
     val buf = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
     return when (kindId) {
-        KIND_SECRET_TEXT -> {
+        CredentialKinds.SECRET_TEXT -> {
             buf.get().toInt() // part count
             // name
             val nameLen = buf.get().toInt()
@@ -188,7 +179,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
             val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
             SecretText(id, CredentialScope.GLOBAL, valueBytes)
         }
-        KIND_USERNAME_PASSWORD -> {
+        CredentialKinds.USERNAME_PASSWORD -> {
             buf.get().toInt() // part count
             // username: normal
             val userNameLen = buf.get().toInt()
@@ -203,7 +194,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
             val passBytes = ByteArray(passLen); buf.get(passBytes)
             dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword(id, CredentialScope.GLOBAL, username, passBytes)
         }
-        KIND_SSH_PRIVATE_KEY -> {
+        CredentialKinds.SSH_PRIVATE_KEY -> {
             buf.get().toInt() // part count
             // username: normal
             val userNameLen = buf.get().toInt()
@@ -231,7 +222,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
             }
             dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey(id, CredentialScope.GLOBAL, username, keyBytes, passphraseRef)
         }
-        KIND_SECRET_FILE -> {
+        CredentialKinds.SECRET_FILE -> {
             buf.get().toInt() // part count
             // originalName: normal
             val origNameLen = buf.get().toInt()
@@ -246,7 +237,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
             val contentBytes = ByteArray(contentLen); buf.get(contentBytes)
             dev.rubentxu.pipeline.v2.domain.credentials.SecretFile(id, CredentialScope.GLOBAL, contentBytes, originalName.ifEmpty { null })
         }
-        KIND_CERTIFICATE -> {
+        CredentialKinds.CERTIFICATE -> {
             buf.get().toInt() // part count
             // keystore: normal
             val ksNameLen = buf.get().toInt()
@@ -274,7 +265,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
             }
             dev.rubentxu.pipeline.v2.domain.credentials.Certificate(id, CredentialScope.GLOBAL, ksBytes, passwordRef, alias.ifEmpty { null })
         }
-        KIND_ZIP -> {
+        CredentialKinds.ZIP -> {
             val partCount = buf.get().toInt()
             // _entryCount metadata: normal
             val metaNameLen = buf.get().toInt()
@@ -292,7 +283,7 @@ fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): C
             }
             dev.rubentxu.pipeline.v2.domain.credentials.Zip(id, CredentialScope.GLOBAL, entries)
         }
-        KIND_USERNAME_COLON_PASSWORD -> {
+        CredentialKinds.USERNAME_COLON_PASSWORD -> {
             buf.get().toInt() // part count
             // username: normal
             val userNameLen = buf.get().toInt()

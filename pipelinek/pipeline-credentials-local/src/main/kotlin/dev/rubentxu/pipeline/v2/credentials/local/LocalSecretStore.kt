@@ -87,6 +87,7 @@ class LocalSecretStore(
     private val file: Path,
     private val passphrase: CharArray,
     private val committer: StoreCommit = AtomicStoreCommit,
+    private val permissions: CredentialStorePermissionGuard = PosixCredentialStorePermissionGuard,
 ) : SecretStore {
     private val secureRandom = SecureRandom()
 
@@ -511,8 +512,38 @@ class LocalSecretStore(
         dev.rubentxu.pipeline.v2.credentials.api.CredentialsStorePosixPermissionsException(message)
 
     init {
-        Files.createDirectories(file.parent)
-        enforcePosixPermissions(file)
+        enforcePermissions(file)
+    }
+
+    /**
+     * Makes this store's file and directory safe to hold secrets, or refuses
+     * to open the store.
+     *
+     * The guard owns the directory's creation as well as its permissions: a
+     * directory the store created with the platform's default permissions is
+     * a directory the whole machine can list, and the store that made it is
+     * the one that has to fix it.
+     *
+     * The refusal is the store's OWN: the guard speaks about the platform and
+     * the store speaks about itself, and the operator gets one exception that
+     * names the file whose secrets are at stake. A store whose permissions
+     * cannot be guaranteed does not open, because a store that opens without
+     * that promise is a store holding secrets nobody has promised to protect.
+    */
+    private fun enforcePermissions(file: Path) {
+        try {
+            permissions.enforce(file, file.parent)
+        } catch (e: dev.rubentxu.pipeline.v2.credentials.api.CredentialsStorePosixPermissionsException) {
+            throw CredentialsStorePosixPermissionsException(
+                e.message ?: "the credential store at $file cannot hold its secrets with safe " +
+                    "permissions",
+            )
+        } catch (e: Exception) {
+            throw CredentialsStorePosixPermissionsException(
+                "the credential store at $file cannot hold its secrets with safe permissions: " +
+                    "${e.message}",
+            )
+        }
     }
 
     /**
@@ -1126,19 +1157,6 @@ class LocalSecretStore(
             }
         }
         return bytes
-    }
-
-    private fun enforcePosixPermissions(file: Path) {
-        try {
-            val fs = file.fileSystem
-            if (fs.supportedFileAttributeViews().contains("posix")) {
-                val dir = file.parent
-                CredentialsStorePosix.enforce(file, dir)
-            }
-        } catch (e: Exception) {
-            throw CredentialsStorePosixPermissionsException(
-                "Cannot enforce POSIX permissions: ${e.message}")
-        }
     }
 
     private fun loadOrCreateHeader(): StoreHeader {

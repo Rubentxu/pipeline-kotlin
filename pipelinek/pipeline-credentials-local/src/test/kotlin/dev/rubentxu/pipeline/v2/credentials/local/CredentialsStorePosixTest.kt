@@ -1,10 +1,14 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
+import dev.rubentxu.pipeline.v2.credentials.api.CredentialsStorePosixPermissionsException
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialFilePermissions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.file.FileSystem
 import java.nio.file.FileSystems
+import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
 
 /**
@@ -29,39 +33,101 @@ class CredentialsStorePosixTest {
     }
 
     @Test
-    fun `assertSupported throws on a filesystem that does not advertise posix`() {
-        // The standard test JVM filesystem is always POSIX (Linux/macOS) and the production
-        // jimfs jar is not on this module's classpath. The check's negative branch is
-        // therefore proven by a custom in-memory filesystem: the `JimfsFileSystemProvider`
-        // ships with the JDK's testlib only as a pre-installed feature, and its presence
-        // here is not assumed.
-        // The structural property the source pins is: `assertSupported` consults
-        // `fileSystem.supportedFileAttributeViews().contains("posix")` and refuses otherwise.
-        // That is observable only on a non-POSIX filesystem, so this test names its
-        // precondition and skips the assertion if the precondition cannot be met.
-        val nonPosix = try {
-            java.nio.file.FileSystems.getFileSystem(java.net.URI.create("jimfs://test-no-posix"))
-        } catch (e: java.nio.file.FileSystemNotFoundException) {
-            null
-        } catch (e: java.nio.file.ProviderNotFoundException) {
-            null
-        }
-
-        if (nonPosix == null) {
-            // The test cannot fail on a JVM without a non-POSIX filesystem provider; the
-            // positive branch above is the only runnable signal in that environment. The
-            // skip is honest: it does not pretend to cover the branch.
-            return
-        }
-
+    fun `assertSupported refuses a filesystem that announces no POSIX view`() {
+        // The ANNOUNCED VIEWS are the argument, not the filesystem, and that is what
+        // makes this branch reachable anywhere: the filesystem that does not announce
+        // a POSIX view is a filesystem this repository does not have, and the row that
+        // needed one used to return without asserting anything at all.
         val ex = assertThrows(IllegalStateException::class.java) {
-            CredentialsStorePosix.assertSupported(nonPosix)
+            CredentialsStorePosix.assertSupported(setOf("basic", "owner"))
         }
 
-        assertEquals(
-            true,
-            ex.message?.contains("POSIX") == true || ex.message?.contains("posix") == true,
+        assertTrue(
+            ex.message?.contains("posix", ignoreCase = true) == true,
             "the diagnostic must mention POSIX, got: ${ex.message}",
+        )
+        assertTrue(
+            ex.message?.contains("basic") == true,
+            "the diagnostic must name the views the filesystem DID announce, got: ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `enforce refuses a filesystem that announces no POSIX view before touching it`() {
+        // The refusal comes FIRST: a store that cannot be protected must not leave a
+        // directory behind on its way out.
+        val ex = assertThrows(IllegalStateException::class.java) {
+            CredentialsStorePosix.enforce(
+                file = Path.of("/a-store-that-does-not-exist.bin"),
+                dir = Path.of("/a-directory-that-does-not-exist"),
+                views = setOf("basic", "owner"),
+            )
+        }
+
+        assertTrue(
+            ex.message?.contains("posix", ignoreCase = true) == true,
+            "the diagnostic must mention POSIX, got: ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `a file the filesystem left readable by everybody is refused`() {
+        // A filesystem that accepts a permission change and does not apply it
+        // leaves the file open to the machine. The decision is asked about the
+        // permissions FOUND, so this branch is reachable without a filesystem
+        // that ignores chmod.
+        val ex = assertThrows(CredentialsStorePosixPermissionsException::class.java) {
+            CredentialsStorePosix.requireExpected(
+                file = Path.of("/a-store.bin"),
+                dir = Path.of("/a-directory"),
+                filePermissions = setOf(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE,
+                    PosixFilePermission.OTHERS_READ,
+                ),
+                directoryPermissions = CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE,
+            )
+        }
+
+        assertTrue(
+            ex.message.orEmpty().contains("/a-store.bin"),
+            "the refusal has to name the file that is exposed, and said: ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `a directory the filesystem left listable by everybody is refused`() {
+        val ex = assertThrows(CredentialsStorePosixPermissionsException::class.java) {
+            CredentialsStorePosix.requireExpected(
+                file = Path.of("/a-store.bin"),
+                dir = Path.of("/a-directory"),
+                filePermissions = CredentialFilePermissions.OWNER_READ_WRITE,
+                directoryPermissions = setOf(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE,
+                    PosixFilePermission.OWNER_EXECUTE,
+                    PosixFilePermission.OTHERS_READ,
+                    PosixFilePermission.OTHERS_EXECUTE,
+                ),
+            )
+        }
+
+        assertTrue(
+            ex.message.orEmpty().contains("/a-directory"),
+            "the refusal has to name the directory that is exposed, and said: ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `the permissions this store requires are accepted`() {
+        // The decision has to accept what is right as well as refuse what is
+        // wrong: a refusal that rejects everything is a store that never
+        // opens, and that is not a safer store, it is a broken one.
+        CredentialsStorePosix.requireExpected(
+            file = Path.of("/a-store.bin"),
+            dir = Path.of("/a-directory"),
+            filePermissions = CredentialFilePermissions.OWNER_READ_WRITE,
+            directoryPermissions = CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE,
         )
     }
 

@@ -11,7 +11,6 @@ import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.classifyShellTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.TaskTerminalDecision
 import dev.rubentxu.pipeline.v2.domain.durable.decideTaskTerminal
@@ -22,17 +21,25 @@ import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream
+import dev.rubentxu.pipeline.v2.credentials.api.RedactorState
+import dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.CaptureRetainPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.OUTPUT_PERSISTENCE_REFUSED
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputChannel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShellCapturedStdout
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShellTerminalDecision
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.output.store.SealOutcome
+import java.io.IOException
+import java.io.OutputStream
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 
@@ -64,20 +71,6 @@ internal fun terminalDeclaresTranscriptIncomplete(terminal: DurableTaskTerminal)
 
 object ShExecution {
 
-
-    /**
-     * Redacts observable transcript content when a secret registry
-     * is active. Chunk-boundary-safe: a secret split across process output
-     * chunks is still scrubbed (the registry's StreamingRedactor carries
-     * boundary state across reads).
-*/
-    private fun redactTranscript(
-        content: String,
-        secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
-    ): String = if (secretPatternRegistry == null) content else {
-        dev.rubentxu.pipeline.v2.credentials.api.TranscriptRedactor(secretPatternRegistry)
-            .redactStream(content.byteInputStream())
-    }
 
     /**
      * Invokes the durable shell substrate and returns its closed semantic result.
@@ -383,9 +376,24 @@ object ShExecution {
      *   exists: the runtime's own control directory is a per-operation
      *   subdirectory of it, exactly as on the durable route, so no scratch
      *   directory is created and none has to be deleted.
+     * @param workspaceRoot The workspace the child must start in. `null` means
+     *   "the control directory", which is what the generic runtime does when the
+     *   request carries no workspace.
+     * @param limitBytes The most bytes the captured value may hold. The default
+     *   is the product's limit; it is a parameter so that the refusal can be
+     *   exercised without writing the limit's worth of bytes.
      * @return "success" if exit code is 0, "failure" otherwise.
+     *
+     * ## Why this is `internal` and not `private`
+     *
+     * The fallback is reached ONLY when the durable-shell substrate refuses the
+     * host, so on a Linux host this method was unreachable and NOTHING measured
+     * it: its defects were invisible on the platform where most of the work
+     * happens. It is `internal` so that the lane of this module can call it
+     * directly and assert what the fallback does, on any host. It is not public
+     * API: the seam exists to be measured, not to be called from outside.
 */
-    private suspend fun executeNonLinuxInvocation(
+    internal suspend fun executeNonLinuxInvocation(
         command: ShellCommand,
         env: Map<String, SecretHandle>,
         eventSink: EventSink,
@@ -396,6 +404,8 @@ object ShExecution {
         clock: Clock,
         idGenerator: IdGenerator,
         timeoutMs: Long?,
+        workspaceRoot: Path? = null,
+        limitBytes: Long = ShellCapturedStdout.MAX_CAPTURED_STDOUT_BYTES,
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     ): ShellInvocationResult {
         // The caller's budget must reach the runtime. `0` means "no
@@ -431,7 +441,7 @@ object ShExecution {
         }
 
         val runtime = ProcessDurableTaskRuntime(
-            controlDir,
+            controlDirRoot,
             object : Clock {
                 override fun now(): Instant = clock.now()
             },
@@ -445,21 +455,35 @@ object ShExecution {
             opId = opId,
             timeoutMs = effectiveTimeoutMs,
             env = env,
+            // The workspace the child starts in. The durable route launches the child in the same
+            // place, with the same expression (`ShellProcessLauncher` uses the request's
+            // workspace or the control directory), so a step that reads a file it wrote reads the
+            // same file on every supported host. With no workspace, the child starts in the
+            // control directory, exactly as on the durable route.
+            workspaceRoot = workspaceRoot?.toString(),
         )
 
-        // Accumulate chunks into one EchoOutputCaptured (matches legacy behaviour
-        // — one event per step, full script output). O(chunk) memory at the sink.
-        val stdoutBuilder = StringBuilder()
-        val stderrBuilder = StringBuilder()
-        val sink = ExecutionOutputSink { chunk ->
-            when (chunk.stream) {
-                TaskStream.STDOUT -> stdoutBuilder.append(String(chunk.data, Charsets.UTF_8))
-                TaskStream.STDERR -> stderrBuilder.append(String(chunk.data, Charsets.UTF_8))
-            }
+        // The channels. The stdout is the VALUE when the caller asked for it, and everything else
+        // is the TRANSCRIPT. Both are persisted BY FRAGMENTS: the execution holds no copy of its
+        // own output, and the bytes that reach the transcript are the SANITIZED ones.
+        val channels = try {
+            FallbackChannels(
+                controlDir = controlDir,
+                captureStdout = command.returnMode == ShellReturnMode.STDOUT,
+                registry = secretPatternRegistry,
+            )
+        } catch (failure: Exception) {
+            return ShellInvocationResult.Failed(
+                PipelineFailure(
+                    FailureKind.INFRASTRUCTURE,
+                    failure.message ?: "core.sh could not open its output channels",
+                ),
+            )
         }
 
+        var closeFailure: IOException? = null
         val result = try {
-            runtime.execute(request, sink)
+            runtime.execute(request, channels.sink)
         } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
             // A cancellation is an execution mechanism, not a failure. The
             // runtime already recorded its own durable CANCELLED terminal; mapping
@@ -471,6 +495,21 @@ object ShExecution {
             return ShellInvocationResult.Failed(
                 PipelineFailure(FailureKind.INFRASTRUCTURE, failure.message ?: "core.sh could not execute"),
             )
+        } finally {
+            closeFailure = channels.finish()
+        }
+
+        // A channel that could not be closed could have lost its last bytes: a value that is
+        // short is a value nobody can trust, and a transcript that is short and plausible is the
+        // worst outcome there is. The step says so instead of publishing either.
+        closeFailure?.let { failure ->
+            return ShellInvocationResult.Failed(
+                PipelineFailure(
+                    FailureKind.INFRASTRUCTURE,
+                    "core.sh could not close its output channels: " +
+                        (failure.message ?: failure.javaClass.simpleName),
+                ),
+            )
         }
 
         // The fallback, and the one place where a console event is still correct
@@ -479,18 +518,27 @@ object ShExecution {
         // does on the durable route, and the runtime's own control directory is a per-operation
         // subdirectory of it. What this route does NOT have is an Output Plane sink: the durable
         // route hands the redactor to the executor, which streams the transcript into the store
-        // while the step runs, whereas here the runtime's chunks are accumulated and published as
-        // one event. The Output Plane forbids a SECOND
+        // while the step runs, whereas here the transcript is sanitized as it arrives and
+        // published as one event at the end. The Output Plane forbids a SECOND
         // authority over the same bytes; it does not require one to exist where none can. Here the
         // event is the only rendering, so it is not a second anything.
         // The law is therefore per-execution, not per-type: "for any
         // one execution, the transcript bytes exist in exactly one place." A guard written as
         // "EchoOutputCaptured is never emitted" would have been wrong here and would have pushed
         // someone into deleting the only observable console this path has.
-        // The observable content is redacted with the chunk-boundary-safe redactor
-        // before emission, exactly as on the durable path.
-        val output = stdoutBuilder.toString() + stderrBuilder.toString()
-        val observableContent = redactTranscript(output, secretPatternRegistry)
+        // The observable content is sanitized BEFORE it is published, exactly as on the durable
+        // path: the bytes that reach the file are the sanitized ones, so no raw transcript is
+        // ever written, and a secret split across two fragments is still scrubbed.
+        val observableContent = try {
+            channels.transcript()
+        } catch (failure: IOException) {
+            return ShellInvocationResult.Failed(
+                PipelineFailure(
+                    FailureKind.INFRASTRUCTURE,
+                    failure.message ?: "core.sh could not read the transcript it captured",
+                ),
+            )
+        }
         eventSink.append(
             EchoOutputCaptured(
                 eventId = idGenerator.next(),
@@ -500,6 +548,17 @@ object ShExecution {
                 stepIndex = stepIndex,
                 content = observableContent,
             ),
+        )
+
+        // The value: the stdout, read under the SAME rule the durable route reads it under, so
+        // the absence, the emptiness, the trim and the limit are the same four facts here as they
+        // are there. The channel is released once it is read: this route has no journal that
+        // would hold the value afterwards, and the raw bytes of a value have no reason to
+        // outlive it.
+        val captured = DurableShellExecutor().readOutputText(
+            controlDir = controlDir,
+            captureRetainPolicy = CaptureRetainPolicy.READ_THEN_DELETE,
+            limitBytes = limitBytes,
         )
 
         val terminal = when (val decision = decideTaskTerminal(result)) {
@@ -517,11 +576,163 @@ object ShExecution {
                     operationId = opId,
                 ),
             )
-            is TaskTerminalDecision.Exited -> DurableTaskTerminal.Exited(
-                exitCode = decision.exitCode,
-                output = DurableTaskOutput(controlDir.toString(), output),
-            )
+            is TaskTerminalDecision.Exited -> ShellTerminalDecision(opId = opId, controlDir = controlDir)
+                .forExit(decision.exitCode, captured)
         }
         return classifyShellTerminal(terminal, command.returnMode)
+    }
+}
+
+/**
+ * The staging file of the transcript of a fallback execution.
+ *
+ * It holds SANITIZED bytes and it does not outlive the execution: the event is the transcript's
+ * authority, and a second copy of the same bytes would be a second authority.
+ */
+private const val TRANSCRIPT_FILE = "transcript.staging"
+
+/** The buffer the sanitizer drains its decided bytes into. */
+private const val FRAGMENT_BUFFER_BYTES = 8192
+
+/**
+ * The channels of ONE fallback execution: where the child's bytes go, and how the transcript is
+ * rendered.
+ *
+ * ## The routing, and why it is the durable route's routing
+ *
+ * The stdout is the VALUE when the caller asked for it, and it goes to the capture channel: the
+ * same file, with the same name, in the same place the durable route uses, so the value is read
+ * back by the same rule. Everything else is the TRANSCRIPT, and the transcript is the observable
+ * rendering of the execution.
+ *
+ * ## Why the transcript is persisted BY FRAGMENTS, and sanitized as it goes
+ *
+ * The transcript used to be accumulated in memory, whole, and sanitized at the end: the peak
+ * memory of an execution was several times its output, and the raw bytes were held for the whole
+ * run. Now the fragments go to a file as they arrive, and the bytes that REACH the file are the
+ * sanitized ones: the redaction runs on the fragments, with the state that carries a secret split
+ * across two of them. No raw transcript is ever written, and the execution holds no copy of its
+ * own output.
+ */
+private class FallbackChannels(
+    controlDir: Path,
+    captureStdout: Boolean,
+    registry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
+) {
+    init {
+        // The operation's directory. The generic runtime would create it too, but the channels
+        // are opened BEFORE the runtime starts, so it has to be there.
+        Files.createDirectories(controlDir)
+    }
+
+    /** The channel of the VALUE. It is open only when the caller asked for a value. */
+    private val valueStream: OutputStream? =
+        if (captureStdout) ShellCapturedStdout.writer(controlDir) else null
+
+    /** The staging file of the transcript. It holds sanitized bytes and it does not outlive the
+     *  execution: the event is the transcript's authority. */
+    private val transcriptFile: Path = controlDir.resolve(TRANSCRIPT_FILE)
+
+    private val transcriptStream: OutputStream = Files.newOutputStream(transcriptFile)
+
+    private val stdout = ChannelSanitizer(registry) { bytes, offset, length ->
+        transcriptStream.write(bytes, offset, length)
+    }
+
+    private val stderr = ChannelSanitizer(registry) { bytes, offset, length ->
+        transcriptStream.write(bytes, offset, length)
+    }
+
+    /** Where the generic runtime hands over the child's fragments. */
+    val sink: ExecutionOutputSink = ExecutionOutputSink { chunk ->
+        when (chunk.stream) {
+            TaskStream.STDOUT -> {
+                val value = valueStream
+                if (value != null) value.write(chunk.data) else stdout.write(chunk.data)
+            }
+            TaskStream.STDERR -> stderr.write(chunk.data)
+        }
+    }
+
+    /**
+     * The transcript, sanitized, as this execution's observable rendering.
+     */
+    fun transcript(): String {
+        val content = Files.readString(transcriptFile)
+        Files.deleteIfExists(transcriptFile)
+        return content
+    }
+
+    /**
+     * The end of the channels: the sanitizers flush what they still hold and the streams close.
+     *
+     * @return What the closing refused, or `null` when nothing was refused. A refusal is not a
+     *   warning: the bytes the closing could not deliver are the last ones, and a value or a
+     *   transcript that is missing them is one nobody can trust.
+     */
+    fun finish(): IOException? {
+        var failure: IOException? = null
+        try {
+            stdout.finish()
+            stderr.finish()
+        } catch (e: IOException) {
+            failure = e
+        }
+        try {
+            valueStream?.close()
+        } catch (e: IOException) {
+            failure = failure ?: e
+        }
+        try {
+            transcriptStream.close()
+        } catch (e: IOException) {
+            failure = failure ?: e
+        }
+        return failure
+    }
+}
+
+/**
+ * The sanitizer of ONE channel.
+ *
+ * It holds the state that carries a secret split across two fragments, and it hands the
+ * SANITIZED bytes to the sink. With no registry there is nothing to sanitize, and the bytes are
+ * the bytes.
+ */
+private class ChannelSanitizer(
+    registry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
+    private val sink: (ByteArray, Int, Int) -> Unit,
+) {
+    private val redactor = registry?.let { StreamingRedactor(it) }
+    private val state = redactor?.initialState()
+
+    /** Sanitizes one fragment and hands over what is already decided. */
+    fun write(fragment: ByteArray) {
+        val active = redactor
+        val current = state
+        if (active == null || current == null) {
+            sink(fragment, 0, fragment.size)
+            return
+        }
+        active.feed(current, fragment, 0, fragment.size)
+        drain(active, current)
+    }
+
+    /** Flushes what the sanitizer still holds: the end of the channel makes it decidable. */
+    fun finish() {
+        val active = redactor
+        val current = state
+        if (active == null || current == null) return
+        val tail = active.finish(current)
+        if (tail.isNotEmpty()) sink(tail, 0, tail.size)
+    }
+
+    private fun drain(redactor: StreamingRedactor, state: RedactorState) {
+        val buffer = ByteArray(FRAGMENT_BUFFER_BYTES)
+        while (redactor.available(state) > 0) {
+            val written = redactor.take(state, buffer, 0, buffer.size)
+            if (written <= 0) return
+            sink(buffer, 0, written)
+        }
     }
 }

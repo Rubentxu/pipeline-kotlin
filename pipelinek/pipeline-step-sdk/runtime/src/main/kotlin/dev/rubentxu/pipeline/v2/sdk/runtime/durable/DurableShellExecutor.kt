@@ -212,15 +212,19 @@ class DurableShellExecutor {
      *
      * @param controlDir The control directory path.
      * @param captureRetainPolicy Whether to dispose of the channel after reading it.
+     * @param limitBytes The most bytes the value may hold. The default is the product's limit,
+     *   [ShellCapturedStdout.MAX_CAPTURED_STDOUT_BYTES]; the parameter exists so that the refusal
+     *   can be exercised without writing the limit's worth of bytes.
      * @return What is known about the captured stdout: nothing was recorded, a value was read, the
      *   channel could not be read, or the value was read and the channel could not be disposed of.
 */
     fun readOutputText(
         controlDir: Path,
         captureRetainPolicy: CaptureRetainPolicy = DurableShConfig.CAPTURE_RETAIN_POLICY_DEFAULT,
+        limitBytes: Long = ShellCapturedStdout.MAX_CAPTURED_STDOUT_BYTES,
     ): CapturedStdoutRead {
         val content = try {
-            ShellCapturedStdout.read(controlDir)
+            ShellCapturedStdout.read(controlDir, limitBytes)
         } catch (e: IOException) {
             return CapturedStdoutRead.Unreadable(reason = e.refusalReason())
         }

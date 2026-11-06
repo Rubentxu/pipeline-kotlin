@@ -20,6 +20,7 @@ import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.scm.git.AuthorizedCheckoutTarget
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutExecutor
+import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutOutcome
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutRequest
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCredentialsApplier
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitPollExecutor
@@ -231,7 +232,7 @@ class GitCheckoutStepDefinition(
                 // The published path IS the authorised destination: the same directory
                 // the checkout wrote to, by construction and not by coincidence.
                 localPath = authorizedTarget.path.toString(),
-                wasCloned = resolved.classification == "clone",
+                wasCloned = resolved.outcome == GitCheckoutOutcome.CLONED,
                 // The record says what HAPPENED, not what was declared: a checkout
                 // that declared a credential and got none (a remote that cannot
                 // authenticate with it) applied no credential, and a checkout that
@@ -239,6 +240,10 @@ class GitCheckoutStepDefinition(
                 credentialApplied = resolved.credentialHelperPath != null ||
                     resolved.gitConfigFilePath != null ||
                     resolved.sshKeyPath != null,
+                // Whether the remote was asked for the head of the declared branch.
+                // A reader that does not know it cannot tell a remote fact from a
+                // local one, and the two are published by the same field.
+                remotePolled = resolved.remotePolled,
             )
         }
     }

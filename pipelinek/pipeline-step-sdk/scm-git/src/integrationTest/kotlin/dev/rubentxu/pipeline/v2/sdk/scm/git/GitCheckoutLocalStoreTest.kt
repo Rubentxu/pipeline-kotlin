@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.ExecutionOutputSink
 import dev.rubentxu.pipeline.v2.domain.durable.OutputChunk
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionResult
+import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
@@ -193,7 +194,13 @@ class GitCheckoutLocalStoreTest {
                 taskRuntime = AnsweringRuntime(),
                 controlRoot = temp.resolve("poll"),
             ),
-            changelog = GitChangelogWriter(controlRoot = temp.resolve("changelog")),
+            // The changelog writer runs `git log`, and it gets the same faked
+            // process: a writer with a real one would spawn git behind the
+            // back of a test that claims the process is faked.
+            changelog = GitChangelogWriter(
+                taskRuntime = AnsweringRuntime(),
+                controlRoot = temp.resolve("changelog"),
+            ),
             credentialsApplier = applier,
             taskRuntime = AnsweringRuntime(),
             gitControlRoot = temp.resolve("control"),
@@ -226,21 +233,38 @@ class GitCheckoutLocalStoreTest {
     )
 
     /**
-     * A runtime that answers with the output of `git ls-remote` and spawns
-     * nothing: the process is the effect that the world OUTSIDE the two
+     * A runtime that answers the git commands the way git answers them, and
+     * spawns nothing: the process is the effect that the world OUTSIDE the two
      * modules under test would have.
+     *
+     * The remote declares a commit and the tree holds it, because the checkout
+     * asks BOTH: the head of the declared branch, and the commit the working
+     * tree has after the materialisation. A runtime that answered every
+     * command with the same text would answer the second question with a line
+     * of `ls-remote`, and the checkout would publish a state that is not a
+     * commit at all.
      */
     private class AnsweringRuntime : DurableTaskRuntime {
         override suspend fun execute(
             request: TaskExecutionRequest,
             outputSink: ExecutionOutputSink,
         ): TaskExecutionResult {
-            outputSink.append(
-                OutputChunk(
-                    stream = dev.rubentxu.pipeline.v2.domain.durable.TaskStream.STDOUT,
-                    data = "deadbeef\trefs/heads/main\n".toByteArray(),
-                ),
-            )
+            val argv = (request.task as TaskSpec.ExecTask).argv
+            when {
+                argv.contains("ls-remote") -> outputSink.append(
+                    OutputChunk(
+                        stream = dev.rubentxu.pipeline.v2.domain.durable.TaskStream.STDOUT,
+                        data = "$SHA\trefs/heads/main\n".toByteArray(),
+                    ),
+                )
+                argv.contains("rev-parse") -> outputSink.append(
+                    OutputChunk(
+                        stream = dev.rubentxu.pipeline.v2.domain.durable.TaskStream.STDOUT,
+                        data = "$SHA\n".toByteArray(),
+                    ),
+                )
+                else -> Unit
+            }
             return TaskExecutionResult(
                 exitCode = 0,
                 startedAtEpochMs = 0,
@@ -251,6 +275,15 @@ class GitCheckoutLocalStoreTest {
 
     private companion object {
         val FIXED_CLOCK: Clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC)
+
+        /**
+         * The commit the remote declares and the tree holds.
+         *
+         * A commit id is 40 hexadecimal digits, and the checkout checks that the
+         * answer of the remote is one: an answer that is not would become an
+         * argument of the next git command.
+         */
+        const val SHA = "d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0"
 
         /** A user name that is not a user name: it never leaves this machine. */
         const val USER = "ci-user"

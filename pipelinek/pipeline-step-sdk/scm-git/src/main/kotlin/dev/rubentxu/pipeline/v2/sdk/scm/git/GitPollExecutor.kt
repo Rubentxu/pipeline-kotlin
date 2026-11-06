@@ -14,7 +14,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Executes `git ls-remote <url> <branch>` to get the remote SHA.
+ * Executes `git ls-remote <url> <ref>` to get the remote SHA.
  * Structured argv — no secrets in args. Honors inherited env from
  * GitCredentialsApplier (GIT_CONFIG_GLOBAL + HOME for credential helper).
  * Synchronous poll, no daemon.
@@ -34,17 +34,17 @@ class GitPollExecutor(
 
     /**
      * Execute git ls-remote and return the remote SHA.
-     * @param url Repository URL (https or file://)
-     * @param branch Branch name
+     * @param selection the remote and the ref to ask about. The argv comes from
+     *   it, so the command that runs and the command that is checked are the
+     *   same list.
      * @param credentialsApplier GitCredentialsApplier for env injection (may be null — no-op)
      * @param transcript the host's transcript destination, or null when this composition has
      *   none. What `ls-remote` printed is published there, so a reader can see the answer the
      *   remote gave — including the authentication error that ends the checkout.
      * @return Result containing SHA string, or failure classification
-*/
+    */
     fun execute(
-        url: String,
-        branch: String,
+        selection: GitRemoteSelection,
         credentialsApplier: GitCredentialsApplier? = null,
         transcript: GitTranscript? = null,
     ): Result<String> {
@@ -52,7 +52,7 @@ class GitPollExecutor(
             // `--` before the positionals: git stops reading options there, so a remote or
             // a branch that looks like an option is a VALUE and never an instruction.
             // The credential rule is checked over the very same argv, where it is built.
-            val args = lsRemoteArgv(url, branch)
+            val args = selection.lsRemoteArgv()
             GitCredentialsApplier.guardProcessBuilderArgs(args)
             // ls-remote historically used redirectErrorStream(true); emulate
             // by passing both streams into the captured run and joining for
@@ -81,7 +81,24 @@ class GitPollExecutor(
             val sha = firstLine.substringBefore("\t").trim()
 
             if (sha.isBlank()) {
-                Result.failure(IllegalStateException("git ls-remote returned empty SHA for $branch"))
+                Result.failure(
+                    IllegalStateException(
+                        "git ls-remote returned no commit for ${selection.ref} of ${selection.url}"
+                    )
+                )
+            } else if (!isCommitId(sha)) {
+                // The remote's answer goes straight into the argv of the next command
+                // (the materialisation names the commit). An answer that is not a
+                // commit id would become an ARGUMENT of git, and git reads an
+                // argument that starts with `-` as an instruction. Measured with git
+                // 2.56.0: the answer of `ls-remote` is 40 hexadecimal digits, and
+                // anything else is a remote that did not answer the question.
+                Result.failure(
+                    IllegalStateException(
+                        "git ls-remote answered with something that is not a commit id for " +
+                            "${selection.ref} of ${selection.url}"
+                    )
+                )
             } else {
                 Result.success(sha)
             }
@@ -92,7 +109,7 @@ class GitPollExecutor(
 
     /**
      * Classifies git failure based on stderr/stdout content.
-*/
+    */
     private fun classifyFailure(output: String, exitCode: Int): Exception {
         val lower = output.lowercase()
         return when {
@@ -120,20 +137,16 @@ class GitPollExecutor(
         GitTempRoot.deleteRecursively(controlRoot)
     }
 
-    /**
-     * The argv `git ls-remote` is run with.
-     *
-     * ONE authority for the command line: the poll runs this list, and the checkout
-     * GUARDS this list. A guard that checks a hand-built argv is a guard over a
-     * question nobody asked — the moment the two lists differ, the check and the
-     * command have stopped talking to each other, and the check passes for a command
-     * that was never examined.
-     *
-     * The `--` is part of the list, not a decoration of it: it is what tells git that
-     * the remote and the branch are values.
-     */
     companion object {
-        fun lsRemoteArgv(url: String, branch: String): List<String> =
-            listOf("git", "ls-remote", "--", url, branch)
+        /**
+         * A commit id: hexadecimal, 40 digits for SHA-1 and 64 for SHA-256.
+         *
+         * The check is not pedantry: the value the remote answers with becomes
+         * an argument of the next git command, and git reads an argument that
+         * starts with `-` as an instruction rather than as a value.
+         */
+        fun isCommitId(text: String): Boolean = COMMIT_ID.matches(text)
+
+        private val COMMIT_ID = Regex("^[0-9a-f]{40}([0-9a-f]{24})?$")
     }
 }

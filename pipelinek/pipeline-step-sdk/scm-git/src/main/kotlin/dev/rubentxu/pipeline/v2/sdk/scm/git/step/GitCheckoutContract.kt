@@ -42,6 +42,19 @@ data class GitCheckoutOutput(
      * was never handed to git.
     */
     val credentialApplied: Boolean,
+    /**
+     * Whether the checkout asked the remote for the head of the declared branch.
+     *
+     * FALSE means the remote was NOT consulted: the published [resolvedSha] is
+     * then the commit the LOCAL working tree held, and a reader that took it for
+     * a remote fact would be reading a fact nobody established. TRUE means the
+     * remote was asked and the published commit is the one the tree holds after
+     * materialising what the remote declared.
+     *
+     * A payload encoded before this field existed comes from a checkout that
+     * ALWAYS asked the remote, so that is what the decoder assumes for it.
+    */
+    val remotePolled: Boolean,
 )
 
 /**

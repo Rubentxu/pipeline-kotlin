@@ -5,7 +5,6 @@
     <ID>LongMethod:GitCheckoutExecutor.kt:GitCheckoutExecutor$private fun executeInternal: Result&lt;GitCheckoutResult&gt;</ID>
     <ID>UnnecessarySafeCall:GitCredentialsApplier.kt:GitCredentialsApplier$repoUrl?.let { extractHost(it) }</ID>
     <ID>UnsafeCallOnNullableType:GitCheckoutExecutor.kt:GitCheckoutExecutor$effectiveStore!!</ID>
-    <ID>UnsafeCallOnNullableType:GitCheckoutExecutor.kt:GitCheckoutExecutor$remoteShaResult.getOrNull()!!</ID>
     <ID>UseCheckOrError:GitCheckoutExecutor.kt:GitCheckoutExecutor$throw IllegalStateException( "SecretStore is required when credentials are configured on GitCredentialsApplier, " + "but none was provided. Pass SecretStore to GitCheckoutExecutor or include it in GitCheckoutRequest." )</ID>
     <ID>UseCheckOrError:GitCheckoutExecutor.kt:GitCheckoutExecutor$throw IllegalStateException( "scm-git.checkout: credentialsRef declared as '${credentialsId.value}' but no " + "SecretStore was provided to resolve it. Either supply a SecretStore " + "(LocalSecretStore via PIPELINE_CREDENTIALS_STORE, or wire one into " + "GitCheckoutExecutor / GitCheckoutRequest) or remove credentialsRef from the " + "pipeline script. The credentials intent MUST NOT be silently dropped.", )</ID>
     <ID>UseCheckOrError:GitCredentialsApplier.kt:GitCredentialsApplier$throw IllegalStateException("No CredentialLinkedSecretResolver or SecretStore available for credential resolution: ${ref.id.value}")</ID>

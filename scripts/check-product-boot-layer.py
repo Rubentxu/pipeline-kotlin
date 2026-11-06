@@ -164,6 +164,10 @@ DECLARED_EXECUTABLES = {
     "scripts/release/build-release-manifest.sh": (
         "publication: it describes the artifact that leaves"
     ),
+    "scripts/release/build-maven-publication-manifest.sh": (
+        "publication: it measures the staged Maven bundle and writes the manifest that "
+        "describes it, and it starts nothing of the product"
+    ),
     "scripts/release/emit-certification-requested.sh": (
         "the emitter of the certification request: it composes the event that crosses the "
         "boundary between the repositories and leaves it beside the publication, so what "
@@ -204,6 +208,11 @@ DECLARED_EXECUTABLES = {
         "artifact against the PREVIOUSLY published one, so what is under test "
         "is the publication contract and not the behaviour of this tree; it is "
         "not part of this gate"
+    ),
+    "scripts/release/verify-maven-publication.sh": (
+        "the publication gate of the Maven channel: it decides whether a request "
+        "may publish a bundle, so what is under test is the publication contract "
+        "and not the behaviour of this tree; it is not part of this gate"
     ),
     "scripts/release/verify-published-tags.sh": (
         "publication: it verifies the tags that were published"

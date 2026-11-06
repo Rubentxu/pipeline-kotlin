@@ -75,6 +75,23 @@ class GitCredentialHelperProtocolTest {
             "git asked the checkout's helper and did not get a user name; git said: ${answer.output}",
         )
 
+        // The same question in the shape git asks it: protocol, host and path.
+        // The path is a key of the request like any other, and the helper has to
+        // answer a request that carries it.
+        val asked = gitCredentialFillForHost("github.com", "org/repo.git", env)
+
+        assertEquals(
+            0,
+            asked.exitCode,
+            "git could not take a credential from the checkout's helper when the request carried " +
+                "a path; git said: ${asked.output}",
+        )
+        assertTrue(
+            asked.output.contains("password=$TOKEN"),
+            "the helper did not answer a request that carried protocol, host and path; git said: " +
+                "${asked.output}",
+        )
+
         // The absence, with the continent in front of it: the SAME configuration
         // and the SAME helper that just handed the token over are asked about a
         // remote the checkout never named, and they hand over nothing. Without
@@ -89,6 +106,20 @@ class GitCredentialHelperProtocolTest {
         assertFalse(
             other.output.contains("password="),
             "git was handed a credential for a remote the checkout never named; git said: ${other.output}",
+        )
+
+        // The same absence, in the shape git asks the question.
+        val otherAsked = gitCredentialFillForHost("gitlab.com", "org/repo.git", env)
+
+        assertFalse(
+            otherAsked.output.contains(TOKEN),
+            "the token reached a remote the checkout never named, in a request that carried " +
+                "protocol, host and path; git said: ${otherAsked.output}",
+        )
+        assertFalse(
+            otherAsked.output.contains("password="),
+            "git was handed a credential for a remote the checkout never named; git said: " +
+                "${otherAsked.output}",
         )
     }
 
@@ -227,14 +258,26 @@ class GitCredentialHelperProtocolTest {
      * environment: an askpass would answer the request that has no credential,
      * and the answer would not be the checkout's.
      */
-    private fun gitCredentialFill(url: String, env: Map<String, String>): GitResult {
+    private fun gitCredentialFill(url: String, env: Map<String, String>): GitResult =
+        gitCredentialFillFor("url=$url\n\n", env)
+
+    /**
+     * Asks git for the credential of a host, in the shape git asks it: the
+     * request carries the protocol, the host and the path, and ends with a
+     * blank line.
+     */
+    private fun gitCredentialFillForHost(host: String, path: String, env: Map<String, String>): GitResult =
+        gitCredentialFillFor("protocol=https\nhost=$host\npath=$path\n\n", env)
+
+    /** Asks git for a credential, with the request the test writes on its standard input. */
+    private fun gitCredentialFillFor(request: String, env: Map<String, String>): GitResult {
         val builder = ProcessBuilder(listOf("git", "credential", "fill")).redirectErrorStream(true)
         val environment = builder.environment()
         environment.remove("GIT_ASKPASS")
         environment.remove("SSH_ASKPASS")
         environment.putAll(env)
         val process = builder.start()
-        process.outputStream.use { it.write("url=$url\n\n".toByteArray(Charsets.UTF_8)) }
+        process.outputStream.use { it.write(request.toByteArray(Charsets.UTF_8)) }
         val output = process.inputStream.bufferedReader().readText()
         val finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         if (!finished) {

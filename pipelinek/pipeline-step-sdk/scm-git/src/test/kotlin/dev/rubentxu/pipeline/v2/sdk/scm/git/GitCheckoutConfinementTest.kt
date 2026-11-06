@@ -68,7 +68,6 @@ class GitCheckoutConfinementTest {
                     changelog = GitChangelogWriter(controlRoot = temp.resolve("changelog")),
                     credentialsApplier = GitCredentialsApplier(
                         tempDir = Files.createDirectories(temp.resolve("creds")),
-                        credentials = GitCredentials(),
                     ),
                     gitControlRoot = temp.resolve("control"),
                 )

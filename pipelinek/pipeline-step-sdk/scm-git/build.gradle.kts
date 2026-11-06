@@ -17,6 +17,12 @@ dependencies {
 
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    // The integration lane composes this module with the LOCAL store, because
+    // the disagreement between them — a credential that is more than one secret
+    // cannot be projected into a single handle — is what no fake of the store
+    // can reproduce, and what no unit test around this module can see.
+    testImplementation(project(":pipeline-credentials-local"))
 }
 
 tasks.test {

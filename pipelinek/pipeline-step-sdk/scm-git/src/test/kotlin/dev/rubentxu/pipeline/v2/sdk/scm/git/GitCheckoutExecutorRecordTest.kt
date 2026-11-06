@@ -50,7 +50,7 @@ class GitCheckoutExecutorRecordTest {
         val executor = GitCheckoutExecutor(
             poll = GitPollExecutor(controlRoot = temp.resolve("poll")),
             changelog = GitChangelogWriter(controlRoot = temp.resolve("changelog")),
-            credentialsApplier = GitCredentialsApplier(temp, GitCredentials()),
+            credentialsApplier = GitCredentialsApplier(temp),
             clock = FIXED_CLOCK,
             gitControlRoot = temp.resolve("control"),
         )

@@ -15,7 +15,6 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
-import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.GitRemotePolicy
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -65,7 +64,6 @@ class GitCheckoutStepDefinition(
                 changelog = GitChangelogWriter(),
                 credentialsApplier = GitCredentialsApplier(
                     tempDir = Files.createTempDirectory("scm-git-step"),
-                    credentials = GitCredentials(),
                 ),
                 transcript = transcript,
             )
@@ -234,7 +232,13 @@ class GitCheckoutStepDefinition(
                 // the checkout wrote to, by construction and not by coincidence.
                 localPath = authorizedTarget.path.toString(),
                 wasCloned = resolved.classification == "clone",
-                credentialApplied = resolved.credentialHelperPath != null || resolved.gitConfigFilePath != null,
+                // The record says what HAPPENED, not what was declared: a checkout
+                // that declared a credential and got none (a remote that cannot
+                // authenticate with it) applied no credential, and a checkout that
+                // applied an SSH key applied one.
+                credentialApplied = resolved.credentialHelperPath != null ||
+                    resolved.gitConfigFilePath != null ||
+                    resolved.sshKeyPath != null,
             )
         }
     }

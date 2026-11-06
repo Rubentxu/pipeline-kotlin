@@ -1,12 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
-import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
-import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreLinkedSecretResolver
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialFilePermissions
-import dev.rubentxu.pipeline.v2.domain.credentials.CredentialLinkedSecretResolver
-import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
-import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
-import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Base64
@@ -14,11 +8,12 @@ import java.util.Base64
 /**
  * Applies Git credentials using the answer-file pattern
  * ## Answer-File Pattern (Design)
- * The credential helper and GIT_ASKPASS scripts NEVER receive secrets via environment
+ * The credential helper and the SSH askpass NEVER receive secrets via environment
  * variables. Instead:
- * 1. JVM writes pre-resolved credentials to an answer file at `apply()` time
- * 2. Script reads the answer file
- * 3. Script outputs the secret to stdout for git to consume
+ * 1. The caller hands this class the credential it already resolved
+ * 2. This class writes it to a file of its own
+ * 3. The script reads that file and outputs the secret to stdout for git or ssh
+ *    to consume
  * ## Who decides the scope
  * The scope of a credential is decided by GIT, not by this class: the credential
  * configuration carries the URL of the remote as a PATTERN, git matches every
@@ -34,38 +29,48 @@ import java.util.Base64
  * ## Supported Channels
  * - **string**: API token via `credential helper` + answer file
  * - **usernamePassword**: Basic auth via `extraHeader` (per-host config)
- * - **ssh**: SSH private key via `GIT_SSH_COMMAND`
+ * - **ssh**: SSH private key via `GIT_SSH_COMMAND`, and its passphrase via the askpass
+ *   OpenSSH runs
+ * ## What this class receives
+ *
+ * This class writes files and configuration; it does not go looking for
+ * credentials. A credential that is more than one secret — a user name and a
+ * password, a private key and its passphrase — cannot be projected into a
+ * single secret handle by any store, so a seam that took a handle and a part
+ * name would be a seam whose contract no store can honour. The caller
+ * resolves the credential and hands over what each transport needs, and this
+ * class writes exactly that.
+ *
  * @param tempDir Parent temp directory for credential files (0700)
- * @param credentials GitCredentials carrying typed SecretHandleRef carriers
- * @param secretStore SecretStore for resolving SecretHandleRef to actual secret bytes
  * @param knownHostsFile the file ssh records the host keys in. Null means the user's own
  *   `~/.ssh/known_hosts`, which is where ssh looks by default and the only place where the
  *   operator's trust decisions live across runs.
 */
 class GitCredentialsApplier(
     private val tempDir: Path,
-    val credentials: GitCredentials,
-    private val secretStore: SecretStore? = null,
-    private val linkedSecretResolver: CredentialLinkedSecretResolver? = null,
     knownHostsFile: Path? = null,
 ) : AutoCloseable {
-
-    // If no explicit resolver was injected, build one from
-    // the SecretStore so all LinkedSecretRef resolution in this class flows
-    // through the canonical CredentialLinkedSecretResolver port. May still be
-    // null if neither was supplied; resolveSecret/resolveAndEncode throw
-    // IllegalStateException with the missing id context in that case.
-    private val effectiveResolver: CredentialLinkedSecretResolver? = this.linkedSecretResolver
-        ?: this.secretStore?.let { SecretStoreLinkedSecretResolver(it) }
 
     private val sshKeyFile: Path = tempDir.resolve(".git-ssh-key")
     private val gitConfigFile: Path = tempDir.resolve(".gitconfig")
     private val gitCredentialConfigFile: Path = tempDir.resolve(".gitconfig-credential")
     private val answerFile: Path = tempDir.resolve(".git-answer")
+    private val sshPassphraseFile: Path = tempDir.resolve(".git-passphrase")
     private val askpassScript: Path = tempDir.resolve(".git-askpass")
     private val credentialHelperScript: Path = tempDir.resolve(".git-credential-helper")
-    private val sshWrapperScript: Path = tempDir.resolve(".git-ssh-wrapper")
     private var isClosed = false
+
+    /**
+     * Whether the configuration of this checkout carries a Basic header.
+     *
+     * The configuration is written either way: a remote that cannot
+     * authenticate with a password still gets a configuration of its own, so
+     * that git reads THIS one and not the one of whoever runs the checkout.
+     * What differs is what that configuration SAYS, and the record of a
+     * checkout has to say that: a checkout that applied no credential must not
+     * point at a configuration that carries none.
+     */
+    private var basicHeaderWritten = false
 
     /**
      * Where ssh records the host keys it has seen.
@@ -84,9 +89,23 @@ class GitCredentialsApplier(
     }
 
     /**
-     * Exposes the gitconfig file path (.gitconfig) for test verification.
+     * The configuration that carries the Basic header, or `null` when there is none.
+     *
+     * A transport that does not authenticate with a password gets a configuration
+     * that says nothing, and the path to a file that holds nothing would be a path
+     * to a lie: the record of a checkout has to say what happened, and the header
+     * was not written.
 */
-    fun gitConfigFilePath(): String = gitConfigFile.toString()
+    fun gitConfigFilePath(): String? = gitConfigFile.takeIf { basicHeaderWritten }?.toString()
+
+    /**
+     * The SSH key this checkout wrote, or `null` when it wrote none.
+     *
+     * The key is what the SSH channel applies, so this is what says the channel
+     * ran: a checkout that declared an SSH key and got none is not a checkout
+     * that applied a credential.
+    */
+    fun sshKeyPath(): String? = sshKeyFile.takeIf { Files.exists(it) }?.toString()
 
     /**
      * Exposes the answer file path for test verification.
@@ -119,17 +138,13 @@ class GitCredentialsApplier(
      * that match. The host of the credential is NOT read from the id of the
      * credential — an id is a label, and a label is not an authority.
      *
-     * @param tokenSecret SecretHandleRef pointing to the token credential
+     * @param token The token the checkout declared, already resolved by the caller
      * @param repoUrl The remote the checkout was given; it names the scope
 */
-    fun apply(tokenSecret: SecretHandleRef, repoUrl: String? = null) {
+    fun apply(token: ByteArray, repoUrl: String? = null) {
         check(!isClosed) { "GitCredentialsApplier already closed" }
 
         val scope = credentialScopeFor(repoUrl)
-
-        // The secret is resolved even when there is no scope, so a credential that
-        // cannot be resolved fails the checkout instead of being dropped in silence.
-        val tokenBytes = resolveSecret(tokenSecret)
 
         if (scope == null) {
             // Nothing is written: no token, no helper. The configuration is still
@@ -142,7 +157,7 @@ class GitCredentialsApplier(
         // The answer file holds the token and nothing else: the scope lives in the
         // configuration, where git reads it, and a second copy of the token in a
         // second file would be a second place to wipe.
-        Files.writeString(answerFile, "$ANSWER_KEY\n${String(tokenBytes, Charsets.UTF_8)}\n")
+        Files.writeString(answerFile, "$ANSWER_KEY\n${String(token, Charsets.UTF_8)}\n")
         Files.setPosixFilePermissions(answerFile, CredentialFilePermissions.OWNER_READ_WRITE)
 
         writeCredentialHelperScript()
@@ -152,54 +167,55 @@ class GitCredentialsApplier(
     /**
      * Applies credentials for the usernamePassword channel using per-host config.
      * Uses `extraHeader` via GIT_CONFIG_GLOBAL per-host config section.
-     * For http/https URLs: writes valid gitconfig with proper [http "https://host"] section.
-     * For non-http URLs: writes minimal gitconfig that satisfies test assertions but
-     * is not used by git (git ignores HTTP Basic auth for these transports).
-     * @param usernameSecret SecretHandleRef for the username credential
-     * @param passwordSecret SecretHandleRef for the password credential
+     *
+     * The scope of the header is the URL of the remote, and git decides whether a
+     * request matches it: this class does not filter the scope by a rule of its
+     * own. A remote that does not authenticate with a password gets a
+     * configuration that says nothing.
+     *
+     * @param username The user name the checkout declared
+     * @param password The password the checkout declared
      * @param repoUrl Optional repository URL to determine transport type and extract host
 */
-    fun apply(usernameSecret: SecretHandleRef, passwordSecret: SecretHandleRef, repoUrl: String? = null) {
+    fun apply(username: String, password: ByteArray, repoUrl: String? = null) {
         check(!isClosed) { "GitCredentialsApplier already closed" }
 
-        val isHttpUrl = repoUrl?.startsWith("http://") == true || repoUrl?.startsWith("https://") == true
+        val scope = credentialScopeFor(repoUrl)
 
-        if (isHttpUrl) {
-            // The scope of a Basic header is the URL of the remote, PORT INCLUDED:
-            // a remote that names a port is a different host as far as git is
-            // concerned, and a scope that dropped the port would not match the
-            // request that remote makes.
-            val authority = if (repoUrl == null) null else authorityOf(repoUrl)
-            val looksLikeHttpHostname = authority != null &&
-                authority.contains('.') && !authority.contains('/') && authority.isNotBlank()
-
-            if (looksLikeHttpHostname) {
-                // Valid HTTP hostname - write per-host gitconfig with extraHeader
-                val encoded = resolveAndEncode(usernameSecret, passwordSecret)
-                val gitConfig = buildPerHostGitConfig(authority, encoded)
-                Files.writeString(gitConfigFile, gitConfig)
-                Files.setPosixFilePermissions(gitConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
-            } else {
-                // Host doesn't look like a valid HTTP hostname - write minimal no-op config
-                Files.writeString(gitConfigFile, MINIMAL_GIT_CONFIG)
-                Files.setPosixFilePermissions(gitConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
-            }
-        } else {
-            // Non-HTTP URL (file://, ssh://, local paths) - write minimal config to satisfy
-            // test assertions, but git will ignore this for non-HTTP transports
+        if (scope == null) {
+            // No header: this remote does not authenticate with a password, or it
+            // does so in a way that would carry the password in clear text. The
+            // configuration is still written, so git reads THIS one and not the
+            // one of whoever runs the checkout.
             Files.writeString(gitConfigFile, MINIMAL_GIT_CONFIG)
             Files.setPosixFilePermissions(gitConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
+            return
         }
+
+        val encoded = encodeBasic(username, password)
+        val gitConfig = buildPerHostGitConfig(scope, encoded)
+        Files.writeString(gitConfigFile, gitConfig)
+        Files.setPosixFilePermissions(gitConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
+        basicHeaderWritten = true
     }
 
     /**
-     * Applies SSH credentials using GIT_SSH_COMMAND with answer-file pattern.
-     * SSH private key is written to temp file (0600), then GIT_SSH_COMMAND
-     * invokes a script that reads the key path from an answer file.
-     * For non-SSH URLs (file://, http://, https://), this is a no-op since
-     * SSH is only used for ssh:// or git@host:path URLs.
+     * Applies SSH credentials: the private key, and its passphrase when one was
+     * declared.
+     *
+     * The key is a file of its own (0600) and the path to it is what the ssh
+     * command names. The passphrase is a file of its own (0600), read by the
+     * askpass OpenSSH runs. Neither is in the environment, neither is in argv,
+     * and the checkout wipes both.
+     *
+     * For non-SSH URLs (file://, https://) this is a no-op, since SSH is only
+     * used for ssh:// or the git@host:path form.
+     *
+     * @param privateKey The private key the checkout declared
+     * @param passphrase The passphrase of that key, or null when it has none
+     * @param repoUrl The remote the checkout was given; it decides the transport
 */
-    fun applySsh(sshKeySecret: SecretHandleRef, passphraseSecret: SecretHandleRef?, repoUrl: String? = null) {
+    fun applySsh(privateKey: ByteArray, passphrase: ByteArray?, repoUrl: String? = null) {
         check(!isClosed) { "GitCredentialsApplier already closed" }
 
         // Skip for non-SSH URLs
@@ -209,25 +225,18 @@ class GitCredentialsApplier(
             return
         }
 
-        val host = repoUrl?.let { extractHost(it) } ?: ""
-
-        // Write SSH key to temp file (0600)
-        val keyBytes = resolveSecret(sshKeySecret)
-        Files.writeString(sshKeyFile, String(keyBytes, Charsets.UTF_8))
+        // Write SSH key to temp file (0600). The bytes are written as they are:
+        // a key is PEM today, but a decoder that has to survive a byte it did
+        // not expect must not be handed a re-encoded copy of the key.
+        Files.write(sshKeyFile, privateKey)
         Files.setPosixFilePermissions(sshKeyFile, CredentialFilePermissions.OWNER_READ_WRITE)
 
-        // Write answer file with key path (keyed by host)
-        val answerContent = "$host\n${sshKeyFile}\n"
-        Files.writeString(answerFile, answerContent)
-        Files.setPosixFilePermissions(answerFile, CredentialFilePermissions.OWNER_READ_WRITE)
-
-        // Write GIT_ASKPASS script for passphrase (if provided)
-        if (passphraseSecret != null) {
-            writeAskpassScript(passphraseSecret)
+        // A key without a passphrase is asked nothing, so there is no askpass
+        // to write and no question to answer.
+        if (passphrase != null) {
+            writeSshPassphrase(passphrase)
+            writeAskpassScript()
         }
-
-        // Write SSH wrapper script
-        writeSshWrapperScript()
     }
 
     /**
@@ -249,6 +258,18 @@ class GitCredentialsApplier(
             env["GIT_CONFIG_GLOBAL"] = gitConfigFile.toString()
         }
 
+        // The configuration of the SYSTEM is not read either. git reads it in
+        // addition to the global one, and a machine-wide `http.extraHeader`
+        // would be a SECOND header on the same request, from a configuration
+        // nobody declared for this checkout. Measured: `GIT_CONFIG_NOSYSTEM`
+        // wins over `GIT_CONFIG_SYSTEM`, and with it the system file is not
+        // read at all.
+        //
+        // The configuration of the REPOSITORY is read by git whatever this
+        // checkout does: it belongs to the repository, not to the machine, and
+        // git has no way to be told to skip it.
+        env["GIT_CONFIG_NOSYSTEM"] = "1"
+
         if (Files.exists(sshKeyFile)) {
             // The ssh command the checkout runs with.
             //
@@ -266,12 +287,25 @@ class GitCredentialsApplier(
             // The key path is QUOTED: a temporary directory with a space in its name
             // would otherwise split the argument and hand ssh a path that is not the
             // key.
+            //
+            // `IdentitiesOnly=yes` says that the key declared is the ONLY key
+            // offered: without it ssh also offers the identities of the machine
+            // that runs the checkout, and a checkout that declared a key would
+            // authenticate with whatever the machine happened to have.
             env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=accept-new " +
-                "-o UserKnownHostsFile=\"${knownHosts}\" -i \"${sshKeyFile}\""
+                "-o UserKnownHostsFile=\"${knownHosts}\" -o IdentitiesOnly=yes " +
+                "-i \"${sshKeyFile}\""
         }
 
         if (Files.exists(askpassScript)) {
-            env["GIT_ASKPASS"] = askpassScript.toString()
+            // The name OpenSSH reads. `GIT_ASKPASS` is git's own name for the
+            // program git asks, and OpenSSH never looks at it: a passphrase
+            // asked by ssh would find nobody to answer it.
+            env["SSH_ASKPASS"] = askpassScript.toString()
+            // `force` makes OpenSSH use the program even when there is a
+            // terminal: a checkout runs without an operator to answer, and a
+            // question nobody answers is a checkout that hangs.
+            env["SSH_ASKPASS_REQUIRE"] = "force"
         }
 
         return env
@@ -285,6 +319,17 @@ class GitCredentialsApplier(
      * run, and the checkout would ask the remote for a password it never gets.
      */
     private fun shellQuoted(path: String): String = "'" + path.replace("'", "'\\''") + "'"
+
+    /**
+     * A path in a double-quoted shell assignment.
+     *
+     * The characters that would END the assignment are escaped, because the
+     * path is not this class's to choose: a directory whose name carries a
+     * quote would otherwise end the assignment and put the rest of the path
+     * into the shell as a command.
+     */
+    private fun shellDoubleQuoted(path: String): String = "\"" +
+        path.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$").replace("`", "\\`") + "\""
 
     private fun writeCredentialHelperScript() {
         val script = buildCredentialHelperScript()
@@ -322,11 +367,20 @@ class GitCredentialsApplier(
     }
 
     /**
-     * The scope of a token credential, or `null` when the remote cannot use one.
+     * The scope of a credential over this remote, or `null` when the remote
+     * cannot use one.
      *
-     * Only `https` scopes a token. A token in an `http://` remote travels in
+     * The scope is the URL of the remote: the scheme and the authority, with
+     * the port when the remote names one. git matches every request against
+     * that pattern and consults this checkout's helper or applies its header
+     * only to the requests that match, so the scope is git's to decide and not
+     * this class's. git's own parser accepts `localhost` and IPv6 literals, and
+     * a rule here that rejected them would be a second rule about a fact git
+     * already owns.
+     *
+     * Only `https` carries a credential. In plain `http` the secret travels in
      * clear text, and the rule that refuses that remote lives in the domain;
-     * here it means the token is not written at all, so a remote that cannot
+     * here it means the secret is not written at all, so a remote that cannot
      * authenticate securely simply gets no credential.
      */
     private fun credentialScopeFor(repoUrl: String?): String? {
@@ -336,23 +390,23 @@ class GitCredentialsApplier(
         return "$scheme://${authorityOf(url)}"
     }
 
-    private fun writeAskpassScript(passphraseSecret: SecretHandleRef) {
-        // Write passphrase to answer file keyed by purpose
-        val passphraseBytes = resolveSecret(passphraseSecret)
-        val passphraseValue = String(passphraseBytes, Charsets.UTF_8)
-        val answerContent = "passphrase\n$passphraseValue\n"
-        Files.writeString(answerFile, answerContent)
-        Files.setPosixFilePermissions(answerFile, CredentialFilePermissions.OWNER_READ_WRITE)
+    /**
+     * The passphrase of the key, in the file only the askpass reads.
+     *
+     * One file, one form, one writer: the passphrase is not in the answer file
+     * of the token channel, not in the script, not in the environment and not
+     * in argv. The checkout wipes this file when it closes.
+     */
+    private fun writeSshPassphrase(passphrase: ByteArray) {
+        val passphraseValue = String(passphrase, Charsets.UTF_8)
+        Files.writeString(sshPassphraseFile, "$PASSPHRASE_KEY\n$passphraseValue\n")
+        Files.setPosixFilePermissions(sshPassphraseFile, CredentialFilePermissions.OWNER_READ_WRITE)
+    }
 
+    private fun writeAskpassScript() {
         val script = buildAskpassScript()
         Files.writeString(askpassScript, script)
         Files.setPosixFilePermissions(askpassScript, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
-    }
-
-    private fun writeSshWrapperScript() {
-        val script = buildSshWrapperScript()
-        Files.writeString(sshWrapperScript, script)
-        Files.setPosixFilePermissions(sshWrapperScript, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
     }
 
     /**
@@ -369,27 +423,22 @@ class GitCredentialsApplier(
      * place nobody asked for, and it is not needed: the header below is what
      * authenticates the request, and it never reaches argv.
      */
-    private fun buildPerHostGitConfig(host: String, encodedBasicAuth: String): String {
-        return "[http \"https://$host\"]\n" +
+    private fun buildPerHostGitConfig(scope: String, encodedBasicAuth: String): String {
+        return "[http \"$scope\"]\n" +
             "    extraHeader = Authorization: Basic $encodedBasicAuth\n"
     }
 
-    private fun resolveSecret(ref: SecretHandleRef): ByteArray {
-        val resolver = effectiveResolver
-            ?: throw IllegalStateException("No CredentialLinkedSecretResolver or SecretStore available for credential resolution: ${ref.id.value}")
-        return resolver.resolve(LinkedSecretRef(ref.id)).use { it.copyOf() }
-    }
-
-    private fun resolveAndEncode(usernameRef: SecretHandleRef, passwordRef: SecretHandleRef): String {
-        val resolver = effectiveResolver
-            ?: throw IllegalStateException("No CredentialLinkedSecretResolver or SecretStore available for credential resolution: ${usernameRef.id.value}")
-        return resolver.resolve(LinkedSecretRef(usernameRef.id)).use { userBytes ->
-            resolver.resolve(LinkedSecretRef(passwordRef.id)).use { passBytes ->
-                val userValue = String(userBytes, Charsets.UTF_8)
-                val passValue = String(passBytes, Charsets.UTF_8)
-                Base64.getEncoder().encodeToString("$userValue:$passValue".toByteArray(Charsets.UTF_8))
-            }
-        }
+    /**
+     * The Basic header value: the credentials of the remote, base64 of `user:pass`.
+     *
+     * The format is the one HTTP itself defines, and the transport that carries
+     * it is the one that decides whether to send it: this method does not
+     * decide that, and it does not decide it twice.
+     */
+    private fun encodeBasic(username: String, password: ByteArray): String {
+        val userValue = username
+        val passValue = String(password, Charsets.UTF_8)
+        return Base64.getEncoder().encodeToString("$userValue:$passValue".toByteArray(Charsets.UTF_8))
     }
 
     /**
@@ -452,90 +501,52 @@ class GitCredentialsApplier(
         """.trimMargin()
     }
 
+    /**
+     * The program OpenSSH runs when it needs the passphrase of the key.
+     *
+     * OpenSSH's contract, as measured on OpenSSH 10.5: it runs the program
+     * named in `SSH_ASKPASS` with the PROMPT as its first argument, and reads
+     * the answer from that program's standard output. The prompt does not
+     * arrive on standard input, and `GIT_ASKPASS` is a name OpenSSH does not
+     * read at all.
+     *
+     * A question that is not about the passphrase gets NO answer: this checkout
+     * holds the passphrase of its key and nothing else, and answering a
+     * question it cannot answer would hand a secret to whoever asked.
+     *
+     * The passphrase is not in this script: it is in the file this script
+     * names, and the checkout wipes that file.
+     */
     private fun buildAskpassScript(): String {
         val dollar = "\$"
-        val answerFilePath = answerFile.toString()
-        val answerFileRef = "\$ANSWER_FILE"
-        val promptVar = "\$prompt"
-        val lineVar = "\$line"
         return """
             |#!/bin/bash
-            |# GIT_ASKPASS script using answer-file pattern
-            |# Passphrase NEVER in environment (INV-L6-CR-011)
+            |# The passphrase of the SSH key this checkout declared.
+            |#
+            |# OpenSSH runs this program with the prompt as its first argument and
+            |# reads the answer from our standard output.
             |
-            |${answerFileRef}="${answerFilePath}"
+            |passphrase_file=${shellDoubleQuoted(sshPassphraseFile.toString())}
+            |prompt="${dollar}{1:-}"
             |
-            |# Read prompt from stdin (e.g., "Enter passphrase for key '/path/to/key': ")
-            |read -r prompt
-            |
-            |# Extract purpose from prompt (e.g., "passphrase for key")
-            |if [[ "${promptVar}" == *"passphrase"* ]]; then
-            |    while IFS= read -r line; do
-            |        if [[ "${lineVar}" == "passphrase" ]]; then
-            |            read -r secret
-            |            echo "${dollar}{secret}"
-            |            break
+            |case "${dollar}prompt" in
+            |    *passphrase*)
+            |        if [ ! -r "${dollar}passphrase_file" ]; then
+            |            exit 1
             |        fi
-            |    done < "${answerFileRef}"
-            |fi
-            |
-            |# Unset any potential secret env vars (INV-L6-CR-012)
-            |unset ANSWER_FILE GIT_ASKPASS
+            |        {
+            |            IFS= read -r _key
+            |            IFS= read -r secret
+            |        } < "${dollar}passphrase_file"
+            |        printf '%s\n' "${dollar}secret"
+            |        ;;
+            |    *)
+            |        # Not a question about the passphrase: this checkout does not
+            |        # hold an answer to it.
+            |        exit 1
+            |        ;;
+            |esac
             |exit 0
-        """.trimMargin()
-    }
-
-    private fun buildSshWrapperScript(): String {
-        val dollar = "\$"
-        val answerFilePath = answerFile.toString()
-        val answerFileRef = "\$ANSWER_FILE"
-        val dollar1 = "\$1"
-        val dollarAt = "\$@"
-        val dollarSHELL_KEY = "\$SSH_KEY"
-        val hostVar = "\$HOST"
-        val lineVar = "\$line"
-        val keypathVar = "\$keypath"
-        // The known hosts file travels in the SCRIPT, quoted: the path is the operator's
-        // or the user's, and neither is guaranteed to be free of spaces.
-        val knownHostsPath = knownHosts.toString()
-        return """
-            |#!/bin/bash
-            |# SSH wrapper using answer-file pattern
-            |# Key path NEVER in environment (INV-L6-CR-011)
-            |
-            |${answerFileRef}="${answerFilePath}"
-            |SSH_KEY=""
-            |
-            |# Extract host from GIT_SSH_COMMAND or use first arg
-            |HOST=""
-            |if [[ -n ${dollar1} ]]; then
-            |    # Extract host from git's invocation
-            |    HOST="${dollar1}"
-            |    HOST="${dollar}{HOST#*@}"
-            |    HOST="${dollar}{HOST%%:*}"
-            |fi
-            |
-            |# Find key path for this host in answer file
-            |if [[ -n "${hostVar}" ]]; then
-            |    while IFS= read -r line; do
-            |        if [[ "${lineVar}" == "${hostVar}" ]]; then
-            |            read -r keypath
-            |            SSH_KEY="${keypathVar}"
-            |            break
-            |        fi
-            |    done < "${answerFileRef}"
-            |fi
-            |
-            |# Build SSH command with key.
-            |# StrictHostKeyChecking=accept-new: a host we have not met is accepted and
-            |# RECORDED, and a host whose key CHANGED is refused. The old value (`no`,
-            |# with /dev/null as the known hosts file) accepted every key every time,
-            |# which is the same as trusting whoever answers.
-            |if [[ -n "${dollarSHELL_KEY}" && -f "${dollarSHELL_KEY}" ]]; then
-            |    exec ssh -i "${dollarSHELL_KEY}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="${knownHostsPath}" ${dollarAt}
-            |else
-            |    exec ssh ${dollarAt}
-            |fi
         """.trimMargin()
     }
 
@@ -577,6 +588,9 @@ class GitCredentialsApplier(
     companion object {
         /** The name the answer file gives to the value it holds on its second line. */
         private const val ANSWER_KEY = "token"
+
+        /** The name the passphrase file gives to the value it holds on its second line. */
+        private const val PASSPHRASE_KEY = "passphrase"
 
         /** The only scheme a token credential is scoped to. */
         private const val SCHEME_HTTPS = "https"
@@ -679,9 +693,10 @@ class GitCredentialsApplier(
         /**
          * The host of a remote, WITHOUT the port: what ssh records a key for.
          *
-         * The ssh wrapper strips the port from the host it is given, and the known
-         * hosts file names a host that way, so the answer file of the ssh channel
-         * is keyed by the host alone.
+         * The known hosts file names a host that way, so this is the name a key
+         * is recorded under. It is also what the refusal of a bad argument names,
+         * and a refusal that repeated the whole argument would publish the
+         * credential it exists to keep out of the record.
          */
         fun extractHost(url: String): String {
             val afterScheme = url.substringAfter("://", missingDelimiterValue = "")
@@ -748,7 +763,7 @@ class GitCredentialsApplier(
         wipeFile(answerFile)
         wipeFile(credentialHelperScript)
         wipeFile(askpassScript)
-        wipeFile(sshWrapperScript)
+        wipeFile(sshPassphraseFile)
         wipeFile(sshKeyFile)
         wipeFile(gitCredentialConfigFile)
         wipeFile(gitConfigFile)

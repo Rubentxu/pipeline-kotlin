@@ -17,14 +17,20 @@ import java.util.Base64
  * The credential helper and GIT_ASKPASS scripts NEVER receive secrets via environment
  * variables. Instead:
  * 1. JVM writes pre-resolved credentials to an answer file at `apply()` time
- * 2. The file is keyed by `host+path` for isolation
- * 3. Script reads the answer file, matches by host, then **unsets** the env var
- * 4. Script outputs the secret to stdout for git to consume
+ * 2. Script reads the answer file
+ * 3. Script outputs the secret to stdout for git to consume
+ * ## Who decides the scope
+ * The scope of a credential is decided by GIT, not by this class: the credential
+ * configuration carries the URL of the remote as a PATTERN, git matches every
+ * request against that pattern, and only a request that matches reaches the
+ * helper. A host the checkout never named is never asked about, so no script
+ * here has to compare hosts — a comparison here would be a second rule about a
+ * fact git already owns, and the branch that refused would be unreachable.
  * ## Security Properties
  * Secrets NEVER in helper env
- * Helper script unsets any env vars after reading
  * - Temp files 0600 (credentials, ssh keys), 0700 (directories)
  * - Wiped in finally block
+ * - The token of a checkout that declared one is written in ONE file
  * ## Supported Channels
  * - **string**: API token via `credential helper` + answer file
  * - **usernamePassword**: Basic auth via `extraHeader` (per-host config)
@@ -52,9 +58,9 @@ class GitCredentialsApplier(
     private val effectiveResolver: CredentialLinkedSecretResolver? = this.linkedSecretResolver
         ?: this.secretStore?.let { SecretStoreLinkedSecretResolver(it) }
 
-    private val gitCredentialsFile: Path = tempDir.resolve(".git-credentials")
     private val sshKeyFile: Path = tempDir.resolve(".git-ssh-key")
     private val gitConfigFile: Path = tempDir.resolve(".gitconfig")
+    private val gitCredentialConfigFile: Path = tempDir.resolve(".gitconfig-credential")
     private val answerFile: Path = tempDir.resolve(".git-answer")
     private val askpassScript: Path = tempDir.resolve(".git-askpass")
     private val credentialHelperScript: Path = tempDir.resolve(".git-credential-helper")
@@ -78,11 +84,6 @@ class GitCredentialsApplier(
     }
 
     /**
-     * Exposes the credentials file path (.git-credentials) for test verification.
-*/
-    fun credentialsFilePath(): String = gitCredentialsFile.toString()
-
-    /**
      * Exposes the gitconfig file path (.gitconfig) for test verification.
 */
     fun gitConfigFilePath(): String = gitConfigFile.toString()
@@ -93,45 +94,59 @@ class GitCredentialsApplier(
     fun answerFilePath(): String = answerFile.toString()
 
     /**
+     * The credential helper this checkout wrote, or `null` when no token credential was applied.
+     *
+     * A remote that cannot authenticate with a token gets no helper and no token:
+     * the checkout then runs without a credential, and this says so. The answer is
+     * `null` and not the path of a file that does not exist, because the record of
+     * a checkout has to say what happened and not where something would have been.
+     */
+    fun credentialHelperPath(): String? =
+        credentialHelperScript.takeIf { Files.exists(it) }?.toString()
+
+    /**
      * Applies credentials for the string channel (API token) using answer-file pattern.
-     * Writes credential helper script and answer file, then configures git to use it.
-     * For non-HTTP(S) URLs (file://, ssh://, local paths), writes the token.git-credentials
-     * directly (satisfies test assertions) even though git ignores credential helpers for these.
+     * Writes the token to the answer file, writes the helper that git runs, and
+     * writes the credential configuration that scopes the helper to the remote.
+     *
+     * A remote that does not authenticate over HTTP gets NO token on disk: the
+     * token would travel nowhere, and a copy of it in a directory nobody asked
+     * for is a copy somebody has to wipe. The checkout then runs without a
+     * credential, and [credentialHelperPath] says so.
+     *
+     * The scope is the URL of the remote, and it is written as a PATTERN: git
+     * matches every request against it and asks this helper only for the ones
+     * that match. The host of the credential is NOT read from the id of the
+     * credential — an id is a label, and a label is not an authority.
+     *
      * @param tokenSecret SecretHandleRef pointing to the token credential
-     * @param repoUrl Optional repository URL to determine if HTTP credential helper is applicable
+     * @param repoUrl The remote the checkout was given; it names the scope
 */
     fun apply(tokenSecret: SecretHandleRef, repoUrl: String? = null) {
         check(!isClosed) { "GitCredentialsApplier already closed" }
 
-        val isHttpUrl = repoUrl?.startsWith("http://") == true || repoUrl?.startsWith("https://") == true
+        val scope = credentialScopeFor(repoUrl)
 
-        val host = extractHost(credentials.string?.id?.value ?: "")
-
-        // Write answer file with pre-resolved token (keyed by host)
+        // The secret is resolved even when there is no scope, so a credential that
+        // cannot be resolved fails the checkout instead of being dropped in silence.
         val tokenBytes = resolveSecret(tokenSecret)
-        val tokenValue = String(tokenBytes, Charsets.UTF_8)
-        val answerContent = "$host\n$tokenValue\n"
-        Files.writeString(answerFile, answerContent)
+
+        if (scope == null) {
+            // Nothing is written: no token, no helper. The configuration is still
+            // written, so git reads THIS configuration and not the one of whoever
+            // runs the checkout.
+            writeCredentialConfiguration(null)
+            return
+        }
+
+        // The answer file holds the token and nothing else: the scope lives in the
+        // configuration, where git reads it, and a second copy of the token in a
+        // second file would be a second place to wipe.
+        Files.writeString(answerFile, "$ANSWER_KEY\n${String(tokenBytes, Charsets.UTF_8)}\n")
         Files.setPosixFilePermissions(answerFile, CredentialFilePermissions.OWNER_READ_WRITE)
 
-        // Also write to gitCredentialsFile (.git-credentials) for test compatibility.
-        // For HTTP(S): git's store helper uses this file; git invokes the helper.
-        // For non-HTTP: git ignores helpers, but we write the token here to satisfy
-        // test assertions that check.git-credentials content.
-        Files.writeString(gitCredentialsFile, "$host\n$tokenValue\n")
-        Files.setPosixFilePermissions(gitCredentialsFile, CredentialFilePermissions.OWNER_READ_WRITE)
-
-        if (isHttpUrl) {
-            // For HTTP(S) URLs: write the credential helper script git will actually use
-            writeCredentialHelperScript()
-        } else {
-            // For non-HTTP URLs (file://, ssh://, local paths): write a minimal no-op helper
-            // git ignores credential helpers for these transports, but we write a valid script
-            // to satisfy test assertions about file existence.
-            val minimalHelper = "#!/bin/bash\nexit 0\n"
-            Files.writeString(credentialHelperScript, minimalHelper)
-            Files.setPosixFilePermissions(credentialHelperScript, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
-        }
+        writeCredentialHelperScript()
+        writeCredentialConfiguration(scope)
     }
 
     /**
@@ -150,14 +165,18 @@ class GitCredentialsApplier(
         val isHttpUrl = repoUrl?.startsWith("http://") == true || repoUrl?.startsWith("https://") == true
 
         if (isHttpUrl) {
-            // Extract host from repoUrl for HTTP(S) URLs
-            val host = repoUrl?.let { extractHost(it) } ?: usernameSecret.id.value
-            val looksLikeHttpHostname = host.contains('.') && !host.contains('/') && host.isNotBlank()
+            // The scope of a Basic header is the URL of the remote, PORT INCLUDED:
+            // a remote that names a port is a different host as far as git is
+            // concerned, and a scope that dropped the port would not match the
+            // request that remote makes.
+            val authority = if (repoUrl == null) null else authorityOf(repoUrl)
+            val looksLikeHttpHostname = authority != null &&
+                authority.contains('.') && !authority.contains('/') && authority.isNotBlank()
 
             if (looksLikeHttpHostname) {
                 // Valid HTTP hostname - write per-host gitconfig with extraHeader
                 val encoded = resolveAndEncode(usernameSecret, passwordSecret)
-                val gitConfig = buildPerHostGitConfig(host, encoded)
+                val gitConfig = buildPerHostGitConfig(authority, encoded)
                 Files.writeString(gitConfigFile, gitConfig)
                 Files.setPosixFilePermissions(gitConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
             } else {
@@ -218,18 +237,16 @@ class GitCredentialsApplier(
     fun buildEnv(): Map<String, String> {
         val env = mutableMapOf<String, String>()
 
-        // usernamePassword channel: gitConfigFile has extraHeader config
-        if (Files.exists(gitConfigFile)) {
+        // The configuration git reads as its global one. It is THIS checkout's
+        // configuration and not the one of whoever runs the checkout, so the
+        // credential helpers of the operator's own git never see a request of
+        // ours. The usernamePassword channel writes a header into gitConfigFile;
+        // the string channel writes the scoped helper into gitCredentialConfigFile.
+        // They are mutually exclusive: a checkout applies ONE channel.
+        if (Files.exists(gitCredentialConfigFile)) {
+            env["GIT_CONFIG_GLOBAL"] = gitCredentialConfigFile.toString()
+        } else if (Files.exists(gitConfigFile)) {
             env["GIT_CONFIG_GLOBAL"] = gitConfigFile.toString()
-        }
-
-        // string channel (answer-file pattern): write a gitconfig that uses our helper script
-        if (Files.exists(credentialHelperScript)) {
-            val helperConfig = tempDir.resolve(".gitconfig-helper")
-            val configContent = "[credential]\n    helper=${credentialHelperScript}\n"
-            Files.writeString(helperConfig, configContent)
-            Files.setPosixFilePermissions(helperConfig, CredentialFilePermissions.OWNER_READ_WRITE)
-            env["GIT_CONFIG_GLOBAL"] = helperConfig.toString()
         }
 
         if (Files.exists(sshKeyFile)) {
@@ -260,10 +277,63 @@ class GitCredentialsApplier(
         return env
     }
 
+    /**
+     * A path, quoted for the shell that git runs the helper with.
+     *
+     * git runs the value of `credential.helper` through the shell, and a path with
+     * a space in it would otherwise arrive as two words: the helper would never
+     * run, and the checkout would ask the remote for a password it never gets.
+     */
+    private fun shellQuoted(path: String): String = "'" + path.replace("'", "'\\''") + "'"
+
     private fun writeCredentialHelperScript() {
         val script = buildCredentialHelperScript()
         Files.writeString(credentialHelperScript, script)
         Files.setPosixFilePermissions(credentialHelperScript, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
+    }
+
+    /**
+     * The credential configuration that scopes the helper to the remote.
+     *
+     * The pattern IS the scope: git matches every request against it and asks
+     * this helper only for the requests that match, so a remote the checkout
+     * never named is never asked about. The scope is git's, and this class does
+     * not carry a second rule about it.
+     *
+     * A `null` scope writes the configuration WITHOUT a helper: the checkout
+     * still hands git its own configuration instead of the one of whoever runs
+     * it, and git is told nothing about credentials.
+     *
+     * The helper is named in the `!` form and quoted, because git runs that
+     * value through the shell: a directory with a space in its name would
+     * otherwise split into two words and the helper would never run. The `!`
+     * form is the one git reads as a command: a plain path that does not look
+     * absolute is read as the name of a `credential-` helper to look up in the
+     * PATH, and a quoted one is read as neither.
+     */
+    private fun writeCredentialConfiguration(scope: String?) {
+        val content = if (scope == null) {
+            MINIMAL_GIT_CONFIG
+        } else {
+            "[credential \"$scope\"]\n    helper = !${shellQuoted(credentialHelperScript.toString())}\n"
+        }
+        Files.writeString(gitCredentialConfigFile, content)
+        Files.setPosixFilePermissions(gitCredentialConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
+    }
+
+    /**
+     * The scope of a token credential, or `null` when the remote cannot use one.
+     *
+     * Only `https` scopes a token. A token in an `http://` remote travels in
+     * clear text, and the rule that refuses that remote lives in the domain;
+     * here it means the token is not written at all, so a remote that cannot
+     * authenticate securely simply gets no credential.
+     */
+    private fun credentialScopeFor(repoUrl: String?): String? {
+        val url = repoUrl ?: return null
+        val scheme = url.substringBefore("://", missingDelimiterValue = "").lowercase()
+        if (scheme != SCHEME_HTTPS) return null
+        return "$scheme://${authorityOf(url)}"
     }
 
     private fun writeAskpassScript(passphraseSecret: SecretHandleRef) {
@@ -322,43 +392,62 @@ class GitCredentialsApplier(
         }
     }
 
-    // Build script as simple string concatenation to avoid Kotlin string interpolation issues
+    /**
+     * The helper git runs when it asks for a credential.
+     *
+     * It speaks git's protocol: the request arrives on stdin as key=value lines
+     * ended by a blank line, and the answer goes to stdout in the same shape.
+     *
+     * It does NOT decide the scope. git consults this helper only for the URL
+     * the checkout named, because that URL is the pattern in the credential
+     * configuration, so a host the checkout did not name never reaches this
+     * script. There is no host in the script and no comparison to make: a
+     * comparison here would be a second rule about a fact git already owns, and
+     * the branch that refused would be unreachable.
+     *
+     * The token is not in this script: it is in the answer file, which this
+     * script names and the checkout wipes.
+     */
     private fun buildCredentialHelperScript(): String {
         val dollar = "\$"  // single dollar sign for shell
         val answerFilePath = answerFile.toString()
-        val answerFileRef = "\$ANSWER_FILE"
-        val dollar1 = "\$1"
-        val hostVar = "\$host"
-        val lineVar = "\$line"
         return """
             |#!/bin/bash
             |# GIT credential helper using answer-file pattern
             |# Secrets NEVER in environment (INV-L6-CR-011)
+            |#
+            |# The request arrives on stdin as key=value lines ended by a blank line,
+            |# and the answer goes to stdout in the same shape.
+            |#
+            |# The scope is git's: this helper is consulted only for the URL the
+            |# checkout named, so no host is compared here.
             |
-            |${answerFileRef}="${answerFilePath}"
+            |answer_file="${answerFilePath}"
             |
-            |# Read host from stdin
-            |read -r host
+            |# Drain the request. `read` takes the NAME of the variable it fills, so
+            |# the name is written without a dollar sign; a dollar sign there would
+            |# expand to the value the variable has now and the line would land in
+            |# REPLY, where nobody reads it.
+            |while IFS= read -r line; do
+            |    [ -z "${dollar}line" ] && break
+            |done
             |
-            |case ${dollar1} in
+            |case ${dollar}1 in
             |    get)
-            |        # Find matching host in answer file and output username=token
-            |        while IFS= read -r line; do
-            |            if [[ "${lineVar}" == "${hostVar}" ]]; then
-            |                read -r secret
-            |                echo "username=x-access-token"
-            |                echo "password=${dollar}{secret}"
-            |                break
-            |            fi
-            |        done < "${answerFileRef}"
+            |        # The answer file names on its first line what it holds on its
+            |        # second line.
+            |        {
+            |            IFS= read -r _key
+            |            IFS= read -r token
+            |        } < "${dollar}answer_file"
+            |        printf 'username=%s\n' 'x-access-token'
+            |        printf 'password=%s\n' "${dollar}token"
             |        ;;
             |    store|erase)
-            |        # No-op for store/erase - we only provide credentials
+            |        # The checkout never lets git write or erase a credential: the
+            |        # answer file belongs to the checkout, and the checkout wipes it.
             |        ;;
             |esac
-            |
-            |# Unset any potential secret env vars (INV-L6-CR-012)
-            |unset ANSWER_FILE GIT_ASKPASS
             |exit 0
         """.trimMargin()
     }
@@ -486,6 +575,12 @@ class GitCredentialsApplier(
      * the SSH user (`ssh://git@host`) are all allowed.
      */
     companion object {
+        /** The name the answer file gives to the value it holds on its second line. */
+        private const val ANSWER_KEY = "token"
+
+        /** The only scheme a token credential is scoped to. */
+        private const val SCHEME_HTTPS = "https"
+
         /**
          * The configuration a transport that does not authenticate over HTTP gets.
          *
@@ -581,32 +676,60 @@ class GitCredentialsApplier(
          */
         private val PASSWORD_USERINFO_PATTERN = Regex("[a-z][a-z0-9+.-]*://[^/@]*:[^/@]*@")
 
+        /**
+         * The host of a remote, WITHOUT the port: what ssh records a key for.
+         *
+         * The ssh wrapper strips the port from the host it is given, and the known
+         * hosts file names a host that way, so the answer file of the ssh channel
+         * is keyed by the host alone.
+         */
         fun extractHost(url: String): String {
-            // Step 1: strip protocol prefix
-            val noProtocol = url
-                .removePrefix("ssh://")
-                .removePrefix("https://")
-                .removePrefix("http://")
-            // Step 2: strip userinfo (user@) if present before the host
-            val noUserinfo = if (noProtocol.contains("@") && noProtocol.indexOf("@") < noProtocol.indexOf("/")) {
-                noProtocol.substringAfter("@")
+            val afterScheme = url.substringAfter("://", missingDelimiterValue = "")
+            if (afterScheme.isEmpty()) {
+                // The scp-like form (git@host:path): the host is what is between
+                // the '@' and the ':' that starts the path.
+                return requireHost(url.substringAfterLast('@').substringBefore(':').substringBefore('/'), url)
+            }
+            val authority = authorityOf(url)
+            val host = if (authority.startsWith("[")) {
+                authority.substringBefore("]").removePrefix("[")
             } else {
-                noProtocol
+                authority.substringBefore(":")
             }
-            // Step 3: extract host (before /:)
-            val clean = noUserinfo
-                .substringBefore("/")
-                .substringBefore(":")
-            return clean.ifEmpty {
-                // The URL is NOT echoed. This function's callers are exactly the ones
-                // handling a URL that may carry `user:pass@`, so interpolating it here
-                // published the credential in the one message whose whole purpose is to
-                // say the URL was unusable. The length locates the input; the value
-                // stays where it came from.
-                throw IllegalArgumentException(
-                    "Cannot extract host: the URL has no host segment (${url.length} chars)",
-                )
-            }
+            return requireHost(host, url)
+        }
+
+        /**
+         * The authority of a remote: the host, WITH the port when the remote names
+         * one — what git asks a credential for.
+         *
+         * The port belongs to the authority: a remote that names one is a different
+         * host as far as git is concerned, and a scope that dropped the port would
+         * not match the request that remote makes.
+         */
+        private fun authorityOf(url: String): String {
+            val authority = url
+                .substringAfter("://", missingDelimiterValue = "")
+                .substringBefore('/')
+                .substringBefore('?')
+                .substringBefore('#')
+                .substringAfterLast('@')
+            return requireHost(authority, url)
+        }
+
+        /**
+         * The host of a remote, refused when there is none.
+         *
+         * The URL is NOT echoed. This function's callers are exactly the ones
+         * handling a URL that may carry `user:pass@`, so interpolating it here
+         * published the credential in the one message whose whole purpose is to
+         * say the URL was unusable. The length locates the input; the value stays
+         * where it came from.
+         */
+        private fun requireHost(host: String, url: String): String = host.ifEmpty {
+            throw IllegalArgumentException(
+                "Cannot extract host: the URL has no host segment (${url.length} chars)",
+            )
         }
     }
 
@@ -627,7 +750,7 @@ class GitCredentialsApplier(
         wipeFile(askpassScript)
         wipeFile(sshWrapperScript)
         wipeFile(sshKeyFile)
-        wipeFile(gitCredentialsFile)
+        wipeFile(gitCredentialConfigFile)
         wipeFile(gitConfigFile)
         // The DIRECTORY goes too. Wiping the files leaves their names in a directory
         // listing and leaves the directory itself in the system temporary area, where a

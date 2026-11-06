@@ -5,11 +5,13 @@ import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.domain.MismatchedSecretException
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
+import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskRuntime
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
-import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.GitRemotePolicy
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
@@ -195,8 +197,9 @@ open class GitCheckoutExecutor(
         // for verification by the caller AFTER execute returns.
         var credentialHelperPath: String? = null
         var gitConfigFilePath: String? = null
-        val gitCreds: GitCredentials? = try {
-            resolveGitCredentials(req, spec)
+        var sshKeyPath: String? = null
+        val credential: ResolvedCredential? = try {
+            resolveCredential(req, spec)
         } catch (e: IllegalStateException) {
             // The resolver
             // raises IllegalStateException when a declared credentialsRef
@@ -210,7 +213,7 @@ open class GitCheckoutExecutor(
         // built AFTER they were applied because applying them is what writes the files the
         // environment points at.
         val env: Map<String, String>
-        if (gitCreds != null) {
+        if (credential != null) {
             // The applier is the only thing that can put credentials in front of git. A checkout
             // that DECLARED credentials and has no applier refuses here: running git
             // unauthenticated would turn a declared credential into an anonymous attempt, and
@@ -222,22 +225,18 @@ open class GitCheckoutExecutor(
                         "available to apply them. Refusing to run git unauthenticated."
                 )
             )
-            val stringCred = gitCreds.string
-            val userCred = gitCreds.user
-            val passCred = gitCreds.pass
-            val sshKeyCred = gitCreds.sshKey
-            val sshPassphraseCred = gitCreds.sshPassphrase
-            when {
-                stringCred != null -> {
-                    applier.apply(stringCred, spec.url)
+            when (credential) {
+                is ResolvedCredential.Token -> {
+                    applier.apply(credential.bytes, spec.url)
                     credentialHelperPath = applier.credentialHelperPath()
                 }
-                userCred != null && passCred != null -> {
-                    applier.apply(userCred, passCred, spec.url)
+                is ResolvedCredential.Basic -> {
+                    applier.apply(credential.username, credential.password, spec.url)
                     gitConfigFilePath = applier.gitConfigFilePath()
                 }
-                sshKeyCred != null -> {
-                    applier.applySsh(sshKeyCred, sshPassphraseCred, spec.url)
+                is ResolvedCredential.Ssh -> {
+                    applier.applySsh(credential.privateKey, credential.passphrase, spec.url)
+                    sshKeyPath = applier.sshKeyPath()
                 }
             }
             // buildEnv must be called AFTER apply/applySsh, which write the temp files.
@@ -248,7 +247,13 @@ open class GitCheckoutExecutor(
 
         return try {
             executeInternal(req, spec, workspace, gitDir, startMs, req.previousRemoteSha, env)
-                .map { it.copy(credentialHelperPath = credentialHelperPath, gitConfigFilePath = gitConfigFilePath) }
+                .map {
+                    it.copy(
+                        credentialHelperPath = credentialHelperPath,
+                        gitConfigFilePath = gitConfigFilePath,
+                        sshKeyPath = sshKeyPath,
+                    )
+                }
         } catch (e: Exception) {
             // GitCheckoutFailed.reason must be scrubbed before emission.
             // Scrub removes registered secret patterns (canaries + real credentials).
@@ -437,39 +442,35 @@ open class GitCheckoutExecutor(
         return Result.success(GitCheckoutResult(sha, durationMs, "clone"))
     }
 
-    private fun resolveGitCredentials(req: GitCheckoutRequest, spec: dev.rubentxu.pipeline.v2.domain.scm.GitScm): GitCredentials? {
-        // If the applier has built-in credentials (test path), return them directly.
-        // This preserves backward compatibility with tests that construct GitCredentials directly.
-        // However, apply needs secretStore to resolve the actual secret bytes.
-        val applierCreds = credentialsApplier?.credentials
-        if (applierCreds != null &&
-            (applierCreds.string != null || applierCreds.user != null || applierCreds.pass != null ||
-                applierCreds.sshKey != null)
-        ) {
-            // Ensure secretStore is available — apply will need it to resolve secret bytes
-            if (secretStore == null && req.secretStore == null) {
-                throw IllegalStateException(
-                    "SecretStore is required when credentials are configured on GitCredentialsApplier, " +
-                    "but none was provided. Pass SecretStore to GitCheckoutExecutor or include it in GitCheckoutRequest."
-                )
-            }
-            return applierCreds
-        }
-        // Production path: resolve from SecretStore using credentialsId
-        // Kind is DECLARED, never inferred from byte content.
-        // Typed Credential hierarchy is the kind system.
-        // If the user declared a
-        // credentialsId in the script, the executor MUST NOT silently proceed
-        // with anonymous git when no SecretStore is reachable. A declared
-        // credential that cannot be resolved is a USER-visible misconfiguration
-        // and must surface as a typed failure BEFORE any subprocess is
-        // launched — silently dropping the declared credentialsRef would let a
-        // user think they authenticated a private repo when in fact the
-        // checkout fell back to anonymous (which then either succeeds with a
-        // public-mirror artifact or fails with a confusing remote auth error).
+    /**
+     * The credential the checkout declared, already resolved into what its
+     * transport needs.
+     *
+     * The KIND of the credential is the transport: a secret text is a token for
+     * a remote over HTTPS, a user name and a password are a Basic header, and
+     * a private key is an SSH identity. The kind is DECLARED by the credential
+     * itself and never inferred from the bytes.
+     *
+     * The resolution happens HERE, and not in the applier, because a
+     * credential that is more than one secret cannot be projected into a
+     * single secret handle by any store: a user name and a password live in
+     * ONE credential, and a handle carries ONE secret. A seam that took a
+     * handle would therefore be a seam that no store can honour, and the
+     * checkout would fail before it wrote a single byte.
+     *
+     * A declared credential that cannot be resolved is a USER-visible
+     * misconfiguration and surfaces as a typed failure BEFORE any subprocess
+     * is launched: silently dropping the declared credential would let a user
+     * think they authenticated a private repo when in fact the checkout fell
+     * back to anonymous.
+     */
+    private fun resolveCredential(
+        req: GitCheckoutRequest,
+        spec: dev.rubentxu.pipeline.v2.domain.scm.GitScm,
+    ): ResolvedCredential? {
         val credentialsId = spec.credentialsId
-        // Compute the effective store ONCE so the fail-closed branch and the
-        // resolution branch share the same view of the seam.
+        // The effective store is computed ONCE, so the fail-closed branch and
+        // the resolution branch share the same view of the seam.
         val effectiveStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? =
             secretStore ?: req.secretStore
         if (credentialsId != null && effectiveStore == null) {
@@ -482,55 +483,66 @@ open class GitCheckoutExecutor(
             )
         }
         if (credentialsId == null) return null
-        return try {
-            val credential = effectiveStore!!.get(credentialsId)
-            // Pattern-match on DECLARED kind
-            when (credential) {
-                is dev.rubentxu.pipeline.v2.domain.credentials.SecretText -> {
-                    // String channel: API token via credential helper
-                    GitCredentials(
-                        string = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
-                        user = null,
-                        pass = null,
-                        sshKey = null,
-                        sshPassphrase = null,
-                    )
-                }
-                is dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword -> {
-                    // usernamePassword channel: basic auth via per-host config
-                    GitCredentials(
-                        string = null,
-                        user = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
-                        pass = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
-                        sshKey = null,
-                        sshPassphrase = null,
-                    )
-                }
-                is dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey -> {
-                    // SSH channel: private key via GIT_SSH_COMMAND
-                    GitCredentials(
-                        string = null,
-                        user = null,
-                        pass = null,
-                        sshKey = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
-                        sshPassphrase = credential.passphraseRef?.let {
-                            dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(it.credentialsId)
-                        },
-                    )
-                }
-                else -> {
-                    // Unsupported credential kind for git checkout
-                    // MismatchedSecretException verbatim wording
-                    throw dev.rubentxu.pipeline.v2.domain.MismatchedSecretException(
-                        credentialId = credentialsId,
-                        expectedKind = "SecretText|UsernamePassword|SshPrivateKey",
-                        actualKind = credential::class.simpleName ?: "Unknown"
-                    )
-                }
-            }
+        val store = effectiveStore!!
+        val credential = try {
+            store.get(credentialsId)
         } catch (e: dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException) {
             throw IllegalArgumentException("Could not find credentials entry with ID '${credentialsId.value}'", e)
         }
+        return when (credential) {
+            // String channel: API token via the credential helper.
+            is SecretText ->
+                ResolvedCredential.Token(credential.bytes.copyOf())
+            // UsernamePassword channel: Basic auth over the per-host configuration.
+            is UsernamePassword ->
+                ResolvedCredential.Basic(credential.username, credential.password.copyOf())
+            // SSH channel: the private key, and the passphrase it names.
+            is SshPrivateKey ->
+                ResolvedCredential.Ssh(
+                    credential.privateKey.copyOf(),
+                    resolvePassphrase(store, credential.passphraseRef),
+                )
+            else -> {
+                // Unsupported credential kind for git checkout.
+                // MismatchedSecretException verbatim wording.
+                throw dev.rubentxu.pipeline.v2.domain.MismatchedSecretException(
+                    credentialId = credentialsId,
+                    expectedKind = "SecretText|UsernamePassword|SshPrivateKey",
+                    actualKind = credential::class.simpleName ?: "Unknown"
+                )
+            }
+        }
+    }
+
+    /**
+     * The passphrase a private key names, or null when the key has none.
+     *
+     * The passphrase is a LINK to another credential, and that credential is a
+     * single secret: a link that named anything else is a credential whose
+     * shape contradicts the link, and it is refused rather than read as
+     * whatever it happens to be.
+     */
+    private fun resolvePassphrase(
+        store: dev.rubentxu.pipeline.v2.credentials.api.SecretStore,
+        passphraseRef: dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef?,
+    ): ByteArray? {
+        if (passphraseRef == null) return null
+        val referenced = try {
+            store.get(passphraseRef.credentialsId)
+        } catch (e: dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException) {
+            throw IllegalArgumentException(
+                "Could not find the passphrase credential '${passphraseRef.credentialsId.value}'",
+                e,
+            )
+        }
+        if (referenced !is dev.rubentxu.pipeline.v2.domain.credentials.SecretText) {
+            throw dev.rubentxu.pipeline.v2.domain.MismatchedSecretException(
+                credentialId = passphraseRef.credentialsId,
+                expectedKind = "SecretText",
+                actualKind = referenced::class.simpleName ?: "Unknown",
+            )
+        }
+        return referenced.bytes.copyOf()
     }
 
     private fun revParse(workspace: Path, ref: String, env: Map<String, String>): String? {
@@ -691,8 +703,39 @@ data class GitCheckoutResult(
 */
     val credentialHelperPath: String? = null,
     /**
-     * Path.gitconfig file (usernamePassword channel).
-     * Non-null when usernamePassword credentials were applied.
+     * The configuration that carries the Basic header (usernamePassword channel).
+     *
+     * Non-null when a Basic header was written for the remote the checkout was
+     * given, and null otherwise: a remote that does not authenticate with a
+     * password gets a configuration that says nothing, and the record says that
+     * no credential was applied rather than pointing at a file that holds no
+     * header.
 */
     val gitConfigFilePath: String? = null,
+    /**
+     * The SSH key the checkout wrote (ssh channel).
+     *
+     * Non-null when an SSH key was applied, and null otherwise. The key is what
+     * the SSH channel applies, so this is what says the channel ran.
+*/
+    val sshKeyPath: String? = null,
 )
+
+/**
+ * The credential a checkout declared, resolved into what its transport needs.
+ *
+ * The three cases are the three transports, and the kind of the credential in
+ * the store is what says which one applies. The bytes are COPIES: the store
+ * keeps its own, and a checkout that wiped its copy must not have wiped the
+ * store's.
+ */
+private sealed interface ResolvedCredential {
+    /** A token for a remote over HTTPS. */
+    data class Token(val bytes: ByteArray) : ResolvedCredential
+
+    /** A user name and a password for a remote over HTTPS. */
+    data class Basic(val username: String, val password: ByteArray) : ResolvedCredential
+
+    /** A private key, and the passphrase of that key when it has one. */
+    data class Ssh(val privateKey: ByteArray, val passphrase: ByteArray?) : ResolvedCredential
+}

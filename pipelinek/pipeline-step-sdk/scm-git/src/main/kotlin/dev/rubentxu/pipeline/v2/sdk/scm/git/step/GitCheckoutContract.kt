@@ -32,6 +32,15 @@ data class GitCheckoutOutput(
     val resolvedSha: String,
     val localPath: String,
     val wasCloned: Boolean,
+    /**
+     * Whether a credential was applied to this checkout.
+     *
+     * It says what HAPPENED and not what was declared: a checkout whose remote
+     * cannot authenticate with the credential it declared applied none, and a
+     * checkout that applied an SSH key applied one. A reader of this output
+     * decides what to do next from it, so it may not claim a credential that
+     * was never handed to git.
+    */
     val credentialApplied: Boolean,
 )
 

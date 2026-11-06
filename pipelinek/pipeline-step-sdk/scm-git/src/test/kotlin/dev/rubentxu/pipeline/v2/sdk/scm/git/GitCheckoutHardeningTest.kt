@@ -1,18 +1,13 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
-import dev.rubentxu.pipeline.v2.domain.credentials.CredentialLinkedSecretResolver
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskRuntime
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionResult
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
-import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
-import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease
-import dev.rubentxu.pipeline.v2.domain.CredentialsId
-import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.GitCheckoutStarted
@@ -200,11 +195,7 @@ class GitCheckoutHardeningTest {
     @Test
     fun `the per-host configuration is one git accepts`() {
         val applier = applier()
-        applier.apply(
-            SecretHandleRef(CredentialsId("creds")),
-            SecretHandleRef(CredentialsId("creds")),
-            "https://github.com/org/repo.git",
-        )
+        applier.apply(USER, PASSWORD.toByteArray(), "https://github.com/org/repo.git")
 
         val config = Path.of(applier.gitConfigFilePath())
         val text = Files.readString(config)
@@ -231,7 +222,7 @@ class GitCheckoutHardeningTest {
     fun `the ssh connection refuses a host whose key changed`() {
         val knownHosts = temp.resolve("known_hosts")
         val applier = applier(knownHosts = knownHosts)
-        applier.applySsh(SecretHandleRef(CredentialsId("ssh-key")), null, "ssh://git@github.com/org/repo.git")
+        applier.applySsh(SSH_KEY.toByteArray(), null, "ssh://git@github.com/org/repo.git")
 
         val command = requireNotNull(applier.buildEnv()["GIT_SSH_COMMAND"]) {
             "the ssh transport must put GIT_SSH_COMMAND in the environment it hands over"
@@ -268,7 +259,7 @@ class GitCheckoutHardeningTest {
     @Test
     fun `the ssh connection records the host keys where the operator's own decisions already live`() {
         val applier = applier()
-        applier.applySsh(SecretHandleRef(CredentialsId("ssh-key")), null, "ssh://git@github.com/org/repo.git")
+        applier.applySsh(SSH_KEY.toByteArray(), null, "ssh://git@github.com/org/repo.git")
 
         val command = requireNotNull(applier.buildEnv()["GIT_SSH_COMMAND"]) {
             "the ssh transport must put GIT_SSH_COMMAND in the environment it hands over"
@@ -297,7 +288,7 @@ class GitCheckoutHardeningTest {
         val executor = GitCheckoutExecutor(
             poll = GitPollExecutor(controlRoot = pollRoot),
             changelog = GitChangelogWriter(controlRoot = changelogRoot),
-            credentialsApplier = GitCredentialsApplier(applierRoot, GitCredentials()),
+            credentialsApplier = GitCredentialsApplier(applierRoot),
             gitControlRoot = controlRoot,
         )
 
@@ -318,8 +309,6 @@ class GitCheckoutHardeningTest {
         val root = Files.createDirectories(temp.resolve("applier-${appliers++}"))
         return GitCredentialsApplier(
             tempDir = root,
-            credentials = GitCredentials(),
-            linkedSecretResolver = CredentialLinkedSecretResolver { SecretHandle.plain("user:pass") },
             knownHostsFile = knownHosts,
         )
     }
@@ -333,7 +322,6 @@ class GitCheckoutHardeningTest {
         changelog = GitChangelogWriter(controlRoot = temp.resolve("changelog")),
         credentialsApplier = GitCredentialsApplier(
             tempDir = Files.createDirectories(temp.resolve("creds")),
-            credentials = GitCredentials(),
         ),
         taskRuntime = runtime,
         gitControlRoot = temp.resolve("control"),
@@ -415,5 +403,14 @@ class GitCheckoutHardeningTest {
 
     private companion object {
         val FIXED_CLOCK: Clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC)
+
+        /** A user name that is not a user name: it never leaves this machine. */
+        const val USER = "ci-user"
+
+        /** A password that is not a password: it never leaves this machine. */
+        const val PASSWORD = "ci-password"
+
+        /** A key that is not a key: the ssh transport only carries its PATH. */
+        const val SSH_KEY = "ci-private-key"
     }
 }

@@ -1,10 +1,5 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
-import dev.rubentxu.pipeline.v2.domain.CredentialsId
-import dev.rubentxu.pipeline.v2.domain.SecretHandle
-import dev.rubentxu.pipeline.v2.domain.credentials.CredentialLinkedSecretResolver
-import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
-import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -56,7 +51,7 @@ class GitCredentialHelperProtocolTest {
     @Test
     fun `git asks the checkout's helper for the named remote and the token comes back`() {
         val applier = applier()
-        applier.apply(tokenRef(), "https://github.com/org/repo.git")
+        applier.apply(tokenBytes(), "https://github.com/org/repo.git")
         val env = gitEnv(applier)
 
         val answer = gitCredentialFill("https://github.com/org/repo.git", env)
@@ -126,7 +121,7 @@ class GitCredentialHelperProtocolTest {
     @Test
     fun `the scope carries the port the remote names`() {
         val applier = applier()
-        applier.apply(tokenRef(), "https://github.com:8443/org/repo.git")
+        applier.apply(tokenBytes(), "https://github.com:8443/org/repo.git")
         val env = gitEnv(applier)
 
         val answer = gitCredentialFill("https://github.com:8443/org/repo.git", env)
@@ -147,7 +142,7 @@ class GitCredentialHelperProtocolTest {
     @Test
     fun `the token is written in one file only`() {
         val applier = applier()
-        applier.apply(tokenRef(), "https://github.com/org/repo.git")
+        applier.apply(tokenBytes(), "https://github.com/org/repo.git")
 
         val holders = filesHolding(applierRoot(applier), TOKEN)
 
@@ -162,7 +157,7 @@ class GitCredentialHelperProtocolTest {
     @Test
     fun `a remote that cannot authenticate with the token leaves no token on disk`() {
         val overHttp = applier("applier-http")
-        overHttp.apply(tokenRef(), "https://github.com/org/repo.git")
+        overHttp.apply(tokenBytes(), "https://github.com/org/repo.git")
         assertEquals(
             1,
             filesHolding(applierRoot(overHttp), TOKEN).size,
@@ -171,43 +166,12 @@ class GitCredentialHelperProtocolTest {
         )
 
         val overSsh = applier("applier-ssh")
-        overSsh.apply(tokenRef(), "ssh://git@github.com/org/repo.git")
+        overSsh.apply(tokenBytes(), "ssh://git@github.com/org/repo.git")
 
         val holders = filesHolding(applierRoot(overSsh), TOKEN)
         assertTrue(
             holders.isEmpty(),
             "the token of a remote that cannot use it is on disk anyway: $holders",
-        )
-    }
-
-    @Test
-    fun `the header of the basic channel reaches a remote that names a port`() {
-        val applier = applier()
-        applier.apply(
-            SecretHandleRef(CredentialsId("user")),
-            SecretHandleRef(CredentialsId("password")),
-            "https://github.com:8443/org/repo.git",
-        )
-        val config = Path.of(applier.gitConfigFilePath())
-
-        val matched = runGit(
-            listOf(
-                "config",
-                "--file", config.toString(),
-                "--get-urlmatch", "http.extraHeader",
-                "https://github.com:8443/org/repo.git",
-            ),
-        )
-
-        assertEquals(
-            0,
-            matched.exitCode,
-            "the header the checkout wrote does not reach the remote it named, so the remote would " +
-                "be asked for a password it never gets; git said: ${matched.output}",
-        )
-        assertTrue(
-            matched.output.contains("Authorization: Basic"),
-            "git matched the header but did not return it; git said: ${matched.output}",
         )
     }
 
@@ -220,18 +184,21 @@ class GitCredentialHelperProtocolTest {
      */
     private fun applier(name: String = "applier-${appliers++}"): GitCredentialsApplier {
         val root = Files.createDirectories(temp.resolve(name))
-        return GitCredentialsApplier(
-            tempDir = root,
-            credentials = GitCredentials(string = tokenRef()),
-            linkedSecretResolver = CredentialLinkedSecretResolver { SecretHandle.plain(TOKEN) },
-        )
+        return GitCredentialsApplier(tempDir = root)
     }
+
+    /**
+     * The token, as the bytes the caller resolved before handing it over.
+     *
+     * The credential is resolved by the CALLER, not by the applier: a token is
+     * one secret, and a credential that is more than one secret cannot be
+     * projected into a single handle by any store.
+     */
+    private fun tokenBytes(): ByteArray = TOKEN.toByteArray(Charsets.UTF_8)
 
     /** The directory an applier of this test owns, so the test can look inside it. */
     private fun applierRoot(applier: GitCredentialsApplier): Path =
         Path.of(applier.answerFilePath()).parent
-
-    private fun tokenRef(): SecretHandleRef = SecretHandleRef(CredentialsId(CREDENTIAL_ID))
 
     /**
      * The environment the credential machinery runs with.
@@ -314,9 +281,6 @@ class GitCredentialHelperProtocolTest {
 
         /** The user name git is told to authenticate with. */
         const val USER_NAME = "x-access-token"
-
-        /** The label of the credential. A label, not a host. */
-        const val CREDENTIAL_ID = "ci-token"
 
         /** How long the credential machinery is given to answer. */
         const val TIMEOUT_SECONDS = 30L

@@ -254,14 +254,6 @@ class GitCredentialHelperProtocolTest {
         return GitResult(process.exitValue(), output)
     }
 
-    /** Runs the real git, because the question "does git accept this?" has no answer without git. */
-    private fun runGit(args: List<String>): GitResult {
-        val process = ProcessBuilder(listOf("git") + args).redirectErrorStream(true).start()
-        val output = process.inputStream.bufferedReader().readText()
-        process.waitFor()
-        return GitResult(process.exitValue(), output)
-    }
-
     /** The files of [root] whose bytes carry [needle]. */
     private fun filesHolding(root: Path, needle: String): List<Path> {
         val directory = Files.newDirectoryStream(root)

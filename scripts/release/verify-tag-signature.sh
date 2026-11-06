@@ -157,6 +157,25 @@ TRUSTED_UIDS_CSV="$(printf '%s\n' "${TRUSTED_UIDS[@]}" | paste -sd, -)"
 
 STARTED_AT=$(date +%s)
 
+# Whether the text carries a line that BEGINS with the given prefix.
+#
+# The answer is read in the shell and not through a pipeline whose reader
+# quits at the first match. A pipeline like that makes the WRITER fail with
+# a broken pipe when it still had text to write, and a command substitution
+# whose pipeline failed is a command substitution that failed: under
+# `set -o pipefail` the audit of the published history died with a signal
+# instead of reporting a verdict, and a check that dies is not a check that
+# passed.
+has_line_starting_with() {
+    local prefix="$1" text="$2" line
+    while IFS= read -r line; do
+        if [[ "$line" == "$prefix"* ]]; then
+            return 0
+        fi
+    done <<< "$text"
+    return 1
+}
+
 # The verdict is assembled in a scratch file so it can be copied to --out and
 # printed without running the printer twice. It is removed on every exit path:
 # this check leaves nothing behind that a later run could mistake for evidence.
@@ -210,18 +229,31 @@ else
     VERIFY_RC=0
     VERIFY_OUTPUT="$(git verify-tag --raw "$TAG" 2>&1)" || VERIFY_RC=$?
 
-    if printf '%s\n' "$VERIFY_OUTPUT" | grep -q '^\[GNUPG:\] VALIDSIG '; then
-        SIGNER_FPR="$(printf '%s\n' "$VERIFY_OUTPUT" | awk '/^\[GNUPG:\] VALIDSIG /{print $3; exit}')"
-    fi
-    if printf '%s\n' "$VERIFY_OUTPUT" | grep -q '^\[GNUPG:\] GOODSIG '; then
-        SIGNER_UID="$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n 's/^\[GNUPG:\] GOODSIG [0-9A-Fa-f]* //p' | head -1)"
-    fi
+    # The signer and the identity it claims are read from the status lines,
+    # one line at a time. The FIRST VALIDSIG and the FIRST GOODSIG are the
+    # ones that count, and the first is the one a reader would quote.
+    while IFS= read -r status_line; do
+        case "$status_line" in
+            "[GNUPG:] VALIDSIG "*)
+                if [[ -z "$SIGNER_FPR" ]]; then
+                    rest="${status_line#'[GNUPG:] VALIDSIG '}"
+                    SIGNER_FPR="${rest%% *}"
+                fi
+                ;;
+            "[GNUPG:] GOODSIG "*)
+                if [[ -z "$SIGNER_UID" ]]; then
+                    rest="${status_line#'[GNUPG:] GOODSIG '}"
+                    SIGNER_UID="${rest#* }"
+                fi
+                ;;
+        esac
+    done <<< "$VERIFY_OUTPUT"
 
-    if printf '%s\n' "$VERIFY_OUTPUT" | grep -q '^\[GNUPG:\] BADSIG '; then
+    if has_line_starting_with "[GNUPG:] BADSIG " "$VERIFY_OUTPUT"; then
         record A FAIL "the signature does not verify: the tag content was altered after it was signed"
-    elif printf '%s\n' "$VERIFY_OUTPUT" | grep -q '^\[GNUPG:\] NO_PUBKEY '; then
+    elif has_line_starting_with "[GNUPG:] NO_PUBKEY " "$VERIFY_OUTPUT"; then
         record A FAIL "the signing key is not available in this keyring, so the signature cannot be checked"
-    elif printf '%s\n' "$VERIFY_OUTPUT" | grep -qi 'no signature found'; then
+    elif [[ "${VERIFY_OUTPUT,,}" == *"no signature found"* ]]; then
         record A FAIL "the tag carries no signature"
     elif [[ "$VERIFY_RC" != "0" ]]; then
         record A FAIL "git verify-tag failed (exit ${VERIFY_RC}): $(printf '%s\n' "$VERIFY_OUTPUT" | tr '\n' ' ')"

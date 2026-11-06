@@ -170,6 +170,25 @@ in_scope() {
     return 1
 }
 
+# The peeled line of every tag, read ONCE, before the loop.
+#
+# It used to be read per tag through a pipeline that quit at the first
+# match. On a listing of the whole history the writer of that listing was
+# still writing when the reader had already found its match and left, so
+# the writer died with a broken pipe, and under `set -o pipefail` the audit
+# stopped with a signal instead of reporting a verdict. Reading the map
+# once removes the race and the quadratic pass, and the ABSENCE of a
+# peeled line stays what it was: the fact that the tag is lightweight.
+declare -A PEELED_COMMITS=()
+while IFS=$'\t' read -r object ref; do
+    [[ "$ref" == refs/tags/* ]] || continue
+    [[ "$ref" == *'^{}' ]] || continue
+    # The key is the name of the tag WITHOUT the marker of the peeled line:
+    # the lookup asks for the name the reader wrote.
+    tag_name="${ref#refs/tags/}"
+    PEELED_COMMITS["${tag_name%'^{}'}"]="$object"
+done <<< "$LISTING"
+
 # ----------------------------------------------------------------------------
 # 2. Classify and check each tag in scope.
 # ----------------------------------------------------------------------------
@@ -181,6 +200,20 @@ GAPS=0
 CHECKED=0
 ANNOTATED=0
 LIGHTWEIGHT=0
+
+# Whether the text carries a line that BEGINS with the given prefix. The
+# answer is read in the shell and not through a pipeline whose reader quits
+# at the first match: such a pipeline makes the writer fail with a broken
+# pipe, and under `set -o pipefail` a failed pipeline is a failed audit.
+has_line_starting_with() {
+    local prefix="$1" text="$2" line
+    while IFS= read -r line; do
+        if [[ "$line" == "$prefix"* ]]; then
+            return 0
+        fi
+    done <<< "$text"
+    return 1
+}
 
 while IFS= read -r line; do
     object="${line%%[[:space:]]*}"
@@ -198,7 +231,7 @@ while IFS= read -r line; do
 
     # The peeled line, when the remote publishes one, is the commit the tag
     # points at. Its ABSENCE is the fact: the tag is lightweight.
-    peeled="$(printf '%s\n' "$LISTING" | awk -v r="refs/tags/${name}^{}" '$2 == r { print $1; exit }')"
+    peeled="${PEELED_COMMITS[$name]:-}"
 
     if [[ -z "$peeled" ]]; then
         LIGHTWEIGHT=$((LIGHTWEIGHT + 1))
@@ -256,8 +289,18 @@ while IFS= read -r line; do
     # The signer the checker OBSERVED. The declared key is what this audit
     # asked for; the signer is who actually held the pen, and it is the fact
     # a reader needs when the two differ.
-    check_signer="$(printf '%s\n' "$check_output" \
-        | sed -n 's/^tag-signature: .* signer=\([0-9A-F]\{40\}\).*/\1/p' | head -1)"
+    #
+    # The verdict of the checker is read in the shell, for the same reason
+    # the peeled map is: a pipeline whose reader quits at the first match
+    # makes the writer fail, and a failed pipeline is a failed audit.
+    first_line="${check_output%%$'\n'*}"
+    check_signer=""
+    if [[ "$first_line" == *" signer="* ]]; then
+        signer_field="${first_line#* signer=}"
+        if [[ "$signer_field" =~ ^([0-9A-F]{40}) ]]; then
+            check_signer="${BASH_REMATCH[1]}"
+        fi
+    fi
     check_signer="${check_signer:-<none>}"
 
     # The signer is recorded whether the check passed or refused: the signer
@@ -273,9 +316,9 @@ while IFS= read -r line; do
         # The label says WHICH half refused: a signature that does not verify
         # and a signature that verifies from the wrong key are different facts,
         # and one label for both of them hides the difference.
-        if printf '%s\n' "$check_output" | grep -q '^  row A verdict=FAIL'; then
+        if has_line_starting_with "  row A verdict=FAIL" "$check_output"; then
             signature_state="DOES-NOT-VERIFY"
-        elif printf '%s\n' "$check_output" | grep -q '^  row B verdict=FAIL'; then
+        elif has_line_starting_with "  row B verdict=FAIL" "$check_output"; then
             signature_state="FROM-ANOTHER-KEY"
         else
             signature_state="NOT-AS-DECLARED"

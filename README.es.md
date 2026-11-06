@@ -94,3 +94,4 @@ claramente si le falta la frase de paso.
 | Cada bandera de la CLI y cada código de salida | `"$PIPELINEK" --help`, `"$PIPELINEK" run --help` |
 | Los canales de distribución y sus estado | La sección *Releases and distribution channels* de [`README.md`](README.md) |
 | Cómo se verifica el repositorio y qué queda fuera | [`AGENTS.md`](AGENTS.md) |
+| Quién firmó un release y cómo lo comprueba un consumidor | [`RELEASE-SIGNING.md`](RELEASE-SIGNING.md) |

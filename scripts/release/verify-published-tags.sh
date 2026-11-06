@@ -39,6 +39,18 @@
 #   verify-published-tags.sh --expect-fingerprint <FPR> [--expect-uid <uid>]
 #       [--remote <name>] [--tag <name>]... [--pattern <glob>]... [--out <file>]
 #
+#   verify-published-tags.sh --trust-conf <file>
+#       [--remote <name>] [--tag <name>]... [--pattern <glob>]... [--out <file>]
+#
+# The two ways of naming the trusted key answer different questions, and the
+# difference matters HERE more than anywhere else. --expect-fingerprint names
+# ONE key: "every tag in scope was signed by this key". --trust-conf names the
+# SET this repository trusts: "every tag in scope was signed by a key we
+# trust", which is the question an audit of the WHOLE history has to ask once
+# the key has been rotated. The tags already published were signed by the key
+# that signed then, and an audit that only accepts the key that signs now
+# would report every one of them as signed by a stranger.
+#
 # At least one --tag or --pattern is required: an audit with no scope
 # measures nothing and would print a green over nothing.
 #
@@ -48,9 +60,16 @@
 set -Eeuo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# The ONE reader of the trust file, shared with the checker this script calls.
+# Sourced, never run: a second reader of the same format is a second
+# authority, and the two would drift apart.
+# shellcheck source=read-signing-trust.sh
+source "${script_dir}/read-signing-trust.sh"
 
 EXPECT_FINGERPRINT=""
 EXPECT_UID=""
+TRUST_CONF=""
 REMOTE="origin"
 SCOPE_TAGS=()
 SCOPE_PATTERNS=()
@@ -70,6 +89,7 @@ while [[ $# -gt 0 ]]; do
         --pattern)            SCOPE_PATTERNS+=("${2:-}"); shift 2 ;;
         --expect-fingerprint) EXPECT_FINGERPRINT="${2:-}"; shift 2 ;;
         --expect-uid)         EXPECT_UID="${2:-}"; shift 2 ;;
+        --trust-conf)         TRUST_CONF="${2:-}"; shift 2 ;;
         --remote)             REMOTE="${2:-}"; shift 2 ;;
         --out)                OUT_FILE="${2:-}"; shift 2 ;;
         -h|--help)            usage ;;
@@ -77,14 +97,48 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$EXPECT_FINGERPRINT" ]]; then
-    printf 'verify-published-tags: --expect-fingerprint is required\n' >&2
-    usage
-fi
+# The TRUSTED set, named one way or the other. The two are mutually
+# exclusive: naming one key and a set at the same time asks two questions and
+# gets one answer.
+TRUSTED_FINGERPRINTS=()
+TRUSTED_FINGERPRINTS_CSV=""
 
-if ! printf '%s' "$EXPECT_FINGERPRINT" | grep -Eq '^[0-9A-Fa-f]{40}$'; then
-    printf 'verify-published-tags: --expect-fingerprint must be a 40-hex fingerprint\n' >&2
-    exit 2
+if [[ -n "$TRUST_CONF" ]]; then
+    if [[ -n "$EXPECT_FINGERPRINT" || -n "$EXPECT_UID" ]]; then
+        printf 'verify-published-tags: --trust-conf names the trusted SET and\n' >&2
+        printf '    --expect-fingerprint names ONE key. Pass one or the other.\n' >&2
+        usage
+    fi
+    if [[ ! -r "$TRUST_CONF" ]]; then
+        printf 'verify-published-tags: the trust file %s cannot be read\n' "$TRUST_CONF" >&2
+        exit 2
+    fi
+    while IFS='|' read -r trusted_fingerprint _trusted_uid _trusted_role; do
+        [[ -n "$trusted_fingerprint" ]] || continue
+        TRUSTED_FINGERPRINTS+=("$trusted_fingerprint")
+    done < <(signing_trust_set "$TRUST_CONF")
+    if [[ ${#TRUSTED_FINGERPRINTS[@]} -eq 0 ]]; then
+        printf 'verify-published-tags: the trust file %s declares no usable key\n' "$TRUST_CONF" >&2
+        exit 2
+    fi
+    TRUSTED_FINGERPRINTS_CSV="$(printf '%s\n' "${TRUSTED_FINGERPRINTS[@]}" | paste -sd, -)"
+    # The audit named a SET, not a key: the field that used to carry one
+    # fingerprint says so out loud instead of printing nothing, because an
+    # empty field reads as "the audit did not look".
+    EXPECTED_FINGERPRINT_FIELD="<none: the audit named the trusted SET>"
+    TRUST_LABEL="a trusted key"
+else
+    if [[ -z "$EXPECT_FINGERPRINT" ]]; then
+        printf 'verify-published-tags: --expect-fingerprint or --trust-conf is required\n' >&2
+        usage
+    fi
+    if ! printf '%s' "$EXPECT_FINGERPRINT" | grep -Eq '^[0-9A-Fa-f]{40}$'; then
+        printf 'verify-published-tags: --expect-fingerprint must be a 40-hex fingerprint\n' >&2
+        exit 2
+    fi
+    TRUSTED_FINGERPRINTS_CSV="${EXPECT_FINGERPRINT^^}"
+    EXPECTED_FINGERPRINT_FIELD="${EXPECT_FINGERPRINT^^}"
+    TRUST_LABEL="the declared key"
 fi
 
 if [[ ${#SCOPE_TAGS[@]} -eq 0 && ${#SCOPE_PATTERNS[@]} -eq 0 ]]; then
@@ -116,6 +170,25 @@ in_scope() {
     return 1
 }
 
+# The peeled line of every tag, read ONCE, before the loop.
+#
+# It used to be read per tag through a pipeline that quit at the first
+# match. On a listing of the whole history the writer of that listing was
+# still writing when the reader had already found its match and left, so
+# the writer died with a broken pipe, and under `set -o pipefail` the audit
+# stopped with a signal instead of reporting a verdict. Reading the map
+# once removes the race and the quadratic pass, and the ABSENCE of a
+# peeled line stays what it was: the fact that the tag is lightweight.
+declare -A PEELED_COMMITS=()
+while IFS=$'\t' read -r object ref; do
+    [[ "$ref" == refs/tags/* ]] || continue
+    [[ "$ref" == *'^{}' ]] || continue
+    # The key is the name of the tag WITHOUT the marker of the peeled line:
+    # the lookup asks for the name the reader wrote.
+    tag_name="${ref#refs/tags/}"
+    PEELED_COMMITS["${tag_name%'^{}'}"]="$object"
+done <<< "$LISTING"
+
 # ----------------------------------------------------------------------------
 # 2. Classify and check each tag in scope.
 # ----------------------------------------------------------------------------
@@ -127,6 +200,20 @@ GAPS=0
 CHECKED=0
 ANNOTATED=0
 LIGHTWEIGHT=0
+
+# Whether the text carries a line that BEGINS with the given prefix. The
+# answer is read in the shell and not through a pipeline whose reader quits
+# at the first match: such a pipeline makes the writer fail with a broken
+# pipe, and under `set -o pipefail` a failed pipeline is a failed audit.
+has_line_starting_with() {
+    local prefix="$1" text="$2" line
+    while IFS= read -r line; do
+        if [[ "$line" == "$prefix"* ]]; then
+            return 0
+        fi
+    done <<< "$text"
+    return 1
+}
 
 while IFS= read -r line; do
     object="${line%%[[:space:]]*}"
@@ -144,7 +231,7 @@ while IFS= read -r line; do
 
     # The peeled line, when the remote publishes one, is the commit the tag
     # points at. Its ABSENCE is the fact: the tag is lightweight.
-    peeled="$(printf '%s\n' "$LISTING" | awk -v r="refs/tags/${name}^{}" '$2 == r { print $1; exit }')"
+    peeled="${PEELED_COMMITS[$name]:-}"
 
     if [[ -z "$peeled" ]]; then
         LIGHTWEIGHT=$((LIGHTWEIGHT + 1))
@@ -184,11 +271,17 @@ while IFS= read -r line; do
     # hides which half of the check refused.
     check_output=""
     check_rc=0
+    # The checker is asked with the SAME question this audit was asked: the
+    # trusted set when the audit named the set, the one key when it named one.
+    check_args=(--tag "$name" --expect-commit "$peeled")
+    if [[ -n "$TRUST_CONF" ]]; then
+        check_args+=(--trust-conf "$TRUST_CONF")
+    else
+        check_args+=(--expect-fingerprint "$EXPECT_FINGERPRINT")
+        [[ -n "$EXPECT_UID" ]] && check_args+=(--expect-uid "$EXPECT_UID")
+    fi
     check_output="$("${repo_root}/scripts/release/verify-tag-signature.sh" \
-        --tag "$name" \
-        --expect-fingerprint "$EXPECT_FINGERPRINT" \
-        --expect-commit "$peeled" \
-        ${EXPECT_UID:+--expect-uid "$EXPECT_UID"} 2>&1)" || check_rc=$?
+        "${check_args[@]}" 2>&1)" || check_rc=$?
 
     check_detail="$(printf '%s\n' "$check_output" \
         | sed -n 's/^  row \([A-Z]\) verdict=FAIL \(.*\)/\1: \2/p' | paste -sd'; ' -)"
@@ -196,8 +289,18 @@ while IFS= read -r line; do
     # The signer the checker OBSERVED. The declared key is what this audit
     # asked for; the signer is who actually held the pen, and it is the fact
     # a reader needs when the two differ.
-    check_signer="$(printf '%s\n' "$check_output" \
-        | sed -n 's/^tag-signature: .* signer=\([0-9A-F]\{40\}\).*/\1/p' | head -1)"
+    #
+    # The verdict of the checker is read in the shell, for the same reason
+    # the peeled map is: a pipeline whose reader quits at the first match
+    # makes the writer fail, and a failed pipeline is a failed audit.
+    first_line="${check_output%%$'\n'*}"
+    check_signer=""
+    if [[ "$first_line" == *" signer="* ]]; then
+        signer_field="${first_line#* signer=}"
+        if [[ "$signer_field" =~ ^([0-9A-F]{40}) ]]; then
+            check_signer="${BASH_REMATCH[1]}"
+        fi
+    fi
     check_signer="${check_signer:-<none>}"
 
     # The signer is recorded whether the check passed or refused: the signer
@@ -207,15 +310,15 @@ while IFS= read -r line; do
     fi
 
     if [[ "$check_rc" == "0" ]]; then
-        ROWS+=("  tag ${name} verdict=PASS type=ANNOTATED commit=${peeled} signer=${check_signer} signature=VERIFIED (the declared key)")
+        ROWS+=("  tag ${name} verdict=PASS type=ANNOTATED commit=${peeled} signer=${check_signer} signature=VERIFIED (${TRUST_LABEL})")
     else
         FAILED=$((FAILED + 1))
         # The label says WHICH half refused: a signature that does not verify
         # and a signature that verifies from the wrong key are different facts,
         # and one label for both of them hides the difference.
-        if printf '%s\n' "$check_output" | grep -q '^  row A verdict=FAIL'; then
+        if has_line_starting_with "  row A verdict=FAIL" "$check_output"; then
             signature_state="DOES-NOT-VERIFY"
-        elif printf '%s\n' "$check_output" | grep -q '^  row B verdict=FAIL'; then
+        elif has_line_starting_with "  row B verdict=FAIL" "$check_output"; then
             signature_state="FROM-ANOTHER-KEY"
         else
             signature_state="NOT-AS-DECLARED"
@@ -235,17 +338,19 @@ else
     VERDICT="FAIL"
 fi
 
-# The summary separates what the audit ASKED for from what it SAW. `expected_
-# fingerprint` is the key this audit was told to look for; `signers` are the
-# keys that actually signed the published tags, and a difference between the
-# two is the whole point of the audit.
+# The summary separates what the audit ASKED for from what it SAW.
+# `expected_fingerprint` is the key this audit was told to look for (or the
+# explicit statement that it was told a SET instead); `trusted_fingerprints`
+# is that set spelled out; `signers` are the keys that actually signed the
+# published tags, and a difference between the two is the whole point of the
+# audit.
 if [[ ${#SIGNERS[@]} -gt 0 ]]; then
     SUMMARY_SIGNERS="$(printf '%s\n' "${SIGNERS[@]}" | sort -u | paste -sd',' -)"
 else
     SUMMARY_SIGNERS="<none>"
 fi
 
-SUMMARY="published-tags: ${VERDICT} checked=${CHECKED} annotated=${ANNOTATED} lightweight=${LIGHTWEIGHT} failed=${FAILED} gaps=${GAPS} remote=${REMOTE} expected_fingerprint=${EXPECT_FINGERPRINT^^} signers=${SUMMARY_SIGNERS}"
+SUMMARY="published-tags: ${VERDICT} checked=${CHECKED} annotated=${ANNOTATED} lightweight=${LIGHTWEIGHT} failed=${FAILED} gaps=${GAPS} remote=${REMOTE} expected_fingerprint=${EXPECTED_FINGERPRINT_FIELD} trusted_fingerprints=${TRUSTED_FINGERPRINTS_CSV} signers=${SUMMARY_SIGNERS}"
 
 VERDICT_FILE="$(mktemp "${TMPDIR:-/tmp}/published-tags-verdict.XXXXXX")"
 cleanup() { rm -f -- "$VERDICT_FILE"; }

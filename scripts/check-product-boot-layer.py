@@ -133,6 +133,10 @@ DECLARED_EXECUTABLES = {
     "scripts/check-process-exits.py": (
         "a guard of the gate: it reads the tree and starts nothing"
     ),
+    "scripts/check-signing-key-trust.py": (
+        "a guard of the gate: it reads the declaration of the signing keys and "
+        "starts nothing"
+    ),
     "scripts/check-product-boot-layer.py": (
         "this guard: it reads the tree and starts nothing"
     ),
@@ -169,6 +173,10 @@ DECLARED_EXECUTABLES = {
     "scripts/release/publish-tag.sh": (
         "publication: it cuts the tag that names the release"
     ),
+    "scripts/release/read-signing-trust.sh": (
+        "the reader of the declaration of the signing keys: the release scripts "
+        "source it and it starts nothing"
+    ),
     "scripts/release/resolve-release-digest.sh": (
         "publication: it resolves the digest of a published release"
     ),
@@ -187,6 +195,10 @@ DECLARED_EXECUTABLES = {
     ),
     "scripts/release/verify-published-tags.sh": (
         "publication: it verifies the tags that were published"
+    ),
+    "scripts/release/verify-signing-key-attribution.sh": (
+        "publication: it reads the account that owns the repository and "
+        "certifies nothing about the tree"
     ),
     "scripts/release/verify-tag-signature.sh": (
         "publication: it verifies the signature of a published tag"

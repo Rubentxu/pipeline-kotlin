@@ -143,6 +143,10 @@ DECLARED_EXECUTABLES = {
         "the installer of a published release: it installs the archive for a "
         "user and asks the installed command for its version"
     ),
+    "scripts/read-junit-reports.py": (
+        "the reader of the gate's census: it parses the JUnit reports of a "
+        "lane and starts nothing"
+    ),
     "scripts/release-pipelinek.sh": (
         "the gate of the publication: it publishes the artifact and certifies "
         "nothing about the behaviour of the tree"

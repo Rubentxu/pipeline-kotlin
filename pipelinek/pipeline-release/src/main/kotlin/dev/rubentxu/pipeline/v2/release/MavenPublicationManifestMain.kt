@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.release
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -80,7 +81,16 @@ fun main(args: Array<String>) {
         exitProcess(1)
     }
 
-    val bundle = MavenBundleMeasurement.measure(bundleRoot)
+    val bundle = try {
+        MavenBundleMeasurement.measure(bundleRoot)
+    } catch (e: IOException) {
+        System.err.println(
+            "[release] maven publication manifest NOT written — the bundle at $bundleRoot holds " +
+                "a file that could not be read, so the bytes were not measured: " +
+                "${e.message ?: e::class.java.simpleName}",
+        )
+        exitProcess(1)
+    }
     if (bundle.artifacts.isEmpty()) {
         System.err.println(
             "[release] maven publication manifest NOT written — the bundle at $bundleRoot holds " +
@@ -115,7 +125,7 @@ fun main(args: Array<String>) {
             candidateId = handoff.candidateId,
             productVersion = handoff.productVersion,
             manifestName = manifestPath.fileName.toString(),
-            manifestSha256 = sha256Of(manifestPath),
+            manifestSha256 = Sha256.ofFile(manifestPath),
         )
         Files.writeString(requestPath, MavenPublicationCodec.encode(request))
     } catch (e: IOException) {

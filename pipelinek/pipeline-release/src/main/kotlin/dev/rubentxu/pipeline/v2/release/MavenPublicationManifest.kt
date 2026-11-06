@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.release
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -65,7 +66,7 @@ data class MavenPublicationManifest internal constructor(
             "two artifacts would carry the same path, and a repository cannot hold two " +
                 "files under one path."
         }
-        require(SHA256_HEX.matches(bundleSha256)) {
+        require(Sha256.isSha256Hex(bundleSha256)) {
             "bundle_sha256 must be a lowercase SHA-256 hex digest (64 chars), got '$bundleSha256'."
         }
     }
@@ -109,7 +110,7 @@ data class MavenPublicationRequest internal constructor(
         require(manifestName.isNotBlank()) {
             "a request that names no manifest is not a request: manifest_name is blank."
         }
-        require(SHA256_HEX.matches(manifestSha256)) {
+        require(Sha256.isSha256Hex(manifestSha256)) {
             "manifest_sha256 must be a lowercase SHA-256 hex digest (64 chars), got '$manifestSha256'."
         }
     }
@@ -142,7 +143,7 @@ data class MavenArtifactDigest(
 ) {
     init {
         require(path.isNotBlank()) { "an artifact without a path is not an artifact: path is blank." }
-        require(SHA256_HEX.matches(sha256)) {
+        require(Sha256.isSha256Hex(sha256)) {
             "sha256 must be a lowercase SHA-256 hex digest (64 chars), got '$sha256'."
         }
     }
@@ -163,7 +164,7 @@ data class MavenFileDigest(
 ) {
     init {
         require(name.isNotBlank()) { "a file without a name is not a file: name is blank." }
-        require(SHA256_HEX.matches(sha256)) {
+        require(Sha256.isSha256Hex(sha256)) {
             "sha256 must be a lowercase SHA-256 hex digest (64 chars), got '$sha256'."
         }
     }
@@ -236,12 +237,3 @@ data class MavenObservedPublication(
     /** The digest of the manifest document as it was read. */
     val manifestSha256: String,
 )
-
-/**
- * The lowercase hex form of a SHA-256 digest.
- *
- * It is the ONE definition of what a digest looks like in this channel, so
- * that a document claiming a digest in another shape is refused at the
- * boundary instead of at the comparison that would have to interpret it.
- */
-internal val SHA256_HEX: Regex = Regex("^[0-9a-f]{64}$")

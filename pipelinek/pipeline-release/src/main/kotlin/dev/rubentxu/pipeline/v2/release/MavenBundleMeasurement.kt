@@ -1,10 +1,10 @@
 package dev.rubentxu.pipeline.v2.release
 
-import java.io.IOException
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import java.io.InputStream
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.util.zip.ZipFile
 
 /**
@@ -46,7 +46,7 @@ object MavenBundleMeasurement {
      */
     fun measure(root: Path): MavenBundleState {
         val files = walk(root)
-        val digests = files.associate { it to sha256Of(root.resolve(it)) }
+        val digests = files.associate { it to Sha256.ofFile(root.resolve(it)) }
         val artifacts = files.mapNotNull { path ->
             val kind = kindOf(path) ?: return@mapNotNull null
             MavenArtifactDigest(path, kind, digests.getValue(path))
@@ -83,7 +83,7 @@ object MavenBundleMeasurement {
             walk(directory).mapNotNull { path ->
                 val kind = kindOf(path) ?: return@mapNotNull null
                 val relative = "$prefix/$path"
-                MavenArtifactDigest(relative, kind, sha256Of(directory.resolve(path)))
+                MavenArtifactDigest(relative, kind, Sha256.ofFile(directory.resolve(path)))
             }
         }.distinctBy { it.path }.sortedBy { it.path }
 
@@ -146,46 +146,20 @@ object MavenBundleMeasurement {
     /**
      * The root of a set of digests: the SHA-256 of the sorted lines
      * `"<sha256>  <path>"`, one per line.
+     *
+     * The hex and the digest come from [Sha256], the one SHA-256 utility of
+     * this repository: a digest computable two ways is the kind of ambiguity
+     * that lets a wrong bundle pass.
      */
     private fun rootDigest(digests: Map<String, String>): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        digests.entries.sortedBy { it.key }.forEach { (path, sha256) ->
-            digest.update("$sha256  $path\n".toByteArray(Charsets.UTF_8))
+        val preimage = buildString {
+            digests.entries.sortedBy { it.key }.forEach { (path, sha256) ->
+                append(sha256).append("  ").append(path).append('\n')
+            }
         }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        return Sha256.ofBytes(preimage.toByteArray(StandardCharsets.UTF_8))
     }
 
     /** The SHA-256 of a stream's bytes. */
-    private fun digestOf(stream: InputStream): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val buffer = ByteArray(1 shl 16)
-        while (true) {
-            val read = stream.read(buffer)
-            if (read < 0) break
-            digest.update(buffer, 0, read)
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
-    }
-}
-
-/**
- * The SHA-256 of a file's bytes, as the hexadecimal form the documents use.
- *
- * It is the same computation [MavenBundleMeasurement] does, named once so
- * that a caller that needs the digest of ONE file does not have to walk a
- * whole bundle to obtain it.
- */
-fun sha256Of(path: Path): String = try {
-    Files.newInputStream(path).use { stream ->
-        val digest = MessageDigest.getInstance("SHA-256")
-        val buffer = ByteArray(1 shl 16)
-        while (true) {
-            val read = stream.read(buffer)
-            if (read < 0) break
-            digest.update(buffer, 0, read)
-        }
-        digest.digest().joinToString("") { "%02x".format(it) }
-    }
-} catch (e: IOException) {
-    throw IllegalStateException("the file at $path could not be read: ${e.message}", e)
+    private fun digestOf(stream: InputStream): String = Sha256.ofBytes(stream.readBytes())
 }

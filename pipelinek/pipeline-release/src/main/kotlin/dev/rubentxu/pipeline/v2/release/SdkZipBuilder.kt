@@ -1,10 +1,10 @@
 package dev.rubentxu.pipeline.v2.release
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import java.io.BufferedOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -170,7 +170,7 @@ object SdkZipBuilder {
             BomFileEntry(
                 path = ref.relativePath,
                 size = bytes.size.toLong(),
-                sha256 = sha256Hex(bytes),
+                sha256 = Sha256.ofBytes(bytes),
             )
         }
 
@@ -250,12 +250,6 @@ object SdkZipBuilder {
         sb.append("  ]\n")
         sb.append("}\n")
         Files.writeString(target, sb.toString())
-    }
-
-    private fun sha256Hex(bytes: ByteArray): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(bytes)
-        return digest.joinToString("") { "%02x".format(it) }
     }
 
     private data class BomFileEntry(

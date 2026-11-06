@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.release
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -65,13 +66,13 @@ class SdkZipDeterminismTest {
         val second = SdkZipBuilder.build(repository, version, coordinates, directory.resolve("second"))
 
         assertEquals(
-            sha256Of(first.first),
-            sha256Of(second.first),
+            Sha256.ofFile(first.first),
+            Sha256.ofFile(second.first),
             "the SDK ZIP is not a function of what it contains",
         )
         assertEquals(
-            sha256Of(first.second),
-            sha256Of(second.second),
+            Sha256.ofFile(first.second),
+            Sha256.ofFile(second.second),
             "the BOM JSON is not a function of what it contains",
         )
     }

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.release
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -82,7 +83,15 @@ object MavenPublicationAdmission {
                     "not be compared with the contracts of the bundle.",
             )
         }
-        val sdkZipDigest = sha256Of(sdkZip)
+        val sdkZipDigest = try {
+            Sha256.ofFile(sdkZip)
+        } catch (e: IOException) {
+            return MavenPublicationOutcome.Refused(
+                "the SDK ZIP at $sdkZip could not be read, so its digest was not measured: " +
+                    "${e.message ?: e::class.java.simpleName}. The contracts of the candidate " +
+                    "could not be compared with the contracts of the bundle.",
+            )
+        }
         if (sdkZipDigest != manifest.sdkZip.sha256) {
             return MavenPublicationOutcome.Refused(
                 "the SDK ZIP at $sdkZip has digest $sdkZipDigest and the manifest names " +
@@ -99,17 +108,33 @@ object MavenPublicationAdmission {
             )
         }
 
-        val bundle = MavenBundleMeasurement.measure(bundleRoot)
-        val observed = MavenObservedPublication(
-            bundleArtifacts = bundle.artifacts,
-            bundleSha256 = bundle.sha256,
-            published = MavenBundleMeasurement.measurePublished(
-                publishedRoot,
-                request.productVersion.toString(),
-            ),
-            certifiedContracts = MavenBundleMeasurement.contractsIn(sdkZip),
-            manifestSha256 = sha256Of(manifestPath),
-        )
+        val bundle = try {
+            MavenBundleMeasurement.measure(bundleRoot)
+        } catch (e: IOException) {
+            return MavenPublicationOutcome.Refused(
+                "the bundle at $bundleRoot holds a file that could not be read, so the bytes " +
+                    "that would be published were not measured: ${e.message ?: e::class.java.simpleName}. " +
+                    "A publication of bytes nobody measured is a publication with no guarantee.",
+            )
+        }
+        val observed = try {
+            MavenObservedPublication(
+                bundleArtifacts = bundle.artifacts,
+                bundleSha256 = bundle.sha256,
+                published = MavenBundleMeasurement.measurePublished(
+                    publishedRoot,
+                    request.productVersion.toString(),
+                ),
+                certifiedContracts = MavenBundleMeasurement.contractsIn(sdkZip),
+                manifestSha256 = Sha256.ofFile(manifestPath),
+            )
+        } catch (e: IOException) {
+            return MavenPublicationOutcome.Refused(
+                "the state of the publication could not be measured: " +
+                    "${e.message ?: e::class.java.simpleName}. A publication nobody measured is " +
+                    "a publication with no guarantee.",
+            )
+        }
 
         return when (
             val verdict = evaluateMavenPublication(

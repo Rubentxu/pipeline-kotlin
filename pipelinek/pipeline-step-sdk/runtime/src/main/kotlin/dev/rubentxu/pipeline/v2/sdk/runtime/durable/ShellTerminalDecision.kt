@@ -68,19 +68,32 @@ internal class ShellTerminalDecision(
      * The expiry is folded into the outcome by the caller, so there is ONE authority for it here:
      * the caller's final reading of the mark of the expiry, which the reconciler reads from the
      * same control directory. A terminal that disagreed with the reconciler would make the run
-     * unreadable.
+     * unreadable. That is also why the expiry is decided BEFORE the captured value is read: a
+     * capture that could not be read does not turn an expired execution into something else.
+     *
+     * The captured value is a FACT about the channel, and it is consulted only for an execution
+     * that published an exit code. The other outcomes publish no value, and a value nobody could
+     * establish is not published as one.
      */
     fun forPollOutcome(
         outcome: ShellPollOutcome,
-        capturedStdout: String?,
+        captured: CapturedStdoutRead,
     ): DurableTaskTerminal = when (outcome) {
-        is ShellPollOutcome.Published -> DurableTaskTerminal.Exited(
-            exitCode = outcome.exitCode,
-            output = DurableTaskOutput(
-                controlDir = controlDir.toString(),
-                capturedStdout = capturedStdout,
-            ),
-        )
+        is ShellPollOutcome.Published -> when (captured) {
+            // Nobody recorded anything: the execution has no value, and that is not a value.
+            is CapturedStdoutRead.Absent -> exited(outcome.exitCode, capturedStdout = null)
+
+            // The program printed this. The text may be empty, and an empty text is a value.
+            is CapturedStdoutRead.Present -> exited(outcome.exitCode, capturedStdout = captured.text)
+
+            // The channel is there and could not be read: there is no value, and an empty one
+            // would be an invention.
+            is CapturedStdoutRead.Unreadable -> captureRefused(captured.reason)
+
+            // The value was read and the channel could not be disposed of: the value is known, and
+            // the protocol's promise that the channel is gone is broken.
+            is CapturedStdoutRead.NotDisposed -> captureNotDisposed(captured)
+        }
 
         ShellPollOutcome.Expired -> expired()
 
@@ -94,6 +107,74 @@ internal class ShellTerminalDecision(
         // nothing: the outcome cannot be established, so it is LOST.
         ShellPollOutcome.KeepWaiting -> lost(NO_FACT)
     }
+
+    /**
+     * The terminal of an execution that published an exit code and a captured value.
+     *
+     * The value travels in the output, and the control directory travels with it: a reader that
+     * wants the file the value came from finds it from the terminal itself.
+     */
+    private fun exited(exitCode: Int, capturedStdout: String?): DurableTaskTerminal.Exited =
+        DurableTaskTerminal.Exited(
+            exitCode = exitCode,
+            output = DurableTaskOutput(
+                controlDir = controlDir.toString(),
+                capturedStdout = capturedStdout,
+            ),
+        )
+
+    /**
+     * The terminal of an execution whose captured value could not be read.
+     *
+     * The channel is there and the filesystem refused to serve it, so there is no value. The step
+     * says so instead of publishing an empty one, because an empty value is the answer to "the
+     * program printed nothing" and nobody knows that here.
+     *
+     * It is not retryable, for the same reason the refusal of the transcript is not: the bytes
+     * left the pipe when the child wrote them, so the only way to obtain the value is to run the
+     * child again, and whether to do that is the step's call, not this seam's.
+     */
+    private fun captureRefused(reason: String): DurableTaskTerminal.LaunchFailed =
+        DurableTaskTerminal.LaunchFailed(
+            FailureRecord(
+                code = CAPTURE_READ_REFUSED,
+                kind = FailureKind.INFRASTRUCTURE,
+                message = "the captured stdout could not be read ($reason)",
+                origin = FailureOrigin.DURABLE_TASK,
+                retryable = false,
+                operationId = opId,
+                details = mapOf(
+                    "cause" to reason,
+                    "controlDir" to controlDir.toString(),
+                ),
+            ),
+        )
+
+    /**
+     * The terminal of an execution whose captured value was read but not disposed of.
+     *
+     * The value was read, so the reading is not in doubt; what broke is the protocol's promise
+     * that the channel is gone once it has been read. The details name the control directory, so
+     * the operator can go and find the channel that is still there.
+     *
+     * It is not retryable: the value is known, so there is nothing for a retry to produce, and
+     * re-running the child would only replace a known value with another one.
+     */
+    private fun captureNotDisposed(captured: CapturedStdoutRead.NotDisposed): DurableTaskTerminal.LaunchFailed =
+        DurableTaskTerminal.LaunchFailed(
+            FailureRecord(
+                code = CAPTURE_DISPOSAL_REFUSED,
+                kind = FailureKind.INFRASTRUCTURE,
+                message = "the captured stdout could not be disposed of (${captured.reason})",
+                origin = FailureOrigin.DURABLE_TASK,
+                retryable = false,
+                operationId = opId,
+                details = mapOf(
+                    "cause" to captured.reason,
+                    "controlDir" to controlDir.toString(),
+                ),
+            ),
+        )
 
     /**
      * The terminal of an execution whose outcome could not be established.
@@ -227,5 +308,16 @@ internal class ShellTerminalDecision(
 
         /** The token of a machine that did not keep up. */
         const val OUT_OF_TIME_CAUSE = "transcript-drain-out-of-time"
+
+        /**
+         * The code of a capture that could not be read.
+         *
+         * It is not the code of the refusal of the transcript: the transcript was complete, and
+         * the reader that decides whether the output may be sealed reads that other code.
+         */
+        const val CAPTURE_READ_REFUSED = "CAPTURE_READ_REFUSED"
+
+        /** The code of a capture that was read and could not be disposed of. */
+        const val CAPTURE_DISPOSAL_REFUSED = "CAPTURE_DISPOSAL_REFUSED"
     }
 }

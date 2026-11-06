@@ -186,8 +186,8 @@ class NetworkEgressTest {
     @Test
     fun `DenyAll refuses with NetworkNotPermitted and not the destination reason`() {
         // The two refusals are different operator facts and the journal has to tell them apart:
-        // "this run has no network" is fixed by policy, "not to this host" is a judgement about
-        // one destination. Collapsing them points an operator at the wrong thing.
+        // "this run grants its plugins no egress" is fixed by policy, "not to this host" is a
+        // judgement about one destination. Collapsing them points an operator at the wrong thing.
         assertEquals(
             EgressRefusal.NetworkNotPermitted,
             (DenyAll.decide(dest()) as EgressDecision.Refused).reason,

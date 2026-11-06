@@ -7,8 +7,12 @@ import dev.rubentxu.pipeline.v2.runtime.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.runtime.WORKSPACE_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.step.AllowAll
 import dev.rubentxu.pipeline.v2.domain.step.CapabilityRefusal
+import dev.rubentxu.pipeline.v2.domain.step.DenyAll
+import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.CapabilityRefusedException
+import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressGate
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.NullEventSink
@@ -21,8 +25,10 @@ import dev.rubentxu.pipeline.v2.runtime.telemetry.StepSpan
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.time.Instant
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -172,8 +178,31 @@ class RuntimeCapabilityAccessTest {
         )
     }
 
-    // --- the fixtures ------------------------------------------------------
+    @Test
+    @DisplayName("a run that grants no egress to its plugins hands out no egress capability")
+    fun aRunThatGrantsNoEgressToItsPluginsHandsOutNoEgressCapability() {
+        val provided = access(context())
 
+        assertFalse(
+            provided.available().contains(NETWORK_EGRESS_CAPABILITY),
+            "a run that denies egress to its plugins still exposes the egress capability, " +
+                "so the admission refuses nothing and the plugin opens the socket anyway",
+        )
+    }
+
+    @Test
+    @DisplayName("a run that was asked for egress hands the capability to the plugins")
+    fun aRunThatWasAskedForEgressHandsTheCapabilityToThePlugins() {
+        val provided = access(context(pluginEgress = AllowAll))
+
+        assertTrue(
+            provided.available().contains(NETWORK_EGRESS_CAPABILITY),
+            "a run that was asked for egress does not expose the capability, so a plugin " +
+                "that declares it is refused at admission for no reason at all",
+        )
+    }
+
+    // --- the fixtures ------------------------------------------------------
     /**
      * The refusal the access raises, read back off the exception that carries it.
      *
@@ -204,8 +233,15 @@ class RuntimeCapabilityAccessTest {
      *
      * The seam is a parameter because whether the context carries one is a fact about how the
      * context was composed, and the rows above need both answers.
+     *
+     * The egress gate is a parameter for the same reason: the rows that read it need both
+     * answers, and a fixture that hard-coded the denying gate could not tell a gate that
+     * withholds the capability from a gate that was never consulted.
      */
-    private fun context(stepObservability: StepObservability? = null): RuntimeContext =
+    private fun context(
+        stepObservability: StepObservability? = null,
+        pluginEgress: NetworkEgressGate = DenyAll,
+    ): RuntimeContext =
         RuntimeContext(
             opId = OpId(RUN_ID, 0, 0),
             runId = RUN_ID,
@@ -217,6 +253,7 @@ class RuntimeCapabilityAccessTest {
                 captureStdout = false,
                 timeoutMs = null,
                 env = emptyMap(),
+                pluginEgress = pluginEgress,
             ),
             controlDirRoot = Path.of("/nonexistent-control-root"),
             eventSink = NullEventSink,

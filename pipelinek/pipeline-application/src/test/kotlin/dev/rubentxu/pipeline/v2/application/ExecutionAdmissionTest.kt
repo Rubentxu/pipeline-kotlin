@@ -194,6 +194,30 @@ class ExecutionAdmissionTest {
     }
 
     @Test
+    fun `the default profile asks for nothing about the network of the child process`() {
+        val asked = ExecutionAdmission.profileRequestFor("none")!!
+
+        assertEquals(
+            emptySet<IsolationCapability>(),
+            AdmissionDecider.requiredCapabilities(asked.request),
+            "the default profile asks for no capability, so it promises nothing about the " +
+                "network of its child process: the only posture that takes that network away " +
+                "is the one that asks for it",
+        )
+    }
+
+    @Test
+    fun `the refusal says what the child process would keep without the confinement`() {
+        val exit = refusalExitFor("confined", CountingProvider(IsolationAttestation.Provider(PROVEN_FILESYSTEM_ONLY)))
+
+        assertTrue(
+            exit.message.contains("keeps the host's network"),
+            "the refusal names the capability but not its consequence, so the operator " +
+                "cannot tell what the run would have kept: ${exit.message}",
+        )
+    }
+
+    @Test
     fun `the legacy words do not measure the host`() {
         val provider = CountingProvider(IsolationAttestation.Provider(PROVEN_FILESYSTEM_AND_NETWORK))
 

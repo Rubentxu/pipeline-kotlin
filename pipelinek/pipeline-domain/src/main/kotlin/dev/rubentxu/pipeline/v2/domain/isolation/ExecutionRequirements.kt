@@ -111,12 +111,18 @@ sealed interface NetworkAccess {
     data class Allowlisted(val destinations: List<String>) : NetworkAccess
 
     /**
-     * No socket leaves the run, and the fact is enforced rather than declared.
+     * The run's CHILD PROCESS has no network of its own, and the fact is
+     * enforced rather than declared.
      *
      * [Denied] is the legacy behaviour and it is a weaker statement: no step
      * asked for the network, and the runtime refuses a step that declares the
-     * capability. This one is a demand — the provider has to prove that the run
-     * has no network at all, because "nothing asked" is not "nothing left".
+     * capability. This one is a demand — the provider has to prove that the
+     * child process is put in a network namespace of its own, because "nothing
+     * asked" is not "nothing left".
+     *
+     * The demand reaches the PROCESS and not the runtime's own process, where
+     * the in-process plugins live: those are governed by the egress gate, which
+     * is a different mechanism with a different owner.
      */
     data object Isolated : NetworkAccess
 }

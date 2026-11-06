@@ -243,6 +243,18 @@ class DurableShellExecutor {
     /**
      * Canonical durable-shell execution seam. The closed return type permits
      * only terminal outcomes; lifecycle snapshots never escape this module.
+     *
+     * ## What this refuses, and when
+     *
+     * A request that asks for the captured stdout AND for the ingest agent is refused here,
+     * BEFORE the child exists: the two modes cannot both hold the stdout (the capture wants the
+     * exact bytes as a typed value, the agent wants the sanitized bytes as the durable
+     * transcript), and while the agent owns the child's stdout the capture's channel has no
+     * writer, so the value would be lost and published as an empty string. The refusal is a
+     * terminal like any other, with its own code, and it leaves nothing behind on the disk.
+     *
+     * The two modes that DO go together are unaffected: a capture without the agent keeps its
+     * channel, and the agent without a capture keeps owning both channels.
 */
     fun executeTerminal(
         controlDir: Path,
@@ -252,14 +264,8 @@ class DurableShellExecutor {
         config: DurableShConfig = DurableShConfig.fromSystemProperties(),
         transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)? = null,
         channelSinks: Map<ProcessOutputChannel, ProcessOutputSink> = emptyMap(),
-    ): DurableTaskTerminal = executeCore(
-        controlDir = controlDir,
-        scriptContent = scriptContent,
-        opId = opId,
-        config = config,
-        channelSinks = channelSinks,
-        transcriptRedactor = transcriptRedactor,
-        request = DurableShellExecutionRequest(
+    ): DurableTaskTerminal {
+        val request = DurableShellExecutionRequest(
             timeoutMs = shOptions.timeoutMs ?: 0L,
             env = shOptions.env,
             sandbox = shOptions.sandbox,
@@ -271,8 +277,42 @@ class DurableShellExecutor {
                 DurableShellOutputProjection.JENKINS_LOG
             },
             timeoutCompletion = DurableShellTimeoutCompletion.KILL_RESULT,
-        ),
-    )
+        )
+
+        // The admission of the two modes that cannot both hold the stdout. The capture asks for
+        // the EXACT bytes as a typed value and the ingest agent asks for the SANITIZED bytes as
+        // the durable transcript; while the agent owns the child's stdout the capture's channel
+        // has no writer, so the value would be an absence — and an absence the published
+        // projection turns into an empty string, which is the answer to "the program printed
+        // nothing". The refusal happens HERE, before the launch: a refusal that came after the
+        // child ran would have executed a program whose value nobody could publish.
+        //
+        // The three facts are read with the SAME functions the launch reads them with, so the
+        // admission cannot disagree with the routing: what is refused here is exactly what would
+        // have lost the value.
+        val pumpedThroughJvm = ShellProcessLauncher.pumpsThroughJvm(
+            hasRedactor = transcriptRedactor != null,
+            channelSinkCount = channelSinks.size,
+        )
+        if (ShellProcessLauncher.captureIsIncompatibleWithTheAgent(
+                captureStdout = request.captureStdout,
+                pumpedViaAgent = config.pumpedViaAgent,
+                pumpedThroughJvm = pumpedThroughJvm,
+            )
+        ) {
+            return ShellTerminalDecision(opId = opId, controlDir = controlDir).forInadmissibleCapture()
+        }
+
+        return executeCore(
+            controlDir = controlDir,
+            scriptContent = scriptContent,
+            opId = opId,
+            config = config,
+            channelSinks = channelSinks,
+            transcriptRedactor = transcriptRedactor,
+            request = request,
+        )
+    }
 
     private fun executeCore(
         controlDir: Path,

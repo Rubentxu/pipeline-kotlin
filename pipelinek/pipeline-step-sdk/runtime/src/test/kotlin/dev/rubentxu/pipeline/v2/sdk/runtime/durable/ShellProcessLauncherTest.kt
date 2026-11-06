@@ -127,6 +127,56 @@ class ShellProcessLauncherTest {
     }
 
     @Test
+    fun `the capture and the agent cannot both hold the stdout`() {
+        assertTrue(
+            ShellProcessLauncher.captureIsIncompatibleWithTheAgent(
+                captureStdout = true,
+                pumpedViaAgent = true,
+                pumpedThroughJvm = true,
+            ),
+            "the capture and the agent were declared compatible, and the value would be lost",
+        )
+    }
+
+    @Test
+    fun `the capture and an agent that does not pump are compatible`() {
+        // Without bytes pumped through the JVM the agent owns no descriptor, so it takes no
+        // stdout and the capture keeps its channel.
+        assertFalse(
+            ShellProcessLauncher.captureIsIncompatibleWithTheAgent(
+                captureStdout = true,
+                pumpedViaAgent = true,
+                pumpedThroughJvm = false,
+            ),
+            "an agent that owns no descriptor refused the capture",
+        )
+    }
+
+    @Test
+    fun `the capture and the in-JVM pumps are compatible`() {
+        assertFalse(
+            ShellProcessLauncher.captureIsIncompatibleWithTheAgent(
+                captureStdout = true,
+                pumpedViaAgent = false,
+                pumpedThroughJvm = true,
+            ),
+            "the capture was refused a composition it supports",
+        )
+    }
+
+    @Test
+    fun `the agent and a stdout nobody captures are compatible`() {
+        assertFalse(
+            ShellProcessLauncher.captureIsIncompatibleWithTheAgent(
+                captureStdout = false,
+                pumpedViaAgent = true,
+                pumpedThroughJvm = true,
+            ),
+            "the agent was refused a composition it supports",
+        )
+    }
+
+    @Test
     fun `the captured stdout goes to the value file and the stderr to a pipe`() {
         val plan = ShellProcessLauncher.planChildDescriptors(
             protocol = protocol,

@@ -224,6 +224,42 @@ internal class ShellTerminalDecision(
     }
 
     /**
+     * The terminal of an execution that asked for two modes that cannot both hold the stdout.
+     *
+     * The capture wants the EXACT bytes as a typed value; the ingest agent wants the SANITIZED
+     * bytes as the durable transcript, and it owns the child's stdout when it is the one pumping.
+     * There is no stdout that is both, so the request is refused BEFORE the child exists:
+     * nothing runs, nothing is written, and no value is invented for a program that never ran.
+     *
+     * The diagnostic is SAFE. It names the two modes and the directory where the control would
+     * have happened, and it carries neither the script nor the agent's secret: a refusal is read
+     * by whoever has to fix the request, and a refusal that leaked the request's own content
+     * would be a second copy of it.
+     *
+     * The kind is the substrate's, like the other capture refusals: this substrate cannot serve
+     * the combination, and the reason is not the user's script failing.
+     *
+     * It is not retryable: the refusal is about the REQUEST, and the same request would be
+     * refused the same way.
+     */
+    fun forInadmissibleCapture(): DurableTaskTerminal.LaunchFailed =
+        DurableTaskTerminal.LaunchFailed(
+            FailureRecord(
+                code = CAPTURE_AGENT_MODE_REFUSED,
+                kind = FailureKind.INFRASTRUCTURE,
+                message = "the captured stdout cannot be combined with the ingest agent: " +
+                    "the agent owns the child's stdout, so the typed value is never written",
+                origin = FailureOrigin.DURABLE_TASK,
+                retryable = false,
+                operationId = opId,
+                details = mapOf(
+                    "cause" to "the ingest agent owns the child's stdout, so the capture has no value",
+                    "controlDir" to controlDir.toString(),
+                ),
+            ),
+        )
+
+    /**
      * The terminal of an execution whose output could not be persisted.
      *
      * The bytes left the pipe when the sink was handed them, so nothing can recover them: the
@@ -319,5 +355,12 @@ internal class ShellTerminalDecision(
 
         /** The code of a capture that was read and could not be disposed of. */
         const val CAPTURE_DISPOSAL_REFUSED = "CAPTURE_DISPOSAL_REFUSED"
+
+        /**
+         * The code of a capture that asked for the ingest agent's stdout.
+         *
+         * It is not the code of a refusal of the transcript: the transcript was never started.
+         */
+        const val CAPTURE_AGENT_MODE_REFUSED = "CAPTURE_AGENT_MODE_REFUSED"
     }
 }

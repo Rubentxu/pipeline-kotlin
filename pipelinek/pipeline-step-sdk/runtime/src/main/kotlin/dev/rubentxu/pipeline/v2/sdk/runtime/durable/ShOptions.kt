@@ -73,6 +73,13 @@ data class ShOptions(
      * flag is the wire that turns it on.
      * Nothing in this tree drives the agent mode end to end, so the default
      * below is a conservative choice rather than a measured one.
+     * ## What it cannot be combined with
+     * The agent mode and a captured stdout cannot both hold the child's stdout: the capture
+     * wants the EXACT bytes as a typed value and the agent wants the SANITIZED bytes as the
+     * durable transcript, and while the agent owns the child's stdout the capture's channel has
+     * no writer, so the value would be lost. The executor refuses that combination before the
+     * child starts; the ONE rule that decides it is the launcher's own routing
+     * (`captureIsIncompatibleWithTheAgent`), which is where the routing itself lives.
      * ## What the flag does at the call site
      * When `true`, `ShExecution.invokeShell` constructs a
      * [DurableShConfig] with `pumpedViaAgent = true` and passes it

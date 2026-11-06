@@ -298,6 +298,9 @@ class DurableInvocationRecordTest {
             telemetry = NoopPipelineTelemetry,
             clock = FixedClock,
             idGenerator = SequentialIdGenerator(),
+            // These rows observe the DURABLE ROW, and the confirmation is a release of the
+            // substrate's leftovers: there are none here, so it does nothing.
+            journalConfirmation = JournalConfirmation { },
         )
 
     /** One row, in the shape the journal holds it. */

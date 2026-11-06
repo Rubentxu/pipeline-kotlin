@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.runtime.durable.ExternalSubprocessRecovery
 import dev.rubentxu.pipeline.v2.runtime.durable.OpId
 import dev.rubentxu.pipeline.v2.runtime.durable.RecoveryInterpretationEngine
 import dev.rubentxu.pipeline.v2.runtime.durable.CapabilityBindings
+import dev.rubentxu.pipeline.v2.runtime.durable.ControlDirectoryConfirmation
 import dev.rubentxu.pipeline.v2.runtime.durable.RegistryExecutionBoundary
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.RunOutcomeReducer
@@ -126,6 +127,10 @@ object ScriptedFrontendRunner {
             telemetry = telemetry,
             clock = clock,
             idGenerator = idGenerator,
+            // The scripted surface confirms its rows the same way the canonical one does, and the
+            // confirmation releases the same control directory: the scripted path is not a second
+            // journey with its own idea of what a capture is worth.
+            journalConfirmation = ControlDirectoryConfirmation(controlDirRoot),
         )
         // The scripted surface runs the SAME authorities as the canonical coordinator,
         // with the materialiser supplied by the engine's own default — so a recovered `core.sh`

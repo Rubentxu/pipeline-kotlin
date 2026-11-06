@@ -125,7 +125,12 @@ class CapturedStdoutReadTest {
                     "cannot be produced here and the row did not run",
             )
 
-            val read = DurableShellExecutor().readOutputText(opDir)
+            // The policy is part of the QUESTION here: this row asks what the reader answers
+            // when the policy asks for the disposal and the filesystem refuses it. The product's
+            // own default does not dispose of the channel, so the refusal it names is a fact
+            // about a disposal nobody asked for — and a row that pins a fact has to ask for the
+            // fact.
+            val read = DurableShellExecutor().readOutputText(opDir, CaptureRetainPolicy.READ_THEN_DELETE)
 
             val notDisposed = assertInstanceOf(
                 CapturedStdoutRead.NotDisposed::class.java,

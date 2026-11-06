@@ -83,8 +83,8 @@ internal class ShellResourceCleanup(
      * asked for it — the production consumer streams it after the executor returns and deletes
      * it itself.
      */
-    fun dispose(exitCode: Int, keepTranscriptLog: Boolean) {
-        when (val fate = fateOf(exitCode, keepTranscriptLog)) {
+    fun dispose(exitCode: Int, keepTranscriptLog: Boolean, capturePending: Boolean = false) {
+        when (val fate = fateOf(exitCode, keepTranscriptLog, capturePending)) {
             ControlDirFate.Retained -> Unit
             is ControlDirFate.Disposed -> disposeControlDir(keepConsoleLog = fate.consoleLogSurvives)
         }
@@ -135,7 +135,10 @@ internal class ShellResourceCleanup(
      */
     sealed interface ControlDirFate {
 
-        /** The directory and everything in it survive: the execution failed and its evidence is the protocol's. */
+        /**
+         * The directory and everything in it survive: the execution failed and its evidence is the
+         * protocol's, or its capture still awaits the journal's confirmation.
+         */
         data object Retained : ControlDirFate
 
         /** The directory is disposed; [consoleLogSurvives] says whether the console transcript was kept. */
@@ -150,9 +153,14 @@ internal class ShellResourceCleanup(
          * A non-zero exit code means the execution did not succeed, and its directory is
          * retained. A zero exit code means it succeeded, and the directory is disposed; the
          * console transcript survives that disposal only when the caller asked for it.
+         *
+         * A directory whose capture still awaits the journal's confirmation is retained whatever
+         * the exit code says: the captured value's only durable home is this directory, and a
+         * disposal before the journal holds the value destroys the evidence of an execution that
+         * DID happen. The confirmation is what releases it.
          */
-        fun fateOf(exitCode: Int, keepTranscriptLog: Boolean): ControlDirFate =
-            if (exitCode != 0) {
+        fun fateOf(exitCode: Int, keepTranscriptLog: Boolean, capturePending: Boolean = false): ControlDirFate =
+            if (capturePending || exitCode != 0) {
                 ControlDirFate.Retained
             } else {
                 ControlDirFate.Disposed(consoleLogSurvives = keepTranscriptLog)

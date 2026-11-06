@@ -236,9 +236,13 @@ enum class CaptureRetainPolicy {
     /**
      * The channel is disposed of as soon as it has been read.
      *
-     * This is the default policy for a single-flight capture. A refusal to dispose of the channel
-     * is reported as a refusal: the value was read, and the protocol's promise that the channel
-     * is gone is broken. It is never reported as an empty value.
+     * This is the policy of a single-flight capture: one reader, one reading, and the channel
+     * goes with it. A refusal to dispose of the channel is reported as a refusal: the value was
+     * read, and the protocol's promise that the channel is gone is broken. It is never reported
+     * as an empty value.
+     *
+     * The policy that SHIPS is [DurableShConfig.CAPTURE_RETAIN_POLICY_DEFAULT], and the reason is
+     * in [RETAIN].
      */
     READ_THEN_DELETE,
 
@@ -250,6 +254,12 @@ enum class CaptureRetainPolicy {
      * the capture is kept in a failed execution, whose directory is retained whole, and it goes
      * with the directory in a successful one. A reader that wants the capture after a successful
      * execution has to keep the directory, and that is not this policy's decision to make.
+     *
+     * This is what [DurableShConfig.CAPTURE_RETAIN_POLICY_DEFAULT] names, and the reason is the
+     * journal: the captured value reaches the journal AFTER the execution ended, so a capture
+     * disposed of at the reading is a value that a process death between the two can lose for
+     * good. Leaving it where it is keeps the value recoverable until the confirmation releases
+     * it.
      */
     RETAIN,
 }

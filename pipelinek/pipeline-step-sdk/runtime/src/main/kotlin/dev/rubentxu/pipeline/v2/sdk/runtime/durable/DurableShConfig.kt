@@ -41,7 +41,8 @@ data class DurableShConfig(
 
     /**
      * Policy for output.txt retention after capture.
-     * Default READ_THEN_DELETE (single-flight read).
+     * Default RETAIN: the capture stays where the execution left it until the journal confirms
+     * the execution, because until then it is the only durable copy of the value.
 */
     val captureRetainPolicy: CaptureRetainPolicy = CAPTURE_RETAIN_POLICY_DEFAULT,
 
@@ -150,8 +151,8 @@ data class DurableShConfig(
         /** Default: false (guard - output.txt written but never read) */
         const val RETURN_STDOUT_DEFAULT = false
 
-        /** Default: READ_THEN_DELETE (single-flight capture) */
-        val CAPTURE_RETAIN_POLICY_DEFAULT = CaptureRetainPolicy.READ_THEN_DELETE
+        /** Default: RETAIN — the capture outlives the execution until the journal confirms it. */
+        val CAPTURE_RETAIN_POLICY_DEFAULT = CaptureRetainPolicy.RETAIN
 
         /** Default: false (ships the flag off; spike flips it on for the proof) */
         const val PUMPED_VIA_AGENT_DEFAULT = false

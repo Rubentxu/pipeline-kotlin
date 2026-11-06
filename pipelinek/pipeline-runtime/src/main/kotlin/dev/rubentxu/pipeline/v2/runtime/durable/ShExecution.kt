@@ -111,7 +111,7 @@ object ShExecution {
         // stage workspace while projecting a scoped dir context for this child only.
         val effectiveOptions = shOptions.copy(workspaceRoot = shOptions.workingDirectory ?: shOptions.workspaceRoot)
         // controlDir is sibling to workspace: {controlDirRoot}/{opId}
-        val controlDir = controlDirRoot.resolve(opId.format())
+        val controlDir = controlDirOf(controlDirRoot, opId)
 
         return try {
             // The environment is composed ONCE, and by the substrate that launches the

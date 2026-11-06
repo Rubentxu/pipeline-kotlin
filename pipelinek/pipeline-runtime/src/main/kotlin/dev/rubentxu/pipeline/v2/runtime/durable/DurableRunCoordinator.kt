@@ -269,6 +269,10 @@ class DurableRunCoordinator(
         telemetry = telemetry,
         clock = clock,
         idGenerator = idGenerator,
+        // The journal confirms each operation's row, and the confirmation releases the control
+        // directory that held the capture until then. The root is the one this run already owns:
+        // the same root the recovery observer reads.
+        journalConfirmation = ControlDirectoryConfirmation(controlDirRoot),
     )
 
     // The run-lifecycle bookends and the running outcome live in

@@ -68,6 +68,7 @@ internal class DurableStepExecutor(
     private val telemetry: PipelineTelemetry,
     private val clock: Clock,
     private val idGenerator: IdGenerator,
+    private val journalConfirmation: JournalConfirmation,
 ) {
 
     /**
@@ -127,6 +128,17 @@ internal class DurableStepExecutor(
                 )
             },
         )
+        // The journal holds the operation's result NOW. Until this moment the substrate's
+        // leftovers for this operation were the only durable copy of what the operation
+        // produced: a capture that was read but not yet recorded is lost for good if the
+        // process dies between the reading and the append, and a resumed run then finds a
+        // LOST execution instead of the value. The confirmation is what releases them, and it
+        // happens AFTER the append, never before it.
+        //
+        // The identity it carries is the runtime's OpId: that is the identity the substrate
+        // files the leftovers under, and it is NOT the journal's operation id (on the scripted
+        // surface the journal names the same operation by a different string).
+        journalConfirmation.confirm(runtime.opId)
         return executionResult
     }
 }

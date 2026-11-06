@@ -356,7 +356,7 @@ private class FakeProcessHandle : ProcessHandle {
  * A descriptor that only ends when the garbage collector runs is a descriptor
  * the process keeps, and the board is what has to end it.
  */
-private class RecordingPipe(private val content: String) : InputStream() {
+private class RecordingPipe(content: String) : InputStream() {
 
     /** Whether the pipe was closed. */
     val closed = AtomicBoolean(false)

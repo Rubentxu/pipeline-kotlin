@@ -33,7 +33,14 @@ enum class IsolationCapability {
     /** The run executes under a user namespace, or an equivalent identity boundary. */
     UserNamespace,
 
-    /** The run's network reach is bounded to what the request allows. */
+    /**
+     * The run's CHILD PROCESS has no network of its own: it is put in a network
+     * namespace, so no socket it opens leaves it.
+     *
+     * The capability is about the process the run launches and not about the
+     * runtime's own process, where the in-process plugins live: those are
+     * governed by the egress gate, which is a different mechanism.
+     */
     NetworkConfinement,
 
     /** The run's process tree cannot outlive or escape the boundary it was given. */

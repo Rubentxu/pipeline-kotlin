@@ -238,6 +238,16 @@ private fun isolationRefusalHint(reason: DenialReason): String = when (reason) {
  * legacy behaviour, and such a request is not refused for its capabilities: it
  * is refused for a conflict of the request itself or for an artifact. Naming
  * capabilities there would name a demand that was never made.
+ *
+ * ## Why the missing network boundary says what it costs
+ *
+ * A capability name is a name, and the operator has to know what running
+ * without it means. The cost of running without the network confinement is
+ * concrete: the run's child process keeps the HOST's network, because the
+ * egress gate that denies the in-process plugins does not reach a process.
+ * A refusal that named the capability and stopped there would leave the
+ * operator to guess, and the guess is the one this product refuses to make
+ * for them elsewhere.
  */
 private fun isolationRefusalMessage(reason: DenialReason, required: List<IsolationCapability>): String {
     val cause = when (reason) {
@@ -253,7 +263,27 @@ private fun isolationRefusalMessage(reason: DenialReason, required: List<Isolati
     } else {
         "; the request would require a provider that proves ${required.joinToString(", ")}"
     }
-    return "$cause$demands"
+    val network = if (networkConfinementIsMissing(reason)) {
+        "; without it the run's child process keeps the host's network"
+    } else {
+        ""
+    }
+    return "$cause$demands$network"
+}
+
+/**
+ * Whether the refusal leaves the run's child process with the host's network.
+ *
+ * The network confinement is missing when the host could not prove it, and when
+ * the host proved nothing at all. A refusal for another reason leaves the
+ * network alone: a conflict of the request and an unattested artifact say
+ * nothing about what this host can confine.
+ */
+private fun networkConfinementIsMissing(reason: DenialReason): Boolean = when (reason) {
+    is DenialReason.UnsupportedCapability ->
+        IsolationCapability.NetworkConfinement in reason.missing
+    is DenialReason.MissingAttestation -> true
+    is DenialReason.PolicyConflict, is DenialReason.UntrustedPlugin -> false
 }
 
 /**

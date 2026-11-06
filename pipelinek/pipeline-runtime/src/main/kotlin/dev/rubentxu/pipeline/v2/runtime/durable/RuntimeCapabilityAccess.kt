@@ -147,12 +147,22 @@ class RuntimeCapabilityAccess internal constructor(
      * is also why this is a PROPERTY read and not a `when (gate)`: the runtime does
      * not know which gates exist, only that a gate can say whether the question is on
      * the table.
+     *
+     * ## Who this reaches
+     *
+     * The capability reaches the plugins that run inside the runtime's own
+     * process, and only them. It is not a
+     * statement about the run's network: the child process of a shell step is not
+     * confined by this gate and keeps the host's network on the default run. What
+     * takes the network away from that process is a confinement, and a confinement
+     * is a different decision with a different owner
+     * ([dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile.CONFINED]).
 */
     private fun egressPermission(
         context: RuntimeContext,
         builder: MutableMap<StepCapability, CapabilitySlot>,
     ) {
-        val gate = context.shOptions.networkEgress
+        val gate = context.shOptions.pluginEgress
         if (gate.permitsAny) {
             builder[NETWORK_EGRESS_CAPABILITY] = CapabilitySlot.of(gate)
         }

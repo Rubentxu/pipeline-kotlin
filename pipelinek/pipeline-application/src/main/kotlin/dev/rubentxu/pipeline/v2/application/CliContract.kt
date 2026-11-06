@@ -81,13 +81,20 @@ data class CliFlags(
     val isolated: Boolean = false,
     val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
     /**
-     * Whether this run may open outbound
+     * Whether the PLUGINS of this run may open outbound
      * connections. FALSE unless the operator asks for it.
      * Default-deny is the whole point, and it is enforced as a MISSING
      * capability rather than as a check inside a Step: a Step that declares
      * `NETWORK_EGRESS_CAPABILITY` is rejected at prepare-time when the runtime
-     * did not produce the verdict, so there is no code path in which a Step
+     * did not produce the verdict, so there is no code path in which a PLUGIN
      * reaches the network on a default run.
+     *
+     * It says nothing about the run's CHILD PROCESSES. The process a shell step
+     * launches is not reached by that gate and keeps the host's network; the
+     * thing that takes the network away from it is the confined sandbox profile,
+     * which is a different mechanism with a different owner. An operator who
+     * wants no socket to leave the machine asks for that profile, and not for
+     * this switch.
 */
     val allowNetwork: Boolean = false,
     /** External plugin JARs: one list feeds compilation and runtime discovery. */

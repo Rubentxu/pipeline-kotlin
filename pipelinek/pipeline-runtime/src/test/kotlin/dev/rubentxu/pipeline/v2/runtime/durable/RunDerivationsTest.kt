@@ -108,16 +108,16 @@ class RunDerivationsTest {
         )
         assertSame(
             DenyAll,
-            denied.networkEgress,
-            "a run that was not asked for the network must not reach one",
+            denied.pluginEgress,
+            "a run that was not asked for egress must deny it to its plugins",
         )
 
         val allowed = canonicalShellOptions(policy(allowNetwork = true))
 
         assertSame(
             AllowAll,
-            allowed.networkEgress,
-            "a run that WAS asked for the network must carry that permission",
+            allowed.pluginEgress,
+            "a run that WAS asked for egress must carry that permission for its plugins",
         )
     }
 

@@ -308,8 +308,8 @@ private fun FilesystemAccess.demandsConfinement(): Boolean =
  * Denied is the legacy behaviour and it demands nothing: no step asked for the
  * network, and that is a statement about the steps, not about the run. The two
  * postures that constrain the run itself — an allowlist of destinations, and a
- * run with no network at all — demand the capability of a provider that can
- * confine it.
+ * run whose child process has no network of its own — demand the capability of
+ * a provider that can confine it.
  */
 private fun NetworkAccess.demandsConfinement(): Boolean =
     this is NetworkAccess.Allowlisted || this is NetworkAccess.Isolated

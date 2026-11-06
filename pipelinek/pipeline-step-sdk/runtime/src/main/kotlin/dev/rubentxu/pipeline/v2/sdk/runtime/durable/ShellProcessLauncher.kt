@@ -247,8 +247,17 @@ internal class ShellProcessLauncher(
      * The admission core has already refused a request this host cannot honour, so
      * this is the second line and not the first: it exists so that a host that loses
      * the tool between the decision and the launch fails closed.
+     *
+     * ## Why this is visible to the module
+     *
+     * This decision is the one that separates the two facts the word "network"
+     * carries: a profile that asks for no confinement gets none, so its child
+     * process keeps the HOST's network. It used to be private, and a private
+     * decision is a decision nobody can look at: the fact that a trusted run's
+     * child is not on a network of its own was true, unmeasured, and one rename
+     * away from being wrong.
      */
-    private fun confinementFor(
+    internal fun confinementFor(
         request: DurableShellExecutionRequest,
         controlDir: Path,
     ): SandboxConfinement? {

@@ -108,6 +108,33 @@ class DocumentationDriftTest {
     }
 
     @Test
+    fun `the documents do not claim that the run has no network`() {
+        val offenders = listOf(readme(), agents())
+            .flatMap { sentences(it) }
+            .filter { sentence ->
+                RUN_SUBJECT.containsMatchIn(sentence) && NETWORK_DENIAL.containsMatchIn(sentence)
+            }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "the documents claim that the run has no network, and the child process of a shell " +
+                "step keeps the host's network unless the run asks for the confined profile: " +
+                "${offenders.joinToString()}",
+        )
+    }
+
+    @Test
+    fun `the README still says the network is behind a capability`() {
+        val text = readme()
+
+        assertTrue(
+            NETWORK_BEHIND_A_CAPABILITY.containsMatchIn(text),
+            "the README does not say that the network is behind a capability, so the reader is " +
+                "left with the silence where the truth about the network should be",
+        )
+    }
+
+    @Test
     fun `the README names the example plugins the distribution ships`() {
         val text = readme()
         val examples = repositoryRoot().resolve(EXAMPLES_DIRECTORY)
@@ -618,6 +645,38 @@ class DocumentationDriftTest {
 
         /** A test lane the policy names. */
         val TEST_LANE = Regex("src/(test|integrationTest)")
+
+        /**
+         * The subject of a claim about the run's OWN network.
+         *
+         * The word "plugin" is deliberately absent: the network of a plugin
+         * really IS behind a capability, and a sentence about a plugin is not
+         * a sentence about the run.
+         */
+        val RUN_SUBJECT = Regex(
+            "\\b(run|execution|pipeline|stage|script|shell|step|process|workspace|sandbox)\\b",
+            RegexOption.IGNORE_CASE,
+        )
+
+        /**
+         * A claim that there is no network to reach.
+         *
+         * The claim is what the rule forbids; the subject decides WHOSE claim
+         * it is. Both are needed: "a plugin that does not work without network
+         * access is refused" is TRUE, and a rule that read the claim alone
+         * would accuse it.
+         */
+        val NETWORK_DENIAL = Regex(
+            "no network|without (a |any )?network|no socket|offline|" +
+                "(cannot|can not|may not|never) reach (the |any )?network",
+            RegexOption.IGNORE_CASE,
+        )
+
+        /** The truth about the network, as the README states it. */
+        val NETWORK_BEHIND_A_CAPABILITY = Regex(
+            "network[^.]*behind (a )?capabilit|behind (a )?capabilit[^.]*network",
+            RegexOption.IGNORE_CASE,
+        )
 
         /** A Kotlin source file the README names, with the path it names it under. */
         val KOTLIN_FILE = Regex("`([A-Za-z0-9_./-]+\\.kt)`")

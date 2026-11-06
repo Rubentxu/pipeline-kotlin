@@ -46,7 +46,8 @@ data class ShOptions(
 */
     val workspaceOwnership: WorkspaceOwnership? = null,
     /**
-     * Who this execution is allowed to reach on the network
+     * Who may open a socket from INSIDE this run's process: the gate that the
+     * in-process plugins ask, and that the runtime answers.
      * [DenyAll] by default in the data class itself, so a constructor that forgets
      * to mention it is fail-closed by construction rather than by a condition
      * somebody has to remember to write. Only `--allow-network` produces [AllowAll].
@@ -54,8 +55,26 @@ data class ShOptions(
      * per-execution decision set at the CLI boundary that cannot be
      * reconstructed downstream, so it has to cross the transport. The runtime
      * turns it into the generic `NETWORK_EGRESS_CAPABILITY`, and a Step that
-     * needs egress declares that capability — which is how "no network" becomes
-     * an admission rejection instead of a convention.
+     * needs egress declares that capability.
+     * ## What this gate reaches, and what it does not
+     * ```text
+     * subject                     who is refused            by what
+     * an in-process plugin        a Step that declares      the capability is not
+     *                             NETWORK_EGRESS_CAPABILITY exposed, so admission
+     *                                                       rejects the Step
+     *                                                       before its handler
+     *                                                       runs
+     * the child of a shell step   nobody                    the child keeps the
+     *                                                       HOST's network
+     * ```
+     * The second row is the one a name can hide. This field used to be called
+     * `networkEgress`, on the transport of an EXECUTION, and that name reads as
+     * "the network of this execution" — which it is not. It is the admission gate
+     * of the plugins, and a gate reaches the plugin that asks and nothing else.
+     * A `sh` step that runs `curl` opens a socket on the default run, because the
+     * process the shell launches is NOT confined: only [SandboxProfile.CONFINED]
+     * puts it in a network namespace of its own, and that is a different
+     * mechanism with a different owner.
      * ## Why a gate and not a verdict
      * This used to be `Allowed | Denied`, which reads the same and is not. A
      * verdict answers "may this run use the network?"; a gate answers "may this
@@ -65,7 +84,7 @@ data class ShOptions(
      * handed over as a capability and asked, and `pipeline-application` never
      * learns that `http.request` exists to ask it.
 */
-    val networkEgress: NetworkEgressGate = DenyAll,
+    val pluginEgress: NetworkEgressGate = DenyAll,
     /**
      * Pump the transcript through an external ingest agent
      * (`ObsPc2IngestAgent`) instead of in-JVM pumps. The agent follows the

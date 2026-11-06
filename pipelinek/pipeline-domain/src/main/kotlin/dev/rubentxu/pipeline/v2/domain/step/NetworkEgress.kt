@@ -1,16 +1,21 @@
 package dev.rubentxu.pipeline.v2.domain.step
 
 /**
- * Whether THIS EXECUTION may reach the network, and to where
+ * Whether the PLUGINS of THIS EXECUTION may reach the network, and to where
  * This is a runtime decision, not a protocol one, and that is exactly why the
  * type lives here, in the innermost seam, rather than beside the HTTP code. A
- * pipeline process that cannot open a socket is a property of the RUN: an
+ * plugin that cannot open a socket is a property of the RUN: an
  * `http.request`, a git-over-https fetch, an artefact feed and a registry pull
  * all answer this question identically. Stating it once, generically, is what
  * lets `pipeline-application` hold the permission without ever learning what an
  * HTTP request is.
  * The plugin owns the protocol; the runtime owns the permission. Neither owns
  * both, and neither has to know about the other to get there.
+ * ## Who this reaches
+ * The capability reaches the PLUGINS that run inside the runtime's own
+ * process. The child process of a shell
+ * step is not governed by it and keeps the host's network unless the run asked
+ * for a confinement, which is a different mechanism with a different owner.
 */
 val NETWORK_EGRESS_CAPABILITY: StepCapability = StepCapability("network.egress")
 
@@ -51,15 +56,23 @@ sealed interface EgressDecision {
      * The socket to this destination may not be opened.
      *
      * The refusal names which rule refused it, so an operator can tell a run
-     * with no network from a run whose network does not reach this host, and
-     * neither from a destination the runtime could not make sense of.
+     * that grants its plugins no egress from a run whose egress does not reach
+     * this host, and neither from a destination the runtime could not make
+     * sense of.
      */
     data class Refused(val reason: EgressRefusal) : EgressDecision
 }
 
 /** Why a destination was refused. Closed, because these reach the journal. */
 enum class EgressRefusal {
-    /** The run may not reach the network at all. The default. */
+    /**
+     * The gate refused every destination: this run grants no egress to its
+     * in-process plugins. The default.
+     *
+     * It is a statement about the PLUGINS and not about the run: the child
+     * process of a shell step is not reached by this gate and keeps the host's
+     * network unless the run asked for a confinement.
+     */
     NetworkNotPermitted,
 
     /** The run may reach the network, but not this destination. */
@@ -92,8 +105,9 @@ enum class EgressRefusal {
  * They are the SAME interface as a restricted gate, which is the point: there
  * is no second code path for "allowed" that could skip the question.
  * ## Fail-closed twice over
- * An ABSENT capability already means "no network" — that is the path that
- * matters, because fail-closed admission rejects the Step BEFORE its handler
+ * An ABSENT capability already means "no egress for the plugins" — that is
+ * the path that matters, because fail-closed admission rejects the Step BEFORE
+ * its handler
  * runs. The gate is the second line, for a runtime that chooses to hand out
  * the capability with a refusing gate. A run with no capability is refused
  * earlier and better.
@@ -108,17 +122,18 @@ interface NetworkEgressGate {
     fun decide(destination: EgressDestination): EgressDecision
 
     /**
-     * Whether this run may ASK about egress at all.
+     * Whether this run's PLUGINS may ASK about egress at all.
      * `false` means the runtime withholds [NETWORK_EGRESS_CAPABILITY] entirely, so
      * admission rejects a Step that needs the network before its handler exists.
      * `true` means the run is entitled to ask, and [decide] has the final word per
      * destination.
-     * The distinction is load-bearing, not a convenience. "This run has no network
-     * at all" and "this run has a network but not to here" are different operator
-     * facts, and collapsing them would mean a one-host allowlist either refused
-     * every Step at admission (making the Step unusable) or permitted every Step
-     * to reach any host (making the allowlist a comment). Both were the alternative;
-     * this is the shape where neither happens.
+     * The distinction is load-bearing, not a convenience. "This run grants its
+     * plugins no egress at all" and "this run has egress but not to here" are
+     * different operator facts, and collapsing them would mean a one-host
+     * allowlist either refused every Step at admission (making the Step
+     * unusable) or permitted every Step to reach any host (making the allowlist
+     * a comment). Both were the alternative; this is the shape where neither
+     * happens.
      * It is a PROPERTY rather than a `when (gate) { DenyAll -> ... }` at the bridge,
      * so the runtime does not have to know which gates exist — only that a gate can
      * say whether the question is on the table.

@@ -38,6 +38,17 @@ enum class SandboxProfile {
      * It asks for nothing: the control directory as the working directory, the
      * environment unchanged and the PATH unchanged. This build does it, and
      * every run that says nothing about the profile runs under it.
+     *
+     * ## This is the TRUSTED posture, and it says so about the network
+     *
+     * Nothing here confines the run, so the process a shell step launches keeps
+     * the HOST's network and can open a socket on it. The gate that denies
+     * egress to the in-process plugins is a different mechanism and does not
+     * reach that process: a `sh` step that runs `curl` reaches the network on a
+     * default run, and that is the local-first behaviour this profile names.
+     * An operator who wants the child process on a network of its own asks for
+     * [CONFINED], and a host that cannot confine is told so before the run
+     * starts.
      */
     NONE,
 
@@ -50,6 +61,11 @@ enum class SandboxProfile {
      * The deny-list applies to the inherited environment, before the caller's
      * own variables are merged into it, and the PATH is normalised to the
      * keep-set plus JAVA_HOME/bin and M2_HOME/bin.
+     *
+     * It is the TRUSTED posture about the network for the same reason it is
+     * about the filesystem: the child process a shell step launches keeps the
+     * HOST's network, and the egress gate that denies the in-process plugins
+     * does not reach it.
      */
     LOCAL,
 

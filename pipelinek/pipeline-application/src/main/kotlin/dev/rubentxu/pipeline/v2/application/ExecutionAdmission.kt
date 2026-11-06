@@ -160,7 +160,7 @@ internal object ExecutionAdmission {
 
     /**
      * The request for a boundary this product can honour: the run writes only
-     * inside its own workspace and has no network at all.
+     * inside its own workspace, and its child process has no network of its own.
      */
     private val CONFINED_REQUEST = ExecutionRequirements(
         filesystem = FilesystemAccess.ConfinedWorkspace,

@@ -135,7 +135,13 @@ sealed interface HttpFailure {
      * The runtime refused egress, and says WHICH refusal.
      * Normally unreachable for [EgressRefusal.NetworkNotPermitted]: the runtime
      * withholds the egress capability rather than handing out a refusing gate, so
-     * admission rejects the Step before the handler runs. The other two reasons are
+     * admission rejects the Step before the handler runs.
+     *
+     * The sentence names the PLUGIN and not the run, because the gate it reports
+     * reaches the plugin and not the run: the child process of a shell step is not
+     * confined by that gate and keeps the host's network. A sentence that said
+     * "this run may not reach the network" would be believed, and it would be
+     * false. The other two reasons are
      * exactly what a *restricted* gate produces, and they are the reason this case
      * stopped being a bare `data object` — "denied" alone sends an operator to
      * `--allow-network`, which is useless advice when the run already has a network
@@ -147,7 +153,10 @@ sealed interface HttpFailure {
     data class EgressDenied(val reason: EgressRefusal) : HttpFailure {
         override val diagnostic: String get() = when (reason) {
             EgressRefusal.NetworkNotPermitted ->
-                "this run may not reach the network; start it with --allow-network to permit egress"
+                "this plugin has no network permission in this run; start it with --allow-network " +
+                    "to permit egress to plugins. That gate decides for plugins and not for the run: " +
+                    "the child of a shell step keeps the host's network unless the run asks for " +
+                    "the confined sandbox profile"
 
             EgressRefusal.DestinationNotPermitted ->
                 "this run may not reach that destination; the permitted destinations are a " +

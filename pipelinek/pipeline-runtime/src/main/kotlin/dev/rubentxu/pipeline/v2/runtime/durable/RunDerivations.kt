@@ -63,13 +63,17 @@ internal fun canonicalShellOptions(policy: RunPolicy): ShOptions = ShOptions(
     // Carry the ownership the CLI decided into the runtime transport, so the destructive guard
     // reads the real owner of this root instead of re-deriving `Managed`.
     workspaceOwnership = policy.workspace.ownership,
-    // Egress is DENIED unless the operator asked for it with --allow-network. The bridge turns
-    // the operator's request into the generic NETWORK_EGRESS_CAPABILITY, and a step that needs
-    // the network declares it — so the default run cannot reach one. The two ends are gates, not
-    // verdicts: `--allow-network` is [AllowAll] and the default is [DenyAll], which are the SAME
-    // interface as a future per-destination allowlist — so adding one later is a new value here
-    // and not a new code path through the runtime, the step, or the admission check.
-    networkEgress = if (policy.allowNetwork) AllowAll else DenyAll,
+    // Egress is DENIED to the PLUGINS unless the operator asked for it with --allow-network. The
+    // bridge turns the operator's request into the generic NETWORK_EGRESS_CAPABILITY, and a step
+    // that needs the network declares it — so the default run's PLUGINS cannot reach one. The two
+    // ends are gates, not verdicts: `--allow-network` is [AllowAll] and the default is [DenyAll],
+    // which are the SAME interface as a future per-destination allowlist — so adding one later is a
+    // new value here and not a new code path through the runtime, the step, or the admission check.
+    //
+    // The gate reaches the plugins and NOT the child process of a shell step: that process keeps
+    // the host's network unless the run asked for a confinement. The two are different mechanisms
+    // with different owners, and this derivation only answers the first one.
+    pluginEgress = if (policy.allowNetwork) AllowAll else DenyAll,
 )
 
 /**

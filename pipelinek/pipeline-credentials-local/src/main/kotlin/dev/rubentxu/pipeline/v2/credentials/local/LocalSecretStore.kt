@@ -43,23 +43,34 @@ import java.util.concurrent.locks.ReentrantLock
  * and a replacement that does not happen is REPORTED: a mutation that says it
  * worked has changed the file. Two writers of the same store wait for each
  * other, in this process and in another one.
+ * ## What this class owns, and what it does not
+ * This class owns the IO of the store: the file, the lock, the passphrase and
+ * the lifecycle. It does NOT own the format: which version the file is in,
+ * how an entry is framed, with what AAD it is sealed and what its bytes mean
+ * once they are open are properties of the VERSION, and [StoreCodec] is where
+ * the version lives.
  * ## File Format
  * ```
- * Header:
+ * Header (74 bytes, the same layout in every version):
  *   magic: 4 bytes ("PKCR")
- *   version: 1 byte (1)
+ *   version: 2 bytes LE (1 or 2)
  *   argon2_m: 4 bytes LE (KiB)
  *   argon2_t: 4 bytes LE (iterations)
  *   argon2_p: 4 bytes LE (parallelism)
  *   salt: 16 bytes
- * WrappedDEK: 40 bytes (RFC 3394 output for 32-byte DEK)
+ *   wrappedDek: 40 bytes (RFC 3394 output for 32-byte DEK)
  * Entry (repeated):
  *   idLen: 2 bytes LE
  *   credentialId: UTF-8 bytes
+ *   kind: 2 bytes LE            -- only in version 2
+ *   plaintextLen: 4 bytes LE
  *   nonce: 12 bytes
  *   ciphertext: variable
  *   tag: 16 bytes
  * ```
+ * Version 1 holds one secret per entry, and the secret IS the bytes of the
+ * entry. Version 2 holds a credential in the canonical part form, and its
+ * seal carries the kind of that credential.
 */
 class LocalSecretStore(
     private val file: Path,
@@ -196,7 +207,7 @@ class LocalSecretStore(
         private val kek: ByteArray,
     ) {
         private var unwrappedDek: ByteArray? = null
-        private var parsedEntries: Map<String, out Any>? = null
+        private var parsedEntries: Map<String, StoreEntry>? = null
 
         /**
          * The key that opens the entries, unwrapped once.
@@ -218,16 +229,16 @@ class LocalSecretStore(
          *
          * The parse is remembered, so a chain of linked secrets pays for one
          * parse and not for one per hop.
+         *
+         * The version of the file decides how it is read, and the codec is
+         * where that decision lives: this class does not know which reader
+         * belongs to which version.
          */
-        fun entries(): Map<String, out Any> {
+        fun entries(): Map<String, StoreEntry> {
             val already = parsedEntries
             if (already != null) return already
             entryParses.incrementAndGet()
-            val fresh = if (header.version == VERSION_V1.toShort()) {
-                CredentialCrypto.readEntriesV1(fileBytes)
-            } else {
-                CredentialCrypto.readEntries(fileBytes)
-            }
+            val fresh = StoreCodec.of(header.version).read(fileBytes)
             parsedEntries = fresh
             return fresh
         }
@@ -262,7 +273,6 @@ class LocalSecretStore(
         return Files.readAllBytes(file)
     }
 
-    /** Shared wire types of the store file format. */
     /**
      * Header data for the store.
 */
@@ -274,22 +284,6 @@ class LocalSecretStore(
         val kdfP: Int,
         val kdfSalt: ByteArray,
         val wrappedDek: ByteArray,
-    )
-    /**
-     * Encrypted entry data: id + sealed blob + plaintext length for boundary detection.
-*/
-    data class EntryData(
-        val id: CredentialsId,
-        val sealed: AeadCipher.SealedBlob,
-        val plaintextLen: Int,
-    )
-    /**
-     * Id + sealed blob + kind ID for v2 format.
-*/
-    data class V2EntryData(
-        val id: CredentialsId,
-        val sealed: AeadCipher.SealedBlob,
-        val kindId: Short,
     )
 
     /**
@@ -304,7 +298,7 @@ class LocalSecretStore(
      */
     private class Upgrade(
         val header: StoreHeader,
-        val entries: MutableMap<String, V2EntryData>,
+        val entries: MutableMap<String, StoreEntry>,
         val migrated: Boolean,
     )
 
@@ -339,11 +333,6 @@ class LocalSecretStore(
     }
 
     companion object {
-        /** Header magic: "PKCR" (Pipeline CRedentials) */
-        private val MAGIC = byteArrayOf(0x50, 0x4B, 0x43, 0x52) // "PKCR"
-        private const val VERSION_V1: Short = 1
-        private const val VERSION_V2: Short = 2
-
         /**
          * The monitor each store file's writers share inside one JVM.
          *
@@ -354,40 +343,13 @@ class LocalSecretStore(
         private val jvmMonitors = ConcurrentHashMap<Path, ReentrantLock>()
 
         /** OWASP floor KDF params (2023 recommendation) */
-        const val OWASP_M = 19456  // KiB
-        const val OWASP_T = 2       // iterations
-        const val OWASP_P = 1       // parallelism
-        const val SALT_SIZE = 16
-        const val DEK_SIZE = 32
+        const val OWASP_M = CredentialCrypto.OWASP_M  // KiB
+        const val OWASP_T = CredentialCrypto.OWASP_T  // iterations
+        const val OWASP_P = CredentialCrypto.OWASP_P  // parallelism
+        const val SALT_SIZE = StoreCodec.SALT_SIZE
+        const val DEK_SIZE = CredentialCrypto.DEK_SIZE
         // (RFC 3394) output = input + 8 bytes (64-bit IV/wrap vector)
-        const val WRAPPED_DEK_SIZE = DEK_SIZE + 8  // = 40 bytes
-
-        /**
-         * Maps a Credential simple name to a kind ID.
-*/
-        fun kindIdFor(credential: Credential): Short = when (credential) {
-            is SecretText -> KIND_SECRET_TEXT
-            is dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword -> KIND_USERNAME_PASSWORD
-            is dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey -> KIND_SSH_PRIVATE_KEY
-            is dev.rubentxu.pipeline.v2.domain.credentials.SecretFile -> KIND_SECRET_FILE
-            is dev.rubentxu.pipeline.v2.domain.credentials.Certificate -> KIND_CERTIFICATE
-            is dev.rubentxu.pipeline.v2.domain.credentials.Zip -> KIND_ZIP
-            is dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword -> KIND_USERNAME_COLON_PASSWORD
-        }
-
-        /**
-         * Maps a kind ID to a Credential simple name.
-*/
-        fun kindNameFor(kindId: Short): String = when (kindId) {
-            KIND_SECRET_TEXT -> "SecretText"
-            KIND_USERNAME_PASSWORD -> "UsernamePassword"
-            KIND_SSH_PRIVATE_KEY -> "SshPrivateKey"
-            KIND_SECRET_FILE -> "SecretFile"
-            KIND_CERTIFICATE -> "Certificate"
-            KIND_ZIP -> "Zip"
-            KIND_USERNAME_COLON_PASSWORD -> "UsernameColonPassword"
-            else -> "Unknown"
-        }
+        const val WRAPPED_DEK_SIZE = CredentialCrypto.WRAPPED_DEK_SIZE  // = 40 bytes
 
         /**
          * Reads the header from a file path.
@@ -395,34 +357,8 @@ class LocalSecretStore(
 */
         fun readHeader(file: Path): StoreHeader {
             val bytes = Files.readAllBytes(file)
-            return readHeaderBytes(bytes)
+            return StoreCodec.readHeader(bytes)
         }
-
-        private fun readHeaderBytes(bytes: ByteArray): StoreHeader {
-            val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-            val magic = ByteArray(4)
-            buf.get(magic)
-            if (!magic.contentEquals(MAGIC)) {
-                throw SecretStoreTamperException("Invalid store magic")
-            }
-            val version = buf.short
-            if (version != VERSION_V1.toShort() && version != VERSION_V2.toShort()) {
-                throw SecretStoreTamperException("Unsupported store version: $version")
-            }
-            val m = buf.int
-            val t = buf.int
-            val p = buf.int
-            val salt = ByteArray(SALT_SIZE)
-            buf.get(salt)
-            val wrappedDek = ByteArray(WRAPPED_DEK_SIZE)
-            buf.get(wrappedDek)
-            return StoreHeader(magic, version, m, t, p, salt, wrappedDek)
-        }
-
-        /** Header size v1: magic(4) + version(2) + m(4) + t(4) + p(4) + salt(16) + wrappedDEK(40) = 74 */
-        const val HEADER_SIZE_V1 = 4 + 2 + 4 + 4 + 4 + SALT_SIZE + WRAPPED_DEK_SIZE
-        /** Header size v2: same as v1 - version is 2 bytes in both */
-        const val HEADER_SIZE_V2 = HEADER_SIZE_V1
     }
 
     // Cached derived key (set on first access, wiped on close)
@@ -608,7 +544,7 @@ class LocalSecretStore(
 
             // Serialize credential to bytes
             val credentialBytes = CredentialSerializer.serializeCredential(credential)
-            val kindId = kindIdFor(credential)
+            val kindId = CredentialKinds.idOf(credential)
 
             // Atomic write
             val existingBytes = if (Files.exists(file) && Files.size(file) > 0) readStoreFile() else null
@@ -618,20 +554,20 @@ class LocalSecretStore(
             // seals an entry cannot be one thing here and another there.
             val upgrade = upgrade(dek, source, existingBytes)
 
-            // Encrypt with DEK - AAD includes kind for anti-swap
-            val sealed = AeadCipher.encrypt(dek, credentialBytes, CredentialCrypto.buildV2Aad(upgrade.header, id, kindId))
-            upgrade.entries[id.value] = V2EntryData(id, sealed, kindId)
+            // The format of the header the store will carry. It decides how
+            // the entry is framed and with what AAD it is sealed.
+            val format = StoreCodec.of(upgrade.header.version)
+            val sealed = AeadCipher.encrypt(dek, credentialBytes, format.aad(upgrade.header, id, kindId))
+            upgrade.entries[id.value] = StoreEntry(id, sealed, kindId)
 
             val out = ByteArrayOutputStream()
             // Always write header for new entries; migrate entries to
-            writeHeader(
+            StoreCodec.writeHeader(
                 out,
-                upgrade.header.magic, upgrade.header.version, upgrade.header.kdfM,
-                upgrade.header.kdfT, upgrade.header.kdfP, upgrade.header.kdfSalt,
-                CredentialCrypto.wrapDek(kek, dek),
+                upgrade.header.copy(wrappedDek = CredentialCrypto.wrapDek(kek, dek)),
             )
             for (entry in upgrade.entries.values) {
-                out.write(CredentialCrypto.encodeV2Entry(entry))
+                out.write(format.encode(entry))
             }
 
             commit(publishable(out.toByteArray(), upgrade, dek))
@@ -640,53 +576,62 @@ class LocalSecretStore(
 
     /**
      * Retrieves a typed credential
-     * Handles both v1 (back-compat) and v2 formats.
+     * The format of the header decides how the entry is opened and what it
+     * holds; this method does not decide which format that is.
 */
     override fun get(id: CredentialsId): Credential {
         val snapshot = snapshot()
         val hdr = snapshot.header
         val dek = snapshot.dek()
 
-        // Route to correct reader based on header version
         val entry = snapshot.entries()[id.value]
             ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
-        // Check if v1 or v2 entry
-        if (hdr.version == VERSION_V1.toShort()) {
-            // v1 entry - decrypt and return as SecretText
-            val v1Entry = entry as EntryData
-            val aad = CredentialCrypto.buildAad(hdr, id)
-            val plaintext = try {
-                AeadCipher.decrypt(dek, v1Entry.sealed, aad)
-            } catch (e: javax.crypto.AEADBadTagException) {
-                throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
-            }
-            return SecretText(id, CredentialScope.GLOBAL, plaintext)
-        } else {
-            // v2 entry - decrypt and deserialize
-            val v2Entry = entry as V2EntryData
-            val aad = CredentialCrypto.buildV2Aad(hdr, id, v2Entry.kindId)
-            val plaintext = try {
-                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
-            } catch (e: javax.crypto.AEADBadTagException) {
-                throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
-            }
-            return CredentialSerializer.deserializeCredential(plaintext, v2Entry.kindId, id)
-        }
+        val format = StoreCodec.of(hdr.version)
+        return format.credential(entry, openEntry(entry, hdr, id, format, dek), id)
+    }
+
+    /**
+     * The bytes of one entry, once they are open.
+     *
+     * The AAD comes from the format of the header the entry lives under, so
+     * the seal that opens the entry is the one that version seals with.
+     *
+     * @param entry the entry to open
+     * @param header the header the entry lives under
+     * @param id the credential the entry belongs to
+     * @param format the format of the header
+     * @param dek the key that opens the entries
+     * @return the bytes of the entry
+     * @throws SecretStoreTamperException when the seal does not open
+     */
+    private fun openEntry(
+        entry: StoreEntry,
+        header: StoreHeader,
+        id: CredentialsId,
+        format: StoreFormat,
+        dek: ByteArray,
+    ): ByteArray = try {
+        AeadCipher.decrypt(dek, entry.sealed, format.aad(header, id, entry.kindId))
+    } catch (e: javax.crypto.AEADBadTagException) {
+        throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
     }
 
     /**
      * Retrieves a credential as a [SecretHandle].
      *
-     * The handle carries the SECRET of the credential and nothing else. A V1
-     * entry holds the secret itself, so its bytes ARE the secret. A V2 entry
-     * holds the credential in the store's canonical form, and that form is
-     * NOT the secret: it carries the part count, the part names and their
-     * lengths. Only a credential that IS one secret -- a SecretText -- is
-     * delivered as its own bytes; every other kind is refused, because a
-     * single opaque value cannot say which of its parts it carries. The
-     * caller that wants one part asks for it by name, and the caller that
-     * wants the credential asks for it typed.
+     * The handle carries the SECRET of the credential and nothing else. What
+     * the open bytes of an entry MEAN is a property of the version of the
+     * format, and the format is the one that says it: a legacy entry holds
+     * the secret itself, and an entry of the current format holds the
+     * credential in the store's canonical form, which is NOT the secret -- it
+     * carries the part count, the part names and their lengths.
+     *
+     * Only a credential that IS one secret -- a SecretText -- is delivered as
+     * its own bytes; every other kind is refused, because a single opaque
+     * value cannot say which of its parts it carries. The caller that wants
+     * one part asks for it by name, and the caller that wants the credential
+     * asks for it typed.
      *
      * @param id The credential ID
      * @return [SecretHandle] wrapping the secret bytes
@@ -699,40 +644,23 @@ class LocalSecretStore(
         val snapshot = snapshot()
         val hdr = snapshot.header
 
-        // Route to correct reader based on header version (add stores in format)
+        // The lookup comes BEFORE the key is unwrapped, so a store that does
+        // not hold the credential answers "it is not there" even when the
+        // passphrase is wrong: the answer does not depend on the order of the
+        // checks.
         val entry = snapshot.entries()[id.value]
             ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
-        // Decrypt DEK: the DEK is stored in the header (wrapped with KEK). The
-        // key is unwrapped AFTER the lookup, so a store that does not hold
-        // the credential answers "it is not there" even when the passphrase
-        // is wrong: the answer does not depend on the order of the checks.
         val dek = snapshot.dek()
 
-        if (hdr.version == VERSION_V1.toShort()) {
-            // A V1 entry holds the secret itself: its bytes ARE the secret.
-            val v1Entry = entry as? EntryData
-                ?: throw ClassCastException("Expected EntryData but got ${entry::class.simpleName}")
-            val plaintext = try {
-                AeadCipher.decrypt(dek, v1Entry.sealed, CredentialCrypto.buildAad(hdr, id))
-            } catch (e: javax.crypto.AEADBadTagException) {
-                throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
-            }
-            return SecretHandle.secret(plaintext)
-        }
-
-        // A V2 entry holds the credential in the canonical form. Reading it
-        // with the SAME reader `get` uses is what keeps the two paths from
+        // The format of the header decides what the open bytes MEAN: in the
+        // legacy format the bytes ARE the secret, and in the current one they
+        // hold the credential in the canonical form. Reading the entry with
+        // the SAME reader `get` uses is what keeps the two paths from
         // disagreeing about what the store holds.
-        val v2Entry = entry as? V2EntryData
-            ?: throw ClassCastException("Expected V2EntryData but got ${entry::class.simpleName}")
-        val plaintext = try {
-            AeadCipher.decrypt(dek, v2Entry.sealed, CredentialCrypto.buildV2Aad(hdr, id, v2Entry.kindId))
-        } catch (e: javax.crypto.AEADBadTagException) {
-            throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
-        }
-
-        val credential = CredentialSerializer.deserializeCredential(plaintext, v2Entry.kindId, id)
+        val format = StoreCodec.of(hdr.version)
+        val plaintext = openEntry(entry, hdr, id, format, dek)
+        val credential = format.credential(entry, plaintext, id)
         return when (credential) {
             is SecretText -> SecretHandle.secret(credential.bytes)
             // Every kind that is not one secret is refused, and the refusal
@@ -770,25 +698,24 @@ class LocalSecretStore(
         val hdr = snapshot.header
         val dek = snapshot.dek()
 
-        // Route based on header version
-        if (hdr.version == VERSION_V1.toShort()) {
-            throw SecretStoreTamperException("getAsHandle not supported for v1 single-blob entries")
-        }
+        val format = StoreCodec.of(hdr.version)
+
+        // A format whose entries have no part by name says so BEFORE the
+        // credential is looked up: a store that cannot answer the question at
+        // all does not answer it about a credential that is not there.
+        val refusal = format.partsRefusal()
+        if (refusal != null) throw SecretStoreTamperException(refusal)
+
         val entry = snapshot.entries()[id.value]
             ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
-        val v2Entry = entry as V2EntryData
+        val plaintext = openEntry(entry, hdr, id, format, dek)
 
-        val aad = CredentialCrypto.buildV2Aad(hdr, id, v2Entry.kindId)
-        val plaintext = try {
-            AeadCipher.decrypt(dek, v2Entry.sealed, aad)
-        } catch (e: javax.crypto.AEADBadTagException) {
-            throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
-        }
-
-        // Deserialize and extract the requested part; use visited set for cycle detection
-        return LinkedSecretResolver(snapshot.header, { snapshot.dek() }, { snapshot.entries() })
-            .extractPart(plaintext, v2Entry.kindId, id, partName, mutableSetOf(id))
+        // The walk over the chain of linked secrets. It reads ONE view of the
+        // store, and the visited set is what detects a chain that closes on
+        // itself.
+        return LinkedSecretResolver(hdr, format, { snapshot.dek() }, { snapshot.entries() })
+            .extract(plaintext, entry.kindId, id, partName, mutableSetOf(id))
     }
 
     /**
@@ -803,13 +730,9 @@ class LocalSecretStore(
         val fileBytes = readStoreFile()
         open(fileBytes)
         val hdr = readHeader(fileBytes)
-        // Route based on header version
-        val entries = if (hdr.version == VERSION_V1.toShort()) {
-            CredentialCrypto.readEntriesV1(fileBytes)
-        } else {
-            CredentialCrypto.readEntries(fileBytes)
-        }
-        return entries.keys.map { CredentialsId.from(it) }
+        // The codec reads the body in the framing of the version the header
+        // declares, and refuses a body that is not that body.
+        return StoreCodec.of(hdr.version).read(fileBytes).keys.map { CredentialsId.from(it) }
     }
 
     /**
@@ -829,22 +752,17 @@ class LocalSecretStore(
             open(fileBytes)
             val hdr = readHeader(fileBytes)
 
-            // Route based on header version
-            val entries: MutableMap<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
-                CredentialCrypto.readEntriesV1(fileBytes).toMutableMap()
-            } else {
-                CredentialCrypto.readEntries(fileBytes).toMutableMap()
-            }
+            // The store keeps the format it has: the entries are read and
+            // written back in the framing of the version its header declares.
+            val format = StoreCodec.of(hdr.version)
+            val entries: MutableMap<String, StoreEntry> = format.read(fileBytes).toMutableMap()
             entries.remove(id.value) ?: return // Not found, no-op
 
             // Rewrite without the removed entry
             val out = ByteArrayOutputStream()
-            writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
-            for ((_, entryData) in entries) {
-                when (entryData) {
-                    is EntryData -> out.write(CredentialCrypto.encodeEntry(entryData.id, entryData.sealed))
-                    is V2EntryData -> out.write(CredentialCrypto.encodeV2Entry(entryData))
-                }
+            StoreCodec.writeHeader(out, hdr)
+            for (entry in entries.values) {
+                out.write(format.encode(entry))
             }
             commit(out.toByteArray())
         }
@@ -891,22 +809,21 @@ class LocalSecretStore(
 
             // Serialize and encrypt the new credential
             val credentialBytes = CredentialSerializer.serializeCredential(credential)
-            val kindId = kindIdFor(credential)
-            val sealed = AeadCipher.encrypt(dek, credentialBytes, CredentialCrypto.buildV2Aad(upgrade.header, id, kindId))
+            val kindId = CredentialKinds.idOf(credential)
+
+            // The format of the header the store will carry decides how the
+            // entry is framed and with what AAD it is sealed.
+            val format = StoreCodec.of(upgrade.header.version)
+            val sealed = AeadCipher.encrypt(dek, credentialBytes, format.aad(upgrade.header, id, kindId))
 
             // Update entries
-            upgrade.entries[id.value] = V2EntryData(id, sealed, kindId)
+            upgrade.entries[id.value] = StoreEntry(id, sealed, kindId)
 
             // Atomic write - always write header
             val out = ByteArrayOutputStream()
-            writeHeader(
-                out,
-                upgrade.header.magic, upgrade.header.version, upgrade.header.kdfM,
-                upgrade.header.kdfT, upgrade.header.kdfP, upgrade.header.kdfSalt,
-                source.wrappedDek,
-            )
+            StoreCodec.writeHeader(out, upgrade.header)
             for (entry in upgrade.entries.values) {
-                out.write(CredentialCrypto.encodeV2Entry(entry))
+                out.write(format.encode(entry))
             }
 
             commit(publishable(out.toByteArray(), upgrade, dek))
@@ -973,14 +890,16 @@ class LocalSecretStore(
      *   not open. The store is not migrated and keeps the content it had.
      */
     private fun upgrade(dek: ByteArray, source: StoreHeader, fileBytes: ByteArray?): Upgrade {
-        val destination = source.copy(version = VERSION_V2)
-        val migrating = source.version == VERSION_V1.toShort()
-        val entries: MutableMap<String, V2EntryData> = when {
-            fileBytes == null || fileBytes.size <= HEADER_SIZE_V1 -> mutableMapOf()
-            migrating -> CredentialCrypto.readEntriesV1(fileBytes).mapValues { (entryId, entry) ->
+        val destination = source.copy(version = StoreCodec.VERSION_CURRENT)
+        val sourceFormat = StoreCodec.of(source.version)
+        val destinationFormat = StoreCodec.of(destination.version)
+        val migrating = source.version != destination.version
+        val entries: MutableMap<String, StoreEntry> = when {
+            fileBytes == null || fileBytes.size <= StoreCodec.HEADER_SIZE -> mutableMapOf()
+            migrating -> sourceFormat.read(fileBytes).mapValues { (entryId, entry) ->
                 val id = CredentialsId.from(entryId)
                 val plaintext = try {
-                    AeadCipher.decrypt(dek, entry.sealed, CredentialCrypto.buildAad(source, id))
+                    AeadCipher.decrypt(dek, entry.sealed, sourceFormat.aad(source, id, entry.kindId))
                 } catch (e: javax.crypto.AEADBadTagException) {
                     throw SecretStoreTamperException(
                         "the v1 entry '${id.value}' does not open; the store was not migrated " +
@@ -988,21 +907,25 @@ class LocalSecretStore(
                         e,
                     )
                 }
-                // A v1 entry holds the secret itself; a v2 entry holds the
-                // credential in the canonical part form its reader
-                // deserializes. The migration moves the secret from one form
-                // to the other, so the entry reads back as the credential it
-                // was instead of as a blob nobody can interpret.
+                // A v1 entry holds the secret itself; an entry of the current
+                // format holds the credential in the canonical part form its
+                // reader deserializes. The migration moves the secret from one
+                // form to the other, so the entry reads back as the credential
+                // it was instead of as a blob nobody can interpret.
                 val canonical = CredentialSerializer.serializeCredential(
                     SecretText(id, CredentialScope.GLOBAL, plaintext),
                 )
-                V2EntryData(
+                StoreEntry(
                     id,
-                    AeadCipher.encrypt(dek, canonical, CredentialCrypto.buildV2Aad(destination, id, KIND_SECRET_TEXT)),
-                    KIND_SECRET_TEXT,
+                    AeadCipher.encrypt(
+                        dek,
+                        canonical,
+                        destinationFormat.aad(destination, id, CredentialKinds.SECRET_TEXT),
+                    ),
+                    CredentialKinds.SECRET_TEXT,
                 )
             }.toMutableMap()
-            else -> CredentialCrypto.readEntries(fileBytes).toMutableMap()
+            else -> sourceFormat.read(fileBytes).toMutableMap()
         }
         return Upgrade(destination, entries, migrating)
     }
@@ -1028,9 +951,10 @@ class LocalSecretStore(
     private fun publishable(bytes: ByteArray, upgrade: Upgrade, dek: ByteArray): ByteArray {
         if (!upgrade.migrated) return bytes
         val published = readHeader(bytes)
-        for (entry in CredentialCrypto.readEntries(bytes).values) {
+        val format = StoreCodec.of(published.version)
+        for (entry in format.read(bytes).values) {
             try {
-                AeadCipher.decrypt(dek, entry.sealed, CredentialCrypto.buildV2Aad(published, entry.id, entry.kindId))
+                AeadCipher.decrypt(dek, entry.sealed, format.aad(published, entry.id, entry.kindId))
             } catch (e: javax.crypto.AEADBadTagException) {
                 throw CredentialsStoreCommitException(
                     "the migrated store does not open: the entry '${entry.id.value}' cannot be " +
@@ -1063,45 +987,13 @@ class LocalSecretStore(
         // Create new header with fresh salt - use format for new stores
         val salt = ByteArray(SALT_SIZE)
         secureRandom.nextBytes(salt)
-        return StoreHeader(MAGIC, VERSION_V2, OWASP_M, OWASP_T, OWASP_P, salt, ByteArray(WRAPPED_DEK_SIZE))
-    }
-
-    private fun writeHeader(
-        out: ByteArrayOutputStream,
-        magic: ByteArray,
-        version: Short,
-        m: Int,
-        t: Int,
-        p: Int,
-        salt: ByteArray,
-        wrappedDek: ByteArray,
-    ) {
-        out.write(magic)
-        val versionBuf = ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort(version)
-        out.write(versionBuf.array())
-        val kdfBuf = ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN)
-        kdfBuf.putInt(m)
-        kdfBuf.putInt(t)
-        kdfBuf.putInt(p)
-        out.write(kdfBuf.array())
-        out.write(salt)
-        out.write(wrappedDek)
+        return StoreCodec.newHeader(salt, ByteArray(WRAPPED_DEK_SIZE))
     }
 
     private fun readHeader(bytes: ByteArray): StoreHeader =
-        Companion.readHeaderBytes(bytes)
+        StoreCodec.readHeader(bytes)
 
 }
-
-// Kind IDs for v2 envelope (stored as first 2 bytes after version)
-private const val KIND_SECRET_TEXT: Short = 1
-private const val KIND_USERNAME_PASSWORD: Short = 2
-private const val KIND_SSH_PRIVATE_KEY: Short = 3
-private const val KIND_SECRET_FILE: Short = 4
-private const val KIND_CERTIFICATE: Short = 5
-private const val KIND_ZIP: Short = 6
-private const val KIND_USERNAME_COLON_PASSWORD: Short = 7
-
 /**
  * The walk over a chain of linked secrets.
  *
@@ -1117,20 +1009,21 @@ private const val KIND_USERNAME_COLON_PASSWORD: Short = 7
  */
 private class LinkedSecretResolver(
     private val header: LocalSecretStore.StoreHeader,
+    private val format: StoreFormat,
     private val dek: () -> ByteArray,
-    private val entries: () -> Map<String, out Any>,
-) {
+    private val entries: () -> Map<String, StoreEntry>,
+) : LinkedSecretWalker {
     /**
      * Extracts a named part from deserialized credential bytes using the canonical part format.
      * Format per part: [nameLen:1][name][len:4 BE][bytes]
      * After reading nameLen and name, position is at len(4). We must also skip len to reach bytes.
     */
-    fun extractPart(
+    override fun extract(
         plaintext: ByteArray,
         kindId: Short,
         id: CredentialsId,
         partName: String,
-        visited: MutableSet<CredentialsId> = mutableSetOf(id),
+        visited: MutableSet<CredentialsId>,
         ): SecretHandle = try {
         readPart(plaintext, kindId, partName, visited)
     } catch (e: CredentialPartReader.MalformedEnvelopeException) {
@@ -1155,16 +1048,16 @@ private class LinkedSecretResolver(
         ): SecretHandle {
         val buf = CredentialPartReader.bufferOver(plaintext)
         return when (kindId) {
-            KIND_SECRET_TEXT -> {
+            CredentialKinds.SECRET_TEXT -> {
                 requirePart(partName == "value", partName, "SecretText")
                 buf.get().toInt() // partCount
                 SecretHandle.secret(CredentialPartReader.readInlinePart(buf, 0))
             }
-            KIND_USERNAME_PASSWORD -> {
+            CredentialKinds.USERNAME_PASSWORD -> {
                 buf.get().toInt() // partCount
                 SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "UsernamePassword", "username" to 0, "password" to 1))
             }
-            KIND_SSH_PRIVATE_KEY -> {
+            CredentialKinds.SSH_PRIVATE_KEY -> {
                 buf.get().toInt() // partCount
                 when (partName) {
                     "username", "privateKey" ->
@@ -1181,11 +1074,11 @@ private class LinkedSecretResolver(
                     else -> throw envelope { CredentialPartReader.notFound(partName, "SshPrivateKey") }
                 }
             }
-            KIND_SECRET_FILE -> {
+            CredentialKinds.SECRET_FILE -> {
                 buf.get().toInt() // partCount
                 SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "SecretFile", "originalName" to 0, "content" to 1))
             }
-            KIND_CERTIFICATE -> {
+            CredentialKinds.CERTIFICATE -> {
                 buf.get().toInt() // partCount
                 when (partName) {
                     "keystore", "alias" ->
@@ -1202,8 +1095,8 @@ private class LinkedSecretResolver(
                     else -> throw envelope { CredentialPartReader.notFound(partName, "Certificate") }
                 }
             }
-            KIND_ZIP -> SecretHandle.secret(envelope { CredentialPartReader.readZipPart(buf, partName) })
-            KIND_USERNAME_COLON_PASSWORD -> {
+            CredentialKinds.ZIP -> SecretHandle.secret(envelope { CredentialPartReader.readZipPart(buf, partName) })
+            CredentialKinds.USERNAME_COLON_PASSWORD -> {
                 buf.get().toInt() // partCount
                 when (partName) {
                     "username", "password" ->
@@ -1274,21 +1167,18 @@ private class LinkedSecretResolver(
         val refEntry = entries()[refId.value]
             ?: throw LinkedSecretReferenceNotFoundException(refId)
 
-        val v2Entry: LocalSecretStore.V2EntryData
-        try {
-            v2Entry = refEntry as LocalSecretStore.V2EntryData
-        } catch (e: ClassCastException) {
-            throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", "Unknown (v1 format not supported for linked refs)")
+        // The AAD of the referenced entry comes from the format of the store
+        // it lives in, so the seal that opens it is the one that format seals
+        // with.
+        val aad = format.aad(hdr, refId, refEntry.kindId)
+        val plaintext = try {
+            AeadCipher.decrypt(dek, refEntry.sealed, aad)
+        } catch (e: javax.crypto.AEADBadTagException) {
+            throw LocalSecretStore.SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
         }
 
         // For SecretText: directly extract and return the value
-        if (v2Entry.kindId == KIND_SECRET_TEXT) {
-            val aad = CredentialCrypto.buildV2Aad(hdr, refId, v2Entry.kindId)
-            val plaintext = try {
-                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
-            } catch (e: javax.crypto.AEADBadTagException) {
-                throw LocalSecretStore.SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
-            }
+        if (refEntry.kindId == CredentialKinds.SECRET_TEXT) {
             // Extract the "value" part from SecretText using canonical format
             val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
             buf.get().toInt() // partCount
@@ -1303,29 +1193,21 @@ private class LinkedSecretResolver(
         }
 
         // For SshPrivateKey: follow the passphrase LinkedSecretRef chain
-        if (v2Entry.kindId == KIND_SSH_PRIVATE_KEY) {
-            val aad = CredentialCrypto.buildV2Aad(hdr, refId, v2Entry.kindId)
-            val plaintext = try {
-                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
-            } catch (e: javax.crypto.AEADBadTagException) {
-                throw LocalSecretStore.SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
-            }
+        if (refEntry.kindId == CredentialKinds.SSH_PRIVATE_KEY) {
             return extractLinkedRefFromSshPrivateKey(plaintext, visited)
         }
 
         // For Certificate: follow the password LinkedSecretRef chain
-        if (v2Entry.kindId == KIND_CERTIFICATE) {
-            val aad = CredentialCrypto.buildV2Aad(hdr, refId, v2Entry.kindId)
-            val plaintext = try {
-                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
-            } catch (e: javax.crypto.AEADBadTagException) {
-                throw LocalSecretStore.SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
-            }
+        if (refEntry.kindId == CredentialKinds.CERTIFICATE) {
             return extractLinkedRefFromCertificate(plaintext, visited)
         }
 
         // Other credential types cannot be the target of a LinkedSecretRef for passphrase/password
-        throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", LocalSecretStore.kindNameFor(v2Entry.kindId))
+        throw LinkedSecretReferenceTypeMismatchException(
+            refId,
+            "SecretText",
+            CredentialKinds.nameOf(refEntry.kindId) ?: "an unknown kind of credential",
+        )
     }
 
     /**

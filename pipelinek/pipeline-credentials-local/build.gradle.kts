@@ -45,9 +45,10 @@ tasks.test {
     )
 }
 
-// Tests cover the EIGHT pure primitives in this module: KdfParams, AeadCipher,
+// Tests cover the NINE pure primitives in this module: KdfParams, AeadCipher,
 // PassphraseResolver, CredentialsStorePath, CredentialsStorePosix (assertSupported only),
-// CredentialCrypto, CredentialSerializer and CredentialPartReader. The store file's
+// CredentialCrypto, CredentialSerializer, CredentialPartReader and StoreCodec -- the codec
+// that owns the format of the store file. The store file's
 // IO is exercised by an integration test that composes the real store with the real
 // primitives over a temporary directory; the AGENTS.md rule against filesystem
 // persistence in unit tests is what scopes the unit suite this way. Each primitive is

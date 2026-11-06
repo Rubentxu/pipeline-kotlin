@@ -404,6 +404,31 @@ internal class ShellProcessLauncher(
             pumpedViaAgent && pumpedThroughJvm
 
         /**
+         * Whether the capture and the ingest agent cannot both hold the stdout.
+         *
+         * They cannot, and the reason is the routing: when the agent owns the descriptors the
+         * stdout goes to its FIFO, so the typed value file has no writer at all. The two modes
+         * are not two ways of doing the same thing — the capture asks for the EXACT bytes as a
+         * typed value, and the agent asks for the SANITIZED bytes as the durable transcript — and
+         * the stdout cannot be both at once.
+         *
+         * The fact lives HERE, with the routing it is read from, so the admission and the routing
+         * cannot disagree: what this refuses is exactly what would have lost the value. An
+         * admission that lived anywhere else would be a second copy of the rule, and two copies
+         * of a rule are two authorities.
+         *
+         * @param captureStdout Whether the child's stdout is captured as the step's typed value.
+         * @param pumpedViaAgent Whether the bytes are pumped through the ingest agent.
+         * @param pumpedThroughJvm Whether the bytes travel through the JVM.
+         * @return Whether the two modes are incompatible.
+         */
+        fun captureIsIncompatibleWithTheAgent(
+            captureStdout: Boolean,
+            pumpedViaAgent: Boolean,
+            pumpedThroughJvm: Boolean,
+        ): Boolean = captureStdout && agentOwnsDescriptors(pumpedViaAgent, pumpedThroughJvm)
+
+        /**
          * The routing of the child's two output descriptors.
          *
          * The rules, in order:

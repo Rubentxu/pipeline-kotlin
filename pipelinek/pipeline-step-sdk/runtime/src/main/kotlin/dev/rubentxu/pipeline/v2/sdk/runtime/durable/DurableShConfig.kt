@@ -72,6 +72,11 @@ data class DurableShConfig(
      * `false`. Switching this on is the wiring step, and that step has not
      * been taken, so the default is a conservative choice rather than a
      * measured one: nothing in this tree observes what the flag does.
+     * ## What it cannot be combined with
+     * The agent mode and a captured stdout cannot both hold the child's stdout, and the
+     * executor refuses that combination before the child starts. The ONE rule that decides it is
+     * the launcher's own routing (`captureIsIncompatibleWithTheAgent`), next to the routing it is
+     * read from.
 */
     val pumpedViaAgent: Boolean = PUMPED_VIA_AGENT_DEFAULT,
 

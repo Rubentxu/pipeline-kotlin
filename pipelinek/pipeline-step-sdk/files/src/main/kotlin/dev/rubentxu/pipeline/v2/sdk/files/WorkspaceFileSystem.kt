@@ -95,6 +95,25 @@ interface WorkspaceFileSystem : WorkspacePathSystem {
     fun writeBytes(path: Path, bytes: ByteArray)
 
     /**
+     * Creates the staging file of a write whose target is [target], and writes
+     * [bytes] into it.
+     *
+     * The file is NEW: the name is one that no entry held, and the entry that
+     * appears is the regular file this call made. The bytes go into that
+     * file, so a name that was occupied — by a file, by a link, by anything —
+     * cannot receive them.
+     *
+     * The file is created in the target's own directory, so the rename that
+     * publishes it stays inside one filesystem.
+     *
+     * If the write fails, the staging file does not survive: the caller never
+     * learns its name, so nobody else can clean it.
+     *
+     * @return the path of the staging file.
+     */
+    fun stageBytes(target: Path, bytes: ByteArray): Path
+
+    /**
      * Moves [source] onto [target], replacing it.
      *
      * The move replaces the ENTRY at [target]: when [target] is a symbolic

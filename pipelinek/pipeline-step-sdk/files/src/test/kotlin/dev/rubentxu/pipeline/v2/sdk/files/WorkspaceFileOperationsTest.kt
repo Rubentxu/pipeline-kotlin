@@ -220,38 +220,15 @@ class WorkspaceFileOperationsTest {
 
     // --- the names the product chooses for itself --------------------------------------
     //
-    // The chain of directories is not the only path an effect travels through. A write
-    // stages its bytes at a name of its own choosing next to the target, and the
-    // idempotency markers live at a name of their own. Those names are inside the
-    // workspace, so an actor that can write inside the workspace can occupy them with
-    // a link before the effect — and a write FOLLOWS a link, so the bytes land on the
-    // target of it, outside the root.
-
-    @Test
-    fun `a write whose staging name is a link is refused and writes nothing outside`() {
-        filesystem.directory(workspace)
-        filesystem.directory(outside)
-        // The staging name is `<file>.tmp`, next to the target. The product chooses
-        // it, but the workspace is writable, so it can be occupied before the write.
-        filesystem.link(workspace.resolve("file.txt.tmp"), outside.resolve("stolen.txt"))
-
-        val outcome = runCatching {
-            writer().execute(
-                "stage",
-                0,
-                StepSpec.WriteFile(file = "file.txt", text = "payload", encoding = "UTF-8"),
-            )
-        }
-
-        assertFalse(
-            filesystem.holds(outside.resolve("stolen.txt")),
-            "the bytes landed outside the authorized root",
-        )
-        assertTrue(
-            outcome.exceptionOrNull() is IllegalArgumentException,
-            "the write was refused instead of being obeyed: ${outcome.exceptionOrNull()}",
-        )
-    }
+    // The chain of directories is not the only path an effect travels through. The
+    // idempotency markers live at a name of their own, inside the workspace, so an
+    // actor that can write inside the workspace can occupy them with a link before
+    // the effect — and a write FOLLOWS a link, so the bytes land on the target of it,
+    // outside the root.
+    //
+    // A write does NOT stage at a name of its own: the filesystem creates the staging
+    // file, exclusively, in the target's directory. That case is in
+    // [FileWriteStagingTest].
 
     @Test
     fun `a deletion whose marker is a link does not consult the target of the link`() {

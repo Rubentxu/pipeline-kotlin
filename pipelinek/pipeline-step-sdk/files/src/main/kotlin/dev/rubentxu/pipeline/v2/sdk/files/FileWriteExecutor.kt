@@ -20,11 +20,43 @@ data class FileWriteResult(
 )
 
 /**
- * Executor for [StepSpec.WriteFile] — atomic temp+rename file write.
- * ## Atomic Write Strategy
- * 1. Write content to `<target>.tmp` in the SAME directory as target (guarantees same filesystem)
- * 2. Atomically rename via `Files.move(tmp, target, ATOMIC_MOVE, REPLACE_EXISTING)`
- * 3. On `AtomicMoveNotSupportedException` (cross-filesystem): fall back to `REPLACE_EXISTING`
+ * Executor for [StepSpec.WriteFile] — an atomic write through a staging file.
+ *
+ * ## How the write is published
+ *
+ * 1. The bytes go into a staging file the FILESYSTEM creates, in the target's
+ *    own directory, with a name that no entry held. The filesystem picks the
+ *    name and creates the file exclusively, so two writes that overlap never
+ *    share one.
+ * 2. The digest and the size are read from that staging file, BEFORE the
+ *    rename: they describe the content of THIS write, and not what another
+ *    write left at the target in the meantime.
+ * 3. The staging file is renamed onto the target. The rename replaces the
+ *    ENTRY at the target, so a target that is a link is replaced rather than
+ *    followed. The staging file is a sibling of the target, so the rename
+ *    stays inside one filesystem; [FileWriteResult.atomicallyMoved] says
+ *    whether the filesystem refused the atomic rename anyway.
+ * 4. If the rename fails, the staging file of THIS operation is removed and
+ *    the file the target had is left as it was: the rename did not happen.
+ *
+ * ## What the staging file is not
+ *
+ * It is not a name of the product's own, and it is not a name that can be
+ * occupied in advance: the filesystem creates it exclusively and the bytes go
+ * into the file it made. A name that was taken is not reused, so nothing that
+ * was already there receives what this write meant for the new file.
+ *
+ * ## What is NOT guaranteed
+ *
+ * The JDK cannot create a file relative to an open directory descriptor, so
+ * the chain of directories is judged immediately before the effect and not
+ * atomically with it: a component of that chain replaced between the judgement
+ * and the creation can still divert the effect. The THREAT is an actor who
+ * can write INSIDE the workspace — the same actor who can edit the pipeline —
+ * and the guarantee is one of DEPTH (the chain is judged at the last moment,
+ * and the authorized root is the containment), not of atomicity. Nothing here
+ * claims isolation against an actor who can write inside the root.
+ *
  * ## Path Safety
  * - Resolves `file` against workspace
  * - Enforces the path traversal guard on REAL paths, so a symlink out of the
@@ -33,15 +65,16 @@ data class FileWriteResult(
  * - Auto-creates parent directories, and refuses to create them through a
  *   symbolic link: a link that appears between the decision and the effect
  *   would put the bytes outside the workspace
- * - Judges the staging name (`<file>.tmp`) the same way it judges the target:
- *   the workspace is writable, so an actor can occupy that name with a link,
- *   and a write follows a link
+ *
  * ## Encoding
  * - `encoding = "UTF-8"` (default): `text.toByteArray(UTF_8)`
  * - `encoding = "Base64"`: decodes text via `Base64.getDecoder().decode(text)`
+ *
  * ## Events
- * - Event emission is handled by the dispatcher which has access to DomainEvent types.
- *   The [FileWriteResult] carries all data needed for event creation.
+ * - This executor emits nothing. The [FileWriteResult] carries the evidence
+ *   the event needs, and the caller that owns the event channel is the one
+ *   that emits it.
+ *
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
  * @param fileSystem The filesystem the write is applied to.
 */
@@ -98,36 +131,38 @@ class FileWriteExecutor(
             spec.text.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
         }
 
-        // Atomic write: temp file in same directory, then atomic rename. The rename
-        // replaces the ENTRY at the target, so a target that is a link is replaced
-        // rather than followed.
-        val tmpPath = realPath.resolveSibling("${realPath.fileName}.tmp")
-        // The staging name is a path of the product's own choosing, and the
-        // workspace is writable: an actor that can write inside it can occupy
-        // that name with a link before the write, and a write FOLLOWS a link, so
-        // the bytes would land on the target of it, outside the root. The
-        // staging path is therefore judged the way the target was — the chain,
-        // looked at immediately before the effect — and a link anywhere in it
-        // stops the write.
-        require(anchor.chainIsFreeOfLinks(realWorkspace, tmpPath)) {
-            "writeFile path '${spec.file}' escapes workspace"
+        // Atomic write: a staging file in the same directory, then the rename
+        // that publishes it. The rename replaces the ENTRY at the target, so a
+        // target that is a link is replaced rather than followed.
+        //
+        // The staging file is NOT a name of the product's own. The filesystem
+        // creates it exclusively, in the target's directory, so two writes
+        // that overlap never share one and nothing that was already there can
+        // receive what this write meant for the new file. A name that was
+        // taken before the write is not reused.
+        val stagingPath = fileSystem.stageBytes(realPath, bytes)
+        try {
+            // The digest and the size are read from the STAGING file, before
+            // the rename: one reading, and the two values cannot describe
+            // different contents. Reading the TARGET after the rename would
+            // describe whatever another write left there in the meantime.
+            val written = fileSystem.readAllBytes(stagingPath)
+            val sha256 = sha256(written)
+            val size = written.size.toLong()
+            val atomicallyMoved = fileSystem.move(stagingPath, realPath)
+
+            return FileWriteResult(
+                path = declaredPath,
+                sha256 = sha256,
+                size = size,
+                atomicallyMoved = atomicallyMoved,
+            )
+        } catch (t: Throwable) {
+            // The staging file of THIS operation, and nothing else. The rename
+            // did not happen, so the file the target had is still there.
+            fileSystem.deleteIfExists(stagingPath)
+            throw t
         }
-        fileSystem.writeBytes(tmpPath, bytes)
-        val atomicallyMoved = fileSystem.move(tmpPath, realPath)
-
-        // The bytes that are on disk after the move are the bytes the digest
-        // and the size are taken from: one reading, and the two values cannot
-        // describe different contents.
-        val written = fileSystem.readAllBytes(realPath)
-        val sha256 = sha256(written)
-        val size = written.size.toLong()
-
-        return FileWriteResult(
-            path = declaredPath,
-            sha256 = sha256,
-            size = size,
-            atomicallyMoved = atomicallyMoved,
-        )
     }
 
     companion object {

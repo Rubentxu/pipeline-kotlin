@@ -70,17 +70,22 @@ signing_trust_set() {
 # Prints "<fingerprint>|<uid>". Returns 1 when the file declares no current
 # key. This is the key that SIGNS: a caller that wants to sign asks here, and
 # a caller that wants to VERIFY asks for the whole set.
+#
+# The answer comes from the set itself and not from a second reading of the
+# file: two places that parse the same format inside ONE reader are the same
+# drift hazard that the reader exists to remove, only closer.
 signing_current_key() {
     local conf="${1:-}"
-    local current_fingerprint current_uid
+    local fingerprint uid role
 
     [[ -n "$conf" && -r "$conf" ]] || return 1
 
-    current_fingerprint="$(sed -n 's/^fingerprint=//p' "$conf" | head -1 | tr -d '[:space:]')"
-    current_uid="$(sed -n 's/^uid=//p' "$conf" | head -1 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    while IFS='|' read -r fingerprint uid role; do
+        if [[ "$role" == "current" ]]; then
+            printf '%s|%s\n' "$fingerprint" "$uid"
+            return 0
+        fi
+    done < <(signing_trust_set "$conf")
 
-    [[ -n "$current_fingerprint" && -n "$current_uid" ]] || return 1
-
-    printf '%s|%s\n' "$current_fingerprint" "$current_uid"
-    return 0
+    return 1
 }

@@ -85,3 +85,4 @@ cyclonedx = { id = "org.cyclonedx.bom", version.ref = "cyclonedx" }
 binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "binaryCompatibilityValidator" }
 # The HTML reference of the published API. See version note above.
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
+dokkaJavadoc = { id = "org.jetbrains.dokka-javadoc", version.ref = "dokka" }

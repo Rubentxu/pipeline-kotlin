@@ -56,11 +56,12 @@ WHAT IS DECLARED, AND WHY IT IS DECLARED BY NAME
   gone is a failure too, so the declaration cannot rot into a list of names
   that would quietly allow whatever arrives next.
 
-  The one executable program that boots the product is the external
-  compatibility check of the release, and it is declared with its reason: it
-  compares the PUBLISHED artefact against the PREVIOUSLY published one, so
-  what is under test is the publication contract and not this tree's
-  behaviour. It is not part of this gate.
+  The programs that put a PUBLISHED artefact in front of a consumer are the
+  external compatibility check of the release and the staging of the Maven
+  bundle. Both are declared with their reason: they compare the artefact that
+  leaves the tree against the consumption contract, so what is under test is
+  the publication contract and not this tree's behaviour. Neither is part of
+  this gate.
 
 WHAT IS SCANNED
   The working tree, not the Git index: the guarantee is about the tree that
@@ -143,6 +144,11 @@ DECLARED_EXECUTABLES = {
     "scripts/check-published-reference.py": (
         "a guard of the gate: it reads the tree and starts nothing"
     ),
+    "scripts/check-sdk-bundle.py": (
+        "a guard of the gate: it reads the staged bundle, recomputes its "
+        "digests and verifies its signatures, and it starts nothing of the "
+        "product"
+    ),
     "scripts/install-pipelinek.sh": (
         "the installer of a published release: it installs the archive for a "
         "user and asks the installed command for its version"
@@ -182,6 +188,12 @@ DECLARED_EXECUTABLES = {
     ),
     "scripts/release/sdkman-publish.sh": (
         "publication: it publishes the release to the SDKMAN channel"
+    ),
+    "scripts/release/stage-sdk-bundle.sh": (
+        "publication: it stages and signs the Maven bundle and then compiles an "
+        "independent consumer against the STAGED artefact, so what is under "
+        "test is the publication contract and not the behaviour of this tree; it "
+        "is not part of this gate"
     ),
     "scripts/release/verify-promotion-certification.sh": (
         "publication: it verifies that the certification of a candidate "

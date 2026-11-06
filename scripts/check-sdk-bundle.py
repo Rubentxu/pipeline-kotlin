@@ -209,7 +209,7 @@ def check_coordinates(repo: Path, report: Report) -> tuple[dict[str, Path], str]
         report.row(False, "1", f"the coordinates live in {len(versions)} versions: {sorted(versions)}")
     else:
         report.row(True, "1", f"every coordinate lives in version {versions.pop()}")
-    return coordinates, expected[0] if False else bom
+    return coordinates, bom
 
 
 def check_artifacts(coordinates: dict[str, Path], bom: str, report: Report) -> None:
@@ -529,7 +529,7 @@ def check_maturity(
             report.note(f"maturity {entry}")
 
 
-def check_not_published(repo: Path, assets_path: Path | None, report: Report) -> None:
+def check_not_published(assets_path: Path | None, report: Report) -> None:
     if assets_path is None or not assets_path.is_file():
         report.row(True, "11", "the published asset list was not given, so the row was skipped")
         return
@@ -582,7 +582,7 @@ def main(argv: list[str]) -> int:
         maturity = Path(arguments.maturity) if arguments.maturity else None
         check_maturity(coordinates, bom, maturity, report)
         assets = Path(arguments.assets) if arguments.assets else None
-        check_not_published(repo, assets, report)
+        check_not_published(assets, report)
         version = arguments.version or next(iter(coordinates.values())).name
         report.note(f"bundle version {version}, {len(coordinates)} coordinates")
     except Failure as failure:

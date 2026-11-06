@@ -33,22 +33,27 @@ import java.nio.file.Path
 fun interface JournalConfirmation {
 
     /**
-     * The journal holds the result of [operationId], so the operation's leftovers may go.
+     * The journal holds the result of the operation named by [opId], so that operation's
+     * leftovers may go.
+     *
+     * The identity is the [OpId] and not the journal's operation id: the substrate's home for
+     * an operation is named by the [OpId]'s formatted form, and on the scripted surface the
+     * journal names the same operation by a different string. The port carries the identity that
+     * NAMES the leftovers, and the substrate resolves them.
      *
      * The call is idempotent: confirming an operation whose leftovers are already gone is a
      * no-op, and confirming twice releases once.
      */
-    fun confirm(operationId: String)
+    fun confirm(opId: OpId)
 }
 
 /**
  * The confirmation that releases the control directory of a confirmed operation.
  *
- * The control directory is the substrate's own, and the operation's identity names it: the
- * durable row's operation id and the directory's name are the same string, because both are the
- * operation's `OpId` in its formatted form. The directory is resolved here rather than carried
- * around, because a path that travels through the durable protocol would be a second authority
- * for where the substrate keeps its evidence.
+ * The control directory is the substrate's own, and the operation's [OpId] names it: the
+ * directory's name is the operation's [OpId] in its formatted form. The directory is resolved
+ * here, with the same derivation the shell writes into, because a path that travels through the
+ * durable protocol would be a second authority for where the substrate keeps its evidence.
  *
  * What the release disposes of is the substrate's decision, not this class's: a failed or expired
  * execution keeps its directory, because its evidence is what tells a resumable run what
@@ -56,7 +61,7 @@ fun interface JournalConfirmation {
  */
 class ControlDirectoryConfirmation(private val controlDirRoot: Path) : JournalConfirmation {
 
-    override fun confirm(operationId: String) {
-        DurableShellExecutor().confirmCapture(controlDirRoot.resolve(operationId))
+    override fun confirm(opId: OpId) {
+        DurableShellExecutor().confirmCapture(controlDirOf(controlDirRoot, opId))
     }
 }

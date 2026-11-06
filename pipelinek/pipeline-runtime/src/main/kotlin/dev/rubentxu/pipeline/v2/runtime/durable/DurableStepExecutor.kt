@@ -134,7 +134,11 @@ internal class DurableStepExecutor(
         // process dies between the reading and the append, and a resumed run then finds a
         // LOST execution instead of the value. The confirmation is what releases them, and it
         // happens AFTER the append, never before it.
-        journalConfirmation.confirm(operationId)
+        //
+        // The identity it carries is the runtime's OpId: that is the identity the substrate
+        // files the leftovers under, and it is NOT the journal's operation id (on the scripted
+        // surface the journal names the same operation by a different string).
+        journalConfirmation.confirm(runtime.opId)
         return executionResult
     }
 }

@@ -131,6 +131,24 @@ class CapturedStdoutConfirmationTest {
     }
 
     @Test
+    fun `the confirmation releases the directory the substrate names`() {
+        val root = controlRootWith(captured = "hello\n")
+        val opDir = root.resolve(OP_ID)
+        DurableShellExecutor().cleanup(opDir, 0)
+
+        // The PRODUCTION confirmation, which resolves the directory from the operation's identity
+        // the way the substrate names it. A confirmation that resolved it by any other string
+        // would release nothing, and the control directory of every successful step would stay
+        // on disk for good.
+        ControlDirectoryConfirmation(root).confirm(OpId(RUN_ID, 0, 0))
+
+        assertFalse(
+            Files.exists(opDir),
+            "the confirmation released the directory the substrate names",
+        )
+    }
+
+    @Test
     fun `the confirmation is idempotent`() {
         val root = controlRootWith(captured = "hello\n")
         val opDir = root.resolve(OP_ID)
@@ -171,6 +189,7 @@ class CapturedStdoutConfirmationTest {
         // The port is the witness: it reads the journal at the MOMENT it is called, so the row
         // it finds says whether the value was already recorded when the leftovers were released.
         var rowAtConfirmation: DurableOperation? = null
+        var confirmedOpId: OpId? = null
         val executor = DurableStepExecutor(
             eventSink = NullEventSink,
             executionBoundary = CommonExecutionBoundary { _, _ ->
@@ -180,8 +199,9 @@ class CapturedStdoutConfirmationTest {
             telemetry = NoopPipelineTelemetry,
             clock = FixedClock,
             idGenerator = SequentialIdGenerator(),
-            journalConfirmation = JournalConfirmation { operationId ->
-                rowAtConfirmation = records.read(operationId)
+            journalConfirmation = JournalConfirmation { opId ->
+                confirmedOpId = opId
+                rowAtConfirmation = records.read(OP_ID)
             },
         )
 
@@ -198,6 +218,11 @@ class CapturedStdoutConfirmationTest {
             )
         }
 
+        assertEquals(
+            OP_ID,
+            confirmedOpId?.format(),
+            "the confirmation named the operation whose leftovers it releases",
+        )
         val row = requireNotNull(
             rowAtConfirmation,
         ) { "the confirmation ran, and the journal answered it with a row" }
@@ -298,9 +323,10 @@ class CapturedStdoutConfirmationTest {
         }
 
     /**
-     * A control directory holding a finished operation: `result.txt` publishes the exit code, so
-     * the reconciler classifies it as COMPLETE, and `output.txt` holds the captured stdout — or
-     * is absent, which is a different fact from an empty one.
+     * A control directory holding a finished operation: the directory is named by the operation's
+     * [OpId], the way the substrate names it, `result.txt` publishes the exit code, so the
+     * reconciler classifies it as COMPLETE, and `output.txt` holds the captured stdout — or is
+     * absent, which is a different fact from an empty one.
      */
     private fun controlRootWith(captured: String?, exitCode: Int = 0): Path {
         val root = tempDir.resolve("capture-confirmation-${captured?.length ?: -1}-$exitCode")
@@ -384,8 +410,13 @@ class CapturedStdoutConfirmationTest {
     )
 
     private companion object {
-        const val OP_ID = "op-1"
         const val RUN_ID = "run-1"
         const val STEP_ID = "core.probe"
+
+        /**
+         * The operation's identity: the [OpId]'s formatted form, which is the name the substrate
+         * files the control directory under.
+         */
+        val OP_ID: String = OpId(RUN_ID, 0, 0).format()
     }
 }

@@ -29,6 +29,8 @@ import java.util.concurrent.TimeUnit
  * What is therefore THIS class's own:
  *
  *  - the type and the permissions of the FIFO, checked rather than assumed;
+ *  - the ENVIRONMENT the agent's process is launched with, which is composed rather than
+ *    inherited, because the runtime's own environment holds the credentials the controller owns;
  *  - the DETACHMENT of the agent, which must outlive the runtime's process group or a `kill -9`
  *    on the runtime would take the agent down with it;
  *  - the READINESS wait, which is what keeps the child from deadlocking on a FIFO it is opening
@@ -150,7 +152,28 @@ internal class ProcessRendezvousHost(
      * bounded by the FIFO's EOF: it drains until every writer is gone, and the warm-up
      * descriptors are the writers, so the agent leaves when the step's cleanup closes them.
      */
-    override fun launchAgent(protocol: ShellProtocolLayout, fifoDir: Path): Process {
+    override fun launchAgent(protocol: ShellProtocolLayout, fifoDir: Path): Process =
+        agentProcessBuilder(protocol, fifoDir).start()
+
+    /**
+     * The builder the agent's process is launched with.
+     *
+     * The builder is returned UNSTARTED, so that what the agent's process will see — its argv
+     * and its environment — can be read without a process, a FIFO or a clock. The launch itself
+     * is [launchAgent]'s, and nothing else happens here.
+     *
+     * @param protocol The control directory's layout.
+     * @param fifoDir The directory holding the FIFOs the agent drains.
+     * @param ambient The environment of the process that launches the agent. The plan selects
+     *   from it; it does not cross into the agent wholesale. It is an argument so that the
+     *   composition can be observed with an environment the test owns.
+     * @return The builder, with its argv and its environment already decided.
+     */
+    fun agentProcessBuilder(
+        protocol: ShellProtocolLayout,
+        fifoDir: Path,
+        ambient: Map<String, String> = System.getenv(),
+    ): ProcessBuilder {
         val runId = config.runId ?: error("runId must be set when pumpedViaAgent is true")
         val secret = config.agentSecret ?: error("agentSecret must be set when pumpedViaAgent is true")
         val args = AgentRendezvous.Args(
@@ -184,9 +207,13 @@ internal class ProcessRendezvousHost(
         builder.directory(protocol.controlDir.toFile())
         builder.redirectErrorStream(true)
         builder.redirectOutput(ProcessBuilder.Redirect.to(protocol.agentLog.toFile()))
-        // The secret travels in the environment, not in the argv: see the class KDoc.
-        builder.environment().putAll(AgentRendezvous.agentEnvironment(secret))
-        return builder.start()
+        // The environment is COMPOSED, not inherited: the builder's default is the whole
+        // environment of this process, and that environment holds the credentials the
+        // controller owns. What the agent's process receives is the plan, and the plan names
+        // what crosses into it.
+        builder.environment().clear()
+        builder.environment().putAll(AgentProcessEnvironment.compose(ambient = ambient, secret = secret))
+        return builder
     }
 
     /**

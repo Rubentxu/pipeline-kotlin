@@ -80,8 +80,9 @@ data class DurableShConfig(
      * redacting this secret from the child's stdout/stderr in memory
      * before committing to the Output Plane.
      * Required when [pumpedViaAgent] is `true`; ignored otherwise. The
-     * runtime passes this value as the last argv to the agent JVM; the
-     * agent does not write it to disk.
+     * runtime hands this value to the agent JVM in its ENVIRONMENT, never
+     * in the argv: an argument is readable through `/proc/<pid>/cmdline` by
+     * every user on the host. The agent does not write it to disk.
 */
     val agentSecret: String? = null,
 

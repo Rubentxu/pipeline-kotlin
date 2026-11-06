@@ -49,7 +49,7 @@ import org.junit.jupiter.api.assertThrows
  * decodificación de vuelta— son hechos de funciones puras, y una capa por encima
  * (un proceso, un workspace, un repositorio) no podría observar nada que estas
  * no observen; sólo añadiría un sistema de archivos y un reloj a cada
- * aserción. AGENTS.md §2 prohíbe además la capa E2E.
+ * aserción. El repositorio no admite una capa E2E.
  *
  * ## Qué NO congela esta fila
  *

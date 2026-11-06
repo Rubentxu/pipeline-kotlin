@@ -520,6 +520,21 @@ if want_stage 1; then
         fail "stage 1: the comment provenance guard"
     fi
 
+    # --- The set of the signing keys -----------------------------------------
+    # The release path signs the release tags with a key this repository
+    # declares, and the declaration names a SET: the key that signs now and
+    # the keys that signed the tags already published. The shape of that set
+    # is a contract, and the guard reads the tree to ask whether the current
+    # key can be attributed at all. A key that claims a domain reserved for
+    # documentation belongs to nobody, so no consumer is able to place it.
+    if python3 scripts/check-signing-key-trust.py > "$log_dir/signing-trust.out" 2>&1; then
+        log "stage 1/5  the trust set of the signing keys"
+        cat "$log_dir/signing-trust.out"
+    else
+        cat "$log_dir/signing-trust.out" >&2
+        fail "stage 1: the trust set of the signing keys"
+    fi
+
     # --- The published contracts carry their contract -------------------------
     # The `.api` files are the authority of the public surface, and a type
     # that a consumer can program against is a type whose contract a consumer

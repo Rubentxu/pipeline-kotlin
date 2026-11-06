@@ -22,7 +22,7 @@
 #
 # The rows:
 #   A  the tag is annotated, carries a signature, and that signature VERIFIES
-#   B  the signature comes from the EXPECTED fingerprint (and uid, when given)
+#   B  the signature comes from a TRUSTED key (and uid, when given)
 #   C  the tag points at the EXPECTED commit
 #
 # Row B is the one that makes the check worth running. Without it, "the
@@ -32,6 +32,24 @@
 # (scripts/release/signing-key.conf), so rotating the key is a reviewed change
 # and the release path cannot be silently redirected to another key by editing
 # a local git config.
+#
+# TWO WAYS OF NAMING THE TRUSTED KEY, AND THEY ASK DIFFERENT QUESTIONS
+#
+#   --expect-fingerprint FPR   this tag HAS to be signed by this key. It is
+#                              the check the release path runs on the tag it
+#                              has just cut, and it is deliberately narrow: the
+#                              tag that leaves now carries the key that signs
+#                              now.
+#   --trust-conf FILE          this tag may be signed by ANY key this
+#                              repository trusts. It is the check an audit of
+#                              the tags already published needs, because the
+#                              key that signed those is not the key that signs
+#                              now, and a rotation that dropped it would turn
+#                              every published release into a tag nobody can
+#                              verify.
+#
+# The two are mutually exclusive: a caller that names one key and a set at the
+# same time is asking two questions and gets one answer.
 #
 # What the check does NOT do: it does not judge whether the key belongs to the
 # publisher. A signature proves POSSESSION of the private key. Binding that key
@@ -44,14 +62,24 @@
 #   verify-tag-signature.sh --tag <name|sha> --expect-fingerprint <FPR> \
 #       [--expect-commit <sha>] [--expect-uid <uid>] [--out <file>]
 #
+#   verify-tag-signature.sh --tag <name|sha> --trust-conf <file> \
+#       [--expect-commit <sha>] [--out <file>]
+#
 # Exit codes: 0 = every row PASS, 1 = at least one row FAIL, 2 = usage error.
 
 set -Eeuo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# The ONE reader of the trust file. Sourced, never run: a second reader of the
+# same format is a second authority, and the two would drift apart.
+# shellcheck source=read-signing-trust.sh
+source "${script_dir}/read-signing-trust.sh"
 
 TAG=""
 EXPECT_FINGERPRINT=""
 EXPECT_COMMIT=""
 EXPECT_UID=""
+TRUST_CONF=""
 OUT_FILE=""
 
 usage() {
@@ -68,24 +96,64 @@ while [[ $# -gt 0 ]]; do
         --expect-fingerprint) EXPECT_FINGERPRINT="${2:-}"; shift 2 ;;
         --expect-commit)    EXPECT_COMMIT="${2:-}"; shift 2 ;;
         --expect-uid)       EXPECT_UID="${2:-}"; shift 2 ;;
+        --trust-conf)       TRUST_CONF="${2:-}"; shift 2 ;;
         --out)              OUT_FILE="${2:-}"; shift 2 ;;
         -h|--help)          usage ;;
         *) printf 'verify-tag-signature: unknown argument %s\n' "$1" >&2; usage ;;
     esac
 done
 
-if [[ -z "$TAG" || -z "$EXPECT_FINGERPRINT" ]]; then
-    printf 'verify-tag-signature: --tag and --expect-fingerprint are required\n' >&2
+if [[ -z "$TAG" ]]; then
+    printf 'verify-tag-signature: --tag is required\n' >&2
     usage
 fi
 
-if [[ ! "$EXPECT_FINGERPRINT" =~ ^[0-9A-Fa-f]{40}$ ]]; then
-    printf 'verify-tag-signature: --expect-fingerprint must be a 40-hex fingerprint\n' >&2
-    printf '    (got %s).\n' "$EXPECT_FINGERPRINT" >&2
-    exit 2
+# The TRUSTED set: the keys whose signature this tag may carry. It is named
+# two ways, and the ways are different questions (see the header).
+TRUSTED_FINGERPRINTS=()
+TRUSTED_UIDS=()
+TRUSTED_ROLES=()
+
+if [[ -n "$TRUST_CONF" ]]; then
+    if [[ -n "$EXPECT_FINGERPRINT" || -n "$EXPECT_UID" ]]; then
+        printf 'verify-tag-signature: --trust-conf names the trusted SET and\n' >&2
+        printf '    --expect-fingerprint names ONE key. Pass one or the other.\n' >&2
+        usage
+    fi
+    if [[ ! -r "$TRUST_CONF" ]]; then
+        printf 'verify-tag-signature: the trust file %s cannot be read\n' "$TRUST_CONF" >&2
+        exit 2
+    fi
+    while IFS='|' read -r trusted_fingerprint trusted_uid trusted_role; do
+        [[ -n "$trusted_fingerprint" ]] || continue
+        TRUSTED_FINGERPRINTS+=("$trusted_fingerprint")
+        TRUSTED_UIDS+=("$trusted_uid")
+        TRUSTED_ROLES+=("$trusted_role")
+    done < <(signing_trust_set "$TRUST_CONF")
+    if [[ ${#TRUSTED_FINGERPRINTS[@]} -eq 0 ]]; then
+        printf 'verify-tag-signature: the trust file %s declares no usable key\n' "$TRUST_CONF" >&2
+        exit 2
+    fi
+    EXPECT_FINGERPRINT_UPPER="<any trusted key>"
+    EXPECT_UID="<any trusted key>"
+else
+    if [[ -z "$EXPECT_FINGERPRINT" ]]; then
+        printf 'verify-tag-signature: --tag and --expect-fingerprint are required\n' >&2
+        usage
+    fi
+    if [[ ! "$EXPECT_FINGERPRINT" =~ ^[0-9A-Fa-f]{40}$ ]]; then
+        printf 'verify-tag-signature: --expect-fingerprint must be a 40-hex fingerprint\n' >&2
+        printf '    (got %s).\n' "$EXPECT_FINGERPRINT" >&2
+        exit 2
+    fi
+    EXPECT_FINGERPRINT_UPPER="${EXPECT_FINGERPRINT^^}"
+    TRUSTED_FINGERPRINTS=("$EXPECT_FINGERPRINT")
+    TRUSTED_UIDS=("$EXPECT_UID")
+    TRUSTED_ROLES=("current")
 fi
 
-EXPECT_FINGERPRINT_UPPER="${EXPECT_FINGERPRINT^^}"
+TRUSTED_FINGERPRINTS_CSV="$(printf '%s\n' "${TRUSTED_FINGERPRINTS[@]}" | paste -sd, -)"
+TRUSTED_UIDS_CSV="$(printf '%s\n' "${TRUSTED_UIDS[@]}" | paste -sd, -)"
 
 STARTED_AT=$(date +%s)
 
@@ -171,14 +239,30 @@ else
     #    uid changed is a key somebody else should look at.
     # ----------------------------------------------------------------------------
 
+    # WHICH of the trusted keys signed, and with what role. The role says
+    # whether this is the key that signs now or one that signed the tags
+    # already published, because a reader who sees a signature from a key that
+    # is not the current one has to know WHICH history it belongs to.
     if [[ -z "$SIGNER_FPR" ]]; then
         record B FAIL "not measured: no signature was read from the tag"
-    elif [[ "${SIGNER_FPR^^}" != "$EXPECT_FINGERPRINT_UPPER" ]]; then
-        record B FAIL "the signature comes from ${SIGNER_FPR}, not from the declared ${EXPECT_FINGERPRINT_UPPER}"
-    elif [[ -n "$EXPECT_UID" && "$SIGNER_UID" != "$EXPECT_UID" ]]; then
-        record B FAIL "the signing key claims uid '${SIGNER_UID}', not the declared '${EXPECT_UID}'"
     else
-        record B PASS "the signature comes from the declared key"
+        trusted_index=-1
+        for index in "${!TRUSTED_FINGERPRINTS[@]}"; do
+            if [[ "${TRUSTED_FINGERPRINTS[$index]^^}" == "$SIGNER_FPR" ]]; then
+                trusted_index="$index"
+                break
+            fi
+        done
+        if [[ "$trusted_index" -lt 0 ]]; then
+            record B FAIL "the signature comes from ${SIGNER_FPR}, not from a trusted key (${TRUSTED_FINGERPRINTS_CSV})"
+        else
+            trusted_uid="${TRUSTED_UIDS[$trusted_index]}"
+            if [[ -n "$trusted_uid" && "$SIGNER_UID" != "$trusted_uid" ]]; then
+                record B FAIL "the signing key claims uid '${SIGNER_UID}', not the declared '${trusted_uid}'"
+            else
+                record B PASS "the signature comes from the declared key (${TRUSTED_ROLES[$trusted_index]})"
+            fi
+        fi
     fi
 
     # ----------------------------------------------------------------------------
@@ -227,10 +311,12 @@ else
 fi
 
 {
-    printf 'tag-signature: %s rows=%s tag=%s signer=%s uid=%s commit=%s expected_fingerprint=%s expected_uid=%s expected_commit=%s elapsed=%ss\n' \
+    printf 'tag-signature: %s rows=%s tag=%s signer=%s uid=%s commit=%s expected_fingerprint=%s expected_uid=%s trusted_fingerprints=%s trusted_uids=%s expected_commit=%s elapsed=%ss\n' \
         "$VERDICT" "$SUMMARY_ROWS" "$TAG" \
         "${SIGNER_FPR:-<none>}" "${SIGNER_UID:-<none>}" "${TAG_COMMIT:-<none>}" \
-        "$EXPECT_FINGERPRINT_UPPER" "${EXPECT_UID:-<any>}" "${EXPECT_COMMIT:-<any>}" "$ELAPSED"
+        "$EXPECT_FINGERPRINT_UPPER" "${EXPECT_UID:-<any>}" \
+        "$TRUSTED_FINGERPRINTS_CSV" "$TRUSTED_UIDS_CSV" \
+        "${EXPECT_COMMIT:-<any>}" "$ELAPSED"
     for index in "${!ROW_NAMES[@]}"; do
         printf '  row %s verdict=%s %s\n' \
             "${ROW_NAMES[$index]}" "${ROW_VERDICTS[$index]}" "${ROW_DETAILS[$index]}"

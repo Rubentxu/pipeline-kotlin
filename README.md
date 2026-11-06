@@ -561,6 +561,7 @@ code that implements each surface:
 | Reading a run from outside | The section "Contracts" above, and the KDoc on `OutputReadPort.kt` in `:pipeline-output`, `EventRecordReadPort.kt` in `:pipeline-events` and `RuntimeIntrospectionPort.kt` in `:pipeline-runtime-api` |
 | The API reference of the published contracts | `./pipelinek/gradlew -p pipelinek apiReferenceHtml`, which writes one HTML site per published contract under that module's `build/dokka/html` |
 | How the build is verified, and what is out of bounds | `AGENTS.md` in the repository root |
+| Who signed a release, and how a consumer checks it | `RELEASE-SIGNING.md` in the repository root |
 
 The reason to prefer this over a prose tree is not preference: a KDoc block
 lives next to the code it describes, and it is read with that code. A comment
@@ -572,6 +573,14 @@ reads this file and the code and fails when they disagree.
 
 The releases, with the digest of every published asset, are on
 [GitHub Releases](https://github.com/Rubentxu/pipeline-kotlin/releases).
+
+The release tags are signed, and the signature is verified before the tag is
+pushed. A signature proves possession of the private key and nothing more,
+so the trust channel of a consumer lives OUTSIDE the artifact: it is the
+account that owns this repository, and the GPG keys that account registers.
+`RELEASE-SIGNING.md` in the repository root writes the provenance review
+down, and `scripts/release/verify-signing-key-attribution.sh` measures
+whether the declared key is registered on that account.
 
 PipelineK publishes **one canonical ZIP** per release. Every other
 channel consumes the same bytes; nothing is rebuilt per installer.

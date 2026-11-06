@@ -81,6 +81,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# The ONE reader of the declaration of the signing keys. Sourced, never run:
+# a second reader of the same format is a second authority, and the two
+# would drift apart.
+# shellcheck source=scripts/release/read-signing-trust.sh
+source "${REPO_ROOT}/scripts/release/read-signing-trust.sh"
+
 # ----------------------------------------------------------------------------
 # 1. Gate env.
 # ----------------------------------------------------------------------------
@@ -164,8 +170,14 @@ if [ ! -f "$SIGNING_KEY_CONF" ]; then
     exit 2
 fi
 
-SIGNING_FINGERPRINT="$(sed -n 's/^fingerprint=//p' "$SIGNING_KEY_CONF" | head -1 | tr -d '[:space:]')"
-SIGNING_UID="$(sed -n 's/^uid=//p' "$SIGNING_KEY_CONF" | head -1 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+# The key that signs is read through the ONE reader of the declaration, so
+# this script and the two verifiers cannot disagree about which key that is.
+CURRENT_SIGNING_KEY="$(signing_current_key "$SIGNING_KEY_CONF")" || {
+    echo "release-pipelinek: ${SIGNING_KEY_CONF} does not declare a current key." >&2
+    exit 2
+}
+SIGNING_FINGERPRINT="${CURRENT_SIGNING_KEY%%|*}"
+SIGNING_UID="${CURRENT_SIGNING_KEY#*|}"
 
 if ! printf '%s' "$SIGNING_FINGERPRINT" | grep -Eq '^[0-9A-Fa-f]{40}$'; then
     echo "release-pipelinek: ${SIGNING_KEY_CONF} does not declare a 40-hex fingerprint." >&2
@@ -176,6 +188,16 @@ if [ -z "$SIGNING_UID" ]; then
     echo "release-pipelinek: ${SIGNING_KEY_CONF} does not declare the uid of the key." >&2
     exit 2
 fi
+
+# The set of keys this repository trusts: the one that signs from now on, and
+# the ones that signed the tags already published. The release path signs
+# with the current key and checks the tag it just cut with that same key;
+# the set is what an audit of the WHOLE history asks about, and a published
+# tag keeps the signature it was given.
+SIGNING_TRUST_SET="$(signing_trust_set "$SIGNING_KEY_CONF")" || {
+    echo "release-pipelinek: ${SIGNING_KEY_CONF} does not declare a usable trust set." >&2
+    exit 2
+}
 
 if ! gpg --batch --list-secret-keys --with-colons "$SIGNING_FINGERPRINT" 2>/dev/null | grep -q '^sec:'; then
     echo "release-pipelinek: the declared signing key is not available in this keyring." >&2
@@ -748,15 +770,38 @@ fi
     printf '| Signing key (fingerprint) | `%s` |\n' "$SIGNING_FINGERPRINT"
     printf '| Key uid | `%s` |\n' "$SIGNING_UID"
     printf '| Signed commit | `%s` |\n' "$PROSPECTIVE_TAG_COMMIT"
-    printf '| Check | `scripts/release/verify-tag-signature.sh` |\n\n'
+    printf '| Check | `scripts/release/verify-tag-signature.sh` |\n'
+    printf '| Trust channel | the account that owns this repository |\n'
+    printf '| Trust channel check | `scripts/release/verify-signing-key-attribution.sh` |\n\n'
     printf 'What this proves, and what it does not:\n\n'
     printf -- '- It proves POSSESSION of the private key: the tag was signed by whoever\n'
     printf -- '  holds it, and the tag cannot be altered without breaking the signature.\n'
-    printf -- '- It does NOT prove that the holder of that key owns this repository. Until\n'
-    printf -- '  the fingerprint is published on a channel the publisher controls, a\n'
-    printf -- '  consumer must treat the publisher as UNATTRIBUTED. The hosting platform\n'
-    printf -- '  shows the tag as unverified for the same reason: this key is not\n'
-    printf -- '  registered on a hosting account.\n\n'
+    printf -- '- It does NOT prove that the holder of that key owns this repository. The\n'
+    printf -- '  trust channel of a consumer is OUTSIDE this artifact: it is the account\n'
+    printf -- '  that owns the repository, and the GPG keys that account registers. A key\n'
+    printf -- '  registered there is one the publishing account vouches for. Until the\n'
+    printf -- '  registration is there, a consumer must treat the publisher as\n'
+    printf -- '  UNATTRIBUTED, and the hosting platform shows the tag as unverified for\n'
+    printf -- '  the same reason.\n'
+    printf -- '- The identity a key carries is a claim the key makes about itself. It is\n'
+    printf -- '  compared with the identity the signature carries, and a key whose\n'
+    printf -- '  identity changed is a key somebody else should look at. It is never an\n'
+    printf -- '  attribution: nobody is attributed by the string their key carries.\n\n'
+    printf 'The keys this repository trusts, and what each of them signed:\n\n'
+    printf '| Fingerprint | Identity it claims | What it signed |\n'
+    printf '|---|---|---|\n'
+    while IFS='|' read -r trust_fingerprint trust_uid trust_role; do
+        [ -n "$trust_fingerprint" ] || continue
+        if [ "$trust_role" = "current" ]; then
+            printf '| `%s` | `%s` | the tags cut from now on |\n' "$trust_fingerprint" "$trust_uid"
+        else
+            printf '| `%s` | `%s` | the tags already published |\n' "$trust_fingerprint" "$trust_uid"
+        fi
+    done <<< "$SIGNING_TRUST_SET"
+    printf '\n'
+    printf 'A tag keeps the signature it was given: a key that stops signing does not\n'
+    printf 'un-sign what it already signed. The keys above are the ones a consumer may\n'
+    printf 'check a published tag against.\n\n'
     printf 'The public key is embedded below, so this check needs nothing from the\n'
     printf 'machine that cut the release:\n\n'
     printf '```\n'

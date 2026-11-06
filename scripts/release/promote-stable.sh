@@ -43,6 +43,14 @@
 #      this the promotion would publish it. The certification is judged
 #      against the candidate the RC names, and a partial one — the canaries
 #      and nothing else — is refused with the missing part named.
+#   7. the PUBLISHER is attributable: the key that signs is registered on the
+#      account that owns this repository. Everything above is about the bytes
+#      and about the proof; none of it says who published the release. A
+#      stable release is the last thing a consumer looks at, and a stable
+#      release signed by a key no account vouches for is a release nobody can
+#      attribute. The registration is read from the account itself and not
+#      from the artifact, because an artifact that declares its own trust is
+#      a declaration and not a witness.
 #
 # The tag itself is cut by scripts/release/publish-tag.sh, which signs it,
 # verifies the signature and only then pushes it. This file does not re-implement
@@ -92,6 +100,12 @@
 set -Eeuo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# The ONE reader of the declaration of the signing keys. Sourced, never run:
+# a second reader of the same format is a second authority, and the two
+# would drift apart.
+# shellcheck source=read-signing-trust.sh
+source "${script_dir}/read-signing-trust.sh"
 
 RC_TAG=""
 STABLE_TAG=""
@@ -153,8 +167,14 @@ if [[ ! -f "$SIGNING_KEY_CONF" ]]; then
     exit 2
 fi
 
-SIGNING_FINGERPRINT="$(sed -n 's/^fingerprint=//p' "$SIGNING_KEY_CONF" | head -1 | tr -d '[:space:]')"
-SIGNING_UID="$(sed -n 's/^uid=//p' "$SIGNING_KEY_CONF" | head -1 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+# The key that signs is read through the ONE reader of the declaration, so
+# this script and the two verifiers cannot disagree about which key that is.
+CURRENT_KEY="$(signing_current_key "$SIGNING_KEY_CONF")" || {
+    printf 'promote-stable: %s does not declare a current key\n' "$SIGNING_KEY_CONF" >&2
+    exit 2
+}
+SIGNING_FINGERPRINT="${CURRENT_KEY%%|*}"
+SIGNING_UID="${CURRENT_KEY#*|}"
 
 if ! printf '%s' "$SIGNING_FINGERPRINT" | grep -Eq '^[0-9A-Fa-f]{40}$'; then
     printf 'promote-stable: %s does not declare a 40-hex fingerprint\n' "$SIGNING_KEY_CONF" >&2
@@ -164,6 +184,42 @@ fi
 if [[ -z "$SIGNING_UID" ]]; then
     printf 'promote-stable: %s does not declare the uid of the key\n' "$SIGNING_KEY_CONF" >&2
     exit 2
+fi
+
+# ----------------------------------------------------------------------------
+# 1b. The publisher must be attributable.
+#
+#     Everything else in this file is about the BYTES and about the PROOF:
+#     that the tag is annotated, that the signature verifies, that the
+#     certification covers the candidate. None of it says WHO published the
+#     release. A stable release is the last thing a consumer will look at, and
+#     a stable release signed by a key that no account vouches for is a
+#     release nobody can attribute.
+#
+#     The binding is a fact about the account that owns this repository, read
+#     from that account and not from the artifact: an artifact that declares
+#     its own trust is a declaration, not a witness. The check is made with
+#     the public API and without credentials, and it distinguishes two facts
+#     that a boolean would flatten: the key is NOT registered, and the
+#     registration could NOT be measured. A measurement that did not happen
+#     is not a pass, so both refuse the promotion.
+#
+#     The refusal names what to do about it, because a refusal nobody can act
+#     on is a wall rather than a door.
+# ----------------------------------------------------------------------------
+
+if ! "${script_dir}/verify-signing-key-attribution.sh" \
+    --conf "$SIGNING_KEY_CONF" \
+    --fingerprint "$SIGNING_FINGERPRINT" \
+    --remote "$REMOTE" \
+    --out "${OUT_FILE}.attribution.txt"; then
+    printf 'promote-stable: refusing the promotion — the publisher cannot be attributed.\n' >&2
+    printf '    The verdict is at %s.attribution.txt\n' "$OUT_FILE" >&2
+    printf '    The key that signs the release is not registered on the account that owns\n' >&2
+    printf '    this repository, so the stable release would carry a signature that no\n' >&2
+    printf '    consumer is able to place. Register the key on that account, or cut a\n' >&2
+    printf '    candidate signed by a key that is registered there.\n' >&2
+    exit 1
 fi
 
 # ----------------------------------------------------------------------------

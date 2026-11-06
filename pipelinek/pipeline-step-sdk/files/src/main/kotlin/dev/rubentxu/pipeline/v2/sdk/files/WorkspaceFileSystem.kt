@@ -84,6 +84,18 @@ interface WorkspaceFileSystem : WorkspacePathSystem {
     fun readAllBytes(path: Path): ByteArray
 
     /**
+     * The bytes of the file at [path], at most [maxBytes] of them, and the
+     * size the file has.
+     *
+     * The read is BOUNDED: no more than [maxBytes] bytes cross this
+     * boundary, and a file that holds more is not read whole — the answer
+     * carries its size and no bytes. The bytes that DO come back may still be
+     * a prefix: the file can grow between the measurement and the read, and
+     * a caller that compares the two facts is the one that notices.
+     */
+    fun readUpTo(path: Path, maxBytes: Long): BoundedBytes
+
+    /**
      * Writes [bytes] at [path], replacing what was there.
      *
      * The write follows a symbolic link: when [path] is a link, the bytes land

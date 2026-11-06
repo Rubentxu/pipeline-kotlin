@@ -43,6 +43,11 @@ data class CoreReadFileInput(val file: String, val encoding: String) {
  * ). The content stays inside the typed step result and the
  * codec's canonical envelope; the runtime-returning façade decodes it back
  * to `String` for the scripted caller.
+ *
+ * A file that does not fit the substrate's read limit does not produce this
+ * output at all: the step FAILS with a USER failure that names the limit and
+ * the size of the file. The file is there, so `exists = false` would be a
+ * false statement about it.
 */
 data class CoreReadFileOutput(
     val content: String?,
@@ -61,6 +66,12 @@ data class CoreReadFileOutput(
  *  - does NOT emit `FileRead` (the adapter is the single emitter),
  *  - does NOT resolve stage identity (the adapter binds the runtime context's values).
  * Capability admission is fail-closed at prepare-time via `RegistryExecutionPreparation`.
+ *
+ * The read is BOUNDED by the substrate: a file that does not fit the limit
+ * the substrate reads under fails the step with a USER failure that names
+ * the limit and the size of the file, instead of producing an output that
+ * says the file is not there. The compatibility impact is real — a pipeline
+ * that read a file above the limit used to receive its content.
 */
 object CoreReadFileStep {
     val KEY: PluginStepId = PluginStepId("core.readFile")

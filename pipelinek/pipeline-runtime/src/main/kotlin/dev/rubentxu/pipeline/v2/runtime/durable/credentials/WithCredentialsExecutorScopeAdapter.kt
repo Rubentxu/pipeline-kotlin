@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.runtime.durable.credentials
 
 import dev.rubentxu.pipeline.v2.credentials.executor.BoundCredentials
+import dev.rubentxu.pipeline.v2.credentials.executor.SecretMaskingRefusedException
 import dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -59,6 +60,18 @@ class WithCredentialsExecutorScopeAdapter(
             )
             CredentialScopeOutcome.Acquired(
                 scope = BoundCredentialsScope(bound),
+            )
+        } catch (e: SecretMaskingRefusedException) {
+            // The run demanded masked secrets and the binding could not honour it. This is
+            // its OWN failure and not an acquisition failure: the store opened, the credential
+            // resolved, and the refusal is about the VALUE, not about the machinery. The body
+            // MUST NOT run, and the diagnostic names the credential and the length and never
+            // the value.
+            CredentialScopeOutcome.Unavailable(
+                CredentialScopeFailure.SecretNotMaskable(
+                    unmaskable = e.unmaskable,
+                    minimumLength = e.minimumLength,
+                ),
             )
         } catch (t: Throwable) {
             // Executor already balanced CredentialBound/Unbound events and

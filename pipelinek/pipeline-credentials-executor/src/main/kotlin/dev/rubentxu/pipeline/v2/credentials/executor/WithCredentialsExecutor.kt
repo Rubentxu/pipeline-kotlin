@@ -63,6 +63,7 @@ class WithCredentialsExecutor(
      */
     private val warning: (SecretShorterThanMinimumMaskableLengthWarning) -> Unit =
         ::reportShortSecret,
+    private val maskingStrictness: SecretMaskingStrictness = SecretMaskingStrictness.ADVISORY,
 ) {
 
     /**
@@ -82,6 +83,7 @@ class WithCredentialsExecutor(
         redactionRegistry: SecretPatternRegistry? = null,
         warning: (SecretShorterThanMinimumMaskableLengthWarning) -> Unit =
             ::reportShortSecret,
+        maskingStrictness: SecretMaskingStrictness = SecretMaskingStrictness.ADVISORY,
     ) : this(
         provider = provider,
         projector = DefaultCredentialProjector(
@@ -91,6 +93,7 @@ class WithCredentialsExecutor(
         clock = clock,
         redactionRegistry = redactionRegistry,
         warning = warning,
+        maskingStrictness = maskingStrictness,
     )
 
     /**
@@ -135,6 +138,7 @@ class WithCredentialsExecutor(
         val env = mutableMapOf<String, SecretHandle>()
         val credentialIds = mutableListOf<CredentialsId>()
         val retainedProjections = mutableListOf<dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult>()
+        val unmaskableSecrets = mutableListOf<UnmaskableSecret>()
 
         // NO local sequence counter. The durable sequence authority is
         // the store (`SqliteEventStore.appendAssigned`), which assigns when the
@@ -172,8 +176,20 @@ class WithCredentialsExecutor(
                 // whose credential nobody could name, and the operator who is told that a
                 // short secret is not masked has to be told WHICH one.
                 registerBoundSecrets(spec, projection.bindings)
+                    .also { unmaskableSecrets += it }
                 // Retain materializations for deferred cleanup
                 retainedProjections.add(projection)
+            }
+
+            // THE STRICT POSTURE. A value that exists and cannot be masked would reach the
+            // output IN THE CLEAR, and in a run whose output is durable that is not a warning
+            // on a console: it is a secret written to disk. The refusal happens HERE, before
+            // the scope is handed back, so the step never runs and the value never reaches a
+            // surface. It names every offending credential, because refusing the first of
+            // three and leaving the operator to find the other two is a refusal that costs a
+            // second round trip.
+            if (maskingStrictness == SecretMaskingStrictness.STRICT && unmaskableSecrets.isNotEmpty()) {
+                throw SecretMaskingRefusedException(unmaskableSecrets)
             }
 
             registerMaterializedSecrets(retainedProjections)
@@ -223,14 +239,14 @@ class WithCredentialsExecutor(
      * holds exactly what was exposed — no earlier (a store would claim lookahead for credentials
      * the pipeline never binds, and every claimed byte is output latency paid on every step) and
      * no later (by the time a transcript exists, the value is already durable).
+     *
+     * @return the values that exist and cannot be masked, one per offending value.
 */
     private fun registerBoundSecrets(
         spec: dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec,
         bindings: Map<String, SecretHandle>,
-    ) {
-        val registry = redactionRegistry ?: return
-        BoundSecretRegistration.register(registry, spec, bindings, warning)
-    }
+    ): List<UnmaskableSecret> =
+        BoundSecretRegistration.register(redactionRegistry, spec, bindings, warning)
 
     /**
      * Registers the CONTENT of every materialised file, record by record.

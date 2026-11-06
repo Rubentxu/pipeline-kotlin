@@ -32,10 +32,17 @@ internal sealed interface LeaseAdmission {
  * The OWNER of the credential-lease admission decision: it asks the scope port for a lease and
  * it says, in the run's taxonomy, whether the lease was admitted.
  *
- * The decision is closed and total: an unavailable store is an [FailureKind.INFRASTRUCTURE]
- * refusal, invalid bindings are a [FailureKind.SCHEMA] refusal, and nothing else can come out
- * of the port. The body of a refused lease is never dispatched — that is the caller's job to
- * honour, and the only thing this class owes it is a refusal it can report.
+ * The decision is closed and total: nothing else can come out of the port, and every refusal
+ * carries a [FailureKind] and a sentence. The body of a refused lease is never dispatched —
+ * that is the caller's job to honour, and the only thing this class owes it is a refusal it
+ * can report.
+ *
+ * The KIND of a refusal is decided by the FAILURE, not by the envelope that carried it. The
+ * envelope says what the caller must do (the body does not run either way); the failure says
+ * what happened, and a dashboard that sends the operator to the wrong place is a defect. A
+ * store that is not there is [FailureKind.INFRASTRUCTURE] because the machine failed; a
+ * credential whose value is too short to mask is [FailureKind.USER] because the operator has
+ * to change the credential — no retry and no new worker will make the value longer.
  */
 internal class CredentialLeaseAdmission(
     private val credentialScopePort: CredentialScopePort,
@@ -53,15 +60,35 @@ internal class CredentialLeaseAdmission(
     ): LeaseAdmission =
         when (val acquisition = credentialScopePort.acquire(bindings, runId)) {
             is CredentialScopeOutcome.Unavailable -> LeaseAdmission.Refused(
-                failureKind = FailureKind.INFRASTRUCTURE,
+                failureKind = acquisition.failure.failureKind(),
                 message = acquisition.failure.describe(),
             )
             is CredentialScopeOutcome.Invalid -> LeaseAdmission.Refused(
-                failureKind = FailureKind.SCHEMA,
+                failureKind = acquisition.failure.failureKind(),
                 message = acquisition.failure.describe(),
             )
             is CredentialScopeOutcome.Acquired -> LeaseAdmission.Acquired(acquisition.scope)
         }
+}
+
+/**
+ * The kind of the refusal, in the run's taxonomy.
+ *
+ * The FAILURE decides the kind, not the envelope that carried it. The envelope says
+ * whether a scope could be handed over at all; the kind says what the operator has to
+ * change, and the two are not the same question. A store that is not there and a
+ * projection that broke are machinery problems ([FailureKind.INFRASTRUCTURE]); a binding
+ * that does not conform is a declaration problem ([FailureKind.SCHEMA]); a secret whose
+ * value is too short to mask is a problem with the VALUE ([FailureKind.USER]) — no
+ * worker and no retry makes a three-character secret longer.
+ */
+private fun CredentialScopeFailure.failureKind(): FailureKind = when (this) {
+    is CredentialScopeFailure.StoreUnavailable -> FailureKind.INFRASTRUCTURE
+    is CredentialScopeFailure.AcquisitionFailed -> FailureKind.INFRASTRUCTURE
+    is CredentialScopeFailure.BindingMismatch -> FailureKind.SCHEMA
+    is CredentialScopeFailure.CredentialMissing -> FailureKind.SCHEMA
+    is CredentialScopeFailure.SecretNotMaskable -> FailureKind.USER
+    CredentialScopeFailure.ReplayUnsupported -> FailureKind.SCHEMA
 }
 
 /**
@@ -75,5 +102,9 @@ private fun CredentialScopeFailure.describe(): String = when (this) {
     is CredentialScopeFailure.CredentialMissing -> "Credential '${credentialsId.value}' is not present in the store"
     is CredentialScopeFailure.BindingMismatch -> message
     is CredentialScopeFailure.AcquisitionFailed -> message
+    is CredentialScopeFailure.SecretNotMaskable ->
+        "Credential cannot be masked: " +
+            unmaskable.joinToString(", ") { "'${it.credentialsId}' is ${it.length} characters" } +
+            "; a secret needs at least $minimumLength characters to be masked"
     CredentialScopeFailure.ReplayUnsupported -> "Replay of an in-flight credential scope is not supported"
 }

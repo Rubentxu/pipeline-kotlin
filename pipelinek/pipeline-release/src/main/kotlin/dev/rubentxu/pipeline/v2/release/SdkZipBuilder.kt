@@ -40,8 +40,8 @@ object SdkZipBuilder {
      *
      * The measurement that forced this: two builds of the SAME tree produced
      * two SDK ZIPs whose 85 entries had identical names and identical
-     * bytes, and whose digests differed (`74f7a204…` and `1e1fb3e9…`). The
-     * only difference between them was the time stamped on each entry.
+     * bytes, and whose digests differed. The only difference between them
+     * was the time stamped on each entry.
      *
      * That is not a cosmetic defect. The candidate's handoff names the
      * digest of this ZIP, the certification covers the candidate, and the

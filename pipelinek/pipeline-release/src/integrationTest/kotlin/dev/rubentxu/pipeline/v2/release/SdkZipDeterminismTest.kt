@@ -22,10 +22,10 @@ import java.util.zip.ZipFile
  * ## The defect this test was written for
  * Measured on this tree, before the fix: two builds of the SAME source
  * produced SDK ZIPs whose 85 entries had identical names and identical
- * bytes, and whose digests were `74f7a204…` and `1e1fb3e9…`. The only
- * difference between them was the time stamped on each entry, because the
- * writer left the entry's time unset and the ZIP writer stamps the current
- * time on an entry that does not carry one.
+ * bytes, and whose digests differed. The only difference between them was
+ * the time stamped on each entry, because the writer left the entry's time
+ * unset and the ZIP writer stamps the current time on an entry that does not
+ * carry one.
  *
  * ## Why this test is an INTEGRATION test and not a unit test
  * The property is about BYTES on disk: a ZIP is a file, and its digest is

@@ -284,7 +284,13 @@ class AgentRendezvous internal constructor(
             ?: error("controlDir $controlDir does not have the expected <root>/<opId> shape")
 
         /**
-         * The environment the agent is launched with: the secret, and nothing else.
+         * The variables the runtime ADDS to the agent's environment: the secret, and nothing
+         * else.
+         *
+         * The environment the agent's process is LAUNCHED with is the plan
+         * ([AgentProcessEnvironment]), and the plan is what decides what else crosses into it.
+         * This function is the runtime's own contribution to that plan: the secret, and nothing
+         * else.
          */
         fun agentEnvironment(secret: String): Map<String, String> = mapOf(AGENT_SECRET_ENV to secret)
 

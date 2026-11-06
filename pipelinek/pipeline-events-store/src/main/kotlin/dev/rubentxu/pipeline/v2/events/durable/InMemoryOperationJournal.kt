@@ -1,14 +1,11 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.domain.durable.CompositeOperation
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
-import dev.rubentxu.pipeline.v2.domain.durable.MemoizedOperation
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
-import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 import kotlinx.serialization.json.Json
 
@@ -70,11 +67,7 @@ class InMemoryOperationJournal(
         synchronized(lock) {
             val inputJson = json.encodeToString(OperationInput.serializer(), op.input)
             val outputJson = op.output?.let { json.encodeToString(OperationOutput.serializer(), it) }
-            val kind = when (op) {
-                is RerunOperation -> "RERUN"
-                is MemoizedOperation -> "MEMOIZED"
-                is CompositeOperation -> "COMPOSITE"
-            }
+            val kind = OperationKindCodec.encode(op)
             val now = clock.now().toEpochMilli()
             val endedAtVal: Long? = if (op.status.isTerminal) now else null
             val existing = rows[key(op.id, op.attempt)]
@@ -128,7 +121,7 @@ class InMemoryOperationJournal(
                 attempt = attempt,
                 fingerprintHex = fingerprint,
                 status = OperationStatus.RUNNING,
-                kind = "RERUN",
+                kind = OperationKindCodec.RERUN,
                 inputJson = inputJson,
                 outputJson = null,
                 startedAt = now,
@@ -168,39 +161,27 @@ class InMemoryOperationJournal(
         rows[key(opId, attempt)]?.startedAt
     }
 
-    /** Mirror of the SQLite `readOperation`: parse the row back to its [DurableOperation] variant. */
+    /**
+     * Mirror of the SQLite `readOperation`: parse the row back to its [DurableOperation] variant.
+     *
+     * The decision about what a word means belongs to [OperationKindCodec], the
+     * same place the SQLite reader asks. The mirror is the point: a row whose
+     * word this build does not know is refused in BOTH, and neither of them
+     * invents an operation out of a word nobody declared.
+     */
     private fun parse(row: Row): DurableOperation {
         val fingerprint = Fingerprint(row.fingerprintHex)
         val input = json.decodeFromString(OperationInput.serializer(), row.inputJson)
         val output = row.outputJson?.let { json.decodeFromString(OperationOutput.serializer(), it) }
-        return when (row.kind) {
-            "MEMOIZED" -> MemoizedOperation(
-                id = row.opId,
-                fingerprint = fingerprint,
-                input = input,
-                output = output,
-                status = row.status,
-                attempt = row.attempt,
-                cachedOutput = output,
-            )
-            "COMPOSITE" -> CompositeOperation(
-                id = row.opId,
-                fingerprint = fingerprint,
-                input = input,
-                output = output,
-                status = row.status,
-                attempt = row.attempt,
-                subOperations = emptyList(),
-            )
-            else -> RerunOperation(
-                id = row.opId,
-                fingerprint = fingerprint,
-                input = input,
-                output = output,
-                status = row.status,
-                attempt = row.attempt,
-            )
-        }
+        return OperationKindCodec.decode(
+            kind = row.kind,
+            operationId = row.opId,
+            fingerprint = fingerprint,
+            input = input,
+            output = output,
+            status = row.status,
+            attempt = row.attempt,
+        )
     }
 
     /** Number of rows currently journaled (diagnostics/testing). */

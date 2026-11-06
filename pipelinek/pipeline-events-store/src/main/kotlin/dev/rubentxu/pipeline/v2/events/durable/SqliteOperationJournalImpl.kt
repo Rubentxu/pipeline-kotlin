@@ -1,14 +1,11 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.domain.durable.CompositeOperation
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
-import dev.rubentxu.pipeline.v2.domain.durable.MemoizedOperation
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
-import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 import java.sql.Connection
 import kotlin.concurrent.withLock
@@ -66,11 +63,7 @@ internal class SqliteOperationJournalImpl(
             try {
                 val inputJson = json.encodeToString(op.input)
                 val outputJson = op.output?.let { json.encodeToString(it) }
-                val kind = when (op) {
-                    is RerunOperation -> "RERUN"
-                    is MemoizedOperation -> "MEMOIZED"
-                    is CompositeOperation -> "COMPOSITE"
-                }
+                val kind = OperationKindCodec.encode(op)
                 val now = clock.now().toEpochMilli()
                 val isTerminal = op.status.isTerminal
                 val endedAtVal: Long? = if (isTerminal) now else null
@@ -216,7 +209,7 @@ internal class SqliteOperationJournalImpl(
                 ps.setString(1, opId)
                 ps.executeQuery().use { rs ->
                     if (!rs.next()) return null
-                    return readOperation(rs, opId)
+                    return readOperation(rs)
                 }
             }
         } finally {
@@ -245,7 +238,7 @@ internal class SqliteOperationJournalImpl(
                 ps.setInt(2, attempt)
                 ps.executeQuery().use { rs ->
                     if (!rs.next()) return null
-                    return readOperation(rs, opId)
+                    return readOperation(rs)
                 }
             }
         } finally {
@@ -293,8 +286,7 @@ internal class SqliteOperationJournalImpl(
                 ps.setString(2, runId)
                 ps.executeQuery().use { rs ->
                     while (rs.next()) {
-                        val opId = rs.getString(1)
-                        readOperation(rs, opId)?.let { results.add(it) }
+                        results.add(readOperation(rs))
                     }
                 }
             }
@@ -394,52 +386,41 @@ internal class SqliteOperationJournalImpl(
         }
     }
 
-    private fun readOperation(rs: java.sql.ResultSet, opId: String): DurableOperation? {
-        val fingerprint = Fingerprint(rs.getString(2))
-        val status = OperationStatus.valueOf(rs.getString(3))
-        val kind = rs.getString(4)
-        val attempt = rs.getInt(5)
-        val inputJson = rs.getString(6)
-        val outputJson = rs.getString(7)
+    /**
+     * The operation a row names.
+     *
+     * The columns are read BY NAME. The reading used to be by POSITION, and
+     * that made the answer depend on three separate `SELECT` lists agreeing on
+     * the same order: a column added to one of them would shift every index
+     * and the row would be read as something it is not — the `kind` read as
+     * the `attempt`, for instance. Reading by name cannot drift, and it
+     * changes neither the wire nor the schema.
+     *
+     * The `kind` decides which kind of operation the row is, and that decision
+     * belongs to [OperationKindCodec]: a word this build does not know is
+     * refused there, named, instead of being read as the nearest kind it does
+     * know.
+     */
+    private fun readOperation(rs: java.sql.ResultSet): DurableOperation {
+        val operationId = rs.getString("op_id")
+        val fingerprint = Fingerprint(rs.getString("fingerprint"))
+        val status = OperationStatus.valueOf(rs.getString("status"))
+        val kind = rs.getString("kind")
+        val attempt = rs.getInt("attempt")
+        val inputJson = rs.getString("input")
+        val outputJson = rs.getString("output")
 
         val input = json.decodeFromString<OperationInput>(inputJson)
         val output = outputJson?.let { json.decodeFromString<OperationOutput>(it) }
 
-        return when (kind) {
-            "RERUN" -> RerunOperation(
-                id = opId,
-                fingerprint = fingerprint,
-                input = input,
-                output = output,
-                status = status,
-                attempt = attempt,
-            )
-            "MEMOIZED" -> MemoizedOperation(
-                id = opId,
-                fingerprint = fingerprint,
-                input = input,
-                output = output,
-                status = status,
-                attempt = attempt,
-                cachedOutput = output,
-            )
-            "COMPOSITE" -> CompositeOperation(
-                id = opId,
-                fingerprint = fingerprint,
-                input = input,
-                output = output,
-                status = status,
-                attempt = attempt,
-                subOperations = emptyList(),
-            )
-            else -> RerunOperation(
-                id = opId,
-                fingerprint = fingerprint,
-                input = input,
-                output = output,
-                status = status,
-                attempt = attempt,
-            )
-        }
+        return OperationKindCodec.decode(
+            kind = kind,
+            operationId = operationId,
+            fingerprint = fingerprint,
+            input = input,
+            output = output,
+            status = status,
+            attempt = attempt,
+        )
     }
 }

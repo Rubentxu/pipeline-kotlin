@@ -106,8 +106,8 @@ and this is what the review measured:
 
 The audit of the published tags found the consequences of the first fact:
 of the 167 tags published under the `v*` pattern, **7 carry a signature that
-verifies** (all seven signed by the declared fingerprint), 70 are annotated
-tags with no signature at all, 12 are lightweight tags, and 78 could not be
+verifies** (all seven signed by the key under review), 70 are annotated tags
+with no signature at all, 12 are lightweight tags, and 78 could not be
 measured because this repository holds a different tag object than the remote
 publishes.
 
@@ -162,11 +162,6 @@ deliberately does not hold it.
 scripts/release/verify-tag-signature.sh --tag v0.92.0-rc1 \
     --trust-conf scripts/release/signing-key.conf
 
-# The same question, asked of the tag that has just been cut: the key that
-# signs now has to be the one that signed it.
-scripts/release/verify-tag-signature.sh --tag v0.93.0-rc1 \
-    --expect-fingerprint "$(sed -n 's/^fingerprint=//p' scripts/release/signing-key.conf | head -1)"
-
 # The whole published history, against the whole trusted set.
 scripts/release/verify-published-tags.sh --pattern 'v*' \
     --trust-conf scripts/release/signing-key.conf
@@ -174,3 +169,9 @@ scripts/release/verify-published-tags.sh --pattern 'v*' \
 # The publisher is attributable.
 scripts/release/verify-signing-key-attribution.sh
 ```
+
+The release path asks a narrower question about the tag it has just cut: that
+one has to carry the key that signs NOW, and not any key of the set. That is
+the `--expect-fingerprint` mode, and the fingerprint it asks for is the one
+the declaration names as current — which
+`scripts/release/read-signing-trust.sh` is what reads.

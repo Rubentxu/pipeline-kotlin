@@ -16,6 +16,7 @@ plugins {
     // It generates the HTML reference of the published API, and no task of the
     // gate depends on it: the reference is asked for when someone wants it.
     alias(libs.plugins.dokka) apply false
+    alias(libs.plugins.dokkaJavadoc) apply false
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -568,6 +569,12 @@ subprojects {
     val isBcvModule = bcvModules.any { project.path == ":$it" || project.path.endsWith(":$it") }
     if (isBcvModule) {
         pluginManager.apply("org.jetbrains.dokka")
+        // The javadoc FORMAT, and not only the HTML one. A Maven repository that a third party
+        // resolves from asks for a `-javadoc.jar` beside the JAR, and Gradle's own `javadoc` task
+        // produces an EMPTY jar for a Kotlin module (there are no Java sources to document). An
+        // empty artifact named `javadoc` is a promise nobody keeps, so the reference these
+        // modules already publish is generated a second time, in the format the name promises.
+        pluginManager.apply("org.jetbrains.dokka-javadoc")
         pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
             extensions.configure<org.jetbrains.dokka.gradle.DokkaExtension> {
                 // The output is declared here and not left to the tool's
@@ -575,6 +582,7 @@ subprojects {
                 // repository's contract, and a contract that depends on a
                 // default is a contract one upgrade can break.
                 dokkaPublications.getByName("html").outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+                dokkaPublications.getByName("javadoc").outputDirectory.set(layout.buildDirectory.dir("dokka/javadoc"))
             }
         }
     }
@@ -995,6 +1003,174 @@ val publishSdkForExternalPlugin by tasks.registering {
     // (and its absence from `publishedContractModules`) is the whole "convenience, not contract"
     // distinction, expressed in the build rather than only in a comment.
     dependsOn(sdkBomModules.map { ":$it:publishSdkPublicationToSdkRepository" })
+}
+
+// ── the SDK bundle for a REMOTE Maven repository ─────────────────────────────────
+//
+// Six coordinates, ONE version, and the shape a Maven repository on the other side of the
+// network expects: a POM, the JAR, the sources, the javadoc, a detached signature and a
+// checksum per file.
+//
+// WHY A SECOND REPOSITORY, AND NOT A MUTATION OF THE FIRST
+//
+// The repository that lands in `sdk-repo` is the SOURCE of the SDK ZIP the product publishes.
+// Every file in it is therefore part of a released artifact, and its digest is named in the
+// release's `SHA256SUMS`. A bundle that added `sources.jar`, `javadoc.jar` and signatures to
+// that repository would change the SDK ZIP of the next candidate — and the SDK ZIP of the
+// candidate that is ALREADY published is a fact nobody may rewrite. So the bundle goes
+// somewhere else: `sdk-repo-staging`, a repository with the SAME shape as a remote one
+// (`group/artifact/version/`), published by a SECOND publication built from the SAME component.
+//
+// One component, two publications, one set of coordinates: the six are DERIVED from the two
+// lists that already exist, so the bundle cannot publish a module the RC does not publish, and
+// cannot omit one it does.
+//
+// WHY THE POM IS WRITTEN ONCE
+//
+// Central requires a POM to declare a name, a description, a url, a license, an SCM and a
+// developer, and a POM without them describes nothing to the person who has to decide whether
+// to depend on it. Those strings are written HERE, once, and BOTH publications read them: the
+// one that lands in the RC's SDK ZIP and the one that lands in the staging repository. Two
+// spellings of the same sentence would be two truths about one artifact, and the checker
+// refuses a bundle whose POM differs from the POM the RC carries.
+val sdkBundleModules = (publishedContractModules + sdkBomModules).distinct()
+
+val sdkBundleGroup = "dev.rubentxu.pipeline.v2"
+val sdkBundleProjectUrl = "https://github.com/Rubentxu/pipeline-kotlin"
+val sdkBundleScmConnection = "scm:git:https://github.com/Rubentxu/pipeline-kotlin.git"
+val sdkBundleScmDeveloperConnection = "scm:git:ssh://git@github.com/Rubentxu/pipeline-kotlin.git"
+
+/**
+ * The POM's human-facing strings, per module.
+ *
+ * The name is what a repository listing shows and the description is what a reader decides
+ * with. They are written here and nowhere else: the publication that lands in the RC's SDK ZIP
+ * and the publication that lands in the staging repository read the same two strings.
+ */
+val sdkPomMetadata = mapOf(
+    "pipeline-domain" to (
+        "PipelineK Domain" to
+            "The domain value types and the durable-run contracts a PipelineK plugin compiles against."
+        ),
+    "pipeline-scripting-api" to (
+        "PipelineK Scripting API" to
+            "The public authoring surface of the PipelineK pipeline DSL: the step, the context and the result."
+        ),
+    "pipeline-events" to (
+        "PipelineK Events" to
+            "The event contract of PipelineK: the envelope, the cursor and the read contract of the event plane."
+        ),
+    "pipeline-output" to (
+        "PipelineK Output" to
+            "The read contract of the PipelineK output plane: the frames, the offsets and the query seam."
+        ),
+    "pipeline-runtime-api" to (
+        "PipelineK Runtime API" to
+            "The publish/subscribe ports of the PipelineK runtime and the ADTs they carry."
+        ),
+    "pipeline-sdk-bom" to (
+        "PipelineK SDK BOM" to
+            "The resolution document that pins every published PipelineK SDK contract to one version."
+        ),
+)
+
+// The staging repository: a local directory with the LAYOUT of a remote Maven repository, so
+// that what a consumer resolves from it is what it would resolve from the network. It lives
+// under the build directory, which is not versioned and is not among the published assets:
+// nothing here can be published by accident, because publishing is somebody else's decision
+// (TASK-188 declares that contract) and this path has no remote repository to publish to.
+val sdkBundleRepositoryDir = layout.buildDirectory.dir("sdk-repo-staging")
+
+subprojects {
+    val moduleProject = this
+    val isBundleModule = sdkBundleModules.contains(moduleProject.name)
+    val isBomModule = moduleProject.name == "pipeline-sdk-bom"
+
+    if (isBundleModule) {
+        // The POM metadata is applied to EVERY Maven publication of the module, which today is
+        // exactly the two: the one that lands in the RC's SDK ZIP and the one that lands in the
+        // staging repository. Applying it by type rather than by name means a publication added
+        // later cannot arrive without the metadata Central requires.
+        moduleProject.pluginManager.withPlugin("maven-publish") {
+            moduleProject.extensions.configure<PublishingExtension> {
+                publications.withType<MavenPublication>().configureEach {
+                    val metadata = sdkPomMetadata[moduleProject.name] ?: return@configureEach
+                    pom {
+                        name.set(metadata.first)
+                        description.set(metadata.second)
+                        url.set(sdkBundleProjectUrl)
+                        licenses {
+                            license {
+                                name.set("MIT License")
+                                url.set("https://opensource.org/license/mit")
+                                distribution.set("repo")
+                            }
+                        }
+                        developers {
+                            developer {
+                                id.set("rubentxu")
+                                name.set("Rubén Torres")
+                                url.set("https://github.com/Rubentxu")
+                            }
+                        }
+                        scm {
+                            connection.set(sdkBundleScmConnection)
+                            developerConnection.set(sdkBundleScmDeveloperConnection)
+                            url.set(sdkBundleProjectUrl)
+                        }
+                    }
+                }
+
+                repositories {
+                    maven {
+                        name = "staging"
+                        url = uri(sdkBundleRepositoryDir)
+                    }
+                }
+            }
+        }
+
+        moduleProject.pluginManager.withPlugin("maven-publish") {
+            moduleProject.extensions.configure<PublishingExtension> {
+                publications.create<MavenPublication>("sdkBundle") {
+                    // The SAME component the RC's publication carries: the bundle is a second
+                    // destination for these bytes, not a second build of them.
+                    from(if (isBomModule) components["javaPlatform"] else components["java"])
+                    if (!isBomModule) {
+                        // The sources and the javadoc are the two artifacts Central asks for and
+                        // that this product did not publish. The sources jar is the Kotlin
+                        // plugin's own; the javadoc jar carries the KDoc reference Dokka already
+                        // generates for these modules, in the javadoc format. The BOM carries
+                        // neither: it is a document of versions, not a library.
+                        artifact(moduleProject.tasks.named("kotlinSourcesJar"))
+                        artifact(moduleProject.tasks.register<Jar>("sdkJavadocJar") {
+                            group = "documentation"
+                            description = "Packages the Dokka javadoc reference as the publication's javadoc artifact."
+                            dependsOn("dokkaGeneratePublicationJavadoc")
+                            from(
+                                moduleProject.extensions
+                                    .getByType<org.jetbrains.dokka.gradle.DokkaExtension>()
+                                    .dokkaPublications.getByName("javadoc").outputDirectory,
+                            )
+                            archiveClassifier.set("javadoc")
+                            isPreserveFileTimestamps = false
+                            isReproducibleFileOrder = true
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The one task that stages the bundle: it publishes the six coordinates into the staging
+// repository. It does NOT sign, and it does NOT verify: the signature is the act of the
+// publisher's key (a script that knows the trust set), and the verification is an instrument
+// that can fail. `scripts/release/stage-sdk-bundle.sh` runs the three in that order.
+tasks.register("sdkBundle") {
+    group = "build"
+    description = "Publishes the six SDK coordinates into the staging Maven repository, with the shape a remote repository expects."
+    dependsOn(sdkBundleModules.map { ":$it:publishSdkBundlePublicationToStagingRepository" })
 }
 
 // The SDK the external consumers resolve from: the PUBLISHED artifact.

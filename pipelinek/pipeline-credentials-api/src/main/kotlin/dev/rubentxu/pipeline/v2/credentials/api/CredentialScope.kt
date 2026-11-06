@@ -4,8 +4,6 @@ import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
-import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import dev.rubentxu.pipeline.v2.events.CredentialBound
 import dev.rubentxu.pipeline.v2.events.CredentialUnbound
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -287,29 +285,6 @@ data class CredentialsBinding(
             credentialsId,
             usernameVariable = usernameVariable,
             passwordVariable = passwordVariable
-        )
-    }
-}
-
-/**
- * Converts a [CredentialsBinding] to [GitCredentials] for use by git checkout steps.
- * @return GitCredentials with typed carriers for the credential
- * @throws IllegalArgumentException if the binding kind is not STRING or USERNAME_PASSWORD
-*/
-fun CredentialsBinding.asGitCredentials(): GitCredentials {
-    return when (kind) {
-        CredentialsBinding.Kind.STRING -> GitCredentials(
-            string = SecretHandleRef(credentialsId),
-            user = null,
-            pass = null,
-        )
-        CredentialsBinding.Kind.USERNAME_PASSWORD -> GitCredentials(
-            string = null,
-            user = SecretHandleRef(credentialsId),
-            pass = SecretHandleRef(credentialsId),
-        )
-        else -> throw IllegalArgumentException(
-            "Credentials '${credentialsId.value}' is of type '${kind.name.lowercase()}' where 'string' or 'usernamePassword' was expected."
         )
     }
 }

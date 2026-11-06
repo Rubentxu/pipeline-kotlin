@@ -663,6 +663,13 @@ gradle.projectsEvaluated {
  * A module joins by being appended here AND applying `maven-publish` with a `sdk` publication AND
  * declaring every dependency that reaches its public ABI as `api`. All three, because each of the
  * other two without this one is a publication whose POM cannot compile a consumer.
+ *
+ * Being on this list is not a promise that every declaration of the module is a promise too. A
+ * published surface carries decisions, and the decisions that took a declaration out of it are
+ * recorded in `contract/published-contract-exceptions.json` with the census of the consumers they
+ * reached. The one that touches this list today is the carrier of git credentials: `pipeline-domain`
+ * published `dev.rubentxu.pipeline.v2.domain.scm.GitCredentials` and `SecretHandleRef` until the
+ * checkout stopped being able to receive them, and the withdrawal is recorded there.
 */
 val publishedContractModules = listOf(
     "pipeline-domain",

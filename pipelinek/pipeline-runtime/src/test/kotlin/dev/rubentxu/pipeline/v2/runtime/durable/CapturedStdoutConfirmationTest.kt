@@ -72,10 +72,11 @@ import java.time.Instant
  * the release takes a control directory and an exit code. Nothing here starts a process, and the
  * harness that kills a worker mid-flight belongs to the harness repository, not to this one.
  *
- * **Why the reader is called without a policy.** The policy is the product's own default, and
- * the default is part of what these rows pin: a capture that the product disposes of at the
- * reading is a value that a death in the window can lose. Naming the policy in the test would
- * hide the decision the product actually makes.
+ * **Why the reader is called without a policy.** The policy is the product's own default — the
+ * one the configuration names, and the reader's default parameter is that same fact — and the
+ * default is part of what these rows pin: a capture that the product disposes of at the reading
+ * is a value that a death in the window can lose. Naming the policy in the test would hide the
+ * decision the product actually makes.
  */
 class CapturedStdoutConfirmationTest {
 

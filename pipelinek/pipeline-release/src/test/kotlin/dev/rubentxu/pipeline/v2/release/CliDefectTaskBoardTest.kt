@@ -146,6 +146,16 @@ class CliDefectTaskBoardTest {
     }
 
     @Test
+    fun `the board closes the pipe of the CLI it started`() {
+        val pipe = RecordingPipe("""{"tasks":[]}""")
+        val board = board(FakeBoardProcess(pipe = pipe))
+
+        board.taskHolding("the-label")
+
+        assertTrue(pipe.closed.get(), "the pipe of the board CLI was left open")
+    }
+
+    @Test
     fun `the board answers which task holds the label`() {
         val process = FakeBoardProcess(answer = """{"tasks":[{"id":"TASK-7"}]}""")
         val board = board(process)
@@ -253,6 +263,8 @@ private class FakeBoardProcess(
     private val failsWhileReading: Boolean = false,
     /** The process this one started, if it started one. */
     private val descendant: FakeProcessHandle? = null,
+    /** The pipe the process writes to, when the test wants to watch it. */
+    private val pipe: InputStream? = null,
 ) : Process() {
 
     /** The pipe breaks when the process dies, and not before. */
@@ -264,6 +276,7 @@ private class FakeBoardProcess(
     override fun getOutputStream(): OutputStream = OutputStream.nullOutputStream()
 
     override fun getInputStream(): InputStream = when {
+        pipe != null -> pipe
         keepsThePipeOpen -> PipeHeldOpen(pipeBroken)
         failsWhileReading -> PipeThatBreaks()
         else -> ByteArrayInputStream(answer.toByteArray())
@@ -335,6 +348,38 @@ private class FakeProcessHandle : ProcessHandle {
     override fun compareTo(other: ProcessHandle): Int = 0
 
     override fun toString(): String = "the process the board CLI started"
+}
+
+/**
+ * A pipe that remembers whether it was closed.
+ *
+ * A descriptor that only ends when the garbage collector runs is a descriptor
+ * the process keeps, and the board is what has to end it.
+ */
+private class RecordingPipe(private val content: String) : InputStream() {
+
+    /** Whether the pipe was closed. */
+    val closed = AtomicBoolean(false)
+
+    private val bytes = content.toByteArray()
+    private var position = 0
+
+    override fun read(): Int {
+        if (position >= bytes.size) return -1
+        return bytes[position++].toInt() and 0xff
+    }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (position >= bytes.size) return -1
+        val count = minOf(len, bytes.size - position)
+        System.arraycopy(bytes, position, b, off, count)
+        position += count
+        return count
+    }
+
+    override fun close() {
+        closed.set(true)
+    }
 }
 
 /**

@@ -118,8 +118,10 @@ in the first place, published as the key that signs.
 ## The rotation
 
 The key was replaced on 2026-11-06. The new key declares the identity
-`Ruben <rubentxu74@gmail.com>`, the address that the git configuration of
-this repository declares and that the history of the repository carries.
+`Ruben <rubentxu74@gmail.com>` — the name and the address that the git
+configuration of this machine declares for this repository. It is an address
+that a mailbox can corroborate, which is what the previous identity could
+not be.
 
 The rotation did three things, and the third is the one that matters:
 

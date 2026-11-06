@@ -58,6 +58,12 @@
 set -Eeuo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# The ONE reader of the declaration of the signing keys. Sourced, never run:
+# a second reader of the same format is a second authority, and the two
+# would drift apart.
+# shellcheck source=read-signing-trust.sh
+source "${script_dir}/read-signing-trust.sh"
 
 TAG=""
 TITLE=""
@@ -242,8 +248,14 @@ if [[ ! -f "$SIGNING_KEY_CONF" ]]; then
     exit 2
 fi
 
-SIGNING_FINGERPRINT="$(sed -n 's/^fingerprint=//p' "$SIGNING_KEY_CONF" | head -1 | tr -d '[:space:]')"
-SIGNING_UID="$(sed -n 's/^uid=//p' "$SIGNING_KEY_CONF" | head -1 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+# The key that signs is read through the ONE reader of the declaration, so
+# this script and the two verifiers cannot disagree about which key that is.
+CURRENT_SIGNING_KEY="$(signing_current_key "$SIGNING_KEY_CONF")" || {
+    printf 'publish-github-release: %s does not declare a current key\n' "$SIGNING_KEY_CONF" >&2
+    exit 2
+}
+SIGNING_FINGERPRINT="${CURRENT_SIGNING_KEY%%|*}"
+SIGNING_UID="${CURRENT_SIGNING_KEY#*|}"
 
 if ! printf '%s' "$SIGNING_FINGERPRINT" | grep -Eq '^[0-9A-Fa-f]{40}$'; then
     printf 'publish-github-release: %s does not declare a 40-hex fingerprint\n' "$SIGNING_KEY_CONF" >&2

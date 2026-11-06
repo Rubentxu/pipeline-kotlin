@@ -114,8 +114,8 @@ CENSUS: dict[tuple[str, str, str], list[tuple[str, str]]] = {
     (f"{SDK}/ProcessRendezvousHost.kt", "materialiseFifos", "create"): [
         (PURPOSE_PROTOCOL, "the protocol's own FIFOs: named files of the durable format"),
     ],
-    (f"{SDK}/ProcessRendezvousHost.kt", "launchAgent", "create"): [
-        (PURPOSE_CHILD, "the ingest agent: the worker that drains the protocol's FIFOs"),
+    (f"{SDK}/ProcessRendezvousHost.kt", "agentProcessBuilder", "create"): [
+        (PURPOSE_CHILD, "the ingest agent: the worker that drains the protocol's FIFOs. The site is the one that BUILDS the agent's process, which is a function of its own so that what the agent's process will see can be read without starting it; the launch starts what that function built"),
     ],
     (f"{SDK}/ProcessRendezvousHost.kt", "awaitReady", "wait"): [
         (PURPOSE_CADENCE, "the agent's readiness is read from its own file, re-read until it appears"),

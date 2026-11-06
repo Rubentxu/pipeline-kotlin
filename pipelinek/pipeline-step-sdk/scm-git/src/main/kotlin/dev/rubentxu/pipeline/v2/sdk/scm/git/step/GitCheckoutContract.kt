@@ -1,27 +1,27 @@
+/**
+ * The contract of the `scm-git.checkout` Step: its typed output and its key.
+ *
+ * The Step's INPUT is the DOMAIN's carrier — [dev.rubentxu.pipeline.v2.domain.scm.GitScm] —
+ * and that is the whole point: the core DSL (`git(..)` / `checkout(..)`) already
+ * holds that carrier, the plugin's façade already builds it, and the compiler
+ * projects it. A second input type (the one this file used to declare) was a copy
+ * of the same six fields, and a copy is a second authority that can drift from the
+ * first: the wire codec and the compiler each wrote their own version of "what a
+ * checkout is". One carrier, one codec, one key.
+ *
+ * The carrier keeps the configuration the runtime needs to invoke
+ * [dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutExecutor] and nothing else; the
+ * executor itself owns the policy
+ * (idempotent SHA-equality, ls-remote, changelog, credential redaction).
+ * `credentialsId` is a typed reference to a credentials entry in the
+ * [dev.rubentxu.pipeline.v2.credentials.api.SecretStore]; the actual secret bytes
+ * are NEVER embedded in the encoded payload (typed carrier discipline from SCM
+ * domain).
+ */
 package dev.rubentxu.pipeline.v2.sdk.scm.git.step
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitLocalState
-
-/**
- * Typed input for the `scm-git.checkout` Step
- * Kept deliberately narrow: the Step contract only carries the
- * configuration the runtime needs to invoke [GitCheckoutExecutor]. The
- * executor itself owns the policy (idempotent SHA-equality, ls-remote,
- * changelog, credential redaction) and is unchanged.
- * `credentialsRef` is a typed reference to a credentials entry in the
- * [dev.rubentxu.pipeline.v2.credentials.api.SecretStore]; the actual
- * secret bytes are NEVER embedded in the encoded payload (typed carrier
- * discipline from SCM domain).
-*/
-data class GitCheckoutInput(
-    val url: String,
-    val branch: String = "master",
-    val credentialsRef: String? = null,
-    val changelog: Boolean = true,
-    val poll: Boolean = true,
-    val relativeTargetDir: String = ".",
-)
 
 /**
  * Typed output for the `scm-git.checkout` Step.
@@ -74,13 +74,12 @@ data class GitCheckoutOutput(
 )
 
 /**
- * Convenience factory mapping the typed input to the domain SCM carrier.
-*/
-fun GitCheckoutInput.toDomainCredentialsId(): dev.rubentxu.pipeline.v2.domain.CredentialsId? =
-    credentialsRef?.let { dev.rubentxu.pipeline.v2.domain.CredentialsId(it) }
-
-/**
- * Public StepKey for the SCM/Git checkout family
+ * Public StepKey for the SCM/Git checkout family.
+ *
+ * The key is the step's IDENTITY, and it travels in every durable record that
+ * names this step (the fingerprint of an invocation is computed over the payload
+ * AND this key). It therefore does not move: the core DSL lowers to this key, the
+ * plugin's façade names it, and the manifest publishes it.
 */
 object ScmGitCheckoutKey {
     val VALUE: PluginStepId = PluginStepId("scm-git.checkout")

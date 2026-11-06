@@ -5,8 +5,8 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepException
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease
-import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInput
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutStepDefinition
 import java.nio.file.Files
 import java.nio.file.Path
@@ -68,7 +68,7 @@ class GitCheckoutConfinementTest {
         val failure = assertThrows<PluginStepException> {
             runBlocking {
                 definition.handler.execute(
-                    GitCheckoutInput(
+                    GitScm(
                         url = "file:///nowhere/repo.git",
                         relativeTargetDir = "../escape",
                     ),

@@ -3,8 +3,8 @@ package dev.rubentxu.pipeline.v2.sdk.scm.git
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease
-import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInput
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutStepDefinition
 import java.nio.file.Files
 import java.nio.file.Path
@@ -201,7 +201,7 @@ class GitCheckoutLocalStateContractTest {
 
         val output = runBlocking {
             definition.handler.execute(
-                GitCheckoutInput(url = GitCheckoutFixtures.URL, branch = "main"),
+                GitScm(url = GitCheckoutFixtures.URL, branch = "main"),
                 StepHandlerContext(
                     runId = RunId("run-1"),
                     stepIndex = 0,

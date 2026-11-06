@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git.step
 
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitLocalState
@@ -12,7 +14,13 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * JSON codec for [GitCheckoutInput]
+ * JSON codec for the `scm-git.checkout` Step's input.
+ *
+ * The input is the DOMAIN's carrier — [GitScm] — and this codec is THE single
+ * authority for the checkout's wire format: the plugin's façade, the core DSL's
+ * lowering and the plugin's own handler all read the bytes this codec writes.
+ * There is no second writer of this shape anywhere in the product.
+ *
  * Uses kotlinx.serialization runtime JSON (no plugin) following the
  * canonical pattern in `pipeline-runtime/runtime/durable/credentials`.
  * `encodeDefaults = true` so codec roundtrips preserve optional fields
@@ -21,25 +29,31 @@ import kotlinx.serialization.json.put
  * Migrated to `PipelineJson` /
  * `JsonAccessors`. Wire format unchanged.
 */
-object GitCheckoutInputCodec : StepCodec<GitCheckoutInput> {
+object GitCheckoutInputCodec : StepCodec<GitScm> {
 
-    override fun encode(value: GitCheckoutInput): EncodedStepValue = PipelineJson.encode(
-        buildJsonObject {
-            put("url", value.url)
-            put("branch", value.branch)
-            if (value.credentialsRef != null) put("credentialsRef", value.credentialsRef)
-            put("changelog", value.changelog)
-            put("poll", value.poll)
-            put("relativeTargetDir", value.relativeTargetDir)
-        }
-    )
+    override fun encode(value: GitScm): EncodedStepValue {
+        // The credential reference travels as its id, never as its bytes. The
+        // property is read once into a local because a smart cast cannot cross
+        // a module boundary.
+        val credentialsId = value.credentialsId
+        return PipelineJson.encode(
+            buildJsonObject {
+                put("url", value.url)
+                put("branch", value.branch)
+                if (credentialsId != null) put("credentialsRef", credentialsId.value)
+                put("changelog", value.changelog)
+                put("poll", value.poll)
+                put("relativeTargetDir", value.relativeTargetDir)
+            }
+        )
+    }
 
-    override fun decode(encoded: EncodedStepValue): GitCheckoutInput {
+    override fun decode(encoded: EncodedStepValue): GitScm {
         val obj = PipelineJson.decode(encoded)
-        return GitCheckoutInput(
+        return GitScm(
             url = obj.requiredString("url"),
             branch = obj.stringOrNull("branch") ?: "master",
-            credentialsRef = obj.stringOrNull("credentialsRef"),
+            credentialsId = obj.stringOrNull("credentialsRef")?.let { CredentialsId.from(it) },
             changelog = obj.boolOrNull("changelog") ?: true,
             poll = obj.boolOrNull("poll") ?: true,
             relativeTargetDir = obj.stringOrNull("relativeTargetDir") ?: ".",
@@ -49,7 +63,7 @@ object GitCheckoutInputCodec : StepCodec<GitCheckoutInput> {
     override fun schema(): String = """
         {
           "${'$'}schema": "https://json-schema.org/draft/2020-12/schema",
-          "title": "GitCheckoutInput",
+          "title": "GitScm",
           "type": "object",
           "required": ["url"],
           "properties": {

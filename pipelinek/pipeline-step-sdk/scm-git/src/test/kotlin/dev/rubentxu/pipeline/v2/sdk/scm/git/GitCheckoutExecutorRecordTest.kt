@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
-import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink

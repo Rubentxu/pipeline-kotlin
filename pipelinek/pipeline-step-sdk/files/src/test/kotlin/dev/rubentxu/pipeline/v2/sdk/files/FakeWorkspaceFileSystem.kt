@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.files
 
+import java.io.IOException
 import java.nio.file.Path
 
 /**
@@ -26,7 +27,11 @@ import java.nio.file.Path
  *  - `writeBytes` FOLLOWS a link at the path, the whole way: the bytes land
  *    on the target of the link and the link itself is left alone. That is the
  *    fact that turns a link at the name of an effect into an exit;
- *  - `walk` does not descend into the target of a link.
+ *  - `walk` does not descend into the target of a link;
+ *  - `stageBytes` creates a file whose name no entry held — the name is the
+ *    filesystem's own — and the write into it refuses to follow a link: a
+ *    link that took the name between the creation and the write is a
+ *    REFUSAL, and a staging file whose write failed does not survive.
  *
  * What the fake does NOT model is the concurrency of a real filesystem: it
  * answers one question at a time, and the change it is asked to make happens
@@ -54,6 +59,21 @@ class FakeWorkspaceFileSystem : WorkspaceFileSystem {
 
     /** A change armed on the first creation of a path. */
     private val creations = mutableMapOf<Path, Path>()
+
+    /** The staging files this fake created, in the order they were created. */
+    private val staged = mutableListOf<Path>()
+
+    /** The link that takes the next staging name, before the bytes go into it. */
+    private var nextStagingBecomesALink: Path? = null
+
+    /** Whether the write into the next staging file fails. */
+    private var nextStagingWriteFails = false
+
+    /** Whether the next move fails. */
+    private var nextMoveFails = false
+
+    /** An action to run just before the next read, so two operations can overlap. */
+    private var beforeNextRead: (() -> Unit)? = null
 
     init {
         entries[Path.of("/")] = Entry.Directory()
@@ -125,6 +145,48 @@ class FakeWorkspaceFileSystem : WorkspaceFileSystem {
         return (entry as? Entry.File)?.bytes
     }
 
+    /**
+     * The staging files created so far, in the order they were created.
+     *
+     * The name of a staging file is the filesystem's own, so this is how a
+     * test sees that two operations did not share one.
+     */
+    fun stagedPaths(): List<Path> = staged.toList()
+
+    /**
+     * Arms a link to take the NEXT staging name, before the bytes go into it.
+     *
+     * The staging name is chosen by the filesystem, so the actor cannot be
+     * pointed at a name in advance: it takes the name the moment it appears.
+     * That is the race the JDK cannot close, and the write that does not
+     * follow a link turns it into a refusal.
+     */
+    fun theNextStagingFileBecomesALink(target: Path): FakeWorkspaceFileSystem = apply {
+        nextStagingBecomesALink = target.normalize()
+    }
+
+    /** Arms the write into the next staging file to fail. */
+    fun theNextStagingWriteFails(): FakeWorkspaceFileSystem = apply {
+        nextStagingWriteFails = true
+    }
+
+    /** Arms the next move to fail. */
+    fun theNextMoveFails(): FakeWorkspaceFileSystem = apply {
+        nextMoveFails = true
+    }
+
+    /**
+     * Arms an action to run just before the next read.
+     *
+     * Two writes that overlap are the case this module has to survive, and a
+     * real filesystem would not let a test place the second write between the
+     * two operations of the first. The fake can: the action runs at the exact
+     * point the product looks.
+     */
+    fun interleaveBeforeTheNextRead(action: () -> Unit): FakeWorkspaceFileSystem = apply {
+        beforeNextRead = action
+    }
+
     /** Whether the tree holds an entry at [path], whatever kind of entry it is. */
     fun holds(path: Path): Boolean = entries.containsKey(path.normalize())
 
@@ -173,6 +235,11 @@ class FakeWorkspaceFileSystem : WorkspaceFileSystem {
     }
 
     override fun readAllBytes(path: Path): ByteArray {
+        val armed = beforeNextRead
+        if (armed != null) {
+            beforeNextRead = null
+            armed()
+        }
         val entry = entries[resolve(path.normalize())]
         check(entry is Entry.File) { "not a file: $path" }
         return entry.bytes
@@ -189,6 +256,10 @@ class FakeWorkspaceFileSystem : WorkspaceFileSystem {
     }
 
     override fun move(source: Path, target: Path): Boolean {
+        if (nextMoveFails) {
+            nextMoveFails = false
+            throw IOException("the move failed: $source")
+        }
         // A move is a rename: the ENTRY at the source is the one that travels,
         // and the ENTRY at the target is the one that is replaced. Neither end
         // is followed, so a link at either end is moved or replaced as a link.
@@ -196,6 +267,39 @@ class FakeWorkspaceFileSystem : WorkspaceFileSystem {
         val entry = entries.remove(from) ?: error("no such file: $from")
         entries[destinationOf(target.normalize())] = entry
         return true
+    }
+
+    /**
+     * The staging file of a write, created the way the JDK creates it.
+     *
+     * The name is the filesystem's own and no entry held it, so two writes
+     * never share one. The write into it does not follow a link: a link that
+     * took the name is a refusal, and the staging file does not survive a
+     * write that failed.
+     */
+    override fun stageBytes(target: Path, bytes: ByteArray): Path {
+        val directory = target.parent
+            ?: throw IOException("the write target has no directory: $target")
+        val staging = directory.resolve(".${target.fileName}.${staged.size}.tmp").normalize()
+        entries[staging] = Entry.File(ByteArray(0))
+        staged.add(staging)
+
+        val link = nextStagingBecomesALink
+        if (link != null) {
+            nextStagingBecomesALink = null
+            entries[staging] = Entry.Link(link)
+        }
+        if (entries[staging] is Entry.Link) {
+            entries.remove(staging)
+            throw IOException("the staging file is a link: $staging")
+        }
+        if (nextStagingWriteFails) {
+            nextStagingWriteFails = false
+            entries.remove(staging)
+            throw IOException("the staging write failed: $staging")
+        }
+        entries[staging] = Entry.File(bytes)
+        return staging
     }
 
     override fun deleteIfExists(path: Path): Boolean {

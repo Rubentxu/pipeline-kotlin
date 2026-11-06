@@ -50,11 +50,41 @@ import java.nio.file.Path
  * The RECONCILER builds its terminal from what the control directory holds —that is a
  * reconstruction of an execution nobody watched, and its interruption says "durable task timed
  * out", not "durable shell timed out"— so it keeps building its own.
+ *
+ * ## Why this is visible outside this module
+ *
+ * There are TWO substrates that run a shell step: the durable-shell one, which needs a Linux host,
+ * and the generic process one, which is what runs on the rest. The generic one publishes its
+ * terminal too, and that terminal is read by the same consumers — the domain's projection of a
+ * terminal into a shell value. If each substrate classified its own ending, the two could
+ * disagree about the very facts a consumer reads: an absent value, an empty value, a value that
+ * could not be read.
+ *
+ * So the CLASSIFICATION is shared, and this class is its home. It is not a public API of the
+ * product: the module is not published and carries no ABI dump, so nothing an external consumer
+ * compiles against changes.
  */
-internal class ShellTerminalDecision(
+class ShellTerminalDecision(
     private val opId: String,
     private val controlDir: Path,
 ) {
+
+    /**
+     * The terminal of an execution that ENDED with an exit code.
+     *
+     * It is the entry the second substrate uses: a substrate whose protocol ends with an exit code
+     * — rather than with a wrapper that publishes one — asks this class what that exit code means,
+     * and gets the same terminal the durable substrate would publish for the same facts. The
+     * captured value is consulted the same way too: an absent channel, an empty one, a value that
+     * could not be read, and a value that was read but not disposed of are the same four facts
+     * here as they are there.
+     *
+     * @param exitCode The code the execution ended with.
+     * @param captured What is known about the captured stdout.
+     * @return The terminal this execution publishes.
+     */
+    fun forExit(exitCode: Int, captured: CapturedStdoutRead): DurableTaskTerminal =
+        forPollOutcome(ShellPollOutcome.Published(exitCode), captured)
 
     /**
      * The terminal of an execution whose wait for the result ended.
@@ -75,7 +105,7 @@ internal class ShellTerminalDecision(
      * that published an exit code. The other outcomes publish no value, and a value nobody could
      * establish is not published as one.
      */
-    fun forPollOutcome(
+    internal fun forPollOutcome(
         outcome: ShellPollOutcome,
         captured: CapturedStdoutRead,
     ): DurableTaskTerminal = when (outcome) {

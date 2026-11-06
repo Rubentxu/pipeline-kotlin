@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
+import java.io.IOException
+import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -52,20 +54,71 @@ import java.nio.file.Path
 object ShellCapturedStdout {
 
     /**
+     * The most bytes a captured stdout may hold.
+     *
+     * The captured value is MATERIALISED: it is read into a [String] and published as a typed
+     * value, so its cost is O(value) in memory, and twice the bytes, because a character is two
+     * bytes. A shell step that prints without bound could therefore demand more memory than the
+     * host has, and the product would have had no word to say about it.
+     *
+     * 64 MiB is the product's limit: far more than any value a legitimate step carries, and small
+     * enough that materialising one cannot take the runtime down. The limit is a REFUSAL and
+     * never a truncation — a value over the limit is not published, not shortened, and not
+     * reported as an empty value, because an empty value is the answer to "the program printed
+     * nothing", and this program printed too much.
+     *
+     * The number lives HERE, beside the rule that reads the channel, because the two are one
+     * decision: this reader is the only place that knows how big the value is.
+     */
+    const val MAX_CAPTURED_STDOUT_BYTES: Long = 64L * 1024 * 1024
+
+    /**
      * Reads the captured stdout of [controlDir] under the rule above.
      *
      * @param controlDir The control directory of one durable shell operation.
+     * @param limitBytes The most bytes the value may hold. The default is the product's limit; it
+     *   is a parameter so that the refusal can be exercised without writing the limit's worth of
+     *   bytes, which is the whole reason the parameter exists.
      * @return `null` when the captured channel is absent; the captured text when it is present.
-     * @throws java.io.IOException when the channel is present but cannot be read. Each caller
-     *   decides what an unreadable channel means for it: the executor publishes a REFUSAL and
-     *   never an empty value, and the observer lets the failure surface rather than claim that
-     *   the program printed nothing.
+     * @throws java.io.IOException when the channel is present but cannot be read, or when it holds
+     *   more than [limitBytes]. Each caller decides what an unreadable channel means for it: the
+     *   executor publishes a REFUSAL and never an empty value, and the observer lets the failure
+     *   surface rather than claim that the program printed nothing.
      */
-    fun read(controlDir: Path): String? {
+    fun read(controlDir: Path, limitBytes: Long = MAX_CAPTURED_STDOUT_BYTES): String? {
         val outputFile = ShellProtocolLayout(controlDir).outputFile
         if (!Files.exists(outputFile)) {
             return null
         }
+        // The size is read BEFORE the text, so a value over the limit is refused without ever
+        // being materialised. The channel is written by the child and read after the child
+        // ended, so the size it has here is the size it will keep.
+        val size = Files.size(outputFile)
+        if (size > limitBytes) {
+            throw IOException(
+                "the captured stdout is $size bytes, over the limit of $limitBytes bytes",
+            )
+        }
         return Files.readString(outputFile).trim()
+    }
+
+    /**
+     * Opens the captured stdout channel of [controlDir] for writing.
+     *
+     * The channel has ONE name and ONE place, and this is the write side of it: whoever writes
+     * the channel writes the file [read] reads, so the two cannot disagree about what the value
+     * is or where it lives.
+     *
+     * The durable substrate writes the channel with the child's own redirection; this is the side
+     * for a substrate that holds the bytes in the JVM — the generic process runtime, whose child
+     * is pumped instead of redirected. The bytes are the same bytes: the value is the stdout, EXACT
+     * and not sanitized, which is what makes it the value and not a transcript.
+     *
+     * @param controlDir The control directory of one shell operation.
+     * @return The stream that writes the channel. The caller owns it and closes it.
+     */
+    fun writer(controlDir: Path): OutputStream {
+        Files.createDirectories(controlDir)
+        return Files.newOutputStream(ShellProtocolLayout(controlDir).outputFile)
     }
 }

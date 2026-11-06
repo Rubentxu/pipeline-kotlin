@@ -19,7 +19,7 @@
     <ID>LongParameterList:BodyExecutionEngine.kt:BodyExecutionEngine$suspend fun invokeBodyChildren: StepOutcome</ID>
     <ID>LongParameterList:RetryEngine.kt:RetryEngine</ID>
     <ID>LongParameterList:ScriptedFrontendRunner.kt:ScriptedFrontendRunner$fun run: Outcome</ID>
-    <ID>LongParameterList:ShExecution.kt:ShExecution$private suspend fun executeNonLinuxInvocation: ShellInvocationResult</ID>
+    <ID>LongParameterList:ShExecution.kt:ShExecution$internal suspend fun executeNonLinuxInvocation: ShellInvocationResult</ID>
     <ID>LongParameterList:ShExecution.kt:ShExecution$suspend fun invokeShell: ShellInvocationResult</ID>
     <ID>LongParameterList:WaitUntilEngine.kt:WaitUntilEngine</ID>
     <ID>MaxLineLength:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$val reason = "reportDir '${input.reportDir}' (resolved to $reportDir) cannot be resolved to a real path; refusing to publish (possible broken symlink): ${e.message}"</ID>

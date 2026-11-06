@@ -25,6 +25,18 @@
 # and row B states the other half of the same fact: within a line, the
 # previously published SDK still loads.
 #
+# The plugin row C measures is the one the OLDER RELEASE shipped, read from the
+# distribution that release published and verified against the digest authority
+# it published. It is a plugin built against that older SDK by construction, and
+# the range it declares is read from the manifest that release published, not
+# derived here: the row measures what the product published.
+# Rebuilding that plugin from this tree's CURRENT sources would make the row
+# answer a different question — whether those sources still compile against an
+# older SDK. That is a property the row never declared, and it stops being
+# true as soon as the example plugin uses an API introduced after that SDK,
+# while the contract the row states (an old plugin is refused by this host)
+# still holds.
+#
 # Two more rows, about the ABI the release PUBLISHES rather than about a plugin
 # that loads:
 #   D  the tree's own committed baseline   -> `apiCheck` accepts the surface
@@ -48,8 +60,10 @@
 # does not publish anything, and it does not modify any tracked file. It DOES
 # run the repository's own Gradle build for rows D and E, which writes under the
 # build directory and reads the tree's committed baselines. The plugin of rows
-# A, B and C is still built in an isolated copy of the plugin sources, so the
-# repository's own build output is never the artifact those rows measure.
+# A and B is built in an isolated copy of the plugin sources, so the
+# repository's own build output is never the artifact those rows measure; row C
+# reads the plugin the older release published, so it measures published bytes
+# too.
 # It reads bytes and runs them.
 #
 # Usage:
@@ -296,28 +310,37 @@ download_published_distribution() {
     local archive sums expected actual
 
     mkdir -p "$dest"
-    if ! gh release download "$tag" --pattern 'pipelinek-*.zip' --dir "$dest" --clobber \
-        >"$dest/download.log" 2>&1; then
-        printf 'verify-external-compatibility: could not download the distribution of %s\n' "$tag" >&2
-        sed 's/^/    /' "$dest/download.log" >&2
-        return 1
-    fi
+    sums="$dest/SHA256SUMS"
     # The SDK archive matches the same glob and is NOT the distribution: it is named
     # `pipelinek-<v>.sdk.zip`. Picking the wrong one would compare the candidate
     # against the SDK of the previous release and call it the distribution.
     archive="$(find "$dest" -maxdepth 1 -name 'pipelinek-*.zip' ! -name '*.sdk.zip' | head -1)"
-    if [[ -z "$archive" ]]; then
-        printf 'verify-external-compatibility: %s published no distribution archive\n' "$tag" >&2
-        return 1
-    fi
 
-    if ! gh release download "$tag" --pattern 'SHA256SUMS' --dir "$dest" --clobber \
-        >>"$dest/download.log" 2>&1; then
-        printf 'verify-external-compatibility: %s published no SHA256SUMS to verify the distribution against\n' \
-            "$tag" >&2
-        return 1
+    # The archive and the authority that covers it are fetched ONCE per tag and
+    # then reused: two rows can name the same release, and the second one has to
+    # measure the same bytes the first one verified. The digest check below runs
+    # on every call, so a cached archive that no longer matches the authority is
+    # refused rather than trusted.
+    if [[ ! -f "$archive" || ! -f "$sums" ]]; then
+        if ! gh release download "$tag" --pattern 'pipelinek-*.zip' --dir "$dest" --clobber \
+            >"$dest/download.log" 2>&1; then
+            printf 'verify-external-compatibility: could not download the distribution of %s\n' "$tag" >&2
+            sed 's/^/    /' "$dest/download.log" >&2
+            return 1
+        fi
+        archive="$(find "$dest" -maxdepth 1 -name 'pipelinek-*.zip' ! -name '*.sdk.zip' | head -1)"
+        if [[ -z "$archive" ]]; then
+            printf 'verify-external-compatibility: %s published no distribution archive\n' "$tag" >&2
+            return 1
+        fi
+
+        if ! gh release download "$tag" --pattern 'SHA256SUMS' --dir "$dest" --clobber \
+            >>"$dest/download.log" 2>&1; then
+            printf 'verify-external-compatibility: %s published no SHA256SUMS to verify the distribution against\n' \
+                "$tag" >&2
+            return 1
+        fi
     fi
-    sums="$dest/SHA256SUMS"
 
     expected="$(awk -v name="$(basename "$archive")" '$2 == name { print $1 }' "$sums")"
     actual="$(sha256sum "$archive" | awk '{ print $1 }')"
@@ -332,6 +355,34 @@ download_published_distribution() {
         return 1
     fi
     printf '%s' "$archive"
+}
+
+# The plugin that a published release SHIPPED, read from the distribution that
+# release published.
+#
+# Prints the path of the plugin jar. Fails when the distribution cannot be
+# downloaded, cannot be verified against the authority that release published,
+# cannot be unpacked, or carries no plugin at all.
+published_plugin_from_distribution() {
+    # $1 = release tag, $2 = destination directory.
+    local tag="$1" dest="$2"
+    local archive unpacked jar
+
+    archive="$(download_published_distribution "$tag" "$dest" || true)"
+    if [[ -z "$archive" ]]; then
+        return 1
+    fi
+    unpacked="$dest/unpacked"
+    mkdir -p "$unpacked"
+    if ! unzip -q -o "$archive" -d "$unpacked" >/dev/null 2>&1; then
+        printf 'verify-external-compatibility: the distribution of %s could not be unpacked\n' "$tag" >&2
+        return 1
+    fi
+    jar="$(find "$unpacked" -type f -path '*/lib/example-uppercase-plugin-*.jar' | head -1)"
+    if [[ -z "$jar" ]]; then
+        return 1
+    fi
+    printf '%s' "$jar"
 }
 
 # The breaks the door approved, in the door's own words.
@@ -637,19 +688,24 @@ else
             ROW_VERDICTS+=("FAIL")
             ROW_DETAILS+=("the SDK of $OLDER_TAG states no version in its layout")
         else
-            # The range the plugin declares is derived from the SDK it was built
-            # against: [that version, the next minor). It is read from the
-            # artifact, not assumed, because the whole point of this row is
-            # what the product publishes.
-            DECLARED_RANGE="$(unzip -p "$(build_plugin "C" "$OLDER_SDK_REPO" "$OLDER_SDK_VERSION" || true)" \
-                META-INF/pipelinek/plugin-manifest.json 2>/dev/null |
-                python3 -c 'import json,sys; print(json.load(sys.stdin).get("apiRange",""))' 2>/dev/null || true)"
-            if [[ -z "$DECLARED_RANGE" ]]; then
+            # The plugin that the OLDER RELEASE shipped. It is a plugin built
+            # against that older SDK by construction, and the range it declares
+            # is read from the manifest that release published, not derived
+            # here: the row measures what the product published, and a range
+            # this script derived would be a range the script chose.
+            OLDER_PLUGIN_JAR="$(published_plugin_from_distribution "$OLDER_TAG" "$WORK/dist-$OLDER_TAG" || true)"
+            if [[ -z "$OLDER_PLUGIN_JAR" ]]; then
                 ROW_VERDICTS+=("FAIL")
-                ROW_DETAILS+=("the plugin built against the SDK of $OLDER_TAG declares no range")
+                ROW_DETAILS+=("the distribution of $OLDER_TAG published no plugin, so there is nothing this row can refuse")
             else
-                PLUGIN_JAR="$WORK/build-C/build/libs/example-uppercase-plugin-0.1.0.jar"
-                expect_refused "C" "$PLUGIN_JAR" "$DECLARED_RANGE" || true
+                DECLARED_RANGE="$(unzip -p "$OLDER_PLUGIN_JAR" META-INF/pipelinek/plugin-manifest.json 2>/dev/null |
+                    python3 -c 'import json,sys; print(json.load(sys.stdin).get("apiRange",""))' 2>/dev/null || true)"
+                if [[ -z "$DECLARED_RANGE" ]]; then
+                    ROW_VERDICTS+=("FAIL")
+                    ROW_DETAILS+=("the plugin published by $OLDER_TAG declares no range")
+                else
+                    expect_refused "C" "$OLDER_PLUGIN_JAR" "$DECLARED_RANGE" || true
+                fi
             fi
         fi
     fi
@@ -733,7 +789,7 @@ else
             # comparison reads them from there; without the archive the previous side
             # of those modules cannot be read, and a comparison that did not happen
             # certifies nothing.
-            PREVIOUS_DISTRIBUTION_ZIP="$(download_published_distribution "$PREVIOUS_TAG" "$WORK/dist-previous" || true)"
+            PREVIOUS_DISTRIBUTION_ZIP="$(download_published_distribution "$PREVIOUS_TAG" "$WORK/dist-$PREVIOUS_TAG" || true)"
             if [[ -z "$PREVIOUS_DISTRIBUTION_ZIP" ]]; then
                 ROW_VERDICTS+=("FAIL")
                 ROW_DETAILS+=("the distribution of $PREVIOUS_TAG could not be downloaded or verified, so the previously published bytes of the modules that are guarded but not published cannot be read")

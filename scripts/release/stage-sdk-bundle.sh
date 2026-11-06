@@ -50,6 +50,9 @@ PLUGIN_DIR="$repo_root/examples/example-uppercase-plugin"
 TRUST_CONF="$repo_root/scripts/release/signing-key.conf"
 MATURITY_CONTRACT="$repo_root/pipelinek/contract/published-contract-maturity.json"
 CHECKER="$repo_root/scripts/check-sdk-bundle.py"
+# The list of assets the candidate publishes. It is written by the release gate, and when it
+# is there the checker can MEASURE that the bundle is not among them instead of asserting it.
+ASSETS_FILE="$repo_root/pipelinek/pipeline-release/build/candidate/published-assets.json"
 
 usage() {
     # The header is printed as it is written, up to the first line that is
@@ -166,12 +169,17 @@ done < <(find "$STAGING_REPO" -type f -name '*.asc' -print0)
 # It RECOMPUTES the digests and RE-VERIFIES the signatures: a checksum file that agrees
 # with itself is not a checksum, and a signature that was written but never verified is
 # not a signature.
-if ! python3 "$CHECKER" \
-    --repo "$STAGING_REPO" \
-    --landing-repo "$LANDING_REPO" \
-    --maturity "$MATURITY_CONTRACT" \
-    --version "$VERSION" \
-    --fingerprint "$FINGERPRINT" > "$WORK/check.out" 2>&1; then
+checker_args=(
+    --repo "$STAGING_REPO"
+    --landing-repo "$LANDING_REPO"
+    --maturity "$MATURITY_CONTRACT"
+    --version "$VERSION"
+    --fingerprint "$FINGERPRINT"
+)
+if [[ -f "$ASSETS_FILE" ]]; then
+    checker_args+=(--assets "$ASSETS_FILE")
+fi
+if ! python3 "$CHECKER" "${checker_args[@]}" > "$WORK/check.out" 2>&1; then
     cat "$WORK/check.out" >&2
     fail "the bundle does not pass its own checker"
 fi

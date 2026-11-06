@@ -211,6 +211,28 @@ class MavenPublicationValidationTest {
     }
 
     @Test
+    fun `the request names no transport and carries nothing else`() {
+        val encoded = MavenPublicationCodec.encode(request())
+
+        val keys = Regex("\"([a-z0-9_]+)\":").findAll(encoded).map { it.groupValues[1] }.toSet()
+        assertEquals(
+            setOf(
+                "schema_version",
+                "candidate_id",
+                "product_version",
+                "manifest_name",
+                "manifest_sha256",
+            ),
+            keys,
+        )
+
+        val lowered = encoded.lowercase()
+        listOf("github", "issues", "pull", "actions", "http", "inbox").forEach { forbidden ->
+            assertTrue(!lowered.contains(forbidden), "the request names a transport: $forbidden")
+        }
+    }
+
+    @Test
     fun `every refusal is named and the diagnostic says what to do`() {
         val verdict = assertInstanceOf(
             MavenPublicationVerdict.Rejected::class.java,

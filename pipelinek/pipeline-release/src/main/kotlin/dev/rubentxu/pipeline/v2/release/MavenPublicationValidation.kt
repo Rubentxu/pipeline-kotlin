@@ -244,7 +244,17 @@ private fun certificationViolations(
 
             else -> MavenPublicationViolationCode.CERTIFICATION_DOES_NOT_ADMIT
         }
-        MavenPublicationViolation(code, violation.detail)
+        // The detail is the rule's own wording, quoted: the policy is not
+        // restated here, and a restatement is a second policy. The framing
+        // around it is local, because the rule speaks about a promotion and
+        // this decision is about a publication.
+        val framing = when (code) {
+            MavenPublicationViolationCode.CERTIFICATION_IS_ANOTHER ->
+                "the certification names another candidate"
+
+            else -> "the certification does not admit ${candidate.canonical}"
+        }
+        MavenPublicationViolation(code, "$framing: ${violation.detail}")
     }
 }
 

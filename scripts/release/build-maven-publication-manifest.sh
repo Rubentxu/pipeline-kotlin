@@ -79,6 +79,26 @@ if [[ ! -d "$BUNDLE" ]]; then
     exit 1
 fi
 
+# Every path handed to the build is absolute. The build resolves a relative
+# path against its OWN project directory, and a path that means one thing to
+# the caller and another to the build is a path that reads a file nobody
+# meant.
+absolute_path() {
+    local path="$1"
+    local dir base
+    dir="$(dirname -- "$path")"
+    base="$(basename -- "$path")"
+    if [[ -d "$dir" ]]; then
+        printf '%s/%s\n' "$(cd -- "$dir" && pwd)" "$base"
+    else
+        printf '%s\n' "$path"
+    fi
+}
+
+HANDOFF="$(absolute_path "$HANDOFF")"
+BUNDLE="$(absolute_path "$BUNDLE")"
+OUT_DIR="$(absolute_path "$OUT_DIR")"
+
 LOG_FILE="$(mktemp "${TMPDIR:-/tmp}/build-maven-publication-manifest.XXXXXX")"
 
 set +e

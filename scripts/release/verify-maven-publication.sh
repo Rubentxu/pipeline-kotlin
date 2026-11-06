@@ -105,6 +105,29 @@ if [[ -z "$REQUEST" || -z "$MANIFEST" || -z "$CERTIFICATION" || -z "$BUNDLE" || 
     usage
 fi
 
+# Every path handed to the build is absolute. The build resolves a relative
+# path against its OWN project directory, and a path that means one thing to
+# the caller and another to the build is a path that reads a file nobody
+# meant.
+absolute_path() {
+    local path="$1"
+    local dir base
+    dir="$(dirname -- "$path")"
+    base="$(basename -- "$path")"
+    if [[ -d "$dir" ]]; then
+        printf '%s/%s\n' "$(cd -- "$dir" && pwd)" "$base"
+    else
+        printf '%s\n' "$path"
+    fi
+}
+
+REQUEST="$(absolute_path "$REQUEST")"
+MANIFEST="$(absolute_path "$MANIFEST")"
+CERTIFICATION="$(absolute_path "$CERTIFICATION")"
+BUNDLE="$(absolute_path "$BUNDLE")"
+SDK_ZIP="$(absolute_path "$SDK_ZIP")"
+PUBLISHED="$(absolute_path "$PUBLISHED")"
+
 if [[ ! -f "$REQUEST" ]]; then
     printf 'verify-maven-publication: the request %s does not exist\n' "$REQUEST" >&2
     printf '           a request that names no bundle publishes nothing\n' >&2

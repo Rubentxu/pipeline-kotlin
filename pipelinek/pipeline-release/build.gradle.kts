@@ -1012,8 +1012,8 @@ tasks.register<JavaExec>("mavenPublication") {
     val published = providers.gradleProperty("maven.published").orElse("").get()
     val verdict = providers.gradleProperty("maven.verdict").orElse("").get()
 
-    listOf(request, manifest, certification, sdkZip).filter { it.isNotBlank() }.forEach { path ->
-        inputs.file(project.file(path)).optional(true)
+    listOf(request, manifest).filter { it.isNotBlank() }.forEach { path ->
+        inputs.file(project.file(path))
     }
     inputs.property("maven.request", request)
     inputs.property("maven.manifest", manifest)
@@ -1022,6 +1022,18 @@ tasks.register<JavaExec>("mavenPublication") {
     inputs.property("maven.sdkZip", sdkZip)
     inputs.property("maven.published", published)
     inputs.property("maven.verdict", verdict)
+
+    // The decision is NEVER up to date, and that is not a workaround. What it
+    // decides depends on the state of the target repository, and that state
+    // is not one of its inputs: a task that considered itself up to date
+    // would answer "the version is not published" from a cache instead of
+    // from the repository, and the idempotence of the decision would be the
+    // idempotence of the cache and not the rule. The certification is
+    // declared as a PATH and not as a file for the same reason: a request
+    // made without one is a request the model has to refuse BY NAME, and a
+    // build that failed before the model ran would report a missing file
+    // where the operator needs the model's own reason.
+    outputs.upToDateWhen { false }
 
     doFirst {
         val missing = listOf(
@@ -1072,11 +1084,18 @@ tasks.register<JavaExec>("mavenPublicationManifest") {
     val out = providers.gradleProperty("maven.out").orElse("").get()
 
     listOf(handoff).filter { it.isNotBlank() }.forEach { path ->
-        inputs.file(project.file(path)).optional(true)
+        inputs.file(project.file(path))
     }
+    if (bundle.isNotBlank()) inputs.dir(project.file(bundle))
     inputs.property("maven.handoff", handoff)
     inputs.property("maven.bundle", bundle)
     inputs.property("maven.out", out)
+
+    // The task declares no output, so it is never up to date and it always
+    // measures. A producer that could consider itself up to date would write
+    // a manifest of the bytes of an earlier run, and a manifest of bytes
+    // nobody measured is a promise that nobody keeps.
+    outputs.upToDateWhen { false }
 
     doFirst {
         val missing = listOf(

@@ -48,7 +48,7 @@ class SharedFileAuthoritiesTest {
         val store = SqliteEventStore(dbPath())
         try {
             val cursors =
-                SqliteReplayCursorStoreImpl(store.underlyingConnectionFactory(), FixedClock(Instant.EPOCH))
+                SqliteReplayCursorStoreImpl(store.durableConnections, FixedClock(Instant.EPOCH))
 
             store.append(RunStarted("evt-1", "run-1", 0L, Instant.EPOCH, "p.pipeline.kts"))
             store.append(StageStarted("evt-2", "run-1", 0L, Instant.EPOCH, 0, "stage-0"))

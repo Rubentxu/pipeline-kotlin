@@ -85,7 +85,10 @@ class SagaObligationStoreContractTest {
     private fun durableStore(index: Int): SqliteSagaObligationStore {
         val path = tempDir.resolve("contract-$index.sqlite").toString()
         return SqliteSagaObligationStore(
-            connectionFactory = { SqliteConnectionFactory.open(path) },
+            connections = DurableConnections.over(
+                writeDoor = { SqliteConnectionFactory.open(path) },
+                readDoor = { SqliteConnectionFactory.openReadOnly(path) },
+            ),
             dbPath = path,
         )
     }

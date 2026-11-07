@@ -496,8 +496,6 @@ private fun selectDurableRunIdentity(
  */
 private data class DurableEventStores(
     val rawEventStore: dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore,
-    val factory: () -> java.sql.Connection,
-    val dbPathStr: String,
 )
 
 private fun admitDurableEventStore(dbPath: String): DurableEventStores {
@@ -510,11 +508,9 @@ private fun admitDurableEventStore(dbPath: String): DurableEventStores {
         throw CommandRefused(CliExit.InvalidArgument(message = "the durable event store was refused"))
     }
     val rawEventStore = (dbAdmission as EventStoreAdmission.Admitted).store
-    // The raw methods are read before anything wraps the store: the connection factory and the
-    // database path belong to the store itself, not to the decorators that sit on top of it.
-    val factory = rawEventStore.underlyingConnectionFactory()
-    val dbPathStr = rawEventStore.databasePath()
-    return DurableEventStores(rawEventStore, factory, dbPathStr)
+    // The raw store is kept before anything wraps it: the file and its doors belong to the store
+    // itself, not to the decorators that sit on top of it.
+    return DurableEventStores(rawEventStore)
 }
 
 /**

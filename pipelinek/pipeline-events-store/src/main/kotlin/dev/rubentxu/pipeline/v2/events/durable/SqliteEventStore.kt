@@ -2,8 +2,6 @@ package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
-import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
 import java.sql.Connection
 
 /**
@@ -182,17 +180,6 @@ class SqliteEventStore(
         writer?.close()
         durableConnections.close()
     }
-
-    /**
-     * Exposes the PRODUCER's connection factory for use by [OperationJournal]
-     * and [ReplayCursorStore].
-     * This is intentionally internal — it is only used within the durable
-     * execution subsystem that shares the same SQLite database file.
-     *
-     * It is the PRODUCER's door and not the reading one because everything that uses it WRITES to
-     * the same file: a journal entry and a replay cursor are facts, and a fact is written.
-    */
-    fun underlyingConnectionFactory(): () -> Connection = connections
 
     /**
      * Exposes the database file path for use by [SqliteOperationJournalImpl]

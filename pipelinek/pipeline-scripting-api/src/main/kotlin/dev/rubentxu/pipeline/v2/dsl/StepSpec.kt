@@ -440,9 +440,9 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * archive answers is a typed `USER` failure rather than a thrown
      * error.
      *
-     * The registered definition answers under the key `core.artifact.query`,
-     * while this shape lowers to `core.artifactQuery`, so admission refuses it;
-     * the authoring helper lowers to the registry shape instead.
+     * The registered definition answers under the key `core.artifact.query`, and
+     * this shape carries no canonical payload of its own, so the compiler refuses
+     * it; the authoring helper lowers to the registry shape instead.
      */
     data class ArtifactQuery(
         val artifactName: String,

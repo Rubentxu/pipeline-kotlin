@@ -39,9 +39,11 @@ THE TWO DIRECTIONS
     - NEGATIVE: the compiler must not NAME a kind it does not own, i.e. it must
       not write an envelope by hand for a family a codec owns.
     - POSITIVE: the compiler must NAME each codec the table claims it delegates
-      to. A compiler that stopped delegating -- falling back to the generic
-      `declarativeValue` arm -- writes no hand-made envelope either, so only the
-      negative direction would stay green while the family silently degraded.
+      to. A compiler that stopped delegating writes no hand-made envelope either,
+      so only the negative direction would stay green. The generic arm no longer
+      degrades an unlowered shape into a `declarativeValue` payload -- it REFUSES
+      it -- so a family that lost its codec stops the compilation instead of
+      reaching the run with a payload the runtime cannot read.
 
 Exit status is 0 when both directions hold, and 1 with the list of the offenders
 when any of them does not.
@@ -177,7 +179,7 @@ def main() -> int:
     # The positive direction: every codec the table claims the compiler delegates
     # to must be NAMED by the compiler's code. A compiler that stopped delegating
     # writes no hand-made envelope either, so without this the negative direction
-    # alone would stay green while the family degraded into `declarativeValue`.
+    # alone would stay green while the family lost its canonical payload.
     for kind, codec in OWNERS.items():
         if not re.search(r"\b" + re.escape(codec) + r"\b", code):
             rows.append(

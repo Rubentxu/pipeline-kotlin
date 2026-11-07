@@ -176,6 +176,21 @@ object DslCompiledPipelineCompiler {
         // Sibling steps mint their identity into the same parent token, so they share
         // one scope.
         val scope = IdentityScope("the body of '$parentToken'")
+        // The identities of the WHOLE sibling set are minted BEFORE any of them is
+        // compiled.
+        //
+        // ## WHY THE SET IS MINTED FIRST
+        //
+        // A name collision is a fact about the SET: two siblings that normalize to the
+        // same token would mint the SAME StepId, and the durable journal records that
+        // identity as the step's own name. The set is complete before the first payload
+        // is encoded, so the refusal about the set can arrive first -- and it is the
+        // refusal that names BOTH names.
+        //
+        // A shape with no canonical payload is a fact about ONE member of the set, and
+        // it is refused after. The order is deliberate and it is part of the contract:
+        // the compiler refuses the set before it refuses a member of it.
+        steps.forEach { scope.tokenFor(it.identityName) }
         return steps.flatMap { step ->
             // The counter follows the INNER name (see [identityName]): two named `sh` steps
             // are `sh-0` and `sh-1`. The name is what tells siblings apart.
@@ -360,10 +375,10 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
-            // StepSpec.Milestone branch removed (LEGACY_REMOVED). The DSL
-            // `milestone(ordinal, label)` now lowers directly to StepSpec.RegistryStepSpec
-            // (open-world registry path); no dedicated compiler branch needed. Legacy
-            // milestonePayload removed at.
+            // StepSpec.Milestone has NO branch here, on purpose. The DSL
+            // `milestone(ordinal, label)` lowers directly to StepSpec.RegistryStepSpec
+            // (the open-world registry path), so the legacy shape carries no canonical
+            // payload of its own and the generic arm refuses it.
             // The checkout is NOT a core Step: the SCM/Git plugin IMPLEMENTS it, under
             // the key `scm-git.checkout`, and the plugin owns that key AND the wire
             // format of its input. The core DSL's surface (`git(..)`, `checkout(..)`)
@@ -386,14 +401,34 @@ object DslCompiledPipelineCompiler {
                     payload = VersionedStepPayload(PAYLOAD_SCHEMA_VERSION, checkoutPayload(step.scm)),
                 ),
             )
-            else -> listOf(
-                OpaqueStepNode(
-                    id = StepId("$parentToken/${scope.tokenFor(step.name)}-$occurrence"),
-                    pluginStepId = PluginStepId("core.${step.name}"),
-                    payload = VersionedStepPayload(PAYLOAD_SCHEMA_VERSION, encodePayload(step)),
-                ),
-            )
+            else -> opaqueNode(step, parentToken, occurrence, scope)
         }
+    }
+
+    /**
+     * Lowers a terminal step into the one canonical opaque node.
+     *
+     * The identity is minted ONCE here and travels into the payload encoder, so a
+     * refusal can name the step the author has to look at instead of saying "some
+     * step somewhere".
+     */
+    private fun opaqueNode(
+        step: StepSpec,
+        parentToken: String,
+        occurrence: Int,
+        scope: IdentityScope,
+    ): List<StepNode> {
+        val stepId = StepId("$parentToken/${scope.tokenFor(step.name)}-$occurrence")
+        return listOf(
+            OpaqueStepNode(
+                id = stepId,
+                pluginStepId = PluginStepId("core.${step.name}"),
+                payload = VersionedStepPayload(
+                    PAYLOAD_SCHEMA_VERSION,
+                    encodePayload(step, stepId),
+                ),
+            ),
+        )
     }
 
     /**
@@ -865,7 +900,7 @@ object DslCompiledPipelineCompiler {
             "core Step. Splitting the table would scatter one envelope per " +
             "file and make the shape of a Step unreadable in one place."
     )
-    private fun encodePayload(step: StepSpec): String {
+    private fun encodePayload(step: StepSpec, stepId: StepId): String {
         // The compiler does NOT hand-write the `core.sh` wire JSON here either:
         // CoreShellWireCodec is THE single authority for that format, and the
         // bytes it writes are the ones this branch has always written.
@@ -906,7 +941,7 @@ object DslCompiledPipelineCompiler {
                 // Canonical envelope for core.pwd. The
                 // CorePwdStep.inputCodec reads {"kind":"pwd","tmp":<bool>} and
                 // decodes tmp=true as a PWD_TMP_TRUE_DISPOSITION failure
-                // (fail-closed). Previously the else-branch produced the legacy
+                // (fail-closed). The generic arm used to produce the legacy
                 // {"kind":"pwd","declarativeValue":"StepSpec.Pwd(tmp=…)"} form
                 // (plugin step id was correct but envelope did not carry tmp);
                 // the typed decode default-tolerated absent `tmp`, which masked
@@ -918,7 +953,7 @@ object DslCompiledPipelineCompiler {
                 // Canonical envelope for core.cleanWs.
                 // The CoreCleanWsStep.inputCodec reads
                 // {"kind":"cleanWs","deleteDirs":<bool>,"patterns":[...]}.
-                // Previously the else-branch produced
+                // The generic arm used to produce
                 // {"kind":"cleanWs","declarativeValue":"StepSpec.CleanWs(deleteDirs=…, patterns=…)"}
                 // which made the typed decode fall back to defaults (empty
                 // Patterns), erasing the user's glob selectors
@@ -970,11 +1005,47 @@ object DslCompiledPipelineCompiler {
                     put("kind", "node")
                     step.label?.let { put("label", it) }
                 }
-                else -> put("declarativeValue", step.toString())
+                else -> refuseWithoutCanonicalPayload(step, stepId)
             }
         }
         return Json.encodeToString(JsonObject.serializer(), payload)
     }
+
+    /**
+     * A DSL variant with NO canonical payload is refused, not invented.
+     *
+     * ## WHY A REFUSAL AND NOT A `declarativeValue`
+     *
+     * The arm this replaces wrote `step.toString()` into the payload. That string
+     * is not a wire format: it is a note about a shape, carried as if it were
+     * data. The run then failed LATER, in the canonical admission analysis,
+     * with a message about a plugin id nobody registered -- so the author never
+     * learned that the shape they wrote has no lowering at all.
+     *
+     * A refusal arrives BEFORE the run, and it says the three things the author
+     * needs: the TYPE of the variant, the STEP it was written in, and the REASON
+     * it cannot be lowered. `compileOrRefuse` prints the message verbatim as
+     * `Error: <message>` and exits 1, so the author reads the reason instead of
+     * a stack trace.
+     *
+     * ## WHY THE STEP ID TRAVELS IN
+     *
+     * The identity is minted by the caller, because only the caller knows the
+     * scope and the occurrence. Without it the message could only name the
+     * variant, and a pipeline that uses the same shape twice would leave the
+     * author guessing which one was refused.
+     *
+     * @param step the variant that reached the arm with no lowering.
+     * @param stepId the identity the compiler minted for it.
+     * @throws IllegalStateException always: this function has no other outcome.
+     */
+    private fun refuseWithoutCanonicalPayload(step: StepSpec, stepId: StepId): Nothing =
+        error(
+            "the DSL variant '${step::class.simpleName ?: step.type}' (type '${step.type}') " +
+                "at step '${stepId.value}' has no canonical payload: the compiler refuses " +
+                "to invent one, because a payload the runtime cannot read is a step that " +
+                "only fails when the run reaches it",
+        )
 
     // Stage options surface carries ONLY timeout (the only option
     // with a runtime interpreter, projected via projectShellOptions). retry/skip were

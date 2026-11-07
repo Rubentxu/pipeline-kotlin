@@ -124,4 +124,23 @@ object CoreStepRegistryFactory {
      * exists for the call sites that genuinely have nothing left to add.
 */
     fun registry(): StepRegistry = builder().build()
+
+    /**
+     * The ids of the core Steps this factory registers.
+     *
+     * ## WHY THIS EXISTS
+     *
+     * "Which steps are canonical" is ONE fact with more than one reader: the durable
+     * admission analysis decides whether a compiled step is canonical, and the CLI
+     * tells the author which steps the canonical bridge offers. When both read this
+     * function, a step that is registered is canonical for both, and a step that is
+     * NOT registered cannot be announced as canonical by one reader and refused by
+     * the other.
+     *
+     * The list is DERIVED from [registry], never written by hand. A hand-written list
+     * is a second authority for a fact the registry already owns, and it drifts the
+     * first time a Step is registered: the diagnostic then announces a step nobody
+     * registered, or omits one everybody can use.
+     */
+    fun canonicalStepIds(): Set<String> = registry().keys().map { it.value }.toSet()
 }

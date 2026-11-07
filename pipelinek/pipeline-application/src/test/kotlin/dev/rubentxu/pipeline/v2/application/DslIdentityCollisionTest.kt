@@ -52,6 +52,23 @@ import org.junit.jupiter.api.Test
  * positivos vive aparte porque afirma la OTRA cara de la misma pieza: lo que NO se puede
  * rechazar.
  *
+ * ## POR QUÉ EL ÁMBITO DE PASO USA `ArtifactQuery`
+ *
+ * Los nombres de los pasos los elige el COMPILADOR: cada forma del DSL tiene el suyo
+ * (`echo`, `sh`, `dir`…). La única forma cuyo nombre elige el AUTOR es `ArtifactQuery`,
+ * y por eso es la única que puede tener dos nombres DISTINTOS que normalicen al mismo
+ * token — que es exactamente la colisión que esta fila persigue. La fila que afirma el
+ * contador de ocurrencias NO lo usa: para dos nombres iguales basta una forma que de
+ * verdad baja, y usa `echo`.
+ *
+ * ## EL ORDEN DE LOS RECHAZOS, Y POR QUÉ LA COLISIÓN LLEGA PRIMERO
+ *
+ * `ArtifactQuery` no tiene forma canónica que el runtime pueda leer, así que el
+ * compilador la rechaza. Esa fila se sostiene porque las identidades del CONJUNTO se
+ * acuñan antes de codificar ningún payload: el compilador rechaza el conjunto antes de
+ * rechazar a un miembro de él. La colisión es un hecho del conjunto —nombra a los DOS
+ * nombres— y el rechazo de una forma es un hecho de un paso.
+ *
  * ## El orden de las afirmaciones
  *
  * La primera afirmación es la que DEMUESTRA la colisión anterior —los dos nombres, por
@@ -149,10 +166,10 @@ class DslIdentityCollisionTest {
                 "journal existente se reanuda igual",
         )
         assertEquals(
-            listOf("s/query-0", "s/query-1"),
+            listOf("s/echo-0", "s/echo-1"),
             stepIdsOf(
-                StepSpec.ArtifactQuery(artifactName = "a", name = "query"),
-                StepSpec.ArtifactQuery(artifactName = "b", name = "query"),
+                StepSpec.Echo("a"),
+                StepSpec.Echo("b"),
             ),
             "el MISMO nombre repetido en un cuerpo no es una colisión: el contador de " +
                 "ocurrencias los separa y sus ids son los de siempre",

@@ -8,16 +8,13 @@ import dev.rubentxu.pipeline.v2.runtime.MetricBoundary
 import dev.rubentxu.pipeline.v2.runtime.MetricOutcome
 import dev.rubentxu.pipeline.v2.runtime.MetricStatus
 import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetry
-import dev.rubentxu.pipeline.v2.runtime.SpanScope
 import dev.rubentxu.pipeline.v2.runtime.liveSpanParentOf
 import dev.rubentxu.pipeline.v2.runtime.liveStatusOfStepOutcome
 import dev.rubentxu.pipeline.v2.runtime.metricOutcomeOf
-import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
-import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
@@ -27,7 +24,6 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 
 /**
  * The step-execution spine, out of the run loop.
@@ -107,19 +103,12 @@ internal class StepDispatchEngine(
      * the single re-entry reference a body child walks the canonical spine through. Built
      * once and handed to the body dispatch on every body, so the engine and every body path
      * share exactly one call site back into [dispatch].
+     *
+     * The seam carries the request the body child was dispatched with, so the spine reads
+     * the coordinates off the request instead of off eight parameters that had to arrive
+     * in the right order.
      */
-    private val childReentry = BodyChildDispatcher { child, runId, stageName, stageIndex, stepIndex, childShOptions, bodyPath, spanScope ->
-        dispatchChild(
-            child,
-            runId,
-            stageName,
-            stageIndex,
-            stepIndex,
-            childShOptions,
-            bodyPath,
-            spanScope,
-        )
-    }
+    private val childReentry = BodyChildDispatcher { request -> dispatchStep(request).result.outcome }
 
     /**
      * The ONE public entry point of the spine.
@@ -252,15 +241,15 @@ internal class StepDispatchEngine(
                 } else {
                     if (step is BlockStepNode) {
                         val body = bodyDispatch.dispatchBody(
-                            step,
-                            runId,
-                            stageName,
-                            stageIndex,
-                            stepIndex,
-                            stageShOptions,
-                            bodyPath,
-                            innerScope,
-                            childReentry,
+                            block = step,
+                            runId = runId,
+                            stageName = stageName,
+                            stageIndex = stageIndex,
+                            stepIndex = stepIndex,
+                            stageShOptions = stageShOptions,
+                            parentBodyPath = bodyPath,
+                            spanScope = innerScope,
+                            reentry = childReentry,
                         )
                         // A body-only dispatch has no typed value of its own, so the carrier is
                         // built explicitly with a null encoded output rather than narrowed from one.
@@ -631,33 +620,5 @@ internal class StepDispatchEngine(
         if (declaredBodyOwnerOf(step) != BodyExecutionOwner.HANDLER_CONTINUATION) return null
         return step.body
     }
-
-    /**
-     * Dispatches one body child through the canonical spine and projects its outcome.
-     * This is the reference the body execution engine is handed, so every block Step
-     * re-enters the engine through exactly this one call site.
-     */
-    private suspend fun dispatchChild(
-        child: StepNode,
-        runId: RunId,
-        stageName: String,
-        stageIndex: Int,
-        stepIndex: Int,
-        childShOptions: ShOptions,
-        bodyPath: List<BlockSegment>,
-        spanScope: SpanScope,
-    ): StepOutcome = dispatchStep(
-        StepDispatchRequest(
-            step = child,
-            runId = runId,
-            stageName = stageName,
-            stageIndex = stageIndex,
-            stepIndex = stepIndex,
-            shOptions = childShOptions,
-            bodyPath = bodyPath,
-            spanScope = spanScope,
-        ),
-    ).result.outcome
-
 }
 

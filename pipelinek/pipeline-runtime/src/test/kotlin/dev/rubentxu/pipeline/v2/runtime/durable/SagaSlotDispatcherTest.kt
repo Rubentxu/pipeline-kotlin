@@ -242,34 +242,20 @@ class SagaSlotDispatcherTest {
         private val result: StepOutcome = StepOutcome.Success,
     ) : BodyChildDispatcher {
         var callCount = 0
-        var child: StepNode? = null
-        var runId: RunId? = null
-        var stageName: String? = null
-        var stageIndex: Int? = null
-        var stepIndex: Int? = null
-        var childShOptions: ShOptions? = null
-        var bodyPath: List<BlockSegment> = emptyList()
-        var spanScope: SpanScope? = null
+        var request: StepDispatchRequest? = null
 
-        override suspend fun dispatchChild(
-            child: StepNode,
-            runId: RunId,
-            stageName: String,
-            stageIndex: Int,
-            stepIndex: Int,
-            childShOptions: ShOptions,
-            bodyPath: List<BlockSegment>,
-            spanScope: SpanScope,
-        ): StepOutcome {
+        val child: StepNode? get() = request?.step
+        val runId: RunId? get() = request?.runId
+        val stageName: String? get() = request?.stageName
+        val stageIndex: Int? get() = request?.stageIndex
+        val stepIndex: Int? get() = request?.stepIndex
+        val childShOptions: ShOptions? get() = request?.shOptions
+        val bodyPath: List<BlockSegment> get() = request?.bodyPath.orEmpty()
+        val spanScope: SpanScope? get() = request?.spanScope
+
+        override suspend fun dispatchChild(request: StepDispatchRequest): StepOutcome {
             callCount += 1
-            this.child = child
-            this.runId = runId
-            this.stageName = stageName
-            this.stageIndex = stageIndex
-            this.stepIndex = stepIndex
-            this.childShOptions = childShOptions
-            this.bodyPath = bodyPath
-            this.spanScope = spanScope
+            this.request = request
             return result
         }
     }

@@ -8,7 +8,6 @@ import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
@@ -45,22 +44,19 @@ import java.nio.file.Files
 /**
  * The single seam by which body children re-enter the coordinator's dispatch.
  *
- * It is INTERNAL because it carries the scope's parent, which is an internal
- * value: a public seam that took an internal type would widen the published
- * surface of the module for no consumer, and the module's own contract says
- * the seam exists for the engine, not for anybody outside it.
+ * The seam carries ONE value: the coordinates of the dispatch, as the same
+ * [StepDispatchRequest] the spine's own port carries. Eight parameters were
+ * eight independent chances for two callers to disagree about the same
+ * dispatch, and the disagreement was invisible: the run would still produce
+ * the right answer, and only the trace would be wrong.
+ *
+ * The seam is public because it is implemented outside this module: a seam
+ * whose parameter type cannot be named outside its own module cannot be
+ * implemented outside it. The module is not published and carries no published
+ * contract, so the public seam widens no surface a consumer resolves.
  */
 fun interface BodyChildDispatcher {
-    suspend fun dispatchChild(
-        child: StepNode,
-        runId: RunId,
-        stageName: String,
-        stageIndex: Int,
-        stepIndex: Int,
-        childShOptions: ShOptions,
-        bodyPath: List<BlockSegment>,
-        spanScope: SpanScope,
-    ): StepOutcome
+    suspend fun dispatchChild(request: StepDispatchRequest): StepOutcome
 }
 
 class BodyExecutionEngine(
@@ -99,14 +95,16 @@ class BodyExecutionEngine(
                 bodyPath = parentBodyPath + BlockSegment(childIndex, child.pluginStepId),
             )
             val childOutcome = dispatcher.dispatchChild(
-                child,
-                runId,
-                stageName,
-                stageIndex,
-                stepIndex,
-                childShOptions,
-                childOpId.bodyPath,
-                spanScope,
+                StepDispatchRequest(
+                    step = child,
+                    runId = runId,
+                    stageName = stageName,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    shOptions = childShOptions,
+                    bodyPath = childOpId.bodyPath,
+                    spanScope = spanScope,
+                ),
             )
             if (leaseBindings.isNotEmpty()) {
                 for (binding in leaseBindings) {
@@ -276,14 +274,14 @@ class BodyExecutionEngine(
             val pollStartMs = clock.now().toEpochMilli()
 
             val pollOutcome = invokeBodyChildren(
-                block,
-                runId,
-                stageName,
-                stageIndex,
-                stepIndex,
-                childShOptions,
-                pollAttemptPath,
-                spanScope,
+                block = block,
+                runId = runId,
+                stageName = stageName,
+                stageIndex = stageIndex,
+                stepIndex = stepIndex,
+                childShOptions = childShOptions,
+                parentBodyPath = pollAttemptPath,
+                spanScope = spanScope,
                 dispatcher = dispatcher,
             )
 
@@ -547,14 +545,14 @@ class BodyExecutionEngine(
                 }
 
                 val attemptOutcome = invokeBodyChildren(
-                    block,
-                    runId,
-                    stageName,
-                    stageIndex,
-                    stepIndex,
-                    childShOptions,
-                    attemptBasePath,
-                    scopeInBody,
+                    block = block,
+                    runId = runId,
+                    stageName = stageName,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    childShOptions = childShOptions,
+                    parentBodyPath = attemptBasePath,
+                    spanScope = scopeInBody,
                     dispatcher = dispatcher,
                 )
                 when (attemptOutcome) {

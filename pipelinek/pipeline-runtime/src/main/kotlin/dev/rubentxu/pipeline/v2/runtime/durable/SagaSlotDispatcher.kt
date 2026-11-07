@@ -112,14 +112,16 @@ internal class SagaSlotDispatcher(
 
                     is InvocationPatchProjection.Applied -> BodyOutcome.Completed(
                         reentry.dispatchChild(
-                            child = child,
-                            runId = request.runId,
-                            stageName = request.stageName,
-                            stageIndex = request.stageIndex,
-                            stepIndex = request.stepIndex,
-                            childShOptions = projection.shOptions,
-                            bodyPath = childBodyPath,
-                            spanScope = request.spanScope.withAmbient(projection.context),
+                            StepDispatchRequest(
+                                step = child,
+                                runId = request.runId,
+                                stageName = request.stageName,
+                                stageIndex = request.stageIndex,
+                                stepIndex = request.stepIndex,
+                                shOptions = projection.shOptions,
+                                bodyPath = childBodyPath,
+                                spanScope = request.spanScope.withAmbient(projection.context),
+                            ),
                         ),
                     )
                 }

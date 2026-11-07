@@ -30,8 +30,28 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  * process, where nothing ambient survives at all. Carrying the parent here
  * is what makes the lineage of a run a fact about the run instead of a fact
  * about the thread that happened to run it.
+ *
+ * ## WHY IT IS THE ONE CARRIER
+ *
+ * The branch of a parallel stage and the child of a body are dispatched with
+ * the SAME kind of request: the first one walks the spine's own port, and the
+ * second one comes back through the body's re-entry seam. When the seam carried
+ * eight parameters, the body child carried the coordinates in one shape and the
+ * parallel branch carried them in another, and a reader had to know which of
+ * the two it was looking at before it could read the coordinates at all. As
+ * ONE value, both carry the same shape, and the shape is the one the spine
+ * already understood.
+ *
+ * ## WHY IT IS PUBLIC
+ *
+ * The body's re-entry seam is implemented outside this module, and a seam
+ * whose parameter type cannot be named outside its own module cannot be
+ * implemented outside it. The value is therefore public. The module that
+ * declares it is not published and carries no published contract, so a public
+ * type here is a compile-time convenience and not a surface a consumer
+ * resolves.
  */
-internal data class StepDispatchRequest(
+data class StepDispatchRequest(
     /** The step to dispatch. */
     val step: StepNode,
 

@@ -244,13 +244,18 @@ class FileBackedRunExecutionLeaseStore internal constructor(
      * the same process, or owned by a process that has since died and had
      * its lock swept by the kernel. The record file is the audit trail that
      * survives both lifecycles.
-     * The lease authority is the primary answer for run existence: a run
-     * that was deliberately declared (via [acquire]) MUST answer `true`
-     * even if it has not yet produced any event. This is the wiring the
-     * `EventRecordReadPortStoreAdapter.runExists` callback composes with
-     * `SqliteEventStore::hasRun` so an empty-but-declared run does not
-     * surface as [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.UnknownRun]
-     * on the read port.
+     * The lease authority is the answer for the runs the event plane
+     * holds nothing for: a run that was deliberately declared (via
+     * [acquire]) MUST answer `true` even if it has not yet produced any
+     * event. This is the wiring the
+     * `EventRecordReadPortStoreAdapter.runDeclared` callback composes
+     * with the event plane's own answer (the tail of the run's
+     * snapshot), so an empty-but-declared run does not surface as
+     * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.UnknownRun]
+     * on the read port. The two authorities are asked in that order
+     * because they can only disagree about a run with no events, and
+     * that is the one case in which this one still has something to
+     * say.
      * Returns `false` for a runId whose record file does not exist (never
      * acquired, or acquired on a previous lease-dir that has since been
      * cleaned up).

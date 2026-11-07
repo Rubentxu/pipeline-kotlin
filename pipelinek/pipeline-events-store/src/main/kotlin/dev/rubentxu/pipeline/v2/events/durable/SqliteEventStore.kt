@@ -39,7 +39,8 @@ import java.sql.Connection
  * - [SqliteEventWriter] — the WRITING of an event: the sequence authority, the bounded queue, the
  *   single writer thread and the commit that makes a fact durable.
  * - [SqliteEventReader] — the READING of an event and its projection: the page cut, the cursor,
- *   and the refusal a row that cannot be decoded earns.
+ *   the snapshot that reads a run's tail and its page at one instant, and the refusal a row that
+ *   cannot be decoded earns.
  * - [SqliteEventSchema] — the SCHEMA of the file: the tables, the uniqueness index and the
  *   migrations.
  *
@@ -54,14 +55,18 @@ import java.sql.Connection
 class SqliteEventStore(
     private val file: String,
     private val mode: EventStoreMode = EventStoreMode.Writable,
-) : EventSink, AutoCloseable {
-
     /**
      * The store's DOOR. Every owner opens its connections through it, so the lane is decided in
      * ONE place: the producer's door sets the journal mode and verifies WAL, and the reader's door
      * is one the database engine refuses to write through.
+     *
+     * It is a PARAMETER because the number of connections a read opens is a fact about this
+     * store's cost, and a fact that cannot be counted cannot be improved: a caller that counts
+     * the opens sees what a read really costs, and a reader that opens one connection per read
+     * cannot hide behind a statement it happened to batch.
      */
-    private val connections: () -> Connection = { openEventStoreConnection(file, mode) }
+    private val connections: () -> Connection = { openEventStoreConnection(file, mode) },
+) : EventSink, EventRunSnapshotReader, AutoCloseable {
 
     /**
      * The reading owner. It exists in BOTH lanes: a writer can read back what it wrote, and a
@@ -113,15 +118,25 @@ class SqliteEventStore(
 
     override fun eventsFor(runId: String): Sequence<DomainEvent> = reader.eventsFor(runId)
 
-    fun hasRun(runId: String): Boolean = reader.hasRun(runId)
-
-    fun tailSequence(runId: String): Long? = reader.tailSequence(runId)
-
     override fun readRecords(
         runId: String,
         after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
         limit: Int,
     ): dev.rubentxu.pipeline.v2.events.EventRecordSlice = reader.readRecords(runId, after, limit)
+
+    /**
+     * The run's tail and the page after the cursor, read at ONE instant.
+     *
+     * The store answers this question because it is the store's question: the tail is a durable
+     * fact about the run, and the page is cut from the same durable history. A reader that asked
+     * for the two separately would get two instants, and a run that moved between them would be
+     * described by two facts that cannot both be true.
+     */
+    override fun snapshotOf(
+        runId: String,
+        after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
+        limit: Int,
+    ): EventRunSnapshot = reader.snapshotOf(runId, after, limit)
 
     /**
      * Closes the store: flush barrier, then stops the writer and releases

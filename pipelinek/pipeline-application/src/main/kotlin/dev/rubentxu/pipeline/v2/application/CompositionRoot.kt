@@ -193,12 +193,11 @@ internal fun composeRuntimeControlPort(
     val output = OutputPlaneProvider.storeForWriting(controlRoot)
     val events = RedactingEventSink(eventStore, SecretPatternRegistry())
     val eventReader = EventRecordReadPortStoreAdapter(
-        store = eventStore,
-        runExists = { runId ->
+        reader = eventStore,
+        runDeclared = { runId ->
             val identity = RunId.of(runId)
-            (identity != null && lease.isKnown(identity)) || eventStore.hasRun(runId)
+            identity != null && lease.isKnown(identity)
         },
-        tailSequence = { runId -> eventStore.tailSequence(runId) },
     )
     val owner = RunOwnerId.of(
         "cli-cancel-" + ProcessHandle.current().pid() + "-" +
@@ -253,12 +252,11 @@ internal fun composeRuntimeIntrospectionPort(
     val lease = stores.lease
     val output = OutputPlaneProvider.storeForReading(controlRoot)
     val eventReader = EventRecordReadPortStoreAdapter(
-        store = eventStore,
-        runExists = { runId ->
+        reader = eventStore,
+        runDeclared = { runId ->
             val identity = RunId.of(runId)
-            (identity != null && lease.isKnown(identity)) || eventStore.hasRun(runId)
+            identity != null && lease.isKnown(identity)
         },
-        tailSequence = { runId -> eventStore.tailSequence(runId) },
     )
     return RuntimeIntrospectionPortStoreAdapter(
         eventReads = eventReader,
@@ -338,12 +336,11 @@ internal fun composeRuntimeRecoverPort(
         requireNotNull(RunOwnerId.of(owner)) { "the recover owner id is always well formed" },
     )
     val eventReader = EventRecordReadPortStoreAdapter(
-        store = eventStore,
-        runExists = { runId ->
+        reader = eventStore,
+        runDeclared = { runId ->
             val identity = RunId.of(runId)
-            (identity != null && leaseView.isKnown(identity)) || eventStore.hasRun(runId)
+            identity != null && leaseView.isKnown(identity)
         },
-        tailSequence = { runId -> eventStore.tailSequence(runId) },
     )
     val introspect = RuntimeIntrospectionPortStoreAdapter(
         eventReads = eventReader,

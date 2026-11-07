@@ -981,6 +981,145 @@ tasks.register<JavaExec>("promotionCertification") {
 }
 
 /**
+ * The door of the Maven publication channel.
+ *
+ * It answers ONE question: "may this request publish this bundle?". The
+ * answer is the model's, and this task only resolves the paths, hands the
+ * arguments over and propagates the exit code.
+ *
+ * The documents the decision depends on are INPUTS, and they are OPTIONAL
+ * inputs: the model refuses a document it cannot read, and it refuses by
+ * name. A build that failed before the model ran would report a missing
+ * file where the operator needs the model's own reason, and the reason is
+ * the thing that names which of the seven rules the request broke.
+ *
+ * The directories are NOT declared as inputs. The bundle is measured by the
+ * model, and the state of the target repository is a fact about the world
+ * that a task that considered itself up to date would answer from a cache.
+ */
+tasks.register<JavaExec>("mavenPublication") {
+    group = "distribution"
+    description = "decide whether a request may publish the Maven bundle."
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.MavenPublicationMainKt")
+
+    val request = providers.gradleProperty("maven.request").orElse("").get()
+    val manifest = providers.gradleProperty("maven.manifest").orElse("").get()
+    val certification = providers.gradleProperty("maven.certification").orElse("").get()
+    val bundle = providers.gradleProperty("maven.bundle").orElse("").get()
+    val sdkZip = providers.gradleProperty("maven.sdkZip").orElse("").get()
+    val published = providers.gradleProperty("maven.published").orElse("").get()
+    val verdict = providers.gradleProperty("maven.verdict").orElse("").get()
+
+    listOf(request, manifest).filter { it.isNotBlank() }.forEach { path ->
+        inputs.file(project.file(path))
+    }
+    inputs.property("maven.request", request)
+    inputs.property("maven.manifest", manifest)
+    inputs.property("maven.certification", certification)
+    inputs.property("maven.bundle", bundle)
+    inputs.property("maven.sdkZip", sdkZip)
+    inputs.property("maven.published", published)
+    inputs.property("maven.verdict", verdict)
+
+    // The decision is NEVER up to date, and that is not a workaround. What it
+    // decides depends on the state of the target repository, and that state
+    // is not one of its inputs: a task that considered itself up to date
+    // would answer "the version is not published" from a cache instead of
+    // from the repository, and the idempotence of the decision would be the
+    // idempotence of the cache and not the rule. The certification is
+    // declared as a PATH and not as a file for the same reason: a request
+    // made without one is a request the model has to refuse BY NAME, and a
+    // build that failed before the model ran would report a missing file
+    // where the operator needs the model's own reason.
+    outputs.upToDateWhen { false }
+
+    doFirst {
+        val missing = listOf(
+            "maven.request" to request,
+            "maven.manifest" to manifest,
+            "maven.bundle" to bundle,
+            "maven.sdkZip" to sdkZip,
+            "maven.published" to published,
+        ).filter { (_, value) -> value.isBlank() }.map { (name, _) -> name }
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "mavenPublication: ${missing.joinToString(", ")} must be named. A publication " +
+                    "is judged against a request, a manifest, the bytes to publish, the SDK ZIP " +
+                    "of the candidate and the state of the target repository, and it cannot be " +
+                    "judged without them.",
+            )
+        }
+    }
+
+    args = listOf(request, manifest, certification, bundle, sdkZip, published, verdict)
+
+    // Any non-zero exit means the request may NOT publish, and the publisher
+    // MUST NOT continue.
+    isIgnoreExitValue = false
+}
+
+/**
+ * The producer of the Maven publication manifest.
+ *
+ * It reads the candidate's handoff and the bundle that was staged for it,
+ * and writes the two documents of the channel: the manifest, which says
+ * what is published, and the request, which asks for that manifest to be
+ * published.
+ *
+ * It is a producer and not a step of the gate: nothing here decides whether
+ * the bundle may be published. That decision is the door's, and the door
+ * reads the documents this task writes.
+ */
+tasks.register<JavaExec>("mavenPublicationManifest") {
+    group = "distribution"
+    description = "write the Maven publication manifest and the request that publishes it."
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.MavenPublicationManifestMainKt")
+
+    val handoff = providers.gradleProperty("maven.handoff").orElse("").get()
+    val bundle = providers.gradleProperty("maven.bundle").orElse("").get()
+    val out = providers.gradleProperty("maven.out").orElse("").get()
+
+    listOf(handoff).filter { it.isNotBlank() }.forEach { path ->
+        inputs.file(project.file(path))
+    }
+    if (bundle.isNotBlank()) inputs.dir(project.file(bundle))
+    inputs.property("maven.handoff", handoff)
+    inputs.property("maven.bundle", bundle)
+    inputs.property("maven.out", out)
+
+    // The task declares no output, so it is never up to date and it always
+    // measures. A producer that could consider itself up to date would write
+    // a manifest of the bytes of an earlier run, and a manifest of bytes
+    // nobody measured is a promise that nobody keeps.
+    outputs.upToDateWhen { false }
+
+    doFirst {
+        val missing = listOf(
+            "maven.handoff" to handoff,
+            "maven.bundle" to bundle,
+            "maven.out" to out,
+        ).filter { (_, value) -> value.isBlank() }.map { (name, _) -> name }
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "mavenPublicationManifest: ${missing.joinToString(", ")} must be named. A " +
+                    "manifest is measured from the handoff of a candidate and from the bytes " +
+                    "that were staged for it, and it cannot be stated without both.",
+            )
+        }
+    }
+
+    args = listOf(handoff, bundle, out)
+
+    // Any non-zero exit means the manifest was NOT written, and the publisher
+    // MUST NOT treat it as written.
+    isIgnoreExitValue = false
+}
+
+/**
  * Receive a `defect.reported` document and record the defect in the task board of this
  * repository.
  *

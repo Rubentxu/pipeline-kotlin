@@ -12,6 +12,7 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.serialization.json.JsonPrimitive
@@ -33,6 +34,7 @@ internal sealed interface DispatchPreparation {
     data class Rejected(
         val operationId: String,
         val input: OperationInput,
+        val fingerprint: Fingerprint,
         val reason: String,
     ) : DispatchPreparation
 
@@ -70,10 +72,11 @@ internal data class DispatchCoordinates(
  * answer, it never re-derives any of these facts.
  *
  * Order is contract. The durable identity is derived FIRST because every rejection path
- * needs it to journal the rejection. The structural gate precedes typed decode because a
- * structurally-invalid node must be rejected before any typed semantics are read
- * . Metadata is resolved by structural step key BEFORE the fingerprint, so
- * reconciliation never depends on a decoded command.
+ * needs it to journal the rejection. Metadata is resolved by structural step key BEFORE the
+ * fingerprint, so reconciliation never depends on a decoded command — and before the structural
+ * gate, because the refusal carries the identity of the operation it refuses, and that
+ * identity carries the DECLARED policy. The structural gate precedes typed decode because a
+ * structurally-invalid node must be rejected before any typed semantics are read.
  *
  * ## What it does NOT decide
  * It used to project a CONTROL OVERLAY here — the frame a `catchError` scope pushed when
@@ -135,17 +138,33 @@ internal class DispatchPreparationOwner(
             attempt = 1,
         )
 
+        // Durable metadata resolved by structural step key BEFORE typed semantics, so
+        // fingerprint and reconcile never depend on the decoded command.
+        //
+        // It is resolved BEFORE the structural gate because the refusal needs the identity of
+        // the operation it refuses, and the identity carries the DECLARED policy. A node whose
+        // key the registry does not know declares no policy at all: `RERUN` is then the honest
+        // answer, because an operation nothing declared can never be memoized.
+        val declared = metadataResolver.resolve(step.pluginStepId)
+
         // The structural gate: a node that is not structurally a canonical Step is
         // rejected here, before any typed semantics are read.
         when (val structural = StructuralPreparationGate.prepare(step)) {
-            is StructuralPreparation.Rejected ->
-                return DispatchPreparation.Rejected(operationId, input, structural.reason)
+            is StructuralPreparation.Rejected -> return DispatchPreparation.Rejected(
+                operationId = operationId,
+                input = input,
+                fingerprint = Fingerprint.compute(
+                    input,
+                    step.pluginStepId.value,
+                    declared?.replayPolicy ?: ReplayPolicy.RERUN,
+                    1,
+                ),
+                reason = structural.reason,
+            )
             is StructuralPreparation.Ready -> Unit
         }
 
-        // durable metadata resolved by structural step key BEFORE typed semantics, so
-        // fingerprint and reconcile never depend on the decoded command.
-        val metadata = metadataResolver.resolve(step.pluginStepId)
+        val metadata = declared
             ?: throw EngineInvariantViolation(
                 "No durable metadata for canonical step '${step.pluginStepId.value}'",
             )

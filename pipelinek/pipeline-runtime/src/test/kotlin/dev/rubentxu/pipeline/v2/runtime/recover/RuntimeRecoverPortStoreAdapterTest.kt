@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.runtime.durable.BranchExecutionResult
 import dev.rubentxu.pipeline.v2.runtime.durable.FencingToken
@@ -244,6 +245,40 @@ class RuntimeRecoverPortStoreAdapterTest {
             1,
             rows.first { it.id == "op-1" }.attempt,
             "the operation was attempted again: the recover re-ran it",
+        )
+    }
+
+    /**
+     * The recovered terminal receipt carries the CANONICAL identity of its operation.
+     *
+     * The receipt is a durable operation like any other, so its identity comes from the ONE
+     * authority that owns it — `Fingerprint.compute` — and not from a formula spelled in this
+     * file. The formula it used to use hashed the operation id together with the encoded input,
+     * under a JSON configuration that lived here, and the encoding wrote the parameters in
+     * iteration order: the identity of a receipt depended on the order in which its parameters
+     * were assembled.
+     */
+    @Test
+    fun `el recibo terminal recuperado lleva la identidad canonica`() {
+        val fixture = fixture(
+            ops = listOf(op("op-1", OperationStatus.SUCCEEDED)),
+            observation = runningWithDeadWriter(),
+        )
+
+        fixture.adapter.recover(runId, RecoverOptions.Default)
+
+        val receipt = fixture.journal.listForRun(runId).single { it.id == "recovered-succeeded-$runId" }
+        assertEquals(
+            Fingerprint.compute(
+                receipt.input,
+                receipt.input.stepId,
+                ReplayPolicy.RERUN,
+                receipt.input.attempt,
+            ),
+            receipt.fingerprint,
+            "the receipt is a durable operation like any other: its identity comes from the " +
+                "authority that owns it, and not from a local formula that depended on the " +
+                "order in which its parameters were assembled",
         )
     }
 

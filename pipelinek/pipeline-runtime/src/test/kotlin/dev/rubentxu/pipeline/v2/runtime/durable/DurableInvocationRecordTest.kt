@@ -165,7 +165,7 @@ class DurableInvocationRecordTest {
         // (a) the SCHEMA rejection: the resolver refuses before anything executes.
         val schemaJournal = journal()
         val schemaRecords = DurableInvocationRecord(schemaJournal)
-        resolver(schemaRecords).rejectSchema(OP_ID, input, "schema mismatch")
+        resolver(schemaRecords).rejectSchema(OP_ID, input, fingerprint, "schema mismatch")
         val schemaRow = rowOf(schemaRecords.read(OP_ID), "the schema rejection row")
 
         // (b) the EXECUTION: the executor admits, runs, and settles.

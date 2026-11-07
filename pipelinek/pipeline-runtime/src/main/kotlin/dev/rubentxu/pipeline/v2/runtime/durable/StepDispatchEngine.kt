@@ -20,6 +20,7 @@ import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.step.BodyContinuation
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
@@ -345,6 +346,7 @@ internal class StepDispatchEngine(
                     schemaRejection(
                         operationId = preparation.operationId,
                         input = preparation.input,
+                        fingerprint = preparation.fingerprint,
                         message = preparation.reason,
                         context = innerScope.ambient,
                     ),
@@ -472,6 +474,7 @@ internal class StepDispatchEngine(
                     schemaRejection(
                         operationId = operationId,
                         input = input,
+                        fingerprint = fingerprint,
                         message = "schema mismatch for step '${step.pluginStepId.value}' on " +
                             "'${step.id.value}': ${typed.reason}",
                         context = innerScope.ambient,
@@ -534,9 +537,14 @@ internal class StepDispatchEngine(
      * A terminal SCHEMA rejection, in the context the Step left behind.
      *
      * The row itself is written by the resolver that owns the rejection ([DurableInvocationResolver]
-     * records a FAILED row with the rejection's own fingerprint); what the engine owns here is the
+     * records a FAILED row with the identity the refusal carries); what the engine owns here is the
      * SHAPE of the refusal: a [CommonExecutionResult] carrying the typed SCHEMA failure, in the
      * context that the rejected Step had reached.
+     *
+     * The identity travels in, it is not computed here: the refusal writes the SAME operation the
+     * admission would have written, and the preparation is where that identity is computed. A
+     * refusal that spelled its own identity would write a second one for the same operation, and
+     * the next attempt of the run would compare the two and declare a divergence.
      *
      * The two rejection sites — the structural verdict and the typed-input mismatch — differ in
      * WHAT they reject and in WHICH context they leave behind, and nothing else. They are one
@@ -546,11 +554,12 @@ internal class StepDispatchEngine(
     private fun schemaRejection(
         operationId: String,
         input: OperationInput,
+        fingerprint: Fingerprint,
         message: String,
         context: ExecutionContext,
     ): DispatchedStep = DispatchedStep(
         CommonExecutionResult(
-            outcome = invocationResolver.rejectSchema(operationId, input, message),
+            outcome = invocationResolver.rejectSchema(operationId, input, fingerprint, message),
         ),
         context,
     )

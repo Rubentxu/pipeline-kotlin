@@ -2,6 +2,8 @@ package dev.rubentxu.pipeline.v2.runtime.control
 
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventRecordRead
 import dev.rubentxu.pipeline.v2.events.EventRecordSlice
@@ -106,6 +108,41 @@ class RuntimeControlPortStoreAdapterTest {
             1,
             fixture.journal.listForRun(runId).size,
             "the cancellation left one receipt in the journal",
+        )
+    }
+
+    /**
+     * El recibo de cancelación lleva la IDENTIDAD CANÓNICA de su operación.
+     *
+     * El recibo es una operación durable como cualquier otra, así que su identidad la calcula
+     * la ÚNICA autoridad que la posee — `Fingerprint.compute` — y no una fórmula escrita en
+     * este fichero. La fórmula que usaba antes hasheaba el operation id junto al input
+     * codificado, bajo una configuración de JSON que vivía aquí, y la codificación escribía
+     * los parámetros en el ORDEN DE ITERACIÓN: la identidad de un recibo dependía del orden en
+     * que se armaron sus parámetros.
+     *
+     * Un recibo que ya está en un journal conserva el digest con el que se escribió —el camino
+     * de conflicto del store preserva la columna `fingerprint`, y ningún lector recalcula la
+     * identidad de un recibo—, así que unificar la fórmula no invalida lo ya journalizado.
+     */
+    @Test
+    fun `el recibo de cancelacion lleva la identidad canonica`() {
+        val fixture = fixture()
+
+        fixture.adapter.cancel(runId, CancelReason.UserRequested)
+
+        val receipt = fixture.journal.listForRun(runId).single { it.id == CancelReceipt.opIdOf(runId) }
+        assertEquals(
+            Fingerprint.compute(
+                receipt.input,
+                receipt.input.stepId,
+                ReplayPolicy.RERUN,
+                receipt.input.attempt,
+            ),
+            receipt.fingerprint,
+            "el recibo es una operación durable como cualquier otra: su identidad la calcula la " +
+                "autoridad que la posee, y no una fórmula local que dependía del orden en que se " +
+                "armaron sus parámetros",
         )
     }
 

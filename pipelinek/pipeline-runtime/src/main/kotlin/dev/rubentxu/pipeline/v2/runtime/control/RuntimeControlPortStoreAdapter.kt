@@ -7,8 +7,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
-import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.runtime.durable.LeaseAcquisition
@@ -27,7 +27,6 @@ import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort
 import dev.rubentxu.pipeline.v2.output.store.SealOutcome
 import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import java.util.UUID
 
@@ -111,12 +110,6 @@ class RuntimeControlPortStoreAdapter(
     private val clock: Clock,
     private val ownerId: RunOwnerId,
 ) : RuntimeControlPort {
-
-    /** The receipt's own encoding. The journal's encoding is the journal's business. */
-    private val json: Json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-    }
 
     override fun cancel(runId: String, reason: CancelReason): CancelOutcome {
         // 1. Does this instance know the run at all? Asked BEFORE the
@@ -322,6 +315,19 @@ class RuntimeControlPortStoreAdapter(
      * is what was aborted, not the cancellation, and a receipt that claimed to
      * have failed would show up in the product's failure report as a failed
      * operation of the run.
+     *
+     * ## The identity of the receipt
+     *
+     * The receipt is a durable operation like any other, so its identity comes from the ONE
+     * authority that owns it — [Fingerprint.compute] — and not from a formula spelled here. The
+     * formula this used to use hashed the operation id together with the encoded input, under a
+     * JSON configuration that lived in this file, and the encoding wrote the parameters in
+     * iteration order: the identity of a receipt depended on the order in which its parameters
+     * were assembled. The canonical authority sorts them, so it does not.
+     *
+     * A receipt already in a journal keeps the digest it was written with: the store's conflict
+     * path preserves the stored fingerprint, and nothing recomputes a receipt's identity — the
+     * receipt is read by its operation id and its status.
      */
     private fun cancelReceipt(
         runId: String,
@@ -330,7 +336,7 @@ class RuntimeControlPortStoreAdapter(
     ): RerunOperation {
         val opId = receiptOpId(runId)
         val input = OperationInput(
-            stepId = "cancel",
+            stepId = CANCEL_STEP_ID,
             params = mapOf(
                 "kind" to JsonPrimitive("cancel"),
                 "runId" to JsonPrimitive(runId),
@@ -342,7 +348,7 @@ class RuntimeControlPortStoreAdapter(
         )
         return RerunOperation(
             id = opId,
-            fingerprint = Fingerprint(Sha256.ofText("$opId|${json.encodeToString(input)}")),
+            fingerprint = Fingerprint.compute(input, input.stepId, ReplayPolicy.RERUN, input.attempt),
             input = input,
             output = null,
             status = OperationStatus.SUCCEEDED,
@@ -453,6 +459,15 @@ class RuntimeControlPortStoreAdapter(
          * it too.
          */
         fun receiptOpId(runId: String): String = CancelReceipt.opIdOf(runId)
+
+        /**
+         * The step the receipt travels under.
+         *
+         * It is part of the receipt's durable identity, so it is named in ONE place: the
+         * identity of an operation is the identity of the thing it did, and the receipt's thing
+         * is the cancellation.
+         */
+        const val CANCEL_STEP_ID: String = "cancel"
 
         /** The `path` the cancel's diagnostic carries: the producer's name. */
         const val CANCEL_DIAGNOSTIC_PATH: String = "pipelinek:runs cancel"

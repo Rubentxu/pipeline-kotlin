@@ -50,19 +50,31 @@ internal class DurableInvocationResolver(
 
     /**
      * Records a FAILED journal row and returns the terminal `SCHEMA` [StepOutcome]; the effective
-     * Executor is never invoked. Fingerprint uses [ReplayPolicy.RERUN] as on the rejection path.
+     * Executor is never invoked.
      *
-     * The row is written through [DurableInvocationRecord], which owns the row's shape; the
-     * fingerprint stays this method's because a schema rejection never reaches the dispatch
-     * preparation that owns the canonical one.
+     * The row carries the identity of the operation it refuses, and that identity is the one
+     * the CALLER computed: the dispatch preparation owns the canonical fingerprint of an
+     * invocation, and a refusal writes the same operation the admission would have written.
+     *
+     * ## Why the identity is not computed here
+     *
+     * It used to be computed here, with [ReplayPolicy.RERUN] hardcoded. The policy is part of
+     * the identity — it is hashed into it — and the declared policy is the only record of it in
+     * the durable row: nothing writes a `MemoizedOperation`, so every step row travels under
+     * the kind `RERUN` and the fingerprint is the one place the policy is written down. A
+     * refusal that spelled the identity with `RERUN` therefore recorded a policy the step never
+     * declared, and the next attempt of the same run computed the declared policy's digest,
+     * compared the two and declared a DIVERGENCE — for a program that had not changed, and for
+     * an operation that had never run.
+     *
+     * The row is written through [DurableInvocationRecord], which owns the row's shape.
     */
-    internal fun rejectSchema(operationId: String, input: OperationInput, message: String): StepOutcome {
-        val fingerprint = Fingerprint.compute(
-            input,
-            input.stepId,
-            ReplayPolicy.RERUN,
-            DurableInvocationRecord.ATTEMPT,
-        )
+    internal fun rejectSchema(
+        operationId: String,
+        input: OperationInput,
+        fingerprint: Fingerprint,
+        message: String,
+    ): StepOutcome {
         records.settle(operationId, fingerprint, input, OperationStatus.FAILED, null)
         return StepOutcome.Failure(
             PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, message),

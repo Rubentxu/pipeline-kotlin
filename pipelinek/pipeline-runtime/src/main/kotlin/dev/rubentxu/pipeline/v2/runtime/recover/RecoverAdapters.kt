@@ -9,9 +9,9 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
-import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.runtime.durable.LeaseAcquisition
 import dev.rubentxu.pipeline.v2.runtime.durable.LeaseLiveness
@@ -28,7 +28,6 @@ import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.runtime.control.CancelReceipt
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
@@ -38,6 +37,15 @@ import kotlinx.serialization.json.JsonPrimitive
  * It is a WINDOW, not an instant: the caller may come back until then.
  */
 private const val REATTACH_WINDOW_MS = 30_000L
+
+/**
+ * The step the recovered terminal receipt travels under.
+ *
+ * It is part of the receipt's durable identity, so it is named in ONE place: the identity of an
+ * operation is the identity of the thing it did, and the receipt's thing is the recovery that
+ * closed the run.
+ */
+private const val RECOVER_STEP_ID = "recover"
 
 /**
  * What the substrate says about a run — or the refusal that stops us from
@@ -115,10 +123,6 @@ class RuntimeRecoverPortStoreAdapter(
 */
     private val pinPort: OutputPinPort? = null,
     private val syntheticObserverId: String = "m2-observer",
-    private val json: Json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-    },
 ) : RuntimeRecoverPort {
 
     // recover composes four contract surfaces — lease boundary, introspection,
@@ -425,6 +429,19 @@ class RuntimeRecoverPortStoreAdapter(
     /**
      * Apply a terminal receipt to the substrate: the journal row, the cursor
      * and the output plane. This is the only part of a recover that WRITES.
+     *
+     * ## The identity of the receipt
+     *
+     * The receipt is a durable operation like any other, so its identity comes from the ONE
+     * authority that owns it — [Fingerprint.compute] — and not from a formula spelled here. The
+     * formula this used to use hashed the operation id together with the encoded input, under a
+     * JSON configuration that lived in this file, and the encoding wrote the parameters in
+     * iteration order: the identity of a receipt depended on the order in which its parameters
+     * were assembled. The canonical authority sorts them, so it does not.
+     *
+     * A receipt already in a journal keeps the digest it was written with: the store's conflict
+     * path preserves the stored fingerprint, and nothing recomputes a receipt's identity — the
+     * receipt is read by its operation id and its status.
      */
     private fun dispatchReuseTerminal(
         runId: String,
@@ -439,7 +456,7 @@ class RuntimeRecoverPortStoreAdapter(
         val outcomeName = recoveredOutcomeNameOf(receipt.terminal)
         val opId = "recovered-$outcomeName-$runId"
         val input = OperationInput(
-            stepId = "recover",
+            stepId = RECOVER_STEP_ID,
             params = mapOf(
                 "kind" to JsonPrimitive("recovered-terminal"),
                 "runId" to JsonPrimitive(runId),
@@ -449,11 +466,10 @@ class RuntimeRecoverPortStoreAdapter(
             runId = runId,
             attempt = 1,
         )
-        val fingerprintHex = Sha256.ofText("$opId|${json.encodeToString(input)}")
         val recoveredStatus = recoveredStatusOf(receipt.terminal)
         val recoveredOp = RerunOperation(
             id = opId,
-            fingerprint = Fingerprint(fingerprintHex),
+            fingerprint = Fingerprint.compute(input, input.stepId, ReplayPolicy.RERUN, input.attempt),
             input = input,
             output = null,
             status = recoveredStatus,

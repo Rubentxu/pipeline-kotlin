@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.serialization.json.JsonPrimitive
@@ -166,6 +167,13 @@ class DispatchPreparationOwnerTest {
             "Unsupported step payload schema 'dsl-v2' for 'step-1'",
             rejected.reason,
             "the rejection names the schema it refused",
+        )
+        assertEquals(
+            Fingerprint.compute(rejected.input, rejected.input.stepId, ReplayPolicy.MEMOIZED, 1),
+            rejected.fingerprint,
+            "the refusal carries the identity of the operation it refuses, under the policy the " +
+                "step DECLARED: the journal's only record of the policy is this digest, and a " +
+                "refusal that spelled its own identity recorded a policy the step never declared",
         )
     }
 }

@@ -47,13 +47,27 @@ import org.junit.jupiter.api.io.TempDir
  * The file, the driver, the engine and the second connection are the real ones. Nothing in the
  * door is faked.
  *
- * ## THE ONE TIMER
+ * ## THE TWO TIMERS
  *
- * The row that proves the door WAITS needs the holder to let go of the lock while the door is
- * waiting for it, and the door is the one blocked, so the holder lets go on its own after a
- * bounded moment. The window the door declares is five seconds and the holder lets go after half
- * of one: the margin is wide enough that a loaded machine cannot turn the row into a flake, and
- * the row asserts that the door took longer than a door that did not wait would take.
+ * Both rows need the holder to let go of the lock on its own, and the door is the one blocked.
+ *
+ * The row that proves the door WAITS uses the door's own window — five seconds — and lets the
+ * holder go after half of one: the margin is wide enough that a loaded machine cannot turn the row
+ * into a flake, and the row asserts that the door took longer than a door that did not wait would
+ * take.
+ *
+ * The row that proves the door REFUSES puts three measured moments in a row:
+ *
+ * ```text
+ *   200 ms   the window the door declares
+ *  1000 ms   when the holder lets go of the lock
+ *  3000 ms   the wait a connection has when it declares none (measured, shipped driver)
+ * ```
+ *
+ * The door's window runs out while the holder still holds the lock, so the door has to refuse.
+ * A door that waited with anything longer than its own window would be still waiting at the
+ * holder's release, would take the lock and would OPEN: the row goes red without reading a clock.
+ * That is why the holder's release sits between the two numbers instead of after both.
  */
 class SqliteConnectionFactoryWaitTest {
 
@@ -88,7 +102,10 @@ class SqliteConnectionFactoryWaitTest {
     @DisplayName("the producer's door refuses a journal that stays locked, naming the lock")
     fun theProducersDoorRefusesAJournalThatStaysLockedNamingTheLock() {
         val file = tempDir.resolve("locked.db").toString()
-        val holder = Holder(file)
+        // The holder lets go after 1000 ms: after the door's own window (200 ms) has run out and
+        // before the wait a connection has when it declares none (3000 ms). A door that waited
+        // with anything else would take the lock the moment it frees and would open.
+        val holder = Holder(file, releaseAfterMillis = 1000)
 
         try {
             val refusal = assertThrows(SQLException::class.java) {

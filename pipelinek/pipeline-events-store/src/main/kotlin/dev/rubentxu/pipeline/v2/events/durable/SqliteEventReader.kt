@@ -27,8 +27,9 @@ import java.sql.ResultSet
  *
  * ## What this is NOT
  *
- * It is not a writer: this owner opens only through the store's door, which in the reader's lane
- * is one the database engine refuses to write through. It is not a query engine: the store is the
+ * It is not a writer: this owner opens only through the store's READING door, which the database
+ * engine refuses to write through in BOTH lanes — a producer reading back the run it wrote is
+ * reading, and a reader is reading. It is not a query engine: the store is the
  * SEQUENCE authority and the cut point, not a filter — a query that is not `All` is refused closed
  * by the port in front of it. And it is not the SELECTION authority: what a reader is shown is
  * decided by the consumer that asks, and never here.

@@ -25,11 +25,14 @@ import java.sql.Connection
  * and [replay_cursor][dev.rubentxu.pipeline.v2.events.durable.OperationJournalSchema] tables
  * via [SqliteConnectionFactory] with WAL mode enabled.
  *  The two lanes
- * A store is opened in one of two [EventStoreMode]s. The WRITER's lane creates the schema,
- * appends facts and owns the file. The READER's lane opens the same file through a connection
- * the database engine refuses to write through, creates no schema, migrates nothing, backfills
- * nothing and starts no writer thread — so an observer of a live run cannot change that run's
- * journal, and cannot hold a write lock on it either.
+ * A store is opened in one of two [EventStoreMode]s. The lane decides who may WRITE: the WRITER's
+ * lane creates the schema, appends facts and owns the file; the READER's lane creates no schema,
+ * migrates nothing, backfills nothing and starts no writer thread.
+ *
+ * The lane does NOT decide how a READ is opened. Every read goes through the store's READING door,
+ * in both lanes, and that door is one the database engine refuses to write through — so a reader
+ * cannot change that run's journal, and cannot hold a write lock on it either, whether it is
+ * observing a run from another process or reading back the run its own producer wrote.
  *
  * ## The three owners
  *
@@ -56,9 +59,9 @@ class SqliteEventStore(
     private val file: String,
     private val mode: EventStoreMode = EventStoreMode.Writable,
     /**
-     * The store's DOOR. Every owner opens its connections through it, so the lane is decided in
-     * ONE place: the producer's door sets the journal mode and verifies WAL, and the reader's door
-     * is one the database engine refuses to write through.
+     * The PRODUCER's door. The owners that WRITE open their connections through it: the writer,
+     * the schema, the operation journal and the replay cursor. It sets the journal mode and
+     * verifies WAL, because a writer that does not persist durably is a defect.
      *
      * It is a PARAMETER because the number of connections a read opens is a fact about this
      * store's cost, and a fact that cannot be counted cannot be improved: a caller that counts
@@ -66,20 +69,36 @@ class SqliteEventStore(
      * cannot hide behind a statement it happened to batch.
      */
     private val connections: () -> Connection = { openEventStoreConnection(file, mode) },
+    /**
+     * The READING door. Every read goes through it, in BOTH lanes, and it is one the database
+     * engine refuses to write through.
+     *
+     * It is a PARAMETER for the same reason the producer's door is one, and for one more: a
+     * guarantee nobody can observe is a guarantee nobody can check. A caller that wraps this door
+     * holds the connection a read actually used, and can ask the ENGINE whether that connection
+     * may write. Without the seam, "the reader cannot write" would be a claim about the code
+     * instead of a fact about the run.
+     */
+    readerConnections: () -> Connection = { openEventStoreReaderConnection(file) },
 ) : EventSink, EventRunSnapshotReader, AutoCloseable {
+
+    /**
+     * The writing owner. It exists only in the producer's lane: a reader's store holds no writer
+     * connection, starts no writer thread, and can never append.
+     *
+     * It is built BEFORE the reading owner, and the order is the point: the writer creates the
+     * file and the schema, and the reading door is one the engine refuses to create a file
+     * through. A reader built first would ask a file that is not there yet, and the store would
+     * fail to open a journal it is about to create.
+     */
+    private val writer: SqliteEventWriter? =
+        if (mode.mayWrite()) SqliteEventWriter(connections) else null
 
     /**
      * The reading owner. It exists in BOTH lanes: a writer can read back what it wrote, and a
      * reader can only read.
      */
-    private val reader = SqliteEventReader(connections, mode)
-
-    /**
-     * The writing owner. It exists only in the producer's lane: a reader's store holds no writer
-     * connection, starts no writer thread, and can never append.
-     */
-    private val writer: SqliteEventWriter? =
-        if (mode.mayWrite()) SqliteEventWriter(connections) else null
+    private val reader = SqliteEventReader(readerConnections, mode)
 
     /**
      * Whether this store holds an event history at all.
@@ -147,10 +166,13 @@ class SqliteEventStore(
     }
 
     /**
-     * Exposes the underlying connection factory for use by [OperationJournal]
+     * Exposes the PRODUCER's connection factory for use by [OperationJournal]
      * and [ReplayCursorStore].
      * This is intentionally internal — it is only used within the durable
      * execution subsystem that shares the same SQLite database file.
+     *
+     * It is the PRODUCER's door and not the reading one because everything that uses it WRITES to
+     * the same file: a journal entry and a replay cursor are facts, and a fact is written.
     */
     fun underlyingConnectionFactory(): () -> Connection = connections
 
@@ -173,9 +195,41 @@ class SqliteEventStore(
  *
  * The mode decides which door this is: the producer's door sets the journal mode and verifies
  * WAL, and the reader's door is one the database engine refuses to write through. Every owner
- * opens its connections here, so the lane is decided in ONE place.
+ * that WRITES opens its connections here, so the lane is decided in ONE place.
  */
 internal fun openEventStoreConnection(file: String, mode: EventStoreMode): Connection = when (mode) {
     EventStoreMode.Writable -> SqliteConnectionFactory.open(file)
     EventStoreMode.ReadOnly -> SqliteConnectionFactory.openReadOnly(file)
 }
+
+/**
+ * Opens the store's READING door: one the database engine refuses to write through.
+ *
+ * ## Why the same door in both lanes
+ *
+ * The lane decides who may WRITE. It does not decide how a READ is opened, because a read is a
+ * read: the producer reading back the run it wrote is reading, and a reader is reading, and the
+ * engine has no reason to let either of them change the journal.
+ *
+ * The producer's lane used to open its reads through the producer's door, and that door sets
+ * `PRAGMA journal_mode = WAL` — a WRITE to the database header when the mode differs — and
+ * verifies the mode with a fourth statement. The producer's own writer had already put the file
+ * in WAL, so the header did not change in practice; what that arrangement left was a reader whose
+ * connection the engine ALLOWED to write, held in place by the accident of the file's current
+ * mode rather than by any property of the door. A guarantee that rests on an accident is not a
+ * guarantee: the day the file is not in WAL yet, the same read would have converted it.
+ *
+ * ## What this door buys
+ *
+ * The engine refuses every write through it — DML and DDL alike — with `SQLITE_READONLY`, and it
+ * refuses the WAL recovery that a write-capable connection would perform on a journal left behind
+ * by a writer that died. So a read cannot change the journal's mode, cannot change its content,
+ * and cannot take a write lock on it, in either lane.
+ *
+ * Measured against the shipped driver (sqlite-jdbc 3.46.1.3): this door reads a WAL journal that
+ * a live producer holds open, reads it while that producer holds a write transaction, reads it
+ * after the producer closed cleanly, and reads a journal that is not in WAL mode — in every case
+ * without changing a byte of the file.
+ */
+internal fun openEventStoreReaderConnection(file: String): Connection =
+    SqliteConnectionFactory.openReadOnly(file)

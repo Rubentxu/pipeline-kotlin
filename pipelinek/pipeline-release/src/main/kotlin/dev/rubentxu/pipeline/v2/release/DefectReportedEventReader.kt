@@ -5,6 +5,7 @@ import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.serializer
 
 /**
  * What reading a defect report may yield.
@@ -78,7 +79,7 @@ object DefectReportedEventReader {
 
         // The names the schema defines, read from the serializer itself, so
         // the check and the document cannot disagree.
-        val known = DefectReportedEvent.serializer().descriptor.elementNames.toSet()
+        val known = serializer<DefectReportedEvent>().descriptor.elementNames.toSet()
         val unknown = fields.keys - known
         if (unknown.isNotEmpty()) {
             return DefectReportedEventDecode.Rejected(
@@ -109,7 +110,7 @@ object DefectReportedEventReader {
     private fun readEvent(element: JsonElement): DefectReportedEventDecode =
         try {
             DefectReportedEventDecode.Accepted(
-                reader.decodeFromJsonElement(DefectReportedEvent.serializer(), element),
+                reader.decodeFromJsonElement(serializer<DefectReportedEvent>(), element),
             )
         } catch (e: SerializationException) {
             DefectReportedEventDecode.Rejected(

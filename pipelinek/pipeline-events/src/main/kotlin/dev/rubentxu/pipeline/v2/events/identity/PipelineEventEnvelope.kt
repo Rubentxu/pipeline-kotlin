@@ -12,6 +12,7 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 import java.time.Instant
 
 /**
@@ -91,7 +92,7 @@ object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
         val provenance: ProviderProvenance? = null,
     )
 
-    override val descriptor: SerialDescriptor = Wire.serializer().descriptor
+    override val descriptor: SerialDescriptor = serializer<Wire>().descriptor
 
     override fun serialize(encoder: Encoder, value: PipelineEventEnvelope) {
         val w = Wire(
@@ -111,11 +112,11 @@ object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
             correlation = value.correlation,
             provenance = value.provenance,
         )
-        encoder.encodeSerializableValue(Wire.serializer(), w)
+        encoder.encodeSerializableValue(serializer<Wire>(), w)
     }
 
     override fun deserialize(decoder: Decoder): PipelineEventEnvelope {
-        val w = decoder.decodeSerializableValue(Wire.serializer())
+        val w = decoder.decodeSerializableValue(serializer<Wire>())
         if (w.version != PipelineEventEnvelope.VERSION) {
             throw UnsupportedEnvelopeVersionException(w.version)
         }
@@ -143,17 +144,17 @@ object ResourceRefSerializer : KSerializer<ResourceRef> {
     @Serializable
     private data class Wire(val kind: String, val segments: List<String>)
 
-    override val descriptor: SerialDescriptor = Wire.serializer().descriptor
+    override val descriptor: SerialDescriptor = serializer<Wire>().descriptor
 
     override fun serialize(encoder: Encoder, value: ResourceRef) {
         encoder.encodeSerializableValue(
-            Wire.serializer(),
+            serializer<Wire>(),
             Wire(value.kind.name, value.segments),
         )
     }
 
     override fun deserialize(decoder: Decoder): ResourceRef {
-        val w = decoder.decodeSerializableValue(Wire.serializer())
+        val w = decoder.decodeSerializableValue(serializer<Wire>())
         val kind = try {
             ResourceKind.valueOf(w.kind)
         } catch (e: IllegalArgumentException) {
@@ -176,14 +177,14 @@ object EventRefSerializer : KSerializer<EventRef> {
         val id: String,
     )
 
-    override val descriptor: SerialDescriptor = Wire.serializer().descriptor
+    override val descriptor: SerialDescriptor = serializer<Wire>().descriptor
 
     override fun serialize(encoder: Encoder, value: EventRef) {
-        encoder.encodeSerializableValue(Wire.serializer(), Wire(source = value.source, id = value.id.value))
+        encoder.encodeSerializableValue(serializer<Wire>(), Wire(source = value.source, id = value.id.value))
     }
 
     override fun deserialize(decoder: Decoder): EventRef {
-        val w = decoder.decodeSerializableValue(Wire.serializer())
+        val w = decoder.decodeSerializableValue(serializer<Wire>())
         return EventRef(source = w.source, id = EventId(w.id))
     }
 }

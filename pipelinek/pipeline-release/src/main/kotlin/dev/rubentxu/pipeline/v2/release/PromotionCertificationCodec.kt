@@ -5,6 +5,7 @@ import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.serializer
 
 /**
  * What reading a promotion certification may yield.
@@ -62,7 +63,7 @@ object PromotionCertificationCodec {
      * bytes.
      */
     fun encode(certification: PromotionCertification): String =
-        writer.encodeToString(PromotionCertification.serializer(), certification) + "\n"
+        writer.encodeToString(serializer<PromotionCertification>(), certification) + "\n"
 
     /**
      * Read a certification from [text].
@@ -91,7 +92,7 @@ object PromotionCertificationCodec {
 
         // The names the schema defines, read from the serializer itself, so
         // the check and the document cannot disagree.
-        val known = PromotionCertification.serializer().descriptor.elementNames.toSet()
+        val known = serializer<PromotionCertification>().descriptor.elementNames.toSet()
         val unknown = fields.keys - known
         if (unknown.isNotEmpty()) {
             return PromotionCertificationDecode.Rejected(
@@ -122,7 +123,7 @@ object PromotionCertificationCodec {
     private fun readCertification(element: JsonElement): PromotionCertificationDecode =
         try {
             PromotionCertificationDecode.Accepted(
-                reader.decodeFromJsonElement(PromotionCertification.serializer(), element),
+                reader.decodeFromJsonElement(serializer<PromotionCertification>(), element),
             )
         } catch (e: SerializationException) {
             PromotionCertificationDecode.Rejected(

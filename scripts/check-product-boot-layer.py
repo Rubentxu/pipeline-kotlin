@@ -144,6 +144,9 @@ DECLARED_EXECUTABLES = {
     "scripts/check-published-reference.py": (
         "a guard of the gate: it reads the tree and starts nothing"
     ),
+    "scripts/check-serializer-visibility.py": (
+        "a guard of the gate: it reads the tree and starts nothing"
+    ),
     "scripts/check-sdk-bundle.py": (
         "a guard of the gate: it reads the staged bundle, recomputes its "
         "digests and verifies its signatures, and it starts nothing of the "

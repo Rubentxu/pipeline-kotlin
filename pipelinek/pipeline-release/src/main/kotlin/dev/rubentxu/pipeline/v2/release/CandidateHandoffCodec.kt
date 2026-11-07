@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.release
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 
 /**
  * Deterministic serialisation of the candidate handoff descriptor.
@@ -19,8 +20,8 @@ object CandidateHandoffCodec {
     }
 
     fun encode(handoff: CandidateHandoff): String =
-        json.encodeToString(CandidateHandoff.serializer(), handoff) + "\n"
+        json.encodeToString(serializer<CandidateHandoff>(), handoff) + "\n"
 
     fun decode(text: String): CandidateHandoff =
-        json.decodeFromString(CandidateHandoff.serializer(), text)
+        json.decodeFromString(serializer<CandidateHandoff>(), text)
 }

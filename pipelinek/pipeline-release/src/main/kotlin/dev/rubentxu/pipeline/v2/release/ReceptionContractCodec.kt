@@ -4,6 +4,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.serializer
 
 /**
  * What reading a reception contract may yield.
@@ -66,7 +67,7 @@ object ReceptionContractCodec {
         } else {
             // The names the schema defines, read from the serializer itself, so
             // the check and the document cannot disagree.
-            val known = ReceptionContract.serializer().descriptor.elementNames.toSet()
+            val known = serializer<ReceptionContract>().descriptor.elementNames.toSet()
             val unknown = fields.keys - known
             if (unknown.isNotEmpty()) {
                 ReceptionContractDecodeResult.Rejected(
@@ -87,7 +88,7 @@ object ReceptionContractCodec {
      * this build's.
      */
     private fun readContract(fields: JsonObject): ReceptionContractDecodeResult = try {
-        val contract = reader.decodeFromJsonElement(ReceptionContract.serializer(), fields)
+        val contract = reader.decodeFromJsonElement(serializer<ReceptionContract>(), fields)
         if (contract.schemaVersion != ReceptionContract.SCHEMA_VERSION) {
             rejected(
                 "the contract declares schema '${contract.schemaVersion}' and this build reads " +

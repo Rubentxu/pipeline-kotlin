@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.serializer
 
 /**
  * SHA-256 fingerprint of a durable operation's input, used as a cache key.
@@ -167,7 +168,7 @@ value class Fingerprint(val hex: String) {
                 replayPolicy = replayPolicy,
             )
 
-            val canonicalJson = JSON.encodeToString(FingerprintPayload.serializer(), payload)
+            val canonicalJson = JSON.encodeToString(serializer<FingerprintPayload>(), payload)
             // Routed through [dev.rubentxu.pipeline.v2.domain.digest.Sha256]. This is the
             // single most durable digest in the repository: it is the operation identity that
             // replay, divergence and resume are decided against, and every shipped candidate

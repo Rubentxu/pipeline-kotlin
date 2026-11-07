@@ -5,6 +5,7 @@ import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.serializer
 
 /**
  * What reading an event document may yield.
@@ -49,7 +50,7 @@ object CertificationRequestedEventCodec {
      * The event as JSON. The same event always yields the same bytes.
      */
     fun encode(event: CertificationRequestedEvent): String =
-        writer.encodeToString(CertificationRequestedEvent.serializer(), event) + "\n"
+        writer.encodeToString(serializer<CertificationRequestedEvent>(), event) + "\n"
 
     /**
      * Read an event from [text].
@@ -79,7 +80,7 @@ object CertificationRequestedEventCodec {
 
         // The names the schema defines, read from the serializer itself, so
         // the check and the document cannot disagree.
-        val known = CertificationRequestedEvent.serializer().descriptor.elementNames.toSet()
+        val known = serializer<CertificationRequestedEvent>().descriptor.elementNames.toSet()
         val unknown = fields.keys - known
         if (unknown.isNotEmpty()) {
             return CertificationEventDecode.Rejected(
@@ -110,7 +111,7 @@ object CertificationRequestedEventCodec {
     private fun readEvent(element: JsonElement): CertificationEventDecode =
         try {
             CertificationEventDecode.Accepted(
-                reader.decodeFromJsonElement(CertificationRequestedEvent.serializer(), element),
+                reader.decodeFromJsonElement(serializer<CertificationRequestedEvent>(), element),
             )
         } catch (e: SerializationException) {
             CertificationEventDecode.Rejected(

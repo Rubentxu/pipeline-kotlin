@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.release
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 
 /**
  * Deterministic serialisation of the documents of the Maven channel.
@@ -30,17 +31,17 @@ object MavenPublicationCodec {
 
     /** The canonical textual form of a manifest. */
     fun encode(manifest: MavenPublicationManifest): String =
-        json.encodeToString(MavenPublicationManifest.serializer(), manifest) + "\n"
+        json.encodeToString(serializer<MavenPublicationManifest>(), manifest) + "\n"
 
     /** Read a manifest, refusing a document that is not one. */
     fun decodeManifest(text: String): MavenPublicationManifest =
-        json.decodeFromString(MavenPublicationManifest.serializer(), text)
+        json.decodeFromString(serializer<MavenPublicationManifest>(), text)
 
     /** The canonical textual form of a request. */
     fun encode(request: MavenPublicationRequest): String =
-        json.encodeToString(MavenPublicationRequest.serializer(), request) + "\n"
+        json.encodeToString(serializer<MavenPublicationRequest>(), request) + "\n"
 
     /** Read a request, refusing a document that is not one. */
     fun decodeRequest(text: String): MavenPublicationRequest =
-        json.decodeFromString(MavenPublicationRequest.serializer(), text)
+        json.decodeFromString(serializer<MavenPublicationRequest>(), text)
 }

@@ -4,6 +4,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.serializer
 
 /**
  * What reading a cycle receipt may yield, or why the document is not one.
@@ -60,7 +61,7 @@ object CycleReceiptCodec {
      * The receipt as JSON. The same receipt always yields the same bytes.
      */
     fun encode(receipt: CycleReceipt): String =
-        writer.encodeToString(CycleReceipt.serializer(), receipt) + "\n"
+        writer.encodeToString(serializer<CycleReceipt>(), receipt) + "\n"
 
     /**
      * Read a cycle receipt from [text].
@@ -82,7 +83,7 @@ object CycleReceiptCodec {
         } else {
             // The names the schema defines, read from the serializer itself, so
             // the check and the document cannot disagree.
-            val known = CycleReceipt.serializer().descriptor.elementNames.toSet()
+            val known = serializer<CycleReceipt>().descriptor.elementNames.toSet()
             val unknown = fields.keys - known
             if (unknown.isNotEmpty()) {
                 CycleReceiptDecodeResult.Rejected(
@@ -111,7 +112,7 @@ object CycleReceiptCodec {
      * this build's.
      */
     private fun readReceipt(fields: JsonObject): CycleReceiptDecodeResult = try {
-        val receipt = reader.decodeFromJsonElement(CycleReceipt.serializer(), fields)
+        val receipt = reader.decodeFromJsonElement(serializer<CycleReceipt>(), fields)
         val nested = nestedRefusal(receipt)
         when {
             nested != null -> CycleReceiptDecodeResult.Rejected(

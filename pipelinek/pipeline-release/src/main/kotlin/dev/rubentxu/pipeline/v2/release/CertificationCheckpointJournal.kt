@@ -21,6 +21,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.serializer
 
 /**
  * Where the state of the cycle lives.
@@ -180,7 +181,7 @@ class CertificationCheckpointJournal(
         }
 
         val output = OperationOutput(
-            result = JSON.encodeToJsonElement(CertificationCheckpoint.serializer(), checkpoint),
+            result = JSON.encodeToJsonElement(serializer<CertificationCheckpoint>(), checkpoint),
             durationMs = 0,
             finishedAt = clock.now().toEpochMilli(),
         )
@@ -262,7 +263,7 @@ class CertificationCheckpointJournal(
     private fun decode(element: JsonElement): CheckpointRestore {
         return try {
             CheckpointRestore.Restored(
-                JSON.decodeFromJsonElement(CertificationCheckpoint.serializer(), element),
+                JSON.decodeFromJsonElement(serializer<CertificationCheckpoint>(), element),
             )
         } catch (e: SerializationException) {
             CheckpointRestore.Unreadable(

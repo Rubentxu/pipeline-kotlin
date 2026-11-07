@@ -6,6 +6,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.serializer
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -64,7 +65,7 @@ object PublishedBatteryCatalogueCodec {
                 "the document is not a JSON object, so it names no battery.",
             )
         } else {
-            val known = PublishedBatteryCatalogue.serializer().descriptor.elementNames.toSet()
+            val known = serializer<PublishedBatteryCatalogue>().descriptor.elementNames.toSet()
             val unknown = fields.keys - known
             val missing = known - fields.keys
             when {
@@ -92,7 +93,7 @@ object PublishedBatteryCatalogueCodec {
     }
 
     private fun readCatalogue(fields: JsonObject): CatalogueDecodeResult = try {
-        val catalogue = reader.decodeFromJsonElement(PublishedBatteryCatalogue.serializer(), fields)
+        val catalogue = reader.decodeFromJsonElement(serializer<PublishedBatteryCatalogue>(), fields)
         if (catalogue.schemaVersion != PublishedBatteryCatalogue.SCHEMA_VERSION) {
             CatalogueDecodeResult.Rejected(
                 "the document declares schema '${catalogue.schemaVersion}' and this build reads " +

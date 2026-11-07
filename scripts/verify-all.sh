@@ -520,6 +520,28 @@ if want_stage 1; then
         fail "stage 1: the comment provenance guard"
     fi
 
+    # --- The serializer the static analysis can see ----------------------------
+    # The `kotlinx.serialization` plugin generates a `serializer()` function in
+    # the companion of every `@Serializable` class, and the static analysis
+    # (detekt 2.x) resolves types in a standalone session that never registers
+    # the plugin's services. So a `T.serializer()` on a type the analysed
+    # module declares is invisible to the analysis, and an analysis that
+    # cannot resolve a type cannot tell a real finding from an invented one.
+    #
+    # The repository therefore obtains the serializer of a type it declares
+    # through the reified lookup, which the analysis resolves and which the
+    # plugin rewrites into the very same generated serializer. This guard
+    # reads the tree to ask whether that rule still holds: a module that calls
+    # `T.serializer()` on a type of its own would blind the analysis again,
+    # and the gate would go on reporting findings it can no longer judge.
+    if python3 scripts/check-serializer-visibility.py > "$log_dir/serializer-visibility.out" 2>&1; then
+        log "stage 1/5  the serializer the static analysis can see"
+        cat "$log_dir/serializer-visibility.out"
+    else
+        cat "$log_dir/serializer-visibility.out" >&2
+        fail "stage 1: the serializer-visibility guard"
+    fi
+
     # --- The set of the signing keys -----------------------------------------
     # The release path signs the release tags with a key this repository
     # declares, and the declaration names a SET: the key that signs now and

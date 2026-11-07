@@ -14,9 +14,6 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -59,33 +56,11 @@ object CoreWriteFileStep {
     val KEY: PluginStepId = PluginStepId("core.file.writeFile")
 
     /**
-     * Canonical dsl-v1 envelope, byte-identical to the legacy decode form emitted by
-     * `DslCompiledPipelineCompiler.writeFilePayload`:
-     * `{"kind":"writeFile","file":...,"text":...,"encoding":...}`.
-*/
-    private val inputCodec = object : StepCodec<CoreWriteFileInput> {
-        override fun encode(value: CoreWriteFileInput): EncodedStepValue =
-            EncodedStepValue(
-                Json.encodeToString(JsonObject.serializer(), buildJsonObject {
-                    put("kind", JsonPrimitive("writeFile"))
-                    put("file", JsonPrimitive(value.file))
-                    put("text", JsonPrimitive(value.text))
-                    put("encoding", JsonPrimitive(value.encoding))
-                }),
-            )
-
-        override fun decode(encoded: EncodedStepValue): CoreWriteFileInput {
-            val obj = Json.parseToJsonElement(encoded.value).jsonObject
-            require(obj["kind"]?.jsonPrimitive?.content == "writeFile") {
-                "core.file.writeFile payload kind must be 'writeFile'"
-            }
-            return CoreWriteFileInput(
-                file = obj.getValue("file").jsonPrimitive.content,
-                text = obj.getValue("text").jsonPrimitive.content,
-                encoding = obj.getValue("encoding").jsonPrimitive.content,
-            )
-        }
-    }
+     * The wire format of this step's input is owned by [CoreWriteFileWireCodec]: the
+     * Step and the DSL compiler are the two halves of ONE authority, and the compiler
+     * does not hand-write the envelope.
+     */
+    private val inputCodec = CoreWriteFileWireCodec
 
     private val outputCodec = object : StepCodec<CoreWriteFileOutput> {
         override fun encode(value: CoreWriteFileOutput): EncodedStepValue =

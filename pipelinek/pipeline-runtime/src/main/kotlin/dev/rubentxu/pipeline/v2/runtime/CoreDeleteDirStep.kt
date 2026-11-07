@@ -80,27 +80,12 @@ object CoreDeleteDirStep {
 
     val KEY: PluginStepId = PluginStepId("core.deleteDir")
 
-    private val inputCodec = object : StepCodec<DeleteDirInput> {
-        override fun encode(value: DeleteDirInput): EncodedStepValue =
-            EncodedStepValue(
-                Json.encodeToString(
-                    JsonObject.serializer(),
-                    buildJsonObject {
-                        put("kind", JsonPrimitive("deleteDir"))
-                        put("path", JsonPrimitive(value.path))
-                    },
-                ),
-            )
-
-        override fun decode(encoded: EncodedStepValue): DeleteDirInput {
-            val obj = Json.parseToJsonElement(encoded.value).jsonObject
-            require(obj["kind"]?.jsonPrimitive?.content == "deleteDir") {
-                "core.deleteDir payload kind must be 'deleteDir'"
-            }
-            val path = obj["path"]?.jsonPrimitive?.content ?: "."
-            return DeleteDirInput(path = path)
-        }
-    }
+    /**
+     * The wire format of this step's input is owned by [CoreDeleteDirWireCodec]: the Step and the
+     * DSL compiler are the two halves of ONE authority, and the compiler does not
+     * hand-write the envelope.
+     */
+    private val inputCodec = CoreDeleteDirWireCodec
 
     private val outputCodec = object : StepCodec<DeleteDirOutput> {
         override fun encode(value: DeleteDirOutput): EncodedStepValue =

@@ -77,31 +77,11 @@ object CoreReadFileStep {
     val KEY: PluginStepId = PluginStepId("core.readFile")
 
     /**
-     * Canonical dsl-v1 envelope, byte-identical to the compile lowering emitted by
-     * `DslCompiledPipelineCompiler.readFilePayload`:
-     * `{"kind":"readFile","file":...,"encoding":...}`.
-*/
-    private val inputCodec = object : StepCodec<CoreReadFileInput> {
-        override fun encode(value: CoreReadFileInput): EncodedStepValue =
-            EncodedStepValue(
-                Json.encodeToString(JsonObject.serializer(), buildJsonObject {
-                    put("kind", JsonPrimitive("readFile"))
-                    put("file", JsonPrimitive(value.file))
-                    put("encoding", JsonPrimitive(value.encoding))
-                }),
-            )
-
-        override fun decode(encoded: EncodedStepValue): CoreReadFileInput {
-            val obj = Json.parseToJsonElement(encoded.value).jsonObject
-            require(obj["kind"]?.jsonPrimitive?.content == "readFile") {
-                "core.readFile payload kind must be 'readFile'"
-            }
-            return CoreReadFileInput(
-                file = obj.getValue("file").jsonPrimitive.content,
-                encoding = obj.getValue("encoding").jsonPrimitive.content,
-            )
-        }
-    }
+     * The wire format of this step's input is owned by [CoreReadFileWireCodec]: the Step and the
+     * DSL compiler are the two halves of ONE authority, and the compiler does not
+     * hand-write the envelope.
+     */
+    private val inputCodec = CoreReadFileWireCodec
 
     private val outputCodec = object : StepCodec<CoreReadFileOutput> {
         override fun encode(value: CoreReadFileOutput): EncodedStepValue =

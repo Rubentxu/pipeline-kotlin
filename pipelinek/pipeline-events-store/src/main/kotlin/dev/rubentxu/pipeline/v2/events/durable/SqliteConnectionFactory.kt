@@ -2,13 +2,15 @@ package dev.rubentxu.pipeline.v2.events.durable
 
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.SQLException
+import java.sql.Statement
 
 /**
  * Factory for SQLite connections configured for WAL journal mode.
  *
  * ## WAL mode
  *
- * Every connection opened through this factory has:
+ * The PRODUCER's door ([open]) gives every connection it opens:
  * - `PRAGMA journal_mode = WAL` — enables Write-Ahead Logging for concurrent
  *   readers and a single writer, improving durability and read concurrency.
  * - `PRAGMA synchronous = NORMAL` — balances performance and safety;
@@ -21,25 +23,64 @@ import java.sql.DriverManager
  * is not `"wal"`. This prevents silent fallback to DELETE mode which would
  * bypass the durability guarantees of the operation journal.
  *
+ * ## The two doors
+ *
+ * [open] is the producer's door and [openReadOnly] is the reader's. The reader's door opens the
+ * file in a mode the engine refuses to write through, and it sets neither the journal mode nor
+ * the synchronous setting: the journal mode is a write to the database header, and the reader was
+ * only asked to look at the file.
  */
 object SqliteConnectionFactory {
 
     /**
+     * How long the producer's door waits for a lock the engine holds.
+     */
+    const val DEFAULT_BUSY_TIMEOUT_MS: Long = 5_000
+
+    /**
+     * The error code SQLite reports a locked database with.
+     *
+     * Measured against the shipped driver (sqlite-jdbc 3.46.1.3): the driver hands the SQLite
+     * result code over as the JDBC error code, so the lock is told apart from every other
+     * failure without reading the driver's message. A driver that reported nothing here would
+     * leave the door refusing the way it refuses today: with the engine's own words.
+     */
+    private const val SQLITE_BUSY = 5
+
+    /**
      * Opens a new SQLite connection with WAL mode enabled and verified.
      *
+     * ## The wait, and the statement it does not reach
+     *
+     * The door declares a window — [DEFAULT_BUSY_TIMEOUT_MS] by default — and the engine honours
+     * it for the statements that ask for a lock: a write against a journal another writer holds
+     * waits until the window is over.
+     *
+     * The change of the journal mode is NOT one of those statements. Measured against the shipped
+     * driver (sqlite-jdbc 3.46.1.3): SQLite does not consult the wait when the journal mode
+     * changes, so the change fails at once with `SQLITE_BUSY` however long the window is, and
+     * declaring the wait before the change does not change that. The door therefore asks for the
+     * lock itself — the engine's own handler is what waits — and makes the change with the lock
+     * in hand.
+     *
+     * When the lock does not free up inside the window, the door refuses with a [SQLException]
+     * that names the lock, the window that ran out and the way out of it.
+     *
      * @param file Path to the SQLite database file.
+     * @param busyTimeoutMs How long the door waits for a lock the engine holds.
      * @return A JDBC [Connection] with WAL mode active.
      * @throws IllegalStateException if WAL mode is not successfully enabled.
+     * @throws SQLException if the journal was held by another connection for the whole window.
      */
-    fun open(file: String): Connection {
+    fun open(file: String, busyTimeoutMs: Long = DEFAULT_BUSY_TIMEOUT_MS): Connection {
         val connection = DriverManager.getConnection("jdbc:sqlite:$file")
         try {
             connection.createStatement().use { stmt ->
+                // The window comes first, so that every statement below is inside it.
+                stmt.execute("PRAGMA busy_timeout = $busyTimeoutMs")
                 // Enable WAL journal mode.
-                stmt.execute("PRAGMA journal_mode = WAL")
+                switchToWal(stmt, file, busyTimeoutMs)
                 stmt.execute("PRAGMA synchronous = NORMAL")
-                // Wait up to 5 seconds when SQLITE_BUSY encountered.
-                stmt.execute("PRAGMA busy_timeout = 5000")
 
                 // Verify WAL mode is actually active.
                 stmt.executeQuery("PRAGMA journal_mode").use { rs ->
@@ -61,6 +102,54 @@ object SqliteConnectionFactory {
             throw e
         }
     }
+
+    /**
+     * Puts the journal in WAL mode, waiting for the lock the change cannot wait for.
+     *
+     * The engine does not consult the wait when the journal mode changes, so the change fails at
+     * once when another writer holds the file. The door asks for the lock itself: the engine's
+     * handler is what waits, and it waits exactly the window the door declares. The change is
+     * then made with the lock in hand.
+     */
+    private fun switchToWal(stmt: Statement, file: String, busyTimeoutMs: Long) {
+        try {
+            stmt.execute("PRAGMA journal_mode = WAL")
+            return
+        } catch (first: SQLException) {
+            if (first.errorCode != SQLITE_BUSY) throw first
+        }
+
+        // The lock is asked for, and the engine's handler is what waits for it.
+        try {
+            stmt.execute("BEGIN IMMEDIATE")
+            stmt.execute("ROLLBACK")
+        } catch (waited: SQLException) {
+            if (waited.errorCode != SQLITE_BUSY) throw waited
+            throw lockedAway(file, busyTimeoutMs, waited)
+        }
+
+        try {
+            stmt.execute("PRAGMA journal_mode = WAL")
+        } catch (second: SQLException) {
+            if (second.errorCode != SQLITE_BUSY) throw second
+            throw lockedAway(file, busyTimeoutMs, second)
+        }
+    }
+
+    /**
+     * The refusal for a journal that stayed locked for the whole window.
+     *
+     * The refusal is readable on purpose: whoever reads it has to know that the file was held by
+     * somebody else, how long the door waited, and what to do about it. The engine's own words
+     * travel with it, so nothing the engine said is lost.
+     */
+    private fun lockedAway(file: String, busyTimeoutMs: Long, cause: SQLException): SQLException =
+        SQLException(
+            "the journal '$file' was held by another connection for the whole $busyTimeoutMs ms " +
+                "window the producer's door waits; stop the writer that holds it, or try again " +
+                "when it is done (the engine said: ${cause.message})",
+            cause,
+        )
 
     /**
      * Opens a connection the database engine refuses to write through.

@@ -188,7 +188,7 @@ DIST_ROOT="$WORK/dist"
 mkdir -p "$DIST_ROOT"
 unzip -q "$CANDIDATE_ZIP" -d "$DIST_ROOT"
 
-CLI="$(find "$DIST_ROOT" -maxdepth 3 -type f -path '*/bin/pipelinek' | head -1)"
+CLI="$(find "$DIST_ROOT" -maxdepth 3 -type f -path '*/bin/pipelinek' -print -quit)"
 if [[ -z "$CLI" ]]; then
     printf 'verify-external-compatibility: the candidate distribution has no bin/pipelinek\n' >&2
     exit 1
@@ -239,12 +239,12 @@ sdk_version_from_layout() {
     # check honest when a release is misnamed.
     local repo_dir="$1"
     local domain
-    domain="$(find "$repo_dir" -maxdepth 6 -type d -path '*/dev/rubentxu/pipeline/v2/pipeline-domain' | head -1)"
+    domain="$(find "$repo_dir" -maxdepth 6 -type d -path '*/dev/rubentxu/pipeline/v2/pipeline-domain' -print -quit)"
     if [[ -z "$domain" ]]; then
         printf ''
         return 1
     fi
-    find "$domain" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -1
+    find "$domain" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' -quit
 }
 
 download_published_sdk() {
@@ -262,7 +262,7 @@ download_published_sdk() {
         sed 's/^/    /' "$dest/download.log" >&2
         return 1
     fi
-    archive="$(find "$dest" -maxdepth 1 -name 'pipelinek-*.sdk.zip' | head -1)"
+    archive="$(find "$dest" -maxdepth 1 -name 'pipelinek-*.sdk.zip' -print -quit)"
     if [[ -z "$archive" ]]; then
         printf 'verify-external-compatibility: %s published no SDK archive\n' "$tag" >&2
         return 1
@@ -314,7 +314,7 @@ download_published_distribution() {
     # The SDK archive matches the same glob and is NOT the distribution: it is named
     # `pipelinek-<v>.sdk.zip`. Picking the wrong one would compare the candidate
     # against the SDK of the previous release and call it the distribution.
-    archive="$(find "$dest" -maxdepth 1 -name 'pipelinek-*.zip' ! -name '*.sdk.zip' | head -1)"
+    archive="$(find "$dest" -maxdepth 1 -name 'pipelinek-*.zip' ! -name '*.sdk.zip' -print -quit)"
 
     # The archive and the authority that covers it are fetched ONCE per tag and
     # then reused: two rows can name the same release, and the second one has to
@@ -328,7 +328,7 @@ download_published_distribution() {
             sed 's/^/    /' "$dest/download.log" >&2
             return 1
         fi
-        archive="$(find "$dest" -maxdepth 1 -name 'pipelinek-*.zip' ! -name '*.sdk.zip' | head -1)"
+        archive="$(find "$dest" -maxdepth 1 -name 'pipelinek-*.zip' ! -name '*.sdk.zip' -print -quit)"
         if [[ -z "$archive" ]]; then
             printf 'verify-external-compatibility: %s published no distribution archive\n' "$tag" >&2
             return 1
@@ -378,7 +378,7 @@ published_plugin_from_distribution() {
         printf 'verify-external-compatibility: the distribution of %s could not be unpacked\n' "$tag" >&2
         return 1
     fi
-    jar="$(find "$unpacked" -type f -path '*/lib/example-uppercase-plugin-*.jar' | head -1)"
+    jar="$(find "$unpacked" -type f -path '*/lib/example-uppercase-plugin-*.jar' -print -quit)"
     if [[ -z "$jar" ]]; then
         return 1
     fi
@@ -391,7 +391,13 @@ published_plugin_from_distribution() {
 # hides the one fact a consumer of the release has to read. The door prints one line
 # per break it approved, and those lines are what the release note carries.
 approved_breaks_from_log() {
-    grep -E '^\[release\] +\- ' "$1" 2>/dev/null \
+    # The absence of approved breaks is an ANSWER, not a failure: the door
+    # approved nothing because the candidate carried everything the previous
+    # release published. A grep that matches nothing must not decide the run.
+    # Under `set -e` and `pipefail` its exit code would end this check with no
+    # verdict at all, and it would end it exactly when the candidate is the
+    # most compatible one.
+    { grep -E '^\[release\] +\- ' "$1" 2>/dev/null || true; } \
         | sed -e 's/^\[release\] *- //' -e 's/ \[key: .*//' \
         | paste -sd ';' - \
         | sed -e 's/;$//'

@@ -32,8 +32,8 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
  * happen" lives here.
  *
  * The unit of cohesion is the RECURSION. [dispatch] hands a body-bearing Step's body to
- * [BodyDispatch] with [dispatchChild] as the single re-entry reference — the same
- * [BodyChildDispatcher] seam [BodyExecutionEngine] already declares — so a body child walks
+ * [BodyDispatch] with the [BodyChildDispatcher] seam as the single re-entry reference — the
+ * same seam [BodyExecutionEngine] already declares — so a body child walks
  * the canonical spine again through exactly one call site; [executeBranchSteps] walks a
  * parallel branch through [dispatch] again. The body's own shape (its declared policy, its
  * projection, its credential preamble and its child loop) lives in [BodyDispatch];

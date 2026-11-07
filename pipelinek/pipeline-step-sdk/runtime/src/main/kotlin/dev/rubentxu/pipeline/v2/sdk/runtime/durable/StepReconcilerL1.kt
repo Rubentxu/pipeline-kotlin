@@ -17,7 +17,10 @@ import java.nio.file.Path
  * - **Complete**: `result.txt` exists and holds an exit code.
  * - **TimedOut**: `timeout.flag` exists — the watchdog writes it BEFORE it kills.
  * - **Reattach**: no result yet, but the console transcript is fresh: the child may still be alive.
- * - **Lost**: nothing can be said — fail closed.
+ * - **Lost**: nothing can be said — fail closed, and it carries the fact that made it so: a
+ *   result nobody could read, a result that was not an exit code, or no result at all. The
+ *   three are different situations with different remedies, so they are named apart (see
+ *   [Classification.LostReason]).
  *
  * ## The fail-closed rule
  * If the outcome cannot be established with certainty, the classification is `Lost`, never
@@ -28,7 +31,9 @@ import java.nio.file.Path
  *
  * A `result.txt` that cannot be read as an exit code is `Lost`, not `Complete`. The file exists,
  * but its content is not the fact the durable protocol promises there, and reading another
- * protocol's record as this one's success is exactly the fabrication the rule forbids.
+ * protocol's record as this one's success is exactly the fabrication the rule forbids. That case
+ * and the case where the file cannot even be read are both `Lost`, and they are named apart:
+ * `Lost` says the outcome is unknown, and its reason says what was found instead of it.
  *
  * ## The order of the checks, and why it is this order
  * 1. `timeout.flag` first: the watchdog writes it BEFORE the kill, so its presence identifies a
@@ -79,11 +84,52 @@ class StepReconcilerL1(
         data class TimedOut(val controlDir: Path, val logPath: Path) : Classification()
 
         /**
-         * Step outcome is unknown. result.txt missing AND heartbeat is stale.
-         * Fail-closed: must not assume success.
-         * The caller should mark this as LOST and schedule a new attempt.
+         * Step outcome is unknown, and [reason] says WHICH fact made it unknowable.
+         *
+         * LOST is fail-closed: the caller must not assume success, and the caller schedules a
+         * new attempt with the same fingerprint. It is produced in exactly three cases, and
+         * they are not the same case:
+         *
+         * - [LostReason.ResultUnreadable] — the result file is there and could not be read;
+         * - [LostReason.ResultNotAnExitCode] — the result file is there and holds something
+         *   that is not an exit code;
+         * - [LostReason.NoResultPublished] — nothing was published and no heartbeat is fresh.
+         *
+         * The reason is not decoration. A verdict that says "nobody knows" without saying what
+         * was observed collapses two opposite situations — a step that published a result
+         * nobody could interpret, and a step that published nothing at all — into one, and
+         * leaves the reader with nothing to act on.
          */
-        data object Lost : Classification()
+        data class Lost(val reason: LostReason) : Classification()
+
+        /**
+         * The fact that made the outcome unknowable.
+         *
+         * A closed set, one case per measured fact, because the three have different remedies:
+         * an unreadable result is a permission or an IO problem, a result that is not an exit
+         * code is a record of some other protocol, and a result that was never published is a
+         * step that died before it answered. Collapsing them into one case would collapse the
+         * three remedies into one.
+         *
+         * [diagnostic] is the prose the operator reads.
+         */
+        enum class LostReason(val diagnostic: String) {
+
+            /** The result file is there and could not be read. */
+            ResultUnreadable(
+                "the result file (${ShellProtocolLayout.RESULT_FILE}) exists and could not be read",
+            ),
+
+            /** The result file is there and holds something that is not an exit code. */
+            ResultNotAnExitCode(
+                "the result file (${ShellProtocolLayout.RESULT_FILE}) holds something that is not an exit code",
+            ),
+
+            /** Nothing was published, and no heartbeat says the child may still be alive. */
+            NoResultPublished(
+                "no result was published and no heartbeat is fresh",
+            ),
+        }
     }
 
     /**
@@ -194,7 +240,9 @@ internal fun classifyControlDirFacts(
         val text = probe.readText(resultFile)
         if (text == null) {
             // Present but unreadable: the outcome cannot be established, so it fails closed.
-            return StepReconcilerL1.Classification.Lost
+            return StepReconcilerL1.Classification.Lost(
+                StepReconcilerL1.Classification.LostReason.ResultUnreadable,
+            )
         }
         return try {
             StepReconcilerL1.Classification.Complete(text.trim().toInt())
@@ -202,7 +250,9 @@ internal fun classifyControlDirFacts(
             // Malformed result.txt → treat as LOST. The durable protocol publishes a plain integer
             // there; anything else is a record of some other protocol, and reading it as this
             // one's success would fabricate it.
-            StepReconcilerL1.Classification.Lost
+            StepReconcilerL1.Classification.Lost(
+                StepReconcilerL1.Classification.LostReason.ResultNotAnExitCode,
+            )
         }
     }
 
@@ -218,7 +268,9 @@ internal fun classifyControlDirFacts(
     }
 
     // Check 3: Heartbeat is stale → LOST (fail-closed)
-    return StepReconcilerL1.Classification.Lost
+    return StepReconcilerL1.Classification.Lost(
+        StepReconcilerL1.Classification.LostReason.NoResultPublished,
+    )
 }
 
 /**

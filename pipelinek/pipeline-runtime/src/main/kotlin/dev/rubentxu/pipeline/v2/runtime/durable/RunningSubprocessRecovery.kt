@@ -156,6 +156,32 @@ sealed interface UnobservableCause {
 }
 
 /**
+ * The terminal of an operation whose control directory did not establish its outcome.
+ *
+ * The failure is the same one every LOST carries — same code, same kind, same origin, same
+ * refusal to retry — because the VERDICT did not change: nobody knows what the step did. What
+ * the message adds is the FACT that made it unknowable, so the reader can tell a result that
+ * nobody could interpret from a result that was never published, and act on each one.
+ *
+ * It is a function of two values — the operation and the fact — with no filesystem, no process
+ * and no clock, so the message the operator reads can be pinned without a control directory on
+ * disk.
+ */
+internal fun lostTerminal(
+    operationId: String,
+    reason: StepReconcilerL1.Classification.LostReason,
+): DurableTaskTerminal.Lost = DurableTaskTerminal.Lost(
+    FailureRecord(
+        code = "DURABLE_TASK_LOST",
+        kind = FailureKind.INFRASTRUCTURE,
+        message = "Canonical shell '$operationId' could not be reconciled: ${reason.diagnostic}",
+        origin = FailureOrigin.RECONCILIATION,
+        retryable = false,
+        operationId = operationId,
+    ),
+)
+
+/**
  * The real implementation: reconciles a RUNNING external subprocess from its control directory.
  * This class is the compatibility seam refers to. It is deliberately the ONLY place in the
  * recovery path that knows a process exists, and it is constructible from the composition root
@@ -230,18 +256,10 @@ internal class ExternalSubprocessRecovery(
             // directory held nothing recoverable. LOST is the honest terminal for this case and
             // must remain distinct from [RunningSubprocessObservation.Unavailable] — and distinct
             // from [RunningSubprocessObservation.ReattachWindowExpired], which is the case where we
-            // never reached this check.
-            StepReconcilerL1.Classification.Lost -> RunningSubprocessObservation.Observed(
-                DurableTaskTerminal.Lost(
-                    FailureRecord(
-                        code = "DURABLE_TASK_LOST",
-                        kind = FailureKind.INFRASTRUCTURE,
-                        message = "Canonical shell '$operationId' could not be reconciled",
-                        origin = FailureOrigin.RECONCILIATION,
-                        retryable = false,
-                        operationId = operationId,
-                    ),
-                ),
+            // never reached this check. The reason travels with it: the directory held something,
+            // and WHAT it held is what the operator has to read.
+            is StepReconcilerL1.Classification.Lost -> RunningSubprocessObservation.Observed(
+                lostTerminal(operationId, classification.reason),
             )
         }
     }

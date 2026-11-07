@@ -20,7 +20,11 @@ import org.junit.jupiter.api.Test
  * this tree arranges that — so the mapping is pinned here, per purpose.
  *
  * The behavioural half — an observer killed in mid-flight leaves the producer running — has no
- * test in this tree: it is a declared gap. Nothing here touches a database.
+ * test in this tree: nothing here touches a database. It is observed outside this tree, by the
+ * scenario `events/08-observer-death-does-not-kill-the-producer` of the harness battery, which
+ * starts a real observer over this run's own journal, waits until the observer has delivered a
+ * fact of the run, kills it with SIGKILL while the producer keeps working, and runs the step
+ * after the kill. Its verdict against the candidate 0.90.0 is EXECUTED_PASS.
  */
 class EventStoreModeTest {
 

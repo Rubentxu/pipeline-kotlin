@@ -57,8 +57,16 @@ import java.time.Instant
  * A real file would have made this a test about the FILE as well. The durability of the
  * promises is guarded elsewhere and better: `SqliteSagaObligationStoreTest` pins the durable
  * store's own answers, `SagaObligationStoreContractTest` pins that the durable and the
- * volatile answers AGREE. The LOOP running against a real database is not observed by any test in
- * this repository: it is a declared gap. What this test guards is the LOOP.
+ * volatile answers AGREE. What this test guards is the LOOP.
+ *
+ * The LOOP running against a real database is observed outside this tree, by the scenario
+ * `durable/33-saga-compensation` of the harness battery: a Saga chain of three actions against a
+ * real SQLite store, whose third action fails before it does anything, and the engine compensates
+ * the two that did in the inverse order — the second one first, the first one after it — while
+ * the third one's compensation does not run, because that action left no effect to undo. The
+ * order is proved by an exact match of the log of effects, so a compensation out of order and a
+ * compensation that had no business running are both a mismatch. Its verdict against the
+ * candidate 0.90.0 is EXECUTED_PASS.
  */
 class SagaCompensationInterpreterTest {
 

@@ -37,9 +37,20 @@ import java.nio.file.Path
  * exit code, a mark of the expiry, whether the child was launched, a refusal — so the cheapest
  * instrument that can fail is a call to it. A test that launched a real child to make it expire or
  * to fail before the launch would cost more, prove less, and add a process and a clock that a unit
- * test may not use. The facts that only appear when a child really runs — whether the exit code
- * reaches the terminal, whether the reconciler agrees with it — are not observed by any test in
- * this repository: they are a declared gap.
+ * test may not use.
+ *
+ * The facts that only appear when a child really runs stay a declared gap here, and the reason
+ * is measured. A real child that exits 3 has its exit code reach the terminal the event lane
+ * publishes for a step: the scenario `events/02-step-verdict` of the harness battery reads that
+ * terminal from outside and finds the failure verdict there, and the scenario
+ * `negative/30-step-failure` finds the code itself named in the reason the run gives. Both have
+ * the verdict EXECUTED_PASS against the candidate 0.90.0. None of them reads the terminal this
+ * file decides — the one the durable executor publishes for a shell execution — because the
+ * projections the battery reads are the run's terminal fact, the verdict of each step and the
+ * stage a failure belongs to. The scenario that would produce the expiry,
+ * `durable/23-wait-until-deadline`, has the verdict INFRASTRUCTURE in the certified run: the
+ * scenario did not end within its clock and was stopped, so its guarantee was not checked. A run
+ * that did not happen is not evidence either way.
  *
  * **What this does not freeze.** That the executor gathers the right facts, that the reconciler
  * reads the same mark, and that a child that expires really leaves the mark behind: those are

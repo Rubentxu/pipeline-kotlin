@@ -2,10 +2,22 @@ package dev.rubentxu.pipeline.v2.events.durable
 
 
 import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload
+import dev.rubentxu.pipeline.v2.events.UndecodableReason.UnknownKind
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 
 /**
  * JSON wire format encoder/decoder for domain events.
  * Wire shape: single-line JSON array, tagged `kind` field.
+ *
+ * ## The two units of this wire
+ *
+ * A DOCUMENT is an array of events: it is what [encode] writes and what [decode] reads, and it
+ * may hold any number of them. A ROW is what the store keeps: the writer binds ONE event as an
+ * array of EXACTLY ONE element, and [decodeStoredRow] reads that shape back and refuses any
+ * other one. The two are different units and they have different laws: a document skips what it
+ * cannot read, and a row is ANSWERED FOR.
 */
 object JsonEventLog {
 
@@ -90,36 +102,73 @@ object JsonEventLog {
     }
 
     /**
-     * Decodes the FIRST event object in [payload] and keeps what happened to it.
+     * Decodes the ONE event a stored row carries, and keeps what happened to it.
      * [decodeStoredRow] needs this because its unit of work is one row, and a row that exists but
      * did not decode has to be answered for — not silently reduced to an empty list. Routing
      * through [decode] and taking `firstOrNull()` would throw away the failure, which is the
      * information the store is obliged to report.
-     * A payload with no decodable object at all is a failure of the DOCUMENT shape, reported as a
-     * quoted payload rather than a named field: there is no field to name when the array itself
-     * could not be read.
+     *
+     * The row's wire is an array of EXACTLY ONE event, and this is where that shape is checked.
+     * The reader used to CUT the brackets off the payload with `substring(1, length - 1)` and
+     * never look at what was inside them: a payload that was not an array reached the event
+     * decoder as residue and was refused for a field it never had ("eventId is unreadable"),
+     * and a payload holding two events kept the first one in silence. A row is refused because
+     * of what it HOLDS, and the refusal has to name that.
+     *
+     * So the shape is ASKED of the payload instead of guessed from it, and each way of being
+     * the wrong shape is named as itself: not JSON, not an array, more than one event, or an
+     * event that is not an object.
 */
-    private fun decodeFirstOutcome(payload: String): EventDecodeOutcome {
-        if (payload.isBlank() || payload == "[]") {
-            return EventDecodeOutcome.Failed(
-                EventDecodeFailure.UnreadableField(
-                    "payload",
-                    "the stored payload holds no event array",
+    private fun decodeRowPayload(payload: String, rowKind: String): StoredRowDecode {
+        val element = EventJsonCodec.parse(payload)
+            ?: return StoredRowDecode.Refused(
+                MalformedPayload(
+                    "the stored payload is not JSON: \"" +
+                        payload.take(STORED_ROW_DETAIL_CHARS) + "\"",
+                )
+            )
+        val array = element as? JsonArray
+            ?: return StoredRowDecode.Refused(
+                MalformedPayload("the stored payload is not a JSON array"),
+            )
+        if (array.size != 1) {
+            return StoredRowDecode.Refused(
+                MalformedPayload(
+                    "the stored payload holds ${array.size} events and a stored row holds one",
                 )
             )
         }
-        for (eventStr in splitArray(payload.substring(1, payload.length - 1))) {
-            val trimmed = eventStr.trim()
-            if (trimmed.isEmpty()) continue
-            return EventJsonCodec.decode(trimmed)
-        }
-        return EventDecodeOutcome.Failed(
-            EventDecodeFailure.UnreadableField(
-                "payload",
-                "does not satisfy the stored payload schema: " +
-                    payload.take(STORED_ROW_DETAIL_CHARS).let { "\"$it\"" },
+        val fields = array.single() as? JsonObject
+            ?: return StoredRowDecode.Refused(
+                MalformedPayload("the stored payload's event is not a JSON object"),
             )
-        )
+        // Decode ONCE and keep both halves of the outcome. The decoder's own cause is
+        // preferred over quoting the payload, because the quote is truncated at
+        // [STORED_ROW_DETAIL_CHARS] and the offending field is routinely cut off; a 339-char
+        // payload refused with a detail that stopped mid-filler, naming neither field nor value.
+        return when (val outcome = EventJsonCodec.decode(fields)) {
+            is EventDecodeOutcome.Decoded ->
+                // The column and the payload are two statements about the same row, and the
+                // column is the one that was trusted to classify it. When they disagree the
+                // row is not what the column said it was, and it is refused rather than
+                // accepted under the payload's own name.
+                if (outcome.event.kind == rowKind) {
+                    StoredRowDecode.Accepted(outcome.event)
+                } else {
+                    StoredRowDecode.Refused(
+                        MalformedPayload(
+                            "row kind \"$rowKind\" does not match the payload kind \"${outcome.event.kind}\"",
+                        ),
+                    )
+                }
+            is EventDecodeOutcome.Failed -> StoredRowDecode.Refused(
+                when (val c = outcome.cause) {
+                    is EventDecodeFailure.UnknownEventKind -> UnknownKind(c.kind)
+                    is EventDecodeFailure.UnreadableField -> MalformedPayload(c.description)
+                    is EventDecodeFailure.KindMismatch -> MalformedPayload(c.description)
+                }
+            )
+        }
     }
 
     /**
@@ -153,10 +202,12 @@ object JsonEventLog {
      * classification must not depend on the thing being classified.
      * The null payload case is a refusal too, not an absence: the row exists, the column is the
      * only thing that could have held it, and it held nothing.
+     * The payload also has to be the SHAPE of a row -- a JSON array of EXACTLY ONE event -- and a
+     * payload of another shape refuses naming the shape rather than a field it never had.
 */
     fun decodeStoredRow(payload: String?, rowKind: String?): StoredRowDecode = when {
         payload == null -> StoredRowDecode.Refused(
-            dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload("payload column is null")
+            MalformedPayload("payload column is null")
         )
         // The kind comes from the ROW COLUMN, and that ordering is the whole point of the parameter.
         // The first version of this read the kind out of the payload, which makes the classification
@@ -164,45 +215,12 @@ object JsonEventLog {
         // the payload is the one thing that cannot be trusted to name the row. The column is written
         // by `bindInsert` from the event and is NOT NULL, so it is the authority that survives.
         rowKind == null || rowKind.isEmpty() -> StoredRowDecode.Refused(
-            dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload("row carries no kind")
+            MalformedPayload("row carries no kind")
         )
         !knowsKind(rowKind) -> StoredRowDecode.Refused(
-            dev.rubentxu.pipeline.v2.events.UndecodableReason.UnknownKind(rowKind)
+            UnknownKind(rowKind)
         )
-        else -> {
-            // Decode ONCE and keep both halves of the outcome. The decoder's own cause is
-            // preferred over quoting the payload, because the quote is truncated at
-            // [STORED_ROW_DETAIL_CHARS] and the offending field is routinely cut off; a 339-char
-            // payload refused with a detail that stopped mid-filler, naming neither field nor value.
-            // The payload echo survives only as a fallback for a document whose SHAPE was unusable,
-            // which is a fact about the payload as a whole rather than about one field.
-            when (val first = decodeFirstOutcome(payload)) {
-                is EventDecodeOutcome.Decoded ->
-                    // The column and the payload are two statements about the same row, and the
-                    // column is the one that was trusted to classify it. When they disagree the
-                    // row is not what the column said it was, and it is refused rather than
-                    // accepted under the payload's own name.
-                    if (first.event.kind == rowKind) {
-                        StoredRowDecode.Accepted(first.event)
-                    } else {
-                        StoredRowDecode.Refused(
-                            dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload(
-                                "row kind \"$rowKind\" does not match the payload kind \"${first.event.kind}\"",
-                            ),
-                        )
-                    }
-                is EventDecodeOutcome.Failed -> StoredRowDecode.Refused(
-                    when (val c = first.cause) {
-                        is EventDecodeFailure.UnknownEventKind ->
-                            dev.rubentxu.pipeline.v2.events.UndecodableReason.UnknownKind(c.kind)
-                        is EventDecodeFailure.UnreadableField ->
-                            dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload(c.description)
-                        is EventDecodeFailure.KindMismatch ->
-                            dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload(c.description)
-                    }
-                )
-            }
-        }
+        else -> decodeRowPayload(payload, rowKind)
     }
 
     /** How much of a failing payload a refusal quotes. Bounded: these payloads can be GiB-scale. */

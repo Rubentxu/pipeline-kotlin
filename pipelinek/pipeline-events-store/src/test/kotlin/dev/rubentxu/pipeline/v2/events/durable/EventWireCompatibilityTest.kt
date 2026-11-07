@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.WsCleaned
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -255,5 +256,36 @@ class EventWireCompatibilityTest {
             outcome is EventDecodeOutcome.Failed,
             "a payload that does not answer to its kind must be refused, and it was read as $outcome",
         )
+    }
+
+    /**
+     * A row that a previous version wrote is read by the ROW reader, not only by the document one.
+     *
+     * The store does not read documents: it reads rows, one at a time, and every row it finds
+     * there was written by some previous version. The row reader is stricter than it was -- it
+     * now asks the payload for its SHAPE instead of cutting the brackets off it -- and the
+     * question that matters is whether that strictness costs the history. It does not: the wire
+     * of a row has always been an array of exactly one event, so a row written by an older
+     * binary still reads.
+     *
+     * The payload is written BY HAND, as the rows of the previous versions were, and it is not
+     * produced by the codec under test.
+     */
+    @Test
+    fun `a row that a previous version wrote is read by the row reader`() {
+        val row = """
+            {"eventId":"e-1","runId":"run-42","sequence":7,"kind":"StepFinished",
+             "occurredAt":"2026-01-01T00:00:00Z","stageIndex":1,"stepIndex":2,
+             "stepName":"build/sh-2","stepType":"sh"}
+        """.trimIndent().replace("\n", "")
+
+        val outcome = JsonEventLog.decodeStoredRow("[$row]", rowKind = "StepFinished")
+
+        val accepted = assertInstanceOf(
+            StoredRowDecode.Accepted::class.java,
+            outcome,
+            "a row written by a previous version must still be read by the row reader: $outcome",
+        )
+        assertEquals("build/sh-2", (accepted.event as StepFinished).stepName)
     }
 }

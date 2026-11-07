@@ -24,9 +24,20 @@
 #
 # The archive's NAME carries the JVM's major version (pipelinek-cds-21.jsa).
 # A shared archive is only valid for the JVM that wrote it: a JVM that finds an
-# archive from another version ignores it and says so on stderr, which is a
+# archive from another version ignores it, and the report it leaves behind is a
 # failure the operator cannot act on. With the version in the name, a different
 # JDK asks for a different file, and the cold case simply writes it.
+#
+# THE PRODUCT'S STDOUT IS THE PRODUCT'S ANSWER
+#
+# The JVM writes its unified log to stdout, and what it writes there is in front
+# of the answer: `version --json` has to be JSON, and `doctor` has to be the
+# doctor's facts. The JVM has things to say about the archive — whether it
+# mapped it, and whether the module properties it recorded are the ones this
+# run declares — and none of them belong to the reader of the command: the
+# options the build declares keep that talk off the stdout, and whoever wants
+# to read it asks for it with the options named after the product, which are
+# added last and win.
 #
 # THE ARCHIVE IS ONLY VALID FOR THE JARS IT WAS BUILT FROM
 #
@@ -402,7 +413,7 @@ prepare_archive() {
     fi
     rm -f "$ARCHIVE_FILE" 2>/dev/null || true
     if : 2>/dev/null > "$ARCHIVE_FILE"; then
-        ARCHIVE_FLAGS="-Xlog:cds=off -XX:ArchiveClassesAtExit=$ARCHIVE_FILE"
+        ARCHIVE_FLAGS="-XX:ArchiveClassesAtExit=$ARCHIVE_FILE"
         REBUILD_ARCHIVE=1
         STATE_ATTEMPTED="$RESOLVED_MAJOR:$FINGERPRINT"
         STATE_DIRTY=1

@@ -31,7 +31,20 @@ application {
     // because the alternative is not a warning forever: a JVM that blocks the loading
     // outright leaves the product without a database. The flag is accepted, and does
     // nothing, on the JVMs where the restriction does not exist.
-    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+    //
+    // GRANTING THAT PERMISSION MAKES THE JVM TALK, AND THE JVM TALKS ON STDOUT.
+    // A shared class archive records the module properties it was written with, and the
+    // archive the product writes inherits the JDK's own table, in which that permission
+    // is unset. Mapping the archive, the JVM finds a property that the run declares and
+    // the archive does not have, and says so: as a warning you cannot see before JDK 25,
+    // as an error you can. The unified log goes to stdout, so the report lands in front
+    // of the product's answer, and `version --json` stops being JSON.
+    //
+    // The report is about a property the reader of the command cannot change, and the
+    // archive is mapped anyway, so the tag is silenced here: the product's stdout carries
+    // the product's answer and nothing else. Whoever wants to read those lines asks for
+    // them with the options named after the product, which are added last and win.
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Xlog:cds=off")
 }
 
 // Gradle 8.14.5 strict validation flags the application

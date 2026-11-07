@@ -140,6 +140,10 @@ private fun runVolatilePipelineOwned(
         )
     }
 
+    // The seams of this run, in the ONE order every run uses. The order is written down in
+    // the contract (composeRunSeams) and not here, so that this branch and the durable one
+    // cannot answer the operator differently about a single run.
+    //
     // the default `pipeline run <script>` (in-memory) branch composes
     // the SAME credential injection stack as the durable branch, through the SAME
     // function. The default path is the temp in-memory control dir's sibling;
@@ -151,47 +155,47 @@ private fun runVolatilePipelineOwned(
     // The same question, the same answer: a run that declares no credential binding
     // does not open the store, so it is never asked for a passphrase.
     //
-    // The seam is composed BEFORE the plugin admission, in the SAME order the
-    // durable branch composes it, so both worlds answer the same refusal when
-    // two things are wrong at once. The reason and the measurement are in the
-    // durable branch, where the order was already published.
     // THE BRANCH THAT PERSISTS NOTHING ASKS FOR THE ADVISORY POSTURE. Nothing it produces
     // outlives the process, so a secret it cannot mask is not written to disk; the operator
     // is told, exactly as before. The operator may ask for the strict posture here too with
     // PIPELINE_CREDENTIALS_MASKING=required.
-    val credentialSeam = composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec, SecretMaskingStrictness.ADVISORY)
-    // compose registry BEFORE the gate so contributed keys are eligible.
-    // the admission happens inside ONE function, so the in-memory and
-    // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now
-    // also covers the decision about WHICH artifacts are allowed to resolve at all.
-    // The refusal travels as a value, in BOTH worlds: the volatile branch owns nothing that
-    // outlives the process, so its entry turns the refusal into the exit code, and the durable
-    // branch owns a lease and an event store and gives them back before it ends. A refusal that
-    // ended the process HERE would skip the branch's own `finally`, and what that finally
-    // releases is the output observer — a thread. So the rule is the same everywhere: a refusal
-    // UNWINDS, and the place that owns the process ends it.
-    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry, clock)) {
-        is PluginAdmission.Admitted -> admission.composition
-        is PluginAdmission.Refused -> throw CommandRefused(admission.exit)
-    }
+    val seams = composeRunSeams(
+        credentials = { composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec, SecretMaskingStrictness.ADVISORY) },
+        // compose registry BEFORE the gate so contributed keys are eligible.
+        // the admission happens inside ONE function, so the in-memory and
+        // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now
+        // also covers the decision about WHICH artifacts are allowed to resolve at all.
+        // The refusal travels as a value, in BOTH worlds: the volatile branch owns nothing that
+        // outlives the process, so its entry turns the refusal into the exit code, and the durable
+        // branch owns a lease and an event store and gives them back before it ends. A refusal that
+        // ended the process HERE would skip the branch's own `finally`, and what that finally
+        // releases is the output observer — a thread. So the rule is the same everywhere: a refusal
+        // UNWINDS, and the place that owns the process ends it.
+        admission = { admitPluginsForRun(config, controlDirRoot, telemetry, clock) },
+        // the workspace decision rule / the workspace origin rule clause 3.1 + the typed-owner decision: the workspace origin is decided
+        // ONCE, here at the boundary. Both facts cross into the runtime — the shared
+        // directory and its owner — because a runtime that receives only the root
+        // re-derives ownership and lets `deleteDir` erase a user's project under the
+        // local-first default. `--isolated` keeps the historical PipelineK scratch;
+        // `--workspace <path>` stays authoritative.
+        workspaceTransport = { WorkspaceIntent.resolveRuntimeTransport(config, Path.of("").toAbsolutePath().normalize(), controlDirRoot) },
+        // the process output of a step lives in the Output Plane, not on the event spine,
+        // so the event sink above never saw it. This observer follows the plane while the run is in
+        // flight, which is what makes a build's progress visible while the build runs. It is
+        // started BEFORE the pipeline (there is nothing to observe until a step produces bytes) and
+        // closed after it returns, so the last committed bytes are flushed.
+        outputObserver = { startLiveOutputObserver(runId, controlDirRoot, config.format) },
+    )
+    val credentialSeam = seams.credentials
+    val composition = seams.composition
     val composedStepRegistry = composition.steps
+    // The eligibility of THIS pipeline is a decision about the pipeline, not about the
+    // seams: it is taken on the registry the admission produced, and the refusal it may
+    // produce happens inside the block below, where the observer is already closed.
     val nonCanonicalSteps = compiledPipeline
         ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
-    // the workspace decision rule / the workspace origin rule clause 3.1 + the typed-owner decision: the workspace origin is decided
-    // ONCE, here at the boundary. Both facts cross into the runtime — the shared
-    // directory and its owner — because a runtime that receives only the root
-    // re-derives ownership and lets `deleteDir` erase a user's project under the
-    // local-first default. `--isolated` keeps the historical PipelineK scratch;
-    // `--workspace <path>` stays authoritative.
-    val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
-        config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
-    )
-    // the process output of a step lives in the Output Plane, not on the event spine,
-    // so the event sink above never saw it. This observer follows the plane while the run is in
-    // flight, which is what makes a build's progress visible while the build runs. It is
-    // started BEFORE the pipeline (there is nothing to observe until a step produces bytes) and
-    // closed after it returns, so the last committed bytes are flushed.
-    val outputObserver = startLiveOutputObserver(runId, controlDirRoot, config.format)
+    val workspaceTransport = seams.workspaceTransport
+    val outputObserver = seams.outputObserver
 
     val runOutcome: RunOutcome? = try {
         val pipeline = compiledPipeline

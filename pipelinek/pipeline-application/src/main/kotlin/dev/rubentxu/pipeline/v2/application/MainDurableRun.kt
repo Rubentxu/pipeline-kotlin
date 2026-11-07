@@ -188,47 +188,47 @@ private fun runDurablePipelineOwned(
     val sagaObligationStore = durableStores.sagaObligations
     val cursorStore: ReplayCursorStore = durableStores.cursors
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
+    // The seams of this run, in the ONE order every run uses. The order is written down in
+    // the contract (composeRunSeams) and not here, so that this branch and the one that
+    // persists nothing cannot answer the operator differently about a single run.
+    //
     // The need for the secret store is a fact about this RUN, and the run knows
     // it: the compiled script says, in its own declaration, whether it binds a
     // credential.
     //
-    // The seam is composed BEFORE the plugin admission, and the in-memory
-    // branch composes it in the same place. The order decides WHICH refusal
-    // an operator sees when two things are wrong at once — a run that binds a
-    // credential whose passphrase is not at hand, and a plugin artifact that
-    // may not be admitted. Composing the seam first makes both worlds answer
-    // the same code for the same situation; with the admission first, the
-    // in-memory world answered 2 and this one answered 3, and the two worlds
-    // told the operator different stories about a single run.
     // THE DURABLE BRANCH ASKS FOR THE STRICT POSTURE: this branch persists the transcript, so a
     // secret it cannot mask is a secret written to disk in the clear. The operator may accept that
     // fact explicitly with PIPELINE_CREDENTIALS_MASKING=best-effort.
-    val credentials = composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec, SecretMaskingStrictness.STRICT)
-
-    // The legacy PipelineOrchestrator was constructed here but
-    // never invoked. The CLI reaches the durable runtime ONLY through the canonical
-    // RunCoordinator (fail-closed exit 2 otherwise). The legacy orchestrator class has been deleted.
-    // compose the registry BEFORE the canonical-eligibility gate —
-    // eligibility is registry-derived, so external plugin contributions must be
-    // visible to the gate or a contributed key would be wrongly rejected as
-    // non-canonical. Same composed registry is handed to the coordinator below.
-    // same single entry point as the in-memory branch above. Writing the admission
-    // wiring out a second time here would let the two branches disagree about which plugins were
-    // admitted, which is precisely the defect S6/G removed once already.
-    // The refusal travels as a value: the scope still holds the lease and the
-    // store, and it gives them back before the process ends.
-    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot, telemetry, clock)) {
-        is PluginAdmission.Admitted -> admission.composition
-        is PluginAdmission.Refused -> throw CommandRefused(admission.exit)
-    }
-    val composedStepRegistry = composition.steps
-    // the workspace decision rule + the typed owner decision: the workspace origin is decided
-    // ONCE, here at the boundary, and both facts cross into the runtime — the
-    // shared directory and its owner. `--isolated` keeps the historical
-    // PipelineK scratch; `--workspace <path>` stays authoritative.
-    val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
-        config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
+    val seams = composeRunSeams(
+        credentials = { composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec, SecretMaskingStrictness.STRICT) },
+        // The legacy PipelineOrchestrator was constructed here but
+        // never invoked. The CLI reaches the durable runtime ONLY through the canonical
+        // RunCoordinator (fail-closed exit 2 otherwise). The legacy orchestrator class has been deleted.
+        // compose the registry BEFORE the canonical-eligibility gate —
+        // eligibility is registry-derived, so external plugin contributions must be
+        // visible to the gate or a contributed key would be wrongly rejected as
+        // non-canonical. Same composed registry is handed to the coordinator below.
+        // same single entry point as the in-memory branch above. Writing the admission
+        // wiring out a second time here would let the two branches disagree about which plugins were
+        // admitted, which is precisely the defect S6/G removed once already.
+        // The refusal travels as a value: the scope still holds the lease and the
+        // store, and it gives them back before the process ends.
+        admission = { admitPluginsForRun(config, controlDirRoot, telemetry, clock) },
+        // the workspace decision rule + the typed owner decision: the workspace origin is decided
+        // ONCE, here at the boundary, and both facts cross into the runtime — the
+        // shared directory and its owner. `--isolated` keeps the historical
+        // PipelineK scratch; `--workspace <path>` stays authoritative.
+        workspaceTransport = { WorkspaceIntent.resolveRuntimeTransport(config, Path.of("").toAbsolutePath().normalize(), controlDirRoot) },
+        // The observer follows the Output Plane while the run is in flight, which is what
+        // makes a build's progress visible while the build runs. It is started BEFORE the
+        // pipeline (there is nothing to observe until a step produces bytes) and closed
+        // after it returns, so the last committed bytes are flushed.
+        outputObserver = { startLiveOutputObserver(runId, controlDirRoot, config.format) },
     )
+    val credentials = seams.credentials
+    val composition = seams.composition
+    val composedStepRegistry = composition.steps
+    val workspaceTransport = seams.workspaceTransport
     // SAGA: the terminal state of the Sagas this run executed. The verdict block has to
     // say it: a Saga that needs a human and a Saga that was fully compensated look
     // identical on stderr otherwise, and they call for opposite responses from whoever
@@ -239,7 +239,7 @@ private fun runDurablePipelineOwned(
     // outside the `try`, because the verdict is printed after it — and because a run that
     // threw still has to say what it left behind.
     val sagaTerminals = mutableListOf<SagaTerminal>()
-    val outputObserver = startLiveOutputObserver(runId, controlDirRoot, config.format)
+    val outputObserver = seams.outputObserver
     // The events of this run, kept ONLY when a receipt was asked for.
     var receiptEvents: List<DomainEvent>? = null
     // The sqlite single-writer thread is NON-daemon: if an exception escapes, the writer keeps

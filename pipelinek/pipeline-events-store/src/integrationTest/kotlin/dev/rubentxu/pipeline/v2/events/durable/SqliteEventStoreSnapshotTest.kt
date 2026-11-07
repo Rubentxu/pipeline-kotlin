@@ -90,10 +90,14 @@ class SqliteEventStoreSnapshotTest {
     fun aPortReadOpensOneConnection() {
         val file = dbPath()
         var opens = 0
-        val store = SqliteEventStore(file, EventStoreMode.Writable) {
-            opens++
-            openEventStoreConnection(file, EventStoreMode.Writable)
-        }
+        val store = SqliteEventStore(
+            file,
+            EventStoreMode.Writable,
+            readerConnections = {
+                opens++
+                openEventStoreReaderConnection(file)
+            },
+        )
         store.append(started("evt-1"))
         store.flush()
         val port = EventRecordReadPortStoreAdapter(reader = store, runDeclared = { false })
@@ -123,7 +127,7 @@ class SqliteEventStoreSnapshotTest {
         var landed = false
         lateinit var store: SqliteEventStore
         val connections = {
-            InterleavedConnection(openEventStoreConnection(file, EventStoreMode.Writable)) {
+            InterleavedConnection(openEventStoreReaderConnection(file)) {
                 if (!landed) {
                     landed = true
                     // The fact lands BETWEEN the tail and the page of the read below.
@@ -132,7 +136,7 @@ class SqliteEventStoreSnapshotTest {
                 }
             }
         }
-        store = SqliteEventStore(file, EventStoreMode.Writable, connections)
+        store = SqliteEventStore(file, EventStoreMode.Writable, readerConnections = connections)
         store.append(started("evt-1"))
         store.flush()
 

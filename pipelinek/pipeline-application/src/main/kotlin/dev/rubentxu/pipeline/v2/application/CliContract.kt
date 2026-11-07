@@ -13,6 +13,7 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.isolation.DenialReason
 import dev.rubentxu.pipeline.v2.domain.isolation.IsolationCapability
 import dev.rubentxu.pipeline.v2.output.OutputChannel
+import dev.rubentxu.pipeline.v2.runtime.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.events.identity.EventField
 
@@ -28,10 +29,32 @@ import dev.rubentxu.pipeline.v2.events.identity.EventField
 // `CliEventsParser` (events) and `CliConsoleParser` (console). The option
 // vocabulary they all read lives in `CliOptionVocabulary`.
 
-const val NON_CANONICAL_CANONICAL_BRIDGE_ERROR: String =
+/**
+ * The refusal a script that uses a plugin outside the canonical bridge receives.
+ *
+ * ## WHY THE LIST IS DERIVED AND NOT WRITTEN
+ *
+ * This text used to be a hand-written list of eleven step ids, and it was wrong in
+ * both directions: it announced `core.load`, a step no registry has ever held (the
+ * compiler declares it deferred and the canonical admission refuses it), and it
+ * omitted twelve ids the registry DOES hold. A diagnostic that answers "what may I
+ * use" with a list that is not the registry answers a different question.
+ *
+ * The list is now the registry's own: `CoreStepRegistryFactory` is the single
+ * composition point of the core steps, the durable admission analysis reads the
+ * SAME derivation, and this message reads it too. One authority for "which steps
+ * are canonical", and a message that cannot drift from the admission that refuses.
+ *
+ * ## WHY IT IS NOT A `const val`
+ *
+ * A constant is a value fixed when the code is compiled; this one is a fact about
+ * the registry as it is at run time. A `const` could only be kept true by a human
+ * editing both places, and that human edit is exactly the defect this removes.
+ */
+val NON_CANONICAL_CANONICAL_BRIDGE_ERROR: String by lazy {
     "Error: script uses non-canonical plugins; canonical bridge requires " +
-        "core.sh/core.echo/core.sleep/core.file.writeFile/core.emit.event/core.milestone/" +
-        "core.deleteDir/core.cleanWs/core.load/core.pwd/core.waitUntil."
+        CoreStepRegistryFactory.canonicalStepIds().sorted().joinToString("/") + "."
+}
 
 /** The finite set of commands accepted by the application CLI. */
 enum class CliCommand {

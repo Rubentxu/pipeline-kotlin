@@ -40,8 +40,16 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Path
 
-internal val canonicalStepIds: Set<String> =
-        CoreStepRegistryFactory.registry().keys().map { it.value }.toSet()
+/**
+ * The ids of the core steps the canonical bridge accepts.
+ *
+ * The derivation is NOT repeated here: `CoreStepRegistryFactory` is the single
+ * authority for which core steps exist, and the CLI diagnostic that answers
+ * "which steps may I use" reads the SAME one. A list derived twice is two
+ * authorities for one fact, and they drift apart the first time a step is
+ * registered.
+ */
+internal val canonicalStepIds: Set<String> = CoreStepRegistryFactory.canonicalStepIds()
 
 /**
  * Block Step families whose body is executed by THIS engine

@@ -177,3 +177,53 @@ one has to carry the key that signs NOW, and not any key of the set. That is
 the `--expect-fingerprint` mode, and the fingerprint it asks for is the one
 the declaration names as current — which
 `scripts/release/read-signing-trust.sh` is what reads.
+
+## What the audit of the published history reports
+
+The audit over the whole history is RED, and it is supposed to be: the tags
+published before the signing policy were never signed, and no tool can change
+that without rewriting history, which this repository does not do.
+
+What the audit is for is that the red says WHICH. Measured over the `v*`
+scope on 2026-11-07:
+
+```
+published-tags: FAIL checked=168 annotated=156 lightweight=12
+                verified=8 unsigned=148 from_another_key=0
+                does_not_verify=0 uncheckable=0 not_measured=0
+                failed=160
+                newest_verified=v0.93.0-rc1@2026-11-06T22:38:16Z
+                newest_unsigned=v0.90.0-rc2@2026-10-24T16:47:00Z
+```
+
+Three numbers in that line carry the meaning:
+
+- **`not_measured=0`.** Nothing that was published was left unmeasured. The
+  audit reads the object the REMOTE publishes — it brings it by its
+  identifier when this tree does not hold it, which creates no reference —
+  so a red row is a fact about the publication and never a limitation of the
+  instrument. A `NOT_MEASURED` row, if there is one, is counted apart and is
+  never a pass.
+- **`unsigned=148` and `lightweight=12`.** The classes are counted apart
+  because they are different facts: a tag that was annotated and never
+  signed, and a tag that points straight at a commit with no tag object at
+  all. Neither of them is a signature that failed to verify.
+- **`newest_verified` and `newest_unsigned`.** The two moments say where the
+  frontier lies. The newest unsigned tag is older than the newest verified
+  one, so the red reaches the PAST and not the publication of today.
+
+The audit reads the class of a signature from the REASON the checker gives,
+not from which of its rows failed. "The tag carries no signature" and "the
+content was altered after it was signed" are different facts, and a verdict
+that calls both of them "does not verify" accuses a manipulation that did
+not happen.
+
+The audit also refuses what it did NOT find. A tag the caller names and the
+remote does not publish is a red of its own (`absent=`), because the release
+path asks about the tag it has just pushed: a push that had not landed used
+to leave the audit with nothing to check, and nothing to check was a green.
+A scope that matches no tag at all is a red too — the audit measured
+nothing, and that is not a pass. A PATTERN is only a filter, so a pattern
+that matches nothing says nothing about the remote; a `--tag` is a claim
+about the remote, and a claim the remote contradicts is a red.
+

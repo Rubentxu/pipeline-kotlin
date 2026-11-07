@@ -1,5 +1,10 @@
 package dev.rubentxu.pipeline.v2.release
 
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -15,6 +20,21 @@ class PromotionCertificationValidationTest {
 
     private val digest = "a".repeat(64)
     private val candidate = CandidateId.fromDigest(digest)
+
+    /**
+     * The shape that says WHY a part did not apply.
+     *
+     * It is written as a literal and not read from the model: the rules
+     * under test are about what a DOCUMENT says, and the document is what
+     * crosses the boundary. A witness that only ever builds the model never
+     * sees what the reader does with a document it did not write.
+     */
+    private val currentShape = "pipelinek-promotion-certification-2"
+
+    /**
+     * The shape that came before: the same document without the reason.
+     */
+    private val legacyShape = "pipelinek-promotion-certification-1"
 
     private fun certified(
         part: CertificationPart,
@@ -35,6 +55,7 @@ class PromotionCertificationValidationTest {
         battery = null,
         status = CertificationPartStatus.NOT_APPLICABLE,
         runs = emptyList(),
+        reason = "the candidate fixes no reported defect",
     )
 
     private fun certification(
@@ -57,6 +78,69 @@ class PromotionCertificationValidationTest {
             evaluatePromotionCertification(certification, candidate),
         )
         return verdict.violations
+    }
+
+    /**
+     * A certification as the other side writes it: the document, not the
+     * model.
+     *
+     * The shape is named because the rules about the reason belong to ONE
+     * shape: the reason arrived with the shape that says it, and a document
+     * of the shape that came before is judged exactly as it was.
+     */
+    private fun document(shape: String, parts: List<JsonObject>): String = buildJsonObject {
+        put("schema_version", shape)
+        put("candidate_id", "sha256:$digest")
+        put("decision", "CERTIFIED")
+        put("parts", JsonArray(parts))
+    }.toString()
+
+    /** A part that ran, and passed. */
+    private fun certifiedPart(name: String): JsonObject = part(
+        name = name,
+        status = "CERTIFIED",
+        battery = buildJsonObject {
+            put("id", "$name-battery")
+            put("version", "1")
+            put("scenario_count", 1)
+        },
+        runs = listOf(
+            buildJsonObject {
+                put("scenario", "$name-0")
+                put("verdict", SCENARIO_VERDICT_PASSED)
+            },
+        ),
+    )
+
+    /** A part that did not apply, with the reason it did not apply or without it. */
+    private fun part(
+        name: String,
+        status: String,
+        battery: JsonObject? = null,
+        runs: List<JsonObject> = emptyList(),
+        reason: String? = null,
+    ): JsonObject = buildJsonObject {
+        put("part", name)
+        put("battery", battery ?: JsonNull)
+        put("status", status)
+        put("runs", JsonArray(runs))
+        if (reason != null) put("reason", reason)
+    }
+
+    /**
+     * The certification a document states, once this build has read it.
+     *
+     * A document this build cannot read is not a certification with no
+     * violations: it is a document that never became a certification, and
+     * the witness says so instead of judging an absence.
+     */
+    private fun read(document: String): PromotionCertification {
+        val decoded = assertInstanceOf(
+            PromotionCertificationDecode.Accepted::class.java,
+            PromotionCertificationCodec.decode(document),
+            "the document must be a certification this build reads",
+        )
+        return decoded.certification
     }
 
     @Test
@@ -262,5 +346,139 @@ class PromotionCertificationValidationTest {
         assertTrue(PromotionCertificationViolationCode.CANDIDATE_IS_ANOTHER in codes)
         assertTrue(PromotionCertificationViolationCode.DECISION_NOT_CERTIFIED in codes)
         assertTrue(PromotionCertificationViolationCode.PART_MISSING in codes)
+    }
+
+    @Test
+    fun `a part that does not apply says why`() {
+        val certification = read(
+            document(
+                currentShape,
+                listOf(
+                    certifiedPart("CANARIES"),
+                    certifiedPart("SCENARIOS"),
+                    part("REVALIDATION", "NOT_APPLICABLE"),
+                ),
+            ),
+        )
+
+        val violations = violationsOf(certification)
+        val missing = violations.filter {
+            it.code == PromotionCertificationViolationCode.PART_REASON_MISSING
+        }
+        assertEquals(
+            1,
+            missing.size,
+            "a part that does not apply and says nothing about it must be refused, got: " +
+                "${violations.map { it.code }}",
+        )
+        assertTrue(
+            missing.first().detail.contains("revalidation"),
+            "the refusal must name the part that does not say why: ${missing.first().detail}",
+        )
+    }
+
+    @Test
+    fun `a part that does not apply and says why is admitted`() {
+        val certification = read(
+            document(
+                currentShape,
+                listOf(
+                    certifiedPart("CANARIES"),
+                    certifiedPart("SCENARIOS"),
+                    part(
+                        "REVALIDATION",
+                        "NOT_APPLICABLE",
+                        reason = "the candidate fixes no reported defect",
+                    ),
+                ),
+            ),
+        )
+
+        assertInstanceOf(
+            PromotionCertificationVerdict.Admissible::class.java,
+            evaluatePromotionCertification(certification, candidate),
+            "a certification that says why a part did not apply is a complete one",
+        )
+    }
+
+    @Test
+    fun `a part that applies may not carry the reason of one that does not`() {
+        val certification = read(
+            document(
+                currentShape,
+                listOf(
+                    part(
+                        "CANARIES",
+                        "CERTIFIED",
+                        battery = buildJsonObject {
+                            put("id", "canaries-battery")
+                            put("version", "1")
+                            put("scenario_count", 1)
+                        },
+                        runs = listOf(
+                            buildJsonObject {
+                                put("scenario", "canaries-0")
+                                put("verdict", SCENARIO_VERDICT_PASSED)
+                            },
+                        ),
+                        reason = "there was nothing to re-validate",
+                    ),
+                    certifiedPart("SCENARIOS"),
+                    part(
+                        "REVALIDATION",
+                        "NOT_APPLICABLE",
+                        reason = "the candidate fixes no reported defect",
+                    ),
+                ),
+            ),
+        )
+
+        val violations = violationsOf(certification)
+        assertTrue(
+            violations.any { it.code == PromotionCertificationViolationCode.PART_REASON_DISAGREES },
+            "the reason says why a part does not apply, so a part that applied may not carry one, " +
+                "got: ${violations.map { it.code }}",
+        )
+    }
+
+    @Test
+    fun `a reason that is blank is not a reason`() {
+        val certification = read(
+            document(
+                currentShape,
+                listOf(
+                    certifiedPart("CANARIES"),
+                    certifiedPart("SCENARIOS"),
+                    part("REVALIDATION", "NOT_APPLICABLE", reason = "   "),
+                ),
+            ),
+        )
+
+        val violations = violationsOf(certification)
+        assertTrue(
+            violations.any { it.code == PromotionCertificationViolationCode.PART_REASON_MISSING },
+            "a reason that says nothing is not a reason, got: ${violations.map { it.code }}",
+        )
+    }
+
+    @Test
+    fun `the shape that came before is not asked why`() {
+        val certification = read(
+            document(
+                legacyShape,
+                listOf(
+                    certifiedPart("CANARIES"),
+                    certifiedPart("SCENARIOS"),
+                    part("REVALIDATION", "NOT_APPLICABLE"),
+                ),
+            ),
+        )
+
+        assertInstanceOf(
+            PromotionCertificationVerdict.Admissible::class.java,
+            evaluatePromotionCertification(certification, candidate),
+            "the shape that came before is judged exactly as it was: a part that did not apply " +
+                "without a reason was admitted then, and it is admitted now",
+        )
     }
 }

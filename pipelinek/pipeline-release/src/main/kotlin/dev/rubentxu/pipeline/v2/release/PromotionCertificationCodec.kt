@@ -3,8 +3,10 @@ package dev.rubentxu.pipeline.v2.release
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.serializer
 
 /**
@@ -44,6 +46,20 @@ sealed interface PromotionCertificationDecode {
  *    schema version this version does not know, is refused. Reading is not a
  *    negotiation: the reader either understands the whole document or refuses
  *    it.
+ *
+ * ## Two shapes, and the shape the document declares
+ *
+ * The reason a part did not apply arrived with a shape of its own, and this
+ * build reads BOTH: the shape that carries the reason and the shape that
+ * came before. The shape a document declares decides the shape it is read
+ * with, so each one is held to its OWN fields: a part of the shape that came
+ * before may not carry the reason, because that shape does not define it.
+ *
+ * That is what keeps the promotion of today working: the certifications that
+ * were certified before the reason arrived are documents of the shape that
+ * came before, and they are read exactly as they were read before. The order
+ * of the two repositories stops mattering: the harness may certify in the
+ * new shape whenever it is ready, and this build already reads it.
  */
 object PromotionCertificationCodec {
 
@@ -59,6 +75,39 @@ object PromotionCertificationCodec {
     }
 
     /**
+     * The name of the field that says WHY a part did not apply.
+     */
+    private const val REASON_FIELD: String = "reason"
+
+    /**
+     * The names a part carries in the shape that says why.
+     *
+     * They are read from the serializer itself, so the shape and the check
+     * cannot disagree: a field the model has is a field the shape accepts.
+     */
+    private val CURRENT_PART_FIELDS: Set<String> =
+        serializer<CertifiedPart>().descriptor.elementNames.toSet()
+
+    /**
+     * The names a part carries in the shape that came before: the same
+     * ones, without the reason.
+     *
+     * The difference between the two shapes IS the reason, so the difference
+     * is derived from the shape instead of being written out: a second list
+     * of names would be a second answer to the question "what does a part
+     * carry", and two answers are free to disagree.
+     */
+    private val LEGACY_PART_FIELDS: Set<String> = CURRENT_PART_FIELDS - REASON_FIELD
+
+    /**
+     * The fields a part carries, per shape.
+     */
+    private val PART_FIELDS_BY_SCHEMA: Map<String, Set<String>> = mapOf(
+        PromotionCertification.SCHEMA_VERSION to CURRENT_PART_FIELDS,
+        PromotionCertification.LEGACY_SCHEMA_VERSION to LEGACY_PART_FIELDS,
+    )
+
+    /**
      * The certification as JSON. The same certification always yields the same
      * bytes.
      */
@@ -72,6 +121,10 @@ object PromotionCertificationCodec {
      * that does not parse, that is missing something the certification
      * requires, that carries an unknown field inside a part, or that declares
      * another schema version is refused with the reason.
+     *
+     * The shape the document declares decides the fields its parts may
+     * carry: the reason is a field of the shape that says why, and a part of
+     * the shape that came before is refused by name when it carries one.
      */
     fun decode(text: String): PromotionCertificationDecode {
         val element = try {
@@ -100,14 +153,60 @@ object PromotionCertificationCodec {
             )
         }
 
-        val decoded = readCertification(element)
-        if (decoded is PromotionCertificationDecode.Accepted) {
-            val refusal = refusalOf(decoded.certification)
-            if (refusal != null) {
-                return PromotionCertificationDecode.Rejected(refusal)
+        val schema = schemaOf(fields)
+            ?: return PromotionCertificationDecode.Rejected(
+                CertificationRejection.MalformedDocument(
+                    "the document declares no schema version, so it names no shape this build " +
+                        "can read. A certification says which shape it follows, because the " +
+                        "shape is what says which fields it may carry.",
+                ),
+            )
+        val partFields = PART_FIELDS_BY_SCHEMA[schema]
+            ?: return PromotionCertificationDecode.Rejected(
+                CertificationRejection.MalformedDocument(
+                    "the document declares schema '$schema' and this build reads " +
+                        "'${PromotionCertification.SCHEMA_VERSION}' and " +
+                        "'${PromotionCertification.LEGACY_SCHEMA_VERSION}'. A certification " +
+                        "written for another schema is not a certification this build can act on.",
+                ),
+            )
+        val unknownInParts = unknownPartFields(fields, partFields)
+        if (unknownInParts.isNotEmpty()) {
+            return PromotionCertificationDecode.Rejected(
+                CertificationRejection.UnknownField(unknownInParts),
+            )
+        }
+
+        return readCertification(element)
+    }
+
+    /**
+     * The shape the document declares, or null when it declares none.
+     */
+    private fun schemaOf(fields: JsonObject): String? {
+        val declared = fields["schema_version"] ?: return null
+        val primitive = declared as? JsonPrimitive ?: return null
+        return primitive.content
+    }
+
+    /**
+     * The fields a part of the document carries that its shape does not
+     * define.
+     *
+     * Every part is read, and the names are collected: a document that
+     * carries an unknown field in one of its parts is refused by the name of
+     * that field, whichever part it was in.
+     */
+    private fun unknownPartFields(fields: JsonObject, allowed: Set<String>): List<String> {
+        val parts = fields["parts"] as? JsonArray ?: return emptyList()
+        val unknown = sortedSetOf<String>()
+        parts.forEach { element ->
+            val part = element as? JsonObject ?: return@forEach
+            part.keys.forEach { name ->
+                if (name !in allowed) unknown += name
             }
         }
-        return decoded
+        return unknown.toList()
     }
 
     /**
@@ -140,19 +239,15 @@ object PromotionCertificationCodec {
         }
 
     /**
-     * The reason this certification is not one this build can act on, or null
-     * when it is one.
+     * Whether this build reads a certification of [schema].
+     *
+     * The two shapes this build reads are the two it knows, and this is
+     * where that question is answered: the codec that reads the document and
+     * the receipt that binds it ask the same thing, and two answers could
+     * disagree about which documents this build acts on.
      */
-    private fun refusalOf(certification: PromotionCertification): CertificationRejection? {
-        if (certification.schemaVersion != PromotionCertification.SCHEMA_VERSION) {
-            return CertificationRejection.MalformedDocument(
-                "the document declares schema '${certification.schemaVersion}' and this build " +
-                    "reads '${PromotionCertification.SCHEMA_VERSION}'. A certification written " +
-                    "for another schema is not a certification this build can act on.",
-            )
-        }
-        return null
-    }
+    internal fun readsSchemaVersion(schema: String): Boolean =
+        PART_FIELDS_BY_SCHEMA.containsKey(schema)
 }
 
 /** Operator-facing diagnostic for a certification that was read. */

@@ -76,6 +76,22 @@ enum class PromotionCertificationViolationCode {
 
     /** A scenario of a part did not end in a pass. */
     SCENARIO_NOT_PASSED,
+
+    /**
+     * A part that does not apply does not say why.
+     *
+     * The shape that says the reason asks for it: a part that was skipped
+     * without a word about it is a part nobody can audit.
+     */
+    PART_REASON_MISSING,
+
+    /**
+     * A part that applied carries the reason of one that did not.
+     *
+     * The reason says why a part does not apply, so a part that ran has no
+     * reason to give.
+     */
+    PART_REASON_DISAGREES,
 }
 
 /**
@@ -115,6 +131,11 @@ private val REQUIRED_PARTS: List<CertificationPart> = listOf(
  *    that does not apply must carry no coverage at all.
  * 7. Every scenario must have ended in a pass. A verdict this build does not
  *    know is not a pass.
+ * 8. A part that does not apply says why, and only in the shape that says
+ *    why. The reason says why a part does not apply, so a part that applied
+ *    has none, and a part that did not apply has one. A certification of the
+ *    shape that came before is judged exactly as it was: it has no reason to
+ *    give and it is not asked for one.
  */
 fun evaluatePromotionCertification(
     certification: PromotionCertification,
@@ -139,6 +160,13 @@ fun evaluatePromotionCertification(
         )
     }
 
+    // The shape the document declares decides whether the reason is asked
+    // for. A document of the shape that came before has no reason to give,
+    // and asking it for one would refuse the certifications that were
+    // certified before the reason existed.
+    val asksTheReason =
+        certification.schemaVersion == PromotionCertification.SCHEMA_VERSION
+
     val byPart = certification.parts.groupBy { it.part }
     for (part in REQUIRED_PARTS) {
         val stated = byPart[part].orEmpty()
@@ -159,7 +187,7 @@ fun evaluatePromotionCertification(
             )
             continue
         }
-        violations += violationsOf(stated.first(), part)
+        violations += violationsOf(stated.first(), part, asksTheReason)
     }
 
     return if (violations.isEmpty()) {
@@ -180,9 +208,33 @@ fun evaluatePromotionCertification(
 private fun violationsOf(
     stated: CertifiedPart,
     required: CertificationPart,
+    asksTheReason: Boolean,
 ): List<PromotionCertificationViolation> {
     val violations = mutableListOf<PromotionCertificationViolation>()
     val name = required.name.lowercase()
+
+    // The reason is one fact about the part, and it is judged apart from
+    // the status: it says why a part does not apply, so a part that applied
+    // has no reason to give and a part that did not apply has one.
+    if (asksTheReason) {
+        val applies = stated.status != CertificationPartStatus.NOT_APPLICABLE
+        val reason = stated.reason
+        when {
+            applies && !reason.isNullOrBlank() -> violations += PromotionCertificationViolation(
+                PromotionCertificationViolationCode.PART_REASON_DISAGREES,
+                "the certification says $name ${
+                    if (stated.status == CertificationPartStatus.FAILED) "did not pass" else "was certified"
+                } and carries a reason. The reason says why a part does not apply, and a " +
+                    "part that applied has no reason to give.",
+            )
+
+            !applies && reason.isNullOrBlank() -> violations += PromotionCertificationViolation(
+                PromotionCertificationViolationCode.PART_REASON_MISSING,
+                "the certification says $name does not apply and gives no reason. A part that " +
+                    "was skipped without a word about it is a part nobody can audit.",
+            )
+        }
+    }
 
     when (stated.status) {
         CertificationPartStatus.CERTIFIED -> {
@@ -245,9 +297,22 @@ private fun violationsOf(
  * needs the reason to be actionable, not merely present.
  */
 fun PromotionCertificationVerdict.render(): String = when (this) {
-    is PromotionCertificationVerdict.Admissible ->
-        "promotion certification ADMISSIBLE: candidate ${certification.candidateId.canonical}, " +
-            "${certification.parts.size} part(s) covered, all certified"
+    is PromotionCertificationVerdict.Admissible -> buildString {
+        append(
+            "promotion certification ADMISSIBLE: candidate ${certification.candidateId.canonical}, " +
+                "${certification.parts.size} part(s) covered, all certified",
+        )
+        // The reason a part did not apply travels with the certification,
+        // and this verdict is what the operator reads: a verdict that carries
+        // the coverage but not the reason is a verdict about a part nobody
+        // can account for.
+        certification.parts
+            .filter { !it.reason.isNullOrBlank() }
+            .forEach {
+                appendLine()
+                append("  - ${it.part.name.lowercase()}: ${it.reason}")
+            }
+    }
 
     is PromotionCertificationVerdict.Rejected -> buildString {
         appendLine(

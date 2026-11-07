@@ -166,9 +166,10 @@ object CycleReceiptCodec {
                 "this build reads '${CertificationReceipt.SCHEMA_VERSION}'."
         }
         val promotion = receipt.promotion
-        if (promotion != null && promotion.schemaVersion != PromotionCertification.SCHEMA_VERSION) {
+        if (promotion != null && !PromotionCertificationCodec.readsSchemaVersion(promotion.schemaVersion)) {
             return "the promotion certification declares schema '${promotion.schemaVersion}' and " +
-                "this build reads '${PromotionCertification.SCHEMA_VERSION}'."
+                "this build reads '${PromotionCertification.SCHEMA_VERSION}' and " +
+                "'${PromotionCertification.LEGACY_SCHEMA_VERSION}'."
         }
         return null
     }

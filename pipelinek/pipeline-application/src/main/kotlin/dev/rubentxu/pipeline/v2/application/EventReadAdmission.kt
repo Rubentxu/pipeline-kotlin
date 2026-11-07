@@ -24,8 +24,8 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  * could not tell that from "the history ended".
  *
  * ## Why the answer comes from the PORT and not from here
- * The authority for "does this run exist" and "is this cursor inside the run" is the store
- * (`hasRun`, `tailSequence`), and the port that already consults both is
+ * The authority for "does this run exist" and "is this cursor inside the run" is the store, and
+ * the store answers both from ONE snapshot of the run. The port that already consults it is
  * [EventRecordReadPortStoreAdapter]. This function does not decide anything: it asks that port
  * and returns what it said. A second place that answered the same question could disagree with
  * the first, and the disagreement would be invisible.
@@ -41,10 +41,11 @@ internal fun admitEventRead(
     runId: String,
     cursor: EventCursor?,
 ): EventRecordReadRefusal? {
+    // The store is the only authority about the run here: nothing else declares runs in this
+    // composition, so a run exists exactly when the event plane holds a row for it.
     val port = EventRecordReadPortStoreAdapter(
-        store = store,
-        runExists = { candidate -> store.hasRun(candidate) },
-        tailSequence = { candidate -> store.tailSequence(candidate) },
+        reader = store,
+        runDeclared = { false },
     )
     return when (val probe = port.readRecords(runId, cursor, EventQuery.All, 1)) {
         is EventRecordReadResult.Refused -> probe.refusal

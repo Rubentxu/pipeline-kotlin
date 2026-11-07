@@ -109,7 +109,7 @@ class SqliteEventFollowLiveTailTest {
     fun aQuietPageDoesNotEndTheFollow() {
         val port = CountingPort(listOf(quietPage("run-1")))
         val seen = CopyOnWriteArrayList<EventFollowEvent>()
-        val follower = SqliteEventFollower(port = port, runExists = { true })
+        val follower = SqliteEventFollower(port = port)
         val handle = follower.open("run-1", EventFollowOptions(pollIntervalMs = 1L))
 
         val consumer = Thread {
@@ -146,7 +146,7 @@ class SqliteEventFollowLiveTailTest {
     fun theFollowEndsWhenTheRunFinishes() {
         val port = CountingPort(listOf(quietPage("run-1"), finishedPage("run-1", 7L)))
         val seen = CopyOnWriteArrayList<EventFollowEvent>()
-        val follower = SqliteEventFollower(port = port, runExists = { true })
+        val follower = SqliteEventFollower(port = port)
 
         follower.open("run-1", EventFollowOptions(pollIntervalMs = 1L)).use { handle ->
             val events = handle.iterator()

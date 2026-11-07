@@ -2,8 +2,11 @@ package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventRecordRead
+import dev.rubentxu.pipeline.v2.events.EventRecordSlice
 import dev.rubentxu.pipeline.v2.events.UndecodableEventRecordException
+import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import java.sql.Connection
+import java.sql.ResultSet
 
 /**
  * The store's READING owner: the page cut, the cursor, the projection of a row, and the refusal a
@@ -19,8 +22,8 @@ import java.sql.Connection
  * - the PAGE ([readRecords]) — the cut on `sequence > lastSequence`, the bound that counts ROWS
  *   rather than decodable events, and the peek of one row beyond the page that proves `hasMore`
  *   instead of guessing it;
- * - the two answers the admission needs: whether a run EXISTS at all ([hasRun]) and where its TAIL
- *   is ([tailSequence]).
+ * - the SNAPSHOT ([snapshotOf]) — the run's tail and the page after a cursor, read at ONE instant,
+ *   so a consumer is never answered out of two different moments of the same run.
  *
  * ## What this is NOT
  *
@@ -139,6 +142,54 @@ internal class SqliteEventReader(
     }
 
     /**
+     * The run's tail and the page after the cursor, read at ONE instant.
+     *
+     * ## Why one read and not two
+     *
+     * The tail and the page used to be two questions, asked in two connections, at two moments of
+     * the same run. A fact and a guess about it: the tail said where the run ended at T1, and the
+     * page said what the run held at T2, and a write landing between T1 and T2 made the two
+     * disagree — a run whose page was NEWER than the tail it was cut against, or a run whose first
+     * event arrived after the tail was read and was therefore refused as a cursor past a tail
+     * that did not exist. Both are refusals of a run that is there.
+     *
+     * Here the two are read inside ONE transaction on ONE connection, so the database engine holds
+     * a single snapshot for both of them: an append that lands while the read runs is in both of
+     * the answers or in neither, and the pair can never disagree with itself.
+     *
+     * ## What it costs
+     *
+     * ONE connection and ONE read transaction, whatever the cursor. The tail used to cost a
+     * connection of its own, and the existence probe before it another one: a single port read
+     * opened two or three connections to answer a question about one run.
+     */
+    fun snapshotOf(runId: String, after: EventCursor?, limit: Int): EventRunSnapshot {
+        require(limit > 0) { "limit must be positive, got $limit" }
+        val afterSequence = after?.lastSequence ?: 0L
+        if (!holdsEventHistory) {
+            // A file with no `events` table holds no run and no page. The answer is the refusal
+            // the caller owes, not a raw "no such table" from the engine.
+            return EventRunSnapshot(tail = null, page = emptyPage(runId, afterSequence))
+        }
+        return connections().use { conn ->
+            // One read transaction: the snapshot the engine holds for the tail is the snapshot it
+            // holds for the page.
+            conn.autoCommit = false
+            try {
+                val tail = tailIn(conn, runId)
+                val page = readPage(conn, runId, afterSequence, limit)
+                EventRunSnapshot(tail = tail, page = page)
+            } finally {
+                // Nothing was written, so the transaction ends by being rolled back: that is how a
+                // read says "I am over" without pretending there was a commit to make. A rollback
+                // that the engine refuses would not change the answer, and the connection is closed
+                // right after anyway, so it does not get to replace it.
+                runCatching { conn.rollback() }
+            }
+        }
+    }
+
+    /**
      * Cuts the page in SQL, which is the only place where that is possible: the cut and the limit
      * are the index's job, and asking SQLite for a run's whole history to keep `limit` of it meant
      * decoding every event of a long run to hand back a page of three.
@@ -161,54 +212,60 @@ internal class SqliteEventReader(
      * refusal travel on the same cursor. `EventRecordSlice.nextCursor` is the last ROW's sequence
      * whether or not that row decoded, which is what lets a resuming reader page past a refusal on
      * purpose instead of re-reading it forever or stepping over it blind.
-     * This page law is argued here, not witnessed by a test: [SqliteConnectionFactory.open] opens a
-     * FRESH connection per call, so an in-memory database would be empty on every read and the
-     * store is file-backed by design. Exercising this path needs real durable storage, which is
-     * outside what a unit test may own; the claim above is therefore the authority, and the reader
-     * of it is the auditor.
-*/
+     * ## The page is cut in ONE place
+     * [readRecords] and [snapshotOf] are two doors onto the same cut, and they cut it with the
+     * same code ([readPage]). Two copies of a cut would be two answers to the same question, free
+     * to drift apart: a page that one door serves and the other does not is a page the product
+     * cannot describe.
+    */
     fun readRecords(
         runId: String,
-        after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
+        after: EventCursor?,
         limit: Int,
-    ): dev.rubentxu.pipeline.v2.events.EventRecordSlice {
+    ): EventRecordSlice {
         require(limit > 0) { "limit must be positive, got $limit" }
         val afterSequence = after?.lastSequence ?: 0L
-        val page = ArrayList<dev.rubentxu.pipeline.v2.events.EventRecordRead>(minOf(limit, 64))
-        var hasMore = false
         if (!holdsEventHistory) {
-            // A file with no `events` table has no page to read. The cursor does not move:
-            // there was nothing past it to begin with.
-            return dev.rubentxu.pipeline.v2.events.EventRecordSlice(
-                records = page,
-                nextCursor = dev.rubentxu.pipeline.v2.events.identity.EventCursor(runId, afterSequence),
-                hasMore = false,
-            )
+            return emptyPage(runId, afterSequence)
         }
-        connections().use { conn ->
-            conn.prepareStatement(
-                "SELECT event_id, sequence, kind, payload FROM events WHERE run_id = ? AND sequence > ? " +
-                    "ORDER BY sequence ASC LIMIT ?"
-            ).use { ps ->
-                ps.setString(1, runId)
-                ps.setLong(2, afterSequence)
-                ps.setInt(3, limit + 1)
-                ps.executeQuery().use { rs ->
-                    while (rs.next()) {
-                        if (page.size == limit) {
-                            // One ROW beyond the page exists. Decoded or not, it is a row, and it
-                            // is the only honest way to know the run continues.
-                            hasMore = true
-                            break
-                        }
-                        page.add(readRecord(rs))
+        return connections().use { conn -> readPage(conn, runId, afterSequence, limit) }
+    }
+
+    /**
+     * The page, cut on ONE connection. The caller owns the connection and the transaction around
+     * it, because [snapshotOf] needs the tail and the page to share a snapshot and this cut is
+     * the half of that pair that the pair is about.
+     */
+    private fun readPage(
+        conn: Connection,
+        runId: String,
+        afterSequence: Long,
+        limit: Int,
+    ): EventRecordSlice {
+        val page = ArrayList<EventRecordRead>(minOf(limit, 64))
+        var hasMore = false
+        conn.prepareStatement(
+            "SELECT event_id, sequence, kind, payload FROM events WHERE run_id = ? AND sequence > ? " +
+                "ORDER BY sequence ASC LIMIT ?"
+        ).use { ps ->
+            ps.setString(1, runId)
+            ps.setLong(2, afterSequence)
+            ps.setInt(3, limit + 1)
+            ps.executeQuery().use { rs ->
+                while (rs.next()) {
+                    if (page.size == limit) {
+                        // One ROW beyond the page exists. Decoded or not, it is a row, and it
+                        // is the only honest way to know the run continues.
+                        hasMore = true
+                        break
                     }
+                    page.add(readRecord(rs))
                 }
             }
         }
-        return dev.rubentxu.pipeline.v2.events.EventRecordSlice(
+        return EventRecordSlice(
             records = page,
-            nextCursor = dev.rubentxu.pipeline.v2.events.identity.EventCursor(
+            nextCursor = EventCursor(
                 runId,
                 page.lastOrNull()?.sequence ?: afterSequence,
             ),
@@ -217,72 +274,35 @@ internal class SqliteEventReader(
     }
 
     /**
-     * Authoritatively answer "has this run ever been written to".
-     * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
-     * adapter needs to distinguish a run that does not exist (the
-     * consumer mistyped the runId, or the run was on a different host)
-     * from a run that exists but has not yet produced any event. The
-     * adapter's only authority for that distinction is this method, and
-     * SQLite's `EXISTS` over the events table is the cheapest correct
-     * answer.
-     * The check is row-presence on the events table, NOT "non-empty
-     * page from readRecords": a run that has just been declared but
-     * not yet appended to must answer `true` so the adapter can serve
-     * an empty [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult.Page]
-     * to the consumer instead of refusing with
-     * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.UnknownRun].
-     * Connection lifecycle: opens a fresh short-lived connection via
-     * [connections] so the call does not share state with the
-     * persistent writer connection (a write under load would otherwise
-     * see the connection busy).
-*/
-    fun hasRun(runId: String): Boolean {
-        // A file with no `events` table holds no run. Saying so here keeps the refusal in
-        // the vocabulary of the product instead of letting SQLite's "no such table" escape
-        // as a raw stack trace from a verb that only wanted to read.
-        if (!holdsEventHistory) return false
-        return connections().use { conn ->
-            conn.prepareStatement(
-                "SELECT 1 FROM events WHERE run_id = ? LIMIT 1"
-            ).use { ps ->
-                ps.setString(1, runId)
-                ps.executeQuery().use { rs -> rs.next() }
-            }
-        }
-    }
-
-    /**
-     * Durable `MAX(sequence)` for [runId], or `null` if the run
-     * has no rows.
-     * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
-     * adapter uses this to refuse a cursor that is past the tail.
-     * SQLite's `MAX` is `null` over an empty set, so the function
-     * returns `null` for an empty run without a separate existence
-     * check; the adapter already gated the unknown-run case on
-     * [hasRun] before calling this.
-     * Connection lifecycle: opens a fresh short-lived connection via
-     * [connections] (same rationale as [hasRun]: avoid sharing
-     * state with the persistent writer connection).
-*/
-    fun tailSequence(runId: String): Long? {
-        // A file with no `events` table has no tail either.
-        if (!holdsEventHistory) return null
-        return connections().use { conn ->
-            conn.prepareStatement(
-                "SELECT MAX(sequence) FROM events WHERE run_id = ?"
-            ).use { ps ->
-                ps.setString(1, runId)
-                ps.executeQuery().use { rs ->
-                    if (rs.next()) {
-                        val v = rs.getLong(1)
-                        if (rs.wasNull()) null else v
-                    } else {
-                        null
-                    }
+     * The run's durable `MAX(sequence)`, read on the connection the page is read on.
+     *
+     * SQLite's `MAX` is `null` over an empty set, and that is the whole of the "the run holds no
+     * row" case: a run without rows has no tail, and a run with rows has one. The null is the
+     * absence, not a zero.
+     */
+    private fun tailIn(conn: Connection, runId: String): Long? =
+        conn.prepareStatement("SELECT MAX(sequence) FROM events WHERE run_id = ?").use { ps ->
+            ps.setString(1, runId)
+            ps.executeQuery().use { rs ->
+                if (rs.next()) {
+                    val value = rs.getLong(1)
+                    if (rs.wasNull()) null else value
+                } else {
+                    null
                 }
             }
         }
-    }
+
+    /**
+     * The page of a file that holds no event history: no rows, and a cursor that does not move,
+     * because there was nothing past it to begin with.
+     */
+    private fun emptyPage(runId: String, afterSequence: Long): EventRecordSlice =
+        EventRecordSlice(
+            records = emptyList(),
+            nextCursor = EventCursor(runId, afterSequence),
+            hasMore = false,
+        )
 
     /**
      * Turns ONE durable row into either its typed event or a refusal that names it.
@@ -308,8 +328,8 @@ internal class SqliteEventReader(
      * a page has to be able to carry the refusal. Throwing at this level would lose the rows after
      * it. The fail-closed decision belongs to whoever asked for typed events —
      * [eventsFor] and the inherited [dev.rubentxu.pipeline.v2.events.EventStore.readSlice] make it, and\n     * [readRecords] hands the caller the choice.
-*/
-    private fun readRecord(rs: java.sql.ResultSet): dev.rubentxu.pipeline.v2.events.EventRecordRead {
+    */
+    private fun readRecord(rs: ResultSet): EventRecordRead {
         val eventId = rs.getString("event_id")
         val sequence = rs.getLong("sequence")
         val kind = rs.getString("kind")

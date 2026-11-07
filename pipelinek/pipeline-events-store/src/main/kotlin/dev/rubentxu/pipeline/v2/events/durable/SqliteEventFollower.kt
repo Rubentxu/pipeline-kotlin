@@ -8,31 +8,21 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
 /**
  * Production [EventFollower] backed by the real
  * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort] (the
- * read port) composed with the existing event-store authority.
+ * read port).
  * ## What this is and what it is not
  * The follower is a **factory**: it owns no state of its own, and each
  * call to [open] returns a fresh [SqliteEventFollowHandle] driven by a
  * polling loop on the consumer's thread. No background thread, no
  * coroutine, no new write path.
- * The constructor takes the read port
- * ([EventRecordReadPort]) plus a [runExists] callback that decides
- * whether a `runId` is known to the underlying store. The callback
- * Matches the `EventRecordReadPortStoreAdapter` convention from
- * a separation between the port (the published contract) and the
- * store-side authority the implementation does not own directly.
- * For a Sqlite-backed adapter the natural implementation is
- * `SqliteEventStore::hasRun`, which the adapter wires through
- * `(store, store::hasRun, store::tailSequence)`.
- * ## Why a callback and not a new port
- * The published contract in `:pipeline-events` does not need a
- * "does this run exist" question on the read side. The
- * `EventRecordReadPort` adapter already answers it for read-side
- * paging purposes (so an empty page is unambiguous). A reader that
- * needs it again at the follow boundary gets it through the same
- * authority by way of a constructor argument. A new port would be
- * additive but it would also be a second way to ask the store about
- * the same fact, and two ways to ask the same store the same
- * question drift.
+ * ## The run's existence is the PORT's answer, and only the port's
+ * The follower used to carry a "does this run exist" callback of its own and probe the store before
+ * the first poll. That was a SECOND authority for one fact, and the two could disagree: the port
+ * knows about runs that were declared and have not written an event yet, and a store-side probe
+ * does not, so a follow could refuse a run the port would have served — on a fact read from
+ * somewhere else.
+ * The port already answers the question, and it answers it in the words the follow publishes
+ * ([dev.rubentxu.pipeline.v2.events.follow.EventFollowRefusal.UnknownRun]), so the follow asks the
+ * port and translates what it says. One authority, one answer, and no probe to pay for.
  * ## Why this is in `:pipeline-events-store` and not in `:pipeline-events`
  * `:pipeline-events` is the published contract; this implementation
  * depends on the Sqlite-backed adapter and the durable stores in
@@ -42,14 +32,6 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
 */
 class SqliteEventFollower(
     private val port: EventRecordReadPort,
-    /**
-     * The store-side authority that distinguishes a run that does not
-     * exist from a run that exists but has not yet produced any
-     * event. The handle calls this BEFORE the first poll so an empty
-     * page is unambiguous. The Sqlite adapter supplies
-     * `SqliteEventStore::hasRun`.
-*/
-    private val runExists: (String) -> Boolean,
 ) : EventFollower {
 
     /**
@@ -65,11 +47,10 @@ class SqliteEventFollower(
      *   run and a different action for the consumer.
      * @param options the polling knobs (`pollIntervalMs`, `maxRecords`,
      *   `after`, `until`, `lagReportInterval`).
-*/
+    */
     override fun open(runId: String, options: EventFollowOptions): EventFollowHandle =
         SqliteEventFollowHandle(
             port = port,
-            runExists = runExists,
             runId = runId,
             options = options,
         )
@@ -84,7 +65,7 @@ class SqliteEventFollower(
          * Mirrors the constant in
          * `SegmentOutputFollower.FOLLOW_IDLE_MILLIS` so both follow
          * contracts honour the same baseline.
-*/
+        */
         const val FOLLOW_IDLE_MILLIS: Long = 25L
     }
 }

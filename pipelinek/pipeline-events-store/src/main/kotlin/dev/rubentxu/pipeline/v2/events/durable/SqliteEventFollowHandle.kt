@@ -27,11 +27,9 @@ import java.util.concurrent.locks.ReentrantLock
  * holds:
  *  - the run being followed ([runId]),
  * The read-side collaborator ([port], the read port)
- *  - the **[runExists] callback** used to distinguish a run that does
- *    not exist from a run that exists but has not yet produced any
- * Event. The adapter owns this distinction at the page
- *    boundary; the follow honours it at the open boundary so an empty
- *    first page is unambiguous.
+ *  - the **[port]**, which is the SINGLE authority for whether the run
+ *    exists: the follow asks it and translates its refusal, so an
+ *    empty first page is unambiguous without a probe of its own.
  *  - the **[EventCursor]** cursor, which advances through
  *    [EventRecordReadPort.readRecords] pages using
  *    [EventRecordSlice.nextCursor].
@@ -96,7 +94,6 @@ import java.util.concurrent.locks.ReentrantLock
 */
 internal class SqliteEventFollowHandle(
     private val port: EventRecordReadPort,
-    private val runExists: (String) -> Boolean,
     private val runId: String,
     private val options: EventFollowOptions,
 ) : EventFollowHandle {
@@ -161,9 +158,9 @@ internal class SqliteEventFollowHandle(
      * delivered after this returns: any event buffered by an
      * in-flight [FollowIterator.hasNext] is dropped, and the next
      * call to [FollowIterator.hasNext] returns `false`. The store-side
-     * collaborators (the read port, the run-existence callback) are
-     * owned by the [SqliteEventFollower] factory, not by this handle,
-     * so the handle has no resources of its own to release.
+     * collaborator (the read port) is owned by the [SqliteEventFollower]
+     * factory, not by this handle, so the handle has no resources of
+     * its own to release.
      * A consumer sleeping inside [idle] on [idleCondition] is released
      * by [idleCondition.signalAll]; the next [FollowIterator.hasNext]
      * observes the closed flag and returns `false` promptly. Without this
@@ -278,17 +275,18 @@ internal class SqliteEventFollowHandle(
             lock.unlock()
         }
 
-        // 1. First poll: detect unknown run BEFORE the initial state
-        // Change. The callback is the store-side authority the
-        // adapter also uses, so the follow and the read port agree
-        // on what "unknown" means. The design KDoc rule: the first
-        // event is either StateChanged or Refused — a cursor past
-        // the tail is detected at this same boundary and emits the
-        // first event as Refused.
+        // 1. First poll: the READ PORT decides whether the run exists.
+        // The follow does not probe for the run by itself: a second
+        // authority for that fact could disagree with the port's, and
+        // a follow that refused a run the port would have served was
+        // refusing on a fact read from somewhere else. The port's
+        // refusal names the fact that stopped it — an unknown run, a
+        // cursor past the tail, a storage failure — and the follow
+        // translates it WITHOUT losing one.
+        // The design KDoc rule: the first event is either StateChanged
+        // or Refused, and a cursor past the tail is detected at this
+        // same boundary.
         if (!initialEmitted) {
-            if (!runExists(runId)) {
-                return queueRefusal(EventFollowRefusal.UnknownRun(runId))
-            }
             // Read once at the open boundary so the FIRST event is
             // either StateChanged (when the page was served) or
             // Refused (when the read port refused). A cursor past

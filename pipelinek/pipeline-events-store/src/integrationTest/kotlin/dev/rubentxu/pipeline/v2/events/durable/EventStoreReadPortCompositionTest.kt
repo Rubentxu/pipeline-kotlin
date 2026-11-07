@@ -27,9 +27,9 @@ import org.junit.jupiter.api.Test
  * ## Why this test is an INTEGRATION test and not a unit test
  * Each module has its own unit tests, and they pass: the store assigns
  * sequences, and the adapter refuses a cursor past the tail. What neither of
- * them can see is whether the two FIT — that the adapter's `tailSequence`
- * callback and the store's `tailSequence` method mean the same thing, and
- * that a cursor the adapter hands back is a cursor the store accepts.
+ * them can see is whether the two FIT — that the adapter's snapshot and the
+ * store's snapshot mean the same thing, and that a cursor the adapter hands
+ * back is a cursor the store accepts.
  *
  * That fit is what this test composes. Both modules are the REAL ones: the
  * [InMemoryEventStore] and the [EventRecordReadPortStoreAdapter]. What is
@@ -55,9 +55,8 @@ class EventStoreReadPortCompositionTest {
     private fun composition(): Pair<InMemoryEventStore, EventRecordReadPort> {
         val store = InMemoryEventStore()
         val port = EventRecordReadPortStoreAdapter(
-            store = store,
-            runExists = { id -> store.hasRun(id) },
-            tailSequence = { id -> store.tailSequence(id) },
+            reader = store,
+            runDeclared = { false },
         )
         return store to port
     }

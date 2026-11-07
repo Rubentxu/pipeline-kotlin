@@ -56,9 +56,8 @@ class SqliteEventFollowerRefusalTest {
 
     private fun firstEvent(
         port: EventRecordReadPort,
-        runExists: Boolean = true,
     ): EventFollowEvent {
-        val follower = SqliteEventFollower(port = port, runExists = { runExists })
+        val follower = SqliteEventFollower(port = port)
         follower.open("run-1", EventFollowOptions(pollIntervalMs = 1L)).use { handle ->
             val events = handle.iterator()
             assertTrue(events.hasNext(), "the follow must produce a first event")
@@ -73,7 +72,6 @@ class SqliteEventFollowerRefusalTest {
             FakePort(
                 listOf(EventRecordReadResult.Refused(EventRecordReadRefusal.UnknownRun("run-1"))),
             ),
-            runExists = false,
         )
 
         assertEquals(
@@ -130,7 +128,7 @@ class SqliteEventFollowerRefusalTest {
         // survive a follow that was already under way, not only one that never
         // started.
         val port = FakePort(listOf(emptyPage("run-1"), null))
-        val follower = SqliteEventFollower(port = port, runExists = { true })
+        val follower = SqliteEventFollower(port = port)
         follower.open("run-1", EventFollowOptions(pollIntervalMs = 1L)).use { handle ->
             val events = handle.iterator()
             val seen = mutableListOf<EventFollowEvent>()

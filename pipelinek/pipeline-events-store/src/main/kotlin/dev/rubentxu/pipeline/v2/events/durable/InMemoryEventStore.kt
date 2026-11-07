@@ -2,14 +2,17 @@ package dev.rubentxu.pipeline.v2.events.durable
 
 
 import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.EventRecordRead
+import dev.rubentxu.pipeline.v2.events.EventRecordSlice
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Thread-safe in-memory event store.
 */
-class InMemoryEventStore : EventSink {
+class InMemoryEventStore : EventSink, EventRunSnapshotReader {
 
     private val store = ConcurrentHashMap<String, MutableList<DomainEvent>>()
     private val sequenceCounters = ConcurrentHashMap<String, AtomicLong>()
@@ -44,30 +47,34 @@ class InMemoryEventStore : EventSink {
     }
 
     /**
-     * Authoritatively answer "has this run ever been written to".
-     * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
-     * adapter needs to distinguish a run that does not exist from a
-     * run that exists but has not yet produced any event. The in-memory
-     * authority is the map key: a runId with no key has never been
-     * `append`ed. (Note: a runId with a key but an empty list cannot
-     * happen in the in-memory store — `append` always inserts, and the
-     * map is created on first `append`.)
-*/
-    fun hasRun(runId: String): Boolean = store.containsKey(runId)
-
-    /**
-     * The durable `MAX(sequence)` of the in-memory list, or
-     * `null` if the run has no rows.
-     * Mirrors [dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore.tailSequence]
-     * so the [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
-     * adapter can refuse a cursor past the tail uniformly across the
-     * two stores. A run with a key but an empty list cannot happen
-     * in this store — `append` always inserts and the map is created
-     * on first `append` — so the empty-run case reduces to a missing
-     * key here.
-*/
-    fun tailSequence(runId: String): Long? =
-        store[runId]?.maxOfOrNull { it.sequence }
+     * The run's tail and the page after the cursor, read at ONE instant.
+     *
+     * ## The same law the durable store obeys
+     *
+     * The tail is the maximum sequence of the run's rows, and the page is cut from the same rows
+     * under the same monitor the write takes, so the two cannot disagree: an append that lands
+     * between them would have to break the monitor, and the monitor is the same one the writer
+     * holds while it appends.
+     *
+     * The tail is read under the monitor too, which it did not used to be. A tail read OUTSIDE the
+     * monitor walked a list that another thread was appending to, and a walk over a list being
+     * mutated is not a fact about the list: it can fail with a concurrent modification, or return
+     * a maximum that was true for half of the walk.
+     *
+     * A run with a key but no rows cannot happen here — [appendAssigned] always inserts, and the
+     * key is created on the first append — so the empty-run case reduces to a missing key.
+     */
+    override fun snapshotOf(runId: String, after: EventCursor?, limit: Int): EventRunSnapshot {
+        require(limit > 0) { "limit must be positive, got $limit" }
+        val afterSequence = after?.lastSequence ?: 0L
+        val list = store[runId] ?: return EventRunSnapshot(tail = null, page = emptyPage(runId, afterSequence))
+        return synchronized(list) {
+            EventRunSnapshot(
+                tail = list.maxOfOrNull { it.sequence },
+                page = cutPage(list, runId, afterSequence, limit),
+            )
+        }
+    }
 
     /**
      * Cuts the page inside the list instead of filtering a full [eventsFor] scan.
@@ -84,40 +91,60 @@ class InMemoryEventStore : EventSink {
      * It is also why this store cannot disagree with the SQLite one about a well-formed run: there
      * is no refusal path here that could answer differently. The divergence only becomes observable
      * on a malformed row, which is a property of SQLite's storage and not of this type.
+     * ## The page is cut in ONE place
+     * [readRecords] and [snapshotOf] are two doors onto the same cut, and they cut it with the
+     * same code ([cutPage]), so the two cannot drift apart.
      * ## What holds this to the inherited meaning, and what does not (no test does)
      * The cross-store equivalence is a per-subclass obligation with no central witness; see
      * [dev.rubentxu.pipeline.v2.events.EventStore.readRecords]. What holds the meaning HERE is
      * structural rather than witnessed: there is no undecodable case to disagree about, and the
      * page/cursor law lives in the inherited default rather than in a second copy of it.
-*/
+    */
     override fun readRecords(
         runId: String,
-        after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
+        after: EventCursor?,
         limit: Int,
-    ): dev.rubentxu.pipeline.v2.events.EventRecordSlice {
+    ): EventRecordSlice {
         require(limit > 0) { "limit must be positive, got $limit" }
         val afterSequence = after?.lastSequence ?: 0L
-        val page = ArrayList<dev.rubentxu.pipeline.v2.events.EventRecordRead>(minOf(limit, 64))
+        val list = store[runId] ?: return emptyPage(runId, afterSequence)
+        return synchronized(list) { cutPage(list, runId, afterSequence, limit) }
+    }
+
+    /**
+     * The cut, over a list whose monitor the caller already holds.
+     */
+    private fun cutPage(
+        list: List<DomainEvent>,
+        runId: String,
+        afterSequence: Long,
+        limit: Int,
+    ): EventRecordSlice {
+        val page = ArrayList<EventRecordRead>(minOf(limit, 64))
         var hasMore = false
-        store[runId]?.let { list ->
-            synchronized(list) {
-                for (event in list) {
-                    if (event.sequence <= afterSequence) continue
-                    if (page.size == limit) {
-                        hasMore = true
-                        break
-                    }
-                    page.add(dev.rubentxu.pipeline.v2.events.EventRecordRead.Decoded(event))
-                }
+        for (event in list) {
+            if (event.sequence <= afterSequence) continue
+            if (page.size == limit) {
+                hasMore = true
+                break
             }
+            page.add(EventRecordRead.Decoded(event))
         }
-        return dev.rubentxu.pipeline.v2.events.EventRecordSlice(
+        return EventRecordSlice(
             records = page,
-            nextCursor = dev.rubentxu.pipeline.v2.events.identity.EventCursor(
-                runId,
-                page.lastOrNull()?.sequence ?: afterSequence,
-            ),
+            nextCursor = EventCursor(runId, page.lastOrNull()?.sequence ?: afterSequence),
             hasMore = hasMore,
         )
     }
+
+    /**
+     * The page of a run this store holds no rows for: no records, and a cursor that does not move,
+     * because there was nothing past it to begin with.
+     */
+    private fun emptyPage(runId: String, afterSequence: Long): EventRecordSlice =
+        EventRecordSlice(
+            records = emptyList(),
+            nextCursor = EventCursor(runId, afterSequence),
+            hasMore = false,
+        )
 }

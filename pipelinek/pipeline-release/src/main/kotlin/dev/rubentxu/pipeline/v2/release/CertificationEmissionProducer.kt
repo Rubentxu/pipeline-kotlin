@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.v2.release
 
 import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import java.time.Instant
 
 /**
@@ -28,9 +30,10 @@ object CertificationEmissionProducer {
      * candidate, and write the receipt of the emission.
      *
      * The message lands in the inbox the reception contract declares, under
-     * the name that contract declares for this candidate. Nothing else is
-     * written there: a receiver that finds a message in the inbox finds one
-     * message about one candidate.
+     * the name that contract declares for this candidate, and it lands
+     * WHOLE: it is written beside its name and moved onto it, so a receiver
+     * that finds a message in the inbox finds one whole message about one
+     * candidate. Nothing else is written there.
      */
     fun emit(
         handoffPath: Path,
@@ -40,6 +43,39 @@ object CertificationEmissionProducer {
         contractPath: Path,
         receiptPath: Path,
         environment: Map<String, String>,
+    ): CertificationEmissionOutcome = emit(
+        handoffPath = handoffPath,
+        requestPath = requestPath,
+        publicationReceiptPath = publicationReceiptPath,
+        publishedAt = publishedAt,
+        contractPath = contractPath,
+        receiptPath = receiptPath,
+        environment = environment,
+        writeDocument = { path, content -> Files.writeString(path, content) },
+    )
+
+    /**
+     * The emission, with the way a document is written made explicit.
+     *
+     * The seam exists because the guarantee is about WHAT a receiver finds on
+     * the disk, and a guarantee about the disk needs an instrument that can
+     * break a write on purpose: the failure that leaves a message half
+     * written cannot be asked for politely, and a test that waits for a race
+     * to lose is a test that passes by luck.
+     *
+     * It is `internal` because how a document is written is not a choice the
+     * callers of the emission get to make: the emission publishes whole
+     * documents, and that is what it does.
+     */
+    internal fun emit(
+        handoffPath: Path,
+        requestPath: Path,
+        publicationReceiptPath: Path,
+        publishedAt: Instant,
+        contractPath: Path,
+        receiptPath: Path,
+        environment: Map<String, String>,
+        writeDocument: (Path, String) -> Unit,
     ): CertificationEmissionOutcome {
         val contractText = readDocument(contractPath)
             ?: return CertificationEmissionOutcome.Failed(
@@ -100,8 +136,8 @@ object CertificationEmissionProducer {
         return when (outcome) {
             is CertificationEmission.Ready -> {
                 val eventFile = Paths.get(inbox).resolve(contract.messageFileName(outcome.event.candidateId))
-                val failure = writeFile(eventFile, outcome.document)
-                    ?: writeFile(receiptPath, outcome.receipt)
+                val failure = writeFile(eventFile, outcome.document, writeDocument)
+                    ?: writeFile(receiptPath, outcome.receipt, writeDocument)
                 if (failure != null) {
                     CertificationEmissionOutcome.Failed(failure)
                 } else {
@@ -114,7 +150,7 @@ object CertificationEmissionProducer {
             }
 
             is CertificationEmission.AlreadyEmitted -> {
-                val failure = writeFile(receiptPath, outcome.receipt)
+                val failure = writeFile(receiptPath, outcome.receipt, writeDocument)
                 if (failure != null) {
                     CertificationEmissionOutcome.Failed(failure)
                 } else {
@@ -145,19 +181,80 @@ object CertificationEmissionProducer {
     }
 
     /**
-     * Write a document, creating the directory that holds it.
+     * Write a document and publish it where it belongs.
+     *
+     * The document is written BESIDE its destination and moved onto it, and
+     * not written onto it: a file that is created before its content is
+     * there is a file a receiver can read halfway. The receiver of a
+     * certification request reads the messages it finds in the inbox, and a
+     * message it cannot parse is a message it has to leave pending — so a
+     * write that breaks halfway would leave the certification of that
+     * candidate unrequested, with nothing to say why.
+     *
+     * A write that fails leaves nothing behind: the temporary is deleted and
+     * the destination is not touched, so the inbox holds what it held before
+     * the emission and no half-written document.
      *
      * It returns the reason it could not be written, and not an exception: a
      * message that cannot land in the inbox is an outcome of the emission
      * and not a crash of the program, and the operator has to read WHY.
      */
-    private fun writeFile(path: Path, content: String): String? {
+    private fun writeFile(
+        path: Path,
+        content: String,
+        writeDocument: (Path, String) -> Unit,
+    ): String? {
         return try {
             path.parent?.let { Files.createDirectories(it) }
-            Files.writeString(path, content)
-            null
+            val temporary = temporaryBeside(path)
+            try {
+                writeDocument(temporary, content)
+                moveIntoPlace(temporary, path)
+                null
+            } catch (e: Exception) {
+                runCatching { Files.deleteIfExists(temporary) }
+                throw e
+            }
         } catch (e: IOException) {
             "the document at $path could not be written: ${e.message ?: e::class.java.simpleName}"
+        }
+    }
+
+    /**
+     * The file a document is written to before it is published.
+     *
+     * It is a SIBLING of the destination, because a rename is atomic only
+     * within one filesystem, and it carries a name that cannot be read as a
+     * message: the reception contract's pattern is anchored, so a file that
+     * is not exactly the name of a message is not one, and the receiver
+     * ignores it instead of refusing it.
+     *
+     * The instant in the name is what keeps two emissions of the same
+     * candidate from writing the same temporary: the bytes of two writers in
+     * one file are bytes nobody can read.
+     */
+    private fun temporaryBeside(path: Path): Path =
+        path.resolveSibling("${path.fileName}.${System.nanoTime()}.tmp")
+
+    /**
+     * Move a written document onto its destination.
+     *
+     * The atomic move IS the publication: a receiver sees the document whole
+     * or not at all. A filesystem that cannot move atomically falls back to a
+     * replacing move, which is not atomic but is still a move of complete
+     * bytes; the fallback exists because refusing to publish on such a
+     * filesystem would be a worse answer than publishing the document there.
+     */
+    private fun moveIntoPlace(temporary: Path, destination: Path) {
+        try {
+            Files.move(
+                temporary,
+                destination,
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        } catch (e: AtomicMoveNotSupportedException) {
+            Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING)
         }
     }
 }

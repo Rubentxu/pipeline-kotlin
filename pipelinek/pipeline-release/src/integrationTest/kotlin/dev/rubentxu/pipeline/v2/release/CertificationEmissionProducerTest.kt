@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -22,6 +23,11 @@ import java.time.Instant
  * It also proves the second half of that: the message of one candidate does
  * not overwrite the message of another, and a second emission of the same
  * candidate does not write the file twice.
+ *
+ * And it proves the third: the message lands WHOLE. The receiver reads what
+ * it finds, so a message that is still being written is a message it cannot
+ * read; the emission therefore publishes a document by moving it onto its
+ * name, and a write that breaks halfway leaves the inbox as it was.
  *
  * The lane is the integration one because the guarantee is about a directory:
  * a unit test that only computed a path would not know whether the file
@@ -122,6 +128,7 @@ class CertificationEmissionProducerTest {
         candidateDigest: String = digest,
         contract: Path = contractPath(),
         environment: Map<String, String> = this.environment,
+        writeDocument: (Path, String) -> Unit = { path, content -> Files.writeString(path, content) },
     ): CertificationEmissionOutcome {
         val (handoffFile, requestFile, receiptFile) = documents(candidateDigest)
         return CertificationEmissionProducer.emit(
@@ -132,7 +139,20 @@ class CertificationEmissionProducerTest {
             contractPath = contract,
             receiptPath = temp.resolve("rc.certification.requested.txt"),
             environment = environment,
+            writeDocument = writeDocument,
         )
+    }
+
+    /**
+     * The names of the files the receiver would find in the inbox.
+     *
+     * An inbox that does not exist holds nothing, and saying so is part of
+     * what the rows below assert: a refusal that leaves no directory behind
+     * is not a refusal that leaves a message behind.
+     */
+    private fun inboxFiles(): List<String> {
+        if (!Files.isDirectory(inbox)) return emptyList()
+        return Files.list(inbox).use { files -> files.map { it.fileName.toString() }.sorted().toList() }
     }
 
     @Test
@@ -150,7 +170,7 @@ class CertificationEmissionProducerTest {
         assertTrue(Files.isRegularFile(emitted.receiptFile), "the receipt of the emission must be there")
         assertEquals(
             listOf("rc.certification.requested.$digest.json"),
-            Files.list(inbox).use { files -> files.map { it.fileName.toString() }.sorted().toList() },
+            inboxFiles(),
             "the inbox must hold the message and nothing else",
         )
     }
@@ -165,7 +185,7 @@ class CertificationEmissionProducerTest {
                 "rc.certification.requested.$digest.json",
                 "rc.certification.requested.$otherDigest.json",
             ),
-            Files.list(inbox).use { files -> files.map { it.fileName.toString() }.sorted().toList() },
+            inboxFiles(),
             "the inbox holds one message per candidate, and the name tells them apart",
         )
     }
@@ -179,7 +199,7 @@ class CertificationEmissionProducerTest {
         assertInstanceOf(CertificationEmissionOutcome.AlreadyEmitted::class.java, outcome)
         assertEquals(
             1,
-            Files.list(inbox).use { files -> files.count() },
+            inboxFiles().size,
             "the same question must not leave two messages in the inbox",
         )
     }
@@ -200,6 +220,52 @@ class CertificationEmissionProducerTest {
         assertTrue(
             failed.reason.contains("could not be written"),
             "the refusal must say that the message could not land, got: ${failed.reason}",
+        )
+    }
+
+    @Test
+    fun `a write that breaks halfway leaves no message in the inbox`() {
+        // The receiver reads the messages it finds in the inbox, and a
+        // message it cannot parse is a message it leaves pending. A write
+        // that breaks halfway would therefore leave the certification of
+        // that candidate unrequested, with nothing to say why.
+        //
+        // The break is injected on purpose, through the way the emission
+        // writes a document: a race would be a test that passes by luck, and
+        // a race that loses once in a hundred is a test that certifies
+        // nothing.
+        val outcome = emit(
+            writeDocument = { path, content ->
+                Files.writeString(path, content.take(content.length / 2))
+                throw IOException("the writer gave up in the middle")
+            },
+        )
+
+        assertInstanceOf(
+            CertificationEmissionOutcome.Failed::class.java,
+            outcome,
+            "a write that breaks is a failure of the emission, not a message that landed",
+        )
+        assertEquals(
+            emptyList<String>(),
+            inboxFiles(),
+            "an interrupted write must leave neither a half-written message nor a temporary " +
+                "file in the inbox: a receiver that finds a partial message cannot read it, " +
+                "and the certification of that candidate is never asked for",
+        )
+    }
+
+    @Test
+    fun `the message the receiver finds is the whole document`() {
+        val outcome = emit()
+
+        val emitted = assertInstanceOf(CertificationEmissionOutcome.Emitted::class.java, outcome)
+        val decoded = CertificationRequestedEventCodec.decode(Files.readString(emitted.eventFile))
+
+        assertInstanceOf(
+            CertificationEventDecode.Accepted::class.java,
+            decoded,
+            "the message in the inbox must be a document the receiver can read whole",
         )
     }
 

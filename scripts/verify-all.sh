@@ -471,7 +471,7 @@ trap cleanup_run_dir EXIT
 
 # --- Stage 1: the checks that read only the tree --------------------------------
 #
-# The stage runs seven checks that read ONLY the tree, and only then the Gradle
+# The stage runs the checks that read ONLY the tree, and only then the Gradle
 # invocation that builds the product and analyses it. The order is the point,
 # and it is the reason this stage exists at all.
 #
@@ -487,19 +487,43 @@ if want_stage 1; then
     stage1_ran=1
     log "stage 1/5  the checks that read only the tree"
 
+    # --- The checks of this stage, and the order their verdicts are read in ---
+    #
+    # Every check below reads the tree and writes its own output, and no one of
+    # them reads what another one wrote. The stage runs them all before the
+    # build starts, so a tree that breaks a cheap rule is told so in seconds
+    # instead of after the minutes the build and the tests cost.
+    #
+    # They ran one after another, and the stage paid the SUM of them: the ten
+    # of them together take more than twice what the slowest one takes, and
+    # every one of those seconds is a second the stage spends waiting for a
+    # check that has nothing to do with the one that is running. The stage
+    # publishes its own seconds, so that waiting is visible: it is the
+    # distance between the sum and the slowest.
+    #
+    # They run together now, and their verdicts are read afterwards, in the
+    # order of the table below. That order is the contract: the first red
+    # check in the table is still the check the run names, the output still
+    # prints in the order it always printed, and a red run still says which
+    # check was red. Only the waiting changed.
+    #
+    # Each record is: <log title>|<script>|<log file>|<why the run fails>.
+    # An empty title is a check whose output prints without a heading of its
+    # own.
+    stage1_guards=()
+
     # --- The LOC census -------------------------------------------------------
     # AGENTS.md section 4's contract: VERIFY_LOC <= 2 * PRODUCT_LOC. The census
     # reads the Git index and the tracked files, so it needs no build output
     # and it measures the tree that is about to be built.
+    #
+    # The census is the one record that the --no-budget option removes, and
+    # the stage says so on the output, so a reader of this run knows that it
+    # measured no lines.
     if [[ "$skip_budget" == 1 ]]; then
         log "stage 1/5  LOC census SKIPPED by --no-budget"
     else
-        if python3 scripts/check-budgets.py > "$log_dir/budget.out" 2>&1; then
-            cat "$log_dir/budget.out"
-        else
-            cat "$log_dir/budget.out" >&2
-            fail "stage 1: the LOC census"
-        fi
+        stage1_guards+=("|scripts/check-budgets.py|budget.out|stage 1: the LOC census")
     fi
 
     # --- The words a comment uses ---------------------------------------------
@@ -512,13 +536,7 @@ if want_stage 1; then
     # budget is a contract, and the guard is a check on the words the source
     # says. Skipping it because the operator did not want the census of lines
     # would be the wrong reason to stop saying what the code does.
-    if python3 scripts/check-comment-provenance.py > "$log_dir/comments.out" 2>&1; then
-        log "stage 1/5  comment provenance"
-        cat "$log_dir/comments.out"
-    else
-        cat "$log_dir/comments.out" >&2
-        fail "stage 1: the comment provenance guard"
-    fi
+    stage1_guards+=("comment provenance|scripts/check-comment-provenance.py|comments.out|stage 1: the comment provenance guard")
 
     # --- The serializer the static analysis can see ----------------------------
     # The `kotlinx.serialization` plugin generates a `serializer()` function in
@@ -534,13 +552,7 @@ if want_stage 1; then
     # reads the tree to ask whether that rule still holds: a module that calls
     # `T.serializer()` on a type of its own would blind the analysis again,
     # and the gate would go on reporting findings it can no longer judge.
-    if python3 scripts/check-serializer-visibility.py > "$log_dir/serializer-visibility.out" 2>&1; then
-        log "stage 1/5  the serializer the static analysis can see"
-        cat "$log_dir/serializer-visibility.out"
-    else
-        cat "$log_dir/serializer-visibility.out" >&2
-        fail "stage 1: the serializer-visibility guard"
-    fi
+    stage1_guards+=("the serializer the static analysis can see|scripts/check-serializer-visibility.py|serializer-visibility.out|stage 1: the serializer-visibility guard")
 
     # --- The wire a codec already owns ---------------------------------------
     # A wire format that a Step owns is written by ONE object: the codec. The
@@ -559,13 +571,7 @@ if want_stage 1; then
     # This guard reads the tree and asks BOTH questions: does the compiler name
     # a `kind` that a codec owns, and does it still delegate to that codec? A
     # one-sided question can be satisfied by doing nothing.
-    if python3 scripts/check-compiler-wire-authority.py > "$log_dir/compiler-wire-authority.out" 2>&1; then
-        log "stage 1/5  the wire a codec already owns"
-        cat "$log_dir/compiler-wire-authority.out"
-    else
-        cat "$log_dir/compiler-wire-authority.out" >&2
-        fail "stage 1: the compiler-wire-authority guard"
-    fi
+    stage1_guards+=("the wire a codec already owns|scripts/check-compiler-wire-authority.py|compiler-wire-authority.out|stage 1: the compiler-wire-authority guard")
 
     # --- The set of the signing keys -----------------------------------------
     # The release path signs the release tags with a key this repository
@@ -574,13 +580,7 @@ if want_stage 1; then
     # is a contract, and the guard reads the tree to ask whether the current
     # key can be attributed at all. A key that claims a domain reserved for
     # documentation belongs to nobody, so no consumer is able to place it.
-    if python3 scripts/check-signing-key-trust.py > "$log_dir/signing-trust.out" 2>&1; then
-        log "stage 1/5  the trust set of the signing keys"
-        cat "$log_dir/signing-trust.out"
-    else
-        cat "$log_dir/signing-trust.out" >&2
-        fail "stage 1: the trust set of the signing keys"
-    fi
+    stage1_guards+=("the trust set of the signing keys|scripts/check-signing-key-trust.py|signing-trust.out|stage 1: the trust set of the signing keys")
 
     # --- The published contracts carry their contract -------------------------
     # The `.api` files are the authority of the public surface, and a type
@@ -595,13 +595,7 @@ if want_stage 1; then
     # sentiment, and a receipt that only the author can reproduce is a
     # receipt that cannot be checked. The guard prints it per contract, and
     # the floor is the whole surface.
-    if python3 scripts/check-kdoc-coverage.py > "$log_dir/kdoc.out" 2>&1; then
-        log "stage 1/5  contract KDoc coverage"
-        cat "$log_dir/kdoc.out"
-    else
-        cat "$log_dir/kdoc.out" >&2
-        fail "stage 1: the contract KDoc coverage guard"
-    fi
+    stage1_guards+=("contract KDoc coverage|scripts/check-kdoc-coverage.py|kdoc.out|stage 1: the contract KDoc coverage guard")
 
     # --- The KDoc names the exception the code throws --------------------------
     # A `@throws` is part of the contract of a function: it is what a consumer
@@ -616,13 +610,7 @@ if want_stage 1; then
     # project's `close()`. A promise it cannot check is COUNTED and not called
     # broken: a guard that accused the exceptions of the JDK of being false
     # would be a guard nobody reads.
-    if python3 scripts/check-kdoc-throws.py > "$log_dir/throws.out" 2>&1; then
-        log "stage 1/5  the exceptions the KDoc promises"
-        cat "$log_dir/throws.out"
-    else
-        cat "$log_dir/throws.out" >&2
-        fail "stage 1: the exception-promise guard"
-    fi
+    stage1_guards+=("the exceptions the KDoc promises|scripts/check-kdoc-throws.py|throws.out|stage 1: the exception-promise guard")
 
     # --- Only the entry point may end the process ------------------------------
     # A helper that ends the process takes a decision that belongs to somebody
@@ -632,13 +620,7 @@ if want_stage 1; then
     # the CLI already declares. The guard reads the product sources, resolves
     # the function that holds each exit call, and fails when that function is
     # not the entry point.
-    if python3 scripts/check-process-exits.py > "$log_dir/exits.out" 2>&1; then
-        log "stage 1/5  process exits"
-        cat "$log_dir/exits.out"
-    else
-        cat "$log_dir/exits.out" >&2
-        fail "stage 1: the process-exit guard"
-    fi
+    stage1_guards+=("process exits|scripts/check-process-exits.py|exits.out|stage 1: the process-exit guard")
 
     # --- The durable path spends no probe and no fixed wait --------------------
     # The durable shell used to establish the child's detachment with an
@@ -654,13 +636,7 @@ if want_stage 1; then
     # serves. A cost that is not in the table fails, a row that the code no
     # longer has fails too, and a cost whose purpose is a probe or a fixed
     # wait is refused by name.
-    if python3 scripts/check-durable-shell-cost.py > "$log_dir/durable.out" 2>&1; then
-        log "stage 1/5  the durable path's costs"
-        cat "$log_dir/durable.out"
-    else
-        cat "$log_dir/durable.out" >&2
-        fail "stage 1: the durable-path cost guard"
-    fi
+    stage1_guards+=("the durable path's costs|scripts/check-durable-shell-cost.py|durable.out|stage 1: the durable-path cost guard")
 
     # --- The tree holds no layer that boots a product -------------------------
     # A layer that starts the product to certify it lives in a harness
@@ -677,13 +653,48 @@ if want_stage 1; then
     # cannot rot into a set of names that would allow whatever arrives next.
     # The one executable program that starts the product is the compatibility
     # gate of the publication, and the declaration says so with its reason.
-    if python3 scripts/check-product-boot-layer.py > "$log_dir/boot-layer.out" 2>&1; then
-        log "stage 1/5  the layer that boots a product"
-        cat "$log_dir/boot-layer.out"
-    else
-        cat "$log_dir/boot-layer.out" >&2
-        fail "stage 1: the product-boot layer guard"
-    fi
+    stage1_guards+=("the layer that boots a product|scripts/check-product-boot-layer.py|boot-layer.out|stage 1: the product-boot layer guard")
+
+    # The checks run together, and every one of them is waited for before any
+    # verdict is read, so a run that stops leaves no check running behind it.
+    stage1_guard_titles=()
+    stage1_guard_logs=()
+    stage1_guard_reasons=()
+    stage1_guard_pids=()
+    for stage1_record in "${stage1_guards[@]}"; do
+        stage1_title="${stage1_record%%|*}"
+        stage1_record="${stage1_record#*|}"
+        stage1_script="${stage1_record%%|*}"
+        stage1_record="${stage1_record#*|}"
+        stage1_logfile="${stage1_record%%|*}"
+        stage1_reason="${stage1_record#*|}"
+
+        python3 "$stage1_script" > "$log_dir/$stage1_logfile" 2>&1 &
+        stage1_guard_titles+=("$stage1_title")
+        stage1_guard_logs+=("$stage1_logfile")
+        stage1_guard_reasons+=("$stage1_reason")
+        stage1_guard_pids+=("$!")
+    done
+
+    stage1_guard_status=()
+    for stage1_pid in "${stage1_guard_pids[@]}"; do
+        stage1_status=0
+        wait "$stage1_pid" || stage1_status=$?
+        stage1_guard_status+=("$stage1_status")
+    done
+
+    # The verdicts are read in the order of the table, so the run names the
+    # first check that is red and prints what every check said.
+    for stage1_index in "${!stage1_guard_titles[@]}"; do
+        if [[ "${stage1_guard_status[$stage1_index]}" != "0" ]]; then
+            cat "$log_dir/${stage1_guard_logs[$stage1_index]}" >&2
+            fail "${stage1_guard_reasons[$stage1_index]}"
+        fi
+        if [[ -n "${stage1_guard_titles[$stage1_index]}" ]]; then
+            log "stage 1/5  ${stage1_guard_titles[$stage1_index]}"
+        fi
+        cat "$log_dir/${stage1_guard_logs[$stage1_index]}"
+    done
 
     # --- Only src/main, src/test and src/integrationTest may hold Kotlin -------
     # AGENTS.md section 2 allows the unit lane and the integration lane and

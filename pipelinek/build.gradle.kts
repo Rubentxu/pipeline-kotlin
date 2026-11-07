@@ -115,7 +115,21 @@ repositories {
 // it differently, so the two artifacts do NOT behave the same and one version
 // cannot carry both. The 0.93.0 train opens here (ProductVersion 0.93.0) and
 // its first candidate can be tagged v0.93.0-rc1.
-version = "0.93.0"
+// 2026-11-07: the 0.93.0 train closed at v0.93.0-rc1, and the law holds here
+// too: this tree has moved since that candidate. The published ARTIFACT does
+// not behave the same, and it is measured on the real distribution, hot, with
+// JDK 25: the JVM no longer writes to the product's output, so `version`
+// prints "pipeline 0.93.0" and nothing else where it used to print three JVM
+// lines, `version --json` parses where it used to raise JSONDecodeError, and
+// `doctor` no longer puts the JVM's lines in front of its facts. A consumer
+// that parses that output has to read something else, so the two artifacts do
+// NOT behave the same and one version cannot carry both. And the promotion
+// reads a different document: the certification of promotion declares the
+// shape `pipelinek-promotion-certification-2`, which carries the reason of
+// the part that did not apply and REQUIRES it, while the shape that came
+// before stays closed. The 0.94.0 train opens here (ProductVersion 0.94.0)
+// and its first candidate can be tagged v0.94.0-rc1.
+version = "0.94.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

@@ -10,10 +10,12 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
 import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationRow
+import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
 import java.sql.SQLException
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -95,8 +97,8 @@ class DurableStoresConnectionLaneTest {
 
     private fun dbPath(): String = tempDir.resolve("pipeline.db").toString()
 
-    private fun storesOf(store: SqliteEventStore): DurableStores =
-        DurableStores.open(store, tempDir.resolve("control"), FixedClock())
+    private fun storesOf(store: SqliteEventStore, control: String = "control"): DurableStores =
+        DurableStores.open(store, tempDir.resolve(control), FixedClock())
 
     @Test
     fun `the cursor borrows its connections instead of opening one per operation`() {
@@ -224,18 +226,120 @@ class DurableStoresConnectionLaneTest {
         store.close()
     }
 
-    private fun row(index: Int): SagaObligationRow = SagaObligationRow(
+    @Test
+    fun `two threads that advance two positions lose no write`() {
+        // The cursor's advance is the one write of this lane that does NOT take the file lock:
+        // it writes a row of its own, and the lock that fences the journal's writes is not its
+        // to take. So two threads advancing two positions on ONE store is the shape that the
+        // pool's own promise has to hold: a lent connection belongs to one operation at a time,
+        // and the two positions are two different rows.
+        val doors = CountedDoors(dbPath())
+        val store = doors.store()
+        val stores = storesOf(store)
+
+        val perThread = 30
+        val start = CountDownLatch(1)
+        val failures = AtomicInteger()
+        val threads = (0 until 2).map { side ->
+            Thread {
+                start.await()
+                repeat(perThread) { index ->
+                    runCatching { stores.cursors.advance("run-$side", "op-$side-$index", index) }
+                        .onFailure { failures.incrementAndGet() }
+                }
+            }
+        }
+        threads.forEach { it.start() }
+        start.countDown()
+        threads.forEach { it.join() }
+
+        assertEquals(
+            0,
+            failures.get(),
+            "two threads on one store must not be handed the same connection: the pool lends it " +
+                "to one operation at a time",
+        )
+        assertEquals(
+            perThread - 1,
+            stores.cursors.load("run-0")?.stageIndex,
+            "the position of the first run is the one its last advance wrote",
+        )
+        assertEquals(
+            perThread - 1,
+            stores.cursors.load("run-1")?.stageIndex,
+            "and the second run's position is its own, not the first one's",
+        )
+        store.close()
+    }
+
+    @Test
+    fun `two instances that do not share the in-process fence keep every promise`() {
+        // The two stores spell the same file DIFFERENTLY on purpose, so the in-process fence --
+        // which is keyed by the path -- does not join them. That is the shape of two PROCESSES:
+        // each one has its own lock, its own connections and its own door, and the only thing
+        // they share is the file. A real second process is not spawned here because the test
+        // lanes forbid reaching outside the process (AGENTS.md section 2); the fence that a
+        // second process would not have is exactly the one left out on purpose.
+        val directory = tempDir.resolve("shared").also { Files.createDirectories(it) }
+        val firstFile = directory.resolve("pipeline.db").toString()
+        val secondFile = directory.resolve(".").resolve("pipeline.db").toString()
+
+        val first = CountedDoors(firstFile).store()
+        val second = CountedDoors(secondFile).store()
+        val firstStores = storesOf(first, control = "control-first")
+        val secondStores = storesOf(second, control = "control-second")
+
+        val perStore = 25
+        val start = CountDownLatch(1)
+        val failures = AtomicInteger()
+        val threads = listOf(firstStores to "first", secondStores to "second").map { (stores, side) ->
+            Thread {
+                start.await()
+                repeat(perStore) { index ->
+                    runCatching { stores.sagaObligations.arm(row(index, side)) }
+                        .onFailure { failures.incrementAndGet() }
+                }
+            }
+        }
+        threads.forEach { it.start() }
+        start.countDown()
+        threads.forEach { it.join() }
+
+        assertEquals(
+            0,
+            failures.get(),
+            "no write may fail: the database's own locking is what holds",
+        )
+        val seenBySecond = secondStores.sagaObligations.listForRun("run-1").size
+        assertEquals(
+            2 * perStore,
+            seenBySecond,
+            "the second store must see the $perStore promises the first one armed and its own " +
+                "$perStore: it saw $seenBySecond, so the two spellings are not naming ONE file",
+        )
+        val rows = firstStores.sagaObligations.listForRun("run-1") +
+            secondStores.sagaObligations.listForRun("run-1")
+        assertEquals(
+            2 * perStore,
+            rows.distinctBy { it.actionId.value }.size,
+            "every promise must be there exactly once, from both sides",
+        )
+        first.close()
+        second.close()
+    }
+
+    private fun row(index: Int, side: String = "one"): SagaObligationRow = SagaObligationRow(
         runId = "run-1",
         sagaId = SagaId.of("checkout"),
-        actionId = SagaActionId.of("action-$index"),
+        actionId = SagaActionId.of("action-$side-$index"),
         compensationId = CompensationId.of("release-stock"),
         intentVersion = 1,
         planFingerprint = SagaPlanFingerprint("a".repeat(64)),
-        resourceRef = ResourceRef.of("stock/reservation-$index"),
+        resourceRef = ResourceRef.of("stock/reservation-$side-$index"),
         kind = CompensationKind.RESTORE,
         status = CompensationObligationStatus.ARMED,
-        forwardOpId = "run-1|stage-0|step-$index",
-        compensationOpId = "saga-v1|compensate|release-stock|run-1|stage-0|step-$index",
+        forwardOpId = "run-1|stage-0|step-$side-$index",
+        compensationOpId = "saga-v1|compensate|release-stock|run-1|stage-0|step-$side-$index",
         leaseEpoch = 1L,
         createdAtMs = 1_000L + index,
         updatedAtMs = 1_000L + index,
@@ -245,7 +349,7 @@ class DurableStoresConnectionLaneTest {
 
     private fun key(index: Int): CompensationKey = CompensationKey(
         sagaId = SagaId.of("checkout"),
-        actionId = SagaActionId.of("action-$index"),
+        actionId = SagaActionId.of("action-one-$index"),
         compensationId = CompensationId.of("release-stock"),
     )
 }

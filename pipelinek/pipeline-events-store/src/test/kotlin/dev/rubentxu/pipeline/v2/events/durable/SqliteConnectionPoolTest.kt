@@ -79,6 +79,30 @@ class SqliteConnectionPoolTest {
     }
 
     @Test
+    fun `a connection that is lent is not lent to a second borrower`() {
+        val pool = SqliteConnectionPool({ memoryConnection() }, capacity = 2)
+
+        val first = pool.borrow()
+        pool.release(first)
+
+        // The connection is idle again, and the next borrower takes it OUT of the queue. A pool
+        // that left it in the queue would hand the SAME connection to the borrower after it, and
+        // two operations would be holding one connection at the same moment.
+        val second = pool.borrow()
+        val third = pool.borrow()
+
+        assertNotSame(
+            second,
+            third,
+            "a connection that is lent out belongs to ONE operation at a time: the second " +
+                "borrower was handed the connection the first one was still holding",
+        )
+        pool.release(second)
+        pool.release(third)
+        pool.close()
+    }
+
+    @Test
     fun `the pool never opens more connections than its capacity`() {
         val opens = AtomicInteger()
         val pool = SqliteConnectionPool({ opens.incrementAndGet(); memoryConnection() }, capacity = 2)

@@ -66,9 +66,21 @@ class SagaInspectionTest {
 
     private fun store(): SqliteSagaObligationStore =
         SqliteSagaObligationStore(
-            connectionFactory = { SqliteConnectionFactory.open(dbPath()) },
+            connections = connections(),
             dbPath = dbPath(),
         )
+
+    /**
+     * The durable lane's pools over this test's file: the PRODUCER's door for the writes and
+     * the READING door for the reads — the same two doors the product reaches the file by.
+     */
+    private fun connections(): DurableConnections {
+        val path = dbPath()
+        return DurableConnections.over(
+            writeDoor = { SqliteConnectionFactory.open(path) },
+            readDoor = { SqliteConnectionFactory.openReadOnly(path) },
+        )
+    }
 
     @Test
     fun `the read-side shows what the run promised and what it still owes`() {

@@ -74,17 +74,22 @@ data class DurableStores(
             controlRoot: Path,
             clock: Clock,
         ): DurableStores {
-            val connectionFactory = eventStore.underlyingConnectionFactory()
             val dbPath = eventStore.databasePath()
+            // The SAME pools for the three stores that write and read in this database: the
+            // journal, the cursor and the Saga obligations. One pool means one write connection
+            // and one set of reading doors, so the cost of the door is paid once per connection
+            // and not once per operation — and it means the stores of a run cannot disagree about
+            // how the file is reached.
+            val connections = eventStore.durableConnections
             return DurableStores(
                 journal = SqliteOperationJournalImpl(
-                    connections = eventStore.durableConnections,
+                    connections = connections,
                     clock = clock,
                     dbPath = dbPath,
                 ),
-                cursors = SqliteReplayCursorStoreImpl(connectionFactory, clock),
+                cursors = SqliteReplayCursorStoreImpl(connections, clock),
                 sagaObligations = SqliteSagaObligationStore(
-                    connectionFactory = connectionFactory,
+                    connections = connections,
                     dbPath = dbPath,
                 ),
                 lease = FileBackedRunExecutionLeaseStore(controlRoot.resolve(LEASE_DIRECTORY)),

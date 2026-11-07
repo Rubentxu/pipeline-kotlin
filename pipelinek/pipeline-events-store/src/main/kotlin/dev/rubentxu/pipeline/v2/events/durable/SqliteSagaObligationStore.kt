@@ -54,9 +54,23 @@ import kotlin.concurrent.withLock
  * writer whose epoch is below it has been superseded, and its write is refused rather than
  * applied. The lease FILE remains the authority on who owns the run; this guard is the durable
  * half of the same check, and it holds even if the file was replaced between the two.
+ *
+ * ## The connections
+ *
+ * The obligations borrow their connections from the durable lane's pools, the way the journal
+ * does: the WRITES go through the write pool, inside the lock that fences them, and the READS go
+ * through the read pool, whose door is one the database engine refuses to write through.
+ *
+ * The door was the expensive part. Arming a promise is a single statement, and opening a
+ * connection to run it costs more than the statement itself; a Saga arms one promise per action,
+ * so the cost of the door was paid again and again for a write that had already been paid for.
+ * A borrowed connection belongs to ONE operation at a time and comes back when the operation
+ * ends, so the cost of the door is paid once per connection instead of once per promise.
+ *
+ * @param connections the pools the store borrows its connections from.
  */
 internal class SqliteSagaObligationStore(
-    private val connectionFactory: () -> Connection,
+    private val connections: DurableConnections,
     private val dbPath: String,
 ) : SagaObligationStore {
 
@@ -70,8 +84,7 @@ internal class SqliteSagaObligationStore(
         SagaIntentContract.requireSupported(row.intentVersion)
 
         return DbLock.forPath(dbPath).withLock {
-            val connection = connectionFactory()
-            try {
+            connections.writes.withConnection { connection ->
                 val inserted = connection.prepareStatement(INSERT_OBLIGATION).use { statement ->
                     statement.setString(1, row.runId)
                     statement.setString(2, row.sagaId.value)
@@ -135,8 +148,6 @@ internal class SqliteSagaObligationStore(
                     inserted > 0 -> SagaArmPersistence.Inserted(stored)
                     else -> SagaArmPersistence.Existing(stored)
                 }
-            } finally {
-                connection.close()
             }
         }
     }
@@ -148,8 +159,7 @@ internal class SqliteSagaObligationStore(
         }
 
         return DbLock.forPath(dbPath).withLock {
-            val connection = connectionFactory()
-            try {
+            connections.writes.withConnection { connection ->
                 val updated = connection.prepareStatement(UPDATE_OBLIGATION).use { statement ->
                     statement.setString(1, update.status.name)
                     val receiptRef = update.receiptRef
@@ -188,32 +198,30 @@ internal class SqliteSagaObligationStore(
                     )
                     // The row was just written, so it is there. Reading it back is what makes the
                     // answer the truth on disk rather than the truth this process believes.
-                    return@withLock SagaUpdatePersistence.Updated(
+                    SagaUpdatePersistence.Updated(
                         stored ?: error("the obligation vanished in the same transaction"),
                     )
-                }
-
-                // Nothing was written. Either there is no promise under that key, or the guard
-                // refused this writer. The difference matters: one of them is a missing
-                // obligation and the other is a lost lease.
-                val stored = selectByKey(
-                    connection,
-                    update.runId,
-                    update.key.sagaId,
-                    update.key.actionId,
-                    update.key.compensationId,
-                )
-                if (stored == null) {
-                    SagaUpdatePersistence.NotFound
-                } else if (isForeignOwner(stored, update.ownerPluginId)) {
-                    // The promise belongs to another plugin: the refusal names it, so the
-                    // reason is actionable instead of merely discouraging.
-                    SagaUpdatePersistence.ForeignOwner(stored)
                 } else {
-                    SagaUpdatePersistence.Fenced(currentEpochOf(connection, update.runId))
+                    // Nothing was written. Either there is no promise under that key, or the guard
+                    // refused this writer. The difference matters: one of them is a missing
+                    // obligation and the other is a lost lease.
+                    val stored = selectByKey(
+                        connection,
+                        update.runId,
+                        update.key.sagaId,
+                        update.key.actionId,
+                        update.key.compensationId,
+                    )
+                    if (stored == null) {
+                        SagaUpdatePersistence.NotFound
+                    } else if (isForeignOwner(stored, update.ownerPluginId)) {
+                        // The promise belongs to another plugin: the refusal names it, so the
+                        // reason is actionable instead of merely discouraging.
+                        SagaUpdatePersistence.ForeignOwner(stored)
+                    } else {
+                        SagaUpdatePersistence.Fenced(currentEpochOf(connection, update.runId))
+                    }
                 }
-            } finally {
-                connection.close()
             }
         }
     }
@@ -231,14 +239,13 @@ internal class SqliteSagaObligationStore(
         require(leaseEpoch >= 0) { "leaseEpoch must not be negative, got $leaseEpoch" }
 
         return DbLock.forPath(dbPath).withLock {
-            val connection = connectionFactory()
-            try {
+            connections.writes.withConnection { connection ->
                 // The bulk move is all or nothing, so the ownership of every row it would touch
                 // is known BEFORE the statement runs: one promise that belongs to another plugin
                 // stops the whole move instead of leaving the Saga half-closed.
                 val foreign = firstForeignOwner(connection, runId, sagaId, from, ownerPluginId)
                 if (foreign != null) {
-                    return@withLock SagaBulkMove.ForeignOwner(foreign)
+                    return@withConnection SagaBulkMove.ForeignOwner(foreign)
                 }
 
                 val moved = connection.prepareStatement(MOVE_ALL_OBLIGATIONS).use { statement ->
@@ -273,29 +280,22 @@ internal class SqliteSagaObligationStore(
                     // with somebody else.
                     val current = currentEpochOf(connection, runId)
                     if (current > leaseEpoch) {
-                        return@withLock SagaBulkMove.Fenced(current)
+                        return@withConnection SagaBulkMove.Fenced(current)
                     }
                 }
 
                 SagaBulkMove.Applied(moved = moved, remaining = remaining)
-            } finally {
-                connection.close()
             }
         }
     }
 
-    override fun find(runId: String, key: CompensationKey): SagaObligationRow? {
-        val connection = connectionFactory()
-        try {
-            return selectByKey(connection, runId, key.sagaId, key.actionId, key.compensationId)
-        } finally {
-            connection.close()
+    override fun find(runId: String, key: CompensationKey): SagaObligationRow? =
+        connections.reads.withConnection { connection ->
+            selectByKey(connection, runId, key.sagaId, key.actionId, key.compensationId)
         }
-    }
 
-    override fun listForRun(runId: String): List<SagaObligationRow> {
-        val connection = connectionFactory()
-        try {
+    override fun listForRun(runId: String): List<SagaObligationRow> =
+        connections.reads.withConnection { connection ->
             connection.prepareStatement(SELECT_RUN_OBLIGATIONS).use { statement ->
                 statement.setString(1, runId)
                 statement.executeQuery().use { rs ->
@@ -303,13 +303,10 @@ internal class SqliteSagaObligationStore(
                     while (rs.next()) {
                         rows.add(SagaObligationRowCodec.read(rs))
                     }
-                    return rows
+                    rows
                 }
             }
-        } finally {
-            connection.close()
         }
-    }
 
     /**
      * Creates the table if it is not there yet.
@@ -320,16 +317,13 @@ internal class SqliteSagaObligationStore(
      */
     private fun ensureSchema() {
         DbLock.forPath(dbPath).withLock {
-            val connection = connectionFactory()
-            try {
+            connections.writes.withConnection { connection ->
                 connection.createStatement().use { statement ->
                     statement.execute(CREATE_OBLIGATION_TABLE)
                     statement.execute(CREATE_OBLIGATION_RUN_INDEX)
                 }
                 addOwnerColumnIfMissing(connection)
                 addBodyDigestColumnIfMissing(connection)
-            } finally {
-                connection.close()
             }
         }
     }

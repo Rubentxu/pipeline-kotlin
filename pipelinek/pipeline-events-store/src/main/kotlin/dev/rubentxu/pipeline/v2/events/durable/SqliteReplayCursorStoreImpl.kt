@@ -7,7 +7,6 @@ import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursor
 import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.runtime.durable.StageIndex
-import java.sql.Connection
 
 /**
  * SQLite-backed implementation of [ReplayCursorStore].
@@ -26,12 +25,23 @@ import java.sql.Connection
  * the append succeeds could result in a cursor pointing to an operation
  * that was not actually persisted.
  *
- * @param connectionFactory A factory function that returns an open [Connection]
- *                           obtained from [SqliteConnectionFactory.open].
+ * ## The connections
+ *
+ * The cursor BORROWS its connections from the durable lane's pools, like the
+ * journal does: it writes through the write pool and reads through the read
+ * pool, whose door is one the database engine refuses to write through.
+ *
+ * The door was the expensive part: opening a connection costs more than the
+ * statement it carries, and this cursor advances once per settled operation of
+ * a run, so a connection per operation was a cost that grew with the run. A
+ * borrowed connection belongs to ONE operation at a time and comes back when
+ * the operation ends, so the cost of the door is paid once per connection.
+ *
+ * @param connections the pools the cursor borrows its connections from.
  *
  */
 internal class SqliteReplayCursorStoreImpl(
-    private val connectionFactory: () -> Connection,
+    private val connections: DurableConnections,
     private val clock: Clock,
 ) : ReplayCursorStore {
     /**
@@ -40,29 +50,24 @@ internal class SqliteReplayCursorStoreImpl(
      * @param runId The run identifier.
      * @return The [ReplayCursor] if found, or `null` if no cursor exists for this run.
      */
-    override fun load(runId: String): ReplayCursor? {
-        val conn = connectionFactory()
-        try {
-            conn.prepareStatement(
-                """
-                SELECT run_id, last_op_id, stage_index, saved_at
-                FROM replay_cursor
-                WHERE run_id = ?
-                """.trimIndent()
-            ).use { ps ->
-                ps.setString(1, runId)
-                ps.executeQuery().use { rs ->
-                    if (!rs.next()) return null
-                    return ReplayCursor(
-                        runId = rs.getString(1),
-                        lastOpId = rs.getString(2),
-                        stageIndex = rs.getInt(3),
-                        savedAt = rs.getLong(4),
-                    )
-                }
+    override fun load(runId: String): ReplayCursor? = connections.reads.withConnection { conn ->
+        conn.prepareStatement(
+            """
+            SELECT run_id, last_op_id, stage_index, saved_at
+            FROM replay_cursor
+            WHERE run_id = ?
+            """.trimIndent()
+        ).use { ps ->
+            ps.setString(1, runId)
+            ps.executeQuery().use { rs ->
+                if (!rs.next()) return@withConnection null
+                ReplayCursor(
+                    runId = rs.getString(1),
+                    lastOpId = rs.getString(2),
+                    stageIndex = rs.getInt(3),
+                    savedAt = rs.getLong(4),
+                )
             }
-        } finally {
-            conn.close()
         }
     }
 
@@ -84,8 +89,7 @@ internal class SqliteReplayCursorStoreImpl(
     override fun advance(runId: String, opId: String, stageIndex: Int) {
         require(stageIndex >= 0) { "stageIndex must be >= 0, got $stageIndex" }
 
-        val conn = connectionFactory()
-        try {
+        connections.writes.withConnection { conn ->
             conn.prepareStatement(
                 """
                 INSERT INTO replay_cursor (run_id, last_op_id, stage_index, saved_at)
@@ -103,8 +107,6 @@ internal class SqliteReplayCursorStoreImpl(
                 ps.setLong(4, clock.now().toEpochMilli())
                 ps.executeUpdate()
             }
-        } finally {
-            conn.close()
         }
     }
 
@@ -137,8 +139,7 @@ internal class SqliteReplayCursorStoreImpl(
             ?: branchResults.maxOfOrNull { it.stageIndex }
             ?: 0
 
-        val conn = connectionFactory()
-        try {
+        connections.writes.withConnection { conn ->
             // Derive cursor keys from runId:
             // run_id for the join barrier is "$runId:parallel"
             // last_op_id is "$runId:parallel-completed"
@@ -162,8 +163,6 @@ internal class SqliteReplayCursorStoreImpl(
                 ps.setLong(4, clock.now().toEpochMilli())
                 ps.executeUpdate()
             }
-        } finally {
-            conn.close()
         }
         return StageIndex(maxStageIndex)
     }

@@ -131,6 +131,11 @@ class SqliteOperationJournalDurableLaneTest {
         val store = doors.store()
         val journal = journalOf(store)
 
+        // The lane's doors, counted before a single operation. The durable lane of a run — the
+        // journal, the cursor and the Saga obligations — borrows the pools it was given, so the
+        // sibling store's schema was already created through the pool's ONE write connection:
+        // a BORROWED connection is not an OPENED one, and the count of opened connections is
+        // what this measures.
         val writesBefore = doors.writeOpens.get()
         val readsBefore = doors.readOpens.get()
 
@@ -141,16 +146,40 @@ class SqliteOperationJournalDurableLaneTest {
             journal.get("op-${index % 10}")
         }
 
+        val writesAfterFifty = doors.writeOpens.get()
+        val readsAfterFifty = doors.readOpens.get()
+
+        assertTrue(
+            writesAfterFifty - writesBefore <= 1,
+            "fifty writes must borrow the lane's ONE write connection, not open fifty: the door " +
+                "is what the measurement found expensive",
+        )
+        assertTrue(
+            readsAfterFifty - readsBefore <= 1,
+            "fifty reads must borrow the lane's ONE read connection, not open fifty",
+        )
+
+        // Ten times the operations must not open ten times the connections. This is the part
+        // that cannot be satisfied by a coincidence: the count has to be the SAME, not merely
+        // small, because the pool lends what it has and opens nothing more.
+        repeat(500) { index ->
+            journal.append(operation("more-$index"), deadlineMs = null)
+        }
+        repeat(500) { index ->
+            journal.get("more-${index % 10}")
+        }
+
         assertEquals(
-            1,
-            doors.writeOpens.get() - writesBefore,
-            "fifty writes must borrow ONE connection, not open fifty: the door is what the " +
-                "measurement found expensive",
+            writesAfterFifty,
+            doors.writeOpens.get(),
+            "ten times the operations must not open ten times the connections: the journal " +
+                "borrows the lane's ONE write connection and gives it back",
         )
         assertEquals(
-            1,
-            doors.readOpens.get() - readsBefore,
-            "fifty reads must borrow ONE connection, not open fifty",
+            readsAfterFifty,
+            doors.readOpens.get(),
+            "ten times the operations must not open ten times the connections: the journal " +
+                "borrows the lane's ONE read connection and gives it back",
         )
         store.close()
     }

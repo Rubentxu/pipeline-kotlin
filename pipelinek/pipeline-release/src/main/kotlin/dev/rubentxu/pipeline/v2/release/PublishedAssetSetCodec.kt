@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.release
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 
 /**
  * Deterministic serialisation of the published asset set.
@@ -21,8 +22,8 @@ object PublishedAssetSetCodec {
     }
 
     fun encode(set: PublishedAssetSet): String =
-        json.encodeToString(PublishedAssetSet.serializer(), set) + "\n"
+        json.encodeToString(serializer<PublishedAssetSet>(), set) + "\n"
 
     fun decode(text: String): PublishedAssetSet =
-        json.decodeFromString(PublishedAssetSet.serializer(), text)
+        json.decodeFromString(serializer<PublishedAssetSet>(), text)
 }

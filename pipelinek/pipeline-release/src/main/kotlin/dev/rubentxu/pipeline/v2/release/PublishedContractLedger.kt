@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.release
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 
 /**
  * One entry of the published-contract exception ledger: a deliberate break of
@@ -119,7 +120,7 @@ object PublishedContractLedgerCodec {
     }
 
     fun decode(text: String): PublishedContractLedger {
-        val file = json.decodeFromString(PublishedContractLedgerFile.serializer(), text)
+        val file = json.decodeFromString(serializer<PublishedContractLedgerFile>(), text)
         return PublishedContractLedger(file.entries)
     }
 }

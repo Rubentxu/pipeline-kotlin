@@ -4,6 +4,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.serializer
 
 /**
  * The serialisation of a certification receipt, and the reading of a document
@@ -48,7 +49,7 @@ object CertificationReceiptCodec {
      * The receipt as JSON. The same receipt always yields the same bytes.
      */
     fun encode(receipt: CertificationReceipt): String =
-        writer.encodeToString(CertificationReceipt.serializer(), receipt) + "\n"
+        writer.encodeToString(serializer<CertificationReceipt>(), receipt) + "\n"
 
     /**
      * Read a receipt from [text].
@@ -71,7 +72,7 @@ object CertificationReceiptCodec {
         } else {
             // The names the schema defines, read from the serializer itself, so
             // the check and the document cannot disagree.
-            val known = CertificationReceipt.serializer().descriptor.elementNames.toSet()
+            val known = serializer<CertificationReceipt>().descriptor.elementNames.toSet()
             val unknown = fields.keys - known
             val missing = known - fields.keys
             when {
@@ -114,7 +115,7 @@ object CertificationReceiptCodec {
      * the result and not a side effect of the control flow.
      */
     private fun readReceipt(fields: JsonObject): CertificationReceiptDecodeResult = try {
-        val receipt = reader.decodeFromJsonElement(CertificationReceipt.serializer(), fields)
+        val receipt = reader.decodeFromJsonElement(serializer<CertificationReceipt>(), fields)
         if (receipt.schemaVersion != CertificationReceipt.SCHEMA_VERSION) {
             CertificationReceiptDecodeResult.Rejected(
                 CertificationReceiptRejection.MalformedDocument(

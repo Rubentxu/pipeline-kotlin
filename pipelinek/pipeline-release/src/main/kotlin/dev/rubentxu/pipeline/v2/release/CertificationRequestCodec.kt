@@ -4,6 +4,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.serializer
 
 /**
  * The serialisation of the certification request, and the reading of a
@@ -42,7 +43,7 @@ object CertificationRequestCodec {
      * The request as JSON. The same request always yields the same bytes.
      */
     fun encode(request: CertificationRequest): String =
-        writer.encodeToString(CertificationRequest.serializer(), request) + "\n"
+        writer.encodeToString(serializer<CertificationRequest>(), request) + "\n"
 
     /**
      * Read a request from [text].
@@ -64,7 +65,7 @@ object CertificationRequestCodec {
         } else {
             // The names the schema defines, read from the serializer itself, so
             // the check and the document cannot disagree.
-            val known = CertificationRequest.serializer().descriptor.elementNames.toSet()
+            val known = serializer<CertificationRequest>().descriptor.elementNames.toSet()
             val unknown = fields.keys - known
             if (unknown.isNotEmpty()) {
                 CertificationRequestDecodeResult.Rejected(
@@ -102,7 +103,7 @@ object CertificationRequestCodec {
      * the result and not a side effect of the control flow.
      */
     private fun readRequest(fields: JsonObject): CertificationRequestDecodeResult = try {
-        val request = reader.decodeFromJsonElement(CertificationRequest.serializer(), fields)
+        val request = reader.decodeFromJsonElement(serializer<CertificationRequest>(), fields)
         if (request.schemaVersion != CertificationRequest.SCHEMA_VERSION) {
             CertificationRequestDecodeResult.Rejected(
                 CertificationRejection.MalformedDocument(

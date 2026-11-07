@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.release
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 
 /**
  * Deterministic serialisation of the distribution manifest.
@@ -30,8 +31,8 @@ object DistributionManifestCodec {
     }
 
     fun encode(manifest: DistributionManifest): String =
-        json.encodeToString(DistributionManifest.serializer(), manifest) + "\n"
+        json.encodeToString(serializer<DistributionManifest>(), manifest) + "\n"
 
     fun decode(text: String): DistributionManifest =
-        json.decodeFromString(DistributionManifest.serializer(), text)
+        json.decodeFromString(serializer<DistributionManifest>(), text)
 }

@@ -338,52 +338,181 @@ def kotlin_comment_spans(source: str):
     return out
 
 
-def shell_comment_spans(source: str):
-    """Yield (start, end) of every shell comment.
+def heredoc_delimiter(source: str, start: int):
+    """The delimiter of the heredoc whose operator starts at `start`.
+
+    `start` points at the first character after the `<<`. The delimiter may be
+    quoted, and the word that follows the operator is the delimiter itself.
+    Returns (delimiter, where the operator ends, whether tabs are stripped) or
+    (None, start, False) when there is no delimiter to read.
+    """
+    i, n = start, len(source)
+    while i < n and source[i] in " \t":
+        i += 1
+    strip_tabs = False
+    if i < n and source[i] == "-":
+        strip_tabs = True
+        i += 1
+    if i >= n:
+        return None, start, False
+    quote = source[i]
+    if quote in ("'", '"', "`"):
+        j = source.find(quote, i + 1)
+        if j < 0:
+            return None, start, False
+        return source[i + 1:j], j + 1, strip_tabs
+    j = i
+    while j < n and source[j] not in " \t\n;|&<>()":
+        j += 1
+    if j == i:
+        return None, start, False
+    return source[i:j], j, strip_tabs
+
+
+def skip_heredoc_body(source: str, start: int, delimiter: str, strip_tabs: bool):
+    """Where the body of a heredoc ends, and whether it ended at all.
+
+    The body runs from `start` to the line that names the delimiter, and the
+    index returned is the one right after that line. A delimiter that never
+    appears is a body that runs to the end of the file: the scan did not read
+    the file, and the caller has to know it.
+    """
+    n = len(source)
+    i = start
+    while i < n:
+        end = source.find("\n", i)
+        if end < 0:
+            end = n
+        line = source[i:end]
+        candidate = line.lstrip("\t") if strip_tabs else line
+        if candidate == delimiter:
+            return (end + 1 if end < n else n), True
+        i = end + 1
+    return n, False
+
+
+def shell_scan(source: str):
+    """Every shell comment in the source, and whether the scan read it whole.
+
+    The second value is False when the scan ended inside a string, or inside a
+    heredoc body that never closed. A scan that did not read the whole file
+    cannot say what the rest of the file does not say, so the caller has to be
+    able to see that it did not.
+
+    The contexts are kept in a stack, because the quoting of shell nests: a
+    double-quoted string may hold a command substitution, and inside that
+    substitution the code is code again. A heredoc is a redirect of the CODE,
+    so it is recognised there and nowhere else: `<<` inside a quoted string is
+    text, and `<<<` is a herestring whose words are its body.
+
+    The body of a heredoc is not code: it is not a string either, and the
+    apostrophes in it open nothing. Read as code, one apostrophe opens a quote
+    that never closes, and the scan goes on inside a string until the end of
+    the file, where every comment is invisible. The body is therefore skipped
+    whole, from the line after the redirect to the line that names the
+    delimiter.
 
     Shell has no block comment, so `/*` here is a path glob and reading it as a
     comment swallows the rest of the file. Its comment character is `#`, and it
-    has no line the original tokeniser could see at all. Both are handled here.
-
-    A `#` opens a comment only at the start of a word, which is what keeps
-    `${#items}` and `foo#bar` out of it; `//` opens one when it is not preceded by
-    a colon, which keeps `https://` out of it. Quote state is carried across
-    lines, because a quoted string in shell can span them.
+    has no line the original tokeniser could see at all. A `#` opens a comment
+    only at the start of a word, which is what keeps `${#items}` and `foo#bar`
+    out of it; `//` opens one when it is not preceded by a colon, which keeps
+    `https://` out of it. Quote state is carried across lines, because a
+    quoted string in shell can span them.
     """
     i, n, out = 0, len(source), []
-    in_single = in_double = False
+    contexts = []
     line_start = True
+    bodies = []
+
+    def context():
+        return contexts[-1] if contexts else None
+
     while i < n:
         ch = source[i]
         if ch == "\n":
             line_start = True
             i += 1
+            for delimiter, strip_tabs in bodies:
+                i, closed = skip_heredoc_body(source, i, delimiter, strip_tabs)
+                if not closed:
+                    return out, False
+            bodies = []
             continue
-        if in_single:
+
+        current = context()
+
+        if current == "single":
             if ch == "'":
-                in_single = False
+                contexts.pop()
             i += 1
             continue
-        if in_double:
+
+        if current == "double":
             if ch == "\\":
                 i += 2
                 continue
             if ch == '"':
-                in_double = False
+                contexts.pop()
+                i += 1
+                continue
+            if source[i:i + 2] == "$(":
+                contexts.append(("code", ")"))
+                i += 2
+                line_start = False
+                continue
+            if ch == "`":
+                contexts.append(("code", "`"))
+                i += 1
+                line_start = False
+                continue
             i += 1
             continue
+
+        if current is not None and current[1] == "`" and ch == "`":
+            contexts.pop()
+            i += 1
+            line_start = False
+            continue
+
         if ch == "'":
-            in_single = True
+            contexts.append("single")
             line_start = False
             i += 1
             continue
         if ch == '"':
-            in_double = True
+            contexts.append("double")
+            line_start = False
+            i += 1
+            continue
+        if source[i:i + 2] == "$(":
+            contexts.append(("code", ")"))
+            line_start = False
+            i += 2
+            continue
+        if ch == "`":
+            contexts.append(("code", "`"))
             line_start = False
             i += 1
             continue
         if ch == "\\":
             i += 2
+            continue
+        if source[i:i + 3] == "<<<":
+            i += 3
+            line_start = False
+            continue
+        if source[i:i + 2] == "<<" and (i == 0 or source[i - 1] != "<"):
+            delimiter, after, strip_tabs = heredoc_delimiter(source, i + 2)
+            if delimiter is not None:
+                bodies.append((delimiter, strip_tabs))
+                line_start = False
+                i = after
+                continue
+        if ch == ")" and current is not None and current[1] == ")":
+            contexts.pop()
+            i += 1
+            line_start = False
             continue
         previous = source[i - 1] if i else " "
         if ch == "#" and (line_start or previous in " \t;&|()"):
@@ -401,7 +530,7 @@ def shell_comment_spans(source: str):
         if not ch in " \t":
             line_start = False
         i += 1
-    return out
+    return out, not contexts
 
 
 def looks_like_hash(token: str) -> bool:
@@ -504,8 +633,16 @@ def read_source(repo: Path, rel: str):
         return None
 
 
-def comment_spans(rel: str, text: str):
-    return shell_comment_spans(text) if rel.endswith(".sh") else kotlin_comment_spans(text)
+def scan_source(rel: str, text: str):
+    """Every comment in the file, and whether the read reached its end.
+
+    The reach is part of the reading. A scan that stopped inside a string has
+    not seen the rest of the file, and saying nothing about that rest is how a
+    partial scan comes to look like a clean one.
+    """
+    if rel.endswith(".sh"):
+        return shell_scan(text)
+    return kotlin_comment_spans(text), True
 
 
 def code_identifiers(text: str, spans) -> set:
@@ -522,8 +659,73 @@ def code_identifiers(text: str, spans) -> set:
     return set(IDENTIFIER_IN_CODE.findall(code))
 
 
+# ---------------------------------------------------------------------------
+# THE GUARD'S OWN REACH
+#
+# A guard that watches part of a file and says nothing about the rest is a
+# green over a partial scan, and a partial scan is indistinguishable from a
+# clean one. Two checks live here, and both of them are about the guard
+# itself.
+#
+# THE REACH. When the tokenising of a script ends inside a string, the guard
+# does not pass in green: it names the file it could not read to the end, and
+# it fails. A file the guard could not finish is not a file without findings:
+# it is a file without a verdict.
+#
+# THE OWN PROBE. The guard carries a fixture in memory: a shell text whose
+# heredoc holds an apostrophe, with a comment of provenance at the head and
+# another at the tail. Its own rule has to find BOTH. The fixture is red with
+# a tokeniser that reads a heredoc body as code -- the apostrophe opens a
+# quote that never closes and the tail goes invisible -- and green with this
+# one.
+
+SELF_CHECK_SOURCE = """# WU-LPR-402
+cat <<EOF
+the operator's own note
+EOF
+# ADR-0103
+"""
+
+# The lines the probe expects to carry a finding: the head and the tail.
+SELF_CHECK_LINES = (1, 5)
+
+
+def self_check() -> list:
+    """What the guard finds in the fixture it carries.
+
+    The fixture is the defect itself, in miniature: a heredoc whose body holds
+    an apostrophe, with a comment of provenance on each side of it. Read as
+    code, the apostrophe opens a quote that never closes, and everything after
+    it belongs to that quote: the tail comment is not a clean comment, it is
+    an invisible one. The probe therefore asks for both lines, and a
+    tokeniser that cannot see the tail fails here before it ever reaches the
+    tree.
+    """
+    spans, complete = shell_scan(SELF_CHECK_SOURCE)
+    problems = []
+    if not complete:
+        problems.append("el tokenizador no leyo la sonda hasta el final")
+    index = code_identifiers(SELF_CHECK_SOURCE, spans)
+    found = {line_no for line_no, _why, _snippet
+             in scan("self-check.sh", SELF_CHECK_SOURCE, spans, index)}
+    for line_no in SELF_CHECK_LINES:
+        if line_no not in found:
+            problems.append(f"la sonda no vio el comentario de la linea {line_no}")
+    return problems
+
+
 def main() -> int:
     repo = Path(__file__).resolve().parent.parent
+
+    # The guard checks its own reach before it checks anybody else's code.
+    problems = self_check()
+    if problems:
+        for problem in problems:
+            print(f"  {problem}")
+        print("\nLA GUARD NO LEE SU ALCANCE")
+        print("Sin alcance, su veredicto no dice nada del fichero entero.")
+        return 1
+
     files = tracked_files(repo)
 
     # First pass: which names does the code still hold?
@@ -532,15 +734,19 @@ def main() -> int:
         text = read_source(repo, rel)
         if text is None:
             continue
-        index |= code_identifiers(text, comment_spans(rel, text))
+        spans, _complete = scan_source(rel, text)
+        index |= code_identifiers(text, spans)
 
     # Second pass: what do the comments point at?
     offenders = []
+    unread = []
     for rel in files:
         text = read_source(repo, rel)
         if text is None:
             continue
-        spans = comment_spans(rel, text)
+        spans, complete = scan_source(rel, text)
+        if not complete:
+            unread.append(rel)
         for line_no, why, snippet in scan(rel, text, spans, index):
             offenders.append((rel, line_no, why, snippet))
     total = len(offenders)
@@ -551,6 +757,12 @@ def main() -> int:
     if total:
         print(f"\nCOMENTARIOS CON PROCEDENCIA: {total}")
         print("Un comentario explica que hace el codigo. Quien lo pidio lo dice la historia.")
+        return 1
+    if unread:
+        print("\nFICHEROS QUE LA GUARD NO LEYO HASTA EL FINAL:")
+        for rel in unread:
+            print(f"  {rel}")
+        print("Un fichero a medias no es un fichero sin hallazgos: es un fichero sin ver.")
         return 1
     print("OK: ningun comentario nombra un encargo, un documento de trabajo, una etiqueta "
           "administrativa, un commit, una referencia externa, una persona ni una narracion del pasado")

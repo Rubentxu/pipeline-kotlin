@@ -77,6 +77,7 @@ class MavenPublicationValidationTest {
                 battery = null,
                 status = CertificationPartStatus.NOT_APPLICABLE,
                 runs = emptyList(),
+                reason = "the candidate fixes no reported defect",
             ),
         ),
     ): PromotionCertification = PromotionCertification(

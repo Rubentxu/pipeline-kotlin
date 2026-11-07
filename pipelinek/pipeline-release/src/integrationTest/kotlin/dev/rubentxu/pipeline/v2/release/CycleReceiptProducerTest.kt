@@ -100,7 +100,16 @@ class CycleReceiptProducerTest {
         ),
     )
 
+    /**
+     * A promotion certification of the shape that came before.
+     *
+     * It is the shape the certifications of today have, and the receipt of
+     * the cycle binds them: a receipt that stopped binding the shape the
+     * certifications of today have would refuse the cycles that were run
+     * before the reason existed.
+     */
     private fun promotion(candidateDigest: String = digest): PromotionCertification = PromotionCertification(
+        schemaVersion = "pipelinek-promotion-certification-1",
         candidateId = CandidateId.fromDigest(candidateDigest),
         decision = CertificationDecision.CERTIFIED,
         parts = listOf(
@@ -255,4 +264,76 @@ class CycleReceiptProducerTest {
         assertTrue(refused.reason.contains("defect report"), "the reason must name the document that disagrees")
         assertFalse(Files.exists(out))
     }
+
+    @Test
+    fun `the reason a part did not apply survives the receipt of the cycle`() {
+        val out = directory.resolve("cycle-receipt.json")
+        val promotionCertification = write("promotion.json", promotionWithReason())
+
+        val outcome = produce(out, extras = listOf(promotionCertification))
+
+        assertInstanceOf(CycleReceiptOutcome.Accepted::class.java, outcome)
+        val decoded = assertInstanceOf(
+            CycleReceiptDecodeResult.Accepted::class.java,
+            CycleReceiptCodec.decode(Files.readString(out)),
+        )
+        val revalidation = decoded.receipt.promotion?.parts?.first {
+            it.part == CertificationPart.REVALIDATION
+        }
+        assertEquals(
+            "the candidate fixes no reported defect, so there is nothing to re-validate",
+            revalidation?.reason,
+            "the receipt of the cycle binds the documents of the cycle, and the reason a part " +
+                "did not apply is part of the document it binds",
+        )
+    }
+
+    /**
+     * The promotion certification the certification harness writes, in the
+     * shape that says WHY a part did not apply.
+     *
+     * It is written as text and not through the product's own encoder: the
+     * document crosses the boundary from another repository, and a witness
+     * that built it with the product's encoder would only certify that the
+     * product agrees with itself.
+     */
+    private fun promotionWithReason(): String = """
+        {
+          "schema_version": "pipelinek-promotion-certification-2",
+          "candidate_id": "sha256:$digest",
+          "decision": "CERTIFIED",
+          "parts": [
+            {
+              "part": "SCENARIOS",
+              "battery": {
+                "id": "harness-certification-battery",
+                "version": "1",
+                "scenario_count": 3
+              },
+              "status": "CERTIFIED",
+              "runs": [
+                {
+                  "scenario": "alpha",
+                  "verdict": "EXECUTED_PASS"
+                },
+                {
+                  "scenario": "beta",
+                  "verdict": "EXECUTED_PASS"
+                },
+                {
+                  "scenario": "gamma",
+                  "verdict": "EXECUTED_PASS"
+                }
+              ]
+            },
+            {
+              "part": "REVALIDATION",
+              "battery": null,
+              "status": "NOT_APPLICABLE",
+              "runs": [],
+              "reason": "the candidate fixes no reported defect, so there is nothing to re-validate"
+            }
+          ]
+        }
+    """.trimIndent() + "\n"
 }

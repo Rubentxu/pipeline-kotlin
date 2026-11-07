@@ -66,6 +66,7 @@ class PromotionCertificationAdmissionTest {
                 battery = null,
                 status = CertificationPartStatus.NOT_APPLICABLE,
                 runs = emptyList(),
+                reason = "the candidate fixes no reported defect",
             ),
         ),
     )
@@ -141,5 +142,104 @@ class PromotionCertificationAdmissionTest {
             PromotionCertificationAdmission.admit(path, candidate),
         )
         assertTrue(outcome.reason.contains("not a certification"))
+    }
+
+    /**
+     * The document the certification harness writes, in the shape that says
+     * WHY a part did not apply.
+     *
+     * It is written as text and not through the product's own encoder: the
+     * document crosses the boundary from another repository, and a witness
+     * that built it with the product's encoder would only certify that the
+     * product agrees with itself.
+     */
+    private fun currentShapeDocument(reason: String?): String {
+        val reasonLine = if (reason == null) "" else ",\n      \"reason\": \"$reason\""
+        return """
+            {
+              "schema_version": "pipelinek-promotion-certification-2",
+              "candidate_id": "sha256:$digest",
+              "decision": "CERTIFIED",
+              "parts": [
+                {
+                  "part": "CANARIES",
+                  "battery": {
+                    "id": "canaries",
+                    "version": "1",
+                    "scenario_count": 2
+                  },
+                  "status": "CERTIFIED",
+                  "runs": [
+                    {
+                      "scenario": "canary-smoke",
+                      "verdict": "EXECUTED_PASS"
+                    },
+                    {
+                      "scenario": "canary-sandbox",
+                      "verdict": "EXECUTED_PASS"
+                    }
+                  ]
+                },
+                {
+                  "part": "SCENARIOS",
+                  "battery": {
+                    "id": "uat",
+                    "version": "2026.11",
+                    "scenario_count": 1
+                  },
+                  "status": "CERTIFIED",
+                  "runs": [
+                    {
+                      "scenario": "har-001-smoke",
+                      "verdict": "EXECUTED_PASS"
+                    }
+                  ]
+                },
+                {
+                  "part": "REVALIDATION",
+                  "battery": null,
+                  "status": "NOT_APPLICABLE",
+                  "runs": []$reasonLine
+                }
+              ]
+            }
+        """.trimIndent() + "\n"
+    }
+
+    @Test
+    fun `a certification that says why a part did not apply admits the candidate`() {
+        val path = write(
+            currentShapeDocument(
+                "the candidate fixes no reported defect, so there is nothing to re-validate",
+            ),
+        )
+
+        val outcome = assertInstanceOf(
+            PromotionCertificationOutcome.Admitted::class.java,
+            PromotionCertificationAdmission.admit(path, candidate),
+        )
+        assertTrue(outcome.summary.contains("ADMISSIBLE"))
+        assertTrue(
+            outcome.summary.contains("the candidate fixes no reported defect"),
+            "the reason has to reach the verdict the operator reads, got: ${outcome.summary}",
+        )
+    }
+
+    @Test
+    fun `a certification that does not say why a part did not apply refuses and names the part`() {
+        val path = write(currentShapeDocument(null))
+
+        val outcome = assertInstanceOf(
+            PromotionCertificationOutcome.Refused::class.java,
+            PromotionCertificationAdmission.admit(path, candidate),
+        )
+        assertTrue(
+            outcome.reason.contains("PART_REASON_MISSING"),
+            "the refusal must name the rule that was broken, got: ${outcome.reason}",
+        )
+        assertTrue(
+            outcome.reason.contains("revalidation"),
+            "the refusal must name the part that does not say why, got: ${outcome.reason}",
+        )
     }
 }

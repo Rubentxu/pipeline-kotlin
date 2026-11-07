@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.release
 
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -24,6 +25,14 @@ import kotlinx.serialization.Serializable
  * carries can be compared, and a part that is not stated can be named as not
  * stated. "The certification is not complete" is not something an operator
  * can act on; "the scenarios part is missing" is.
+ *
+ * The shape of this document is named by its schema version, and there are
+ * two of them: the one that carries the REASON a part did not apply, and the
+ * one that came before and did not. A part that does not apply says why,
+ * because a part that was skipped without a word about it is a part nobody
+ * can audit. The shape that came before is read exactly as it was read
+ * before, so the certifications that were certified before the reason
+ * arrived keep being read.
  *
  * What this document does NOT say is that the certifier certified well. It
  * says what was covered and by whom; whether the certification was earned is
@@ -52,7 +61,22 @@ data class PromotionCertification internal constructor(
     }
 
     companion object {
-        const val SCHEMA_VERSION: String = "pipelinek-promotion-certification-1"
+        /**
+         * The shape this build reads and writes: the reason a part did not
+         * apply travels in the document.
+         */
+        const val SCHEMA_VERSION: String = "pipelinek-promotion-certification-2"
+
+        /**
+         * The shape that came before: the same document without the reason.
+         *
+         * It is still read, and it is read as ITSELF: a part of it may not
+         * carry the reason, because the reason is not part of that shape.
+         * The promotion of today hands this build documents of this shape,
+         * and a build that stopped reading them would refuse the promotion
+         * of every candidate certified before the reason arrived.
+         */
+        const val LEGACY_SCHEMA_VERSION: String = "pipelinek-promotion-certification-1"
     }
 }
 
@@ -106,6 +130,14 @@ enum class CertificationPartStatus {
  * apply names no battery and carries no scenario, because "nothing to
  * re-validate" is not a battery of zero scenarios: it is the absence of a
  * battery.
+ *
+ * A part that does not apply says WHY, and the reason travels in this
+ * document. The reason is one fact with one meaning: it says why a part
+ * does not apply, so a part that applied has none, and a part that does
+ * not apply has one. A field with two meanings says nothing.
+ *
+ * The reason is written only when it is there, so a part of the shape that
+ * came before keeps the bytes it had.
  */
 @Serializable
 data class CertifiedPart(
@@ -117,4 +149,7 @@ data class CertifiedPart(
     val status: CertificationPartStatus,
     /** The scenarios that were executed for this part. */
     val runs: List<ScenarioExecution> = emptyList(),
+    /** Why this part does not apply, when it does not apply. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val reason: String? = null,
 )

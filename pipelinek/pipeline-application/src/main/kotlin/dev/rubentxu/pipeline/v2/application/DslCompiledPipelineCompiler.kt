@@ -2,14 +2,24 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
+import dev.rubentxu.pipeline.v2.runtime.ArchiveArtifactsInput
+import dev.rubentxu.pipeline.v2.runtime.CoreArchiveArtifactsWireCodec
+import dev.rubentxu.pipeline.v2.runtime.CoreDeleteDirWireCodec
+import dev.rubentxu.pipeline.v2.runtime.CoreFileExistsInput
+import dev.rubentxu.pipeline.v2.runtime.CoreFileExistsWireCodec
 import dev.rubentxu.pipeline.v2.runtime.CoreInputInput
 import dev.rubentxu.pipeline.v2.runtime.CoreInputWireCodec
 import dev.rubentxu.pipeline.v2.runtime.CoreLockInput
 import dev.rubentxu.pipeline.v2.runtime.CoreLockWireCodec
+import dev.rubentxu.pipeline.v2.runtime.CoreReadFileInput
+import dev.rubentxu.pipeline.v2.runtime.CoreReadFileWireCodec
 import dev.rubentxu.pipeline.v2.runtime.CoreShellInput
 import dev.rubentxu.pipeline.v2.runtime.CoreShellWireCodec
 import dev.rubentxu.pipeline.v2.runtime.CoreWorkflowControlInput
 import dev.rubentxu.pipeline.v2.runtime.CoreWorkflowControlWireCodec
+import dev.rubentxu.pipeline.v2.runtime.CoreWriteFileInput
+import dev.rubentxu.pipeline.v2.runtime.CoreWriteFileWireCodec
+import dev.rubentxu.pipeline.v2.runtime.DeleteDirInput
 import dev.rubentxu.pipeline.v2.runtime.durable.credentials.CredentialBindingsPayload
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
@@ -637,12 +647,90 @@ object DslCompiledPipelineCompiler {
         )
 
     /**
+     * The compiler knows the `StepSpec.WriteFile -> CoreWriteFileInput`
+     * transformation, which is a DOMAIN decision (what the step declares); it does
+     * not know the wire format, which is an ENCODING decision owned by
+     * [CoreWriteFileWireCodec]. Pure, total, one direction, no defaults invented
+     * here: every field maps verbatim.
+     *
+     * The projection INHERITS the family's own invariant instead of re-deriving
+     * it: [CoreWriteFileInput] refuses a blank `file`, so a pipeline that declares
+     * one is refused at COMPILE time instead of producing a payload the runtime
+     * would reject when the step runs. It is the same refusal, with the same
+     * message, by the same authority — it only arrives earlier, at the door that
+     * accepts the shape.
+     */
+    private fun StepSpec.WriteFile.toCoreWriteFileInput(): CoreWriteFileInput = CoreWriteFileInput(
+        file = file,
+        text = text,
+        encoding = encoding,
+    )
+
+    /**
+     * The compiler knows the `StepSpec.ReadFile -> CoreReadFileInput`
+     * transformation, which is a DOMAIN decision (what the step declares); it does
+     * not know the wire format, which is an ENCODING decision owned by
+     * [CoreReadFileWireCodec]. Pure, total, one direction, no defaults invented
+     * here: every field maps verbatim.
+     */
+    private fun StepSpec.ReadFile.toCoreReadFileInput(): CoreReadFileInput = CoreReadFileInput(
+        file = file,
+        encoding = encoding,
+    )
+
+    /**
+     * The compiler knows the `StepSpec.FileExists -> CoreFileExistsInput`
+     * transformation, which is a DOMAIN decision (what the step declares); it does
+     * not know the wire format, which is an ENCODING decision owned by
+     * [CoreFileExistsWireCodec]. Pure, total, one direction, no defaults invented
+     * here: every field maps verbatim.
+     */
+    private fun StepSpec.FileExists.toCoreFileExistsInput(): CoreFileExistsInput = CoreFileExistsInput(
+        file = file,
+    )
+
+    /**
+     * The compiler knows the `StepSpec.DeleteDir -> DeleteDirInput` transformation,
+     * which is a DOMAIN decision (what the step declares); it does not know the
+     * wire format, which is an ENCODING decision owned by
+     * [CoreDeleteDirWireCodec]. Pure, total, one direction: the path maps
+     * verbatim, including the family's own default of `"."`.
+     */
+    private fun StepSpec.DeleteDir.toCoreDeleteDirInput(): DeleteDirInput = DeleteDirInput(path = path)
+
+    /**
+     * The compiler knows the `StepSpec.ArchiveArtifacts -> ArchiveArtifactsInput`
+     * transformation, which is a DOMAIN decision (what the step declares); it does
+     * not know the wire format, which is an ENCODING decision owned by
+     * [CoreArchiveArtifactsWireCodec].
+     *
+     * The two nullable flags carry the DSL's OWN default: a `null` means "not
+     * declared", and what "not declared" means is `false` — the value the DSL
+     * itself passes, and the value this projection's predecessor has always
+     * written. The wire carries the DECLARED boolean in both cases, so the bytes
+     * do not move.
+     */
+    private fun StepSpec.ArchiveArtifacts.toCoreArchiveArtifactsInput(): ArchiveArtifactsInput =
+        ArchiveArtifactsInput(
+            artifacts = artifacts,
+            allowEmptyArchive = allowEmptyArchive ?: false,
+            excludes = excludes,
+            fingerprint = fingerprint ?: false,
+            name = artifactName,
+        )
+
+    /**
      * The typed node for a `writeFile`, built in ONE place.
      *
      * The stage level and the workflow-control scope level project the SAME
      * capability through this function: one plugin step id, one payload schema
      * version, one payload vocabulary. A second construction site would be a
      * second authority for writing files.
+     *
+     * The ENCODING is not this function's decision either: [CoreWriteFileWireCodec]
+     * is THE single authority for the `core.file.writeFile` wire format, and the
+     * bytes it writes are the bytes this node has always carried, so no durable
+     * body identity moves.
      */
     private fun writeFileNode(step: StepSpec.WriteFile, stepId: String): OpaqueStepNode =
         OpaqueStepNode(
@@ -650,7 +738,7 @@ object DslCompiledPipelineCompiler {
             pluginStepId = PluginStepId("core.file.writeFile"),
             payload = VersionedStepPayload(
                 PAYLOAD_SCHEMA_VERSION,
-                writeFilePayload(step.file, step.text, step.encoding),
+                CoreWriteFileWireCodec.encode(step.toCoreWriteFileInput()).value,
             ),
         )
 
@@ -704,15 +792,6 @@ object DslCompiledPipelineCompiler {
         return Json.encodeToString(JsonObject.serializer(), obj)
     }
 
-    private fun writeFilePayload(file: String, text: String, encoding: String): String {
-        return Json.encodeToString(JsonObject.serializer(), buildJsonObject {
-            put("kind", "writeFile")
-            put("file", file)
-            put("text", text)
-            put("encoding", encoding)
-        })
-    }
-
     // MilestonePayload removed (LEGACY_REMOVED). The canonical envelope for
     // core.milestone is produced by the DSL `milestone(...)` function (scripting-api) which
     // lowers to StepSpec.RegistryStepSpec; the runtime decoder/handler is CoreMilestoneStep
@@ -750,6 +829,35 @@ object DslCompiledPipelineCompiler {
         return GitCheckoutInputCodec.encode(git).value
     }
 
+    /**
+     * The families whose wire a codec already owns, delegated in ONE place.
+     *
+     * The compiler does NOT hand-write these envelopes: for each family the codec
+     * is THE single authority for the format, and the compiler projects the
+     * declared step onto the typed input and delegates the ENCODING to that codec.
+     * The bytes are the ones this table has always written, so no durable body
+     * identity moves.
+     *
+     * A family that reaches the `null` of this function has no codec to delegate
+     * to, and its envelope is written by the dispatch table of [encodePayload] —
+     * with the reasons that table carries.
+     *
+     * The `writeFile` family is NOT in this table on purpose: its producer is
+     * [writeFileNode], which mints a different plugin key (`core.file.writeFile`)
+     * and therefore does not travel through [encodePayload]. An arm here would be
+     * a writer that never writes, and a writer that never writes can disagree with
+     * the live one for ever without anything noticing — which is exactly the
+     * defect this delegation retires.
+     */
+    private fun delegatedPayload(step: StepSpec): String? = when (step) {
+        is StepSpec.ReadFile -> CoreReadFileWireCodec.encode(step.toCoreReadFileInput()).value
+        is StepSpec.FileExists -> CoreFileExistsWireCodec.encode(step.toCoreFileExistsInput()).value
+        is StepSpec.DeleteDir -> CoreDeleteDirWireCodec.encode(step.toCoreDeleteDirInput()).value
+        is StepSpec.ArchiveArtifacts ->
+            CoreArchiveArtifactsWireCodec.encode(step.toCoreArchiveArtifactsInput()).value
+        else -> null
+    }
+
     @Suppress(
         "CyclomaticComplexMethod",
         "reason: dispatch table over a closed StepSpec hierarchy — one branch " +
@@ -770,6 +878,11 @@ object DslCompiledPipelineCompiler {
         if (step is StepSpec.Checkout) {
             return checkoutPayload(step.scm)
         }
+        // The families whose wire a codec owns are delegated the same way: the
+        // compiler projects the declared step onto the typed input and the codec
+        // writes the bytes. This is the ONE place that names them, so a family
+        // cannot be written by hand in the table below and by its codec here.
+        delegatedPayload(step)?.let { return it }
         val payload = buildJsonObject {
             put("kind", step.name)
             when (step) {
@@ -784,49 +897,12 @@ object DslCompiledPipelineCompiler {
                     put("failureKind", step.failureKind.name)
                 }
                 is StepSpec.Sleep -> put("seconds", step.seconds)
-                is StepSpec.WriteFile -> {
-                    put("kind", "writeFile")
-                    put("file", step.file)
-                    put("text", step.text)
-                    put("encoding", step.encoding)
-                }
-                // Canonical envelopes byte-identical to the registry
-                // input codecs (CoreReadFileStep / CoreFileExistsStep).
-                is StepSpec.ReadFile -> {
-                    put("kind", "readFile")
-                    put("file", step.file)
-                    put("encoding", step.encoding)
-                }
-                is StepSpec.FileExists -> {
-                    put("kind", "fileExists")
-                    put("file", step.file)
-                }
+
                 is StepSpec.Unstable -> {
                     put("kind", "unstable")
                     put("message", step.message)
                 }
-                is StepSpec.ArchiveArtifacts -> {
-                    put("kind", "archiveArtifacts")
-                    put("artifacts", step.artifacts)
-                    put("allowEmptyArchive", step.allowEmptyArchive ?: false)
-                    put("excludes", step.excludes)
-                    put("fingerprint", step.fingerprint ?: false)
-                    // Optional artifactName. Only emitted when
-                    // non-null to preserve byte-shape for legacy callers
-                    // (backward-compat with archive fixtures)
-                    step.artifactName?.let { put("name", it) }
-                }
-                // Canonical envelope for core.deleteDir — the
-                // typed input codec (CoreDeleteDirStep.inputCodec) reads
-                // {"kind":"deleteDir","path":"<path>"}. Previously the else-branch
-                // produced {"kind":"deleteDir","declarativeValue":"StepSpec.DeleteDir(path=…)"}
-                // which silently defaulted the `path` field to "." in the handler,
-                // making `deleteDir(path="sub")` a no-op against the stage workspace
-                // Root. discriminated this defect
-                is StepSpec.DeleteDir -> {
-                    put("kind", "deleteDir")
-                    put("path", step.path)
-                }
+
                 // Canonical envelope for core.pwd. The
                 // CorePwdStep.inputCodec reads {"kind":"pwd","tmp":<bool>} and
                 // decodes tmp=true as a PWD_TMP_TRUE_DISPOSITION failure

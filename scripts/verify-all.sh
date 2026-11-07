@@ -542,6 +542,31 @@ if want_stage 1; then
         fail "stage 1: the serializer-visibility guard"
     fi
 
+    # --- The wire a codec already owns ---------------------------------------
+    # A wire format that a Step owns is written by ONE object: the codec. The
+    # DSL compiler used to write some of those envelopes by hand, which made it
+    # a SECOND producer of a format that already had an owner -- and two
+    # producers drift: the reader ends up carrying aliases nobody declared, or
+    # a field is silently defaulted, and the run does something the author
+    # never asked for.
+    #
+    # The drift is not theoretical. The `archiveArtifacts` format hides three
+    # defaults on the read side, so a producer that forgets one of them does
+    # not fail -- it archives something else. The `deleteDir` format read an
+    # absent `path` as the stage root, and the step deleted the wrong
+    # directory without saying so.
+    #
+    # This guard reads the tree and asks BOTH questions: does the compiler name
+    # a `kind` that a codec owns, and does it still delegate to that codec? A
+    # one-sided question can be satisfied by doing nothing.
+    if python3 scripts/check-compiler-wire-authority.py > "$log_dir/compiler-wire-authority.out" 2>&1; then
+        log "stage 1/5  the wire a codec already owns"
+        cat "$log_dir/compiler-wire-authority.out"
+    else
+        cat "$log_dir/compiler-wire-authority.out" >&2
+        fail "stage 1: the compiler-wire-authority guard"
+    fi
+
     # --- The set of the signing keys -----------------------------------------
     # The release path signs the release tags with a key this repository
     # declares, and the declaration names a SET: the key that signs now and

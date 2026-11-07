@@ -122,6 +122,9 @@ DECLARED_EXECUTABLES = {
     "scripts/check-comment-provenance.py": (
         "a guard of the gate: it reads the tree and starts nothing"
     ),
+    "scripts/check-compiler-wire-authority.py": (
+        "a guard of the gate: it reads the tree and starts nothing"
+    ),
     "scripts/check-durable-shell-cost.py": (
         "a guard of the gate: it reads the tree and starts nothing"
     ),

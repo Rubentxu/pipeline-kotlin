@@ -59,29 +59,11 @@ object CoreFileExistsStep {
     val KEY: PluginStepId = PluginStepId("core.fileExists")
 
     /**
-     * Canonical dsl-v1 envelope, byte-identical to the compile lowering emitted by
-     * `DslCompiledPipelineCompiler.fileExistsPayload`:
-     * `{"kind":"fileExists","file":...}`.
-*/
-    private val inputCodec = object : StepCodec<CoreFileExistsInput> {
-        override fun encode(value: CoreFileExistsInput): EncodedStepValue =
-            EncodedStepValue(
-                Json.encodeToString(JsonObject.serializer(), buildJsonObject {
-                    put("kind", JsonPrimitive("fileExists"))
-                    put("file", JsonPrimitive(value.file))
-                }),
-            )
-
-        override fun decode(encoded: EncodedStepValue): CoreFileExistsInput {
-            val obj = Json.parseToJsonElement(encoded.value).jsonObject
-            require(obj["kind"]?.jsonPrimitive?.content == "fileExists") {
-                "core.fileExists payload kind must be 'fileExists'"
-            }
-            return CoreFileExistsInput(
-                file = obj.getValue("file").jsonPrimitive.content,
-            )
-        }
-    }
+     * The wire format of this step's input is owned by [CoreFileExistsWireCodec]: the Step and the
+     * DSL compiler are the two halves of ONE authority, and the compiler does not
+     * hand-write the envelope.
+     */
+    private val inputCodec = CoreFileExistsWireCodec
 
     private val outputCodec = object : StepCodec<CoreFileExistsOutput> {
         override fun encode(value: CoreFileExistsOutput): EncodedStepValue =

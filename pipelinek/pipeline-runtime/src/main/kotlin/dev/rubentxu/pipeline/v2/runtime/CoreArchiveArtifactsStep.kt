@@ -47,43 +47,11 @@ object CoreArchiveArtifactsStep {
     val KEY: PluginStepId = PluginStepId("core.archiveArtifacts")
 
     /**
-     * Canonical dsl-v1 input envelope, byte-identical to the legacy decode form emitted by
-     * `DslCompiledPipelineCompiler.encodePayload` (`StepSpec.ArchiveArtifacts` branch):
-     * `{"kind":"archiveArtifacts","artifacts":...,"allowEmptyArchive":...,"excludes":...,"fingerprint":...}`.
-*/
-    private val inputCodec = object : StepCodec<ArchiveArtifactsInput> {
-        override fun encode(value: ArchiveArtifactsInput): EncodedStepValue =
-            EncodedStepValue(
-                Json.encodeToString(
-                    JsonObject.serializer(),
-                    buildJsonObject {
-                        put("kind", JsonPrimitive("archiveArtifacts"))
-                        put("artifacts", JsonPrimitive(value.artifacts))
-                        put("allowEmptyArchive", JsonPrimitive(value.allowEmptyArchive))
-                        put("excludes", JsonPrimitive(value.excludes))
-                        put("fingerprint", JsonPrimitive(value.fingerprint))
-                        // Optional name. Only
-                        // emitted when non-null to preserve byte-shape for
-                        // legacy callers (backward-compat).
-                        value.name?.let { put("name", JsonPrimitive(it)) }
-                    },
-                ),
-            )
-
-        override fun decode(encoded: EncodedStepValue): ArchiveArtifactsInput {
-            val obj = Json.parseToJsonElement(encoded.value).jsonObject
-            require(obj["kind"]?.jsonPrimitive?.content == "archiveArtifacts") {
-                "core.archiveArtifacts payload kind must be 'archiveArtifacts'"
-            }
-            return ArchiveArtifactsInput(
-                artifacts = obj.getValue("artifacts").jsonPrimitive.content,
-                allowEmptyArchive = obj["allowEmptyArchive"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
-                excludes = obj["excludes"]?.jsonPrimitive?.content ?: "",
-                fingerprint = obj["fingerprint"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
-                name = obj["name"]?.jsonPrimitive?.content,
-            )
-        }
-    }
+     * The wire format of this step's input is owned by [CoreArchiveArtifactsWireCodec]: the Step and the
+     * DSL compiler are the two halves of ONE authority, and the compiler does not
+     * hand-write the envelope.
+     */
+    private val inputCodec = CoreArchiveArtifactsWireCodec
 
     /** Successful typed output; per-file evidence flows through the `ArtifactArchived` event. */
     data class ArchiveArtifactsOutput(

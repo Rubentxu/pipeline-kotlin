@@ -181,7 +181,10 @@ class OperationJournalRunAttributionTest {
     private fun sqliteJournal(): SqliteOperationJournalImpl {
         SqliteConnectionFactory.open(dbPath()).use { OperationJournalSchema.create(it) }
         return SqliteOperationJournalImpl(
-            connectionFactory = { SqliteConnectionFactory.open(dbPath()) },
+            connections = DurableConnections.over(
+                writeDoor = { SqliteConnectionFactory.open(dbPath()) },
+                readDoor = { SqliteConnectionFactory.openReadOnly(dbPath()) },
+            ),
             clock = FixedClock(),
             json = json,
             dbPath = dbPath(),

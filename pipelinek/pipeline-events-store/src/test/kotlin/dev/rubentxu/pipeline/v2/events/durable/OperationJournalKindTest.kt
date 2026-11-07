@@ -323,7 +323,10 @@ class OperationJournalKindTest {
     private fun sqliteJournal(clock: Clock = AdvancingClock()): SqliteOperationJournalImpl {
         SqliteConnectionFactory.open(dbPath()).use { OperationJournalSchema.create(it) }
         return SqliteOperationJournalImpl(
-            connectionFactory = { SqliteConnectionFactory.open(dbPath()) },
+            connections = DurableConnections.over(
+                writeDoor = { SqliteConnectionFactory.open(dbPath()) },
+                readDoor = { SqliteConnectionFactory.openReadOnly(dbPath()) },
+            ),
             clock = clock,
             json = json,
             dbPath = dbPath(),

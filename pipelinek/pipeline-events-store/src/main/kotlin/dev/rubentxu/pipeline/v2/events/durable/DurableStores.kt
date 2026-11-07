@@ -78,7 +78,7 @@ data class DurableStores(
             val dbPath = eventStore.databasePath()
             return DurableStores(
                 journal = SqliteOperationJournalImpl(
-                    connectionFactory = connectionFactory,
+                    connections = eventStore.durableConnections,
                     clock = clock,
                     dbPath = dbPath,
                 ),

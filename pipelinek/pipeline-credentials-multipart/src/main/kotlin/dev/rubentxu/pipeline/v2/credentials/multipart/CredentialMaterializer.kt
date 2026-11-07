@@ -313,7 +313,7 @@ internal fun createDirectoriesFrom(from: Path, to: Path): List<Path> {
  * arbitrary path, with attacker-chosen content, during credential materialization.
  * `Path.startsWith` compares name ELEMENTS, so the sibling-prefix form (`<tmpdir>-evil`) is
  * refused too. A character prefix would admit exactly the case an attacker picks -- the same
- * distinction `DirExecutor.resolveTargetPath` was corrected for.
+ * distinction `WorkspacePathResolver` draws when it compares name elements and not characters.
  * `internal` and top-level rather than private and inline so the decision is reachable without
  * a filesystem: `materializeZip` calls `Files.createDirectories` and `Files.write`, and
  * AGENTS.md section 2 forbids both in a unit test. A guard whose only path runs through a file

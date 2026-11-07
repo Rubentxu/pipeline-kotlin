@@ -65,6 +65,29 @@ class WorkspacePathResolverTest {
         assertEquals(Paths.get("/home/rub/proyecto/inside"), (resolved as PathResolution.Resolved).path)
     }
 
+    @Test
+    fun `a bare dot is the workspace root itself`() {
+        // `dir(".")` is what a pipeline author types when they mean "here", so it has to
+        // stay legal: only LEAVING the root is refused. A guard that refused this one
+        // would close a workspace the operator opened.
+        val resolved = WorkspacePathResolver.resolve(managed, PathAnchor.CURRENT_DIRECTORY, ".")
+
+        assertEquals(root, (resolved as PathResolution.Resolved).path)
+    }
+
+    @Test
+    fun `an unnormalised root resolves its own children`() {
+        // The boundary is normalised alongside the target. Without that, `/ws/./sub` does
+        // not start with `/ws/./` and the guard refuses a path that is inside the
+        // workspace.
+        val messy = Paths.get("/home/rub/./proyecto")
+        val location = ExecutionLocation(workspace = WorkspaceLease.Managed(messy), cwd = messy)
+
+        val resolved = WorkspacePathResolver.resolve(location, PathAnchor.CURRENT_DIRECTORY, "sub")
+
+        assertEquals(root.resolve("sub"), (resolved as PathResolution.Resolved).path)
+    }
+
     // --- outside the workspace ------------------------------------------------------
 
     @Test
@@ -115,6 +138,17 @@ class WorkspacePathResolverTest {
 
         val reason = (rejected as PathResolution.Rejected).reason
         assertTrue(reason is WorkspacePathError.InvalidPath, "was $reason")
+    }
+
+    @Test
+    fun `the refusal carries the requested path, not only the resolved one`() {
+        // An operator reading "escapes the workspace" needs to know WHICH path in their
+        // pipeline did it. The resolved path alone is a consequence they cannot act on.
+        val rejected = WorkspacePathResolver.resolve(managed, PathAnchor.CURRENT_DIRECTORY, "../other")
+
+        val reason = (rejected as PathResolution.Rejected).reason
+        assertTrue(reason is WorkspacePathError.EscapesWorkspace, "was $reason")
+        assertEquals("../other", (reason as WorkspacePathError.EscapesWorkspace).raw)
     }
 
     @Test

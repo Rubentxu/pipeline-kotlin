@@ -96,7 +96,6 @@ include(
     ":pipeline-step-sdk:junit",
     ":pipeline-step-sdk:files",
     ":pipeline-step-sdk:utilities",
-    ":pipeline-step-sdk:workflow-control",
     ":pipeline-credentials-api",
     ":pipeline-credentials-local",
     ":pipeline-credentials-multipart",

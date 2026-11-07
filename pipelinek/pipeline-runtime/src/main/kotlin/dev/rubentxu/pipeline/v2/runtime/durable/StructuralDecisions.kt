@@ -587,9 +587,8 @@ internal fun BlockStepNode.projectScopedBody(
  * Absolute paths are held to the same boundary as relative ones. They used to be exempt, and
  * that exemption was a hole rather than a decision: section 8/9 states that an absolute
  * path inside the root is accepted and one outside it is rejected, [WorkspacePathResolver]
- * implements that policy, and [DirExecutor.resolveTargetPath] implements it too -- but the latter
- * has no production construction site, so this function was the live guard and it was the only
- * one of the three letting an absolute path through unchecked. A `.pipeline.kts` could say
+ * implements that policy, and this projection implements it too -- but this projection was the
+ * live guard, and it was letting an absolute path through unchecked. A `.pipeline.kts` could say
  * `dir("/etc/cron.d")`, this projection accepted it, and `BodyExecutionEngine` then ran
  * `Files.createDirectories` on it and handed it to the child as its CWD.
 */

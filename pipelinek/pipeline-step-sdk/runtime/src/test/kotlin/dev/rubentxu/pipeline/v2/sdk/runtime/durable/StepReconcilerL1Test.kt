@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
@@ -13,6 +14,8 @@ import java.nio.file.Path
  * died, the answer is never "it succeeded" unless a published exit code says so. Every other
  * state — no result, a result that cannot be read, a result that is not an exit code, a stale
  * heartbeat, nothing at all — is `Lost`, and `Lost` means "nobody knows", which is not success.
+ * And `Lost` names the fact that made it unknowable: the three states that produce it are
+ * three different verdicts, because they are three different situations.
  *
  * **The observable capacity it serves.** A durable run that is resumed after its worker died
  * re-attaches to the operations it left behind, and each one has to end in an honest terminal.
@@ -82,7 +85,10 @@ class StepReconcilerL1Test {
             contents = mapOf(protocol.resultFile to "EXIT 0"),
         )
 
-        assertEquals(StepReconcilerL1.Classification.Lost, classify(probe))
+        assertEquals(
+            StepReconcilerL1.Classification.Lost(StepReconcilerL1.Classification.LostReason.ResultNotAnExitCode),
+            classify(probe),
+        )
     }
 
     @Test
@@ -94,7 +100,10 @@ class StepReconcilerL1Test {
             unreadable = setOf(protocol.resultFile),
         )
 
-        assertEquals(StepReconcilerL1.Classification.Lost, classify(probe))
+        assertEquals(
+            StepReconcilerL1.Classification.Lost(StepReconcilerL1.Classification.LostReason.ResultUnreadable),
+            classify(probe),
+        )
     }
 
     @Test
@@ -146,7 +155,10 @@ class StepReconcilerL1Test {
             lastModified = mapOf(protocol.consoleLog to 1_000_000L - thresholdMillis - 1L),
         )
 
-        assertEquals(StepReconcilerL1.Classification.Lost, classify(probe))
+        assertEquals(
+            StepReconcilerL1.Classification.Lost(StepReconcilerL1.Classification.LostReason.NoResultPublished),
+            classify(probe),
+        )
     }
 
     @Test
@@ -155,7 +167,28 @@ class StepReconcilerL1Test {
         // child wrote anything. It must not read as "nothing happened, therefore fine".
         val probe = FakeProbe(nowMillis = 1_000_000L)
 
-        assertEquals(StepReconcilerL1.Classification.Lost, classify(probe))
+        assertEquals(
+            StepReconcilerL1.Classification.Lost(StepReconcilerL1.Classification.LostReason.NoResultPublished),
+            classify(probe),
+        )
+    }
+
+    @Test
+    fun `the three facts that leave the outcome unknown are not the same verdict`() {
+        // The three facts are opposite to each other: the step published a result that nobody
+        // could interpret, or it published nothing at all. A verdict that does not say WHICH of
+        // them happened tells the operator nothing they can act on.
+        val unreadable = classify(
+            FakeProbe(nowMillis = 1_000_000L, unreadable = setOf(protocol.resultFile)),
+        )
+        val notAnExitCode = classify(
+            FakeProbe(nowMillis = 1_000_000L, contents = mapOf(protocol.resultFile to "EXIT 0")),
+        )
+        val nothingPublished = classify(FakeProbe(nowMillis = 1_000_000L))
+
+        assertNotEquals(unreadable, notAnExitCode)
+        assertNotEquals(notAnExitCode, nothingPublished)
+        assertNotEquals(unreadable, nothingPublished)
     }
 
     @Test

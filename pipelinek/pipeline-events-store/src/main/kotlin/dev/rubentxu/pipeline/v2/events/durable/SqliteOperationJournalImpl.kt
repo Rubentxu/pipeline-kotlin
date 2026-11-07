@@ -7,18 +7,33 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
-import java.sql.Connection
-import kotlin.concurrent.withLock
 import kotlinx.serialization.json.Json
+import kotlin.concurrent.withLock
 
 /**
  * SQLite WAL-backed implementation of [OperationJournal].
  *
+ * ## The connections
+ *
+ * The journal does not open a connection per operation. It BORROWS one from the durable lane's
+ * pools and gives it back, so the cost of the door — which is where almost all of the cost of an
+ * operation lived — is paid once per connection and not once per operation.
+ *
+ * The writes are borrowed from the pool of one connection, inside the lock that fences them, and
+ * the reads from the pool of several, so that a read never waits for a writer and a writer never
+ * waits for a read.
+ *
  * ## Concurrency
  *
- * All write operations ([append]) are synchronized to ensure serialized
+ * All write operations ([append], [beginOperation]) are synchronized to ensure serialized
  * writes to the WAL-enabled SQLite database. This is the single-writer
  * guarantee required by SQLite WAL mode.
+ *
+ * The lock is the FENCE, and it is not bypassed: it is taken BEFORE the connection is borrowed,
+ * so two instances over the same file still serialize their writes.
+ *
+ * A connection is never shared between two operations at the same time: the pool lends one to an
+ * operation and takes it back when the operation ends.
  *
  * ## Serialization
  *
@@ -27,15 +42,14 @@ import kotlinx.serialization.json.Json
  * field is used to reconstruct the correct [DurableOperation] variant
  * on deserialization.
  *
- * @param connectionFactory A factory function that returns an open [Connection].
- *                          The connection MUST be obtained from [SqliteConnectionFactory.open]
- *                          to ensure WAL mode is active.
+ * @param connections the pools the journal borrows its connections from: the one it writes
+ * through and the one it reads through.
  * @param json The [Json] instance to use for serialization. Defaults to
  *             canonical encoding with [Json][kotlinx.serialization.json.Json].
  *
  */
 internal class SqliteOperationJournalImpl(
-    private val connectionFactory: () -> Connection,
+    private val connections: DurableConnections,
     private val clock: Clock,
     private val json: Json = Json {
         ignoreUnknownKeys = true
@@ -52,15 +66,14 @@ internal class SqliteOperationJournalImpl(
      * two-phase journal pattern (beginOperation + append) where a RUNNING
      * row is transitioned to SUCCEEDED/FAILED atomically.
      *
-     * The append is serialized via [synchronized] to avoid WAL contention.
+     * The append is serialized via [DbLock] to avoid WAL contention.
      *
      * @param op The durable operation to journal.
      * @param deadlineMs The deadline timestamp in milliseconds, or null if no timeout.
      */
     override fun append(op: DurableOperation, deadlineMs: Long?) {
         DbLock.forPath(dbPath).withLock {
-            val conn = connectionFactory()
-            try {
+            connections.writes.withConnection { conn ->
                 val inputJson = json.encodeToString(op.input)
                 val outputJson = op.output?.let { json.encodeToString(it) }
                 val kind = OperationKindCodec.encode(op)
@@ -105,8 +118,6 @@ internal class SqliteOperationJournalImpl(
                     ps.setString(13, op.input.runId)
                     ps.executeUpdate()
                 }
-            } finally {
-                conn.close()
             }
         }
     }
@@ -137,8 +148,7 @@ internal class SqliteOperationJournalImpl(
         deadlineMs: Long?,
     ) {
         DbLock.forPath(dbPath).withLock {
-            val conn = connectionFactory()
-            try {
+            connections.writes.withConnection { conn ->
                 // Check for duplicate
                 conn.prepareStatement(
                     "SELECT 1 FROM operation_journal WHERE op_id = ? AND attempt = ?"
@@ -181,8 +191,6 @@ internal class SqliteOperationJournalImpl(
                     ps.setString(9, runId)
                     ps.executeUpdate()
                 }
-            } finally {
-                conn.close()
             }
         }
     }
@@ -194,26 +202,20 @@ internal class SqliteOperationJournalImpl(
      * @param opId The operation identifier.
      * @return The [DurableOperation] if found, or `null` if no entry exists.
      */
-    override fun get(opId: String): DurableOperation? {
-        val conn = connectionFactory()
-        try {
-            conn.prepareStatement(
-                """
-                SELECT op_id, fingerprint, status, kind, attempt, input, output
-                FROM operation_journal
-                WHERE op_id = ?
-                ORDER BY attempt DESC
-                LIMIT 1
-                """.trimIndent()
-            ).use { ps ->
-                ps.setString(1, opId)
-                ps.executeQuery().use { rs ->
-                    if (!rs.next()) return null
-                    return readOperation(rs)
-                }
+    override fun get(opId: String): DurableOperation? = connections.reads.withConnection { conn ->
+        conn.prepareStatement(
+            """
+            SELECT op_id, fingerprint, status, kind, attempt, input, output
+            FROM operation_journal
+            WHERE op_id = ?
+            ORDER BY attempt DESC
+            LIMIT 1
+            """.trimIndent()
+        ).use { ps ->
+            ps.setString(1, opId)
+            ps.executeQuery().use { rs ->
+                if (rs.next()) readOperation(rs) else null
             }
-        } finally {
-            conn.close()
         }
     }
 
@@ -224,25 +226,19 @@ internal class SqliteOperationJournalImpl(
      * @param attempt The 1-based attempt number.
      * @return The [DurableOperation] if found, or `null` if no entry exists.
      */
-    override fun get(opId: String, attempt: Int): DurableOperation? {
-        val conn = connectionFactory()
-        try {
-            conn.prepareStatement(
-                """
-                SELECT op_id, fingerprint, status, kind, attempt, input, output
-                FROM operation_journal
-                WHERE op_id = ? AND attempt = ?
-                """.trimIndent()
-            ).use { ps ->
-                ps.setString(1, opId)
-                ps.setInt(2, attempt)
-                ps.executeQuery().use { rs ->
-                    if (!rs.next()) return null
-                    return readOperation(rs)
-                }
+    override fun get(opId: String, attempt: Int): DurableOperation? = connections.reads.withConnection { conn ->
+        conn.prepareStatement(
+            """
+            SELECT op_id, fingerprint, status, kind, attempt, input, output
+            FROM operation_journal
+            WHERE op_id = ? AND attempt = ?
+            """.trimIndent()
+        ).use { ps ->
+            ps.setString(1, opId)
+            ps.setInt(2, attempt)
+            ps.executeQuery().use { rs ->
+                if (rs.next()) readOperation(rs) else null
             }
-        } finally {
-            conn.close()
         }
     }
 
@@ -269,31 +265,26 @@ internal class SqliteOperationJournalImpl(
      * @param runId The run identifier.
      * @return A [List] of [DurableOperation] in execution order.
      */
-    override fun listForRun(runId: String): List<DurableOperation> {
-        val conn = connectionFactory()
+    override fun listForRun(runId: String): List<DurableOperation> = connections.reads.withConnection { conn ->
         val results = mutableListOf<DurableOperation>()
-        try {
-            conn.prepareStatement(
-                """
-                SELECT j.op_id, j.fingerprint, j.status, j.kind, j.attempt, j.input, j.output
-                FROM operation_journal j
-                WHERE j.run_id = ?
-                   OR (j.run_id IS NULL AND json_extract(j.input, '$.runId') = ?)
-                ORDER BY j.created_at ASC
-                """.trimIndent()
-            ).use { ps ->
-                ps.setString(1, runId)
-                ps.setString(2, runId)
-                ps.executeQuery().use { rs ->
-                    while (rs.next()) {
-                        results.add(readOperation(rs))
-                    }
+        conn.prepareStatement(
+            """
+            SELECT j.op_id, j.fingerprint, j.status, j.kind, j.attempt, j.input, j.output
+            FROM operation_journal j
+            WHERE j.run_id = ?
+               OR (j.run_id IS NULL AND json_extract(j.input, '$.runId') = ?)
+            ORDER BY j.created_at ASC
+            """.trimIndent()
+        ).use { ps ->
+            ps.setString(1, runId)
+            ps.setString(2, runId)
+            ps.executeQuery().use { rs ->
+                while (rs.next()) {
+                    results.add(readOperation(rs))
                 }
             }
-        } finally {
-            conn.close()
         }
-        return results
+        results
     }
 
     /**
@@ -303,26 +294,24 @@ internal class SqliteOperationJournalImpl(
      * @param attempt The 1-based attempt number.
      * @return The deadline timestamp in milliseconds, or `null` if not set or not found.
      */
-    override fun getDeadlineMs(opId: String, attempt: Int): Long? {
-        val conn = connectionFactory()
-        try {
-            conn.prepareStatement(
-                """
-                SELECT deadline_ms
-                FROM operation_journal
-                WHERE op_id = ? AND attempt = ?
-                """.trimIndent()
-            ).use { ps ->
-                ps.setString(1, opId)
-                ps.setInt(2, attempt)
-                ps.executeQuery().use { rs ->
-                    if (!rs.next()) return null
+    override fun getDeadlineMs(opId: String, attempt: Int): Long? = connections.reads.withConnection { conn ->
+        conn.prepareStatement(
+            """
+            SELECT deadline_ms
+            FROM operation_journal
+            WHERE op_id = ? AND attempt = ?
+            """.trimIndent()
+        ).use { ps ->
+            ps.setString(1, opId)
+            ps.setInt(2, attempt)
+            ps.executeQuery().use { rs ->
+                if (!rs.next()) {
+                    null
+                } else {
                     val value = rs.getLong(1)
-                    return if (rs.wasNull()) null else value
+                    if (rs.wasNull()) null else value
                 }
             }
-        } finally {
-            conn.close()
         }
     }
 
@@ -333,26 +322,24 @@ internal class SqliteOperationJournalImpl(
      * @param attempt The 1-based attempt number.
      * @return The ended_at timestamp in milliseconds, or `null` if not set or not found.
      */
-    override fun getEndedAt(opId: String, attempt: Int): Long? {
-        val conn = connectionFactory()
-        try {
-            conn.prepareStatement(
-                """
-                SELECT ended_at
-                FROM operation_journal
-                WHERE op_id = ? AND attempt = ?
-                """.trimIndent()
-            ).use { ps ->
-                ps.setString(1, opId)
-                ps.setInt(2, attempt)
-                ps.executeQuery().use { rs ->
-                    if (!rs.next()) return null
+    override fun getEndedAt(opId: String, attempt: Int): Long? = connections.reads.withConnection { conn ->
+        conn.prepareStatement(
+            """
+            SELECT ended_at
+            FROM operation_journal
+            WHERE op_id = ? AND attempt = ?
+            """.trimIndent()
+        ).use { ps ->
+            ps.setString(1, opId)
+            ps.setInt(2, attempt)
+            ps.executeQuery().use { rs ->
+                if (!rs.next()) {
+                    null
+                } else {
                     val value = rs.getLong(1)
-                    return if (rs.wasNull()) null else value
+                    if (rs.wasNull()) null else value
                 }
             }
-        } finally {
-            conn.close()
         }
     }
 
@@ -363,26 +350,24 @@ internal class SqliteOperationJournalImpl(
      * @param attempt The 1-based attempt number.
      * @return The started_at timestamp in milliseconds, or `null` if not set or not found.
      */
-    override fun getStartedAt(opId: String, attempt: Int): Long? {
-        val conn = connectionFactory()
-        try {
-            conn.prepareStatement(
-                """
-                SELECT started_at
-                FROM operation_journal
-                WHERE op_id = ? AND attempt = ?
-                """.trimIndent()
-            ).use { ps ->
-                ps.setString(1, opId)
-                ps.setInt(2, attempt)
-                ps.executeQuery().use { rs ->
-                    if (!rs.next()) return null
+    override fun getStartedAt(opId: String, attempt: Int): Long? = connections.reads.withConnection { conn ->
+        conn.prepareStatement(
+            """
+            SELECT started_at
+            FROM operation_journal
+            WHERE op_id = ? AND attempt = ?
+            """.trimIndent()
+        ).use { ps ->
+            ps.setString(1, opId)
+            ps.setInt(2, attempt)
+            ps.executeQuery().use { rs ->
+                if (!rs.next()) {
+                    null
+                } else {
                     val value = rs.getLong(1)
-                    return if (rs.wasNull()) null else value
+                    if (rs.wasNull()) null else value
                 }
             }
-        } finally {
-            conn.close()
         }
     }
 

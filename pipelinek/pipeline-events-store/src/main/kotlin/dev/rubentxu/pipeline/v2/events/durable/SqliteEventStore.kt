@@ -34,10 +34,10 @@ import java.sql.Connection
  * cannot change that run's journal, and cannot hold a write lock on it either, whether it is
  * observing a run from another process or reading back the run its own producer wrote.
  *
- * ## The three owners
+ * ## The owners
  *
  * This class is the FACADE, and it decides nothing: it owns the file, the lane, and the hand-off
- * between three owners that each own exactly one thing.
+ * between the owners that each own exactly one thing.
  *
  * - [SqliteEventWriter] — the WRITING of an event: the sequence authority, the bounded queue, the
  *   single writer thread and the commit that makes a fact durable.
@@ -46,6 +46,8 @@ import java.sql.Connection
  *   cannot be decoded earns.
  * - [SqliteEventSchema] — the SCHEMA of the file: the tables, the uniqueness index and the
  *   migrations.
+ * - [DurableConnections] — the CONNECTIONS the durable stores borrow: the pool they write through
+ *   and the pool they read through, each lent to one operation at a time.
  *
  * The split is STRUCTURAL, not behavioural: the SQL, the order of the operations and the
  * observable output of every verb that reads events are the same before and after the cut.
@@ -99,6 +101,21 @@ class SqliteEventStore(
      * reader can only read.
      */
     private val reader = SqliteEventReader(readerConnections, mode)
+
+    /**
+     * The DURABLE lane's connections: the pools the journal and the other durable stores borrow.
+     *
+     * They live here because this store owns the FILE and the two doors to it, and because this
+     * store is closed at every exit of the product: a pool of connections needs an owner that
+     * closes it, and the owner of the file is the one that already had to be closed.
+     *
+     * The connections are opened lazily, so a store that is never asked a durable question never
+     * touches the file through them.
+     */
+    internal val durableConnections = DurableConnections.over(
+        writeDoor = connections,
+        readDoor = readerConnections,
+    )
 
     /**
      * Whether this store holds an event history at all.
@@ -159,10 +176,11 @@ class SqliteEventStore(
 
     /**
      * Closes the store: flush barrier, then stops the writer and releases
-     * the persistent connection. Close is idempotent.
+     * the persistent connection, then closes the durable lane's connections. Close is idempotent.
     */
     override fun close() {
         writer?.close()
+        durableConnections.close()
     }
 
     /**

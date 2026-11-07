@@ -7,14 +7,12 @@ import dev.rubentxu.pipeline.v2.runtime.NoopPipelineTelemetry
 
 import dev.rubentxu.pipeline.v2.application.observation.HumanConsoleRenderer
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
-import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepId
-import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
@@ -24,6 +22,7 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import dev.rubentxu.pipeline.v2.runtime.durable.BlockShellScope
 import dev.rubentxu.pipeline.v2.runtime.durable.BodyChildDispatcher
 import dev.rubentxu.pipeline.v2.runtime.durable.BodyExecutionEngine
+import dev.rubentxu.pipeline.v2.runtime.durable.StepDispatchRequest
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -141,16 +140,7 @@ class WaitUntilInlinePollEventTest {
 
     /** A dispatcher whose child holds the predicate. */
     private class SatisfyingDispatcher : BodyChildDispatcher {
-        override suspend fun dispatchChild(
-            child: StepNode,
-            runId: RunId,
-            stageName: String,
-            stageIndex: Int,
-            stepIndex: Int,
-            childShOptions: ShOptions,
-            bodyPath: List<BlockSegment>,
-            spanScope: SpanScope,
-        ): StepOutcome = StepOutcome.Success
+        override suspend fun dispatchChild(request: StepDispatchRequest): StepOutcome = StepOutcome.Success
     }
 
     /** A clock that never moves; the row asserts on events, not on instants. */

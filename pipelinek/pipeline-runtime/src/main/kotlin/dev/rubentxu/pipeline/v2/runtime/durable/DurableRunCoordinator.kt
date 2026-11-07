@@ -343,10 +343,10 @@ class DurableRunCoordinator(
         idGenerator = idGenerator,
     )
     // The step-execution spine. A body child walks it again through the engine's own
-    // `dispatchChild` — handed to `bodyDispatch` as the single re-entry reference — and a
-    // parallel branch walks its steps through `dispatch` again. That recursion is the unit of
-    // cohesion, so the whole closed cycle moves together and the coordinator keeps only the
-    // run's own control flow.
+    // `BodyChildDispatcher` seam — handed to `bodyDispatch` as the single re-entry reference —
+    // and a parallel branch walks its steps through `dispatch` again. That recursion is the
+    // unit of cohesion, so the whole closed cycle moves together and the coordinator keeps
+    // only the run's own control flow.
     private val stepDispatch = StepDispatchEngine(
         dispatchPreparation = dispatchPreparation,
         typedInputPreparation = typedInputPreparation,

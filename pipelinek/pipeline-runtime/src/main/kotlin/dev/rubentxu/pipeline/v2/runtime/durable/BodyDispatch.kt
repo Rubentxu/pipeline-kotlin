@@ -256,16 +256,16 @@ internal class BodyDispatch(
         reentry: BodyChildDispatcher,
         leaseBindings: List<CredentialBindingSpec> = emptyList(),
     ): StepOutcome = bodyExecutionEngine.invokeBodyChildren(
-        block,
-        runId,
-        stageName,
-        stageIndex,
-        stepIndex,
-        childShOptions,
-        parentBodyPath,
-        spanScope,
-        leaseBindings,
-        reentry,
+        block = block,
+        runId = runId,
+        stageName = stageName,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        childShOptions = childShOptions,
+        parentBodyPath = parentBodyPath,
+        spanScope = spanScope,
+        leaseBindings = leaseBindings,
+        dispatcher = reentry,
     )
 
     /**

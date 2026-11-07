@@ -33,8 +33,13 @@ import java.nio.file.Path
  * in-memory fake, so the cheapest instrument that can fail is a call to each of them. A test that
  * created a real control directory and looked at what survived it would touch the filesystem,
  * which a unit test may not do, and would say the same thing at a higher cost. What is checked
- * here is the verdict those facts feed; the walk that carries it out is not observed by any test
- * in this repository: it is a declared gap.
+ * here is the verdict those facts feed.
+ *
+ * The walk that carries it out is a declared gap, and it stays one: no scenario of the harness
+ * battery walks the control directory of a finished run. The bodies that delete something delete
+ * inside the workspace — `src`, `docs`, `build/utilities`, `repo` — and the ones that use the
+ * destructive step delete a scope of the workspace whose root has to survive; none of them names
+ * the control root the executor owns, so nothing observes that walk.
  *
  * **What this does not freeze.** That the walk deletes what the rules say it deletes, that the
  * filesystem agrees, and that the ingest agent sees the EOF it waits for: those are the imperative

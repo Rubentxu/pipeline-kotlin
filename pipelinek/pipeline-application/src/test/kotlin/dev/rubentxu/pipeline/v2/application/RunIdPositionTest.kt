@@ -67,9 +67,14 @@ import java.io.PrintStream
  * It cannot see that the verb went on to USE the run id it read: every row
  * stops at the refusal that comes before the store is opened, because a unit
  * test in this tree does not touch the filesystem. That the run id read from
- * the trailing position is the one the verb acts upon is a declared gap: no
- * test in this tree writes the run id after the options and then reads a real
- * run.
+ * the trailing position is the one the verb acts upon is observed outside this
+ * tree, by the scenario `events/07-run-state` of the harness battery: the run's
+ * own verb is asked about the run's own id, over the journal that run wrote, and
+ * the answer has to be the run's terminal fact; the same battery asks the same
+ * verb about an id nobody knows and requires a refusal. Its verdict against the
+ * candidate 0.90.0 is EXECUTED_PASS. The position of the id opens no second
+ * path: `CliInspectParser` reads the first positional wherever the operator
+ * wrote it, so the id this file writes last is the id the verb acts upon.
  */
 class RunIdPositionTest {
 

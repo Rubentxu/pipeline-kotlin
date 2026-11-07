@@ -5,6 +5,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.MissingFieldException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -109,6 +110,20 @@ internal object EventJsonCodec {
     }
 
     /**
+     * Parses [text] as JSON, or answers null when it is not JSON at all.
+     *
+     * The runtime is the ONE configuration of the durable wire, so a reader that has to look at
+     * the FORM of a payload asks here instead of carrying a second [Json] of its own. A second
+     * configuration would be a second authority for a fact the wire already owns: how strict the
+     * wire is, and what counts as a valid value.
+     */
+    fun parse(text: String): JsonElement? = try {
+        json.parseToJsonElement(text)
+    } catch (_: SerializationException) {
+        null
+    }
+
+    /**
      * Decodes ONE event object, or the cause it could not be decoded from.
      *
      * The identity is read here, by name and in the wire's order, so a row that is missing one
@@ -116,12 +131,19 @@ internal object EventJsonCodec {
      * the shape of the kind that was announced.
      */
     fun decode(text: String): EventDecodeOutcome {
-        val fields = try {
-            json.parseToJsonElement(text) as? JsonObject
-        } catch (_: SerializationException) {
-            null
-        } ?: return EventDecodeOutcome.Failed(EventDecodeFailure.UnreadableField(EVENT_ID, null))
+        val fields = parse(text) as? JsonObject
+            ?: return EventDecodeOutcome.Failed(EventDecodeFailure.UnreadableField(EVENT_ID, null))
+        return decode(fields)
+    }
 
+    /**
+     * Decodes ONE event object that has ALREADY been parsed.
+     *
+     * The stored row is an array that has to be read to know what it holds, and the element
+     * inside it is the object this decodes. Parsing it here and handing it over parsed is what
+     * keeps the row from being written down and read back: the bytes are parsed ONCE.
+     */
+    fun decode(fields: JsonObject): EventDecodeOutcome {
         val eventId = fields.stringOrNull(EVENT_ID)
             ?: return EventDecodeOutcome.Failed(EventDecodeFailure.UnreadableField(EVENT_ID, null))
         val runId = fields.stringOrNull(RUN_ID)

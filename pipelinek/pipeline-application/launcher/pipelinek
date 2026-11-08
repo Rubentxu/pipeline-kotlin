@@ -14,8 +14,20 @@
 # A JVM loads the same classes on every start, and it loads them from disk
 # every time. A shared class archive (AppCDS) is a file with those classes
 # already in the shape the loader wants, and pointing the JVM at it takes that
-# work off the start. Measured on the reference host, for the same command:
-# 261 ms without the archive, 189 ms with it.
+# work off the start.
+#
+# MEASURED on this host (Temurin 25.0.4, `pipelinek version`, 30 runs after
+# 5 warmups, two passes in opposite order, medians):
+#
+#   329 ms   no shared archive at all
+#   250 ms   the JDK's own standard archive
+#   170 ms   the archive this launcher writes
+#
+# The archive this launcher writes is a third faster than the JDK's standard
+# archive, and about twice as fast as no archive at all, on JDK 21, 24 and 25.
+# That is why it is here and not left to the JVM: the JDK's archive holds the
+# JDK's classes, and the classes of the product are the ones the product
+# loads on every start.
 #
 # The archive lives in the DISTRIBUTION, next to the jars it was built from
 # (lib/), and never in the user's HOME: the product does not leave artefacts in
@@ -48,6 +60,14 @@
 # ({cds,dynamic}) on both streams, so the answer's stream carries the answer
 # and the diagnostic stream carries only what a person can act on. Every other
 # diagnostic still goes to stderr.
+#
+# On JDK 25 the talk includes a report that the archive cannot use the
+# optimized module handling, because the JVM does not record in the archive
+# the module properties it was given (upstream JDK-8369079). The report is
+# about the archive, and the cost of it is about 5 ms of the start (169 ms
+# without the native access property, 175 ms with it). The property stays
+# anyway: the driver of the database loads a native library, and a JVM that
+# refuses the load leaves the product without a database.
 #
 # THE ARCHIVE IS ONLY VALID FOR THE JARS IT WAS BUILT FROM
 #

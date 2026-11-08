@@ -4,7 +4,8 @@
 # It runs, in one process and on purpose no other:
 #   1. the checks that read only the tree: the comment-provenance guard, the
 #      process-exit guard, the durable-path cost guard, the product-boot-layer
-#      guard, the census of Kotlin source sets, and the LOC census;
+#      guard, the compatibility comparison selection guard, the census of
+#      Kotlin source sets, and the LOC census;
 #   2. the build with its static analysis, its public-API compatibility check,
 #      the development distribution, and the reference of the published
 #      contracts with the review of the links it does not resolve;
@@ -654,6 +655,24 @@ if want_stage 1; then
     # The one executable program that starts the product is the compatibility
     # gate of the publication, and the declaration says so with its reason.
     stage1_guards+=("the layer that boots a product|scripts/check-product-boot-layer.py|boot-layer.out|stage 1: the product-boot layer guard")
+
+    # --- The releases the compatibility gate compares against ----------------
+    # The external-consumer gate of the publication compares the candidate
+    # against PUBLISHED releases, and which release fills each of the three
+    # roles is a rule of its own: the baseline is a published SDK of the same
+    # LINE, the older side is a published SDK of an OLDER LINE, and the
+    # previous side is the last release published before them.
+    #
+    # The rule used to compare TRAINS there, and the two are the same thing
+    # only while every release opens a new minor. The first patch train broke
+    # it, and the break was invisible until a release was refused by it: the
+    # gate measured a plugin the candidate admits and called it a refusal that
+    # never happened. Measured 2026-11-08 against v0.94.1-rc1.
+    #
+    # The guard runs the gate's own selection against a FIXED published
+    # history, so the authority stays the gate that publishes and the guard
+    # never reaches the network.
+    stage1_guards+=("the releases the compatibility gate compares against|scripts/check-compat-comparison-selection.py|compat-selection.out|stage 1: the compatibility comparison selection guard")
 
     # The checks run together, and every one of them is waited for before any
     # verdict is read, so a run that stops leaves no check running behind it.

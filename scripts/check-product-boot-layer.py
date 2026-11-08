@@ -125,6 +125,11 @@ DECLARED_EXECUTABLES = {
     "scripts/check-compiler-wire-authority.py": (
         "a guard of the gate: it reads the tree and starts nothing"
     ),
+    "scripts/check-compat-comparison-selection.py": (
+        "a guard of the gate: it runs the compatibility gate in its "
+        "selection-only mode, which reads the published releases and starts "
+        "nothing of the product"
+    ),
     "scripts/check-durable-shell-cost.py": (
         "a guard of the gate: it reads the tree and starts nothing"
     ),

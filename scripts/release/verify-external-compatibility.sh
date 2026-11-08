@@ -69,16 +69,22 @@
 # Usage:
 #   verify-external-compatibility.sh --candidate-zip <path> --candidate-sdk-zip <path> \
 #       --candidate-train <train> [--baseline-tag <tag>] [--older-tag <tag>] \
-#       [--previous-tag <tag>] [--out <file>]
+#       [--previous-tag <tag>] [--out <file>] [--select-only]
 #
 # --baseline-tag and --older-tag default to the most recent published release on
-# the same line and on a different line respectively. --previous-tag names the
+# the same LINE and on an OLDER LINE respectively. --previous-tag names the
 # release row E compares against; it defaults to the most recently PUBLISHED
 # release that carries a version other than the candidate's. A row whose
 # baseline does not exist is SKIPPED with its reason stated; a row whose
 # baseline exists but cannot be downloaded or verified is FAILED. The
 # difference matters: "there is nothing to compare against" is a fact, "the
 # comparison could not be made" is a broken instrument.
+#
+# --select-only prints the three selected releases and exits, without the
+# artifacts and without the rows. It exists because the SELECTION is a rule
+# of its own, and a rule with no cheap instrument is a rule that waits for a
+# release to be tested. It measures nothing and admits nothing: it is not a
+# way to publish, and the release path never passes it.
 
 set -Eeuo pipefail
 
@@ -91,6 +97,7 @@ BASELINE_TAG=""
 OLDER_TAG=""
 PREVIOUS_TAG=""
 OUT_FILE=""
+SELECT_ONLY=""
 
 usage() {
     # The header is printed as it is written, up to the first line that is
@@ -109,6 +116,7 @@ while [[ $# -gt 0 ]]; do
         --older-tag)        OLDER_TAG="${2:-}"; shift 2 ;;
         --previous-tag)     PREVIOUS_TAG="${2:-}"; shift 2 ;;
         --out)              OUT_FILE="${2:-}"; shift 2 ;;
+        --select-only)      SELECT_ONLY="1"; shift ;;
         -h|--help)          usage ;;
         *)
             printf 'verify-external-compatibility: unknown argument %s\n' "$1" >&2
@@ -118,6 +126,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 for required in CANDIDATE_ZIP CANDIDATE_SDK_ZIP CANDIDATE_TRAIN; do
+    # --select-only answers a question about the SELECTION, so it needs the
+    # candidate's train and nothing else: the artifacts are what the rows
+    # consume, and --select-only runs no row.
+    if [[ -n "$SELECT_ONLY" && "$required" != "CANDIDATE_TRAIN" ]]; then
+        continue
+    fi
     if [[ -z "${!required}" ]]; then
         printf 'verify-external-compatibility: --%s is required\n' \
             "$(printf '%s' "$required" | tr '[:upper:]' '[:lower:]' | tr '_' '-')" >&2
@@ -125,12 +139,14 @@ for required in CANDIDATE_ZIP CANDIDATE_SDK_ZIP CANDIDATE_TRAIN; do
     fi
 done
 
-for artefact in "$CANDIDATE_ZIP" "$CANDIDATE_SDK_ZIP"; do
-    if [[ ! -f "$artefact" ]]; then
-        printf 'verify-external-compatibility: %s does not exist\n' "$artefact" >&2
-        exit 2
-    fi
-done
+if [[ -z "$SELECT_ONLY" ]]; then
+    for artefact in "$CANDIDATE_ZIP" "$CANDIDATE_SDK_ZIP"; do
+        if [[ ! -f "$artefact" ]]; then
+            printf 'verify-external-compatibility: %s does not exist\n' "$artefact" >&2
+            exit 2
+        fi
+    done
+fi
 
 PLUGIN_DIR="$repo_root/examples/example-uppercase-plugin"
 if [[ ! -d "$PLUGIN_DIR/src" ]]; then
@@ -180,7 +196,130 @@ tail_reason() {
 }
 
 # ----------------------------------------------------------------------------
-# 1. The candidate's own bytes: the distribution the release is about to
+# 1. Which published releases to compare against.
+# ----------------------------------------------------------------------------
+
+train_of_tag() {
+    local tag="${1#v}"
+    printf '%s' "${tag%-rc[0-9]*}"
+}
+
+# The line of a release is its major.minor. Its train is the whole version
+# (major.minor.patch): a train is what a release IS, a line is what it belongs
+# to, and the compatibility contract the product publishes is expressed in
+# lines — a plugin declares [sdk, nextMinor), so a line ends at the first
+# version of the next one.
+#
+# These rows are about lines: row B is "the previously published SDK, same
+# line" and row C is "a published SDK from an older line". Comparing trains
+# where the rule says lines was invisible while every train was a new minor,
+# and it broke on the first patch train: with the candidate train 0.94.1 the
+# release v0.94.0 was taken for an older line — its train differs — when it
+# is the previous release of the same line, whose SDK still loads. Row C then
+# measured a plugin the candidate admits and called it a refusal that did not
+# happen. Measured 2026-11-08: row C exited 0 where the contract requires 2.
+line_of_tag() {
+    local tag="${1#v}"
+    tag="${tag%-rc[0-9]*}"
+    printf '%s' "${tag%.*}"
+}
+
+# Whether the line $1 is strictly older than the line $2.
+#
+# "Older" and not merely "different": a release of a newer line publishes a
+# plugin whose range ends at the end of its own line, and that range contains
+# the candidate — so a newer line would measure a plugin the candidate admits
+# and row C would fail for the wrong reason.
+line_is_older() {
+    local a_major="${1%%.*}" a_minor="${1##*.}"
+    local b_major="${2%%.*}" b_minor="${2##*.}"
+    if (( a_major < b_major )); then
+        return 0
+    fi
+    if (( a_major == b_major && a_minor < b_minor )); then
+        return 0
+    fi
+    return 1
+}
+
+CANDIDATE_LINE="$(line_of_tag "$CANDIDATE_TRAIN")"
+
+if [[ -z "$BASELINE_TAG" || -z "$OLDER_TAG" || -z "$PREVIOUS_TAG" ]]; then
+    if ! command -v gh >/dev/null; then
+        printf 'verify-external-compatibility: gh is required to find the published releases\n' >&2
+        exit 2
+    fi
+    # The published releases, in PUBLICATION order, newest first.
+    #
+    # Publication order and not creation order: a draft carries no publication
+    # date and is not a published release, and a release created but never
+    # published is not one either. "The most recent published release" is a
+    # claim about what a consumer can download, and a consumer downloads what
+    # was PUBLISHED. All three selections read this one list, so they share
+    # one notion of "most recent".
+    PUBLISHED_BY_DATE="$(gh release list --limit 100 --json tagName,publishedAt,isDraft \
+        --jq '[.[] | select(.isDraft == false and .publishedAt != null)]
+               | sort_by(.publishedAt) | reverse | .[].tagName' 2>/dev/null || true)"
+    if [[ -z "$PUBLISHED_BY_DATE" ]]; then
+        printf 'verify-external-compatibility: no published release could be listed\n' >&2
+        exit 1
+    fi
+    if [[ -z "$BASELINE_TAG" ]]; then
+        # Row B compares against the previously published SDK OF THE SAME LINE,
+        # and against another VERSION: an RC and its stable ship ONE published
+        # version, and a comparison between two artifacts of one version would
+        # measure the candidate against itself.
+        while IFS= read -r candidate_tag; do
+            if [[ "$(line_of_tag "$candidate_tag")" == "$CANDIDATE_LINE" &&
+                  "$(train_of_tag "$candidate_tag")" != "$CANDIDATE_TRAIN" ]]; then
+                BASELINE_TAG="$candidate_tag"
+                break
+            fi
+        done <<< "$PUBLISHED_BY_DATE"
+    fi
+    if [[ -z "$OLDER_TAG" ]]; then
+        # Row C compares against a published SDK of an OLDER LINE, and the most
+        # recent one: the closer the line, the more the refusal means.
+        while IFS= read -r candidate_tag; do
+            if line_is_older "$(line_of_tag "$candidate_tag")" "$CANDIDATE_LINE"; then
+                OLDER_TAG="$candidate_tag"
+                break
+            fi
+        done <<< "$PUBLISHED_BY_DATE"
+    fi
+    if [[ -z "$PREVIOUS_TAG" ]]; then
+        # The previous side of row E: the last release that was PUBLISHED, in
+        # publication order, on a train other than the candidate's.
+        #
+        # The candidate's own train is excluded, and the reason is the
+        # exception ledger's vocabulary rather than a preference. An RC and
+        # its stable ship ONE published version, and an approval names a
+        # version: an entry that says "0.92.0" cannot say whether it excuses
+        # a break for the RC or for the stable. Comparing two artifacts of
+        # one version would ask the ledger a question it cannot answer, so
+        # the comparison moves back to the last release of another train.
+        # That diff is broader, and broader fails closed: it finds more
+        # breaks, it hides none.
+        while IFS= read -r candidate_tag; do
+            if [[ "$(train_of_tag "$candidate_tag")" != "$CANDIDATE_TRAIN" ]]; then
+                PREVIOUS_TAG="$candidate_tag"
+                break
+            fi
+        done <<< "$PUBLISHED_BY_DATE"
+    fi
+fi
+
+log "candidate train=$CANDIDATE_TRAIN baseline=${BASELINE_TAG:-<none>} older=${OLDER_TAG:-<none>} previous=${PREVIOUS_TAG:-<none>}"
+
+if [[ -n "$SELECT_ONLY" ]]; then
+    # The selection IS the answer, and it is printed in one line so that an
+    # instrument can read it without parsing prose.
+    log "select baseline=${BASELINE_TAG:-<none>} older=${OLDER_TAG:-<none>} previous=${PREVIOUS_TAG:-<none>}"
+    exit 0
+fi
+
+# ----------------------------------------------------------------------------
+# 2. The candidate's own bytes: the distribution the release is about to
 #    publish, and the SDK that release is about to publish.
 # ----------------------------------------------------------------------------
 
@@ -228,7 +367,7 @@ if compgen -G "$DIST_HOME/lib/example-uppercase-plugin-*.jar" > /dev/null; then
 fi
 
 # ----------------------------------------------------------------------------
-# 2. The SDKs. One of them is the candidate's; the others are downloaded from
+# 3. The SDKs. One of them is the candidate's; the others are downloaded from
 #    the releases that already exist, and every downloaded archive is verified
 #    against the digest authority that release published.
 # ----------------------------------------------------------------------------
@@ -404,7 +543,7 @@ approved_breaks_from_log() {
 }
 
 # ----------------------------------------------------------------------------
-# 3. The rows.
+# 4. The rows.
 # ----------------------------------------------------------------------------
 
 declare -a ROW_NAMES=()
@@ -541,75 +680,6 @@ record_row() {
     ROW_SDK_VERSIONS+=("$3")
 }
 
-# ----------------------------------------------------------------------------
-# 4. Which published releases to compare against.
-# ----------------------------------------------------------------------------
-
-train_of_tag() {
-    local tag="${1#v}"
-    printf '%s' "${tag%-rc[0-9]*}"
-}
-
-if [[ -z "$BASELINE_TAG" || -z "$OLDER_TAG" || -z "$PREVIOUS_TAG" ]]; then
-    if ! command -v gh >/dev/null; then
-        printf 'verify-external-compatibility: gh is required to find the published releases\n' >&2
-        exit 2
-    fi
-    RELEASE_TAGS="$(gh release list --limit 100 --json tagName --jq '.[].tagName' 2>/dev/null || true)"
-    if [[ -z "$RELEASE_TAGS" ]]; then
-        printf 'verify-external-compatibility: no published release could be listed\n' >&2
-        exit 1
-    fi
-    if [[ -z "$BASELINE_TAG" ]]; then
-        while IFS= read -r candidate_tag; do
-            if [[ "$(train_of_tag "$candidate_tag")" == "$CANDIDATE_TRAIN" ]]; then
-                BASELINE_TAG="$candidate_tag"
-                break
-            fi
-        done <<< "$RELEASE_TAGS"
-    fi
-    if [[ -z "$OLDER_TAG" ]]; then
-        while IFS= read -r candidate_tag; do
-            if [[ "$(train_of_tag "$candidate_tag")" != "$CANDIDATE_TRAIN" ]]; then
-                OLDER_TAG="$candidate_tag"
-                break
-            fi
-        done <<< "$RELEASE_TAGS"
-    fi
-    if [[ -z "$PREVIOUS_TAG" ]]; then
-        # The previous side of row E: the last release that was PUBLISHED, in
-        # publication order, on a train other than the candidate's.
-        #
-        # `publishedAt`, and not the order the releases were created in: a
-        # draft carries no publication date and is not a published release,
-        # and a release created but never published is not one either.
-        #
-        # The candidate's own train is excluded, and the reason is the
-        # exception ledger's vocabulary rather than a preference. An RC and
-        # its stable ship ONE published version, and an approval names a
-        # version: an entry that says "0.92.0" cannot say whether it excuses
-        # a break for the RC or for the stable. Comparing two artifacts of
-        # one version would ask the ledger a question it cannot answer, so
-        # the comparison moves back to the last release of another train.
-        # That diff is broader, and broader fails closed: it finds more
-        # breaks, it hides none.
-        PUBLISHED_BY_DATE="$(gh release list --limit 100 --json tagName,publishedAt,isDraft \
-            --jq '[.[] | select(.isDraft == false and .publishedAt != null)]
-                   | sort_by(.publishedAt) | reverse | .[].tagName' 2>/dev/null || true)"
-        if [[ -z "$PUBLISHED_BY_DATE" ]]; then
-            printf 'verify-external-compatibility: no published release could be listed by publication date\n' >&2
-            exit 1
-        fi
-        while IFS= read -r candidate_tag; do
-            if [[ "$(train_of_tag "$candidate_tag")" != "$CANDIDATE_TRAIN" ]]; then
-                PREVIOUS_TAG="$candidate_tag"
-                break
-            fi
-        done <<< "$PUBLISHED_BY_DATE"
-    fi
-fi
-
-log "candidate train=$CANDIDATE_TRAIN baseline=${BASELINE_TAG:-<none>} older=${OLDER_TAG:-<none>} previous=${PREVIOUS_TAG:-<none>}"
 
 # ----------------------------------------------------------------------------
 # 5. Row A: the candidate's own published SDK.

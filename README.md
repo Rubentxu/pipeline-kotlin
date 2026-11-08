@@ -576,11 +576,14 @@ The releases, with the digest of every published asset, are on
 
 The release tags are signed, and the signature is verified before the tag is
 pushed. A signature proves possession of the private key and nothing more,
-so the trust channel of a consumer lives OUTSIDE the artifact: it is the
-account that owns this repository, and the GPG keys that account registers.
-`RELEASE-SIGNING.md` in the repository root writes the provenance review
-down, and `scripts/release/verify-signing-key-attribution.sh` measures
-whether the declared key is registered on that account.
+so the trust channel of a consumer is the DECLARATION this repository
+versions: `scripts/release/signing-key.conf` names the fingerprint and the
+uid of the key that signs, and `RELEASE-SIGNING.md` publishes that
+fingerprint to whoever reads the release. `RELEASE-SIGNING.md` in the
+repository root writes the provenance review down, and
+`scripts/check-signing-key-trust.py` measures that the fingerprint published
+to the consumers is the one the declaration names as current. The attribution
+does not depend on any account of a third party.
 
 PipelineK publishes **one canonical ZIP** per release. Every other
 channel consumes the same bytes; nothing is rebuilt per installer.

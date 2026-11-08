@@ -43,14 +43,16 @@
 #      this the promotion would publish it. The certification is judged
 #      against the candidate the RC names, and a partial one — the canaries
 #      and nothing else — is refused with the missing part named.
-#   7. the PUBLISHER is attributable: the key that signs is registered on the
-#      account that owns this repository. Everything above is about the bytes
-#      and about the proof; none of it says who published the release. A
-#      stable release is the last thing a consumer looks at, and a stable
-#      release signed by a key no account vouches for is a release nobody can
-#      attribute. The registration is read from the account itself and not
-#      from the artifact, because an artifact that declares its own trust is
-#      a declaration and not a witness.
+#   7. the PUBLISHER is attributable: the fingerprint that signs is the one
+#      this repository declares and PUBLISHES to the consumers in
+#      RELEASE-SIGNING.md. Everything above is about the bytes and about the
+#      proof; none of it says who published the release. A stable release is
+#      the last thing a consumer looks at, and a stable release signed by a
+#      key no consumer is able to place is a release nobody can attribute.
+#      The channel is a declaration versioned in this repository, and not the
+#      state of an account of a third party: the platform that hosts the
+#      releases is transport, and what its database says about a tag is a fact
+#      about that database and not about the publisher.
 #
 # The tag itself is cut by scripts/release/publish-tag.sh, which signs it,
 # verifies the signature and only then pushes it. This file does not re-implement
@@ -206,32 +208,40 @@ fi
 #     that the tag is annotated, that the signature verifies, that the
 #     certification covers the candidate. None of it says WHO published the
 #     release. A stable release is the last thing a consumer will look at, and
-#     a stable release signed by a key that no account vouches for is a
+#     a stable release signed by a key that no consumer is able to place is a
 #     release nobody can attribute.
 #
-#     The binding is a fact about the account that owns this repository, read
-#     from that account and not from the artifact: an artifact that declares
-#     its own trust is a declaration, not a witness. The check is made with
-#     the public API and without credentials, and it distinguishes two facts
-#     that a boolean would flatten: the key is NOT registered, and the
-#     registration could NOT be measured. A measurement that did not happen
-#     is not a pass, so both refuse the promotion.
+#     The channel is the DECLARATION THAT THIS REPOSITORY VERSIONS: the
+#     fingerprint and the uid the declaration names, and the same fingerprint
+#     published to the consumers in RELEASE-SIGNING.md. A consumer reads the
+#     declaration, compares it with the fingerprint the release names, and
+#     places the publisher with what this repository publishes — not with the
+#     state of an account of a third party, which is a fact about somebody
+#     else's database and says nothing about the artifact.
+#
+#     The check is the guard of the trust set, the same one the gate runs
+#     (scripts/check-signing-key-trust.py): it reads the tree and nothing
+#     else, and the row that carries the channel asks whether the fingerprint
+#     that signs is published. A disagreement between the declaration and the
+#     published fingerprint is a red, and a red refuses the promotion: a
+#     measurement that did not happen is not a pass.
 #
 #     The refusal names what to do about it, because a refusal nobody can act
 #     on is a wall rather than a door.
 # ----------------------------------------------------------------------------
 
-if ! "${script_dir}/verify-signing-key-attribution.sh" \
-    --conf "$SIGNING_KEY_CONF" \
-    --fingerprint "$SIGNING_FINGERPRINT" \
-    --remote "$REMOTE" \
-    --out "${OUT_FILE}.attribution.txt"; then
+SIGNING_TRUST_VERDICT_FILE="${OUT_FILE}.signing-trust.txt"
+
+mkdir -p -- "$(dirname -- "$SIGNING_TRUST_VERDICT_FILE")"
+
+if ! python3 "${repo_root}/scripts/check-signing-key-trust.py" > "$SIGNING_TRUST_VERDICT_FILE" 2>&1; then
     printf 'promote-stable: refusing the promotion — the publisher cannot be attributed.\n' >&2
-    printf '    The verdict is at %s.attribution.txt\n' "$OUT_FILE" >&2
-    printf '    The key that signs the release is not registered on the account that owns\n' >&2
-    printf '    this repository, so the stable release would carry a signature that no\n' >&2
-    printf '    consumer is able to place. Register the key on that account, or cut a\n' >&2
-    printf '    candidate signed by a key that is registered there.\n' >&2
+    printf '    The verdict is at %s\n' "$SIGNING_TRUST_VERDICT_FILE" >&2
+    printf '    The fingerprint that signs the release is not the one this repository\n' >&2
+    printf '    publishes to the consumers in RELEASE-SIGNING.md, so the stable release\n' >&2
+    printf '    would carry a signature that no consumer is able to place. Publish the\n' >&2
+    printf '    fingerprint the declaration names, or cut a candidate signed by a key\n' >&2
+    printf '    this repository declares and publishes.\n' >&2
     exit 1
 fi
 

@@ -19,33 +19,40 @@ carries, so that a key whose identity changed is a key somebody else should
 look at. It is never an attribution: nobody is attributed by the string their
 key carries.
 
-## The trust channel is outside the artifact
+## The trust channel is the declaration of this repository
 
-An artifact that declares its own trust proves nothing about itself: anybody
-able to write the file is able to write the declaration. So the binding
-between a key and a publisher has to live somewhere the publisher does not
-control alone.
+The bytes that leave this repository carry their own signature, and a signature
+that travels with the artifact proves only possession. An artifact that
+declares its own trust proves nothing about itself, so the binding between a
+key and a publisher has to be something a consumer can read and compare.
 
-For this repository the channel is **the account that owns the repository**.
-An account publishes the list of GPG keys it vouches for, and a key on that
-list is one the publishing account stands behind. A consumer who wants to
-place the publisher reads that list and compares it with the fingerprint the
-release names.
+For this repository the channel is **the declaration this repository
+versions**. `scripts/release/signing-key.conf` names the fingerprint and the
+uid of the key that signs, `RELEASE-SIGNING.md` publishes that same
+fingerprint to the consumers of the release, and the public key travels with
+the release notes. The declaration is reviewed in the same history as the code
+that signs, so a consumer who reads the repository reads the declaration and
+compares it with the fingerprint the release names.
+
+No account of a third party takes part in it. The platform that hosts the
+releases is transport, and what its database says about a tag — whether it
+marks it as verified — is a fact about that database and not about the
+publisher. The attribution of a release in this repository rests on the
+declaration and on nothing else.
 
 The channel is checked, not merely described:
 
 ```bash
-scripts/release/verify-signing-key-attribution.sh
+scripts/check-signing-key-trust.py
 ```
 
-The check reads the public API without credentials, and it distinguishes two
-facts that a single boolean would flatten:
-
-- the key is **not registered** on the account, and
-- the registration **could not be measured** (the account could not be read).
-
-The second one is not a pass either. A measurement that did not happen is not
-a green, and the promotion to a stable release refuses in both cases.
+The check reads the tree and nothing else. The row that carries the channel
+asks whether the fingerprint the declaration names as current is published in
+`RELEASE-SIGNING.md`, the file a consumer reads: a key that signs and is
+published nowhere is a key no consumer is able to place, and a consumer that
+compares the fingerprint the release names with the published one finds two
+different keys. The promotion to a stable release refuses while the two
+disagree.
 
 ## The keys this repository trusts
 
@@ -62,7 +69,7 @@ ever published into a tag nobody can verify, which is the opposite of what a
 rotation is for.
 
 The shape of the set is checked by `scripts/check-signing-key-trust.py`, which
-reads the tree and nothing else. Six rows, and the sixth one has teeth:
+reads the tree and nothing else. Seven rows, and two of them have teeth:
 
 | Row | What it asks |
 |---|---|
@@ -72,6 +79,7 @@ reads the tree and nothing else. Six rows, and the sixth one has teeth:
 | 4 | the current key is not among the keys of the second group |
 | 5 | every key of the second group declares the identity it claims |
 | 6 | the current key claims no domain reserved for documentation |
+| 7 | the fingerprint that signs is published in `RELEASE-SIGNING.md` |
 
 Row 6 exists because a domain reserved for documentation belongs to nobody.
 An address under such a domain cannot be corroborated by any channel,
@@ -80,6 +88,45 @@ never receive an attribution, and a repository that publishes it as the key
 that signs is publishing a key that no consumer is able to place. The row is
 red while the current key claims such an address and green once it claims an
 address a channel can corroborate.
+
+Row 7 is the channel itself. The declaration names the key that signs, and a
+consumer cannot place a publisher with a fingerprint nobody published. The
+fingerprint the declaration names as current has to appear in the document the
+consumers read, so the attribution of a release rests on a declaration that is
+versioned in this repository and on nothing that lives in an account of a third
+party. The row is red while the two disagree, and the promotion to a stable
+release refuses while it is red.
+
+## The key that signs the tags cut from now on
+
+This is the key the declaration names as current, and the key a consumer
+places the publisher with:
+
+- **Fingerprint:** `980C8E16562A797BABDC76161135ACC699A41110`
+- **Identity it claims:** `Ruben <rubentxu74@gmail.com>`
+
+The public key is published here as well, so a consumer needs nothing from the
+machine that cut the release to verify a signature:
+
+```
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEau5BnRYJKwYBBAHaRw8BAQdAaRgFHlGJVb3QCXi0iXVyJg0ZXF4oTV2SQO38
+GAkqrbC0HFJ1YmVuIDxydWJlbnR4dTc0QGdtYWlsLmNvbT6IkwQTFgoAOxYhBJgM
+jhZWKnl7q9x2FhE1rMaZpBEQBQJq7kGdAhsDBQsJCAcCAiICBhUKCQgLAgQWAgMB
+Ah4HAheAAAoJEBE1rMaZpBEQfs0A/jpFIRBg6CJH4MQoIfO1+DKmA3Y0nvXIx5AY
+vpIdzMNzAQDaFxc01+t10Ce7fpKgCBPI5D4Lbo1+t4smwXNufAHdA7g4BGruQZ0S
+CisGAQQBl1UBBQEBB0BsFzk1n2ubUZJ3Lkiwd63RVQXyXZPtF0K+9Uh/ceVJTgMB
+CAeIeAQYFgoAIBYhBJgMjhZWKnl7q9x2FhE1rMaZpBEQBQJq7kGdAhsMAAoJEBE1
+rMaZpBEQiEUBAMAqPb6CGn71cwKLwRdplQWlP3sd9tDDIt7MraYsIBBwAQD1vVY7
+UseWs/pkgrBVd0fiZV08VNhroa3WnNlI1L/yAg==
+=kw8H
+-----END PGP PUBLIC KEY BLOCK-----
+```
+
+A consumer that verifies a published tag against this key compares the
+fingerprint the tag's signature carries with the fingerprint above. The two
+are the same when the release was cut with this key.
 
 ## The review of the published fingerprint
 
@@ -95,7 +142,8 @@ and this is what the review measured:
   there either.
 - It was **not registered on the account that owns this repository**. The
   account published an empty list of GPG keys, so the platform itself showed
-  every tag it had signed as unverified.
+  every tag it had signed as unverified. The channel this repository uses now
+  does not depend on that account: it is the declaration versioned here.
 - Its user id claimed `test@example.com`. `example.com` is reserved for
   documentation, which means the address belongs to nobody and can never
   corroborate a key. **The key could not receive an attribution by
@@ -131,31 +179,26 @@ The rotation did three things, and the third is the one that matters:
    tags reports the same seven passes it reported before the rotation;
 3. the rotation made **future** releases attributable. It did not attribute
    the releases already published: those carry the signature of a key that
-   was never registered anywhere, and no rotation reaches back to change
-   them.
+   was never published to the consumers, and no rotation reaches back to
+   change them.
 
 Nothing was rewritten. The old key is still in the keyring, no published tag
 was touched, and no tag was moved.
 
 ## What is still missing
 
-Two things are open, and both need the publisher rather than the code.
-
-**The registration.** The new key is not registered on the account that owns
-this repository yet. Registering it needs the account and a browser, and
-until it happens `scripts/release/verify-signing-key-attribution.sh` reports
-that the key is not registered, and `scripts/release/promote-stable.sh`
-**refuses the promotion to a stable release**. That refusal is deliberate: a
-stable release is the last thing a consumer looks at, and a stable release
-signed by a key that no account vouches for is a release nobody can
-attribute. The next candidate is cut with the new key, and the promotion
-becomes possible once the account registers it.
+One thing is open, and it needs the publisher rather than the code.
 
 **The backup of the private key.** The private key of the new key exists in
 the keyring of one machine. Without a copy of it there is no signed release
 worth anything: the tags already published keep verifying, and the next one
 cannot be signed at all. The publisher keeps that copy, and this repository
 deliberately does not hold it.
+
+The attribution of the publisher is no longer open: the fingerprint that signs
+is declared in `scripts/release/signing-key.conf`, published in this
+document, and `scripts/check-signing-key-trust.py` refuses the tree while the
+two disagree.
 
 ## How to check a published tag
 
@@ -167,9 +210,6 @@ scripts/release/verify-tag-signature.sh --tag v0.92.0-rc1 \
 # The whole published history, against the whole trusted set.
 scripts/release/verify-published-tags.sh --pattern 'v*' \
     --trust-conf scripts/release/signing-key.conf
-
-# The publisher is attributable.
-scripts/release/verify-signing-key-attribution.sh
 ```
 
 The release path asks a narrower question about the tag it has just cut: that

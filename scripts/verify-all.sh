@@ -656,6 +656,18 @@ if want_stage 1; then
     # gate of the publication, and the declaration says so with its reason.
     stage1_guards+=("the layer that boots a product|scripts/check-product-boot-layer.py|boot-layer.out|stage 1: the product-boot layer guard")
 
+    # --- The shape of the catalogue of examples ------------------------------
+    # The catalogue of examples is a DECLARED documentation root: the boot
+    # layer guard admits its pipelines as documentation instead of as a layer
+    # that boots the product. What enters through that door is watched by a
+    # guard of its own: an example directory holds its pipeline and its two
+    # READMEs, nothing more and nothing less; its name says what the example
+    # is about; and every index declares the examples there are. The guard
+    # does not reimplement the catalogue --it does not know what an example
+    # expects-- because that is the harness's business and the harness's
+    # authority.
+    stage1_guards+=("the shape of the catalogue of examples|scripts/check-catalogue-shape.py|catalogue-shape.out|stage 1: the catalogue-shape guard")
+
     # --- The releases the compatibility gate compares against ----------------
     # The external-consumer gate of the publication compares the candidate
     # against PUBLISHED releases, and which release fills each of the three

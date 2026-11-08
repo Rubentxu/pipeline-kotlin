@@ -223,10 +223,6 @@ DECLARED_EXECUTABLES = {
     "scripts/release/verify-published-tags.sh": (
         "publication: it verifies the tags that were published"
     ),
-    "scripts/release/verify-signing-key-attribution.sh": (
-        "publication: it reads the account that owns the repository and "
-        "certifies nothing about the tree"
-    ),
     "scripts/release/verify-tag-signature.sh": (
         "publication: it verifies the signature of a published tag"
     ),

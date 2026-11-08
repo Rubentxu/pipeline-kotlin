@@ -9,7 +9,7 @@ rotation is for. So the shape of the declaration is a contract, and this guard
 is what checks it.
 
 The guard reads the tree and nothing else: no network, no keyring, no
-subprocess. It asks six questions about the declaration:
+subprocess. It asks seven questions about the declaration:
 
   1. exactly ONE current key is declared;
   2. every fingerprint it names is forty hexadecimal characters;
@@ -17,7 +17,8 @@ subprocess. It asks six questions about the declaration:
   4. the current key is not among the keys that signed the tags already
      published;
   5. every key of that second group declares the identity it claims;
-  6. the current key does not claim a domain reserved for documentation.
+  6. the current key does not claim a domain reserved for documentation;
+  7. the fingerprint that signs is PUBLISHED to the consumers.
 
 The sixth row is the one with teeth. A domain reserved for documentation
 belongs to nobody: an address under such a domain cannot be corroborated by
@@ -28,6 +29,15 @@ row is red while the current key claims such an address, and green once the
 current key claims an address a channel can corroborate. That is what makes
 a rotation measurable instead of merely announced.
 
+The seventh row is the CHANNEL. The declaration names the key that signs,
+and a consumer cannot place a publisher with a fingerprint nobody published.
+The fingerprint the declaration names as current has to appear in the
+document the consumers read — `RELEASE-SIGNING.md`, in the root of the
+repository — so the attribution of a release rests on a declaration that is
+versioned here and on nothing that lives in an account of a third party. A
+key that signs and is not published is a key no consumer is able to place,
+and the row is red while the two disagree.
+
 The rows are reported one per line, and the run fails when any of them fails.
 """
 
@@ -36,6 +46,11 @@ import sys
 from pathlib import Path
 
 CONF_RELATIVE = "scripts/release/signing-key.conf"
+
+# The document that publishes the fingerprint to the consumers. It is the
+# channel: a consumer who reads it compares the fingerprint it names with the
+# fingerprint the release names.
+PUBLISHED_RELATIVE = "RELEASE-SIGNING.md"
 
 FINGERPRINT = re.compile(r"^[0-9A-Fa-f]{40}$")
 
@@ -214,6 +229,30 @@ def main() -> int:
     else:
         row(True, "6", f"the current key claims '{address}', and '{domain}' is a domain that can be corroborated")
 
+    # Row 7. The fingerprint that signs is PUBLISHED to the consumers. The
+    # declaration is the channel only if the consumers can read it: a key
+    # that signs and appears nowhere is a key nobody is able to place, and a
+    # consumer that compares the fingerprint the release names with the
+    # fingerprint the document publishes finds two different keys. The
+    # document is read from the tree, and the comparison is literal.
+    published_path = repo / PUBLISHED_RELATIVE
+    if not published_path.is_file():
+        rows.append(
+            f"  {PUBLISHED_RELATIVE}: the document that publishes the fingerprint is missing"
+        )
+        row(False, "7", f"the document that publishes the fingerprint to the consumers is missing")
+    elif not current:
+        row(False, "7", "there is no current key whose fingerprint could be published")
+    else:
+        published = published_path.read_text(encoding="utf-8")
+        if current in published:
+            row(True, "7", f"the fingerprint {current} that signs is published in {PUBLISHED_RELATIVE}")
+        else:
+            rows.append(
+                f"  {PUBLISHED_RELATIVE}  the fingerprint {current} that signs is not published"
+            )
+            row(False, "7", f"the fingerprint {current} that signs is not published in {PUBLISHED_RELATIVE}")
+
     for line in rows:
         print(line)
     if failures:
@@ -221,7 +260,8 @@ def main() -> int:
         print("La declaracion de las claves de firma no tiene la forma que el camino de firma exige.")
         return 1
     print(f"\nCLAVE DE FIRMA: OK ({len(rows)} rows)")
-    print("Una clave actual, un conjunto de confianza, y ninguna identidad que nadie pueda corroborar.")
+    print("Una clave actual, un conjunto de confianza, ninguna identidad que nadie pueda corroborar,")
+    print("y una huella que los consumidores pueden leer en este repositorio.")
     return 0
 
 

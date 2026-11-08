@@ -264,12 +264,13 @@ lookup_sha256sums_entry() {
 
 # read_release_manifest <manifest> <expected-tag> <expected-train>
 #
-# Echoes three lines: the artifact name, its SHA-256 and the product version.
-# It fails closed on anything it does not understand: an unknown schema, a
-# tag that is not the one requested, a product version outside the train, a
-# manifest that does not name exactly one distribution, or a digest that is
-# not a SHA-256. A manifest this script cannot read is a manifest it must not
-# guess at. The reason is printed on stderr; the caller decides what to do.
+# Echoes four lines: the artifact name, its SHA-256, the product version and
+# the tag the manifest names. It fails closed on anything it does not
+# understand: an unknown schema, a tag that does not belong to this release,
+# a product version outside the train, a manifest that does not name exactly
+# one distribution, or a digest that is not a SHA-256. A manifest this script
+# cannot read is a manifest it must not guess at. The reason is printed on
+# stderr; the caller decides what to do.
 read_release_manifest() {
   local manifest_path="$1"
   local expected_tag="$2"
@@ -279,12 +280,12 @@ read_release_manifest() {
   err_file="$(mktemp -t pipelinek-manifest-XXXXXX)"
 
   local parsed
-  if ! parsed="$(python3 - "${manifest_path}" "${expected_tag}" "${expected_train}" <<'PY' 2>"${err_file}"
+  if ! parsed="$(python3 - "${manifest_path}" "${expected_tag}" "${expected_train}" "${CANDIDATE_SLOT_REGEX}" <<'PY' 2>"${err_file}"
 import json
 import re
 import sys
 
-path, expected_tag, expected_train = sys.argv[1:4]
+path, expected_tag, expected_train, candidate_slot_regex = sys.argv[1:5]
 SCHEMA = "pipelinek-release-manifest-1"
 PRODUCT_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -303,8 +304,31 @@ if doc.get("schema_version") != SCHEMA:
     sys.exit(f"unknown release manifest schema: {doc.get('schema_version')!r}")
 
 tag = doc.get("release_tag")
+if not isinstance(tag, str) or not tag:
+    sys.exit(f"the release manifest does not name the release it belongs to: {tag!r}")
 if tag != expected_tag:
-    sys.exit(f"the manifest names release {tag!r}, but this release is {expected_tag!r}")
+    # A release promoted from a candidate publishes the candidate's manifest
+    # VERBATIM: the bytes are the same, so the document that first published
+    # them is the same, and it names the candidate. That is not a
+    # contradiction about the bytes; it is a fact about WHERE those bytes
+    # were first published. What identifies the release being installed is
+    # the tag that was asked for, plus the agreement between the manifest's
+    # digest and the release's own SHA256SUMS -- which the caller checks
+    # before it installs a single byte.
+    #
+    # What must still be refused is a manifest that describes ANOTHER line of
+    # releases. So the only tolerated difference is the one promotion
+    # produces: the manifest of a candidate of THIS train, asked for by the
+    # STABLE release of this train. A candidate's own manifest must name the
+    # candidate, because a candidate is never promoted into a candidate.
+    bare = tag[1:] if tag.startswith("v") else tag
+    same_train_candidate = (
+        re.match(candidate_slot_regex, bare)
+        and bare.rsplit("-", 1)[0] == expected_train
+        and expected_tag == "v" + expected_train
+    )
+    if not same_train_candidate:
+        sys.exit(f"the manifest names release {tag!r}, but this release is {expected_tag!r}")
 
 version = doc.get("version")
 if not isinstance(version, str) or not PRODUCT_VERSION.match(version):
@@ -334,6 +358,7 @@ if name != f"pipelinek-{version}.zip":
 print(name)
 print(digest)
 print(version)
+print(tag)
 PY
   )"; then
     cat "${err_file}" >&2
@@ -342,6 +367,118 @@ PY
   fi
   rm -f "${err_file}"
   printf '%s\n' "${parsed}"
+}
+
+# ---------------------------------------------------------------------------
+# Downloading
+# ---------------------------------------------------------------------------
+
+# THE DOWNLOAD HAS TWO PATHS TO THE SAME BYTES.
+#
+# MEASURED on 2026-11-08: github.com answered HTTP 504 for EVERY release asset
+# of this project AND of an unrelated one, for twenty minutes, while
+# api.github.com answered normally and served the very same asset by its id.
+# A user in that window was told the release did not exist, and it did.
+# GitHub published the same failure mode in August 2026 ("Disruption with
+# Login and Release Asset downloads"), and said in it that the signed-in
+# requests were unaffected.
+#
+# So the direct URL is tried first and the REST API is the second road to the
+# SAME bytes: the digest is verified after the download either way, so the
+# second road cannot change WHICH bytes are accepted, only which road they
+# arrive by.
+#
+# A refusal that is about the release itself (404) or about the request
+# (403/429) is NOT a closed road: the API would say the same, so the answer is
+# the one it always was.
+
+# The API token, when there is one. An absent token is not an error: the assets
+# are public, and the API's anonymous quota is small but real.
+github_token() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    printf '%s\n' "${GITHUB_TOKEN}"
+    return 0
+  fi
+  if [ -n "${GH_TOKEN:-}" ]; then
+    printf '%s\n' "${GH_TOKEN}"
+    return 0
+  fi
+  if command -v gh >/dev/null 2>&1; then
+    local t
+    if t="$(gh auth token 2>/dev/null)" && [ -n "$t" ]; then
+      printf '%s\n' "$t"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+# The URL of a release asset, addressed by its id.
+# $1 tag (with its v), $2 asset name. Prints the URL; returns 1 when it
+# cannot be told.
+api_asset_url() {
+  local tag="$1" asset="$2"
+  local auth=()
+  local token
+  if token="$(github_token)"; then
+    auth=(-H "Authorization: token ${token}")
+  fi
+  local json
+  json="$(curl -fsSL --retry 3 --retry-delay 2 "${auth[@]}" \
+    "https://api.github.com/repos/${CANONICAL_REPO}/releases/tags/${tag}" 2>/dev/null)" || return 1
+  printf '%s' "$json" | python3 -c '
+import json, sys
+
+want = sys.argv[1]
+try:
+    release = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+for asset in release.get("assets") or []:
+    if asset.get("name") == want and asset.get("url"):
+        print(asset["url"])
+        break
+else:
+    sys.exit(1)
+' "$asset"
+}
+
+# Download a release asset through the REST API.
+# $1 tag, $2 asset name, $3 destination.
+fetch_asset_by_api() {
+  local tag="$1" asset="$2" dest="$3"
+  local url
+  url="$(api_asset_url "$tag" "$asset")" || return 1
+  [ -n "$url" ] || return 1
+  local auth=()
+  local token
+  if token="$(github_token)"; then
+    auth=(-H "Authorization: token ${token}")
+  fi
+  # The octet-stream accept header is what makes the endpoint serve the
+  # asset's bytes instead of its metadata.
+  curl -fsSL --retry 3 --retry-delay 2 "${auth[@]}" -H "Accept: application/octet-stream" \
+    -o "$dest" "$url" 2>/dev/null
+}
+
+# Fetch a release asset: the direct URL first, the REST API when the direct
+# path is refused by the server.
+# $1 url, $2 destination, $3 tag, $4 asset name.
+fetch_release_asset() {
+  local url="$1" dest="$2" tag="$3" asset="$4"
+  local status
+  status="$(curl -fsSL --retry 3 --retry-delay 2 -o "$dest" -w '%{http_code}' "$url" 2>/dev/null)" || true
+  case "$status" in
+    2*) return 0 ;;
+    5*|000)
+      # The road is closed, not the release: try the other one.
+      fetch_asset_by_api "$tag" "$asset" "$dest"
+      return $?
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
@@ -403,7 +540,7 @@ cmd_install() {
   local manifest_path="${workdir}/${RELEASE_MANIFEST_NAME}"
   log_info "Installing ${kind} release ${slot} (tag ${tag})"
   log_info "Fetching the release manifest ${manifest_url}"
-  if ! curl -fsSL --retry 3 --retry-delay 2 -o "${manifest_path}" "${manifest_url}"; then
+  if ! fetch_release_asset "${manifest_url}" "${manifest_path}" "${tag}" "${RELEASE_MANIFEST_NAME}"; then
     log_error "No release found at tag ${tag}."
     log_error "  ${manifest_url}"
     log_error "A stable version never resolves to a candidate: this release line publishes"
@@ -412,21 +549,30 @@ cmd_install() {
     die "Nothing was installed."
   fi
 
-  local manifest_info asset manifest_digest product_version
+  local manifest_info asset manifest_digest product_version manifest_tag
   if ! manifest_info="$(read_release_manifest "${manifest_path}" "${tag}" "${train}")"; then
     die "Refusing to install ${slot}: the release manifest does not describe this release."
   fi
   asset="$(printf '%s\n' "${manifest_info}" | sed -n '1p')"
   manifest_digest="$(printf '%s\n' "${manifest_info}" | sed -n '2p')"
   product_version="$(printf '%s\n' "${manifest_info}" | sed -n '3p')"
+  manifest_tag="$(printf '%s\n' "${manifest_info}" | sed -n '4p')"
   log_info "Release ${tag} carries product version ${product_version} in ${asset}"
+  if [ "${manifest_tag}" != "${tag}" ]; then
+    # This release was promoted from a candidate and publishes that
+    # candidate's manifest verbatim. It is not a contradiction, but it is a
+    # fact the reader of the log is entitled to see: the manifest names
+    # ${manifest_tag}, and the digest authority below agrees about the same
+    # bytes.
+    log_info "This release was promoted from ${manifest_tag} and publishes its manifest."
+  fi
 
   local zip_url="${base_url}/${tag}/${asset}"
   local zip_path="${workdir}/${asset}"
   local sums_path="${workdir}/${SHA256SUMS_NAME}"
 
   log_info "Downloading ${zip_url}"
-  if ! curl -fsSL --retry 3 --retry-delay 2 -o "${zip_path}" "${zip_url}"; then
+  if ! fetch_release_asset "${zip_url}" "${zip_path}" "${tag}" "${asset}"; then
     die "Failed to download ZIP from ${zip_url}"
   fi
 
@@ -441,7 +587,7 @@ cmd_install() {
     expected_digest="$(printf '%s' "${expected_sha}" | tr '[:upper:]' '[:lower:]')"
   else
     log_info "Fetching ${SHA256SUMS_NAME} from ${sums_url}"
-    if ! curl -fsSL --retry 3 --retry-delay 2 -o "${sums_path}" "${sums_url}"; then
+    if ! fetch_release_asset "${sums_url}" "${sums_path}" "${tag}" "${SHA256SUMS_NAME}"; then
       die "Failed to fetch ${SHA256SUMS_NAME} from ${sums_url}. Refusing to install without a digest authority."
     fi
     local entry

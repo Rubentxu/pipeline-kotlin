@@ -327,9 +327,16 @@ fi
 # ----------------------------------------------------------------------------
 
 RC_TAG_BODY="$(git cat-file tag "$RC_LOCAL_OBJECT" 2>/dev/null || true)"
-RC_TAG_SUBJECT="$(printf '%s\n' "$RC_TAG_BODY" | awk 'body { print; exit } /^$/ { body = 1 }')"
-RC_CANDIDATE_ID="$(printf '%s\n' "$RC_TAG_SUBJECT" \
-    | grep -oE 'candidate_id sha256:[0-9a-f]{64}' | head -1 | sed 's/^candidate_id //' || true)"
+RC_CANDIDATE_ID="$(printf '%s\n' "$RC_TAG_BODY" \
+    | grep -oE '^Candidate-ID: sha256:[0-9a-f]{64}$' | head -1 | sed 's/^Candidate-ID: //' || true)"
+if [[ -z "$RC_CANDIDATE_ID" ]]; then
+    # The spelling the tags cut before the claim became a line of its own.
+    # It is read, and it is read as ITSELF: a tag that says the candidate
+    # the old way still names it, and refusing to read it would refuse a
+    # promotion of bytes that are perfectly well identified.
+    RC_CANDIDATE_ID="$(printf '%s\n' "$RC_TAG_BODY" \
+        | grep -oE 'candidate_id sha256:[0-9a-f]{64}' | head -1 | sed 's/^candidate_id //' || true)"
+fi
 
 if [[ -z "$RC_CANDIDATE_ID" ]]; then
     printf 'promote-stable: refusing — the RC tag %s does not name a candidate_id.\n' "$RC_TAG" >&2

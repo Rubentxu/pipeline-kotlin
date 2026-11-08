@@ -114,10 +114,19 @@ fi
 #    created at all, and the caller stops.
 # ----------------------------------------------------------------------------
 
-TAG_MESSAGE="PipelineK ${TAG} (candidate_id ${CANDIDATE_ID})"
+# The candidate is stated as a CLAIM, one per line, in the spelling the
+# promotion gate reads: the tag that names the candidate is the evidence a
+# consumer checks, so the claim has to be a line a reader can find and a
+# machine can compare, not a word inside a sentence.
+#
+# The line is written by the tool that MEASURED the bytes, so the digest in
+# the published provenance is the digest of the artifact that was certified.
+TAG_MESSAGE="PipelineK ${TAG}"
 if [[ -n "$PROMOTES" ]]; then
     TAG_MESSAGE="${TAG_MESSAGE} (promotes ${PROMOTES})"
 fi
+TAG_MESSAGE="${TAG_MESSAGE}
+Candidate-ID: ${CANDIDATE_ID}"
 
 # The tagger is the repository's own identity, stated explicitly so the tag
 # does not inherit whatever identity the machine happens to be configured with.

@@ -334,6 +334,7 @@ if name != f"pipelinek-{version}.zip":
 print(name)
 print(digest)
 print(version)
+print(tag)
 PY
   )"; then
     cat "${err_file}" >&2
@@ -342,6 +343,118 @@ PY
   fi
   rm -f "${err_file}"
   printf '%s\n' "${parsed}"
+}
+
+# ---------------------------------------------------------------------------
+# Downloading
+# ---------------------------------------------------------------------------
+
+# THE DOWNLOAD HAS TWO PATHS TO THE SAME BYTES.
+#
+# MEASURED on 2026-11-08: github.com answered HTTP 504 for EVERY release asset
+# of this project AND of an unrelated one, for twenty minutes, while
+# api.github.com answered normally and served the very same asset by its id.
+# A user in that window was told the release did not exist, and it did.
+# GitHub published the same failure mode in August 2026 ("Disruption with
+# Login and Release Asset downloads"), and said in it that the signed-in
+# requests were unaffected.
+#
+# So the direct URL is tried first and the REST API is the second road to the
+# SAME bytes: the digest is verified after the download either way, so the
+# second road cannot change WHICH bytes are accepted, only which road they
+# arrive by.
+#
+# A refusal that is about the release itself (404) or about the request
+# (403/429) is NOT a closed road: the API would say the same, so the answer is
+# the one it always was.
+
+# The API token, when there is one. An absent token is not an error: the assets
+# are public, and the API's anonymous quota is small but real.
+github_token() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    printf '%s\n' "${GITHUB_TOKEN}"
+    return 0
+  fi
+  if [ -n "${GH_TOKEN:-}" ]; then
+    printf '%s\n' "${GH_TOKEN}"
+    return 0
+  fi
+  if command -v gh >/dev/null 2>&1; then
+    local t
+    if t="$(gh auth token 2>/dev/null)" && [ -n "$t" ]; then
+      printf '%s\n' "$t"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+# The URL of a release asset, addressed by its id.
+# $1 tag (with its v), $2 asset name. Prints the URL; returns 1 when it
+# cannot be told.
+api_asset_url() {
+  local tag="$1" asset="$2"
+  local auth=()
+  local token
+  if token="$(github_token)"; then
+    auth=(-H "Authorization: token ${token}")
+  fi
+  local json
+  json="$(curl -fsSL --retry 3 --retry-delay 2 "${auth[@]}" \
+    "https://api.github.com/repos/${CANONICAL_REPO}/releases/tags/${tag}" 2>/dev/null)" || return 1
+  printf '%s' "$json" | python3 -c '
+import json, sys
+
+want = sys.argv[1]
+try:
+    release = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+for asset in release.get("assets") or []:
+    if asset.get("name") == want and asset.get("url"):
+        print(asset["url"])
+        break
+else:
+    sys.exit(1)
+' "$asset"
+}
+
+# Download a release asset through the REST API.
+# $1 tag, $2 asset name, $3 destination.
+fetch_asset_by_api() {
+  local tag="$1" asset="$2" dest="$3"
+  local url
+  url="$(api_asset_url "$tag" "$asset")" || return 1
+  [ -n "$url" ] || return 1
+  local auth=()
+  local token
+  if token="$(github_token)"; then
+    auth=(-H "Authorization: token ${token}")
+  fi
+  # The octet-stream accept header is what makes the endpoint serve the
+  # asset's bytes instead of its metadata.
+  curl -fsSL --retry 3 --retry-delay 2 "${auth[@]}" -H "Accept: application/octet-stream" \
+    -o "$dest" "$url" 2>/dev/null
+}
+
+# Fetch a release asset: the direct URL first, the REST API when the direct
+# path is refused by the server.
+# $1 url, $2 destination, $3 tag, $4 asset name.
+fetch_release_asset() {
+  local url="$1" dest="$2" tag="$3" asset="$4"
+  local status
+  status="$(curl -fsSL --retry 3 --retry-delay 2 -o "$dest" -w '%{http_code}' "$url" 2>/dev/null)" || true
+  case "$status" in
+    2*) return 0 ;;
+    5*|000)
+      # The road is closed, not the release: try the other one.
+      fetch_asset_by_api "$tag" "$asset" "$dest"
+      return $?
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
@@ -403,7 +516,7 @@ cmd_install() {
   local manifest_path="${workdir}/${RELEASE_MANIFEST_NAME}"
   log_info "Installing ${kind} release ${slot} (tag ${tag})"
   log_info "Fetching the release manifest ${manifest_url}"
-  if ! curl -fsSL --retry 3 --retry-delay 2 -o "${manifest_path}" "${manifest_url}"; then
+  if ! fetch_release_asset "${manifest_url}" "${manifest_path}" "${tag}" "${RELEASE_MANIFEST_NAME}"; then
     log_error "No release found at tag ${tag}."
     log_error "  ${manifest_url}"
     log_error "A stable version never resolves to a candidate: this release line publishes"
@@ -441,7 +554,7 @@ cmd_install() {
     expected_digest="$(printf '%s' "${expected_sha}" | tr '[:upper:]' '[:lower:]')"
   else
     log_info "Fetching ${SHA256SUMS_NAME} from ${sums_url}"
-    if ! curl -fsSL --retry 3 --retry-delay 2 -o "${sums_path}" "${sums_url}"; then
+    if ! fetch_release_asset "${sums_url}" "${sums_path}" "${tag}" "${SHA256SUMS_NAME}"; then
       die "Failed to fetch ${SHA256SUMS_NAME} from ${sums_url}. Refusing to install without a digest authority."
     fi
     local entry

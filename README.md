@@ -132,7 +132,7 @@ The conventions are the OpenTelemetry CI/CD ones, pinned at `1.44.0` and declare
 | **SCM Git** | `scm-git.checkout` | Clone a repository into the workspace, with the transcript journaled |
 | **HTTP** | `http.request` | Make an HTTP request; needs the `network.egress`, `http.transport` and `credentials.basic` capabilities |
 | **JUnit** | `junit.results` | Read JUnit XML reports and publish them as a test outcome |
-| **Utilities** | `core-utils.findFiles`, `readJson`, `readYaml`, `sha256`, `unzip`, `zip`, `writeJson`, `writeYaml` | File and archive helpers for pipeline scripts |
+| **Utilities** | `core-utils.findFiles`, `core-utils.readJson`, `core-utils.readYaml`, `core-utils.sha256`, `core-utils.unzip`, `core-utils.zip`, `core-utils.writeJson`, `core-utils.writeYaml` | File and archive helpers for pipeline scripts |
 
 Four more plugins ship in the distribution as working examples of the contract: `example-uppercase-plugin`, `example-directive-plugin`, `example-block-plugin` and `example-saga-plugin`. Their sources live in [`examples/`](examples/).
 

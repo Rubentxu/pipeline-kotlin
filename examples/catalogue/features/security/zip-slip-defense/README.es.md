@@ -62,3 +62,4 @@ pipelinek run      examples/catalogue/features/security/zip-slip-defense/zip-sli
 - **Nombre historico:** `28-zip-slip-defense.pipeline.kts`
 - **Ruta de origen:** `examples/security/28-zip-slip-defense.pipeline.kts`
 - **Huella del cuerpo:** `sha256:8f3dff8f373dfee29c87c04a04b620e73ad5eb970a49d84d47b62acd5d3ca089`
+- **Huella del origen:** `sha256:f5cf61daa03a5904da178512c0a4620c9064446697abd394239f44343b912271`

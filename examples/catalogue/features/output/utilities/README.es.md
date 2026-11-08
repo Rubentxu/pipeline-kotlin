@@ -54,3 +54,4 @@ pipelinek run      examples/catalogue/features/output/utilities/utilities.pipeli
 - **Nombre historico:** `24-utilities.pipeline.kts`
 - **Ruta de origen:** `examples/output/24-utilities.pipeline.kts`
 - **Huella del cuerpo:** `sha256:ade79668d9000b0766d9280b97541932c6e788252715b3fbd4c378230bfea990`
+- **Huella del origen:** `sha256:533f8cc0fcc214a708e58d74c32dc004242e698d29d0a4f3c757e2ec2f2b3917`

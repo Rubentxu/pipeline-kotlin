@@ -46,3 +46,4 @@ pipelinek run      examples/catalogue/features/negative/credential-store-and-unr
 - **Nombre historico:** `credential-store-and-unreadable-plugin.pipeline.kts`
 - **Ruta de origen:** `examples/negative/credential-store-and-unreadable-plugin.pipeline.kts`
 - **Huella del cuerpo:** `sha256:fd247769f171b8bf5cadc0c2fb59ac5a2c56a7f5b4e8dd22e6b72fd1aa87fb89`
+- **Huella del origen:** `sha256:9ec2c93ebe0e426244b27d4c476e96301c286c13ff7494f1bac7f48282359786`

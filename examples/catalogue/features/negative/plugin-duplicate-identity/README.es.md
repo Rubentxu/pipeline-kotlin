@@ -45,3 +45,4 @@ pipelinek run      examples/catalogue/features/negative/plugin-duplicate-identit
 - **Nombre historico:** `plugin-duplicate-identity.pipeline.kts`
 - **Ruta de origen:** `examples/negative/plugin-duplicate-identity.pipeline.kts`
 - **Huella del cuerpo:** `sha256:be65ae24ae7937ec553bf5ba1774598f0644bf3c82dd247e283823722c728349`
+- **Huella del origen:** `sha256:2d2f9aeda60d64115ce5b5a6b3adecf9858abe3f450816aa85787cdd94ae0450`

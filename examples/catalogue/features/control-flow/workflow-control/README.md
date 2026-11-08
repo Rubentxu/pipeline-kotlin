@@ -61,3 +61,4 @@ pipelinek run      examples/catalogue/features/control-flow/workflow-control/wor
 - **Historical name:** `11-workflow-control.pipeline.kts`
 - **Origin path:** `examples/control-flow/11-workflow-control.pipeline.kts`
 - **Body digest:** `sha256:c737e6ae45c487f80b31097b7da09010c5711368f3112fc748f62708ac02f8fc`
+- **Origin digest:** `sha256:cf70bd8174b2d55b17940e64e2d4f7388894145ef6a259fc80fd1c3770521518`

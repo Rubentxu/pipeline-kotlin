@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/durable/saga-reconcile/saga-recon
 - **Historical name:** `37-saga-reconcile.pipeline.kts`
 - **Origin path:** `examples/durable/37-saga-reconcile.pipeline.kts`
 - **Body digest:** `sha256:4de15cc45ebe71074cfc6b5e2cbe99ab47074b0e9249528ee7d81cc316400901`
+- **Origin digest:** `sha256:c3cdeabc05345aa075ec4909c548d7becc653c1a0990089dad70c07a51500375`

@@ -43,3 +43,4 @@ pipelinek run      examples/catalogue/features/durable/saga-two-same-kind/saga-t
 - **Nombre historico:** `40-saga-two-same-kind.pipeline.kts`
 - **Ruta de origen:** `examples/durable/40-saga-two-same-kind.pipeline.kts`
 - **Huella del cuerpo:** `sha256:b9204ee7c3320ee3f5012ec888488f2d1fa25e5239debfa054eab2639f71a311`
+- **Huella del origen:** `sha256:771fe7cd67162b21461922bc5f770f1306246e38561451ef8149a1266c64de6d`

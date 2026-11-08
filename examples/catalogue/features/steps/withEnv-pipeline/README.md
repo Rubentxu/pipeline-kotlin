@@ -39,3 +39,4 @@ pipelinek run      examples/catalogue/features/steps/withEnv-pipeline/withEnv-pi
 - **Historical name:** `08-withEnv-pipeline.pipeline.kts`
 - **Origin path:** `examples/steps/08-withEnv-pipeline.pipeline.kts`
 - **Body digest:** `sha256:f08d864eca0a35aba1bdebf40fd3e7c90ba3bccd024ec23c657cbcf388dc03d0`
+- **Origin digest:** `sha256:f08d864eca0a35aba1bdebf40fd3e7c90ba3bccd024ec23c657cbcf388dc03d0`

@@ -44,3 +44,4 @@ pipelinek run      examples/catalogue/features/events/step-verdict/step-verdict.
 - **Nombre historico:** `02-step-verdict.pipeline.kts`
 - **Ruta de origen:** `examples/events/02-step-verdict.pipeline.kts`
 - **Huella del cuerpo:** `sha256:c7bdd4a59e300fa6f3480660ed38df46cf374403be597ab705c19fe25af53e2a`
+- **Huella del origen:** `sha256:fc82a558e09a59268821870bc3f1878459020ef732b6305bb1371bdd4e09d70f`

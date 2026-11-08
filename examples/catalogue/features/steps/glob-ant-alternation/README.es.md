@@ -50,3 +50,4 @@ pipelinek run      examples/catalogue/features/steps/glob-ant-alternation/glob-a
 - **Nombre historico:** `33-glob-ant-alternation.pipeline.kts`
 - **Ruta de origen:** `examples/steps/33-glob-ant-alternation.pipeline.kts`
 - **Huella del cuerpo:** `sha256:c005316abe09d9cad99a0c19cf1cfd561a139af5ed1ee4482ce73ff4928e44a6`
+- **Huella del origen:** `sha256:6679720f3d22bc0f69192d5c6d24390433fbf6e134b9b3f21bb1e379b741911c`

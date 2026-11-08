@@ -51,6 +51,8 @@ pipelinek run      examples/catalogue/regressions/smoke/no-secret-leak/no-secret
 
 **Estado del instrumento:** `PASS` — la cobertura del instrumento que lo juzga, no el veredicto de su ultima ejecucion.
 
+**Cubre:** `HAR-023`
+
 ## Su linaje
 
 - **Nombre historico:** `har023-no-secret-leak.pipeline.kts`

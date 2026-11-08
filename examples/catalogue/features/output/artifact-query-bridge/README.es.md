@@ -67,3 +67,4 @@ pipelinek run      examples/catalogue/features/output/artifact-query-bridge/arti
 - **Nombre historico:** `30-artifact-query-bridge.pipeline.kts`
 - **Ruta de origen:** `examples/output/30-artifact-query-bridge.pipeline.kts`
 - **Huella del cuerpo:** `sha256:f126804637baa1d34b83575baef25b66b31779588ef76517d659774087f509e9`
+- **Huella del origen:** `sha256:f126804637baa1d34b83575baef25b66b31779588ef76517d659774087f509e9`

@@ -57,3 +57,4 @@ pipelinek run      examples/catalogue/features/control-flow/scripted-control-flo
 - **Nombre historico:** `05-scripted-control-flow.pipeline.kts`
 - **Ruta de origen:** `examples/control-flow/05-scripted-control-flow.pipeline.kts`
 - **Huella del cuerpo:** `sha256:e8e81b23af0eb4b38f0458c4dfb04715116e7d39498e7e3d7a4b82a2097df15c`
+- **Huella del origen:** `sha256:0a79bc32d4fd2d4abc5460c2df27dff45e050ff8e1c39852296db15d32654e84`

@@ -44,3 +44,4 @@ pipelinek run      examples/catalogue/features/negative/plugin-directive-lies/pl
 - **Historical name:** `plugin-directive-lies.pipeline.kts`
 - **Origin path:** `examples/negative/plugin-directive-lies.pipeline.kts`
 - **Body digest:** `sha256:1456ff014f64d7ff9184d2d8de3b2e63ad0d574809e99cf65852bc1ad2f8e8cc`
+- **Origin digest:** `sha256:9f84844edda4b508bba282a4494d59c8f3ca17d4cd12de42603c1b9a7277b9dc`

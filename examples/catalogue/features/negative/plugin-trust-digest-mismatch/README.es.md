@@ -45,3 +45,4 @@ pipelinek run      examples/catalogue/features/negative/plugin-trust-digest-mism
 - **Nombre historico:** `plugin-trust-digest-mismatch.pipeline.kts`
 - **Ruta de origen:** `examples/negative/plugin-trust-digest-mismatch.pipeline.kts`
 - **Huella del cuerpo:** `sha256:9bfac5726a5623b59a6c565c14e23f801480e3f522997abdf8b87dc378f19e5b`
+- **Huella del origen:** `sha256:42b5622cdc4b464d87d7711fbfc7221f9605cfc963ed50c8ee11ccd2babfaf21`

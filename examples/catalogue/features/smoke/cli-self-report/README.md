@@ -46,3 +46,4 @@ pipelinek run      examples/catalogue/features/smoke/cli-self-report/cli-self-re
 - **Historical name:** `11-cli-self-report.pipeline.kts`
 - **Origin path:** `examples/smoke/11-cli-self-report.pipeline.kts`
 - **Body digest:** `sha256:cf1819b8a99e6182c6563a6600670e894f051c27be66698b194c1683aee53c83`
+- **Origin digest:** `sha256:b602fa00de8e903a1779f72d7acc71925219337d02afa0b16939ab9e85ad5139`

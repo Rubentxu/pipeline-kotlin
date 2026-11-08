@@ -44,3 +44,4 @@ pipelinek run      examples/catalogue/features/negative/non-canonical-step-refus
 - **Nombre historico:** `non-canonical-step-refusal.pipeline.kts`
 - **Ruta de origen:** `examples/negative/non-canonical-step-refusal.pipeline.kts`
 - **Huella del cuerpo:** `sha256:7403f7f91be9ba28ccac778e2cf4d45b37b5c2ec69c7897bd2f0f173d02d27ec`
+- **Huella del origen:** `sha256:96eeaea537daee72b282d60790d07cb2d4436007473727fd2efd5423dffe6dba`

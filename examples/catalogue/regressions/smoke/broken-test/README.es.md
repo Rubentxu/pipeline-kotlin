@@ -44,6 +44,8 @@ pipelinek run      examples/catalogue/regressions/smoke/broken-test/broken-test.
 
 **Estado del instrumento:** `PASS` — la cobertura del instrumento que lo juzga, no el veredicto de su ultima ejecucion.
 
+**Cubre:** `HAR-016`
+
 ## Su linaje
 
 - **Nombre historico:** `broken-test.pipeline.kts`

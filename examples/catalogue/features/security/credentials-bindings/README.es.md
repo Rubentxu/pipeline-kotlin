@@ -65,3 +65,4 @@ pipelinek run      examples/catalogue/features/security/credentials-bindings/cre
 - **Nombre historico:** `14-credentials-bindings.pipeline.kts`
 - **Ruta de origen:** `examples/security/14-credentials-bindings.pipeline.kts`
 - **Huella del cuerpo:** `sha256:0c26067c3194368c151bb197ddaccca72ef5a249ce0c10499aad055f045184b5`
+- **Huella del origen:** `sha256:f592bfa56977e899d3cfe00655b9c38fe1020d651a8d924d0d47bb39d2e909da`

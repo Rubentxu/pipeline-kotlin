@@ -49,3 +49,4 @@ pipelinek run      examples/catalogue/features/steps/sleep/sleep.pipeline.kts
 - **Nombre historico:** `16-sleep.pipeline.kts`
 - **Ruta de origen:** `examples/steps/16-sleep.pipeline.kts`
 - **Huella del cuerpo:** `sha256:6be132a30975c0cbe58d952e161e7b770ffe6e7d58fb7a3ed0b8107eaac23e0b`
+- **Huella del origen:** `sha256:72e18772ecdb1904f128a74ef422763efbf24b35ad2ef1aaebe0a35d044ee01f`

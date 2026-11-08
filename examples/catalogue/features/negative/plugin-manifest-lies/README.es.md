@@ -44,3 +44,4 @@ pipelinek run      examples/catalogue/features/negative/plugin-manifest-lies/plu
 - **Nombre historico:** `plugin-manifest-lies.pipeline.kts`
 - **Ruta de origen:** `examples/negative/plugin-manifest-lies.pipeline.kts`
 - **Huella del cuerpo:** `sha256:0921c730bbb694419a2344ac23779c1afa538e5595ca3a0c2afa22dab8bc1e47`
+- **Huella del origen:** `sha256:6e4d282777d38fc19b656d8b14811739fa3fb486426424c450409a74d7f744db`

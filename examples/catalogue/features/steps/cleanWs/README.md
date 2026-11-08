@@ -53,3 +53,4 @@ pipelinek run      examples/catalogue/features/steps/cleanWs/cleanWs.pipeline.kt
 - **Historical name:** `18-cleanWs.pipeline.kts`
 - **Origin path:** `examples/steps/18-cleanWs.pipeline.kts`
 - **Body digest:** `sha256:254071f0e82d29d33a27740145da41ee526143ab8e1d759834aa2be58fb32207`
+- **Origin digest:** `sha256:254071f0e82d29d33a27740145da41ee526143ab8e1d759834aa2be58fb32207`

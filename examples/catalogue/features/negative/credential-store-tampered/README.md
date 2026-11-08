@@ -48,3 +48,4 @@ pipelinek run      examples/catalogue/features/negative/credential-store-tampere
 - **Historical name:** `credential-store-tampered.pipeline.kts`
 - **Origin path:** `examples/negative/credential-store-tampered.pipeline.kts`
 - **Body digest:** `sha256:b04e3e6990984d8c20ae27769cb7f025929b61ef7a88880f16e6fb3b85ca455c`
+- **Origin digest:** `sha256:be6f0c53c2be63e362dacf194d61fda6e0f6c29fb856d8a70fa9bfbe9ff8d2ea`

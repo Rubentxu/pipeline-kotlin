@@ -48,3 +48,4 @@ pipelinek run      examples/catalogue/features/events/live-spans-without-a-colle
 - **Nombre historico:** `05-live-spans-without-a-collector.pipeline.kts`
 - **Ruta de origen:** `examples/events/05-live-spans-without-a-collector.pipeline.kts`
 - **Huella del cuerpo:** `sha256:0d7700143d6ec752b3f225352ac48114719397cd3f4ae9d781330e6feda6d1c9`
+- **Huella del origen:** `sha256:08e599c064e960d47a941b09baa2fd4eb0b0c4079b440de6347391d312bf089d`

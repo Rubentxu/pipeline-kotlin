@@ -41,3 +41,4 @@ pipelinek run      examples/catalogue/features/smoke/environment/environment.pip
 - **Historical name:** `02-environment.pipeline.kts`
 - **Origin path:** `examples/smoke/02-environment.pipeline.kts`
 - **Body digest:** `sha256:ccc7c8e2cd05228e818050409348b8b25cc94cb950c671835e306e40be7b4b91`
+- **Origin digest:** `sha256:ccc7c8e2cd05228e818050409348b8b25cc94cb950c671835e306e40be7b4b91`

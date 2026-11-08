@@ -51,3 +51,4 @@ pipelinek run      examples/catalogue/features/negative/step-failure/step-failur
 - **Historical name:** `30-step-failure.pipeline.kts`
 - **Origin path:** `examples/negative/30-step-failure.pipeline.kts`
 - **Body digest:** `sha256:c571e125e1ef4a7578ab5e8c0456c84d4ffd50b58afb9ce4facfd87dfe4ac842`
+- **Origin digest:** `sha256:6c9b9b156c2211828de29997863969144efe360506c2b301526526687375b6ab`

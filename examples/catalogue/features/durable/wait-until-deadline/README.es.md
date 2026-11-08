@@ -45,3 +45,4 @@ pipelinek run      examples/catalogue/features/durable/wait-until-deadline/wait-
 - **Nombre historico:** `23-wait-until-deadline.pipeline.kts`
 - **Ruta de origen:** `examples/durable/23-wait-until-deadline.pipeline.kts`
 - **Huella del cuerpo:** `sha256:e76d593baa47148f5cd6eb6d090694fcafa66b6cc9b10d1b9d4ab59628ec2416`
+- **Huella del origen:** `sha256:887f73a035fa30f48cc4c62a587988d85f29bf277d62d9bddf67370b9253b014`

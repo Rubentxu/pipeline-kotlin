@@ -46,3 +46,4 @@ pipelinek run      examples/catalogue/features/smoke/cli-self-report/cli-self-re
 - **Nombre historico:** `11-cli-self-report.pipeline.kts`
 - **Ruta de origen:** `examples/smoke/11-cli-self-report.pipeline.kts`
 - **Huella del cuerpo:** `sha256:cf1819b8a99e6182c6563a6600670e894f051c27be66698b194c1683aee53c83`
+- **Huella del origen:** `sha256:b602fa00de8e903a1779f72d7acc71925219337d02afa0b16939ab9e85ad5139`

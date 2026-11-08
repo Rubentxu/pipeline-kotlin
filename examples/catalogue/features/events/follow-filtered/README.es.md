@@ -43,3 +43,4 @@ pipelinek run      examples/catalogue/features/events/follow-filtered/follow-fil
 - **Nombre historico:** `06-follow-filtered.pipeline.kts`
 - **Ruta de origen:** `examples/events/06-follow-filtered.pipeline.kts`
 - **Huella del cuerpo:** `sha256:c94ec18c0c22a92c37ceef7b2f3f474702d7b193d24023d8897353827ace9f66`
+- **Huella del origen:** `sha256:19d94d77f631051a6958d0db8685cb560cb25cd035c70d13997c2dd846fc36aa`

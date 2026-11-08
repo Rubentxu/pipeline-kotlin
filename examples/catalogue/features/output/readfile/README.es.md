@@ -52,3 +52,4 @@ pipelinek run      examples/catalogue/features/output/readfile/readfile.pipeline
 - **Nombre historico:** `23-readfile.pipeline.kts`
 - **Ruta de origen:** `examples/output/23-readfile.pipeline.kts`
 - **Huella del cuerpo:** `sha256:de2224e8eecdedd76480c3e2d811b078081efb9fcfdcf821fa02eb225b541db3`
+- **Huella del origen:** `sha256:5b28ec2bb9852eba96e2d37dd765b197c0f95390b7639c5e2ef4b4444127b244`

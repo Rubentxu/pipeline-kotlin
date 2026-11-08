@@ -40,3 +40,4 @@ pipelinek run      examples/catalogue/features/steps/env-model-applied-once/env-
 - **Historical name:** `35-env-model-applied-once.pipeline.kts`
 - **Origin path:** `examples/steps/35-env-model-applied-once.pipeline.kts`
 - **Body digest:** `sha256:a4a51bdb166892d6b64fb16d702c59a6ce1d45b25aaa00979487e8397e53f22d`
+- **Origin digest:** `sha256:a4a51bdb166892d6b64fb16d702c59a6ce1d45b25aaa00979487e8397e53f22d`

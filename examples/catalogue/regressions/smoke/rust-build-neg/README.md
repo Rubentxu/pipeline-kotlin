@@ -47,6 +47,8 @@ pipelinek run      examples/catalogue/regressions/smoke/rust-build-neg/rust-buil
 
 **State of the instrument:** `PASS` — the coverage of the instrument that judges it, not the verdict of its last run.
 
+**Covers:** `HAR-010`
+
 ## Its lineage
 
 - **Historical name:** `har010-rust-build-neg.pipeline.kts`

@@ -48,6 +48,8 @@ pipelinek run      examples/catalogue/regressions/smoke/dir-restore/dir-restore.
 
 **Estado del instrumento:** `PASS` — la cobertura del instrumento que lo juzga, no el veredicto de su ultima ejecucion.
 
+**Cubre:** `HAR-007`
+
 ## Su linaje
 
 - **Nombre historico:** `har007-dir-restore.pipeline.kts`

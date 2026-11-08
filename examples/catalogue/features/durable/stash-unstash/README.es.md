@@ -66,3 +66,4 @@ pipelinek run      examples/catalogue/features/durable/stash-unstash/stash-unsta
 - **Nombre historico:** `31-stash-unstash.pipeline.kts`
 - **Ruta de origen:** `examples/durable/31-stash-unstash.pipeline.kts`
 - **Huella del cuerpo:** `sha256:5a22dffbad90937503a1f628b6f48585301b71dcd141ed8bb79a91a43b28d10f`
+- **Huella del origen:** `sha256:5a22dffbad90937503a1f628b6f48585301b71dcd141ed8bb79a91a43b28d10f`

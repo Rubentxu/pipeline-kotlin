@@ -68,3 +68,4 @@ pipelinek run      examples/catalogue/features/output/publish-html/publish-html.
 - **Historical name:** `32-publish-html.pipeline.kts`
 - **Origin path:** `examples/output/32-publish-html.pipeline.kts`
 - **Body digest:** `sha256:38fb729b5cb7d608064c7883199ad66acc01c3d47d0a368a2c3a4a429a62c80c`
+- **Origin digest:** `sha256:38fb729b5cb7d608064c7883199ad66acc01c3d47d0a368a2c3a4a429a62c80c`

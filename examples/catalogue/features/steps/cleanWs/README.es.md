@@ -53,3 +53,4 @@ pipelinek run      examples/catalogue/features/steps/cleanWs/cleanWs.pipeline.kt
 - **Nombre historico:** `18-cleanWs.pipeline.kts`
 - **Ruta de origen:** `examples/steps/18-cleanWs.pipeline.kts`
 - **Huella del cuerpo:** `sha256:254071f0e82d29d33a27740145da41ee526143ab8e1d759834aa2be58fb32207`
+- **Huella del origen:** `sha256:254071f0e82d29d33a27740145da41ee526143ab8e1d759834aa2be58fb32207`

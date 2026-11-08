@@ -56,3 +56,4 @@ pipelinek run      examples/catalogue/features/plugins/lock-directive/lock-direc
 - **Nombre historico:** `lock-directive.pipeline.kts`
 - **Ruta de origen:** `examples/plugins/lock-directive.pipeline.kts`
 - **Huella del cuerpo:** `sha256:cd5e93361f821da5a2010c61af781565a8caa0654b5607f43e2b381d05b11cf2`
+- **Huella del origen:** `sha256:8ecc773f734b6b2e2d6cebf5db5f57168cb88b331bedf15df890e9f4590f84b1`

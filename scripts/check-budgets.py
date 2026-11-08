@@ -57,6 +57,8 @@ RULES: list[tuple[str, str, str]] = [
     ("verify", "source guard", "scripts/check-kdoc-coverage.py"),
     ("verify", "source guard", "scripts/check-process-exits.py"),
     ("verify", "source guard", "scripts/check-durable-shell-cost.py"),
+    ("verify", "source guard", "scripts/check-product-boot-layer.py"),
+    ("verify", "source guard", "scripts/check-catalogue-shape.py"),
     # The review of the published reference. It reads the tree and generates
     # the reference of the published contracts, and it ships nothing: it is
     # the numerator too.

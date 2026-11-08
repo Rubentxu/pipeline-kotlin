@@ -45,3 +45,4 @@ pipelinek run      examples/catalogue/features/output/read-only-verb-streams/rea
 - **Historical name:** `34-read-only-verb-streams.pipeline.kts`
 - **Origin path:** `examples/output/34-read-only-verb-streams.pipeline.kts`
 - **Body digest:** `sha256:41ef9b77264e6d575b5f7635040a3bbe57696db20be03e34c774ce97196488ac`
+- **Origin digest:** `sha256:28ff50a0ed82b8fef6920ae798af4ec8716bc841cf82e7980eacf53f330393ed`

@@ -46,3 +46,4 @@ pipelinek run      examples/catalogue/features/plugins/uppercase/uppercase.pipel
 - **Historical name:** `uppercase.pipeline.kts`
 - **Origin path:** `examples/plugins/uppercase.pipeline.kts`
 - **Body digest:** `sha256:63ffffb0d2cb4db28ea29f888eb69a054ee298159beccde64b9ff6675871e1be`
+- **Origin digest:** `sha256:ad1be266b1e3234c29e284f15b35f4bc2527580e40cee1c7a393dbb56882f855`

@@ -45,3 +45,4 @@ pipelinek run      examples/catalogue/features/plugins/uppercase-measured/upperc
 - **Nombre historico:** `uppercase-measured.pipeline.kts`
 - **Ruta de origen:** `examples/plugins/uppercase-measured.pipeline.kts`
 - **Huella del cuerpo:** `sha256:c8bb7daff071ddb0f900632229d907b40bf485aa3de27435c8bf16b1a33024c1`
+- **Huella del origen:** `sha256:ded442496c3df5d00b5fcb67b38ec00604859662f9c5121b51a7058a3e06077a`

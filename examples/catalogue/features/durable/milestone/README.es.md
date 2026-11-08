@@ -51,3 +51,4 @@ pipelinek run      examples/catalogue/features/durable/milestone/milestone.pipel
 - **Nombre historico:** `21-milestone.pipeline.kts`
 - **Ruta de origen:** `examples/durable/21-milestone.pipeline.kts`
 - **Huella del cuerpo:** `sha256:01d9bc425c54a76f65f741e861ad18aab35354a716828614c7ba961012384de4`
+- **Huella del origen:** `sha256:32f3fe6693cf6057c7c84da7503227957ccb8c812812c25f50cfdb57fde4326c`

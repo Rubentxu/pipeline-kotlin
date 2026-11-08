@@ -45,3 +45,4 @@ pipelinek run      examples/catalogue/features/events/telemetry-export/telemetry
 - **Nombre historico:** `03-telemetry-export.pipeline.kts`
 - **Ruta de origen:** `examples/events/03-telemetry-export.pipeline.kts`
 - **Huella del cuerpo:** `sha256:3524fe03a0ba3be91aa21283c3e5b660950c66ac98b94a6c43d2ab864bf5630c`
+- **Huella del origen:** `sha256:25b4442a4f521ab482c9a4e24cd95d9b6c79211c959d96b808468895035b4e39`

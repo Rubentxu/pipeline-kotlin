@@ -60,3 +60,4 @@ pipelinek run      examples/catalogue/features/negative/workspace-symlink-escape
 - **Historical name:** `29-workspace-symlink-escape.pipeline.kts`
 - **Origin path:** `examples/negative/29-workspace-symlink-escape.pipeline.kts`
 - **Body digest:** `sha256:1b12958a08fae07436516ece8b4e06b7fa574fb6dbef5f36a957409c1d75e81e`
+- **Origin digest:** `sha256:60f15153aaa30aad181479b2de838f4ac32e2b07ff98f2e5e01ca9582fdb9d23`

@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/durable/saga-crash-effect/saga-cr
 - **Historical name:** `35-saga-crash-effect.pipeline.kts`
 - **Origin path:** `examples/durable/35-saga-crash-effect.pipeline.kts`
 - **Body digest:** `sha256:fea0fce3935f2318739e675d30b7a29178c052ba0f8a6328a631ed87620986e0`
+- **Origin digest:** `sha256:ac545c34e5a5cd20f71afff9fbda0b8fd8cb7a7aea5c8688c706e155b01ec314`

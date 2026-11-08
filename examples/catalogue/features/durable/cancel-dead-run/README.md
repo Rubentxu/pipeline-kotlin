@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/durable/cancel-dead-run/cancel-de
 - **Historical name:** `39-cancel-dead-run.pipeline.kts`
 - **Origin path:** `examples/durable/39-cancel-dead-run.pipeline.kts`
 - **Body digest:** `sha256:1786c3cd8e205b5a060d35589fd5bdda041fa4d3720cf28cee4d4396d3598484`
+- **Origin digest:** `sha256:f706b4d76466779a4422b40d9b85fa9350728e4d5f002341ba06e81071d86ffd`

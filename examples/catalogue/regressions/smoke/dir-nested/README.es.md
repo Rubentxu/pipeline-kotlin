@@ -48,6 +48,8 @@ pipelinek run      examples/catalogue/regressions/smoke/dir-nested/dir-nested.pi
 
 **Estado del instrumento:** `PASS` — la cobertura del instrumento que lo juzga, no el veredicto de su ultima ejecucion.
 
+**Cubre:** `HAR-006`
+
 ## Su linaje
 
 - **Nombre historico:** `har006-dir-nested.pipeline.kts`

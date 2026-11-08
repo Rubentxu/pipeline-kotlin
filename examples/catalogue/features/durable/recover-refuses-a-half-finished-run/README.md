@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/durable/recover-refuses-a-half-fi
 - **Historical name:** `41-recover-refuses-a-half-finished-run.pipeline.kts`
 - **Origin path:** `examples/durable/41-recover-refuses-a-half-finished-run.pipeline.kts`
 - **Body digest:** `sha256:2a30b1ef9dff368d3e3184876aa3058daa740f9afc0e31dbe57c17ea84840e97`
+- **Origin digest:** `sha256:aca7412a0f64d53b82439e56ac31c73bac9036c732ca4d7f2dbf7251ce7515ba`

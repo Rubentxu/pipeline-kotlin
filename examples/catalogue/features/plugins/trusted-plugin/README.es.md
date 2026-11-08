@@ -46,3 +46,4 @@ pipelinek run      examples/catalogue/features/plugins/trusted-plugin/trusted-pl
 - **Nombre historico:** `trusted-plugin.pipeline.kts`
 - **Ruta de origen:** `examples/plugins/trusted-plugin.pipeline.kts`
 - **Huella del cuerpo:** `sha256:c3b73133a7684032bedbe408a47c4ffa0fbb075856611352a7862b6cc5354c26`
+- **Huella del origen:** `sha256:735f7c0a425450edb4f3b1796f4ac3a0ca7fd0941c8a0821866bff6edad6c8be`

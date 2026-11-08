@@ -50,6 +50,8 @@ pipelinek run      examples/catalogue/regressions/smoke/branch-isolation/branch-
 
 **State of the instrument:** `PASS` — the coverage of the instrument that judges it, not the verdict of its last run.
 
+**Covers:** `HAR-008`
+
 ## Its lineage
 
 - **Historical name:** `har008-branch-isolation.pipeline.kts`

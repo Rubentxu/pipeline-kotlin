@@ -50,3 +50,4 @@ pipelinek run      examples/catalogue/features/events/external-reader-resumes/ex
 - **Nombre historico:** `01-external-reader-resumes.pipeline.kts`
 - **Ruta de origen:** `examples/events/01-external-reader-resumes.pipeline.kts`
 - **Huella del cuerpo:** `sha256:44ad295f484ec7053c5f02a4af6187d4cdc8a91cc71d3c88f1e48356d1a5e1c5`
+- **Huella del origen:** `sha256:cf520454bc67842f43e2d97920b259c6d130db2b32e1094b98993d516d39106a`

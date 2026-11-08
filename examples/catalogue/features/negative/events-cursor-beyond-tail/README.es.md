@@ -45,3 +45,4 @@ pipelinek run      examples/catalogue/features/negative/events-cursor-beyond-tai
 - **Nombre historico:** `events-cursor-beyond-tail.pipeline.kts`
 - **Ruta de origen:** `examples/negative/events-cursor-beyond-tail.pipeline.kts`
 - **Huella del cuerpo:** `sha256:7d529348274391fdcc084cc8dd398522b6c0ef4bfc61d5a0d3df26ddb0209eea`
+- **Huella del origen:** `sha256:9eb761a6b74a6a13fec5bc1c1bbeebaf75550dac388cac19fba63b5e2786ecdf`

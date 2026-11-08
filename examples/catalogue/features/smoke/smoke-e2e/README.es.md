@@ -61,3 +61,4 @@ pipelinek run      examples/catalogue/features/smoke/smoke-e2e/smoke-e2e.pipelin
 - **Nombre historico:** `10-smoke-e2e.pipeline.kts`
 - **Ruta de origen:** `examples/smoke/10-smoke-e2e.pipeline.kts`
 - **Huella del cuerpo:** `sha256:65b3293cf78aae1f34caf192ce0cf0d8be8270f814fb4aa39bbf4404c5262c1d`
+- **Huella del origen:** `sha256:65b3293cf78aae1f34caf192ce0cf0d8be8270f814fb4aa39bbf4404c5262c1d`

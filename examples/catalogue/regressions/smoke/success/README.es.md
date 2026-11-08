@@ -47,6 +47,8 @@ pipelinek run      examples/catalogue/regressions/smoke/success/success.pipeline
 
 **Estado del instrumento:** `PASS` — la cobertura del instrumento que lo juzga, no el veredicto de su ultima ejecucion.
 
+**Cubre:** `HAR-037`
+
 ## Su linaje
 
 - **Nombre historico:** `success.pipeline.kts`

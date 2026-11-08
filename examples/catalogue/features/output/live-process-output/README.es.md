@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/output/live-process-output/live-p
 - **Nombre historico:** `33-live-process-output.pipeline.kts`
 - **Ruta de origen:** `examples/output/33-live-process-output.pipeline.kts`
 - **Huella del cuerpo:** `sha256:c317f8301f2461f10dc5c7315be0ce38d6c5afe0a8af81981573c6ceb2ea2f76`
+- **Huella del origen:** `sha256:c2adfbd4bed73ba2d98bd2dfc29667dcdd377b904cd2b180155b37df4f65182c`

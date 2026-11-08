@@ -45,3 +45,4 @@ pipelinek run      examples/catalogue/features/durable/durable-replay/durable-re
 - **Nombre historico:** `32-durable-replay.pipeline.kts`
 - **Ruta de origen:** `examples/durable/32-durable-replay.pipeline.kts`
 - **Huella del cuerpo:** `sha256:e171865d064a94a5f3dad196eab96bcadfeb867fc874b2f4dd246dd5f776c476`
+- **Huella del origen:** `sha256:34b1cc10e4d96e0c31093283f3fefda2d81b648662df08d8d3055393ab32c58b`

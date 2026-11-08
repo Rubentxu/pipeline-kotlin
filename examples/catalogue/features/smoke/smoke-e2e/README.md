@@ -61,3 +61,4 @@ pipelinek run      examples/catalogue/features/smoke/smoke-e2e/smoke-e2e.pipelin
 - **Historical name:** `10-smoke-e2e.pipeline.kts`
 - **Origin path:** `examples/smoke/10-smoke-e2e.pipeline.kts`
 - **Body digest:** `sha256:65b3293cf78aae1f34caf192ce0cf0d8be8270f814fb4aa39bbf4404c5262c1d`
+- **Origin digest:** `sha256:65b3293cf78aae1f34caf192ce0cf0d8be8270f814fb4aa39bbf4404c5262c1d`

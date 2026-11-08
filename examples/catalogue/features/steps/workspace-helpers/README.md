@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/steps/workspace-helpers/workspace
 - **Historical name:** `13-workspace-helpers.pipeline.kts`
 - **Origin path:** `examples/steps/13-workspace-helpers.pipeline.kts`
 - **Body digest:** `sha256:65512e5476a331742ba11436de51f2d17eeabf81c8bfb26e9e98628e6ee05b00`
+- **Origin digest:** `sha256:9a87f6458cf7721c0867983e74a48834b50e452bc949b29606b36f9651bd3ff5`

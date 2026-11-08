@@ -44,3 +44,4 @@ pipelinek run      examples/catalogue/features/plugins/body-slots/body-slots.pip
 - **Historical name:** `body-slots.pipeline.kts`
 - **Origin path:** `examples/plugins/body-slots.pipeline.kts`
 - **Body digest:** `sha256:417ee94f9ade9e6dae6be56f27ab2ea9125d2e7c3a9c521e8e5a202ddab2ff06`
+- **Origin digest:** `sha256:f36dd7cec30a67b935423f0a9fe0fbcafcc6cdb91ea963e504502641aeff4391`

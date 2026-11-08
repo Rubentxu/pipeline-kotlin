@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/negative/credential-store-without
 - **Historical name:** `credential-store-without-passphrase.pipeline.kts`
 - **Origin path:** `examples/negative/credential-store-without-passphrase.pipeline.kts`
 - **Body digest:** `sha256:cab8f11efdefe430db2bd8addfc53d1349580dccd517562c5a2bb6b272af5dff`
+- **Origin digest:** `sha256:ca440efc692937db9e1b88ae19a8177aac189209c3d5f1e36344e3bfb4739a14`

@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/durable/saga-success/saga-success
 - **Historical name:** `38-saga-success.pipeline.kts`
 - **Origin path:** `examples/durable/38-saga-success.pipeline.kts`
 - **Body digest:** `sha256:8cd7c8ea2b6654d889fd27533baca458cc47231be66e73b3d24b1bac52d31a3c`
+- **Origin digest:** `sha256:e2d819950d40d4f904c4c49f96e854369af28e190f934cabb6595ead4ef7a798`

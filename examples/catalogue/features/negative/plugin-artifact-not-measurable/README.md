@@ -44,3 +44,4 @@ pipelinek run      examples/catalogue/features/negative/plugin-artifact-not-meas
 - **Historical name:** `34-plugin-artifact-not-measurable.pipeline.kts`
 - **Origin path:** `examples/negative/34-plugin-artifact-not-measurable.pipeline.kts`
 - **Body digest:** `sha256:a33bc075a307139e8af8b95c8fb17e181a264f73549e285ef8b725f9950b8d66`
+- **Origin digest:** `sha256:175a08df773a910a295b0560838825cab7162922f88444bb7be7cb3f35d81dba`

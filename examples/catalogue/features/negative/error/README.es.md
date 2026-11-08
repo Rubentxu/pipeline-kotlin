@@ -50,3 +50,4 @@ pipelinek run      examples/catalogue/features/negative/error/error.pipeline.kts
 - **Nombre historico:** `15-error.pipeline.kts`
 - **Ruta de origen:** `examples/negative/15-error.pipeline.kts`
 - **Huella del cuerpo:** `sha256:fdab90aa92ad06426ee78579bbb3bda104dffc4f3f336452fc947228119be304`
+- **Huella del origen:** `sha256:b2aac33f9c7aa4540e532931d1a9ea17c26b709bd01038082d940cff12d5ea33`

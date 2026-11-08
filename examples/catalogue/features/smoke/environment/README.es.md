@@ -41,3 +41,4 @@ pipelinek run      examples/catalogue/features/smoke/environment/environment.pip
 - **Nombre historico:** `02-environment.pipeline.kts`
 - **Ruta de origen:** `examples/smoke/02-environment.pipeline.kts`
 - **Huella del cuerpo:** `sha256:ccc7c8e2cd05228e818050409348b8b25cc94cb950c671835e306e40be7b4b91`
+- **Huella del origen:** `sha256:ccc7c8e2cd05228e818050409348b8b25cc94cb950c671835e306e40be7b4b91`

@@ -51,3 +51,4 @@ pipelinek run      examples/catalogue/features/durable/platform-queries/platform
 - **Nombre historico:** `19-platform-queries.pipeline.kts`
 - **Ruta de origen:** `examples/durable/19-platform-queries.pipeline.kts`
 - **Huella del cuerpo:** `sha256:2a1755da4b132d9560c7d4a8b9da587bea43dd9f0cbd8589c39e62094fcfa905`
+- **Huella del origen:** `sha256:e99d087bc445d8f2f8af2ab96592b0b97e34e21d15f91a3e2bfb62c54bc7ec4f`

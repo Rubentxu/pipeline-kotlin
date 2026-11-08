@@ -52,3 +52,4 @@ pipelinek run      examples/catalogue/features/output/readfile/readfile.pipeline
 - **Historical name:** `23-readfile.pipeline.kts`
 - **Origin path:** `examples/output/23-readfile.pipeline.kts`
 - **Body digest:** `sha256:de2224e8eecdedd76480c3e2d811b078081efb9fcfdcf821fa02eb225b541db3`
+- **Origin digest:** `sha256:5b28ec2bb9852eba96e2d37dd765b197c0f95390b7639c5e2ef4b4444127b244`

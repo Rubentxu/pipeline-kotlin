@@ -43,6 +43,8 @@ pipelinek run      examples/catalogue/regressions/smoke/failure/failure.pipeline
 
 **Estado del instrumento:** `PASS` — la cobertura del instrumento que lo juzga, no el veredicto de su ultima ejecucion.
 
+**Cubre:** `HAR-014`
+
 ## Su linaje
 
 - **Nombre historico:** `failure.pipeline.kts`

@@ -44,3 +44,4 @@ pipelinek run      examples/catalogue/features/negative/plugin-capability-omitte
 - **Nombre historico:** `plugin-capability-omitted.pipeline.kts`
 - **Ruta de origen:** `examples/negative/plugin-capability-omitted.pipeline.kts`
 - **Huella del cuerpo:** `sha256:470fd0ae860f3c82a2fdce5c8d77b58cd8e9d1cd47d72feb7e8711ceb9b57eaa`
+- **Huella del origen:** `sha256:1aa1fc8bad6eb24b12974101c61f82ffbfa58161e371d52820cd912ce8ed5724`

@@ -68,3 +68,4 @@ pipelinek run      examples/catalogue/features/output/publish-html/publish-html.
 - **Nombre historico:** `32-publish-html.pipeline.kts`
 - **Ruta de origen:** `examples/output/32-publish-html.pipeline.kts`
 - **Huella del cuerpo:** `sha256:38fb729b5cb7d608064c7883199ad66acc01c3d47d0a368a2c3a4a429a62c80c`
+- **Huella del origen:** `sha256:38fb729b5cb7d608064c7883199ad66acc01c3d47d0a368a2c3a4a429a62c80c`

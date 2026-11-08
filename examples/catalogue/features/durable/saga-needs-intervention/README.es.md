@@ -48,3 +48,4 @@ pipelinek run      examples/catalogue/features/durable/saga-needs-intervention/s
 - **Nombre historico:** `34-saga-needs-intervention.pipeline.kts`
 - **Ruta de origen:** `examples/durable/34-saga-needs-intervention.pipeline.kts`
 - **Huella del cuerpo:** `sha256:165a16a2d7d06723dac0540f42edaf2ad7c01bc50bff6955e896e3f7344a5d1b`
+- **Huella del origen:** `sha256:0d9a4a2e7dd66e2782fb962e7d029e31a0b47ea8868b031808d6a86002139547`

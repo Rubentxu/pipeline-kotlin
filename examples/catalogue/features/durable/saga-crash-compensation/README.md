@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/durable/saga-crash-compensation/s
 - **Historical name:** `36-saga-crash-compensation.pipeline.kts`
 - **Origin path:** `examples/durable/36-saga-crash-compensation.pipeline.kts`
 - **Body digest:** `sha256:b3da7fbf41a4be0918a91b1c295225e5c2247cf7b692ce16e1cff14d28410e79`
+- **Origin digest:** `sha256:b8a9ee9b8e549d1f9bb3d9a5136c4673d8ce56d008d3d16b104c0caa54539f21`

@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/control-flow/writefile-in-warnerr
 - **Nombre historico:** `13-writefile-in-warnerror.pipeline.kts`
 - **Ruta de origen:** `examples/control-flow/13-writefile-in-warnerror.pipeline.kts`
 - **Huella del cuerpo:** `sha256:7ab3ff0d4c00ceccc18c800dbe2877dcfb3f5f5b9bd250c39b21157ff18aa52d`
+- **Huella del origen:** `sha256:df3e9960bfc46be79aa26c5cc76cc36f0f4e57b3a71c56c386f5680b09290af0`

@@ -66,3 +66,4 @@ pipelinek run      examples/catalogue/features/durable/stash-unstash/stash-unsta
 - **Historical name:** `31-stash-unstash.pipeline.kts`
 - **Origin path:** `examples/durable/31-stash-unstash.pipeline.kts`
 - **Body digest:** `sha256:5a22dffbad90937503a1f628b6f48585301b71dcd141ed8bb79a91a43b28d10f`
+- **Origin digest:** `sha256:5a22dffbad90937503a1f628b6f48585301b71dcd141ed8bb79a91a43b28d10f`

@@ -46,3 +46,4 @@ pipelinek run      examples/catalogue/features/plugins/trusted-plugin/trusted-pl
 - **Historical name:** `trusted-plugin.pipeline.kts`
 - **Origin path:** `examples/plugins/trusted-plugin.pipeline.kts`
 - **Body digest:** `sha256:c3b73133a7684032bedbe408a47c4ffa0fbb075856611352a7862b6cc5354c26`
+- **Origin digest:** `sha256:735f7c0a425450edb4f3b1796f4ac3a0ca7fd0941c8a0821866bff6edad6c8be`

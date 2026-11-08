@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/negative/error-handling/error-han
 - **Historical name:** `12-error-handling.pipeline.kts`
 - **Origin path:** `examples/negative/12-error-handling.pipeline.kts`
 - **Body digest:** `sha256:0a5ba7e4bd985d779dd9f33c1ad758d9c896923aac134c8fc87269ad770acf65`
+- **Origin digest:** `sha256:ee11176e35775f7d29e13ebe2ef1d74f67715fe64b12ac3fdf06ef977175efc9`

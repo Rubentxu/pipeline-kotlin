@@ -44,3 +44,4 @@ pipelinek run      examples/catalogue/features/negative/plugin-event-lies/plugin
 - **Historical name:** `plugin-event-lies.pipeline.kts`
 - **Origin path:** `examples/negative/plugin-event-lies.pipeline.kts`
 - **Body digest:** `sha256:c6cbe7932257d57ba8d27404072a064cba0dce189cc25c2a888d549f4f82fb58`
+- **Origin digest:** `sha256:465eff9b133b67219b9e7584c96782b71c002768f717a6d9df0814078fb2c603`

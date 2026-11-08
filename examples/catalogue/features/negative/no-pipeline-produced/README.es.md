@@ -42,3 +42,4 @@ pipelinek run      examples/catalogue/features/negative/no-pipeline-produced/no-
 - **Nombre historico:** `no-pipeline-produced.pipeline.kts`
 - **Ruta de origen:** `examples/negative/no-pipeline-produced.pipeline.kts`
 - **Huella del cuerpo:** `sha256:1d88c20ed3a3d276a1e7c06faf5e394297c0f0dfd308b8bbad552f1ba53ad19a`
+- **Huella del origen:** `sha256:809c7aaa02d741ed3b2b8122ee1597539650e748e3e686eefc2536e86da545a3`

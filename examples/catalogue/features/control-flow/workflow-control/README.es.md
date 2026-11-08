@@ -61,3 +61,4 @@ pipelinek run      examples/catalogue/features/control-flow/workflow-control/wor
 - **Nombre historico:** `11-workflow-control.pipeline.kts`
 - **Ruta de origen:** `examples/control-flow/11-workflow-control.pipeline.kts`
 - **Huella del cuerpo:** `sha256:c737e6ae45c487f80b31097b7da09010c5711368f3112fc748f62708ac02f8fc`
+- **Huella del origen:** `sha256:cf70bd8174b2d55b17940e64e2d4f7388894145ef6a259fc80fd1c3770521518`

@@ -52,3 +52,4 @@ pipelinek run      examples/catalogue/features/negative/unknown-directive-key/un
 - **Nombre historico:** `unknown-directive-key.pipeline.kts`
 - **Ruta de origen:** `examples/negative/unknown-directive-key.pipeline.kts`
 - **Huella del cuerpo:** `sha256:d92c777ee392d34ab1e9c32759413cfe0a15a3a0253fa6c759b83cbe17930c6d`
+- **Huella del origen:** `sha256:224beb0470fe1777b5402843ab2acf405af920326cc2aabcf4d818148a616287`

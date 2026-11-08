@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/steps/writeFile/writeFile.pipelin
 - **Historical name:** `17-writeFile.pipeline.kts`
 - **Origin path:** `examples/steps/17-writeFile.pipeline.kts`
 - **Body digest:** `sha256:774e8e2f9950da837ed013d1170ac2980a55f5e9286b6be00218fed5b7b5cfc4`
+- **Origin digest:** `sha256:4ab4a34ad4476a1d2164d00fe9db1b23cad2ac87ffbe389718c6467ccdaec456`

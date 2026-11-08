@@ -56,3 +56,4 @@ pipelinek run      examples/catalogue/features/steps/find-files/find-files.pipel
 - **Nombre historico:** `26-find-files.pipeline.kts`
 - **Ruta de origen:** `examples/steps/26-find-files.pipeline.kts`
 - **Huella del cuerpo:** `sha256:76731a2bf22887892ba38441f120ae38815f8ed391c4633629d9e2bfbd873333`
+- **Huella del origen:** `sha256:2f1cc1ed83ddea28d6198592bafb5167a480cc7a5fc3448d886a93b24cd2c2f4`

@@ -39,3 +39,4 @@ pipelinek run      examples/catalogue/features/steps/withEnv-pipeline/withEnv-pi
 - **Nombre historico:** `08-withEnv-pipeline.pipeline.kts`
 - **Ruta de origen:** `examples/steps/08-withEnv-pipeline.pipeline.kts`
 - **Huella del cuerpo:** `sha256:f08d864eca0a35aba1bdebf40fd3e7c90ba3bccd024ec23c657cbcf388dc03d0`
+- **Huella del origen:** `sha256:f08d864eca0a35aba1bdebf40fd3e7c90ba3bccd024ec23c657cbcf388dc03d0`

@@ -139,6 +139,10 @@ DECLARED_EXECUTABLES = {
     "scripts/check-budgets.py": (
         "a guard of the gate: it reads the tree and starts nothing"
     ),
+    "scripts/check-catalogue-shape.py": (
+        "a guard of the gate: it reads the catalogue of examples and starts "
+        "nothing"
+    ),
     "scripts/check-comment-provenance.py": (
         "a guard of the gate: it reads the tree and starts nothing"
     ),

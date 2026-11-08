@@ -67,3 +67,4 @@ pipelinek run      examples/catalogue/features/output/artifact-query-bridge/arti
 - **Historical name:** `30-artifact-query-bridge.pipeline.kts`
 - **Origin path:** `examples/output/30-artifact-query-bridge.pipeline.kts`
 - **Body digest:** `sha256:f126804637baa1d34b83575baef25b66b31779588ef76517d659774087f509e9`
+- **Origin digest:** `sha256:f126804637baa1d34b83575baef25b66b31779588ef76517d659774087f509e9`

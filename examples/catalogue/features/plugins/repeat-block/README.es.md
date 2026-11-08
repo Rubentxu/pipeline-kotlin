@@ -49,3 +49,4 @@ pipelinek run      examples/catalogue/features/plugins/repeat-block/repeat-block
 - **Nombre historico:** `repeat-block.pipeline.kts`
 - **Ruta de origen:** `examples/plugins/repeat-block.pipeline.kts`
 - **Huella del cuerpo:** `sha256:e2842b12471e5b274ced9cfb17b5573e4b28920f086e6b2ce769072be16e4961`
+- **Huella del origen:** `sha256:a95f79824f2b4fe5efe29bbbe1523afb2f85053a543f331c6c937928beda3a25`

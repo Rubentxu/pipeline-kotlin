@@ -45,3 +45,4 @@ pipelinek run      examples/catalogue/features/negative/events-no-event-history/
 - **Nombre historico:** `events-no-event-history.pipeline.kts`
 - **Ruta de origen:** `examples/negative/events-no-event-history.pipeline.kts`
 - **Huella del cuerpo:** `sha256:c5b60d1550acbf9bf02225f93c33212cc37ab4c6c2ea93c591a007fe397beaac`
+- **Huella del origen:** `sha256:cc4d4dff57266a77ec0423dc8edf78cfb9201bd4ad513f8ed334be4e6cb8ca3c`

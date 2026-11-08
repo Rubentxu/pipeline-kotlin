@@ -43,3 +43,4 @@ pipelinek run      examples/catalogue/features/events/run-state/run-state.pipeli
 - **Nombre historico:** `07-run-state.pipeline.kts`
 - **Ruta de origen:** `examples/events/07-run-state.pipeline.kts`
 - **Huella del cuerpo:** `sha256:8b4a7ef4313fcbb2d07c9c32bad6f1a9d9d2559bb4be083b2f4b815133c9575d`
+- **Huella del origen:** `sha256:1a2a78ab298d2d1faa2ea86ecbb2dc39409222158838572a234efe20334145f9`

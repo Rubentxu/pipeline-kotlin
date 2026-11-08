@@ -58,6 +58,8 @@ pipelinek run      examples/catalogue/regressions/smoke/rust-build-test/rust-bui
 
 **Estado del instrumento:** `PASS` — la cobertura del instrumento que lo juzga, no el veredicto de su ultima ejecucion.
 
+**Cubre:** `HAR-010`
+
 ## Su linaje
 
 - **Nombre historico:** `har010-rust-build-test.pipeline.kts`

@@ -61,3 +61,4 @@ pipelinek run      examples/catalogue/features/steps/workspace-coherence/workspa
 - **Nombre historico:** `34-workspace-coherence.pipeline.kts`
 - **Ruta de origen:** `examples/steps/34-workspace-coherence.pipeline.kts`
 - **Huella del cuerpo:** `sha256:5a27cee42ed5cf642702093f642827361cdf0f9f3890a1ac24e8b7e472bed872`
+- **Huella del origen:** `sha256:e18505f1fbed6493977e76a4883b46baceb2ceafef036922b64715ff26cb9824`

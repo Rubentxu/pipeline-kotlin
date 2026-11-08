@@ -64,6 +64,8 @@ pipelinek run      examples/catalogue/regressions/smoke/workspace-contract-matri
 
 **State of the instrument:** `PASS` — the coverage of the instrument that judges it, not the verdict of its last run.
 
+**Covers:** `HAR-004`
+
 ## Its lineage
 
 - **Historical name:** `wu-rp-053-workspace-contract.pipeline.kts`

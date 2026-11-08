@@ -44,3 +44,4 @@ pipelinek run      examples/catalogue/features/negative/plugin-capability-omitte
 - **Historical name:** `plugin-capability-omitted.pipeline.kts`
 - **Origin path:** `examples/negative/plugin-capability-omitted.pipeline.kts`
 - **Body digest:** `sha256:470fd0ae860f3c82a2fdce5c8d77b58cd8e9d1cd47d72feb7e8711ceb9b57eaa`
+- **Origin digest:** `sha256:1aa1fc8bad6eb24b12974101c61f82ffbfa58161e371d52820cd912ce8ed5724`

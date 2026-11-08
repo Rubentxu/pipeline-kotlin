@@ -45,3 +45,4 @@ pipelinek run      examples/catalogue/features/negative/refused-run-is-still-ans
 - **Nombre historico:** `35-refused-run-is-still-answerable.pipeline.kts`
 - **Ruta de origen:** `examples/negative/35-refused-run-is-still-answerable.pipeline.kts`
 - **Huella del cuerpo:** `sha256:7e46b1db853a247eeac9cb457df52faf0fc2cf35175ec21f1fed25debf2a4479`
+- **Huella del origen:** `sha256:c1b92d0e4f1c23502fd955dc54f7366043b1e945c9ca87666a74c3837cfd1df9`

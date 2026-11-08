@@ -40,3 +40,4 @@ pipelinek run      examples/catalogue/features/steps/env-model-applied-once/env-
 - **Nombre historico:** `35-env-model-applied-once.pipeline.kts`
 - **Ruta de origen:** `examples/steps/35-env-model-applied-once.pipeline.kts`
 - **Huella del cuerpo:** `sha256:a4a51bdb166892d6b64fb16d702c59a6ce1d45b25aaa00979487e8397e53f22d`
+- **Huella del origen:** `sha256:a4a51bdb166892d6b64fb16d702c59a6ce1d45b25aaa00979487e8397e53f22d`

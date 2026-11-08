@@ -46,3 +46,4 @@ pipelinek run      examples/catalogue/features/negative/credential-store-and-unr
 - **Historical name:** `credential-store-and-unreadable-plugin.pipeline.kts`
 - **Origin path:** `examples/negative/credential-store-and-unreadable-plugin.pipeline.kts`
 - **Body digest:** `sha256:fd247769f171b8bf5cadc0c2fb59ac5a2c56a7f5b4e8dd22e6b72fd1aa87fb89`
+- **Origin digest:** `sha256:9ec2c93ebe0e426244b27d4c476e96301c286c13ff7494f1bac7f48282359786`

@@ -44,3 +44,4 @@ pipelinek run      examples/catalogue/features/negative/plugin-capability-lies/p
 - **Historical name:** `plugin-capability-lies.pipeline.kts`
 - **Origin path:** `examples/negative/plugin-capability-lies.pipeline.kts`
 - **Body digest:** `sha256:a2d04759c8825f9417a8f69c7b5887b7f96f7cc8271fbc8f74dfb71edfe60aaa`
+- **Origin digest:** `sha256:d3509fd513b0bd68343be6b72c12567a6c0f07992e0b5d7df3a5dfcf70510667`

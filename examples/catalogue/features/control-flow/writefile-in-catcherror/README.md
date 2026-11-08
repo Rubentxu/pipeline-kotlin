@@ -47,3 +47,4 @@ pipelinek run      examples/catalogue/features/control-flow/writefile-in-catcher
 - **Historical name:** `12-writefile-in-catcherror.pipeline.kts`
 - **Origin path:** `examples/control-flow/12-writefile-in-catcherror.pipeline.kts`
 - **Body digest:** `sha256:d00511c3614d6cb24517bfab56adcba17a3292439f532ff9b2d8883ed4b4610b`
+- **Origin digest:** `sha256:5dcff692a9f5aa780c916193785242004b7f36d7a54f2070db5c147880b9c5af`

@@ -24,7 +24,8 @@
 # Usage:
 #   publish-tag.sh --tag <name> --candidate-id <sha256:...> \
 #       --expect-commit <sha> --fingerprint <FPR> --uid <uid> \
-#       --out <file> [--remote <name>] [--at <commit>] [--promotes <tag>]
+#       --out <file> [--remote <name>] [--at <commit>] [--promotes <tag>] \
+#       [--attestation <file>]
 #
 # --at <commit> places the tag on that commit instead of on HEAD. It is what
 # a STABLE promotion needs: the stable tag must point at the commit the
@@ -32,6 +33,13 @@
 # --promotes <tag> names the tag this one promotes, and the name goes into
 # the tag's own message, so the tag says what it promotes instead of leaving
 # a reader to guess.
+#
+# --attestation <file> is the attestation of the promotion: the claims the
+# tag carries, one per line, in the spelling the consumer of a promotion
+# reads. A stable tag without them says nothing a consumer can compare, so
+# the tag that carries the claims is the one that can be promoted; the
+# claims themselves are checked by the consumer that has the signed result
+# to compare them against.
 #
 # Exit codes: 0 = the tag was signed, verified and pushed; 1 = refused;
 # 2 = usage error.
@@ -49,6 +57,7 @@ OUT_FILE=""
 REMOTE="origin"
 AT_COMMIT=""
 PROMOTES=""
+ATTESTATION=""
 
 usage() {
     # The header is printed as it is written, up to the first line that is
@@ -69,6 +78,7 @@ while [[ $# -gt 0 ]]; do
         --remote)        REMOTE="${2:-}"; shift 2 ;;
         --at)            AT_COMMIT="${2:-}"; shift 2 ;;
         --promotes)      PROMOTES="${2:-}"; shift 2 ;;
+        --attestation)   ATTESTATION="${2:-}"; shift 2 ;;
         -h|--help)       usage ;;
         *) printf 'publish-tag: unknown argument %s\n' "$1" >&2; usage ;;
     esac
@@ -110,6 +120,106 @@ if [[ -n "$AT_COMMIT" ]]; then
 fi
 
 # ----------------------------------------------------------------------------
+# 1b. The attestation, when the tag carries one.
+#
+#     A promotion is read by a consumer that compares the tag's claims with
+#     the signed certification that binds the bytes the tag carries. Those
+#     claims are therefore written IN the tag, one per line, in the spelling
+#     that reader looks for: a claim inside a sentence is not a line, and a
+#     line that is not there is a claim nobody can compare.
+#
+#     What is checked HERE is what the publisher knows the truth about: the
+#     shape of the claims, and the three of them this repository can check
+#     against itself -- the candidate the tag names, the prerelease it
+#     promotes, and the format it claims to speak. The digests are claims
+#     about bytes somebody else measured, and the consumer that holds the
+#     signed result is the one that compares them.
+# ----------------------------------------------------------------------------
+
+ATTESTATION_CLAIMS=""
+
+if [[ -n "$ATTESTATION" ]]; then
+    if [[ ! -f "$ATTESTATION" ]]; then
+        printf 'publish-tag: the attestation %s does not exist\n' "$ATTESTATION" >&2
+        exit 2
+    fi
+    ATTESTATION_CLAIMS="$(cat -- "$ATTESTATION")"
+    if [[ -z "${ATTESTATION_CLAIMS//[[:space:]]/}" ]]; then
+        printf 'publish-tag: the attestation %s is empty\n' "$ATTESTATION" >&2
+        printf '           a tag with no claims carries nothing a consumer can compare.\n' >&2
+        exit 1
+    fi
+
+    # Every claim is read as a WHOLE LINE, and a claim that appears twice is
+    # a document that says two things: the reader takes the first one and
+    # nobody notices the second.
+    for claim in Promotion-Format RC-Tag RC-Commit Candidate-ID \
+                 Certification-Result-ID ZIP-SHA256 Manifest-SHA256 SBOM-SHA256; do
+        claim_count="$(printf '%s\n' "$ATTESTATION_CLAIMS" | grep -c "^${claim}: " || true)"
+        if [[ "$claim_count" != "1" ]]; then
+            printf 'publish-tag: the attestation does not carry the claim %s exactly once.\n' \
+                "$claim" >&2
+            printf '           it carries it %s time(s): a claim that is missing is a claim\n' \
+                "$claim_count" >&2
+            printf '           nobody can read, and a claim that appears twice is a document\n' >&2
+            printf '           that says two things about the same fact.\n' >&2
+            exit 1
+        fi
+    done
+
+    attestation_value() {
+        printf '%s\n' "$ATTESTATION_CLAIMS" | grep "^$1: " | head -1 | sed "s/^$1: //"
+    }
+
+    if [[ "$(attestation_value Promotion-Format)" != "pipelinek-ga-attestation-v1" ]]; then
+        printf 'publish-tag: the attestation does not speak the pipelinek-ga-attestation-v1 format.\n' >&2
+        printf '           it says %s, and a tag that speaks another format cannot be\n' \
+            "$(attestation_value Promotion-Format)" >&2
+        printf '           compared with the certification it claims.\n' >&2
+        exit 1
+    fi
+
+    if [[ "$(attestation_value Candidate-ID)" != "$CANDIDATE_ID" ]]; then
+        printf 'publish-tag: the attestation names candidate %s and the tag names %s.\n' \
+            "$(attestation_value Candidate-ID)" "$CANDIDATE_ID" >&2
+        printf '           a tag that carries a claim about other bytes says one thing and\n' >&2
+        printf '           means another.\n' >&2
+        exit 1
+    fi
+
+    if [[ -z "$PROMOTES" ]]; then
+        printf 'publish-tag: the attestation names the prerelease it promotes, but the tag\n' >&2
+        printf '           was not told which one. A promotion tag that does not say what\n' >&2
+        printf '           it promotes is a tag nobody can bind to a certification.\n' >&2
+        exit 1
+    fi
+
+    if [[ "$(attestation_value RC-Tag)" != "$PROMOTES" ]]; then
+        printf 'publish-tag: the attestation promotes %s and the tag promotes %s.\n' \
+            "$(attestation_value RC-Tag)" "$PROMOTES" >&2
+        printf '           the two have to be the same prerelease: a tag that promotes one\n' >&2
+        printf '           and claims another cannot be compared with either.\n' >&2
+        exit 1
+    fi
+
+    for digest_claim in ZIP-SHA256 Manifest-SHA256 SBOM-SHA256; do
+        if ! printf '%s' "$(attestation_value "$digest_claim")" | grep -Eq '^[0-9a-f]{64}$'; then
+            printf 'publish-tag: the attestation carries no usable %s: it says %s.\n' \
+                "$digest_claim" "$(attestation_value "$digest_claim")" >&2
+            printf '           a claim that is not a digest is not a claim about bytes.\n' >&2
+            exit 1
+        fi
+    done
+
+    if ! printf '%s' "$(attestation_value RC-Commit)" | grep -Eq '^[0-9a-f]{40}$'; then
+        printf 'publish-tag: the attestation carries no usable RC-Commit: it says %s.\n' \
+            "$(attestation_value RC-Commit)" >&2
+        printf '           a claim that is not a commit is not a claim about the tree.\n' >&2
+        exit 1
+    fi
+fi
+
+# ----------------------------------------------------------------------------
 # 1. Sign. If the key is not usable there is no fallback: the tag is not
 #    created at all, and the caller stops.
 # ----------------------------------------------------------------------------
@@ -125,8 +235,17 @@ TAG_MESSAGE="PipelineK ${TAG}"
 if [[ -n "$PROMOTES" ]]; then
     TAG_MESSAGE="${TAG_MESSAGE} (promotes ${PROMOTES})"
 fi
-TAG_MESSAGE="${TAG_MESSAGE}
+if [[ -n "$ATTESTATION" ]]; then
+    # The attestation IS the message of a promotion tag: the claims it
+    # carries are what the consumer compares, and a tag that carries them
+    # AND says something else is a tag with two messages.
+    TAG_MESSAGE="${TAG_MESSAGE}
+
+${ATTESTATION_CLAIMS}"
+else
+    TAG_MESSAGE="${TAG_MESSAGE}
 Candidate-ID: ${CANDIDATE_ID}"
+fi
 
 # The tagger is the repository's own identity, stated explicitly so the tag
 # does not inherit whatever identity the machine happens to be configured with.

@@ -106,9 +106,20 @@ Dale a la ejecución un journal y un control root, y cada paso, evento y salida 
 | **OpenTelemetry** | Exportación OTLP opcional de tiempos, recuentos y buckets: nunca cargas útiles. Apagada salvo `PIPELINEK_OTEL_ENABLED=true` | Disponible |
 | **Introspección y recuperación** | `inspect`, `runs cancel`, `runs recover`, lecturas digeridas, fijación de salida, retención de rechazos | **Experimental** |
 
-La última fila es la honesta: las capacidades `runtime.inspect.v1`, `runtime.cancel.v1`, `runtime.recover.v1`, `output.read.digested.v1`, `output.pin.v1` y `output.refusal.retention.v1` se publican como **experimentales**. `pipelinek capabilities` imprime el estado exacto de cada clave que admite esta build.
+La última fila es la honesta: las capacidades `runtime.inspect.v1`, `runtime.cancel.v1`, `runtime.recover.v1` y `output.pin.v1` se publican como **experimentales**. `pipelinek capabilities` imprime el estado exacto de cada clave que admite esta build.
 
 **Lo que está publicado:** `output.follow.v2`, `events.follow.v3`, `events.stepoutcome.v1`, `events.failurestage.v1`.
+
+### Telemetría
+
+La telemetría es opcional, y lo que transporta son **tiempos, recuentos y buckets: nunca cargas útiles**. Ni el texto del script, ni la orden, ni la transcripción viajan en una señal: ese contenido vive en el plano de salida y en el journal, y una segunda copia en la telemetría sería un segundo sitio donde esconderse un secreto.
+
+| | |
+|---|---|
+| Attributes | `run.id`, `stage.index`, `step.index`, `script.origin`, `failure.class` |
+| Dimensions | `operation_kind`, `status`, `failure_class` |
+
+Las convenciones son las de CI/CD de OpenTelemetry, fijadas en `1.44.0` y declaradas como candidata a release: el pin es parte de lo que el producto promete, y se lee del producto, no de la carga útil. No se exporta nada salvo `PIPELINEK_OTEL_ENABLED=true`, y el endpoint, el protocolo y las credenciales vienen del entorno: la misma build apunta a un Collector local, a Tempo, a Jaeger o a nada.
 
 ---
 
@@ -143,6 +154,14 @@ Estos proyectos se construyen alrededor de PipelineK. La **columna 0.94.2** es e
 
 Nada de lo anterior es una promesa de compatibilidad: un proyecto declara el rango de SDK con el que se construyó, y el runtime rechaza un plugin fuera de ese rango antes de que sus clases se carguen.
 
+### Escribir un plugin
+
+Un plugin es un build de Gradle independiente que compila contra el SDK publicado y contra nada más. Declara un `StepContract` — la clave de familia, el descriptor, los códecs tipados y las capacidades que requiere — y un manifiesto con el rango de API con el que se construyó.
+
+El SDK viaja con cada release como `pipelinek-<version>.sdk.zip`: seis artefactos (`pipeline-domain`, `pipeline-events`, `pipeline-output`, `pipeline-runtime-api`, `pipeline-scripting-api`, `pipeline-sdk-bom`) y un BOM que fija sus versiones entre sí. `pipelinek sdk-info` imprime el grupo y las coordenadas exactas contra las que compila un plugin.
+
+Un plugin se carga desde `--plugin-jar`. Con `--plugin-trust <file>` solo se admite si sus bytes coinciden con el SHA-256 fijado por el operador y llevan una firma Ed25519 válida; con `--require-plugin-trust`, un plugin que nadie ha avalado se rechaza antes de que corra su código.
+
 ---
 
 ## Pensado para desarrolladores, agentes y plataformas
@@ -151,7 +170,7 @@ Nada de lo anterior es una promesa de compatibilidad: un proyecto declara el ran
 
 **Para agentes.** Un pipeline es un artefacto tipado y legible, y cada ejecución deja un rastro legible por máquina: eventos tipados, un cursor reanudable y un journal durable. Un agente puede leer una ejecución, decidir qué hacer después y recibir un rechazo con un motivo preciso cuando la respuesta no está.
 
-**Para equipos de plataforma.** Un binario, sin demonio, sin controlador y sin estado remoto. El runtime está pensado para ser embebido: un plugin declara las capacidades que necesita y el motor rechaza todo lo que no haya declarado. La telemetría es opcional y lleva tiempos y recuentos, nunca cargas útiles.
+**Para equipos de plataforma.** Un binario, sin demonio, sin controlador y sin estado remoto. El runtime está pensado para ser embebido: un plugin declara las capacidades que necesita y el motor rechaza todo lo que no haya declarado. La red está detrás de una capacidad: un plugin que quiere alcanzarla declara `network.egress`, y un paso que la quiere la ha tenido que declarar.
 
 ---
 
@@ -229,7 +248,7 @@ flowchart TB
 Cada frontera tiene un único dueño. El runner es la autoridad de escritura sobre una ejecución; el journal es el registro durable; el carril de eventos es la cara de lectura que un consumidor pagina por cursor; los plugins se admiten, no se confían por defecto.
 
 - **Superficie de la CLI** — `pipelinek --help`
-- **Contratos** — el KDoc de `StepContext.kt` (`:pipeline-step-sdk`), `TelemetryPolicy` (`:pipeline-runtime-api`), `OutputReadPort.kt` (`:pipeline-output`) y `EventRecordReadPort.kt` (`:pipeline-events`)
+- **Contratos** — el KDoc de `StepContext.kt` (`:pipeline-step-sdk`), `RunTelemetry.kt` (`:pipeline-runtime-api`), `OutputReadPort.kt` (`:pipeline-output`) y `EventRecordReadPort.kt` (`:pipeline-events`)
 - **Referencia de la API** — `./pipelinek/gradlew -p pipelinek apiReferenceHtml`
 - **Procedencia de la release** — [RELEASE-SIGNING.md](RELEASE-SIGNING.md)
 
@@ -276,7 +295,9 @@ mise install pipelinek@0.94.2
 
 **Explora.** [`examples/`](examples/) contiene los cuatro plugins de ejemplo y un ejemplo de observabilidad: una configuración local de Collector, consultas PromQL y TraceQL, y un dashboard de Grafana que las ejecuta. `pipelinek capabilities` y `pipelinek sdk-info` imprimen lo que admite esta build y contra qué compila un plugin.
 
-**Construye un plugin.** El SDK se publica con cada release como `pipelinek-<version>.sdk.zip`, bajo el grupo `dev.rubentxu.pipeline.v2` (`pipeline-domain`, `pipeline-events`, `pipeline-output`, `pipeline-runtime-api`, `pipeline-scripting-api`, `pipeline-sdk-bom`). Un plugin es un build de Gradle independiente que compila contra el SDK y nada más, declara un `StepContract` y un manifiesto con su rango de API, y se carga desde `--plugin-jar`. Los cuatro ejemplos de `examples/` son exactamente eso, y se construyen fuera del build de este repositorio.
+**Construye un plugin.** El contrato, el SDK y las banderas de confianza están en [Escribir un plugin](#escribir-un-plugin). Los cuatro ejemplos de `examples/` son exactamente eso, y se construyen fuera del build de este repositorio.
+
+**Cómo se verifica el build.** `scripts/verify-all.sh` ejecuta tres patas: **unit tests** para las reglas del dominio, **integration tests** que componen dos o más módulos reales con cada efecto que saldría del proceso sustituido por un doble, y **mutants** sobre las costuras que los módulos declaran: un mutante superviviente es un agujero en el test que debía matarlo. El gate también lee este README contra el código: `DocumentationDriftTest` falla cuando los dos discrepan, así que este documento no puede prometer lo que el build no hace.
 
 **Informa de un problema.** [Abre un issue](https://github.com/Rubentxu/pipeline-kotlin/issues) con la versión de `pipelinek version` y la salida de `pipelinek doctor`.
 

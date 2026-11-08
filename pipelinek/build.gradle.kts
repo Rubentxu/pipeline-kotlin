@@ -129,7 +129,26 @@ repositories {
 // the part that did not apply and REQUIRES it, while the shape that came
 // before stays closed. The 0.94.0 train opens here (ProductVersion 0.94.0)
 // and its first candidate can be tagged v0.94.0-rc1.
-version = "0.94.0"
+// 2026-11-08: the 0.94.0 train closed at v0.94.0, and the law holds here
+// too: this tree has moved since that candidate. The published ARTIFACT does
+// not behave the same, and it is measured on the real distribution: the
+// launcher of the 0.94.0 artifact carries `-Xlog:cds=off`, which mutes the
+// `cds` TAG but not the {cds,dynamic} tag set, so the JVM's talk can still
+// reach the stream the product answers on. This tree's launcher carries
+// `-Xlog:all=off:stdout` followed by `-Xlog:all=warning:stderr`: the two
+// options are ONE decision (without the first, HotSpot's default stdout
+// selection stays alive and the warning appears on BOTH streams), the
+// product's stdout carries the answer and nothing else, and the JVM's
+// diagnostics go to stderr, where a diagnostic belongs. Measured on the same
+// JVM, with the same archive that cannot be loaded: the 0.94.0 options leave
+// stdout at 15 bytes and stderr at 0 (the JVM's complaint is muted, and that
+// muting is incomplete); these options leave stdout at 15 bytes and stderr at
+// 80, with the complaint visible where it can be acted on. A consumer that
+// parses the product's output can rely on that in this artifact and could not
+// rely on it in v0.94.0, so the two artifacts do NOT behave the same and one
+// version cannot carry both. The 0.94.1 train opens here (ProductVersion
+// 0.94.1) and its first candidate can be tagged v0.94.1-rc1.
+version = "0.94.1"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

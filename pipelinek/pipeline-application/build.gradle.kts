@@ -69,9 +69,11 @@ application {
     //                         refuses to start ("Invalid level 'stderr'").
     //
     // The report itself is not actionable -- the archive is mapped anyway, and what
-    // is lost is the optimized module handling -- but it is not hidden either: it is
-    // on stderr now. In JDK 25 the JVM raised its severity to ERROR, which upstream
-    // calls a bug (JDK-8369079, open): the same condition was a warning before.
+    // is lost is the optimized module handling -- so it is not a diagnostic that
+    // anybody can act on. In JDK 25 the JVM raised its severity to ERROR, which
+    // upstream calls a bug (JDK-8369079, open): the same condition was a warning
+    // before. The archive's talk is muted below; every OTHER diagnostic the JVM
+    // writes still goes to stderr, where a diagnostic belongs.
     //
     // THE ARCHIVE'S TALK IS NOT THE OPERATOR'S BUSINESS
     //

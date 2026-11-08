@@ -529,6 +529,19 @@ cmd_install() {
     die "Refusing to install ${slot}: the extracted binary is ${observed_version}. Nothing was installed."
   fi
 
+  # The verification run above made the JVM write the shared class archive
+  # (lib/pipelinek-cds-<major>.jsa) and its state file inside the staged
+  # tree. That archive belongs to the path it was written at: the JVM
+  # relocates its heap data against the classes it recorded, and it can only
+  # do so while those classes are still there. The staged tree is about to
+  # move to a path where the staged path will not exist, so an archive that
+  # travels with it is one the JVM drops on every start -- with a warning on
+  # the product's stdout, before the real output, which is what turns
+  # `version --json` into something that is not JSON. The published slot
+  # therefore starts with no archive and writes its own, in its own path, on
+  # its first run.
+  rm -f "${staged_root}/lib/"pipelinek-cds-*.jsa "${staged_root}/lib/pipelinek-cds.state" 2>/dev/null || true
+
   # final step: one rename creates the installed release. versions/ is
   # created only now, so a refusal above never touches the install root.
   log_info "Publishing verified install to ${target_dir}"

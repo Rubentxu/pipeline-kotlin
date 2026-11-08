@@ -63,7 +63,8 @@
 # door rather than by a convention:
 #
 #   promote-stable.sh --rc-tag v1.2.3-rc1 --stable-tag v1.2.3 \
-#       --candidate-id sha256:<digest> --certification <file> --out <file>
+#       --candidate-id sha256:<digest> --certification <file> \
+#       --attestation <file> --out <file>
 #   publish-github-release.sh --tag v1.2.3 --title '...' --notes-file <file> \
 #       --asset <rc asset>... --expect-sums <rc SHA256SUMS>
 #
@@ -80,7 +81,8 @@
 #
 # Usage:
 #   promote-stable.sh --rc-tag <name> --stable-tag <name> \
-#       --candidate-id <sha256:...> --certification <file> --out <file> \
+#       --candidate-id <sha256:...> --certification <file> \
+#       --attestation <file> --out <file> \
 #       [--remote <name>]
 #
 # --candidate-id is the digest of the candidate the stable release carries. It
@@ -93,6 +95,15 @@
 # of them passed. It is not optional: without it the promotion does not
 # happen, because a promotion of bytes nobody certified is exactly what this
 # cycle exists to prevent.
+#
+# --attestation is the attestation the stable tag carries: the claims, one
+# per line, that say which prerelease this tag promotes, which commit it
+# comes from, which candidate it carries and which digests bind it. A
+# consumer of the stable release compares those claims with the signed
+# certification, so a stable tag without them is a release nobody is able to
+# check. It is not optional either, and the three claims this promotion
+# knows the truth about -- the candidate, the prerelease and the commit --
+# are checked against the facts proved here before anything is created.
 #
 # Exit codes: 0 = the stable tag was signed, verified and pushed; 1 = refused;
 # 2 = usage error.
@@ -111,6 +122,7 @@ RC_TAG=""
 STABLE_TAG=""
 CANDIDATE_ID=""
 CERTIFICATION=""
+ATTESTATION=""
 OUT_FILE=""
 REMOTE="origin"
 
@@ -128,6 +140,7 @@ while [[ $# -gt 0 ]]; do
         --stable-tag)   STABLE_TAG="${2:-}"; shift 2 ;;
         --candidate-id) CANDIDATE_ID="${2:-}"; shift 2 ;;
         --certification) CERTIFICATION="${2:-}"; shift 2 ;;
+        --attestation)   ATTESTATION="${2:-}"; shift 2 ;;
         --out)          OUT_FILE="${2:-}"; shift 2 ;;
         --remote)       REMOTE="${2:-}"; shift 2 ;;
         -h|--help)      usage ;;
@@ -135,8 +148,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$RC_TAG" || -z "$STABLE_TAG" || -z "$CANDIDATE_ID" || -z "$CERTIFICATION" || -z "$OUT_FILE" ]]; then
-    printf 'promote-stable: --rc-tag, --stable-tag, --candidate-id, --certification and --out are all required\n' >&2
+if [[ -z "$RC_TAG" || -z "$STABLE_TAG" || -z "$CANDIDATE_ID" || -z "$CERTIFICATION" || -z "$ATTESTATION" || -z "$OUT_FILE" ]]; then
+    printf 'promote-stable: --rc-tag, --stable-tag, --candidate-id, --certification, --attestation and --out are all required\n' >&2
     usage
 fi
 
@@ -367,6 +380,55 @@ if [[ -z "$RC_COMMIT" ]]; then
     exit 1
 fi
 
+# ----------------------------------------------------------------------------
+# 5b. The attestation has to be about THIS promotion.
+#
+#     The stable tag is read by a consumer that compares its claims with the
+#     signed certification of the bytes it carries. Those claims travel in
+#     the tag, and this promotion is the one that knows the truth about
+#     three of them: the candidate it promotes, the prerelease it comes
+#     from, and the commit that prerelease points at.
+#
+#     So the attestation is checked against the facts THIS script just
+#     proved, and a mismatch is a refusal: a stable tag that claims a
+#     different candidate, a different prerelease or a different commit
+#     would bind the release to bytes nobody certified.
+# ----------------------------------------------------------------------------
+
+if [[ ! -f "$ATTESTATION" ]]; then
+    printf 'promote-stable: refusing — the attestation %s does not exist.\n' "$ATTESTATION" >&2
+    printf '           a stable release whose tag carries no claims is a release no\n' >&2
+    printf '           consumer is able to check.\n' >&2
+    exit 1
+fi
+
+attestation_claim() {
+    grep "^$1: " "$ATTESTATION" | head -1 | sed "s/^$1: //"
+}
+
+if [[ "$(attestation_claim Candidate-ID)" != "$RC_CANDIDATE_ID" ]]; then
+    printf 'promote-stable: refusing — the attestation names candidate %s and the RC names %s.\n' \
+        "$(attestation_claim Candidate-ID)" "$RC_CANDIDATE_ID" >&2
+    printf '           the stable release carries the RC'"'"'s bytes, so the tag has to\n' >&2
+    printf '           carry the RC'"'"'s digest.\n' >&2
+    exit 1
+fi
+
+if [[ "$(attestation_claim RC-Tag)" != "$RC_TAG" ]]; then
+    printf 'promote-stable: refusing — the attestation promotes %s and this promotion is from %s.\n' \
+        "$(attestation_claim RC-Tag)" "$RC_TAG" >&2
+    printf '           a tag that promotes one prerelease and claims another cannot be\n' >&2
+    printf '           compared with either.\n' >&2
+    exit 1
+fi
+
+if [[ "$(attestation_claim RC-Commit)" != "$RC_COMMIT" ]]; then
+    printf 'promote-stable: refusing — the attestation names commit %s and the RC points at %s.\n' \
+        "$(attestation_claim RC-Commit)" "$RC_COMMIT" >&2
+    printf '           the stable tag has to point at the tree the certification covered.\n' >&2
+    exit 1
+fi
+
 RC_VERDICT_FILE="$(mktemp "${TMPDIR:-/tmp}/promote-stable-rc.XXXXXX")"
 
 if ! "${repo_root}/scripts/release/verify-tag-signature.sh" \
@@ -442,6 +504,7 @@ if ! "${repo_root}/scripts/release/publish-tag.sh" \
     --expect-commit "$RC_COMMIT" \
     --at "$RC_COMMIT" \
     --promotes "$RC_TAG" \
+    --attestation "$ATTESTATION" \
     --fingerprint "$SIGNING_FINGERPRINT" \
     --uid "$SIGNING_UID" \
     --out "$TAG_VERDICT_FILE"; then

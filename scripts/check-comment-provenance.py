@@ -112,6 +112,12 @@ WHAT IS DELIBERATELY NOT PROVENANCE
   defect in the world and they are the reason the code they sit next to
   exists; removing them would remove the justification.
 
+  Defect identifiers of OTHER projects, of which the upstream JDK's are the
+  ones this tree meets: JDK-8369079 is a bug in OpenJDK, not a ticket of this
+  project, and it is cited for the same reason a CVE is: it names the defect
+  that makes the code next to it necessary. The prefix is what tells the two
+  apart, and this project does not mint identifiers of that shape.
+
   Ordinary engineering tokens: SHA-256, UTF-8, HTTP-1.1, META-INF and the rest
   of the vocabulary below. Those describe the world, not the project.
 
@@ -576,7 +582,8 @@ def scan(rel: str, text: str, spans, index):
         reasons = []
         tickets = [t for t in TICKET.findall(block)
                    if t not in ALLOWED and t not in FALSE_POSITIVES
-                   and not t.startswith("CVE-")]
+                   and not t.startswith("CVE-")
+                   and not t.startswith("JDK-")]
         if tickets:
             reasons.append("ticket " + ",".join(sorted(set(tickets))[:4]))
         section = SECTION.search(block)

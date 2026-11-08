@@ -93,6 +93,12 @@ RULES: list[tuple[str, str, str]] = [
     # Remaining scripts/ are release and install tooling: they ship the
     # product, so they are the denominator, not the numerator.
     ("product", "release script", "scripts/*"),
+    # The catalogue of examples: the pipeline definitions a reader runs to
+    # see what a capability does, and the README that explains each of them.
+    # They are neither production source nor verification code, so they
+    # count in neither side. Counting them would move a ratio that says
+    # nothing about the engine.
+    ("skip", "example catalogue", "examples/catalogue/*"),
 ]
 
 # Never counted: build output and anything the toolchain generates.
@@ -210,8 +216,10 @@ def main() -> int:
 
         if side == "verify":
             verify_total += loc
-        else:
+        elif side == "product":
             product_total += loc
+        # A "skip" side counts in neither: the file is read, classified and
+        # reported, and it moves no ratio.
 
         module = module_of(path)
         if module is not None:

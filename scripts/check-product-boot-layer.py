@@ -70,6 +70,26 @@ WHAT IS SCANNED
   does. Build output and ignored files are skipped: they are generated, they
   are not the product, and a rule that fired on generated code would be noise.
 
+THE DECLARED ROOTS
+  The layer that boots a product is a SET: a scenario, a launcher, a family
+  map and an init script. This tree holds none of the four, and the rule
+  that says so counts by SHAPE, so it sees a scenario wherever it is.
+
+  A ROOT can be DECLARED, and then the scenarios under it are not a layer
+  that boots a product: they are documentation. The catalogue of examples
+  is the case this tree has: a pipeline definition that a reader runs to see
+  what a capability does. Nobody in this tree runs them; the release
+  harness runs them, against the published candidate.
+
+  The declaration opens the SCENARIO and nothing else. A launcher under the
+  declared root is still a launcher, a family map is still a family map and
+  an init script is still an init script: the exception is about what a
+  pipeline definition is for, not about where a file sits.
+
+  A declared root that is no longer there is a failure, for the same reason
+  a declared program that is no longer there is: a declaration that can
+  disappear without saying anything is a declaration that governs nothing.
+
 Exit status is 0 when the tree holds no layer that boots a product, and 1
 with the list of the offenders when it does.
 """
@@ -233,6 +253,20 @@ DECLARED_EXECUTABLES = {
     ),
 }
 
+# The roots whose scenarios are DOCUMENTATION and not a layer that boots a
+# product, with the reason each one is here.
+#
+# The declaration opens the scenario and nothing else: a launcher under one
+# of these roots is still a launcher, and a family map is still a family
+# map. A root that is declared and no longer there is a failure.
+DECLARED_SCENARIO_ROOTS = {
+    "examples/catalogue": (
+        "the catalogue of examples: the pipeline definitions a reader runs to "
+        "see what a capability does. The release harness runs them, against "
+        "the published candidate, and this tree runs none of them"
+    ),
+}
+
 
 def tree_files(repo: Path) -> list[tuple[str, str]]:
     """Every file of the working tree, with the mode Git records for it.
@@ -304,11 +338,20 @@ def is_a_program(name: str, mode: str, path: Path) -> bool:
     return starts_a_program(path)
 
 
+def declared_root_of(name: str) -> str | None:
+    """The declared root a path sits under, or None when it sits under none."""
+    for root in DECLARED_SCENARIO_ROOTS:
+        if name.startswith(root + "/"):
+            return root
+    return None
+
+
 def main() -> int:
     repo = Path(__file__).resolve().parent.parent
     files = tree_files(repo)
 
     scenarios: list[str] = []
+    documented: list[str] = []
     family_maps: list[str] = []
     init_scripts: list[str] = []
     programs: list[str] = []
@@ -316,7 +359,10 @@ def main() -> int:
 
     for name, mode in files:
         if name.endswith(SCENARIO_SUFFIX):
-            scenarios.append(name)
+            if declared_root_of(name):
+                documented.append(name)
+            else:
+                scenarios.append(name)
         if name.endswith(FAMILY_MAP_SUFFIX):
             family_maps.append(name)
         if name.endswith(INIT_SCRIPT_SUFFIXES):
@@ -339,14 +385,23 @@ def main() -> int:
         if not (repo / name).is_file()
     ]
 
+    # A declared root that is no longer there is a failure for the same
+    # reason: the declaration has to govern something, or it is a name
+    # that could be deleted without anyone noticing.
+    missing_roots = [
+        root for root in sorted(DECLARED_SCENARIO_ROOTS)
+        if not (repo / root).is_dir()
+    ]
+
     print("the layer that boots a product lives in a harness repository")
     print(f"  files read:             {len(files)}")
     print(f"  programs:               {len(programs)} found, {len(DECLARED_EXECUTABLES)} declared")
     print(f"  scenarios:              {len(scenarios)}")
+    print(f"  declared as docs:       {len(documented)}")
     print(f"  family maps:            {len(family_maps)}")
     print(f"  init scripts:           {len(init_scripts)}")
 
-    if scenarios or family_maps or init_scripts or undeclared or gone:
+    if scenarios or family_maps or init_scripts or undeclared or gone or missing_roots:
         for name in scenarios:
             print(f"  {name}: a scenario of the product under test")
         for name in family_maps:
@@ -357,10 +412,12 @@ def main() -> int:
             print(f"  {name}: {reason}")
         for name in gone:
             print(f"  {name}: declared as an executable program and no longer there")
+        for root in missing_roots:
+            print(f"  {root}: declared as a root of documented scenarios and no longer there")
         print()
         print(
             "LAYER THAT BOOTS A PRODUCT: "
-            f"{len(scenarios) + len(family_maps) + len(init_scripts) + len(undeclared) + len(gone)}"
+            f"{len(scenarios) + len(family_maps) + len(init_scripts) + len(undeclared) + len(gone) + len(missing_roots)}"
         )
         print(
             "  this tree certifies itself with unit tests, integration tests with "
@@ -381,6 +438,11 @@ def main() -> int:
         "OK: no scenario, no launcher, no family map and no init script; "
         f"{len(programs)} programs, all of them declared"
     )
+    if documented:
+        print(
+            f"  {len(documented)} pipelines are declared as documentation under "
+            f"{', '.join(sorted(DECLARED_SCENARIO_ROOTS))}"
+        )
     print(
         "  this tree holds no layer that boots a product, and this gate calls none"
     )

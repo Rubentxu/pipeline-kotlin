@@ -293,7 +293,7 @@ mise plugins add pipelinek https://github.com/Rubentxu/asdf-pipelinek
 mise install pipelinek@0.94.2
 ```
 
-**Explore.** [`examples/`](examples/) holds the four example plugins and an observability example — a local Collector configuration, PromQL and TraceQL queries, and a Grafana dashboard that runs them. `pipelinek capabilities` and `pipelinek sdk-info` print what this build admits and what a plugin builds against.
+**Explore.** [`examples/`](examples/) holds the four example plugins and an observability example — a local Collector configuration, PromQL and TraceQL queries, and a Grafana dashboard that runs them. The [catalogue of examples](examples/catalogue/) holds the worked examples of the capabilities above: the pipeline that shows each one, and a README that explains its stages, its steps and what it expects. `pipelinek capabilities` and `pipelinek sdk-info` print what this build admits and what a plugin builds against.
 
 **Build a plugin.** The contract, the SDK and the trust flags are in [Writing a plugin](#writing-a-plugin). The four examples under `examples/` are exactly that, and they build outside this repository's build.
 

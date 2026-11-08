@@ -264,12 +264,13 @@ lookup_sha256sums_entry() {
 
 # read_release_manifest <manifest> <expected-tag> <expected-train>
 #
-# Echoes three lines: the artifact name, its SHA-256 and the product version.
-# It fails closed on anything it does not understand: an unknown schema, a
-# tag that is not the one requested, a product version outside the train, a
-# manifest that does not name exactly one distribution, or a digest that is
-# not a SHA-256. A manifest this script cannot read is a manifest it must not
-# guess at. The reason is printed on stderr; the caller decides what to do.
+# Echoes four lines: the artifact name, its SHA-256, the product version and
+# the tag the manifest names. It fails closed on anything it does not
+# understand: an unknown schema, a tag that does not belong to this release,
+# a product version outside the train, a manifest that does not name exactly
+# one distribution, or a digest that is not a SHA-256. A manifest this script
+# cannot read is a manifest it must not guess at. The reason is printed on
+# stderr; the caller decides what to do.
 read_release_manifest() {
   local manifest_path="$1"
   local expected_tag="$2"
@@ -279,12 +280,12 @@ read_release_manifest() {
   err_file="$(mktemp -t pipelinek-manifest-XXXXXX)"
 
   local parsed
-  if ! parsed="$(python3 - "${manifest_path}" "${expected_tag}" "${expected_train}" <<'PY' 2>"${err_file}"
+  if ! parsed="$(python3 - "${manifest_path}" "${expected_tag}" "${expected_train}" "${CANDIDATE_SLOT_REGEX}" <<'PY' 2>"${err_file}"
 import json
 import re
 import sys
 
-path, expected_tag, expected_train = sys.argv[1:4]
+path, expected_tag, expected_train, candidate_slot_regex = sys.argv[1:5]
 SCHEMA = "pipelinek-release-manifest-1"
 PRODUCT_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -303,8 +304,31 @@ if doc.get("schema_version") != SCHEMA:
     sys.exit(f"unknown release manifest schema: {doc.get('schema_version')!r}")
 
 tag = doc.get("release_tag")
+if not isinstance(tag, str) or not tag:
+    sys.exit(f"the release manifest does not name the release it belongs to: {tag!r}")
 if tag != expected_tag:
-    sys.exit(f"the manifest names release {tag!r}, but this release is {expected_tag!r}")
+    # A release promoted from a candidate publishes the candidate's manifest
+    # VERBATIM: the bytes are the same, so the document that first published
+    # them is the same, and it names the candidate. That is not a
+    # contradiction about the bytes; it is a fact about WHERE those bytes
+    # were first published. What identifies the release being installed is
+    # the tag that was asked for, plus the agreement between the manifest's
+    # digest and the release's own SHA256SUMS -- which the caller checks
+    # before it installs a single byte.
+    #
+    # What must still be refused is a manifest that describes ANOTHER line of
+    # releases. So the only tolerated difference is the one promotion
+    # produces: the manifest of a candidate of THIS train, asked for by the
+    # STABLE release of this train. A candidate's own manifest must name the
+    # candidate, because a candidate is never promoted into a candidate.
+    bare = tag[1:] if tag.startswith("v") else tag
+    same_train_candidate = (
+        re.match(candidate_slot_regex, bare)
+        and bare.rsplit("-", 1)[0] == expected_train
+        and expected_tag == "v" + expected_train
+    )
+    if not same_train_candidate:
+        sys.exit(f"the manifest names release {tag!r}, but this release is {expected_tag!r}")
 
 version = doc.get("version")
 if not isinstance(version, str) or not PRODUCT_VERSION.match(version):
@@ -525,21 +549,30 @@ cmd_install() {
     die "Nothing was installed."
   fi
 
-  local manifest_info asset manifest_digest product_version
+  local manifest_info asset manifest_digest product_version manifest_tag
   if ! manifest_info="$(read_release_manifest "${manifest_path}" "${tag}" "${train}")"; then
     die "Refusing to install ${slot}: the release manifest does not describe this release."
   fi
   asset="$(printf '%s\n' "${manifest_info}" | sed -n '1p')"
   manifest_digest="$(printf '%s\n' "${manifest_info}" | sed -n '2p')"
   product_version="$(printf '%s\n' "${manifest_info}" | sed -n '3p')"
+  manifest_tag="$(printf '%s\n' "${manifest_info}" | sed -n '4p')"
   log_info "Release ${tag} carries product version ${product_version} in ${asset}"
+  if [ "${manifest_tag}" != "${tag}" ]; then
+    # This release was promoted from a candidate and publishes that
+    # candidate's manifest verbatim. It is not a contradiction, but it is a
+    # fact the reader of the log is entitled to see: the manifest names
+    # ${manifest_tag}, and the digest authority below agrees about the same
+    # bytes.
+    log_info "This release was promoted from ${manifest_tag} and publishes its manifest."
+  fi
 
   local zip_url="${base_url}/${tag}/${asset}"
   local zip_path="${workdir}/${asset}"
   local sums_path="${workdir}/${SHA256SUMS_NAME}"
 
   log_info "Downloading ${zip_url}"
-  if ! curl -fsSL --retry 3 --retry-delay 2 -o "${zip_path}" "${zip_url}"; then
+  if ! fetch_release_asset "${zip_url}" "${zip_path}" "${tag}" "${asset}"; then
     die "Failed to download ZIP from ${zip_url}"
   fi
 

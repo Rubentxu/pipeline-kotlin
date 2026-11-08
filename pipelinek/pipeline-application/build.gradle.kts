@@ -40,11 +40,46 @@ application {
     // as an error you can. The unified log goes to stdout, so the report lands in front
     // of the product's answer, and `version --json` stops being JSON.
     //
-    // The report is about a property the reader of the command cannot change, and the
-    // archive is mapped anyway, so the tag is silenced here: the product's stdout carries
-    // the product's answer and nothing else. Whoever wants to read those lines asks for
-    // them with the options named after the product, which are added last and win.
-    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Xlog:cds=off")
+    // THE PRODUCT'S STDOUT IS THE PRODUCT'S ANSWER, AND THE JVM'S TALK IS NOT IT.
+    // So the JVM's warnings and errors go to STDERR, where a diagnostic belongs, and
+    // stdout carries the product's answer and nothing else. This is not about the
+    // archive: it is about the stream, so it holds for whatever the JVM decides to
+    // say next, which the archive was only the instance of.
+    //
+    // The two options are ONE decision and they only work together:
+    //
+    //   -Xlog:all=off:stdout     turns OFF the JVM's default output, which is stdout.
+    //                              Without this, the default selection stays and the
+    //                              warning appears on BOTH streams: measured, stdout=2
+    //                              AND stderr=2 for the same two lines.
+    //   -Xlog:all=warning:stderr sends the warnings and the errors to stderr.
+    //
+    // MEASURED 2026-11-08 with the distribution's own archive and a classpath that
+    // does not match it (JDK 21.0.8, 24.0.2 and 25.0.4): stdout=0 on all three, and
+    // the JVM's lines on stderr, where an operator reads them.
+    //
+    // What was here before, and why it did not work:
+    //
+    //   -Xlog:cds=off         silences the `cds` TAG, and the message that stays is
+    //                         the one of the TAG SET {cds,dynamic}. Measured: stdout=1.
+    //   -Xlog:cds,dynamic=off matches nothing, and the JVM answers on stdout with
+    //                         "No tag set matches selection: dynamic": a tag set is
+    //                         written with a PLUS, not with a comma.
+    //   -Xlog:all=stderr      is not a thing: `stderr` there is a LEVEL, and the JVM
+    //                         refuses to start ("Invalid level 'stderr'").
+    //
+    // The report itself is not actionable -- the archive is mapped anyway, and what
+    // is lost is the optimized module handling -- but it is not hidden either: it is
+    // on stderr now. In JDK 25 the JVM raised its severity to ERROR, which upstream
+    // calls a bug (JDK-8369079, open): the same condition was a warning before.
+    //
+    // Whoever wants to read those lines on stdout asks for them with the options
+    // named after the product, which are added last and win.
+    applicationDefaultJvmArgs = listOf(
+        "--enable-native-access=ALL-UNNAMED",
+        "-Xlog:all=off:stdout",
+        "-Xlog:all=warning:stderr",
+    )
 }
 
 // Gradle 8.14.5 strict validation flags the application

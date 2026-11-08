@@ -658,10 +658,26 @@ cmd_install() {
   fi
   chmod +x "${binary}"
 
-  local reported_version
-  if ! reported_version="$("${binary}" version 2>&1 | head -n 1)"; then
+  # THE PRODUCT'S ANSWER IS ITS STDOUT. The JVM's talk is on stderr, and it is
+  # not the answer: the two streams were merged, so the line this read took
+  # could be a line the JVM wrote, and the identity check below compared THAT
+  # with the version the release carries -- refusing to install a release whose
+  # binary was fine. The stderr is kept aside and shown only when there is no
+  # answer at all, because that is the case where it explains why there is none.
+  local reported_version jvm_talk_file
+  jvm_talk_file="$(mktemp -t pipelinek-version-XXXXXX)"
+  local product_answer
+  product_answer="$("${binary}" version 2>"${jvm_talk_file}")" || true
+  reported_version="${product_answer%%$'\n'*}"
+  if [ -z "${reported_version}" ]; then
+    log_error "The extracted 'pipelinek version' printed nothing on stdout."
+    if [ -s "${jvm_talk_file}" ]; then
+      log_error "What the JVM said: $(tr '\n' ' ' < "${jvm_talk_file}")"
+    fi
+    rm -f "${jvm_talk_file}"
     die "Failed to execute the extracted 'pipelinek version'. Nothing was installed."
   fi
+  rm -f "${jvm_talk_file}"
   log_info "Installed binary reports: ${reported_version}"
 
   # The CLI contract is exactly "pipeline <Implementation-Version>" (see
@@ -815,8 +831,13 @@ cmd_doctor() {
   # wrong version on my PATH" is usually a stale symlink, a shadowed binary,
   # or a mismatch between the requested and installed identity; naming the
   # resolved root makes all three visible immediately.
-  local active_version
-  active_version="$("${binary}" version 2>&1 | head -n 1)" || active_version="<unreadable>"
+  # The product's answer is its stdout. The JVM's talk is on stderr, and it is
+  # not the version of the product: merged into the same line, it made the
+  # report name a JVM warning where it had to name the version.
+  local active_version product_answer
+  product_answer="$("${binary}" version 2>/dev/null)" || true
+  active_version="${product_answer%%$'\n'*}"
+  [ -n "${active_version}" ] || active_version="<unreadable>"
 
   # The slot and the tag are the identity of the RELEASE; the binary reports
   # the PRODUCT version, which for a candidate is the train it belongs to.

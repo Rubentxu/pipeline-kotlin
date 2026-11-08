@@ -39,6 +39,16 @@
 # to read it asks for it with the options named after the product, which are
 # added last and win.
 #
+# THE ARCHIVE'S TALK IS MUTED, AND ONLY THE ARCHIVE'S TALK
+#
+# The archive is the product's own file, and the JVM's report about it is not
+# actionable by the person running the command: the product rewrites the
+# archive when it goes stale, so there is nothing to do about what the JVM
+# says about it. The build mutes the tag set the JVM uses for that talk
+# ({cds,dynamic}) on both streams, so the answer's stream carries the answer
+# and the diagnostic stream carries only what a person can act on. Every other
+# diagnostic still goes to stderr.
+#
 # THE ARCHIVE IS ONLY VALID FOR THE JARS IT WAS BUILT FROM
 #
 # The JVM does NOT check the contents of the jars it finds: an archive written

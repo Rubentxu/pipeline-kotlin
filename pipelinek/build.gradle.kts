@@ -148,7 +148,33 @@ repositories {
 // rely on it in v0.94.0, so the two artifacts do NOT behave the same and one
 // version cannot carry both. The 0.94.1 train opens here (ProductVersion
 // 0.94.1) and its first candidate can be tagged v0.94.1-rc1.
-version = "0.94.1"
+// 2026-11-08: the 0.94.1 train closed at v0.94.1, and the law holds here
+// too: this tree mutes what the previous one only MOVED. The published
+// 0.94.1 artifact leaves the JVM's talk about the shared class archive on
+// stderr, and the operator reads it on every start: four lines on the cold
+// one ("Skipping jdk/internal/event/Event: JFR event class", "Not in loaded
+// state") and three on the hot one under JDK 25 ("An error has occurred
+// while processing the shared archive file", "Mismatched values for property
+// jdk.module.enable.native.access", "Disabling optimized module handling").
+// What they say is about a file the product owns and rewrites by itself, so
+// there is nothing for the person running the command to do about them.
+// This tree mutes the tag set {cds,dynamic} on both streams: the answer's
+// stream carries the answer and nothing else, and the diagnostic stream
+// carries only what somebody can act on. MEASURED on a distribution of this
+// tree, with the archive deleted so the JVM has to write it and talk about
+// it, and with the SAME distribution carrying the 0.94.1 options as the
+// only variable: with the old options stderr is 350 bytes cold and 325 hot
+// on JDK 25 (and 350 cold on JDK 21); with these options stderr is 0 bytes
+// cold and hot on JDK 21, 24 and 25, stdout is 16 bytes ("pipeline
+// 0.94.2") in every reading, and the archive is still written (4.9 MB) and
+// still mapped. Whoever wants those lines asks for them with the options
+// named after the product, which are added last and win: measured,
+// PIPELINEK_OPTS="-Xlog:cds=warning:stderr" brings them back. The artifact a
+// person reads is not the artifact that was published, so the two do NOT
+// behave the same and one version cannot carry both. The 0.94.2 train opens
+// here (ProductVersion 0.94.2) and its first candidate can be tagged
+// v0.94.2-rc1.
+version = "0.94.2"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

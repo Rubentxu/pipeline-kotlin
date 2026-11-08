@@ -73,12 +73,43 @@ application {
     // on stderr now. In JDK 25 the JVM raised its severity to ERROR, which upstream
     // calls a bug (JDK-8369079, open): the same condition was a warning before.
     //
-    // Whoever wants to read those lines on stdout asks for them with the options
-    // named after the product, which are added last and win.
+    // THE ARCHIVE'S TALK IS NOT THE OPERATOR'S BUSINESS
+    //
+    // Moving the JVM's talk to stderr was not the end of it: on stderr it is still
+    // in front of the operator, and what it says is about a file the PRODUCT owns and
+    // the PRODUCT rewrites when it goes stale. The archive is the product's own
+    // file; the JVM's report about it is not actionable by the person running the
+    // command, and a command whose stderr is full of lines nobody can act on is as
+    // unreadable as one whose stdout is full of them.
+    //
+    // So the archive's talk is muted, and ONLY the archive's talk. The muted set is
+    // the tag set {cds,dynamic}, which is the set the JVM uses for everything it
+    // says about the shared archive, and the wildcard is the point: `-Xlog:cds=off`
+    // mutes the TAG `cds` and leaves the SET alive, and the line that survives is
+    // the one nobody could act on anyway ("Skipping jdk/internal/event/Event: JFR
+    // event class", "Not in loaded state").
+    //
+    //   -Xlog:cds*=off:stdout  the archive's talk does not reach the answer's stream.
+    //   -Xlog:cds*=off:stderr  and it does not reach the diagnostic stream either.
+    //
+    // MEASURED 2026-11-08 on a distribution of this tree, with the archive DELETED
+    // so the JVM has to write it and talk about it, on JDK 21.0.8, 24.0.2 and
+    // 25.0.4: stderr=0 bytes cold and hot on all three, stdout=16 bytes
+    // ("pipeline 0.94.2") in every reading, and the archive is still written
+    // (4.9 MB) and still mapped. The SAME distribution with the 0.94.1 options
+    // and nothing else changed is the baseline: stderr=350 bytes cold on JDK 21
+    // and JDK 25, and 325 bytes hot on JDK 25. The OTHER diagnostics are not
+    // muted: what the JVM says that is not about the archive still goes to
+    // stderr, where it belongs.
+    //
+    // Whoever wants to read those lines asks for them with the options named after
+    // the product, which are added last and win.
     applicationDefaultJvmArgs = listOf(
         "--enable-native-access=ALL-UNNAMED",
         "-Xlog:all=off:stdout",
         "-Xlog:all=warning:stderr",
+        "-Xlog:cds*=off:stdout",
+        "-Xlog:cds*=off:stderr",
     )
 }
 

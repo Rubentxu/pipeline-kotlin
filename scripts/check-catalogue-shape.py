@@ -134,16 +134,21 @@ def scope(directory: Path, examples: dict[Path, list[str]]) -> set[Path]:
 
 
 def reachable(root: Path, index: Path, examples: dict[Path, list[str]],
-              findings: list[str]) -> set[Path]:
+              findings: list[str], language: str) -> set[Path]:
     """The examples an index reaches, following the links it declares.
 
     A row that points at an example reaches that example. A row that points
     at a group reaches the examples of that group, and the number it
     declares has to be the number there are.
+
+    The language is an argument and not a constant: an index is written in
+    two languages, and the two have to be compared. Reading the same file
+    twice would compare the English index with itself, and the comparison
+    would pass without ever looking at the Spanish one.
     """
     reached: set[Path] = set()
     for link, declared in rows_of(
-            (index / LANGUAGES[0]).read_text(encoding="utf-8")):
+            (index / language).read_text(encoding="utf-8")):
         target = resolve(root, index, link)
         if target is None:
             findings.append(
@@ -227,8 +232,8 @@ def main() -> int:
                     "in the two languages")
         if not all((index / name).is_file() for name in LANGUAGES):
             continue
-        english = reachable(root, index, examples, findings)
-        spanish = reachable(root, index, examples, findings)
+        english = reachable(root, index, examples, findings, LANGUAGES[0])
+        spanish = reachable(root, index, examples, findings, LANGUAGES[1])
         if english != spanish:
             findings.append(
                 f"{label(root, index)}: the two languages reach different "

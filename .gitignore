@@ -66,9 +66,12 @@ bin/
 ### Mac OS ###
 .DS_Store
 pipeline-kts
-/.claude/commands/connascence.md
-/.claude/commands/execute-prp.md
-/.claude/commands/generate-prp.md
+### Configuracion local del agente ###
+# Todo lo que vive bajo .claude/ es configuracion de esta maquina, no
+# contenido del proyecto: permisos, reglas y comandos son estado local y se
+# regeneran. Se ignora el directorio entero y no ficheros sueltos, para que
+# un fichero nuevo no aparezca por sorpresa en git status.
+/.claude/
 CLAUDE.md
 /.windsurfrules
 .aider*

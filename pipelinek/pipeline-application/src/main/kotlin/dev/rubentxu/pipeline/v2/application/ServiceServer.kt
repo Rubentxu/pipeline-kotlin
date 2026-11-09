@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -143,7 +144,17 @@ internal class ServiceServer(
                 continue
             }
             openConnections.incrementAndGet()
-            worker.execute { serveConnection(connection) }
+            try {
+                worker.execute { serveConnection(connection) }
+            } catch (_: RejectedExecutionException) {
+                // The service is stopping and the worker is already closed: this
+                // connection has nobody to serve it. It is closed here, and the
+                // count that was taken for it is given back, so a service that
+                // is stopping does not leave a client holding a socket that
+                // nobody will answer.
+                connection.close()
+                openConnections.decrementAndGet()
+            }
         }
     }
 

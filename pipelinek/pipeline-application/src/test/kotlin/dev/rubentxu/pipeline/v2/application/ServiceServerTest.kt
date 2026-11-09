@@ -156,6 +156,24 @@ class ServiceServerTest {
         }
     }
 
+    @Test
+    fun `a connection that arrives when the service is stopping is closed`() {
+        val connection = ScriptedConnection(ServiceRead.Line(VERSION_REQUEST))
+        val server = ServiceServer(ScriptedTransport(listOf(connection)), operations())
+        server.close()
+
+        server.serve()
+
+        assertTrue(
+            connection.closed,
+            "a connection that nobody can serve is closed, not left holding a socket",
+        )
+        assertTrue(
+            connection.written.isEmpty(),
+            "a connection that nobody can serve gets no answer",
+        )
+    }
+
     /**
      * Serves the scripted connections and waits for the answers.
      */
@@ -210,7 +228,9 @@ class ServiceServerTest {
         override fun accept(): ServiceConnection? = pending.removeFirstOrNull()
 
         override fun close() {
-            pending.clear()
+            // The queue survives the close on purpose: a transport that is
+            // closed may still hand out a connection that arrived before, and
+            // the service has to know what to do with it.
         }
     }
 

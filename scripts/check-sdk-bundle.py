@@ -35,6 +35,14 @@ that carried its own copy of the list would be a second authority about what
 the product publishes, and the day the two disagreed the checker would certify
 a bundle nobody intended.
 
+The MATURITY row joins two name spaces, and it joins them the same way: the
+published name is the directory the bundle carries the artifact under, and the
+module is what the artifact itself declares (see `kotlin_module_of`). The
+maturity contract is written in modules, and the published name is not a
+module: the two were the same string until the coordinates were renamed, and
+a row that looked one up by the other then stopped finding what it was
+looking for.
+
 The signature row reads the local keyring with `gpg`, and the checksums are
 RECOMPUTED here rather than believed: a checksum file that says "ok" about
 bytes that changed is not a checksum. Everything else is read from the files.
@@ -191,6 +199,48 @@ def jar_entries(version_dir: Path, artifact: str) -> list[str]:
         raise Failure(f"{artifact} has no JAR in {version_dir}")
     with zipfile.ZipFile(jar) as archive:
         return archive.namelist()
+
+
+def kotlin_module_of(version_dir: Path, artifact: str) -> str | None:
+    """The module an artifact was built from, as the artifact itself declares it.
+
+    The JAR carries the Kotlin module declaration, whose name is
+    `<group>_<module>.kotlin_module`, and the module is the Gradle project the
+    artifact was built from: the name a consumer never resolves and the name
+    the maturity contract is written in.
+
+    It is read from the artifact's OWN bytes and not from a table written
+    here, because the table would be a second authority about what the
+    product publishes. The two names are different facts and they meet HERE:
+    the directory the bundle publishes the artifact under is the coordinate,
+    and the declaration inside the artifact is the module. The rename broke
+    the coincidence that made the two the same string, and the checker that
+    looked up the maturity by the published name stopped finding it: the
+    contract declares `pipeline-domain` and the bundle publishes
+    `pipelinek-domain`, and the row said "the maturity contract declares
+    nothing about it" about five contracts that ARE declared.
+
+    `None` when the artifact declares no module, or declares more than one:
+    a maturity that cannot be read is not a maturity that is satisfied.
+    """
+    jar = version_dir / f"{artifact}-{version_dir.name}.jar"
+    if not jar.is_file():
+        return None
+    try:
+        with zipfile.ZipFile(jar) as archive:
+            declarations = [
+                name for name in archive.namelist() if name.endswith(".kotlin_module")
+            ]
+    except (zipfile.BadZipFile, OSError):
+        return None
+    if len(declarations) != 1:
+        return None
+    stem = declarations[0].removeprefix("META-INF/").removesuffix(".kotlin_module")
+    # The group carries no underscore, so everything after the FIRST one is
+    # the module: a module whose own name carries one still comes out whole.
+    if "_" not in stem:
+        return None
+    return stem.split("_", 1)[1]
 
 
 def text_entries(version_dir: Path, artifact: str) -> list[tuple[str, str]]:
@@ -540,11 +590,23 @@ def check_maturity(
     for artifact in sorted(coordinates):
         if artifact == bom:
             continue
-        classification = contracts.get(artifact)
-        if not classification:
-            problems.append(f"{artifact}: the maturity contract declares nothing about it")
+        # The maturity contract is written in MODULES: the artifact's own
+        # declaration says which module it is, and that is the name the
+        # contract is keyed by. The published name is a different fact, and
+        # the two meet in the artifact.
+        module = kotlin_module_of(coordinates[artifact], artifact)
+        if module is None:
+            problems.append(
+                f"{artifact}: the artifact declares no module, so its maturity cannot be read"
+            )
             continue
-        declared.append(f"{artifact}={classification}")
+        classification = contracts.get(module)
+        if not classification:
+            problems.append(
+                f"{artifact} (module {module}): the maturity contract declares nothing about it"
+            )
+            continue
+        declared.append(f"{artifact}={classification} (module {module})")
     for artifact, version_dir in sorted(coordinates.items()):
         for document_name in (f"{artifact}-{version_dir.name}.pom", f"{artifact}-{version_dir.name}.module"):
             document_path = version_dir / document_name

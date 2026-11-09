@@ -90,6 +90,20 @@ Dale a la ejecución un journal y un control root, y cada paso, evento y salida 
 
 `inspect` muestra los stages, los pasos y sus resultados; `events` lee el carril de eventos; `observe` lee la consola y el plano de salida de la ejecución. La lista completa de verbos está en `pipelinek --help`.
 
+### Leer una ejecución desde fuera
+
+Los hechos de una ejecución se leen desde fuera del producto, y sólo por las puertas que el producto abre.
+
+**Qué puede leer un consumidor.** Los puertos de lectura publicados son todo el lado de lectura:
+
+- el carril de eventos, como eventos tipados, paginados por secuencia (`EventRecordReadPort`);
+- el plano de salida, como bytes comprometidos, dirigidos por stream y por cursor (`OutputReadPort`);
+- el estado de la ejecución, como una observación (`RuntimeObservation`).
+
+**Qué no puede hacer un consumidor.** El lado de escritura del almacén de eventos, el puerto de anexado de salida, la entrada de recuperación y la identidad de la ejecución no forman parte de ningún contrato publicado. Un consumidor que anexara al carril de eventos de una ejecución, o comprometiera bytes en su plano de salida, sería una segunda autoridad sobre los hechos de esa ejecución: el plano se lee, pero no se escribe, no se reserva, no se recupera y no se poda.
+
+**Dos puertas, un hecho.** La línea de órdenes lee una ejecución del almacén; el servicio lee la misma ejecución del mismo almacén y responde por el socket. `pipelinek inspect --state` y `pipelinek inspect --state --endpoint <socket>` imprimen la misma línea y salen con el mismo código, porque el valor que hay detrás de las dos es el mismo `RuntimeObservation`.
+
 ---
 
 ## Capacidades principales

@@ -6,7 +6,6 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RunStructureResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.StructureRunOptions
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -55,8 +54,9 @@ class ServiceServerTest {
         serve(connection)
 
         val answer = answerOf(connection)
-        assertTrue(
-            answer["ok"]?.jsonPrimitive?.boolean ?: false,
+        assertEquals(
+            "answer",
+            answer["kind"]?.jsonPrimitive?.content,
             "the service answered the question: ${connection.written}",
         )
         assertEquals(
@@ -118,7 +118,7 @@ class ServiceServerTest {
         val arriving = ScriptedConnection(ServiceRead.Line(VERSION_REQUEST))
         val transport = ScriptedTransport(listOf(holding, arriving))
 
-        val server = ServiceServer(transport, operations(), ServiceLimits(maxConnections = 1))
+        val server = ServiceServer(transport, operations(), streets(), ServiceLimits(maxConnections = 1))
         try {
             server.serve()
 
@@ -139,7 +139,7 @@ class ServiceServerTest {
         val arriving = ScriptedConnection(ServiceRead.Line(VERSION_REQUEST))
         val transport = ScriptedTransport(listOf(holding, arriving))
 
-        val server = ServiceServer(transport, operations(), ServiceLimits(maxConnections = 1))
+        val server = ServiceServer(transport, operations(), streets(), ServiceLimits(maxConnections = 1))
         try {
             server.serve()
             holding.release()
@@ -159,7 +159,7 @@ class ServiceServerTest {
     @Test
     fun `a connection that arrives when the service is stopping is closed`() {
         val connection = ScriptedConnection(ServiceRead.Line(VERSION_REQUEST))
-        val server = ServiceServer(ScriptedTransport(listOf(connection)), operations())
+        val server = ServiceServer(ScriptedTransport(listOf(connection)), operations(), streets())
         server.close()
 
         server.serve()
@@ -174,11 +174,35 @@ class ServiceServerTest {
         )
     }
 
+    @Test
+    fun `a subscription is served by the street and the connection closes when it ends`() {
+        val connection = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
+        val served = mutableListOf<ServiceSubscriptionRequest>()
+        val server = ServiceServer(ScriptedTransport(listOf(connection)), operations(), streets(served))
+        try {
+            server.serve()
+            connection.awaitAnswered()
+
+            assertEquals(1, served.size, "the street was asked to serve the subscription")
+            assertEquals("run-1", served.first().runId)
+            assertTrue(
+                connection.written.isNotEmpty(),
+                "the street wrote the frames of the street on the connection",
+            )
+            assertTrue(
+                connection.closed,
+                "the connection is closed when the street ends, and not before",
+            )
+        } finally {
+            server.close()
+        }
+    }
+
     /**
      * Serves the scripted connections and waits for the answers.
      */
     private fun serve(vararg connections: ScriptedConnection) {
-        val server = ServiceServer(ScriptedTransport(connections.toList()), operations())
+        val server = ServiceServer(ScriptedTransport(connections.toList()), operations(), streets())
         try {
             server.serve()
             connections.forEach { it.awaitAnswered() }
@@ -217,6 +241,27 @@ class ServiceServerTest {
             )
         },
     )
+
+    /**
+     * The streets, faked.
+     *
+     * These rows are about the SERVICE and not about a street, so the fake
+     * writes one line and ends: the row that is about a street asserts on
+     * what the street was asked to serve.
+     */
+    private fun streets(served: MutableList<ServiceSubscriptionRequest> = mutableListOf()): ServiceStreets =
+        object : ServiceStreets {
+            override fun serve(connection: ServiceConnection, request: ServiceSubscriptionRequest) {
+                served.add(request)
+                connection.writeLine(
+                    ServiceCodec.encodeRecord(
+                        cursor = "evt-cursor-v1:${request.runId}:0",
+                        record = Json.parseToJsonElement("""{"type":"event"}""").jsonObject,
+                        hasMore = false,
+                    ),
+                )
+            }
+        }
 
     /**
      * A transport that hands out the connections it was given, and then none.
@@ -304,6 +349,10 @@ class ServiceServerTest {
     private companion object {
         /** A question about the version of the product. */
         private const val VERSION_REQUEST: String =
-            """{"schema":"pipelinek.service/1","op":"version"}"""
+            """{"schema":"pipelinek.service/2","op":"version"}"""
+
+        /** A request for the events of a run. */
+        private const val EVENTS_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-1"}"""
     }
 }

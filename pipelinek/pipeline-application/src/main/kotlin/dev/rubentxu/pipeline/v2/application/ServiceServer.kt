@@ -52,6 +52,32 @@ internal interface ServiceConnection : AutoCloseable {
 }
 
 /**
+ * The streets the service serves.
+ *
+ * ## What the seam is for
+ *
+ * A subscription is a connection that stays open, and what happens on it is
+ * worth testing without a socket in the way —the frames, the cursor and the
+ * end of the street— exactly as the transport's behaviour is worth testing
+ * without a service in the way.
+ *
+ * ## What it does not decide
+ *
+ * Nothing about the protocol: the lines a street carries are lines of the
+ * contract in [ServiceCodec].
+ */
+internal interface ServiceStreets {
+
+    /**
+     * Serves [request] on [connection], and returns when the street ends.
+     *
+     * The street writes the frames; it does not close the connection, which
+     * belongs to whoever opened it.
+     */
+    fun serve(connection: ServiceConnection, request: ServiceSubscriptionRequest)
+}
+
+/**
  * What the reading of a line produced.
  */
 internal sealed interface ServiceRead {
@@ -96,13 +122,30 @@ internal data class ServiceLimits(
  * limits, and the answer to every line. The transport carries the lines and
  * the operations know what they mean.
  *
- * ## Why the requests are served one at a time
+ * ## Why there is a thread per connection
  *
- * The substrate is composed once, at startup, and it is a SQLite store. A
- * store reused by several requests at the same time raises a question about
- * thread safety that this slice has no reason to answer. So the service has
- * ONE worker, and a connection waits its turn. The limit of connections is the
- * limit of clients WAITING, not the limit of work in flight.
+ * The substrate is composed once, at startup, and it is a SQLite store, and
+ * the first version of this server had ONE worker because a store reused by
+ * several requests at the same time raises a question about thread safety
+ * that a slice of read-only questions had no reason to answer.
+ *
+ * A subscription DOES have a reason: it occupies its connection while it
+ * lasts, and with a single worker one live subscription would block every
+ * other client — including a `version` question that takes a millisecond.
+ *
+ * The answer is measured rather than assumed:
+ *
+ *  - the event store's READ door opens its own read-only connection per read,
+ *    so two readers do not share mutable state;
+ *  - the Output Plane takes its locks PER STREAM, so two readers of
+ *    different streams do not get in each other's way — within this
+ *    process; the writer of a run usually lives in another one, and what
+ *    fences two processes is the run's lease, not this;
+ *  - the WRITE door is never touched: the socket is read-only.
+ *
+ * So the service has a thread per connection, bounded by the same limit that
+ * bounds the connections. The limit stops meaning "the limit of clients
+ * WAITING" and starts meaning "the limit of work IN FLIGHT".
  *
  * ## Why the connection over the limit is refused by name
  *
@@ -113,14 +156,21 @@ internal data class ServiceLimits(
 internal class ServiceServer(
     private val transport: ServiceTransport,
     private val operations: ServiceOperations,
+    private val streets: ServiceStreets,
     private val limits: ServiceLimits = ServiceLimits(),
 ) : AutoCloseable {
 
     /** The connections this service holds open right now. */
     private val openConnections = AtomicInteger(0)
 
-    /** The single worker. One thread, because the substrate is one store. */
-    private val worker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+    /**
+     * The workers. One per connection in flight, and no more: the pool is
+     * sized by the same limit that bounds the connections, so a client over
+     * the limit is refused rather than queued.
+     */
+    private val worker: ExecutorService = Executors.newFixedThreadPool(
+        limits.maxConnections,
+    ) { runnable ->
         Thread(runnable, "pipelinek-service").apply { isDaemon = true }
     }
 
@@ -162,14 +212,16 @@ internal class ServiceServer(
      * Answers one connection and closes it.
      *
      * One request per connection: the connection is closed after its answer,
-     * and a client that wants another question opens another one. The
-     * streaming operations of a later slice change this, and that is why the
-     * protocol is versioned from the first day.
+     * and a client that wants another question opens another one. A
+     * SUBSCRIPTION is the exception that the protocol version announces: its
+     * connection stays open and the street writes on it until the street
+     * ends, and the connection is closed then — by the same `finally`, so
+     * there is one place that closes a connection.
      */
     private fun serveConnection(connection: ServiceConnection) {
         try {
             when (val read = connection.readLine(limits.maxLineBytes, limits.readDeadlineMillis)) {
-                is ServiceRead.Line -> connection.writeLine(answerOf(read.text))
+                is ServiceRead.Line -> serveLine(connection, read.text)
                 is ServiceRead.TooLarge ->
                     connection.writeLine(answerOfRefusal(ServiceRefusal.RequestTooLarge))
                 is ServiceRead.TimedOut -> Unit
@@ -186,6 +238,21 @@ internal class ServiceServer(
     }
 
     /**
+     * Serves the line [text] on [connection].
+     *
+     * A question is answered with one line; a subscription is served by the
+     * street, which writes as many lines as the street has.
+     */
+    private fun serveLine(connection: ServiceConnection, text: String) {
+        when (val decoded = ServiceCodec.decode(text)) {
+            is ServiceDecoding.Decoded ->
+                connection.writeLine(ServiceCodec.encode(operations.answer(decoded.request)))
+            is ServiceDecoding.Subscribed -> streets.serve(connection, decoded.request)
+            is ServiceDecoding.Refused -> connection.writeLine(answerOfRefusal(decoded.refusal))
+        }
+    }
+
+    /**
      * The refusal of a client that arrived when the service was full.
      */
     private fun refuseOverTheLimit(connection: ServiceConnection) {
@@ -196,14 +263,6 @@ internal class ServiceServer(
         } finally {
             connection.close()
         }
-    }
-
-    /**
-     * The line that answers [line].
-     */
-    private fun answerOf(line: String): String = when (val decoded = ServiceCodec.decode(line)) {
-        is ServiceDecoding.Decoded -> ServiceCodec.encode(operations.answer(decoded.request))
-        is ServiceDecoding.Refused -> answerOfRefusal(decoded.refusal)
     }
 
     /**

@@ -15,7 +15,9 @@ import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventRecordReadPortStoreAdapter
+import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
 import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
+import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
 import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPort
 import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPortStoreAdapter
 import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
@@ -217,6 +219,36 @@ internal fun composeRuntimeControlPort(
 }
 
 /**
+ * The event plane's READ port: the store's own rows, and the lease as the
+ * authority on which runs were DECLARED.
+ *
+ * ## Why this exists
+ *
+ * The wiring —the store's rows, and the lease as the second authority— was
+ * written by hand in three compositions, and the local service needs a
+ * fourth. A fourth hand-written wiring is a fourth place where the two
+ * authorities can be wired differently, so the wiring lives HERE, once, and
+ * every composition asks for the port instead of building it.
+ *
+ * ## Why the lease is a reader and not a writer
+ *
+ * [lease] is consulted for ONE question: was this run declared? That is a
+ * question about a file's existence, and asking it takes no lock. Two readers
+ * of the same lease directory are two readers of ONE authority, and they
+ * cannot disagree about it.
+ */
+internal fun composeEventRecordReadPort(
+    eventStore: SqliteEventStore,
+    lease: FileBackedRunExecutionLeaseStore,
+): EventRecordReadPort = EventRecordReadPortStoreAdapter(
+    reader = eventStore,
+    runDeclared = { runId ->
+        val identity = RunId.of(runId)
+        identity != null && lease.isKnown(identity)
+    },
+)
+
+/**
  * The introspection plane: the published [RuntimeIntrospectionPort] composed
  * over the same stores every other read in this CLI reads.
  *
@@ -251,13 +283,7 @@ internal fun composeRuntimeIntrospectionPort(
     val cursors = stores.cursors
     val lease = stores.lease
     val output = OutputPlaneProvider.storeForReading(controlRoot)
-    val eventReader = EventRecordReadPortStoreAdapter(
-        reader = eventStore,
-        runDeclared = { runId ->
-            val identity = RunId.of(runId)
-            identity != null && lease.isKnown(identity)
-        },
-    )
+    val eventReader = composeEventRecordReadPort(eventStore, lease)
     return RuntimeIntrospectionPortStoreAdapter(
         eventReads = eventReader,
         tails = output,

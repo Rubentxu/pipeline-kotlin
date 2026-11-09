@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application.observation
 
 import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.EventRecordRead
+import dev.rubentxu.pipeline.v2.events.UndecodableReason
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -45,9 +47,47 @@ object ObservationJsonLines {
      * Pure and total. It never emits a partial line, because a consumer reading by lines would
      * treat a fragment as a record.
 */
-    fun encodeOne(record: ObservationRecord): String = when (record) {
-        is ObservationRecord.Event -> encodeEventLine(record.event)
-        is ObservationRecord.Output -> encodeOutputLine(record)
+    fun encodeOne(record: ObservationRecord): String = encodeOneObject(record).toString()
+
+    /**
+     * One record, as the document it is.
+     *
+     * The same shape [encodeOne] writes, without the round trip through a
+     * string: a consumer that embeds the record in a bigger document —the
+     * service's wire, for one—needs the document itself, and building it
+     * twice would be two encoders of one shape.
+     */
+    fun encodeOneObject(record: ObservationRecord): JsonObject = when (record) {
+        is ObservationRecord.Event -> encodeEventObject(record.event)
+        is ObservationRecord.Output -> encodeOutputObject(record)
+    }
+
+    /**
+     * A durable row that could not be read, as the document it is.
+     *
+     * ## Why a row that does not decode is a RECORD and not a hole
+     *
+     * A row the store holds is a fact of persistence. A row this binary
+     * cannot interpret is still that row, and the refusal carries its
+     * identity —its position and its kind— so a consumer can act on it
+     * instead of guessing. The document says so in its own words: `type` is
+     * `undecodable`, and the position is the same position the cursor of
+     * the record carries.
+     */
+    fun encodeUndecodableObject(read: EventRecordRead.Undecodable): JsonObject = buildJsonObject {
+        put("type", "undecodable")
+        put("sequence", read.sequence)
+        read.kind?.let { put("kind", it) }
+        read.eventId?.let { put("eventId", it) }
+        put("reason", reasonWord(read.reason))
+    }
+
+    /**
+     * The word a refusal of interpretation carries.
+     */
+    private fun reasonWord(reason: UndecodableReason): String = when (reason) {
+        is UndecodableReason.MalformedPayload -> "malformed-payload"
+        is UndecodableReason.UnknownKind -> "unknown-kind"
     }
 
     /**
@@ -74,16 +114,16 @@ object ObservationJsonLines {
      * splice strings together, because a second encoder or a string edit would each be a second
      * authority over the same wire shape and would drift from it.
 */
-    private fun encodeEventLine(event: DomainEvent): String {
+    private fun encodeEventObject(event: DomainEvent): JsonObject {
         val payload = Json.parseToJsonElement(JsonEventLog.encodeOne(event)).jsonObject
         return buildJsonObject {
             put("type", "event")
             put("kind", event.kind)
             for ((key, value) in payload) put(key, value)
-        }.toString()
+        }
     }
 
-    private fun encodeOutputLine(record: ObservationRecord.Output): String {
+    private fun encodeOutputObject(record: ObservationRecord.Output): JsonObject {
         val decoded = decodeStrictly(record.bytes)
         return buildJsonObject {
             put("type", "output")
@@ -101,7 +141,7 @@ object ObservationJsonLines {
             } else {
                 put("text", decoded)
             }
-        }.toString()
+        }
     }
 
     /**

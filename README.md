@@ -245,15 +245,35 @@ All three paths are required and none of them has a default: the service reads t
 
 The socket is a file of the filesystem, and its mode is the boundary. The socket is `rw-------`, and its directory has to be private (`rwx------`) — if the directory grants anything to the group or to others, the service refuses to start rather than publish a socket those users could open.
 
-One request per line, one answer per line, in JSON, with the version of the protocol in the `schema` field:
+One request per line, one answer per line, in JSON, with the version of the protocol in the `schema` field and the kind of the line in `kind`:
 
 ```json
-{"schema":"pipelinek.service/1","op":"run.state","runId":"34b28ddc-…"}
-{"schema":"pipelinek.service/1","ok":true,"result":{"state":"terminal","outcome":"succeeded","at":0}}
-{"schema":"pipelinek.service/1","ok":false,"refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
+{"schema":"pipelinek.service/2","op":"run.state","runId":"34b28ddc-…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"state":"terminal","outcome":"succeeded","at":0}}
+{"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
 The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections` — so a client reads a word and not a sentence.
+
+#### Subscriptions
+
+A subscription is a connection that stays open and receives a **street** of lines. There are two, and they are never mixed: the events of a run and the console of a run are two different positions with no total order between them, so a client that wants both opens two connections.
+
+```json
+{"schema":"pipelinek.service/2","op":"events.follow","runId":"34b28ddc-…","after":"evt-cursor-v1:34b28ddc-%E2%80%93:12"}
+{"schema":"pipelinek.service/2","kind":"record","cursor":"evt-cursor-v1:34b28ddc-%E2%80%93:13","hasMore":true,"record":{"type":"event","kind":"RunStarted","sequence":13}}
+{"schema":"pipelinek.service/2","kind":"end","reason":"terminal-observed","cursor":"evt-cursor-v1:34b28ddc-%E2%80%93:19"}
+```
+
+The console street is the same shape with `op` `output.follow` and a cursor of the other family, `out-frame-ord-v1:<ordinal>`.
+
+`after` is optional: absent means "from the beginning". The cursor is the position the client resumes from, and it travels **decoded**: a token of the other plane, a token that does not decode, and a token minted for another run are three different facts, and all three are refused by name (`invalid-cursor`) before the street opens. The server keeps no state per client — the cursor lives in the client — so reconnecting from the last cursor you persisted loses nothing the store still retains, and two clients of the same run never see each other.
+
+`hasMore` says whether more of that lane follows the record. It does **not** say the run is over: the only end of a street is the `end` line, and a page with `hasMore: false` is not an ending.
+
+The end of a street carries one word, `terminal-observed`: the run's terminal fact was observed. It says nothing about whether the run **succeeded** — that is `run.state`'s answer, or the `outcome` of the terminal event, and a street that carried it would be a second opinion about the run's fate. A street that cannot observe the terminal fact does not end: it refuses, naming the fact that stopped it (`unknown-run`, `cursor-beyond-tail`, `storage-failed`, `output-plane-refused`).
+
+A row of the event history that this build cannot read is not a hole: it travels as a record of its own, with its position and its kind, so a client can act on it instead of guessing.
 
 The socket file is deleted when the service stops. A socket left behind by a crash is recognised for what it is and replaced on the next start; a socket another service is already listening on is never displaced, and a path that is not a socket is never deleted.
 

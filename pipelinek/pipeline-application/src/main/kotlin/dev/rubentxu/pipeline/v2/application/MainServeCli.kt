@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreRefusal
@@ -96,12 +97,13 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
     }
 
     val controlRootPath = Paths.get(controlRoot)
+    val clock = SystemClock()
     val operations = try {
         ServiceOperations(
             introspection = composeRuntimeIntrospectionPort(
                 eventStore = store,
                 controlRoot = controlRootPath,
-                clock = SystemClock(),
+                clock = clock,
             ),
             substrate = {
                 ServiceSubstrate(
@@ -111,6 +113,25 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
                     controlRootPresent = Files.exists(controlRootPath),
                 )
             },
+        )
+    } catch (e: Exception) {
+        store.close()
+        val error = CliError.SubstrateUnavailable(
+            e.message ?: "the control root cannot be read",
+        )
+        err.println(error.refusalLines("serve").joinToString("\n"))
+        err.println(SERVE_USAGE)
+        return error.toCliExit()
+    }
+
+    // The streets are composed over the SAME substrate and the SAME authorities the
+    // questions are answered from, so a run cannot be "unknown" to one door of the
+    // service and "known" to the other.
+    val streets = try {
+        val stores = DurableStores.open(store, controlRootPath, clock)
+        ServiceSubscription(
+            lanes = ComposeLanes.forService(store, controlRootPath),
+            events = composeEventRecordReadPort(store, stores.lease),
         )
     } catch (e: Exception) {
         store.close()
@@ -132,7 +153,7 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
         return error.toCliExit()
     }
 
-    val server = ServiceServer(transport, operations)
+    val server = ServiceServer(transport, operations, streets)
     val shutdown = Thread({ server.close() }, "pipelinek-service-shutdown")
     Runtime.getRuntime().addShutdownHook(shutdown)
     try {

@@ -713,6 +713,58 @@ internal object ComposeLanes {
             }
         }
     }
+
+    /**
+     * The lanes the local SERVICE reads.
+     *
+     * ## Why the service gets its own composition and not the CLI's
+     *
+     * The command line's lanes are built from a PARSED request, which may
+     * name no store at all and no control root at all. The service names
+     * both before it starts —`--db` and `--control-root` are required—so
+     * the service's lanes are never absent, and the difference between
+     * "this lane does not exist" and "this lane has nothing in it" cannot
+     * arise here.
+     *
+     * ## Why the same readers
+     *
+     * The Output Plane is read through the SAME
+     * [FrameIndexedObservationOutputReader] the command line reads, and the
+     * event lane through the SAME store. The socket and the command line
+     * cannot disagree about a run because they ask the same authorities.
+     */
+    fun forService(eventStore: SqliteEventStore, controlRoot: java.nio.file.Path): ObserveLanes {
+        val store = dev.rubentxu.pipeline.v2.runtime.durable.OutputPlaneProvider.storeForReading(
+            controlRoot,
+        )
+        val reader = FrameIndexedObservationOutputReader(store.frameIndex(), store, store)
+        return object : ObserveLanes {
+            override val hasEventStore: Boolean get() = true
+            override val hasOutputPlane: Boolean get() = true
+            override fun eventsOf(runId: String): Sequence<DomainEvent> =
+                eventStore.eventsFor(runId)
+
+            override fun hasRunFinished(runId: String): Boolean =
+                // RunFinished is the terminal FACT, and the event lane is its authority. Its
+                // absence is not a guess that the run is still going: it only means this
+                // authority cannot prove otherwise, which keeps reading.
+                eventStore.eventsFor(runId).any { it is RunFinished }
+            override fun outputOf(runId: String, afterOrdinal: Long, frameLimit: Int) =
+                reader.readOutput(runId, afterOrdinal, frameLimit)
+
+            override fun tailOf(runId: String, tailBytes: Long) = reader.readTail(runId, tailBytes)
+            override fun eventSliceOf(
+                runId: String,
+                after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
+                limit: Int,
+            ) = eventStore.readSlice(runId, after, limit)
+
+            override fun outputTailsOf(runId: String) = reader.tailStatesOf(runId)
+
+            // The service owns the store and closes it itself when the verb ends. A lane
+            // that closed it would close a substrate the service is still using.
+        }
+    }
 }
 
 /**

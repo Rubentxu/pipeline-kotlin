@@ -11,7 +11,7 @@ import kotlinx.serialization.json.put
  * to one of the cases below. The [name] is stable across releases and
  * is emitted in the [SCHEMA] JSON envelope on stderr before the
  * process terminates.
- * The 8 cases are exhaustive: any new exit reason must extend this
+ * The 9 cases are exhaustive: any new exit reason must extend this
  * sealed interface, not return an ad-hoc `Int`.
  * @see for the design rationale
 */
@@ -109,6 +109,26 @@ sealed interface CliExit {
         override val name: String get() = "IntegrityViolation"
     }
 
+    /**
+     * The service refused the client because it presented no authorization, or
+     * one the service does not know, or one whose scope does not cover the
+     * run.
+     *
+     * It is a case of its own and not the invalid-argument one, because the
+     * request was UNDERSTOOD: the client asked a question the service answers,
+     * and the answer was "not for you". A consumer that branches on the code
+     * has to be able to tell "you asked wrongly" from "you are not allowed to
+     * ask that", and the second is the one that a retry with another
+     * authorization can fix.
+     */
+    data class NotAuthorized(
+        override val message: String,
+        override val hint: String? = null,
+    ) : CliExit {
+        override val code: Int get() = 8
+        override val name: String get() = "NotAuthorized"
+    }
+
     companion object {
         const val SCHEMA: String = "pipelinek.cli/1"
 
@@ -153,6 +173,9 @@ sealed interface CliExit {
         internal val INTEGRITY_VIOLATION: CliExit =
             IntegrityViolation(message = "the durable material did not match its digest")
 
+        /** The case that owns code 8. */
+        internal val NOT_AUTHORIZED: CliExit = NotAuthorized(message = "the service refused the request")
+
         /**
          * Every case of this taxonomy, once.
          *
@@ -169,6 +192,7 @@ sealed interface CliExit {
             UNKNOWN_EXECUTION,
             READ_FAILURE,
             INTEGRITY_VIOLATION,
+            NOT_AUTHORIZED,
         )
 
         /**

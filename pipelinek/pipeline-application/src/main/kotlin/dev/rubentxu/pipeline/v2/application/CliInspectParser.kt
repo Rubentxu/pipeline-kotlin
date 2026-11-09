@@ -55,7 +55,7 @@ private fun scanOptions(args: Array<String>): InspectParseResult {
             "--failed", "--state", "--profile", "--explain", "--telemetry", "--otlp" ->
                 scan.flags += token
 
-            "--kind", "--stage", "--control-root", "--db", "--endpoint" -> {
+            "--kind", "--stage", "--control-root", "--db", "--endpoint", "--authorization-file" -> {
                 val refusal = readInspectValue(scan, token, args, index, ::applyPlain)
                 if (refusal != null) return InspectParseResult.Rejected(refusal)
                 index += 1
@@ -230,6 +230,7 @@ private class InspectScan {
         controlRoot = plain["--control-root"],
         dbPath = plain["--db"],
         endpoint = plain["--endpoint"],
+        authorizationFile = plain["--authorization-file"],
         state = "--state" in flags,
         profile = "--profile" in flags,
         explain = "--explain" in flags,
@@ -249,6 +250,7 @@ private class InspectScan {
  */
 private val INSPECT_OWNED_TOKENS: Set<String> = setOf(
     "--endpoint",
+    "--authorization-file",
     "--failed",
     "--state",
     "--profile",
@@ -294,6 +296,15 @@ data class CompiledInspectionQuery(
      * path is the only one there is.
      */
     val endpoint: String? = null,
+    /**
+     * The file the credential of the service is read from.
+     *
+     * Null means the file the service owns next to its socket, which is where
+     * the `trusted-local` profile keeps the token. It is admitted with
+     * `--endpoint` and with nothing else, because a credential is only ever
+     * presented to a service.
+     */
+    val authorizationFile: String? = null,
     /**
      * Report the RUN's lifecycle state instead of its records.
      *

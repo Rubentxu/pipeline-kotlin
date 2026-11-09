@@ -258,17 +258,38 @@ pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socke
 
 All three paths are required and none of them has a default: the service reads the substrate you name and listens where you say, so what the socket says about a run is comparable with what `inspect --state` says over the same inputs. The service never writes to the substrate it serves, and it does not create the control root it is about to read.
 
-The socket is a file of the filesystem, and its mode is the boundary. The socket is `rw-------`, and its directory has to be private (`rwx------`) — if the directory grants anything to the group or to others, the service refuses to start rather than publish a socket those users could open.
+The socket is a file of the filesystem, and its mode is the boundary. The socket is `rw-------`, and its directory has to be private (`rwx------` when the service creates it) — if the directory grants anything to the group or to others, the service refuses to start rather than publish a socket those users could open.
+
+Every request carries a **credential**: a token the service issued, in the `auth` field. A request without one is refused by name (`not-authorized`), and so is a request about a run the credential's scope does not cover (`run-not-authorized`).
 
 One request per line, one answer per line, in JSON, with the version of the protocol in the `schema` field and the kind of the line in `kind`:
 
 ```json
-{"schema":"pipelinek.service/2","op":"run.state","runId":"34b28ddc-…"}
+{"schema":"pipelinek.service/2","op":"run.state","runId":"34b28ddc-…","auth":"…"}
 {"schema":"pipelinek.service/2","kind":"answer","result":{"state":"terminal","attempt":1,"at":0,"outcome":"succeeded","terminalAt":0}}
 {"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
-The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections` — so a client reads a word and not a sentence.
+The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions` — so a client reads a word and not a sentence.
+
+#### Who may ask, and what the boundary really is
+
+The service issues one credential itself the first time it starts and keeps it in the file it owns next to the socket, `authorizations`, mode `0600`. One authorization per line — a token, a label and a scope:
+
+```text
+<token> <label> <scope>
+```
+
+The scope is `all`, `none`, or the run ids it covers. The label is for the operator and **never travels**: a label that travels can be enumerated by a client that presents tokens until one is accepted.
+
+Two profiles, and each one says out loud, when the service starts, what it promises:
+
+- **`trusted-local`** (the default) keeps the authorization in that file, and the file is readable by every process of the same user. The boundary is the file system, and the profile says so.
+- **`isolated`** reads the authorization from the service's **standard input** and writes it nowhere, so there is no file for another process of the same user to read.
+
+Neither profile separates two processes of the same user, and the service says that too: the JVM does not expose the credentials of the peer of a Unix socket, so nothing in this build can tell who connected. What a credential separates is the *identities the operator names* — a client that presents the token and a client that does not — and not two processes running as the same user. Read it as a boundary over the **service**, not over the **data**: the same substrate is readable from the command line, with no authorization at all.
+
+The service holds sixteen connections at once and serves eight subscriptions at once, and the two budgets are separate on purpose: a subscription occupies its connection while it lasts, while a question occupies it for a line. With one budget, sixteen subscribers could take every slot and deny `version` and `health` — the two questions that say whether the service is alive. A subscription over the budget is refused by name (`too-many-subscriptions`).
 
 The `run.state` answer carries the WHOLE observation: the attempt, the lease and its fencing token, the journal position, the tails of the output and the terminal with its outcome. A client that rebuilds it gets the same `RuntimeObservation` the command line renders, and there is no second shape of the same fact.
 
@@ -277,7 +298,7 @@ The `run.state` answer carries the WHOLE observation: the attempt, the lease and
 A subscription is a connection that stays open and receives a **street** of lines. There are two, and they are never mixed: the events of a run and the console of a run are two different positions with no total order between them, so a client that wants both opens two connections.
 
 ```json
-{"schema":"pipelinek.service/2","op":"events.follow","runId":"34b28ddc-…","after":"evt-cursor-v1:34b28ddc-%E2%80%93:12"}
+{"schema":"pipelinek.service/2","op":"events.follow","runId":"34b28ddc-…","auth":"…","after":"evt-cursor-v1:34b28ddc-%E2%80%93:12"}
 {"schema":"pipelinek.service/2","kind":"record","cursor":"evt-cursor-v1:34b28ddc-%E2%80%93:13","hasMore":true,"record":{"type":"event","kind":"RunStarted","sequence":13}}
 {"schema":"pipelinek.service/2","kind":"end","reason":"terminal-observed","cursor":"evt-cursor-v1:34b28ddc-%E2%80%93:19"}
 ```
@@ -299,7 +320,7 @@ The socket file is deleted when the service stops. A socket left behind by a cra
 The wire's vocabulary is a **published artifact**: `pipelinek-service-client` carries the requests, the refusals, the codec and a typed client, so a consumer writes no copy of any of them.
 
 ```kotlin
-val client = ServiceClient(Path.of("/run/pipelinek/service.sock"), Duration.ofSeconds(10))
+val client = ServiceClient(Path.of("/run/pipelinek/service.sock"), token, Duration.ofSeconds(10))
 
 when (val answer = client.runState("34b28ddc-…")) {
     is ServiceAnswer.Answered -> println(answer.value)   // a RuntimeObservation
@@ -310,6 +331,8 @@ when (val answer = client.runState("34b28ddc-…")) {
 }
 ```
 
+The token is REQUIRED: a client that could be built without one would connect, write a line and be refused with `not-authorized`, and a client that cannot work should not compile.
+
 `runState` returns the same `RuntimeObservation` the command line renders, so the answer a client reads and the line an operator sees are the same fact.
 
 The command line can speak to a service too, with `--endpoint`:
@@ -319,6 +342,8 @@ pipelinek inspect --state --endpoint ./state/pipelinek.sock 34b28ddc-…
 ```
 
 `--endpoint` is admitted by **one** mode of **one** verb: `inspect --state`, the only surface this CLI publishes that the service answers with the same rendering. Every other verb refuses the option **by name**, and there is no fallback: a service that is not there is reported as not there, never answered from the local store.
+
+The command line reads the token from the `PIPELINEK_SERVICE_TOKEN` variable, or from the file the service owns next to its socket, or from the file `--authorization-file` names. It never prints it: a secret this CLI prints ends up in a scrollback, in a log and in a shell history.
 
 The client's deadline closes the connection it opened and touches nothing else: the service is read-only, so a client that goes away leaves the run exactly as it was.
 

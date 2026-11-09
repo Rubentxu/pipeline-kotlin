@@ -51,12 +51,23 @@ internal object ServiceEndpoint {
     /**
      * The state of [runId], read from the service at [endpoint].
      *
+     * The [credential] is the token this client presents. It is a PARAMETER
+     * and not something read from the environment here: the caller decides
+     * where it comes from, and this function only presents it.
+     *
      * The answer goes to stdout and the refusal to stderr, like every other
      * answer and refusal of this CLI.
      */
-    fun report(endpoint: String, runId: String, out: PrintStream, err: PrintStream): Int {
+    fun report(
+        endpoint: String,
+        runId: String,
+        credential: String,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int {
         val client = ServiceClient(
             endpoint = Path.of(endpoint),
+            credential = credential,
             deadline = Duration.ofMillis(DEADLINE_MILLIS),
         )
         return when (val answer = client.runState(runId)) {
@@ -94,12 +105,35 @@ internal object ServiceEndpoint {
      *
      * A refusal that names the PROTOCOL has no local counterpart, and it is
      * answered by its own word.
+     *
+     * A refusal that names the AUTHORIZATION is a case of its own: the
+     * request was understood and it was refused anyway, so it is not the
+     * invalid-argument code but the not-authorized one. A consumer that
+     * branches on the code has to be able to tell "you asked wrongly" from
+     * "you are not allowed to ask that", and only the second can be fixed by
+     * presenting another token.
      */
     private fun refuse(refusal: ServiceRefusal, runId: String, err: PrintStream): Int {
         val runState = ServiceOperations.runStateRefusalOf(refusal)
         if (runState != null) {
             err.println("inspect: ${InspectionPresentation.renderRunStateRefusal(runState, runId)}")
             return CliExit.INVALID_ARGUMENT.code
+        }
+        when (refusal) {
+            ServiceRefusal.NotAuthorized -> {
+                err.println("inspect: the service refused the request: no authorization was accepted")
+                return CliExit.NOT_AUTHORIZED.code
+            }
+
+            is ServiceRefusal.RunNotAuthorized -> {
+                err.println(
+                    "inspect: the service refused the request: the authorization does not cover " +
+                        "run ${runId}",
+                )
+                return CliExit.NOT_AUTHORIZED.code
+            }
+
+            else -> Unit
         }
         err.println("inspect: the service refused the request: ${refusal.kind}")
         return when (refusal) {

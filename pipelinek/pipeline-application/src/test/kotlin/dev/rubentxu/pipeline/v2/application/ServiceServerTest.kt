@@ -126,7 +126,13 @@ class ServiceServerTest {
         val arriving = ScriptedConnection(ServiceRead.Line(VERSION_REQUEST))
         val transport = ScriptedTransport(listOf(holding, arriving))
 
-        val server = ServiceServer(transport, operations(), streets(), ServiceLimits(maxConnections = 1))
+        val server = ServiceServer(
+            transport,
+            operations(),
+            streets(),
+            authorizations(),
+            ServiceLimits(maxConnections = 1),
+        )
         try {
             server.serve()
 
@@ -147,7 +153,13 @@ class ServiceServerTest {
         val arriving = ScriptedConnection(ServiceRead.Line(VERSION_REQUEST))
         val transport = ScriptedTransport(listOf(holding, arriving))
 
-        val server = ServiceServer(transport, operations(), streets(), ServiceLimits(maxConnections = 1))
+        val server = ServiceServer(
+            transport,
+            operations(),
+            streets(),
+            authorizations(),
+            ServiceLimits(maxConnections = 1),
+        )
         try {
             server.serve()
             holding.release()
@@ -167,7 +179,7 @@ class ServiceServerTest {
     @Test
     fun `a connection that arrives when the service is stopping is closed`() {
         val connection = ScriptedConnection(ServiceRead.Line(VERSION_REQUEST))
-        val server = ServiceServer(ScriptedTransport(listOf(connection)), operations(), streets())
+        val server = ServiceServer(ScriptedTransport(listOf(connection)), operations(), streets(), authorizations())
         server.close()
 
         server.serve()
@@ -186,7 +198,7 @@ class ServiceServerTest {
     fun `a subscription is served by the street and the connection closes when it ends`() {
         val connection = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
         val served = mutableListOf<ServiceSubscriptionRequest>()
-        val server = ServiceServer(ScriptedTransport(listOf(connection)), operations(), streets(served))
+        val server = ServiceServer(ScriptedTransport(listOf(connection)), operations(), streets(served), authorizations())
         try {
             server.serve()
             connection.awaitAnswered()
@@ -207,10 +219,240 @@ class ServiceServerTest {
     }
 
     /**
+     * A client that presents no credential is refused with a name.
+     *
+     * The refusal is NAMED and not a closed socket, because a client that
+     * cannot tell "you are not allowed" from "the service is broken" cannot
+     * act on it: the first is fixed with another token, the second with a
+     * restart.
+     */
+    @Test
+    fun `a question with no credential is refused with a name`() {
+        val connection = ScriptedConnection(ServiceRead.Line(ANONYMOUS_VERSION_REQUEST))
+
+        serve(connection)
+
+        assertEquals(
+            "not-authorized",
+            refusalKindOf(connection),
+            "a client that presents nothing is told so, and not left guessing",
+        )
+    }
+
+    @Test
+    fun `a question with a token the service does not know is refused with a name`() {
+        val connection = ScriptedConnection(ServiceRead.Line(UNKNOWN_VERSION_REQUEST))
+
+        serve(connection)
+
+        assertEquals(
+            "not-authorized",
+            refusalKindOf(connection),
+            "a token nobody knows is the same fact as no token at all",
+        )
+    }
+
+    @Test
+    fun `a question about a run the scope does not cover is refused with a name`() {
+        val connection = ScriptedConnection(ServiceRead.Line(RUN_STATE_REQUEST))
+
+        val server = ServiceServer(
+            ScriptedTransport(listOf(connection)),
+            operations(),
+            streets(),
+            authorizations(ServiceScope.Runs(setOf("run-2"))),
+        )
+        try {
+            server.serve()
+            connection.awaitAnswered()
+
+            assertEquals(
+                "run-not-authorized",
+                refusalKindOf(connection),
+                "a client that may not ask about THAT run is told so",
+            )
+        } finally {
+            server.close()
+        }
+    }
+
+    @Test
+    fun `a subscription with no credential is refused and the street is not served`() {
+        val connection = ScriptedConnection(ServiceRead.Line(ANONYMOUS_EVENTS_REQUEST))
+        val served = mutableListOf<ServiceSubscriptionRequest>()
+
+        val server = ServiceServer(
+            ScriptedTransport(listOf(connection)),
+            operations(),
+            streets(served),
+            authorizations(),
+        )
+        try {
+            server.serve()
+            connection.awaitAnswered()
+
+            assertEquals(
+                "not-authorized",
+                refusalKindOf(connection),
+                "a subscription without a credential is refused by name",
+            )
+            assertEquals(
+                0,
+                served.size,
+                "the refusal happens BEFORE the subscription takes a slot, so no street is served",
+            )
+        } finally {
+            server.close()
+        }
+    }
+
+    @Test
+    fun `a subscription over the budget is refused and the street is not served`() {
+        val streetStarted = CountDownLatch(1)
+        val releaseStreet = CountDownLatch(1)
+        val admitted = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
+        val arriving = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST), gate = streetStarted)
+        val served = mutableListOf<ServiceSubscriptionRequest>()
+
+        val server = ServiceServer(
+            ScriptedTransport(listOf(admitted, arriving)),
+            operations(),
+            blockingStreets(served, streetStarted, releaseStreet),
+            authorizations(),
+            ServiceLimits(maxSubscriptions = 1),
+        )
+        try {
+            server.serve()
+            arriving.awaitAnswered()
+
+            assertEquals(
+                "too-many-subscriptions",
+                refusalKindOf(arriving),
+                "a subscription over the budget is refused by name, and not queued",
+            )
+            assertEquals(
+                1,
+                served.size,
+                "only the subscription that took a slot reached the street",
+            )
+        } finally {
+            releaseStreet.countDown()
+            server.close()
+        }
+    }
+
+    /**
+     * A run id that looks like a path is refused with a name.
+     *
+     * The refusal happens in the CODEC, before the request reaches the store
+     * and before the street opens: a request that named a path would
+     * otherwise travel until the plane refused it, and the refusal would
+     * arrive as a closed connection instead of as a word the client can read.
+     */
+    @Test
+    fun `a question about a run whose id looks like a path is refused with a name`() {
+        val connection = ScriptedConnection(ServiceRead.Line(SPOOFED_RUN_STATE_REQUEST))
+
+        serve(connection)
+
+        assertEquals(
+            "malformed-request",
+            refusalKindOf(connection),
+            "a run id that is not a run id is refused by name, and not by a closed connection",
+        )
+    }
+
+    @Test
+    fun `a subscription for a run whose id looks like a path is refused with a name`() {
+        val connection = ScriptedConnection(ServiceRead.Line(SPOOFED_OUTPUT_REQUEST))
+        val served = mutableListOf<ServiceSubscriptionRequest>()
+
+        val server = ServiceServer(
+            ScriptedTransport(listOf(connection)),
+            operations(),
+            streets(served),
+            authorizations(),
+        )
+        try {
+            server.serve()
+            connection.awaitAnswered()
+
+            assertEquals(
+                "malformed-request",
+                refusalKindOf(connection),
+                "the street is not opened for a run id that is not a run id",
+            )
+            assertEquals(
+                0,
+                served.size,
+                "no street was served, because the request never became one",
+            )
+        } finally {
+            server.close()
+        }
+    }
+
+    /**
+     * The slot of a subscription is given back when the street ends.
+     *
+     * A budget that is only taken and never given back is a budget that runs
+     * out after eight streets in the whole life of the service: the counter
+     * has to be decremented in the same place the street is left.
+     */
+    @Test
+    fun `the slot of a subscription is given back when the street ends`() {
+        val streetEnded = CountDownLatch(1)
+        val first = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
+        val second = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
+        val served = mutableListOf<ServiceSubscriptionRequest>()
+        val streets = object : ServiceStreets {
+            override fun serve(connection: ServiceConnection, request: ServiceSubscriptionRequest) {
+                served.add(request)
+                connection.writeLine(
+                    ServiceCodec.encodeRecord(
+                        cursor = "evt-cursor-v1:${request.runId}:0",
+                        record = Json.parseToJsonElement("""{"type":"event"}""").jsonObject,
+                        hasMore = false,
+                    ),
+                )
+                streetEnded.countDown()
+            }
+        }
+        // The second connection is handed out only after the first street
+        // ended, so the row measures the budget and not the order in which
+        // two workers happened to run.
+        val transport = object : ServiceTransport {
+            private val pending = ArrayDeque(listOf(first, second))
+
+            override fun accept(): ServiceConnection? {
+                val next = pending.removeFirstOrNull() ?: return null
+                if (next === second) streetEnded.await(5, TimeUnit.SECONDS)
+                return next
+            }
+
+            override fun close() = Unit
+        }
+
+        val server = ServiceServer(transport, operations(), streets, authorizations(), ServiceLimits(maxSubscriptions = 1))
+        try {
+            server.serve()
+            second.awaitAnswered()
+
+            assertEquals(
+                2,
+                served.size,
+                "the second subscription took the slot the first one gave back",
+            )
+        } finally {
+            server.close()
+        }
+    }
+
+    /**
      * Serves the scripted connections and waits for the answers.
      */
     private fun serve(vararg connections: ScriptedConnection) {
-        val server = ServiceServer(ScriptedTransport(connections.toList()), operations(), streets())
+        val server = ServiceServer(ScriptedTransport(connections.toList()), operations(), streets(), authorizations())
         try {
             server.serve()
             connections.forEach { it.awaitAnswered() }
@@ -230,6 +472,16 @@ class ServiceServerTest {
      */
     private fun refusalKindOf(connection: ScriptedConnection): String? =
         answerOf(connection)["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content
+
+    /**
+     * The authorizations this service knows.
+     *
+     * One token, with the scope the row needs: the rows about the service
+     * ask about anything, and the row about the SCOPE names a run this token
+     * may not ask about.
+     */
+    private fun authorizations(scope: ServiceScope = ServiceScope.All): ServiceAuthorizations =
+        ServiceAuthorizations.of(listOf(ServiceAuthorization(TOKEN, "operator", scope)))
 
     /**
      * The operations the service answers with.
@@ -270,6 +522,27 @@ class ServiceServerTest {
                 )
             }
         }
+
+    /**
+     * The streets, faked, and one of them BLOCKS.
+     *
+     * The street counts down [started] when it begins to serve and waits for
+     * [release]: the row that measures the budget of the subscriptions needs
+     * a subscription that is ALIVE while another one arrives, and a street
+     * that ended at once would give the slot back before the second client
+     * asked for it.
+     */
+    private fun blockingStreets(
+        served: MutableList<ServiceSubscriptionRequest>,
+        started: CountDownLatch,
+        release: CountDownLatch,
+    ): ServiceStreets = object : ServiceStreets {
+        override fun serve(connection: ServiceConnection, request: ServiceSubscriptionRequest) {
+            served.add(request)
+            started.countDown()
+            release.await()
+        }
+    }
 
     /**
      * A transport that hands out the connections it was given, and then none.
@@ -355,12 +628,39 @@ class ServiceServerTest {
     }
 
     private companion object {
-        /** A question about the version of the product. */
+        /** The token this service knows. */
+        private const val TOKEN: String = "token-1"
+
+        /** A question about the version of the product, with the credential. */
         private const val VERSION_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"version","auth":"token-1"}"""
+
+        /** A question about the version of the product, with NO credential. */
+        private const val ANONYMOUS_VERSION_REQUEST: String =
             """{"schema":"pipelinek.service/2","op":"version"}"""
 
-        /** A request for the events of a run. */
+        /** A question about the version of the product, with a token nobody knows. */
+        private const val UNKNOWN_VERSION_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"version","auth":"token-of-another"}"""
+
+        /** A request for the events of a run, with the credential. */
         private const val EVENTS_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-1","auth":"token-1"}"""
+
+        /** A request for the events of a run, with NO credential. */
+        private const val ANONYMOUS_EVENTS_REQUEST: String =
             """{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-1"}"""
+
+        /** A question about the state of a run, with the credential. */
+        private const val RUN_STATE_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"run.state","runId":"run-1","auth":"token-1"}"""
+
+        /** A question whose run id is a path and not a run id. */
+        private const val SPOOFED_RUN_STATE_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"run.state","runId":"../../etc/passwd","auth":"token-1"}"""
+
+        /** A subscription whose run id is a path and not a run id. */
+        private const val SPOOFED_OUTPUT_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"output.follow","runId":"../../etc/passwd","auth":"token-1"}"""
     }
 }

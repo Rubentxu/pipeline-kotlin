@@ -201,6 +201,8 @@ internal fun interface ServiceChannelFactory {
 class ServiceClient internal constructor(
     /** The socket of the service. */
     private val endpoint: Path,
+    /** The authorization this client presents; the service refuses a question without one. */
+    private val credential: String,
     /** How long the client waits for an answer; `null` waits as long as it takes. */
     private val deadline: Duration?,
     /** The schema this client speaks. */
@@ -210,17 +212,27 @@ class ServiceClient internal constructor(
 ) {
 
     /**
-     * A client of the service at [endpoint].
+     * A client of the service at [endpoint], presenting [credential].
      *
-     * The public shape of the client: a socket, and a deadline the caller
-     * names. A client that names no deadline waits, because a live service
-     * has no end to guess.
+     * The public shape of the client: a socket, the authorization that opens
+     * it, and a deadline the caller names. A client that names no deadline
+     * waits, because a live service has no end to guess.
+     *
+     * ## Why the authorization is REQUIRED
+     *
+     * Because the service asks every question for one: a client that could
+     * be built without it would connect, write a line and be refused with
+     * `not-authorized`, and a client that cannot work should not compile.
+     * The token is a secret the operator issued —it is not a pipeline
+     * credential— and a client that presents the wrong one is answered with
+     * a named refusal, never with a silent answer from somewhere else.
      */
     constructor(
         endpoint: Path,
+        credential: String,
         deadline: Duration? = null,
         schema: String = ServiceProtocol.SCHEMA,
-    ) : this(endpoint, deadline, schema, UnixServiceChannels)
+    ) : this(endpoint, credential, deadline, schema, UnixServiceChannels)
 
     /**
      * The version of the service and of the protocol.
@@ -292,7 +304,7 @@ class ServiceClient internal constructor(
     private fun ask(request: ServiceRequest): ServiceAnswer<JsonObject> {
         val channel = open() ?: return ServiceAnswer.Unreachable(endpoint.toString(), "no service at the endpoint")
         return try {
-            channel.write(ServiceCodec.encode(request))
+            channel.write(ServiceCodec.encode(request, credential))
             when (val read = channel.readLine()) {
                 is ServiceRead.Line -> when (val decoded = ServiceCodec.decodeLine(read.text)) {
                     is ServiceLine.Answered -> if (decoded.schema == schema) {
@@ -325,7 +337,7 @@ class ServiceClient internal constructor(
     private fun street(request: ServiceSubscriptionRequest): ServiceAnswer<ServiceStreet> {
         val channel = open() ?: return ServiceAnswer.Unreachable(endpoint.toString(), "no service at the endpoint")
         return try {
-            channel.write(ServiceCodec.encode(request))
+            channel.write(ServiceCodec.encode(request, credential))
             ServiceAnswer.Answered(SocketServiceStreet(channel, deadlineMillis()))
         } catch (failure: IOException) {
             channel.close()

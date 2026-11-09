@@ -154,6 +154,51 @@ class ServiceIntegrationTest {
     }
 
     @Test
+    fun `a client that presents no credential is refused by name over the socket`() {
+        val service = start()
+
+        val answer = service.askRaw("""{"schema":"pipelinek.service/2","op":"version"}""")
+
+        assertEquals("refused", answer["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "not-authorized",
+            answer["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
+    fun `a run whose id looks like a path is refused by name over the socket`() {
+        val service = start()
+
+        val answer = service.ask(
+            """{"schema":"pipelinek.service/2","op":"run.state","runId":"../../etc/passwd"}""",
+        )
+
+        assertEquals("refused", answer["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "malformed-request",
+            answer["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+            "a run id that is not a run id is refused by name, and not by a closed connection",
+        )
+    }
+
+    @Test
+    fun `a subscription for a run whose id looks like a path is refused by name over the socket`() {
+        val service = start()
+
+        val frames = service.subscribe(
+            """{"schema":"pipelinek.service/2","op":"output.follow","runId":"../../etc/passwd"}""",
+        )
+
+        assertEquals(1, frames.size, "the street was refused before it delivered anything")
+        assertEquals("refused", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "malformed-request",
+            frames[0]["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
     fun `a client that speaks another protocol is refused by name`() {
         val service = start()
 
@@ -427,8 +472,9 @@ class ServiceIntegrationTest {
         SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { slow ->
             slow.write(
                 ByteBuffer.wrap(
-                    ("""{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-service-live"}""" +
-                        "\n").toByteArray(Charsets.UTF_8),
+                    (withCredential(
+                        """{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-service-live"}""",
+                    ) + "\n").toByteArray(Charsets.UTF_8),
                 ),
             )
             // The slow client reads ONE frame and then stops reading: its street is
@@ -495,7 +541,16 @@ class ServiceIntegrationTest {
         /**
          * The answer of [request], read as a document.
          */
-        fun ask(request: String): Map<String, kotlinx.serialization.json.JsonElement> {
+        fun ask(request: String): Map<String, kotlinx.serialization.json.JsonElement> =
+            askRaw(withCredential(request))
+
+        /**
+         * The answer of the line [request], written verbatim.
+         *
+         * The credential is NOT added: a row that needs a line without one
+         * says so, and a row that needs one with it says that too.
+         */
+        fun askRaw(request: String): Map<String, kotlinx.serialization.json.JsonElement> {
             SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { channel ->
                 channel.write(ByteBuffer.wrap((request + "\n").toByteArray(Charsets.UTF_8)))
                 val line = readLine(channel)
@@ -511,7 +566,9 @@ class ServiceIntegrationTest {
          */
         fun subscribe(request: String): List<kotlinx.serialization.json.JsonObject> {
             SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { channel ->
-                channel.write(ByteBuffer.wrap((request + "\n").toByteArray(Charsets.UTF_8)))
+                channel.write(
+                    ByteBuffer.wrap((withCredential(request) + "\n").toByteArray(Charsets.UTF_8)),
+                )
                 val frames = mutableListOf<kotlinx.serialization.json.JsonObject>()
                 while (true) {
                     val line = readLineOrNull(channel) ?: break
@@ -558,8 +615,29 @@ class ServiceIntegrationTest {
             events = composeEventRecordReadPort(store, stores.lease),
         )
         val transport = UnixSocketTransport.bind(socket)
-        return Service(ServiceServer(transport, operations, streets, limits), store)
+        return Service(ServiceServer(transport, operations, streets, authorizations(), limits), store)
     }
+
+    /**
+     * The authorizations this service knows.
+     *
+     * One token with the scope `all`, so a row about the service can ask
+     * about anything, and a row about the authorization asks with a token
+     * this service does NOT know.
+     */
+    private fun authorizations(): ServiceAuthorizations = ServiceAuthorizations.of(
+        listOf(ServiceAuthorization(TOKEN, "operator", ServiceScope.All)),
+    )
+
+    /**
+     * The line [request] travels as, with the credential this service knows.
+     *
+     * The credential travels with EVERY request, so the helper that writes a
+     * line adds it: a line written by hand without one would be testing a
+     * client the service refuses, which is a different row.
+     */
+    private fun withCredential(request: String): String =
+        request.replaceFirst("{", """{"auth":"$TOKEN",""")
 
     /**
      * The refusal a refused bind carries.
@@ -636,5 +714,8 @@ class ServiceIntegrationTest {
     private companion object {
         /** The run that never finishes. */
         private const val LIVE_RUN_ID: String = "run-service-live"
+
+        /** The token this service knows. */
+        private const val TOKEN: String = "token-of-the-service"
     }
 }

@@ -14,7 +14,8 @@ import java.nio.file.Paths
  * The usage the `serve` verb prints when its request is refused.
  */
 internal const val SERVE_USAGE: String =
-    "Usage: pipelinek serve --db <path> --control-root <path> --socket <path>"
+    "Usage: pipelinek serve --db <path> --control-root <path> --socket <path> " +
+        "[--trust-profile <name>] [--authorization-file <path>]"
 
 /**
  * The requests `serve` accepts.
@@ -28,12 +29,20 @@ internal const val SERVE_USAGE: String =
  * shared parser's arity for them is the one this table has to agree with.
  * `--socket` belongs to this verb alone: no other form of this CLI names a
  * socket.
+ *
+ * `--trust-profile` and `--authorization-file` also belong to this verb alone,
+ * and their names say what they are: the profile names the boundary the
+ * service declares, and the file names where the authorizations are read
+ * from. They are OPTIONAL, and the defaults are the ones the profile says:
+ * `trusted-local`, and the file the service owns next to its socket.
  */
 internal val SERVE_REQUEST: CliRequest = CliRequest(
     options = listOf(
         CliOption("--db", takesValue = true),
         CliOption("--control-root", takesValue = true),
         CliOption("--socket", takesValue = true),
+        CliOption("--trust-profile", takesValue = true),
+        CliOption("--authorization-file", takesValue = true),
     ),
 )
 
@@ -81,6 +90,93 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
         ?: return refuseMissing(err, "--control-root <path>", "to read the Output Plane")
     val socketPath = accepted.values["--socket"]
         ?: return refuseMissing(err, "--socket <path>", "to name the socket the service listens on")
+
+    // The profile is a closed vocabulary: the word says what the operator
+    // ASKS for, and an unknown word is refused instead of being taken for
+    // the default. A profile the operator misspelled is a boundary nobody
+    // chose, and a boundary nobody chose is not a boundary.
+    val profile = accepted.values["--trust-profile"]?.let { word ->
+        ServiceTrustProfile.parse(word)
+            ?: return refuseStartup(
+                err,
+                ServiceStartupRefusal.TrustProfileUnknown,
+                "the trust profile is not one this build serves: '$word'",
+            )
+    } ?: ServiceTrustProfile.TrustedLocal
+
+    // The socket may not BE a file the service reads or writes. A socket that
+    // IS the store would make the store not a store, and a socket that IS
+    // the file of the authorizations would put the secret and the door in
+    // the same inode.
+    //
+    // What is NOT refused is the socket living NEXT TO the material: the
+    // natural layout of an operator —the store, the control root and the
+    // socket in one directory— is the one this rule has to let through.
+    val socketAbsolute = Path.of(socketPath).toAbsolutePath().normalize()
+    val dbAbsolute = Path.of(dbPath).toAbsolutePath().normalize()
+    val controlAbsolute = Path.of(controlRoot).toAbsolutePath().normalize()
+    if (socketAbsolute == dbAbsolute || socketAbsolute == controlAbsolute) {
+        return refuseStartup(
+            err,
+            ServiceStartupRefusal.SocketPathIsReserved,
+            "the socket would be a file the service reads: $socketAbsolute",
+        )
+    }
+
+    // The authorizations come from the place the profile names: the file the
+    // operator named, the file the service owns next to its socket, or the
+    // standard input. The two profiles do not mix: a profile that keeps the
+    // authorization off the disk cannot read it from the disk.
+    val namedFile = accepted.values["--authorization-file"]
+    if (namedFile != null && profile == ServiceTrustProfile.Isolated) {
+        return refuseStartup(
+            err,
+            ServiceStartupRefusal.AuthorizationFileRefusedByTheProfile,
+            "the isolated profile reads the authorizations from the standard input, " +
+                "and --authorization-file names a file",
+        )
+    }
+    val authorizationPath = namedFile?.let { Path.of(it) }
+        ?: socketAbsolute.parent?.resolve(ServiceAuthorizationStore.OWNED_FILE_NAME)
+        ?: return refuseStartup(
+            err,
+            ServiceStartupRefusal.SocketPathUnavailable,
+            "the socket has no directory: $socketPath",
+        )
+
+    // The socket may not BE the file of the authorizations: the service
+    // writes that file and then binds the socket, and two things on one
+    // inode is one of them broken.
+    if (socketAbsolute == authorizationPath.toAbsolutePath().normalize()) {
+        return refuseStartup(
+            err,
+            ServiceStartupRefusal.SocketPathIsReserved,
+            "the socket would be the file of the authorizations: $socketAbsolute",
+        )
+    }
+
+    val reading = when (profile) {
+        ServiceTrustProfile.TrustedLocal ->
+            ServiceAuthorizationStore.ofFile(authorizationPath, owned = namedFile == null)
+
+        ServiceTrustProfile.Isolated ->
+            ServiceAuthorizationStore.readStandardInput(System.`in`)
+    }
+    val authorizations = when (reading) {
+        is ServiceAuthorizationsReading.Read -> {
+            if (reading.authorizations.isEmpty() && profile == ServiceTrustProfile.Isolated) {
+                return refuseStartup(
+                    err,
+                    ServiceStartupRefusal.IsolationUnavailable,
+                    "the isolated profile needs at least one authorization on the standard input",
+                )
+            }
+            ServiceAuthorizations.of(reading.authorizations)
+        }
+
+        is ServiceAuthorizationsReading.Refused ->
+            return refuseStartup(err, ServiceStartupRefusal.AuthorizationsRefused, reading.detail)
+    }
 
     // The substrate is composed ONCE, before the socket exists: a service
     // that cannot read its substrate would only know how to say that it is
@@ -153,11 +249,12 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
         return error.toCliExit()
     }
 
-    val server = ServiceServer(transport, operations, streets)
+    val server = ServiceServer(transport, operations, streets, authorizations)
     val shutdown = Thread({ server.close() }, "pipelinek-service-shutdown")
     Runtime.getRuntime().addShutdownHook(shutdown)
     try {
         out.println("pipelinek service listening on $socketPath")
+        describeBoundary(out, profile, authorizationPath, authorizations.size)
         server.serve()
     } finally {
         try {
@@ -180,6 +277,77 @@ private fun refuseMissing(err: PrintStream, argument: String, why: String): CliE
     err.println(error.refusalLines("serve").joinToString("\n"))
     err.println(SERVE_USAGE)
     return error.toCliExit()
+}
+
+/**
+ * The refusal of a service that could not start.
+ *
+ * The REASON is a word and the DETAIL is the sentence, because every way
+ * this fails has a different remedy and the operator is the one who has to
+ * apply it.
+ */
+private fun refuseStartup(err: PrintStream, refusal: ServiceStartupRefusal, detail: String): CliExit {
+    val error = CliError.ServiceUnavailable(refusal.reason, detail)
+    err.println(error.refusalLines("serve").joinToString("\n"))
+    err.println(SERVE_USAGE)
+    return error.toCliExit()
+}
+
+/**
+ * The boundary the service declares, printed when it starts.
+ *
+ * ## Why this is printed at all
+ *
+ * Because a boundary nobody reads is a boundary nobody knows, and the
+ * operator is the one who has to know: a service that answers questions over
+ * a socket has to say what it takes to be one of its clients. The words are
+ * the SAME promise the profile makes in the code, written out where the
+ * operator sees them.
+ *
+ * ## What the `trusted-local` promise says
+ *
+ * That the boundary is the FILE SYSTEM: the socket is `rw-------` in a
+ * directory that grants nothing to the group or to others, so any process of
+ * the same user may open it, and the token that guards the questions is in a
+ * file that any of those processes may read. The token separates IDENTITIES
+ * THE OPERATOR NAMES —a client that presents it from a client that does not—
+ * and it does not separate two processes of the same user. The JVM does not
+ * expose the credentials of the peer of a Unix socket, so nothing in this
+ * build can.
+ *
+ * ## What the `isolated` promise says
+ *
+ * That the authorization is NOT on the disk: it was read from the standard
+ * input and the service wrote it nowhere, so there is no file for a process
+ * of the same user to read. It does not isolate processes either: a process
+ * of the same user that reads the service's standard input while it starts
+ * takes the authorization.
+ */
+private fun describeBoundary(
+    out: PrintStream,
+    profile: ServiceTrustProfile,
+    authorizationPath: Path,
+    authorizationCount: Int,
+) {
+    out.println("trust-profile ${profile.word}")
+    out.println(
+        when (profile) {
+            ServiceTrustProfile.TrustedLocal ->
+                "boundary file-system: any process of the same user may open this socket; " +
+                    "the token separates the identities the operator names, not two processes " +
+                    "of the same user"
+
+            ServiceTrustProfile.Isolated ->
+                "boundary not-on-disk: the authorization was read from the standard input and " +
+                    "was written nowhere"
+        },
+    )
+    if (profile == ServiceTrustProfile.TrustedLocal) {
+        out.println(
+            "authorizations $authorizationCount in $authorizationPath; " +
+                "a client presents the token of one of them",
+        )
+    }
 }
 
 /**

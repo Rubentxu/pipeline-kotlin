@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.service
 
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -71,6 +72,25 @@ object ServiceProtocol {
      * would let a client make the service hold whatever it wants in memory.
      */
     const val MAX_LINE_BYTES: Int = 64 * 1024
+
+    /**
+     * The longest authorization a request may carry.
+     *
+     * A token is a secret the operator issued, and its length is bounded
+     * because the service compares nothing: a token that is longer than this
+     * is not a token this service issued, and it is refused as a malformed
+     * request instead of being carried around.
+     */
+    const val MAX_TOKEN_LENGTH: Int = 512
+
+    /**
+     * The longest run id a request may carry.
+     *
+     * A run id is a KEY, not a path and not a text: a client that sends a
+     * megabyte of it is not asking about a run. The bound is what makes
+     * "zero trust in the client's data" a fact rather than an intention.
+     */
+    const val MAX_RUN_ID_LENGTH: Int = 256
 }
 
 /**
@@ -355,6 +375,62 @@ sealed interface ServiceRefusal {
             put("detail", JsonPrimitive(detail))
         }
     }
+
+    /**
+     * The client presented no authorization, or one this service does not know.
+     *
+     * ## Why it says nothing about WHICH
+     *
+     * A refusal that said "the token is wrong" and a refusal that said "there
+     * is no token" would let a client tell apart two things it has no right
+     * to tell apart: whether an authorization exists at all. One name covers
+     * both, and the client learns the only thing it can act on: that it has
+     * to present an authorization this service accepts.
+     */
+    data object NotAuthorized : ServiceRefusal {
+        override val kind: String = "not-authorized"
+        override val payload: JsonObject = buildJsonObject { }
+    }
+
+    /**
+     * The authorization is one this service knows, and its scope does not
+     * cover the run that was asked about.
+     *
+     * ## Why the run travels and not the authorization
+     *
+     * The run is the fact the client has to act on: it asked about a run it
+     * may not ask about. The authorization does NOT travel, because a name
+     * that travels can be enumerated by a client that presents tokens until
+     * one is accepted.
+     *
+     * ## What the client cannot learn from this refusal
+     *
+     * The scope is checked BEFORE the store is read, so this refusal says
+     * the same thing about a run that exists and about a run that does not:
+     * a client out of scope cannot use the service to find out which runs
+     * exist.
+     */
+    data class RunNotAuthorized(val runId: String) : ServiceRefusal {
+        override val kind: String = "run-not-authorized"
+        override val payload: JsonObject = buildJsonObject { put("runId", JsonPrimitive(runId)) }
+    }
+
+    /**
+     * The service already holds as many subscriptions as it admits.
+     *
+     * ## Why it is not `too-many-connections`
+     *
+     * Because the remedy is different: the client has to close a
+     * subscription and come back, while `too-many-connections` asks it to
+     * wait for a free slot. The service keeps a budget for subscriptions
+     * SEPARATE from the one for connections precisely so that a client can
+     * always ask a question; this refusal is what says which of the two
+     * budgets it ran into.
+     */
+    data object TooManySubscriptions : ServiceRefusal {
+        override val kind: String = "too-many-subscriptions"
+        override val payload: JsonObject = buildJsonObject { }
+    }
 }
 
 /**
@@ -385,11 +461,25 @@ sealed interface ServiceResponse {
  */
 sealed interface ServiceDecoding {
 
-    /** The line is a request the service can answer. */
-    data class Decoded(val request: ServiceRequest) : ServiceDecoding
+    /**
+     * The line is a request the service can answer.
+     *
+     * The [credential] is the authorization the client presented, or null
+     * when it presented none. It travels with the request and not INSIDE it:
+     * the request says WHAT is asked for, and the credential says WHO is
+     * asking, and a request that carried the credential inside would make
+     * every operation a different type.
+     */
+    data class Decoded(val request: ServiceRequest, val credential: String?) : ServiceDecoding
 
-    /** The line is a request for a street, and the street's request is known. */
-    data class Subscribed(val request: ServiceSubscriptionRequest) : ServiceDecoding
+    /**
+     * The line is a request for a street, and the street's request is known.
+     *
+     * The [credential] is the authorization the client presented, or null
+     * when it presented none — the same contract as [Decoded], because a
+     * street is asked for by a client like any other question.
+     */
+    data class Subscribed(val request: ServiceSubscriptionRequest, val credential: String?) : ServiceDecoding
 
     /** The line is not a request this build can answer. */
     data class Refused(val refusal: ServiceRefusal) : ServiceDecoding
@@ -465,9 +555,15 @@ object ServiceCodec {
      * What [line] is.
      *
      * The order of the checks is the contract: first whether the line is JSON
-     * at all, then which schema it speaks, and only then what it asks for. A
-     * line that is not JSON has no schema, so asking it for one would answer a
-     * question the line never asked.
+     * at all, then which schema it speaks, then the authorization it carries,
+     * and only then what it asks for. A line that is not JSON has no schema,
+     * so asking it for one would answer a question the line never asked.
+     *
+     * ## Why nothing here throws
+     *
+     * Every field is read as a TEXT or not at all: a client that sends
+     * `"schema": {}` is answered with a refusal and not with an exception,
+     * because a line is not a request or a refusal, and NEVER an exception.
      */
     fun decode(line: String): ServiceDecoding {
         val parsed = try {
@@ -478,27 +574,65 @@ object ServiceCodec {
         val request = parsed as? JsonObject
             ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
 
-        val schema = request["schema"]?.jsonPrimitive?.contentOrNull
+        val schema = request.text("schema")
             ?: return ServiceDecoding.Refused(ServiceRefusal.IncompatibleProtocol)
         if (schema != ServiceProtocol.SCHEMA) {
             return ServiceDecoding.Refused(ServiceRefusal.IncompatibleProtocol)
         }
 
-        val op = request["op"]?.jsonPrimitive?.contentOrNull
+        // The authorization is read BEFORE the operation, because it belongs
+        // to every operation: a line that carries a malformed authorization
+        // is a malformed request whatever it asks for.
+        val credential = request.text("auth")
+        if (credential != null && (credential.isEmpty() || credential.length > ServiceProtocol.MAX_TOKEN_LENGTH)) {
+            return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        }
+
+        val op = request.text("op")
             ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
 
         return when (op) {
-            "version" -> ServiceDecoding.Decoded(ServiceRequest.Version(schema))
-            "health" -> ServiceDecoding.Decoded(ServiceRequest.Health(schema))
+            "version" -> ServiceDecoding.Decoded(ServiceRequest.Version(schema), credential)
+            "health" -> ServiceDecoding.Decoded(ServiceRequest.Health(schema), credential)
             "run.state" -> {
-                val runId = request["runId"]?.jsonPrimitive?.contentOrNull
-                    ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
-                ServiceDecoding.Decoded(ServiceRequest.RunState(schema, runId))
+                val runId = request.runId() ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+                ServiceDecoding.Decoded(ServiceRequest.RunState(schema, runId), credential)
             }
-            "events.follow" -> decodeEventsFollow(request, schema)
-            "output.follow" -> decodeOutputFollow(request, schema)
+            "events.follow" -> decodeEventsFollow(request, schema, credential)
+            "output.follow" -> decodeOutputFollow(request, schema, credential)
             else -> ServiceDecoding.Refused(ServiceRefusal.UnknownOp)
         }
+    }
+
+    /**
+     * The text [key] holds, or null when it holds none.
+     *
+     * A field that is not a string is a field that holds no text: the
+     * element is read as a primitive or not at all, so a client cannot make
+     * the decoder raise by sending an object where a string belongs.
+     */
+    private fun JsonObject.text(key: String): String? =
+        (this[key] as? JsonPrimitive)?.contentOrNull
+
+    /**
+     * The run this request is about, or null when it names none.
+     *
+     * A run id has to be a run id: it has to NAME a durable location, in the
+     * alphabet the product uses for that, and it has to be short enough to
+     * be one. The alphabet is [RunId]'s and not a second copy of it: the
+     * Output Plane builds a path out of the run id, and the one authority
+     * about which run ids may name a location is the identity itself.
+     *
+     * A run id that does not qualify is refused HERE, before anything is
+     * opened: a request that named a path would otherwise travel until the
+     * plane refused it, and the refusal would arrive as a closed connection
+     * instead of as a word the client can read.
+     */
+    private fun JsonObject.runId(): String? {
+        val runId = text("runId") ?: return null
+        if (runId.length > ServiceProtocol.MAX_RUN_ID_LENGTH) return null
+        if (!RunId.isNameable(runId)) return null
+        return runId
     }
 
     /**
@@ -508,11 +642,12 @@ object ServiceCodec {
      * does not belong is a fact about the REQUEST, and the client that sent
      * it has to be told before the street opens.
      */
-    private fun decodeEventsFollow(request: JsonObject, schema: String): ServiceDecoding {
-        val runId = request["runId"]?.jsonPrimitive?.contentOrNull
+    private fun decodeEventsFollow(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
+        val runId = request.runId()
             ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
-        val token = request["after"]?.jsonPrimitive?.contentOrNull ?: return subscribed(
+        val token = request.text("after") ?: return subscribed(
             ServiceSubscriptionRequest.EventsFollow(schema, runId, null),
+            credential,
         )
         val cursor = EventCursor.decode(token)
             ?: return ServiceDecoding.Refused(
@@ -525,31 +660,32 @@ object ServiceCodec {
                 ServiceRefusal.InvalidCursor(token, EVENT_CURSOR_FAMILY),
             )
         }
-        return subscribed(ServiceSubscriptionRequest.EventsFollow(schema, runId, cursor))
+        return subscribed(ServiceSubscriptionRequest.EventsFollow(schema, runId, cursor), credential)
     }
 
     /**
      * The output street this line asks for.
      */
-    private fun decodeOutputFollow(request: JsonObject, schema: String): ServiceDecoding {
-        val runId = request["runId"]?.jsonPrimitive?.contentOrNull
+    private fun decodeOutputFollow(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
+        val runId = request.runId()
             ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
-        val token = request["after"]?.jsonPrimitive?.contentOrNull
+        val token = request.text("after")
             ?: return subscribed(
                 ServiceSubscriptionRequest.OutputFollow(schema, runId, FIRST_FRAME_ORDINAL),
+                credential,
             )
         val ordinal = FrameOrdinalToken.decode(token)
             ?: return ServiceDecoding.Refused(
                 ServiceRefusal.InvalidCursor(token, FRAME_ORDINAL_FAMILY),
             )
-        return subscribed(ServiceSubscriptionRequest.OutputFollow(schema, runId, ordinal))
+        return subscribed(ServiceSubscriptionRequest.OutputFollow(schema, runId, ordinal), credential)
     }
 
     /**
      * The decoding of a street's request.
      */
-    private fun subscribed(request: ServiceSubscriptionRequest): ServiceDecoding =
-        ServiceDecoding.Subscribed(request)
+    private fun subscribed(request: ServiceSubscriptionRequest, credential: String?): ServiceDecoding =
+        ServiceDecoding.Subscribed(request, credential)
 
     /**
      * The line a record travels as.
@@ -619,10 +755,27 @@ object ServiceCodec {
      * The `op` word says what is asked for, and the schema travels with every
      * line because a service that serves another schema has to be able to
      * say so before it refuses.
+     *
+     * ## Why a request without an authorization exists at all
+     *
+     * Because the service asks EVERY question for an authorization, and a
+     * line without one is answered with `not-authorized`. This overload is
+     * the way to write that line on purpose: a test that checks the refusal,
+     * and a client that wants to see it.
      */
-    fun encode(request: ServiceRequest): String {
+    fun encode(request: ServiceRequest): String = encode(request, null)
+
+    /**
+     * The line [request] travels as, presented with [credential].
+     *
+     * The authorization travels with the request and not in a second line:
+     * one question per connection is the wire's rule, and a handshake before
+     * the question would make every client two round trips for one fact.
+     */
+    fun encode(request: ServiceRequest, credential: String?): String {
         val document = buildJsonObject {
             put("schema", JsonPrimitive(request.schema))
+            credential?.let { put("auth", JsonPrimitive(it)) }
             when (request) {
                 is ServiceRequest.Version -> put("op", JsonPrimitive("version"))
                 is ServiceRequest.Health -> put("op", JsonPrimitive("health"))
@@ -642,9 +795,18 @@ object ServiceCodec {
      * was asked for from the beginning names no cursor, and a street that was
      * asked to resume names the position it resumes from.
      */
-    fun encode(request: ServiceSubscriptionRequest): String {
+    fun encode(request: ServiceSubscriptionRequest): String = encode(request, null)
+
+    /**
+     * The line [request] travels as, presented with [credential].
+     *
+     * A street is asked for by a client like any other question, so it is
+     * authorized the same way.
+     */
+    fun encode(request: ServiceSubscriptionRequest, credential: String?): String {
         val document = buildJsonObject {
             put("schema", JsonPrimitive(request.schema))
+            credential?.let { put("auth", JsonPrimitive(it)) }
             when (request) {
                 is ServiceSubscriptionRequest.EventsFollow -> {
                     put("op", JsonPrimitive("events.follow"))
@@ -745,6 +907,9 @@ object ServiceCodec {
                 document.str("reason") ?: return null,
                 document.str("detail") ?: return null,
             )
+            "not-authorized" -> ServiceRefusal.NotAuthorized
+            "run-not-authorized" -> ServiceRefusal.RunNotAuthorized(document.str("runId") ?: return null)
+            "too-many-subscriptions" -> ServiceRefusal.TooManySubscriptions
             else -> null
         }
     }

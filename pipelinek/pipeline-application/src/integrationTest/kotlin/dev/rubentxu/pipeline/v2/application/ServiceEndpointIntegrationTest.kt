@@ -93,6 +93,11 @@ class ServiceEndpointIntegrationTest {
             ),
         )
         store.flush()
+        // The file the credential is read from, next to the socket: this is
+        // where the command line looks for it when the operator names no
+        // file, and the service is not started by `serve` here, so nothing
+        // else would write it.
+        Files.writeString(root.resolve(ServiceAuthorizationStore.OWNED_FILE_NAME), "$TOKEN operator all\n")
         val stores = DurableStores.open(store, root, clock)
         val owner = requireNotNull(RunOwnerId.of("owner-of-the-fixture"))
         val identity = requireNotNull(RunId.of(runId))
@@ -189,7 +194,7 @@ class ServiceEndpointIntegrationTest {
     fun `the client of the SDK reads the same fact the command line prints`() {
         val service = start()
         try {
-            val client = ServiceClient(socket, Duration.ofSeconds(10))
+            val client = ServiceClient(socket, TOKEN, Duration.ofSeconds(10))
             val observation = client.runState(runId)
 
             val observed = requireNotNull(
@@ -213,10 +218,10 @@ class ServiceEndpointIntegrationTest {
 
             // A client with a deadline that goes by: it closes its connection
             // and the service keeps serving the next one.
-            val abandoned = ServiceClient(socket, Duration.ofMillis(50L))
+            val abandoned = ServiceClient(socket, TOKEN, Duration.ofMillis(50L))
             abandoned.runState(runId)
 
-            val after = ServiceClient(socket, Duration.ofSeconds(10)).runState(runId)
+            val after = ServiceClient(socket, TOKEN, Duration.ofSeconds(10)).runState(runId)
             assertTrue(after is dev.rubentxu.pipeline.v2.service.ServiceAnswer.Answered, "the service answered")
 
             assertTrue(
@@ -297,7 +302,23 @@ class ServiceEndpointIntegrationTest {
             events = composeEventRecordReadPort(store, stores.lease),
         )
         val transport = UnixSocketTransport.bind(socket)
-        return Service(ServiceServer(transport, operations, streets), store)
+        return Service(ServiceServer(transport, operations, streets, authorizations()), store)
+    }
+
+    /**
+     * The authorizations this service knows.
+     *
+     * One token with the scope `all`, and it is the same token the file next
+     * to the socket carries: the command line and the client of the SDK both
+     * present it.
+     */
+    private fun authorizations(): ServiceAuthorizations = ServiceAuthorizations.of(
+        listOf(ServiceAuthorization(TOKEN, "operator", ServiceScope.All)),
+    )
+
+    private companion object {
+        /** The token this service knows. */
+        private const val TOKEN: String = "token-of-the-service"
     }
 
     /** The clock this lane stamps its material with: it does not move. */

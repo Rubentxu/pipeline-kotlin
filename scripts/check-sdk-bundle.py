@@ -77,6 +77,21 @@ def group_path_in(repo: Path) -> str:
         f"one the releases before the rename carried): {repo}"
     )
 
+
+def group_id_in(repo: Path) -> str:
+    """The group ID (dotted) this repository carries.
+
+    It is DERIVED from the layout the bundle has, not written here: the group
+    the artifacts are published under is the group the repository carries them
+    under, and a checker that compares the metadata against a group written in
+    this file compares it against a second authority -- one that says "the
+    artifacts are published under X" while the bundle says they are published
+    under Y. That comparison failed the other way round once already: the group
+    written here was the one of the releases BEFORE the rename, so the checker
+    would have refused every bundle of the releases after it.
+    """
+    return group_path_in(repo).replace("/", ".")
+
 # The four digests a Maven repository carries beside every file. Central asks
 # for the first two; the other two are what this repository publishes anyway,
 # and a file with no digest at all is a file nobody can tell apart from a
@@ -316,7 +331,7 @@ def check_pom_metadata(
         report.row(True, "3", "the staged POM is byte for byte the POM the RC carries")
 
 
-def check_gradle_metadata(coordinates: dict[str, Path], report: Report) -> None:
+def check_gradle_metadata(coordinates: dict[str, Path], group: str, report: Report) -> None:
     problems: list[str] = []
     for artifact, version_dir in sorted(coordinates.items()):
         module = version_dir / f"{artifact}-{version_dir.name}.module"
@@ -329,7 +344,7 @@ def check_gradle_metadata(coordinates: dict[str, Path], report: Report) -> None:
             problems.append(f"{artifact}: the Gradle module metadata is not JSON ({error})")
             continue
         component = document.get("component", {})
-        if component.get("group") != "dev.rubentxu.pipeline.v2":
+        if component.get("group") != group:
             problems.append(f"{artifact}: the metadata names the group '{component.get('group')}'")
         if component.get("module") != artifact:
             problems.append(f"{artifact}: the metadata names the module '{component.get('module')}'")
@@ -341,7 +356,9 @@ def check_gradle_metadata(coordinates: dict[str, Path], report: Report) -> None:
         report.row(True, "4", "every artifact carries Gradle module metadata that names it")
 
 
-def check_transitive_dependencies(coordinates: dict[str, Path], bom: str, report: Report) -> None:
+def check_transitive_dependencies(
+    coordinates: dict[str, Path], bom: str, group: str, report: Report
+) -> None:
     problems: list[str] = []
     for artifact, version_dir in sorted(coordinates.items()):
         if artifact == bom:
@@ -354,8 +371,7 @@ def check_transitive_dependencies(coordinates: dict[str, Path], bom: str, report
         external = [
             dependency.findtext(f"{MAVEN_NS}artifactId", default="").strip()
             for dependency in dependencies
-            if dependency.findtext(f"{MAVEN_NS}groupId", default="").strip()
-            not in ("dev.rubentxu.pipeline.v2",)
+            if dependency.findtext(f"{MAVEN_NS}groupId", default="").strip() != group
         ]
         if not any(name.startswith("kotlin-stdlib") for name in external):
             problems.append(f"{artifact}: the POM declares no kotlin-stdlib, so a consumer compiles without it")
@@ -614,11 +630,12 @@ def main(argv: list[str]) -> int:
     report = Report()
     try:
         coordinates, bom = check_coordinates(repo, report)
+        group = group_id_in(repo)
         check_artifacts(coordinates, bom, report)
         landing = Path(arguments.landing_repo).resolve() if arguments.landing_repo else None
         check_pom_metadata(coordinates, bom, landing, report)
-        check_gradle_metadata(coordinates, report)
-        check_transitive_dependencies(coordinates, bom, report)
+        check_gradle_metadata(coordinates, group, report)
+        check_transitive_dependencies(coordinates, bom, group, report)
         workspace = Path(__file__).resolve().parent.parent
         check_no_build_machine_paths(coordinates, bom, workspace, report)
         check_duplicate_classes(coordinates, bom, report)

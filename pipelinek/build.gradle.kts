@@ -1257,9 +1257,9 @@ val sdkBundleRepositoryDir = layout.buildDirectory.dir("sdk-repo-staging")
 //
 // The coordinates do NOT change here. The Maven registry of GitHub Packages accepts
 // any groupId — measured in its own documentation, which uses `com.example` as its
-// example — so the six coordinates keep the group `dev.rubentxu.pipeline.v2` and a
-// consumer's build does not change between the two channels. The only thing that
-// changes is WHERE the bytes are served from.
+// example — so the six coordinates keep the group this build declares
+// (`dev.rubentxu.pipelinek`) and a consumer's build does not change between the
+// two channels. The only thing that changes is WHERE the bytes are served from.
 //
 // The credentials are read from the environment and never from a file of this
 // repository: `GITHUB_ACTOR` is the account that publishes and `GITHUB_TOKEN` is a

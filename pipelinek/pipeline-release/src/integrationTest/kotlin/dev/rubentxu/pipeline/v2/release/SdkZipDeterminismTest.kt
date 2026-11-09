@@ -46,15 +46,24 @@ class SdkZipDeterminismTest {
     lateinit var directory: Path
 
     private val version = "0.93.0"
-    private val coordinates = listOf("dev.rubentxu.pipeline.v2" to "pipeline-domain")
+
+    /**
+     * The coordinates the SDK is published under. They are the CURRENT ones
+     * (`dev.rubentxu.pipelinek:pipelinek-*`), and not a fixture of an older
+     * layout: the BOM JSON used to carry the names of the releases BEFORE the
+     * rename written in it, and a fixture that used those same names could not
+     * have told the two apart.
+     */
+    private val coordinates = listOf("dev.rubentxu.pipelinek" to "pipelinek-domain")
+    private val bomCoordinate = "dev.rubentxu.pipelinek" to "pipelinek-sdk-bom"
 
     /** A repository with the layout a Maven repository has, with one version. */
     private fun repository(): Path {
         val base = directory.resolve("sdk-repo")
-        val versionDirectory = base.resolve("dev/rubentxu/pipeline/v2/pipeline-domain/$version")
+        val versionDirectory = base.resolve("dev/rubentxu/pipelinek/pipelinek-domain/$version")
         Files.createDirectories(versionDirectory)
-        Files.writeString(versionDirectory.resolve("pipeline-domain-$version.pom"), "<project/>")
-        Files.writeString(versionDirectory.resolve("pipeline-domain-$version.jar"), "the bytes of a jar")
+        Files.writeString(versionDirectory.resolve("pipelinek-domain-$version.pom"), "<project/>")
+        Files.writeString(versionDirectory.resolve("pipelinek-domain-$version.jar"), "the bytes of a jar")
         return base
     }
 
@@ -62,8 +71,12 @@ class SdkZipDeterminismTest {
     fun `two builds of the same repository produce the same digest`() {
         val repository = repository()
 
-        val first = SdkZipBuilder.build(repository, version, coordinates, directory.resolve("first"))
-        val second = SdkZipBuilder.build(repository, version, coordinates, directory.resolve("second"))
+        val first = SdkZipBuilder.build(
+            repository, version, bomCoordinate, coordinates, directory.resolve("first")
+        )
+        val second = SdkZipBuilder.build(
+            repository, version, bomCoordinate, coordinates, directory.resolve("second")
+        )
 
         assertEquals(
             Sha256.ofFile(first.first),
@@ -78,8 +91,31 @@ class SdkZipDeterminismTest {
     }
 
     @Test
+    fun `the BOM JSON declares the coordinate the BOM is published under`() {
+        val built = SdkZipBuilder.build(
+            repository(), version, bomCoordinate, coordinates, directory.resolve("bom")
+        )
+
+        val document = Files.readString(built.second)
+        val declared = buildString {
+            append("  \"bom\": {\n")
+            append("    \"group\": \"${bomCoordinate.first}\",\n")
+            append("    \"artifact\": \"${bomCoordinate.second}\",\n")
+            append("    \"version\": \"$version\"\n")
+            append("  },")
+        }
+        assertTrue(
+            document.contains(declared),
+            "the BOM JSON does not declare the coordinate the BOM is published under; " +
+                "it declares:\n$document",
+        )
+    }
+
+    @Test
     fun `every entry of the SDK ZIP carries the fixed time`() {
-        val built = SdkZipBuilder.build(repository(), version, coordinates, directory.resolve("out"))
+        val built = SdkZipBuilder.build(
+            repository(), version, bomCoordinate, coordinates, directory.resolve("out")
+        )
 
         ZipFile(built.first.toFile()).use { archive ->
             val entries = archive.entries().toList()

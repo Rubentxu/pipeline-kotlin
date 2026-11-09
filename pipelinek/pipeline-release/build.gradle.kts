@@ -661,6 +661,25 @@ tasks.register<JavaExec>("sdkZip") {
         "pipeline-output",
         "pipeline-runtime-api",
     ).map { module -> "$publishedGroup:${publishedArtifactNames[module]}" }
+    // The coordinate the BOM ITSELF is published under. It is read from the same
+    // declaration, because the BOM JSON declares this coordinate: a BOM that names
+    // a coordinate other than the one it is published under sends a consumer to
+    // artifacts that do not exist. It is not one of the managed coordinates (those
+    // are the five contracts the BOM PINS), so it travels as its own argument.
+    val bomCoordinate = "$publishedGroup:${publishedArtifactNames["pipeline-sdk-bom"]}"
+
+    // The coordinates are declared as INPUTS, and the reason is the same one
+    // that made the SDK repository an input: a task whose output depends on a
+    // fact it does not declare is a task that can report UP-TO-DATE while
+    // carrying the PREVIOUS answer. The published group and the published
+    // artifact names are read from the root build's declaration, and a change
+    // there (the rename of the coordinates IS such a change) rewrites what the
+    // BOM pins and what the BOM declares itself to be -- without moving the
+    // version and without touching the SDK repository, so the declared inputs
+    // would not have moved either. The ZIP would have kept the old coordinates
+    // and the build would have been green.
+    inputs.property("managedCoordinates", managedCoordinates)
+    inputs.property("bomCoordinate", bomCoordinate)
 
     doFirst {
         val sdkRepoDir = sdkRepo.get().asFile
@@ -674,6 +693,7 @@ tasks.register<JavaExec>("sdkZip") {
             sdkRepoDir.absolutePath,
             version,
             distDir.get().asFile.absolutePath,
+            bomCoordinate,
         ) + managedCoordinates
     }
 

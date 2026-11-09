@@ -58,6 +58,12 @@ object SdkZipBuilder {
      *   `publishSdkForExternalPlugin` (typically `pipelinek/build/sdk-repo/`).
      * @param version the product version, e.g. `0.76.0`. Every folder
      *   under [sdkRepo] whose name matches this version is included.
+     * @param bomCoordinate the coordinate the BOM ITSELF is published under, in
+     *   `group:artifact` form. The BOM JSON declares this coordinate, and a BOM
+     *   that declares a coordinate other than the one it is published under is
+     *   a document that points a consumer at artifacts that do not exist: the
+     *   rename of the published coordinates would have had to be applied here
+     *   too, and this is the place where it was missed.
      * @param managedCoordinates the SDK coordinates the BOM pins, in
      *   `group:artifact` form. The builder completes each with
      *   [version].
@@ -68,10 +74,15 @@ object SdkZipBuilder {
     fun build(
         sdkRepo: Path,
         version: String,
+        bomCoordinate: Pair<String, String>,
         managedCoordinates: List<Pair<String, String>>,
         distDir: Path,
     ): Pair<Path, Path> {
         require(version.isNotBlank()) { "version must not be blank" }
+        require(bomCoordinate.first.isNotBlank() && bomCoordinate.second.isNotBlank()) {
+            "the BOM coordinate must name a group and an artifact: it is the coordinate " +
+                "the BOM JSON declares, and a blank one declares nothing"
+        }
         require(managedCoordinates.isNotEmpty()) {
             "managedCoordinates must not be empty: a BOM with no constraints is a defect"
         }
@@ -87,7 +98,7 @@ object SdkZipBuilder {
         val bomJson = distDir.resolve("pipelinek-bom-$version.json")
 
         val inventory = writeSdkZip(sdkZip, entries)
-        writeBomManifest(bomJson, version, managedCoordinates, inventory)
+        writeBomManifest(bomJson, version, bomCoordinate, managedCoordinates, inventory)
 
         return sdkZip to bomJson
     }
@@ -204,10 +215,18 @@ object SdkZipBuilder {
      * surface of the Maven BOM) plus a per-file inventory of the
      * SDK ZIP. Consumers that want a CycloneDX view of the same
      * dependencies use the SBOM; this is the BOM view.
+     *
+     * The `bom` block names the coordinate the BOM ITSELF is published
+     * under, and it is written from [bomCoordinate] rather than from a
+     * literal: the literal was the name the product published BEFORE the
+     * rename, and it survived the rename in the one document that says what
+     * the BOM is. A document that names a coordinate nobody can resolve is a
+     * document that points a consumer at artifacts that do not exist.
 */
     private fun writeBomManifest(
         target: Path,
         version: String,
+        bomCoordinate: Pair<String, String>,
         managedCoordinates: List<Pair<String, String>>,
         inventory: List<BomFileEntry>,
     ) {
@@ -216,8 +235,8 @@ object SdkZipBuilder {
         sb.append("  \"schema_version\": \"").append(BOM_SCHEMA_VERSION).append("\",\n")
         sb.append("  \"product_version\": \"").append(version).append("\",\n")
         sb.append("  \"bom\": {\n")
-        sb.append("    \"group\": \"dev.rubentxu.pipeline.v2\",\n")
-        sb.append("    \"artifact\": \"pipeline-sdk-bom\",\n")
+        sb.append("    \"group\": \"").append(bomCoordinate.first).append("\",\n")
+        sb.append("    \"artifact\": \"").append(bomCoordinate.second).append("\",\n")
         sb.append("    \"version\": \"").append(version).append("\"\n")
         sb.append("  },\n")
         sb.append("  \"managed_dependencies\": [\n")

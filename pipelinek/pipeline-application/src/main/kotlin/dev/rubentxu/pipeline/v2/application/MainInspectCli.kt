@@ -5,7 +5,6 @@ import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
-import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.profile.summarize
 import java.nio.file.Paths
 import java.io.PrintStream
@@ -403,28 +402,30 @@ object MainInspectCli {
         }
         val store = (admission as EventStoreAdmission.Admitted).store
 
-        val result = try {
+        val answer = try {
             store.use { eventStore ->
-                composeRuntimeIntrospectionPort(
-                    eventStore = eventStore,
-                    controlRoot = Paths.get(controlRoot),
-                    clock = SystemClock(),
-                ).inspect(runId)
+                RunStateQuery(
+                    composeRuntimeIntrospectionPort(
+                        eventStore = eventStore,
+                        controlRoot = Paths.get(controlRoot),
+                        clock = SystemClock(),
+                    ),
+                ).stateOf(runId)
             }
         } catch (failure: Exception) {
             err.println("inspect: ${failure.shortDiagnostic()}")
             return CliExit.INVALID_ARGUMENT.code
         }
 
-        return when (result) {
-            is RuntimeIntrospectionResult.Observation -> {
-                out.println(InspectionPresentation.renderRunState(result.observation))
+        return when (answer) {
+            is RunStateAnswer.Observed -> {
+                out.println(InspectionPresentation.renderRunState(answer.observation))
                 CliExit.SUCCESS.code
             }
 
-            is RuntimeIntrospectionResult.Refused -> {
+            is RunStateAnswer.Refused -> {
                 err.println(
-                    "inspect: ${InspectionPresentation.renderIntrospectionRefusal(result.refusal, runId)}",
+                    "inspect: ${InspectionPresentation.renderRunStateRefusal(answer.refusal, runId)}",
                 )
                 CliExit.INVALID_ARGUMENT.code
             }

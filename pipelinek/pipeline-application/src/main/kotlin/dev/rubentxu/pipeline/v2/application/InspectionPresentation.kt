@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.runtime.inspect.IntrospectionRefusal
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import java.io.PrintStream
@@ -93,19 +92,20 @@ internal object InspectionPresentation {
     }
 
     /** The refusal, in the operator's words. */
-    fun renderIntrospectionRefusal(refusal: IntrospectionRefusal, runId: String): String = when (refusal) {
-        is IntrospectionRefusal.UnknownRun -> "this instance does not know run '$runId'."
-        IntrospectionRefusal.NoControlRoot -> "there is no control root to read the run's state from."
-        IntrospectionRefusal.NoEventStore -> "the event plane is not configured for this instance."
-        IntrospectionRefusal.NoOutputPlane -> "the output plane is not configured for this instance."
-        is IntrospectionRefusal.LeaseHeldByAnother ->
+    fun renderRunStateRefusal(refusal: RunStateRefusal, runId: String): String = when (refusal) {
+        is RunStateRefusal.UnknownRun -> "this instance does not know run '$runId'."
+        is RunStateRefusal.NotConfigured -> when (refusal.missing) {
+            RunStateRefusal.Missing.CONTROL_ROOT -> "there is no control root to read the run's state from."
+            RunStateRefusal.Missing.EVENT_PLANE -> "the event plane is not configured for this instance."
+            RunStateRefusal.Missing.OUTPUT_PLANE -> "the output plane is not configured for this instance."
+        }
+
+        is RunStateRefusal.StorageFailed -> "the run's storage failed: ${refusal.cause}"
+        is RunStateRefusal.HeldByAnother ->
             "run $runId is being published by '${refusal.heldBy}' (fencing token ${refusal.fencingToken})."
 
-        is IntrospectionRefusal.StorageError -> "the run's storage failed: ${refusal.cause}"
-        is IntrospectionRefusal.InconsistentLeaseState ->
-            "the run's lease state is inconsistent: ${refusal.details}"
-
-        is IntrospectionRefusal.UnknownOperation ->
+        is RunStateRefusal.Inconsistent -> "the run's lease state is inconsistent: ${refusal.details}"
+        is RunStateRefusal.UnknownOperation ->
             "this instance does not know operation '${refusal.operationId}' (attempt ${refusal.attempt})."
     }
 

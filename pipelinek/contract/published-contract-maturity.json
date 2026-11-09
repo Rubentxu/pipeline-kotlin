@@ -137,7 +137,25 @@
       "release whose repository could not be read.",
       "EXPERIMENTAL is the honest classification because the wire's version is still /2 and no",
       "external consumer has compiled against this artifact yet. It flips to PUBLISHED at the",
-      "candidate boundary the publication plan documents."
+      "candidate boundary the publication plan documents.",
+      "",
+      "THE SURFACE THIS ARTIFACT PUBLISHES IS THE WIRE, AND NOW THE WIRE CARRIES AN",
+      "AUTHORIZATION. Every request presents a credential in the `auth` field, and the refusals",
+      "it can be answered with have NAMES: `not-authorized`, `run-not-authorized` and",
+      "`too-many-subscriptions`. The first publication of this artifact therefore freezes a line",
+      "that carries an authorization, and that is the decision the entry in the sibling ledger",
+      "records. The `auth` field is OPTIONAL in the grammar - a line without it is answered",
+      "`not-authorized` and not `incompatible-protocol` - because the schema of the protocol is",
+      "still /2 and the version identifies the SHAPE of the line, not the policy the service",
+      "applies to it.",
+      "",
+      "WHAT THIS ARTIFACT DOES NOT PUBLISH, on purpose: the vocabulary of WHAT a client may ask",
+      "about (`all`, `none`, a list of run ids). It lives in the application, and it is not",
+      "published because it has to grow with the slices that bring new rights - starting a run,",
+      "cancelling a run, answering a question a run is waiting for - and every one of those would",
+      "add a case to a SEALED interface that a published artifact already carries. Publishing the",
+      "scope now would freeze a vocabulary whose next case is already known, and a frozen scope",
+      "would make those slices versioned breaks of an ABI that consumers already resolve."
     ]
   },
   "surfaces": {

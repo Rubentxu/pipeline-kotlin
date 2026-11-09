@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.runtime.profile.summarize
+import java.nio.file.Path
 import java.nio.file.Paths
 import java.io.PrintStream
 
@@ -86,7 +87,8 @@ object MainInspectCli {
             "[--context N] [--log-tail N] " +
             "[--fields STAGE,STEP,OUTCOME,MESSAGE,CONSOLETAIL] " +
             "[--format text|json] " +
-            "[--state] [--profile] [--explain] [--telemetry [--otlp]]"
+            "[--state] [--profile] [--explain] [--telemetry [--otlp]] " +
+            "[--endpoint <socket> [--authorization-file <path>]]"
 
     /**
      * The five dimensional columns a caller can request from the inspection document.
@@ -458,6 +460,17 @@ object MainInspectCli {
      * names the mode that was asked for instead: the service answers the
      * run's state and nothing else this CLI publishes, so a request that
      * named the service and asked for another surface has no honest answer.
+     *
+     * ## The credential comes before the question
+     *
+     * The service refuses a client that presents no authorization, so this
+     * verb resolves the token FIRST and refuses the request itself when there
+     * is none. A client that connects with nothing to present would be told
+     * "not-authorized" by the service, and that would be a fact about a
+     * request the operator made correctly: the credential was on this machine
+     * and this verb did not find it. The refusal that names WHERE it looked
+     * is the honest one, and it is the not-authorized case, because the
+     * request was understood and it could not be carried out.
      */
     private fun reportRunStateRemotely(endpoint: String, runId: String, query: CompiledInspectionQuery,
         out: PrintStream,
@@ -475,7 +488,24 @@ object MainInspectCli {
             )
             return CliExit.INVALID_ARGUMENT.code
         }
-        return ServiceEndpoint.report(endpoint, runId, out = out, err = err)
+        val credential = when (
+            val reading = ServiceCredential.read(
+                System.getenv(),
+                Path.of(endpoint),
+                query.authorizationFile,
+            )
+        ) {
+            is ServiceCredentialReading.Found -> reading.token
+            is ServiceCredentialReading.Refused -> {
+                err.println("inspect: there is no authorization to present: ${reading.detail}")
+                err.println(
+                    "inspect: the token is read from the ${ServiceCredential.ENVIRONMENT_VARIABLE} " +
+                        "variable, or from the file the service owns next to its socket",
+                )
+                return CliExit.NOT_AUTHORIZED.code
+            }
+        }
+        return ServiceEndpoint.report(endpoint, runId, credential, out = out, err = err)
     }
 
     /**

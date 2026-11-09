@@ -59,7 +59,7 @@ class ServiceClientTest {
             answer.value(),
         )
         assertEquals(
-            """{"schema":"pipelinek.service/2","op":"version"}""",
+            """{"schema":"pipelinek.service/2","auth":"token-1","op":"version"}""",
             channel.written.single(),
             "the client wrote a line of its own instead of the wire's line",
         )
@@ -224,6 +224,7 @@ class ServiceClientTest {
      */
     private fun client(channel: ServiceChannel): ServiceClient = ServiceClient(
         endpoint = Path.of("/tmp/service.sock"),
+        credential = "token-1",
         deadline = null,
         schema = ServiceProtocol.SCHEMA,
         channels = { _, _ -> channel },

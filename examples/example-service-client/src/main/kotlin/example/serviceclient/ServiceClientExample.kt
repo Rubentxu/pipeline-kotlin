@@ -27,10 +27,16 @@ import java.time.Duration
  * ## How to run it
  *
  * ```
+ * PIPELINEK_SERVICE_TOKEN=<token> \
  * ./gradlew -p examples/example-service-client run \
  *     -PsdkRepo=pipelinek/build/sdk-repo -PsdkVersion=0.95.0 \
  *     --args="<socket> <runId>"
  * ```
+ *
+ * The token travels in the ENVIRONMENT and not in the arguments, because the
+ * arguments of a process are visible to every other process of the machine.
+ * It is the same token the service wrote next to its socket, and the same
+ * variable the command line reads.
  */
 fun main(args: Array<String>) {
     if (args.size < 2) {
@@ -40,7 +46,18 @@ fun main(args: Array<String>) {
     val socket = Path.of(args[0])
     val runId = args[1]
 
-    val client = ServiceClient(socket, Duration.ofSeconds(10))
+    // The service refuses a client that presents no authorization, and this
+    // example is a client: it has to present one, the same way any other
+    // consumer of the SDK has to.
+    val token = System.getenv("PIPELINEK_SERVICE_TOKEN")
+    if (token.isNullOrBlank()) {
+        System.err.println(
+            "the service asks for an authorization: set PIPELINEK_SERVICE_TOKEN to the token of one of them",
+        )
+        kotlin.system.exitProcess(2)
+    }
+
+    val client = ServiceClient(socket, token, Duration.ofSeconds(10))
 
     when (val answer = client.runState(runId)) {
         is ServiceAnswer.Answered -> {

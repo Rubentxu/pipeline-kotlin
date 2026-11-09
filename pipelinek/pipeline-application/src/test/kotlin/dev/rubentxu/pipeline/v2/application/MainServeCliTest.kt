@@ -120,6 +120,87 @@ class MainServeCliTest {
         )
     }
 
+    @Test
+    fun `a socket that is the store is refused by name`() {
+        val answer = ask(
+            "--db",
+            "/tmp/store.db",
+            "--control-root",
+            "/tmp/control",
+            "--socket",
+            "/tmp/store.db",
+        )
+
+        assertEquals(4, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("socket-path-is-reserved"),
+            "the refusal names the reason the socket cannot be the store: ${answer.stderr}",
+        )
+    }
+
+    @Test
+    fun `a socket that is the file of the authorizations is refused by name`() {
+        val answer = ask(
+            "--db",
+            "/tmp/store.db",
+            "--control-root",
+            "/tmp/control",
+            "--socket",
+            "/tmp/service.sock",
+            "--authorization-file",
+            "/tmp/service.sock",
+        )
+
+        assertEquals(4, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("socket-path-is-reserved"),
+            "the secret and the door cannot be one file: ${answer.stderr}",
+        )
+    }
+
+    @Test
+    fun `a trust profile this build does not serve is refused by name`() {
+        val answer = ask(
+            "--db",
+            "/tmp/store.db",
+            "--control-root",
+            "/tmp/control",
+            "--socket",
+            "/tmp/service.sock",
+            "--trust-profile",
+            "open-to-the-world",
+        )
+
+        assertEquals(4, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("trust-profile-unknown"),
+            "a boundary nobody chose is not a boundary: ${answer.stderr}",
+        )
+    }
+
+    @Test
+    fun `the isolated profile and a named file are refused by name`() {
+        val answer = ask(
+            "--db",
+            "/tmp/store.db",
+            "--control-root",
+            "/tmp/control",
+            "--socket",
+            "/tmp/service.sock",
+            "--trust-profile",
+            "isolated",
+            "--authorization-file",
+            "/tmp/authorizations",
+        )
+
+        assertEquals(4, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("authorization-file-refused-by-the-profile"),
+            "the profile that keeps the authorization off the disk cannot read it from a file: " +
+                answer.stderr,
+        )
+    }
+
     /**
      * The decision of the verb, and what it printed.
      */

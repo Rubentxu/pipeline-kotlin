@@ -35,6 +35,31 @@ internal enum class ServiceStartupRefusal(val reason: String) {
     /** The path exists and it is not a socket: it belongs to something else. */
     SocketPathIsNotASocket("socket-path-is-not-a-socket"),
 
+    /** The directory of the socket is a symbolic link: its mode says nothing about its target. */
+    SocketDirectoryIsASymlink("socket-directory-is-a-symlink"),
+
+    /** The socket would live inside the material the service reads, or where it reads it from. */
+    SocketPathIsReserved("socket-path-is-reserved"),
+
+    /** The trust profile is a word this build does not serve. */
+    TrustProfileUnknown("trust-profile-unknown"),
+
+    /** The authorizations could not be read, or the file that holds them is not private. */
+    AuthorizationsRefused("authorizations-refused"),
+
+    /** The isolated profile was asked for and the machine cannot provide it. */
+    IsolationUnavailable("isolation-unavailable"),
+
+    /**
+     * The operator asked for a profile that keeps the authorization off the
+     * disk AND named a file to read it from.
+     *
+     * The two are the same request said twice, and the service cannot honour
+     * both: a file IS on the disk. The reason is its own word because the
+     * remedy is its own too — drop the file, or drop the profile.
+     */
+    AuthorizationFileRefusedByTheProfile("authorization-file-refused-by-the-profile"),
+
     /** Another service is already listening on that path. */
     AnotherServiceIsListening("another-service-is-listening"),
 
@@ -215,8 +240,24 @@ internal class UnixSocketTransport private constructor(
          * anything to the group or to others, the service does not start,
          * because a socket inside a directory others can walk is a socket
          * others can open.
+         *
+         * ## Why a symbolic link is refused BY NAME
+         *
+         * A link is refused today, but for the wrong reason: the permission
+         * that is read is the permission of the LINK —which is `rwxrwxrwx` on
+         * Linux— and not the permission of the directory it points at, so the
+         * refusal said "the directory is not private" about a directory the
+         * service never looked at. The link is now refused by its own name,
+         * because the mode of a link says nothing about where it goes.
          */
         private fun prepareDirectory(directory: Path) {
+            if (Files.isSymbolicLink(directory)) {
+                throw ServiceStartupException(
+                    ServiceStartupRefusal.SocketDirectoryIsASymlink,
+                    "the directory of the socket is a symbolic link: $directory",
+                )
+            }
+
             val created = !Files.exists(directory, LinkOption.NOFOLLOW_LINKS)
             if (created) {
                 try {

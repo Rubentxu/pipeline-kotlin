@@ -111,10 +111,22 @@ internal sealed interface ServiceRead {
  * They are a value, so a test can hold a smaller one and a reader can see
  * what the service promises in one place. The server reads them and never
  * decides a limit of its own.
+ *
+ * ## Why the subscriptions have a budget of their own
+ *
+ * Because a subscription occupies its connection for as long as it lasts,
+ * while a question occupies it for a line. With ONE budget for both, sixteen
+ * subscribers could take every slot and deny `version` and `health` —the two
+ * questions that say whether the service is alive— and a client could not
+ * tell a busy service from a broken one. The two budgets are separate, so
+ * the slots a subscription may take are always fewer than the slots a
+ * question may take.
  */
 internal data class ServiceLimits(
     /** How many connections the service holds open at once. */
     val maxConnections: Int = 16,
+    /** How many subscriptions the service serves at once. */
+    val maxSubscriptions: Int = 8,
     /** How long a client has to send its line, in milliseconds. */
     val readDeadlineMillis: Long = 5_000L,
     /** The biggest line the service reads, in bytes. */
@@ -165,11 +177,23 @@ internal class ServiceServer(
     private val transport: ServiceTransport,
     private val operations: ServiceOperations,
     private val streets: ServiceStreets,
+    private val authorizations: ServiceAuthorizations,
     private val limits: ServiceLimits = ServiceLimits(),
 ) : AutoCloseable {
 
     /** The connections this service holds open right now. */
     private val openConnections = AtomicInteger(0)
+
+    /**
+     * The subscriptions this service is serving right now.
+     *
+     * A budget of its own, and the reason is a hole that was measured: with
+     * ONE budget, sixteen subscribers took every slot and `version` and
+     * `health` —the two questions that say whether the service is alive—
+     * were refused, and a client could not tell a busy service from a broken
+     * one.
+     */
+    private val liveSubscriptions = AtomicInteger(0)
 
     /**
      * The workers. One per connection in flight, and no more: the pool is
@@ -250,14 +274,115 @@ internal class ServiceServer(
      *
      * A question is answered with one line; a subscription is served by the
      * street, which writes as many lines as the street has.
+     *
+     * ## Where the authorization happens
+     *
+     * HERE, and in ONE place: the line is decoded, the authorization is
+     * checked, and only then does the request reach the operations or the
+     * street. A request that is not authorized never reaches the substrate,
+     * and the operations and the streets do not know that authorizations
+     * exist: they are handed a request that is already authorized.
+     *
+     * The order is fixed: a line the CODEC refuses —because it is not JSON,
+     * because it speaks another schema, or because it asks for an operation
+     * that does not exist— is answered with the codec's own refusal, and the
+     * authorization is not even looked at. The vocabulary of operations is
+     * published, so refusing a line that names none of it tells a client
+     * nothing it did not already know, and it keeps the codec's refusals
+     * about the line and the server's refusals about the client.
      */
     private fun serveLine(connection: ServiceConnection, text: String) {
         when (val decoded = ServiceCodec.decode(text)) {
-            is ServiceDecoding.Decoded ->
-                connection.writeLine(ServiceCodec.encode(operations.answer(decoded.request)))
-            is ServiceDecoding.Subscribed -> streets.serve(connection, decoded.request)
+            is ServiceDecoding.Decoded -> {
+                when (val decision = decide(decoded.credential, runIdOf(decoded.request))) {
+                    is ServiceAuthorizationOutcome.Authorized ->
+                        connection.writeLine(ServiceCodec.encode(operations.answer(decoded.request)))
+
+                    is ServiceAuthorizationOutcome.NotAuthorized ->
+                        connection.writeLine(answerOfRefusal(ServiceRefusal.NotAuthorized))
+
+                    is ServiceAuthorizationOutcome.RunNotAuthorized ->
+                        connection.writeLine(answerOfRefusal(ServiceRefusal.RunNotAuthorized(decision.runId)))
+                }
+            }
+
+            is ServiceDecoding.Subscribed -> serveSubscription(connection, decoded)
+
             is ServiceDecoding.Refused -> connection.writeLine(answerOfRefusal(decoded.refusal))
         }
+    }
+
+    /**
+     * Serves the subscription [decoded] asks for.
+     *
+     * The authorization is checked BEFORE the subscription takes a slot: a
+     * client that is not authorized never occupies the budget of the ones
+     * that are.
+     *
+     * The slot is taken with an ATOMIC increment, and given back in the same
+     * `finally` that ends the street: a check-then-increment that two workers
+     * could both pass would let the ninth subscriber in, and a decrement that
+     * did not happen would leak the budget of a street that ended.
+     */
+    private fun serveSubscription(connection: ServiceConnection, decoded: ServiceDecoding.Subscribed) {
+        when (val decision = decide(decoded.credential, decoded.request.runId)) {
+            is ServiceAuthorizationOutcome.NotAuthorized -> {
+                connection.writeLine(answerOfRefusal(ServiceRefusal.NotAuthorized))
+                return
+            }
+
+            is ServiceAuthorizationOutcome.RunNotAuthorized -> {
+                connection.writeLine(answerOfRefusal(ServiceRefusal.RunNotAuthorized(decision.runId)))
+                return
+            }
+
+            is ServiceAuthorizationOutcome.Authorized -> Unit
+        }
+
+        if (!takeSubscriptionSlot()) {
+            connection.writeLine(answerOfRefusal(ServiceRefusal.TooManySubscriptions))
+            return
+        }
+        try {
+            streets.serve(connection, decoded.request)
+        } finally {
+            liveSubscriptions.decrementAndGet()
+        }
+    }
+
+    /**
+     * Takes a slot of the subscription budget, or says there is none.
+     *
+     * The increment is atomic and the refusal undoes it, so two workers
+     * racing for the last slot cannot both take it.
+     */
+    private fun takeSubscriptionSlot(): Boolean {
+        val live = liveSubscriptions.incrementAndGet()
+        if (live <= limits.maxSubscriptions) return true
+        liveSubscriptions.decrementAndGet()
+        return false
+    }
+
+    /**
+     * What the client that presented [credential] may ask about [runId].
+     *
+     * The decision belongs to the authorization core and it is pure: this only
+     * asks it, and the answer is a fact about the authorizations the service
+     * was given, not about the socket or the clock.
+     */
+    private fun decide(credential: String?, runId: String?): ServiceAuthorizationOutcome =
+        authorizations.decide(credential, runId)
+
+    /**
+     * The run [request] is about, or null when it is about the service itself.
+     *
+     * A question about the version or the health of the service names no
+     * run, so only the authorization decides it.
+     */
+    private fun runIdOf(request: ServiceRequest): String? = when (request) {
+        is ServiceRequest.Version -> null
+        is ServiceRequest.Health -> null
+        is ServiceRequest.RunState -> request.runId
     }
 
     /**

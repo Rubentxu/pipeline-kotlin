@@ -454,12 +454,17 @@ internal fun knownOptionArity(token: String): Boolean? = when (recognise(token))
  * carry it: a reader that admitted it would be promising a service it does
  * not talk to.
  *
+ * `--authorization-file` belongs to the two verbs that talk to the local
+ * service —`serve` and `inspect --state`—, and the shared parser does not
+ * carry it either: a reader that admitted it would be promising to read a
+ * credential it never uses.
+ *
  * It is known all the same, and that is the whole point of the set: a VALUE
  * spelled like it is refused by [readOptionValue] in every verb, instead of
  * being swallowed by the option written before it. A token nobody can spell
  * as a value is a token that cannot be passed off as a path.
  */
-private val VERB_OWNED_TOKENS: Set<String> = setOf("--endpoint")
+private val VERB_OWNED_TOKENS: Set<String> = setOf("--endpoint", "--authorization-file")
 
 /** Options with no value. Their outcome never depends on what follows them. */
 private object FlagOptions {

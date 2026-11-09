@@ -1,0 +1,227 @@
+package dev.rubentxu.pipeline.v2.application
+
+import dev.rubentxu.pipeline.v2.runtime.RuntimeApiVersion
+import dev.rubentxu.pipeline.v2.runtime.inspect.IntrospectionFailure
+import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort
+import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
+import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+
+/**
+ * The substrate the service was composed with, and whether its parts are still there.
+ *
+ * ## What this is
+ *
+ * The two things a run's state is read from — the event store and the control
+ * root — and the fact of whether they are still on disk. The health of the
+ * SERVICE is exactly this: the service is up, it speaks a schema, and the
+ * material it serves is still where it was.
+ *
+ * ## Why it is a value and not a reading of the filesystem
+ *
+ * The presence of a file is a fact about the world, and the world changes. So
+ * the presence is asked FOR, every time the health is asked, through the
+ * supplier that owns the paths. An operations object that stat'ed the files
+ * itself would be an object that touches the filesystem, and the unit lane
+ * cannot have that.
+ */
+internal data class ServiceSubstrate(
+    /** The path of the event store the service reads. */
+    val eventStore: String,
+    /** The path of the control root the service reads. */
+    val controlRoot: String,
+    /** Whether the event store is still there. */
+    val eventStorePresent: Boolean,
+    /** Whether the control root is still there. */
+    val controlRootPresent: Boolean,
+)
+
+/**
+ * The operations the local service answers.
+ *
+ * ## What this owns
+ *
+ * The MEANING of a request: which answer it produces, and which refusal it
+ * produces when it cannot. The state of a run is answered by
+ * [RunStateQuery] — the same operation the command line uses — so the socket
+ * and the CLI cannot disagree about a run, because they ask the same thing.
+ *
+ * ## What it does not own
+ *
+ * The substrate, the transport and the format of the wire. The substrate
+ * arrives as a supplier (the service asks the world for the presence of its
+ * material), and the format is [ServiceCodec]'s.
+ *
+ * ## Why the words are here
+ *
+ * Every answer carries a `state` and every refusal carries a `kind`, and both
+ * are a closed vocabulary. A client tells a finished run from a going one
+ * from an unreadable one by reading a word, and a client that reads prose has
+ * to be changed every time the prose is reworded.
+ */
+internal class ServiceOperations(
+    private val introspection: RuntimeIntrospectionPort,
+    private val substrate: () -> ServiceSubstrate,
+) {
+
+    /**
+     * The answer to [request].
+     *
+     * Never throws: a question the service cannot answer is an answer, not an
+     * exception, and an exception would close the connection without saying
+     * why.
+     */
+    fun answer(request: ServiceRequest): ServiceResponse = when (request) {
+        is ServiceRequest.Version -> answered(versionResult())
+        is ServiceRequest.Health -> answered(healthResult())
+        is ServiceRequest.RunState -> stateOf(request.runId)
+    }
+
+    /**
+     * The version of the product and the version of the protocol.
+     *
+     * The version of the product comes from [RuntimeApiVersion], which is the
+     * authority the `version` verb reads: the socket is not a second source of
+     * the version, and a socket and a CLI that disagree about the version are
+     * two products.
+     */
+    private fun versionResult(): JsonObject = buildJsonObject {
+        put("schema", JsonPrimitive(ServiceProtocol.SCHEMA))
+        put("productVersion", JsonPrimitive(RuntimeApiVersion.readImplementationVersion() ?: "unknown"))
+    }
+
+    /**
+     * The health of the SERVICE.
+     *
+     * Not the health of the installation: that is `doctor`'s, and it talks about
+     * the machine. This one talks about the service and about the material it
+     * was composed with.
+     */
+    private fun healthResult(): JsonObject {
+        val substrate = substrate()
+        return buildJsonObject {
+            put("schema", JsonPrimitive(ServiceProtocol.SCHEMA))
+            put("productVersion", JsonPrimitive(RuntimeApiVersion.readImplementationVersion() ?: "unknown"))
+            put("eventStore", JsonPrimitive(substrate.eventStore))
+            put("eventStorePresent", JsonPrimitive(substrate.eventStorePresent))
+            put("controlRoot", JsonPrimitive(substrate.controlRoot))
+            put("controlRootPresent", JsonPrimitive(substrate.controlRootPresent))
+        }
+    }
+
+    /**
+     * The state of [runId].
+     *
+     * The question is asked through [RunStateQuery], the same operation the
+     * `inspect --state` verb uses, so the answer here and the answer there
+     * are the same fact read over the same store.
+     */
+    private fun stateOf(runId: String): ServiceResponse =
+        when (val answer = RunStateQuery(introspection).stateOf(runId)) {
+            is RunStateAnswer.Observed -> answered(observationResult(answer.observation))
+            is RunStateAnswer.Refused -> ServiceResponse.Refused(
+                ServiceProtocol.SCHEMA,
+                refusalOf(answer.refusal),
+            )
+        }
+
+    /**
+     * An answer, with the schema this build speaks.
+     */
+    private fun answered(result: JsonObject): ServiceResponse =
+        ServiceResponse.Answered(ServiceProtocol.SCHEMA, result)
+
+    /**
+     * The document an observation travels as.
+     *
+     * The `state` word says which of the four things was observed, and the rest
+     * of the document carries the facts of that one. An observation that
+     * cannot be observed is not a state of the run but a fact about the
+     * substrate, and it says so with its own word.
+     */
+    private fun observationResult(observation: RuntimeObservation): JsonObject = buildJsonObject {
+        when (observation) {
+            is RuntimeObservation.Running -> {
+                put("state", JsonPrimitive("running"))
+                put("attempt", JsonPrimitive(observation.attempt.value))
+                put("fencingToken", JsonPrimitive(observation.fencingToken))
+                observation.leaseHolder?.let { put("leaseHolder", JsonPrimitive(it.ownerId)) }
+            }
+            is RuntimeObservation.Terminal -> {
+                put("state", JsonPrimitive("terminal"))
+                put("at", JsonPrimitive(observation.terminalAtMs))
+                put("outcome", JsonPrimitive(outcomeWord(observation.terminal)))
+                when (val terminal = observation.terminal) {
+                    is TerminalObservation.Failed ->
+                        put("failureKind", JsonPrimitive(terminal.failureKind))
+                    is TerminalObservation.Other ->
+                        put("rawOutcome", JsonPrimitive(terminal.rawOutcome))
+                    else -> Unit
+                }
+            }
+            is RuntimeObservation.LiveButEmpty -> {
+                put("state", JsonPrimitive("empty"))
+                put("attempt", JsonPrimitive(observation.attempt.value))
+                put("reason", JsonPrimitive(observation.reason))
+            }
+            is RuntimeObservation.Unobservable -> {
+                put("state", JsonPrimitive("unobservable"))
+                put("failure", JsonPrimitive(failureWord(observation.reason)))
+                val cause = (observation.reason as? IntrospectionFailure.StorageError)?.cause
+                if (cause != null) put("cause", JsonPrimitive(cause))
+            }
+        }
+    }
+
+    /**
+     * The word a terminal carries.
+     */
+    private fun outcomeWord(terminal: TerminalObservation): String = when (terminal) {
+        is TerminalObservation.Succeeded -> "succeeded"
+        is TerminalObservation.Failed -> "failed"
+        is TerminalObservation.Unstable -> "unstable"
+        is TerminalObservation.Aborted -> "aborted"
+        is TerminalObservation.Cancelled -> "cancelled"
+        is TerminalObservation.Other -> "other"
+    }
+
+    /**
+     * The word a failure of the substrate carries.
+     */
+    private fun failureWord(failure: IntrospectionFailure): String = when (failure) {
+        IntrospectionFailure.NoControlRoot -> "no-control-root"
+        IntrospectionFailure.NoEventStore -> "no-event-store"
+        IntrospectionFailure.NoOutputPlane -> "no-output-plane"
+        IntrospectionFailure.NoJournal -> "no-journal"
+        is IntrospectionFailure.StorageError -> "storage-error"
+    }
+
+    companion object {
+
+        /**
+         * The refusal of the wire that [refusal] becomes.
+         *
+         * The mapping is TOTAL: every refusal the run-state question can
+         * answer has a case here, and the `when` says so at compile time. A
+         * refusal that had no case would have to be invented at the last
+         * moment, and an invented refusal is usually a generic one that says
+         * less than the refusal it replaced.
+         */
+        fun refusalOf(refusal: RunStateRefusal): ServiceRefusal = when (refusal) {
+            is RunStateRefusal.UnknownRun -> ServiceRefusal.UnknownRun(refusal.runId)
+            is RunStateRefusal.NotConfigured -> when (refusal.missing) {
+                RunStateRefusal.Missing.CONTROL_ROOT -> ServiceRefusal.NotConfiguredControlRoot
+                RunStateRefusal.Missing.EVENT_PLANE -> ServiceRefusal.NotConfiguredEventPlane
+                RunStateRefusal.Missing.OUTPUT_PLANE -> ServiceRefusal.NotConfiguredOutputPlane
+            }
+            is RunStateRefusal.StorageFailed -> ServiceRefusal.StorageFailed(refusal.cause)
+            is RunStateRefusal.HeldByAnother ->
+                ServiceRefusal.HeldByAnother(refusal.heldBy, refusal.fencingToken)
+            is RunStateRefusal.Inconsistent -> ServiceRefusal.Inconsistent(refusal.details)
+            is RunStateRefusal.UnknownOperation ->
+                ServiceRefusal.UnknownRunOperation(refusal.operationId, refusal.attempt)
+        }
+    }
+}

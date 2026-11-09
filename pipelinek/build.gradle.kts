@@ -1991,7 +1991,7 @@ project(":pipeline-application").pluginManager.withPlugin("org.jetbrains.kotlin.
             .withPropertyName("externalExamplePlugins")
             .withPathSensitivity(PathSensitivity.RELATIVE)
     }
-    // The test task of the application consumes the SAME four JARs, because
+    // The test tasks of the application consume the SAME four JARs, because
     // `runtimeOnly` is inherited by `testRuntimeOnly`: the JARs are on the
     // runtime classpath of the tests as well. The dependency on the task that
     // produces them is therefore just as real here as it is for the
@@ -2009,12 +2009,21 @@ project(":pipeline-application").pluginManager.withPlugin("org.jetbrains.kotlin.
     // needed in the first place: without it the tests could start before the
     // JARs existed.
     //
+    // The INTEGRATION lane carries the same classpath and had the same hole:
+    // the lane inherits `testRuntimeOnly` from `runtimeOnly`, so it consumes
+    // the same JARs, and an invocation that carried the build AND the
+    // integration lane failed with the same message and the name of the other
+    // task. The two lanes are declared together because they consume the same
+    // thing for the same reason.
+    //
     // The staged copies in `lib/` are NOT declared as inputs of the test task.
     // The tests read the originals, which are the output of
     // `:buildExamplePlugins`; the staged copies are the output of
     // `:pipeline-application:installDist`, and declaring them here would trade
     // one undeclared dependency for another.
-    appProject.tasks.matching { it.name == "test" }.configureEach {
+    appProject.tasks.matching {
+        it.name == "test" || it.name == "integrationTest"
+    }.configureEach {
         dependsOn(":buildExamplePlugins")
     }
 }

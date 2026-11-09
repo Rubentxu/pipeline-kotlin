@@ -216,11 +216,11 @@ class TelemetryExportIntegrationTest {
         val out = PrintStream(outBytes, true, Charsets.UTF_8.name())
         val err = PrintStream(errBytes, true, Charsets.UTF_8.name())
 
-        val outcome = handleReadOnlyVerb(Array(words.size) { words[it] }, out, err)
+        val outcome = handleInventoryVerb(Array(words.size) { words[it] }, out, err)
         out.flush()
         err.flush()
 
-        val answered = outcome as? ReadOnlyVerbOutcome.Answered
+        val answered = outcome as? InventoryVerbOutcome.Answered
             ?: error("the verb did not answer at all: $outcome")
         return Answer(answered.exit, outBytes.toString(Charsets.UTF_8), errBytes.toString(Charsets.UTF_8))
     }

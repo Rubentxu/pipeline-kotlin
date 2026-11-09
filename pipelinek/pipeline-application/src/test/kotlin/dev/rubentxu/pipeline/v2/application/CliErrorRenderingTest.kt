@@ -445,9 +445,9 @@ class CliErrorRenderingTest {
      * answered by two doors.
      */
     private fun dispatch(args: Array<String>, out: PrintStream, err: PrintStream): Int =
-        when (val outcome = handleReadOnlyVerb(args, out, err)) {
-            is ReadOnlyVerbOutcome.Answered -> outcome.exit.code
-            ReadOnlyVerbOutcome.NotHandled -> fail("no verb answered ${args.toList()}")
+        when (val outcome = handleInventoryVerb(args, out, err)) {
+            is InventoryVerbOutcome.Answered -> outcome.exit.code
+            InventoryVerbOutcome.NotHandled -> fail("no verb answered ${args.toList()}")
         }
 
     /**

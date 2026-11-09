@@ -30,7 +30,7 @@ What PipelineK is **not**: it is not a scheduler, and it does not promise byte-i
 
 ## Quickstart
 
-**Requirements:** Java 21 or newer on the `PATH`, and Linux, macOS or Windows (WSL). Nothing needs `sudo`; nothing starts a daemon.
+**Requirements:** Java 21 or newer on the `PATH`, and Linux, macOS or Windows (WSL). Nothing needs `sudo`; no daemon starts itself.
 
 ```bash
 # The newest STABLE release. The digest is published with the release, so the
@@ -220,10 +220,10 @@ needs none.
 | Capability | What it gives you | Status |
 |---|---|---|
 | **Kotlin DSL** | `pipeline { stages { stage { … } } }` plus real Kotlin control flow, `script {}` blocks, `parallel`, `retry`, `timeout`, `catchError`, `whenGate` | Available |
-| **Local execution** | One run per CLI invocation, in your own working directory. No controller, no agent, no daemon | Available |
+| **Local execution** | One run per CLI invocation, in your own working directory. No controller, no agent, no daemon that starts itself | Available |
 | **Durable journal** | A SQLite journal (`--db`) plus a control root: a killed run leaves a record you can inspect, resume, cancel or recover | Available |
 | **Typed events** | `CompilationStarted`, `RunStarted`, `StageStarted`, `StepStarted`, `StepFinished`, `StepFailed`, `RunFinished`, `EchoOutputCaptured` — with the failure's stage attached to the failure event | Available |
-| **Structured CLI** | `validate`, `run`, `observe`, `console`, `events`, `inspect`, `credentials`, `doctor`, `version`, `capabilities`, `sdk-info`, `runs cancel`, `runs recover` — each verb prints its own usage | Available |
+| **Structured CLI** | `validate`, `run`, `observe`, `console`, `events`, `inspect`, `credentials`, `doctor`, `version`, `capabilities`, `sdk-info`, `serve`, `runs cancel`, `runs recover` — each verb prints its own usage | Available |
 | **Plugin SDK** | `StepContract`, typed codecs, declared capabilities, a manifest with an API range. Plugin authors build against the published SDK alone | Available |
 | **Plugin trust** | `--plugin-trust` admits a plugin only if its bytes match the pinned SHA-256 and carry a valid detached Ed25519 signature; `--require-plugin-trust` refuses anything unvouched, before its code runs | Available |
 | **OpenTelemetry** | Optional OTLP export of timing, counts and buckets — never payloads. Off unless `PIPELINEK_OTEL_ENABLED=true` | Available |
@@ -232,6 +232,30 @@ needs none.
 The last row is the honest one: the capabilities `runtime.inspect.v1`, `runtime.cancel.v1`, `runtime.recover.v1` and `output.pin.v1` are published as **experimental**. `pipelinek capabilities` prints the exact status of every key this build admits.
 
 **What is published:** `output.follow.v2`, `events.follow.v3`, `events.stepoutcome.v1`, `events.failurestage.v1`.
+
+### The local service
+
+`pipelinek serve` runs a local service on a Unix domain socket, so a supervisor can ask about the runs of a machine without starting a run of its own. It is opt-in in the literal sense: nothing starts it for you, it serves until you stop it, and it leaves nothing behind when it stops.
+
+```bash
+pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock
+```
+
+All three paths are required and none of them has a default: the service reads the substrate you name and listens where you say, so what the socket says about a run is comparable with what `inspect --state` says over the same inputs. The service never writes to the substrate it serves, and it does not create the control root it is about to read.
+
+The socket is a file of the filesystem, and its mode is the boundary. The socket is `rw-------`, and its directory has to be private (`rwx------`) — if the directory grants anything to the group or to others, the service refuses to start rather than publish a socket those users could open.
+
+One request per line, one answer per line, in JSON, with the version of the protocol in the `schema` field:
+
+```json
+{"schema":"pipelinek.service/1","op":"run.state","runId":"34b28ddc-…"}
+{"schema":"pipelinek.service/1","ok":true,"result":{"state":"terminal","outcome":"succeeded","at":0}}
+{"schema":"pipelinek.service/1","ok":false,"refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
+```
+
+The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections` — so a client reads a word and not a sentence.
+
+The socket file is deleted when the service stops. A socket left behind by a crash is recognised for what it is and replaced on the next start; a socket another service is already listening on is never displaced, and a path that is not a socket is never deleted.
 
 ### Telemetry
 
@@ -293,7 +317,7 @@ A plugin is loaded from `--plugin-jar`. With `--plugin-trust <file>` it is admit
 
 **For agents.** A pipeline is a typed, readable artifact, and every run leaves a machine-readable trail: typed events, a resumable cursor, and a durable journal. An agent can read a run, decide what to do next, and be refused with a precise reason when the answer is not there.
 
-**For platform teams.** One binary, no daemon, no controller, no remote state. The runtime is designed to be embedded: a plugin declares the capabilities it needs, and the engine refuses anything it did not declare. The network is behind a capability — a plugin that wants to reach it declares `network.egress`, and a step that wants it must have declared it.
+**For platform teams.** One binary, no daemon that starts itself, no controller, no remote state. The runtime is designed to be embedded: a plugin declares the capabilities it needs, and the engine refuses anything it did not declare. The network is behind a capability — a plugin that wants to reach it declares `network.egress`, and a step that wants it must have declared it.
 
 ---
 

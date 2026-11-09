@@ -493,6 +493,30 @@ sealed interface CliError {
      * different run.
      */
     data class RunIdCannotNameADirectory(val runId: String) : CliError
+
+    /**
+     * The substrate the service was asked to serve cannot be read.
+     *
+     * The service reads the store it is given, and it does not create one: a
+     * service that creates the substrate it is about to read is a service that
+     * writes, and what it would answer about is not what the operator named.
+     *
+     * @property reason what the substrate said when it was asked.
+     */
+    data class SubstrateUnavailable(val reason: String) : CliError
+
+    /**
+     * The service could not start on the machine it was asked to run on.
+     *
+     * The reason is a WORD, because every way this fails has a different
+     * remedy: another path, another directory, another platform, or nothing
+     * at all until a human looks. A single sentence would send the operator
+     * looking in the wrong place.
+     *
+     * @property reason the word that names what stopped the service.
+     * @property detail what the machine said about it.
+     */
+    data class ServiceUnavailable(val reason: String, val detail: String) : CliError
 }
 
 /**

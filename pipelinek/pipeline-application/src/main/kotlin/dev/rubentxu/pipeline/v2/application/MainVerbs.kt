@@ -45,38 +45,38 @@ internal fun isHelpRequest(args: Array<String>): Boolean =
 private val HELP_TOKENS = setOf("--help", "-h", "help")
 
 /**
- * What the read-only verbs decided.
+ * What the verbs of the inventory decided.
  *
  * ## Why this is a value and not a Boolean
  *
- * The read-only verbs answer, and the process ends. The dispatcher used to end
- * the process ITSELF, from inside a helper: it swallowed the result of the
- * verb and ended the JVM before its caller had decided anything. A helper
+ * The verbs of the inventory answer, and the process ends. The dispatcher used
+ * to end the process ITSELF, from inside a helper: it swallowed the result of
+ * the verb and ended the JVM before its caller had decided anything. A helper
  * that ends the process takes a decision that is not its own, and it takes it
  * away from the one place that owns the process.
  *
  * The dispatcher now says WHAT happened and lets the entry point decide what
- * to do with it. Two facts, not one: whether a read-only verb answered, and
- * the decision it answered with.
+ * to do with it. Two facts, not one: whether a verb of the inventory
+ * answered, and the decision it answered with.
  */
-internal sealed interface ReadOnlyVerbOutcome {
+internal sealed interface InventoryVerbOutcome {
 
-    /** No read-only verb answers these words; the request is not one of ours. */
-    data object NotHandled : ReadOnlyVerbOutcome
+    /** No verb of the inventory answers these words; the request is not one of ours. */
+    data object NotHandled : InventoryVerbOutcome
 
-    /** A read-only verb answered, and this is the decision it answered with. */
-    data class Answered(val exit: CliExit) : ReadOnlyVerbOutcome
+    /** A verb of the inventory answered, and this is the decision it answered with. */
+    data class Answered(val exit: CliExit) : InventoryVerbOutcome
 }
 
 /**
- * The read-only verbs: the ones that answer without writing.
+ * The verbs the inventory dispatches: the ones that answer a request and end.
  *
  * ## Why they live here
  *
- * A read-only verb is not part of running a pipeline: it admits nothing,
- * composes no store and writes nothing. It was inside `fun main` because
- * `main` had grown to be a whole file, and in there anything fits if nobody
- * looks at the size.
+ * A verb of the inventory is not part of running a pipeline: it admits nothing
+ * beyond its own options and writes nothing of the substrate it reads. It was
+ * inside `fun main` because `main` had grown to be a whole file, and in there
+ * anything fits if nobody looks at the size.
  *
  * ## What dispatches them
  *
@@ -86,6 +86,13 @@ internal sealed interface ReadOnlyVerbOutcome {
  * to spell out is gone, and with it the chance of the two lists disagreeing
  * about what a verb is.
  *
+ * ## Why the name is not "read-only"
+ *
+ * It used to be, and the name started to lie: `serve` reads a substrate and
+ * writes NOTHING of it, but it creates a socket and occupies the process, and
+ * a dispatcher called "the read-only one" answering a verb that is neither
+ * read-only nor short-lived is a name that has stopped describing the thing.
+ *
  * ## Why it returns a decision and does not end the process
  *
  * The verb that answers is not the owner of the process. The dispatcher
@@ -94,14 +101,14 @@ internal sealed interface ReadOnlyVerbOutcome {
  * answer can still not fall through into the run path: the caller stops on
  * the outcome, whatever the outcome is.
  */
-internal fun handleReadOnlyVerb(
+internal fun handleInventoryVerb(
     args: Array<String>,
     out: PrintStream,
     err: PrintStream,
-): ReadOnlyVerbOutcome {
+): InventoryVerbOutcome {
     val verb = cliVerbFor(args)
     if (verb != null && verb.handler != null) {
-        return ReadOnlyVerbOutcome.Answered(
+        return InventoryVerbOutcome.Answered(
             try {
                 verb.handler(args.drop(verb.words.size).toTypedArray(), out, err)
             } catch (refusal: UnnameableRunIdentity) {
@@ -128,9 +135,9 @@ internal fun handleReadOnlyVerb(
     if (door != null) {
         err.println(door.error.refusalLines("pipeline").joinToString("\n"))
         err.println(door.usage)
-        return ReadOnlyVerbOutcome.Answered(door.error.toCliExit())
+        return InventoryVerbOutcome.Answered(door.error.toCliExit())
     }
-    return ReadOnlyVerbOutcome.NotHandled
+    return InventoryVerbOutcome.NotHandled
 }
 
 /**

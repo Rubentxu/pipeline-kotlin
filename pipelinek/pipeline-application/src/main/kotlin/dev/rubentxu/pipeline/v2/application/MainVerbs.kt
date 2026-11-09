@@ -108,6 +108,22 @@ internal fun handleInventoryVerb(
 ): InventoryVerbOutcome {
     val verb = cliVerbFor(args)
     if (verb != null && verb.handler != null) {
+        // `--endpoint` is an option of ONE form, and it is refused here, at
+        // the door, before the verb reads a single option.
+        //
+        // The two things that could go wrong here are both worse than a
+        // refusal: a verb that DROPPED it would leave the operator believing
+        // in a service it never asked, and a verb that ANSWERED from
+        // somewhere else would report a fact about a source nobody named.
+        if (!verb.admitsEndpoint && args.contains("--endpoint")) {
+            val error = CliError.OptionBelongsToVerb(
+                "--endpoint",
+                "inspect --state",
+                "the service answers the run's state and no other surface of this CLI",
+            )
+            err.println(error.refusalLines(verb.label).joinToString("\n"))
+            return InventoryVerbOutcome.Answered(error.toCliExit())
+        }
         return InventoryVerbOutcome.Answered(
             try {
                 verb.handler(args.drop(verb.words.size).toTypedArray(), out, err)

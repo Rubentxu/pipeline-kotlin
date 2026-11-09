@@ -300,6 +300,7 @@ val generateSdkCoordinates by tasks.registering {
         "pipeline-output",
         "pipeline-runtime-api",
         "pipeline-scripting-api",
+        "pipeline-service-client",
     )
     val bom = "pipeline-sdk-bom"
 
@@ -381,6 +382,11 @@ dependencies {
     // DIRECTLY and not only through the adapters: a consumer that holds a journal has to be
     // able to name the port it holds.
     implementation(project(":pipeline-runtime-api"))
+    // The client of the local service: the wire vocabulary of `pipelinek.service/2` and the
+    // typed client that speaks it. The service and the command line both compile against
+    // it, so the cable has ONE owner and the CLI's `--endpoint` path speaks exactly the
+    // protocol the server serves.
+    implementation(project(":pipeline-service-client"))
     // The Output Plane. Process transcript bytes are written here and nowhere else, and no
     // console event carries them. The dependency points ONE WAY - :pipeline-output depends on
     // neither :pipeline-events nor :pipeline-domain, so the event plane cannot reach back into the

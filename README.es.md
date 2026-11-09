@@ -122,17 +122,47 @@ Las tres rutas son obligatorias y ninguna tiene valor por defecto: el servicio l
 
 El socket es un fichero del sistema de ficheros, y su modo es la frontera. El socket queda en `rw-------`, y su directorio tiene que ser privado (`rwx------`): si el directorio concede algo al grupo o a otros, el servicio no arranca en vez de publicar un socket que esos usuarios podrían abrir.
 
-Una petición por línea, una respuesta por línea, en JSON, con la versión del protocolo en el campo `schema`:
+Una petición por línea, una respuesta por línea, en JSON, con la versión del protocolo en el campo `schema` y el tipo de la línea en `kind`:
 
 ```json
-{"schema":"pipelinek.service/1","op":"run.state","runId":"34b28ddc-…"}
-{"schema":"pipelinek.service/1","ok":true,"result":{"state":"terminal","outcome":"succeeded","at":0}}
-{"schema":"pipelinek.service/1","ok":false,"refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
+{"schema":"pipelinek.service/2","op":"run.state","runId":"34b28ddc-…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"state":"terminal","attempt":1,"at":0,"outcome":"succeeded","terminalAt":0}}
+{"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
 El servicio lee tres cosas: `version` (la versión del producto y la del protocolo), `health` (el servicio y el sustrato con el que se compuso) y `run.state` (el estado de una ejecución, la misma respuesta que imprime `inspect --state` sobre el mismo almacén). Cada rechazo lleva un nombre — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections` — para que el cliente lea una palabra y no una frase.
 
+La respuesta de `run.state` lleva la observación ENTERA: el intento, la continuidad y su token de fencing, la posición del journal, las colas de la salida y el terminal con su desenlace. Un cliente que la reconstruye obtiene el mismo `RuntimeObservation` que la línea de órdenes renderiza, y no hay una segunda forma del mismo hecho.
+
 El fichero del socket se borra cuando el servicio para. Un socket que dejó una caída se reconoce por lo que es y se reemplaza en el siguiente arranque; un socket en el que ya escucha otro servicio no se desplaza nunca, y una ruta que no sea un socket no se borra nunca.
+
+#### Hablar con el servicio desde un programa
+
+El vocabulario del cable es un **artefacto publicado**: `pipelinek-service-client` lleva las peticiones, los rechazos, el códec y un cliente tipado, así que un consumidor no escribe una copia de nada de eso.
+
+```kotlin
+val client = ServiceClient(Path.of("/run/pipelinek/service.sock"), Duration.ofSeconds(10))
+
+when (val answer = client.runState("34b28ddc-…")) {
+    is ServiceAnswer.Answered -> println(answer.value)   // un RuntimeObservation
+    is ServiceAnswer.Refused -> println(answer.refusal.kind)
+    is ServiceAnswer.Unreachable -> println("no hay ningún servicio")
+    is ServiceAnswer.Unreadable -> println("habla otro protocolo")
+    ServiceAnswer.TimedOut -> println("no respondió a tiempo")
+}
+```
+
+`runState` devuelve el mismo `RuntimeObservation` que la línea de órdenes renderiza, así que la respuesta que lee un cliente y la línea que ve un operador son el mismo hecho.
+
+La línea de órdenes también puede hablar con un servicio, con `--endpoint`:
+
+```bash
+pipelinek inspect --state --endpoint ./state/pipelinek.sock 34b28ddc-…
+```
+
+`--endpoint` lo admite **un** modo de **un** verbo: `inspect --state`, la única superficie que esta CLI publica y que el servicio responde con la misma renderización. Cualquier otro verbo rechaza la opción **por su nombre**, y no hay alternativa: un servicio que no está se reporta como que no está, nunca se responde desde el almacén local.
+
+El plazo del cliente cierra la conexión que abrió y no toca nada más: el servicio es de solo lectura, así que un cliente que se va deja la ejecución exactamente como estaba.
 
 ### Telemetría
 
@@ -182,7 +212,7 @@ Nada de lo anterior es una promesa de compatibilidad: un proyecto declara el ran
 
 Un plugin es un build de Gradle independiente que compila contra el SDK publicado y contra nada más. Declara un `StepContract` — la clave de familia, el descriptor, los códecs tipados y las capacidades que requiere — y un manifiesto con el rango de API con el que se construyó.
 
-El SDK viaja con cada release como `pipelinek-<version>.sdk.zip`: seis artefactos (`pipelinek-domain`, `pipelinek-events`, `pipelinek-output`, `pipelinek-runtime-api`, `pipelinek-scripting-api`, `pipelinek-sdk-bom`) y un BOM que fija sus versiones entre sí. `pipelinek sdk-info` imprime el grupo y las coordenadas exactas contra las que compila un plugin.
+El SDK viaja con cada release como `pipelinek-<version>.sdk.zip`: siete artefactos (`pipelinek-domain`, `pipelinek-events`, `pipelinek-output`, `pipelinek-runtime-api`, `pipelinek-scripting-api`, `pipelinek-service-client`, `pipelinek-sdk-bom`) y un BOM que fija sus versiones entre sí. `pipelinek sdk-info` imprime el grupo y las coordenadas exactas contra las que compila un plugin.
 
 Un plugin se carga desde `--plugin-jar`. Con `--plugin-trust <file>` solo se admite si sus bytes coinciden con el SHA-256 fijado por el operador y llevan una firma Ed25519 válida; con `--require-plugin-trust`, un plugin que nadie ha avalado se rechaza antes de que corra su código.
 

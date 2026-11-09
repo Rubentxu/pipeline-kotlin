@@ -1,0 +1,605 @@
+public final class dev/rubentxu/pipeline/v2/service/FrameOrdinalToken {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/FrameOrdinalToken;
+	public final fun decode (Ljava/lang/String;)Ljava/lang/Long;
+	public final fun encode (J)Ljava/lang/String;
+	public final fun getPREFIX ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceAnswer {
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceAnswer$Answered : dev/rubentxu/pipeline/v2/service/ServiceAnswer {
+	public fun <init> (Ljava/lang/Object;)V
+	public final fun component1 ()Ljava/lang/Object;
+	public final fun copy (Ljava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Answered;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Answered;Ljava/lang/Object;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Answered;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceAnswer$Refused : dev/rubentxu/pipeline/v2/service/ServiceAnswer {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Refused;Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceAnswer$TimedOut : dev/rubentxu/pipeline/v2/service/ServiceAnswer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$TimedOut;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceAnswer$Unreachable : dev/rubentxu/pipeline/v2/service/ServiceAnswer {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Unreachable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Unreachable;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Unreachable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetail ()Ljava/lang/String;
+	public final fun getEndpoint ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceAnswer$Unreadable : dev/rubentxu/pipeline/v2/service/ServiceAnswer {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Unreadable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Unreadable;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer$Unreadable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetail ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceClient {
+	public fun <init> (Ljava/nio/file/Path;Ljava/time/Duration;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/nio/file/Path;Ljava/time/Duration;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun events (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public static synthetic fun events$default (Ldev/rubentxu/pipeline/v2/service/ServiceClient;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public final fun health ()Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public final fun output (Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public static synthetic fun output$default (Ldev/rubentxu/pipeline/v2/service/ServiceClient;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public final fun runState (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public final fun version ()Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceCodec {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceCodec;
+	public final fun decode (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceDecoding;
+	public final fun decodeLine (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceLine;
+	public final fun encode (Ldev/rubentxu/pipeline/v2/service/ServiceRequest;)Ljava/lang/String;
+	public final fun encode (Ldev/rubentxu/pipeline/v2/service/ServiceResponse;)Ljava/lang/String;
+	public final fun encode (Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest;)Ljava/lang/String;
+	public final fun encodeEnd (Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;Ljava/lang/String;)Ljava/lang/String;
+	public final fun encodeRecord (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Z)Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceDecoding {
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceDecoding$Decoded : dev/rubentxu/pipeline/v2/service/ServiceDecoding {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/service/ServiceRequest;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/service/ServiceRequest;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/service/ServiceRequest;)Ldev/rubentxu/pipeline/v2/service/ServiceDecoding$Decoded;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceDecoding$Decoded;Ldev/rubentxu/pipeline/v2/service/ServiceRequest;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceDecoding$Decoded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRequest ()Ldev/rubentxu/pipeline/v2/service/ServiceRequest;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceDecoding$Refused : dev/rubentxu/pipeline/v2/service/ServiceDecoding {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;)Ldev/rubentxu/pipeline/v2/service/ServiceDecoding$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceDecoding$Refused;Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceDecoding$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceDecoding$Subscribed : dev/rubentxu/pipeline/v2/service/ServiceDecoding {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest;)Ldev/rubentxu/pipeline/v2/service/ServiceDecoding$Subscribed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceDecoding$Subscribed;Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceDecoding$Subscribed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRequest ()Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceEndReason : java/lang/Enum {
+	public static final field TerminalObserved Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getWord ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceHealth {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Z
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)Ldev/rubentxu/pipeline/v2/service/ServiceHealth;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceHealth;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceHealth;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getControlRoot ()Ljava/lang/String;
+	public final fun getControlRootPresent ()Z
+	public final fun getEventStore ()Ljava/lang/String;
+	public final fun getEventStorePresent ()Z
+	public final fun getProductVersion ()Ljava/lang/String;
+	public final fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceLine {
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceLine$Answered : dev/rubentxu/pipeline/v2/service/ServiceLine {
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun copy (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)Ldev/rubentxu/pipeline/v2/service/ServiceLine$Answered;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceLine$Answered;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceLine$Answered;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getResult ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceLine$End : dev/rubentxu/pipeline/v2/service/ServiceLine {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;Ljava/lang/String;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceLine$End;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceLine$End;Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceLine$End;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCursor ()Ljava/lang/String;
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceLine$Record : dev/rubentxu/pipeline/v2/service/ServiceLine {
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Z)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun component3 ()Z
+	public final fun copy (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Z)Ldev/rubentxu/pipeline/v2/service/ServiceLine$Record;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceLine$Record;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceLine$Record;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCursor ()Ljava/lang/String;
+	public final fun getHasMore ()Z
+	public final fun getRecord ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceLine$Refused : dev/rubentxu/pipeline/v2/service/ServiceLine {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;)Ldev/rubentxu/pipeline/v2/service/ServiceLine$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceLine$Refused;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceLine$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;
+	public final fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceProtocol {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceProtocol;
+	public static final field MAX_LINE_BYTES I
+	public static final field SCHEMA Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public abstract fun getKind ()Ljava/lang/String;
+	public abstract fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$CursorBeyondTail : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;JJ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun copy (Ljava/lang/String;JJ)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$CursorBeyondTail;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$CursorBeyondTail;Ljava/lang/String;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$CursorBeyondTail;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getRequestedSequence ()J
+	public final fun getRunId ()Ljava/lang/String;
+	public final fun getTailSequence ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$HeldByAnother : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun copy (Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$HeldByAnother;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$HeldByAnother;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$HeldByAnother;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFencingToken ()J
+	public final fun getHeldBy ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$IncompatibleProtocol : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$IncompatibleProtocol;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$Inconsistent : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$Inconsistent;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$Inconsistent;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$Inconsistent;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetails ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$InvalidCursor : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$InvalidCursor;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$InvalidCursor;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$InvalidCursor;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCursor ()Ljava/lang/String;
+	public final fun getExpected ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$MalformedRequest : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$MalformedRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$NotConfiguredControlRoot : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$NotConfiguredControlRoot;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$NotConfiguredEventPlane : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$NotConfiguredEventPlane;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$NotConfiguredOutputPlane : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$NotConfiguredOutputPlane;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$OutputPlaneRefused : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$OutputPlaneRefused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$OutputPlaneRefused;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$OutputPlaneRefused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetail ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$RequestTooLarge : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$RequestTooLarge;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$StorageFailed : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$StorageFailed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$StorageFailed;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$StorageFailed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCause ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$TooManyConnections : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$TooManyConnections;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$UnknownOp : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$UnknownOp;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$UnknownRun : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$UnknownRun;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$UnknownRun;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$UnknownRun;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getRunId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$UnknownRunOperation : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;I)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun copy (Ljava/lang/String;I)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$UnknownRunOperation;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$UnknownRunOperation;Ljava/lang/String;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$UnknownRunOperation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttempt ()I
+	public fun getKind ()Ljava/lang/String;
+	public final fun getOperationId ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceRequest {
+	public abstract fun getSchema ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$Health : dev/rubentxu/pipeline/v2/service/ServiceRequest {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$Health;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRequest$Health;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$Health;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$RunState : dev/rubentxu/pipeline/v2/service/ServiceRequest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$RunState;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRequest$RunState;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$RunState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRunId ()Ljava/lang/String;
+	public fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$Version : dev/rubentxu/pipeline/v2/service/ServiceRequest {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$Version;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRequest$Version;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$Version;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceResponse {
+	public abstract fun getSchema ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceResponse$Answered : dev/rubentxu/pipeline/v2/service/ServiceResponse {
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun copy (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)Ldev/rubentxu/pipeline/v2/service/ServiceResponse$Answered;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceResponse$Answered;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceResponse$Answered;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getResult ()Lkotlinx/serialization/json/JsonObject;
+	public fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceResponse$Refused : dev/rubentxu/pipeline/v2/service/ServiceResponse {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;)Ldev/rubentxu/pipeline/v2/service/ServiceResponse$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceResponse$Refused;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceResponse$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;
+	public fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRunState {
+	public static final field EMPTY Ljava/lang/String;
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRunState;
+	public static final field RUNNING Ljava/lang/String;
+	public static final field TERMINAL Ljava/lang/String;
+	public static final field UNOBSERVABLE Ljava/lang/String;
+	public final fun decode (Lkotlinx/serialization/json/JsonObject;)Ldev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding;
+	public final fun encode (Ldev/rubentxu/pipeline/v2/runtime/inspect/RuntimeObservation;)Lkotlinx/serialization/json/JsonObject;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding {
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding$Observed : dev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/inspect/RuntimeObservation;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/inspect/RuntimeObservation;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/inspect/RuntimeObservation;)Ldev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding$Observed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding$Observed;Ldev/rubentxu/pipeline/v2/runtime/inspect/RuntimeObservation;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding$Observed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getObservation ()Ldev/rubentxu/pipeline/v2/runtime/inspect/RuntimeObservation;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding$Unreadable : dev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding$Unreadable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding$Unreadable;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRunStateDecoding$Unreadable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceStreet : java/lang/AutoCloseable {
+	public abstract fun next ()Ldev/rubentxu/pipeline/v2/service/ServiceStreetItem;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceStreetItem {
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceStreetItem$End : dev/rubentxu/pipeline/v2/service/ServiceStreetItem {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;Ljava/lang/String;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceStreetItem$End;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceStreetItem$End;Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceStreetItem$End;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCursor ()Ljava/lang/String;
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/service/ServiceEndReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceStreetItem$Record : dev/rubentxu/pipeline/v2/service/ServiceStreetItem {
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Z)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun component3 ()Z
+	public final fun copy (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Z)Ldev/rubentxu/pipeline/v2/service/ServiceStreetItem$Record;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceStreetItem$Record;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceStreetItem$Record;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCursor ()Ljava/lang/String;
+	public final fun getDocument ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getHasMore ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceStreetItem$Refused : dev/rubentxu/pipeline/v2/service/ServiceStreetItem {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;)Ldev/rubentxu/pipeline/v2/service/ServiceStreetItem$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceStreetItem$Refused;Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceStreetItem$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest {
+	public abstract fun getRunId ()Ljava/lang/String;
+	public abstract fun getSchema ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest$EventsFollow : dev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;)Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest$EventsFollow;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest$EventsFollow;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest$EventsFollow;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAfter ()Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;
+	public fun getRunId ()Ljava/lang/String;
+	public fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest$OutputFollow : dev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest$OutputFollow;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest$OutputFollow;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceSubscriptionRequest$OutputFollow;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAfter ()J
+	public fun getRunId ()Ljava/lang/String;
+	public fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceVersion {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceVersion;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceVersion;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceVersion;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getProductVersion ()Ljava/lang/String;
+	public final fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+

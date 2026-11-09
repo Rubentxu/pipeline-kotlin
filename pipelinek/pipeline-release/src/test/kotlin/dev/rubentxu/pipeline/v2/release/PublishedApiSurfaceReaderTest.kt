@@ -132,6 +132,17 @@ class PublishedApiSurfaceReaderTest {
     // --- the surface as a whole ---------------------------------------------------------
 
     @Test
+    fun `an empty dump is read as an empty surface`() {
+        // The dump the build writes for a module the previous release did
+        // not publish. It is a READING — of a surface that has no
+        // declarations — and not a dump that was never written: the file is
+        // there, and the reader says the surface is empty.
+        val surface = PublishedApiSurfaceReader.read("\n")
+
+        assertTrue(surface.declarations.isEmpty())
+    }
+
+    @Test
     fun `a rendered surface is read into its declarations and members`() {
         val rendered = """
             public final class dev/rubentxu/pipeline/v2/domain/AttemptId {

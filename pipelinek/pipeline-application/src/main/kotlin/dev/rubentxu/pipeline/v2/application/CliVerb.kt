@@ -50,6 +50,15 @@ internal class CliVerb(
      * it.
      */
     val familyUsage: String? = null,
+    /**
+     * Whether this form admits `--endpoint`.
+     *
+     * The service answers the run's state and no other surface this CLI
+     * publishes, so the option belongs to ONE form. A form that does not
+     * admit it refuses it BY NAME at the door: an option that is dropped
+     * without a word is an option the operator believed in.
+     */
+    val admitsEndpoint: Boolean = false,
 ) {
     /** The words this form is written with. */
     val words: List<String> = label.split(' ')
@@ -125,7 +134,14 @@ internal val CLI_VERBS: List<CliVerb> = buildList {
     add(CliVerb("operations", "list a run's operations with their complete identity", ::runOperationsVerb))
     add(CliVerb("events", "read one run's domain events as text or json", ::runEventsVerb))
     add(CliVerb("events verify", "check a run's events against a contract (--db, --run, --contract)", ::runEventsVerifyVerb))
-    add(CliVerb("inspect", "read a run id's digests, steps and provenance", ::runInspectVerb))
+    add(
+        CliVerb(
+            "inspect",
+            "read a run id's digests, steps and provenance",
+            ::runInspectVerb,
+            admitsEndpoint = true,
+        ),
+    )
     add(
         CliVerb(
             "saga inspect",

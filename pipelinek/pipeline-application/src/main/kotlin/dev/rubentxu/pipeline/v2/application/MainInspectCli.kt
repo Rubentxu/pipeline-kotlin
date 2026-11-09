@@ -211,6 +211,25 @@ object MainInspectCli {
             return code
         }
 
+        // The remote path: `--endpoint` names a service to ask instead of
+        // the local substrate.
+        //
+        // The branch sits HERE, before the local admission, for two reasons
+        // that are both about not lying to the operator:
+        //
+        //  - a remote request must not demand a `--db` it will never open,
+        //    nor a `--control-root` it will never read;
+        //  - and it must not OPEN the local store to find out that it does
+        //    not need it, because a local refusal printed as if it were the
+        //    service's answer is a fallback in everything but its name.
+        //
+        // There is no local path behind this one. The service that was named
+        // is the only source of the answer, and a service that does not
+        // answer says so.
+        if (compiled.endpoint != null) {
+            return reportRunStateRemotely(compiled.endpoint, runId, compiled, out = out, err = err)
+        }
+
         // Durable read seam.
         if (compiled.dbPath == null) {
             return refuse(
@@ -430,6 +449,33 @@ object MainInspectCli {
                 CliExit.INVALID_ARGUMENT.code
             }
         }
+    }
+
+    /**
+     * The run's state, read from a SERVICE instead of from the local store.
+     *
+     * `--endpoint` is admitted by ONE mode of this verb, and the refusal
+     * names the mode that was asked for instead: the service answers the
+     * run's state and nothing else this CLI publishes, so a request that
+     * named the service and asked for another surface has no honest answer.
+     */
+    private fun reportRunStateRemotely(endpoint: String, runId: String, query: CompiledInspectionQuery,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int {
+        if (!query.state) {
+            val mode = when {
+                query.profile -> "--profile"
+                query.explain -> "--explain"
+                query.telemetry -> "--telemetry"
+                else -> "the record table"
+            }
+            err.println(
+                "inspect: --endpoint is admitted only with --state; the service does not answer $mode",
+            )
+            return CliExit.INVALID_ARGUMENT.code
+        }
+        return ServiceEndpoint.report(endpoint, runId, out = out, err = err)
     }
 
     /**

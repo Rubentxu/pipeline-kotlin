@@ -16,6 +16,13 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import kotlinx.serialization.json.JsonObject
+import dev.rubentxu.pipeline.v2.service.FrameOrdinalToken
+import dev.rubentxu.pipeline.v2.service.ServiceCodec
+import dev.rubentxu.pipeline.v2.service.ServiceEndReason
+import dev.rubentxu.pipeline.v2.service.ServiceProtocol
+import dev.rubentxu.pipeline.v2.service.ServiceRefusal
+import dev.rubentxu.pipeline.v2.service.ServiceResponse
+import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
 
 /**
  * The streets of the local service.
@@ -191,7 +198,7 @@ internal class ServiceSubscription(
         request: ServiceSubscriptionRequest.OutputFollow,
     ) {
         var afterOrdinal = request.after
-        var cursor = ConsoleFramePlane.encodeFrameOrdinal(afterOrdinal)
+        var cursor = FrameOrdinalToken.encode(afterOrdinal)
         while (true) {
             var moreFrames = false
             when (val read = lanes.outputOf(request.runId, afterOrdinal, FRAMES_PER_READ)) {
@@ -209,7 +216,7 @@ internal class ServiceSubscription(
                     page.records.forEachIndexed { index, record ->
                         connection.writeLine(
                             ServiceCodec.encodeRecord(
-                                cursor = ConsoleFramePlane.encodeFrameOrdinal(record.frame.ordinal),
+                                cursor = FrameOrdinalToken.encode(record.frame.ordinal),
                                 record = ObservationJsonLines.encodeOneObject(record),
                                 hasMore = index < page.records.size - 1 || page.moreFrames,
                             ),
@@ -218,7 +225,7 @@ internal class ServiceSubscription(
                     // The resume position IS the last record of the page, and the page says so
                     // about itself: an empty page carries back the position it was asked for.
                     afterOrdinal = page.lastOrdinal
-                    cursor = ConsoleFramePlane.encodeFrameOrdinal(page.lastOrdinal)
+                    cursor = FrameOrdinalToken.encode(page.lastOrdinal)
                 }
             }
 

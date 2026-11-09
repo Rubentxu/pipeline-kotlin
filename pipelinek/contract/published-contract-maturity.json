@@ -52,7 +52,8 @@
     "pipeline-events": "EXPERIMENTAL",
     "pipeline-output": "EXPERIMENTAL",
     "pipeline-runtime-api": "EXPERIMENTAL",
-    "pipeline-credentials-api": "EXPERIMENTAL"
+    "pipeline-credentials-api": "EXPERIMENTAL",
+    "pipeline-service-client": "EXPERIMENTAL"
   },
   "rationale": {
     "pipeline-domain": [
@@ -119,6 +120,24 @@
       "SDK, and it does not make its ABI a promise to a consumer that does not exist. It says",
       "that the bytes travel, and therefore that changing them is a versioned break that has",
       "to be recorded rather than a quiet edit."
+    ],
+    "pipeline-service-client": [
+      "EXPERIMENTAL, and the reason is specific: this module is the FIRST artifact that",
+      "speaks the local service's wire from the OUTSIDE. Until it existed, the vocabulary of",
+      "the wire lived inside the product and no consumer could resolve it, so a client had to",
+      "copy the codec and a copy was free to drift from it. The module is published, so its",
+      "bytes are a promise to whoever resolves it, and it carries the wire's own types:",
+      "a change of a request's shape, of a refusal's name or of the run.state document is a",
+      "breaking change of a PUBLISHED contract.",
+      "Its first publication is also the first release whose previous surface is EMPTY: the",
+      "previous release's SDK repository does not carry this artifact, so there is no previous",
+      "surface to compare against and everything this artifact publishes is an addition. The",
+      "second reading of the ABI says so in its verdict rather than refusing to compare,",
+      "and the refusal it used to make is kept for the case that is a refusal: a previous",
+      "release whose repository could not be read.",
+      "EXPERIMENTAL is the honest classification because the wire's version is still /2 and no",
+      "external consumer has compiled against this artifact yet. It flips to PUBLISHED at the",
+      "candidate boundary the publication plan documents."
     ]
   },
   "surfaces": {

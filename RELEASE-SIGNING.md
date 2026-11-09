@@ -257,12 +257,12 @@ paragraph below is how a consumer verifies what arrives.
 The destination is **Maven Central**, through its portal. The portal is not a
 Maven-layout repository that accepts a push per file: the service that did is
 retired, and what the portal accepts is a **bundle** — one ZIP with the layout
-of a Maven repository — sent to one endpoint with a token. The six coordinates
+of a Maven repository — sent to one endpoint with a token. The seven coordinates
 are published to one endpoint, and the bundle is the whole publication.
 
 The bytes that travel are the bytes that were signed. The bundle is not
 rebuilt on the way out: `scripts/release/stage-sdk-bundle.sh` publishes the
-six coordinates into `build/sdk-repo-staging`, signs every artifact there and
+seven coordinates into `build/sdk-repo-staging`, signs every artifact there and
 compiles an independent consumer against the staged bytes, and
 `scripts/release/upload-sdk-bundle.sh` packages **that** directory. The script
 re-verifies the bundle against the key declared for the Maven artifacts before
@@ -325,7 +325,7 @@ same contracts, and this one carries the name of the solution.
 
 | Channel | What it serves | What a consumer needs |
 |---|---|---|
-| the SDK ZIP of the release | the six coordinates with their JARs and POMs | unzip it and point the build at the directory |
+| the SDK ZIP of the release | the seven coordinates with their JARs and POMs | unzip it and point the build at the directory |
 | Maven Central, through its portal | the same coordinates with `sources.jar`, `javadoc.jar` and a detached signature for every artifact | nothing but the coordinates |
 | the Maven registry of GitHub Packages | the same coordinates and the same bytes | a token with `read:packages` |
 

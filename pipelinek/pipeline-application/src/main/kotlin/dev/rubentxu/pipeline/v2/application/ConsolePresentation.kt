@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.output.OutputPage
 import dev.rubentxu.pipeline.v2.output.OutputStreamAddress
 import java.io.PrintStream
 import java.nio.charset.StandardCharsets
+import dev.rubentxu.pipeline.v2.service.FrameOrdinalToken
 
 object ConsolePresentation {
 
@@ -52,7 +53,7 @@ object ConsolePresentation {
                     for (record in filtered) out.write(record.bytes)
                     out.flush()
                     if (moreFrames) {
-                        err.println(ConsoleFramePlane.encodeFrameOrdinal(lastOrdinal))
+                        err.println(FrameOrdinalToken.encode(lastOrdinal))
                     }
                     CliExit.SUCCESS.code
                 }
@@ -64,7 +65,7 @@ object ConsolePresentation {
                         )
                     }
                     if (moreFrames) {
-                        err.println(ConsoleFramePlane.encodeFrameOrdinal(lastOrdinal))
+                        err.println(FrameOrdinalToken.encode(lastOrdinal))
                     }
                     CliExit.SUCCESS.code
                 }
@@ -116,7 +117,7 @@ object ConsolePresentation {
                         // begin after another operation's does not begin at the ordinal the
                         // read started from, and a token built from the count would send the
                         // consumer back into the page it already has.
-                        err.println(ConsoleFramePlane.encodeFrameOrdinal(page.lastOrdinal))
+                        err.println(FrameOrdinalToken.encode(page.lastOrdinal))
                     }
                     CliExit.SUCCESS.code
                 }
@@ -136,7 +137,7 @@ object ConsolePresentation {
                     if (page.moreFrames) {
                         // The same token the text form prints: the ordinal of the last frame
                         // delivered, which is where the next read continues from.
-                        err.println(ConsoleFramePlane.encodeFrameOrdinal(page.lastOrdinal))
+                        err.println(FrameOrdinalToken.encode(page.lastOrdinal))
                     }
                     CliExit.SUCCESS.code
                 }

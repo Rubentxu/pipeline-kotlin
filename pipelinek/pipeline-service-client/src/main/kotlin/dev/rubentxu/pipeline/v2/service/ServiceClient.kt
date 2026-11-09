@@ -1,0 +1,530 @@
+package dev.rubentxu.pipeline.v2.service
+
+import dev.rubentxu.pipeline.v2.events.identity.EventCursor
+import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import java.io.IOException
+import java.net.UnixDomainSocketAddress
+import java.nio.ByteBuffer
+import java.nio.channels.SelectionKey
+import java.nio.channels.Selector
+import java.nio.channels.SocketChannel
+import java.nio.charset.StandardCharsets
+import java.nio.file.Path
+import java.time.Duration
+
+/**
+ * The answer of the service, or the negative that stopped it.
+ *
+ * ## Why every negative is a CASE and not an exception
+ *
+ * A client that cannot connect, that reads a foreign line, that waits too
+ * long, or that is refused by name, has FOUR different facts to tell apart —
+ * and the operator acts differently on each one: start the service, upgrade
+ * it, wait less, or give up on that run.
+ *
+ * A single "error" would leave that decision to a string comparison, and two
+ * clients would compare it differently. Every negative here is named.
+ *
+ * ## Why there is no local fallback
+ *
+ * There is no case that says "and also try locally". A client that asked a
+ * service and did not get an answer has to SAY so: a caller that quietly
+ * answered from somewhere else would be reporting a fact about a source the
+ * caller never named.
+ */
+sealed interface ServiceAnswer<out T> {
+
+    /** The service answered. */
+    data class Answered<out T>(val value: T) : ServiceAnswer<T>
+
+    /** The service refused, and the refusal has a name. */
+    data class Refused(val refusal: ServiceRefusal) : ServiceAnswer<Nothing>
+
+    /** There is no service at the endpoint. */
+    data class Unreachable(val endpoint: String, val detail: String) : ServiceAnswer<Nothing>
+
+    /** What came back is not this protocol. */
+    data class Unreadable(val detail: String) : ServiceAnswer<Nothing>
+
+    /** The deadline went by before the answer arrived. */
+    data object TimedOut : ServiceAnswer<Nothing>
+}
+
+/**
+ * The version the service speaks.
+ *
+ * Two facts and no more: the schema of the wire and the version of the
+ * product. The product's version is read from the product itself, so a
+ * socket and a command line cannot disagree about which build they are.
+ */
+data class ServiceVersion(val schema: String, val productVersion: String)
+
+/**
+ * The health of the service and of the substrate it was composed with.
+ *
+ * Not the health of the installation: that is `doctor`'s, and it talks about
+ * the machine. This one talks about the service and about the material it
+ * reads.
+ */
+data class ServiceHealth(
+    val schema: String,
+    val productVersion: String,
+    val eventStore: String,
+    val eventStorePresent: Boolean,
+    val controlRoot: String,
+    val controlRootPresent: Boolean,
+)
+
+/**
+ * One item of a street.
+ *
+ * A record, the end of the street, or a refusal: three facts, and a client
+ * that could not tell them apart would keep reading a street that had already
+ * been refused.
+ */
+sealed interface ServiceStreetItem {
+
+    /** A record of the street. */
+    data class Record(
+        val cursor: String,
+        val document: JsonObject,
+        val hasMore: Boolean,
+    ) : ServiceStreetItem
+
+    /** The street ended. */
+    data class End(val reason: ServiceEndReason, val cursor: String) : ServiceStreetItem
+
+    /** The service refused the street. */
+    data class Refused(val refusal: ServiceRefusal) : ServiceStreetItem
+}
+
+/**
+ * A street of the service: the records that follow, one at a time.
+ *
+ * The street owns the connection it reads on, and closing it closes that
+ * connection. It is the client's way of saying "I am done" — and a client
+ * that stops reading without closing leaves the service's thread waiting for
+ * a line that will never come.
+ */
+interface ServiceStreet : AutoCloseable {
+
+    /**
+     * The next item of the street, or `null` when the street is over.
+     *
+     * `null` means the connection ended without an end line: the street was
+     * cut. The end of a street that ENDED is an item
+     * ([ServiceStreetItem.End]), and the two are different facts.
+     */
+    fun next(): ServiceStreetItem?
+}
+
+/**
+ * A line-oriented connection to the service.
+ *
+ * The seam the client is written against: a connection that writes a line
+ * and reads a line. It is INTERNAL on purpose — the client is the public
+ * surface, and a public seam for "a socket" would be a promise about the
+ * transport that the contract does not need.
+ */
+internal interface ServiceChannel : AutoCloseable {
+
+    /** Writes [line] as one line of the wire. */
+    fun write(line: String)
+
+    /** The next line, or what stopped it from arriving. */
+    fun readLine(): ServiceRead
+}
+
+/** What the reading of a line produced. */
+internal sealed interface ServiceRead {
+
+    /** The line arrived. */
+    data class Line(val text: String) : ServiceRead
+
+    /** The peer closed the connection. */
+    data object Closed : ServiceRead
+
+    /** The deadline went by before the line arrived. */
+    data object TimedOut : ServiceRead
+}
+
+/**
+ * Opens connections to the service.
+ *
+ * The seam's factory: it exists so that a test can hand the client a
+ * connection it controls, and so that the transport is chosen in ONE place.
+ */
+internal fun interface ServiceChannelFactory {
+
+    /**
+     * Opens a connection to [endpoint].
+     *
+     * Throws [IOException] when there is no service there: the client turns
+     * that into a NAMED negative instead of a stack trace.
+     */
+    fun open(endpoint: Path, deadlineMillis: Long?): ServiceChannel
+}
+
+/**
+ * The typed client of the local service.
+ *
+ * ## What it owns
+ *
+ * The conversation: it writes the request, reads the answer, and hands back
+ * a typed value or a NAMED negative. It knows the wire and nothing else — no
+ * store, no run, no presentation.
+ *
+ * ## What it does NOT own
+ *
+ * The command line's parser, its formats and its exit codes. The client
+ * answers questions about runs; it does not know what a verb is, and a
+ * consumer that wants the command line's presentation renders the value this
+ * client returns with its own renderer.
+ *
+ * ## Why the client is a value and not a script
+ *
+ * Every question is a method that returns a [ServiceAnswer]. A client that
+ * connected and then wrote its own protocol by hand would be a second codec,
+ * and the copy is the one that drifts.
+ *
+ * ## The deadline
+ *
+ * The deadline is the CLIENT's, and it is explicit: a client that names none
+ * waits, because a street that is alive has no end to guess. A deadline that
+ * goes by closes the connection and the service's thread for that connection
+ * learns of it through the broken write. Nothing about the RUN is touched:
+ * the service is read-only and the client has no line to the substrate.
+ */
+class ServiceClient internal constructor(
+    /** The socket of the service. */
+    private val endpoint: Path,
+    /** How long the client waits for an answer; `null` waits as long as it takes. */
+    private val deadline: Duration?,
+    /** The schema this client speaks. */
+    private val schema: String,
+    /** The seam the connection comes from. */
+    private val channels: ServiceChannelFactory,
+) {
+
+    /**
+     * A client of the service at [endpoint].
+     *
+     * The public shape of the client: a socket, and a deadline the caller
+     * names. A client that names no deadline waits, because a live service
+     * has no end to guess.
+     */
+    constructor(
+        endpoint: Path,
+        deadline: Duration? = null,
+        schema: String = ServiceProtocol.SCHEMA,
+    ) : this(endpoint, deadline, schema, UnixServiceChannels)
+
+    /**
+     * The version of the service and of the protocol.
+     */
+    fun version(): ServiceAnswer<ServiceVersion> =
+        ask(ServiceRequest.Version(schema)).narrow { result ->
+            val version = result.string("productVersion") ?: return@narrow ServiceAnswer.Unreadable("no productVersion")
+            ServiceAnswer.Answered(ServiceVersion(result.string("schema") ?: schema, version))
+        }
+
+    /**
+     * The health of the service.
+     */
+    fun health(): ServiceAnswer<ServiceHealth> =
+        ask(ServiceRequest.Health(schema)).narrow { result ->
+            val eventStore = result.string("eventStore") ?: return@narrow ServiceAnswer.Unreadable("no eventStore")
+            val controlRoot = result.string("controlRoot") ?: return@narrow ServiceAnswer.Unreadable("no controlRoot")
+            ServiceAnswer.Answered(
+                ServiceHealth(
+                    schema = result.string("schema") ?: schema,
+                    productVersion = result.string("productVersion") ?: "unknown",
+                    eventStore = eventStore,
+                    eventStorePresent = result.boolean("eventStorePresent") ?: false,
+                    controlRoot = controlRoot,
+                    controlRootPresent = result.boolean("controlRootPresent") ?: false,
+                ),
+            )
+        }
+
+    /**
+     * The state of [runId], as the SAME observation the command line renders.
+     *
+     * The value is a
+     * [dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation], the
+     * published type: a client that received a copy of it would be able to
+     * disagree with the command line about what a run looks like.
+     */
+    fun runState(runId: String): ServiceAnswer<RuntimeObservation> =
+        ask(ServiceRequest.RunState(schema, runId)).narrow { result ->
+            when (val decoded = ServiceRunState.decode(result)) {
+                is ServiceRunStateDecoding.Observed -> ServiceAnswer.Answered(decoded.observation)
+                is ServiceRunStateDecoding.Unreadable -> ServiceAnswer.Unreadable(decoded.reason)
+            }
+        }
+
+    /**
+     * The events of [runId], from [after] onwards.
+     *
+     * A `null` [after] asks for the whole history of the run. The street is
+     * the client's to close: closing it closes the connection.
+     */
+    fun events(runId: String, after: EventCursor? = null): ServiceAnswer<ServiceStreet> =
+        street(ServiceSubscriptionRequest.EventsFollow(schema, runId, after))
+
+    /**
+     * The console of [runId], from the frame ordinal [after] onwards.
+     *
+     * `-1` is the position before the first frame of the run.
+     */
+    fun output(runId: String, after: Long = -1L): ServiceAnswer<ServiceStreet> =
+        street(ServiceSubscriptionRequest.OutputFollow(schema, runId, after))
+
+    /**
+     * The answer of [request], on a connection of its own.
+     *
+     * One request per connection is the wire's rule, so every question opens
+     * its own connection and closes it when it is answered.
+     */
+    private fun ask(request: ServiceRequest): ServiceAnswer<JsonObject> {
+        val channel = open() ?: return ServiceAnswer.Unreachable(endpoint.toString(), "no service at the endpoint")
+        return try {
+            channel.write(ServiceCodec.encode(request))
+            when (val read = channel.readLine()) {
+                is ServiceRead.Line -> when (val decoded = ServiceCodec.decodeLine(read.text)) {
+                    is ServiceLine.Answered -> if (decoded.schema == schema) {
+                        ServiceAnswer.Answered(decoded.result)
+                    } else {
+                        // The answer is of ANOTHER protocol. Reading it as an
+                        // answer would be reporting a success that this
+                        // contract never promised.
+                        ServiceAnswer.Unreadable("the answer speaks schema '${decoded.schema}'")
+                    }
+                    is ServiceLine.Refused -> ServiceAnswer.Refused(decoded.refusal)
+                    else -> ServiceAnswer.Unreadable("the line is not an answer of this protocol")
+                }
+                ServiceRead.Closed -> ServiceAnswer.Unreachable(
+                    endpoint.toString(),
+                    "the service closed the connection without answering",
+                )
+                ServiceRead.TimedOut -> ServiceAnswer.TimedOut
+            }
+        } catch (failure: IOException) {
+            ServiceAnswer.Unreachable(endpoint.toString(), failure.message ?: failure.javaClass.simpleName)
+        } finally {
+            channel.close()
+        }
+    }
+
+    /**
+     * The street of [request], on a connection of its own.
+     */
+    private fun street(request: ServiceSubscriptionRequest): ServiceAnswer<ServiceStreet> {
+        val channel = open() ?: return ServiceAnswer.Unreachable(endpoint.toString(), "no service at the endpoint")
+        return try {
+            channel.write(ServiceCodec.encode(request))
+            ServiceAnswer.Answered(SocketServiceStreet(channel, deadlineMillis()))
+        } catch (failure: IOException) {
+            channel.close()
+            ServiceAnswer.Unreachable(endpoint.toString(), failure.message ?: failure.javaClass.simpleName)
+        }
+    }
+
+    /**
+     * A connection to the endpoint, or null when there is none.
+     */
+    private fun open(): ServiceChannel? = try {
+        channels.open(endpoint, deadlineMillis())
+    } catch (_: IOException) {
+        null
+    }
+
+    /** The deadline in milliseconds, or null when there is none. */
+    private fun deadlineMillis(): Long? = deadline?.toMillis()
+
+    /**
+     * The answer narrowed to the value the caller asked for.
+     *
+     * The negatives are carried over UNCHANGED: a refusal stays a refusal and
+     * an unreachable service stays unreachable, whatever the caller was
+     * going to do with the value.
+     */
+    private fun <T> ServiceAnswer<JsonObject>.narrow(
+        read: (JsonObject) -> ServiceAnswer<T>,
+    ): ServiceAnswer<T> = when (this) {
+        is ServiceAnswer.Answered -> read(value)
+        is ServiceAnswer.Refused -> ServiceAnswer.Refused(refusal)
+        is ServiceAnswer.Unreachable -> ServiceAnswer.Unreachable(endpoint, detail)
+        is ServiceAnswer.Unreadable -> ServiceAnswer.Unreadable(detail)
+        ServiceAnswer.TimedOut -> ServiceAnswer.TimedOut
+    }
+}
+
+/**
+ * The street read on a connection of its own.
+ *
+ * The connection is closed when the street ends and when the street is
+ * closed, and closing it twice is not an error: the client's "I am done" and
+ * the service's "the street is over" are the same event seen from two sides.
+ */
+private class SocketServiceStreet(
+    private val channel: ServiceChannel,
+    private val deadlineMillis: Long?,
+) : ServiceStreet {
+
+    private var ended = false
+
+    override fun next(): ServiceStreetItem? {
+        if (ended) return null
+        return when (val read = channel.readLine()) {
+            is ServiceRead.Line -> {
+                when (val decoded = ServiceCodec.decodeLine(read.text)) {
+                    is ServiceLine.Record -> ServiceStreetItem.Record(decoded.cursor, decoded.record, decoded.hasMore)
+                    is ServiceLine.End -> {
+                        ended = true
+                        ServiceStreetItem.End(decoded.reason, decoded.cursor)
+                    }
+                    is ServiceLine.Refused -> {
+                        ended = true
+                        ServiceStreetItem.Refused(decoded.refusal)
+                    }
+                    is ServiceLine.Answered -> {
+                        ended = true
+                        null
+                    }
+                    null -> {
+                        ended = true
+                        null
+                    }
+                }
+            }
+            ServiceRead.Closed -> {
+                ended = true
+                null
+            }
+            ServiceRead.TimedOut -> {
+                ended = true
+                null
+            }
+        }
+    }
+
+    override fun close() {
+        ended = true
+        channel.close()
+    }
+}
+
+/**
+ * The connection over a Unix socket.
+ *
+ * ## Why the socket and not a stream
+ *
+ * The service speaks on a Unix socket, and the client speaks on the same
+ * one. A TCP client would be a channel that does not exist, and an
+ * abstraction for it would be a promise the contract cannot keep.
+ */
+internal object UnixServiceChannels : ServiceChannelFactory {
+
+    override fun open(endpoint: Path, deadlineMillis: Long?): ServiceChannel {
+        val channel = SocketChannel.open(java.net.StandardProtocolFamily.UNIX)
+        try {
+            // The connection is opened BLOCKING: a non-blocking connect
+            // returns before the peer is there, and the client would have to
+            // finish the handshake itself.
+            channel.connect(UnixDomainSocketAddress.of(endpoint))
+        } catch (failure: IOException) {
+            channel.close()
+            throw failure
+        }
+        // A channel that is registered with a selector has to be
+        // non-blocking: the JDK refuses the registration otherwise, and the
+        // selector is what carries the deadline.
+        channel.configureBlocking(false)
+        val selector = Selector.open()
+        return SocketChannelServiceChannel(channel, selector, deadlineMillis)
+    }
+}
+
+/**
+ * One connection of a Unix socket.
+ *
+ * The deadline is applied to the READING, through a selector: a Unix socket
+ * does not carry a read timeout of its own, and a client that promised a
+ * deadline it cannot keep is a client that hangs.
+ */
+private class SocketChannelServiceChannel(
+    private val channel: SocketChannel,
+    private val selector: Selector,
+    private val deadlineMillis: Long?,
+) : ServiceChannel {
+
+    /** The key of this connection in the selector. */
+    private val key: SelectionKey = channel.register(selector, SelectionKey.OP_READ)
+
+    private val buffer = ByteBuffer.allocate(ServiceProtocol.MAX_LINE_BYTES)
+    private val pending = StringBuilder()
+
+    override fun write(line: String) {
+        val bytes = (line + "\n").toByteArray(StandardCharsets.UTF_8)
+        val outgoing = ByteBuffer.wrap(bytes)
+        while (outgoing.hasRemaining()) {
+            if (channel.write(outgoing) == 0) {
+                // The socket's buffer is full: wait until it can take more.
+                await(SelectionKey.OP_WRITE, null)
+            }
+        }
+    }
+
+    override fun readLine(): ServiceRead {
+        while (true) {
+            val newline = pending.indexOf('\n')
+            if (newline >= 0) {
+                val line = pending.substring(0, newline)
+                pending.delete(0, newline + 1)
+                return ServiceRead.Line(line)
+            }
+            if (!await(SelectionKey.OP_READ, deadlineMillis)) return ServiceRead.TimedOut
+            buffer.clear()
+            val read = channel.read(buffer)
+            if (read < 0) return ServiceRead.Closed
+            if (read == 0) continue
+            pending.append(String(buffer.array(), 0, read, StandardCharsets.UTF_8))
+        }
+    }
+
+    /**
+     * Waits for the connection to be ready for [op], honouring the deadline.
+     *
+     * The interest of the key is set to [op] and to nothing else before
+     * every wait: a connection that is always writable would otherwise wake
+     * the selector for a read that is not ready yet.
+     *
+     * `false` means the deadline went by: the connection is still open and
+     * the client decides what to do with it.
+     */
+    private fun await(op: Int, timeoutMillis: Long?): Boolean {
+        key.interestOps(op)
+        val ready = if (timeoutMillis == null) selector.select() else selector.select(timeoutMillis)
+        selector.selectedKeys().clear()
+        return ready > 0
+    }
+
+    override fun close() {
+        try {
+            channel.close()
+        } finally {
+            selector.close()
+        }
+    }
+}
+
+/** The string [key] holds, or null when it does not hold a string. */
+private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
+
+/** The boolean [key] holds, or null when it does not hold one. */
+private fun JsonObject.boolean(key: String): Boolean? =
+    this[key]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()

@@ -1,13 +1,17 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.runtime.RuntimeApiVersion
-import dev.rubentxu.pipeline.v2.runtime.inspect.IntrospectionFailure
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
-import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import dev.rubentxu.pipeline.v2.service.ServiceProtocol
+import dev.rubentxu.pipeline.v2.service.ServiceRequest
+import dev.rubentxu.pipeline.v2.service.ServiceRefusal
+import dev.rubentxu.pipeline.v2.service.ServiceResponse
+import dev.rubentxu.pipeline.v2.service.ServiceCodec
+import dev.rubentxu.pipeline.v2.service.ServiceRunState
 
 /**
  * The substrate the service was composed with, and whether its parts are still there.
@@ -136,67 +140,15 @@ internal class ServiceOperations(
     /**
      * The document an observation travels as.
      *
-     * The `state` word says which of the four things was observed, and the rest
-     * of the document carries the facts of that one. An observation that
-     * cannot be observed is not a state of the run but a fact about the
-     * substrate, and it says so with its own word.
+     * The shape is NOT written here: it is
+     * [dev.rubentxu.pipeline.v2.service.ServiceRunState]'s, the artifact the
+     * client resolves. The service projects and the client de-projects
+     * through the SAME definition, so the two cannot drift apart — and a
+     * field name written in two places is a field name that will be written
+     * two ways.
      */
-    private fun observationResult(observation: RuntimeObservation): JsonObject = buildJsonObject {
-        when (observation) {
-            is RuntimeObservation.Running -> {
-                put("state", JsonPrimitive("running"))
-                put("attempt", JsonPrimitive(observation.attempt.value))
-                put("fencingToken", JsonPrimitive(observation.fencingToken))
-                observation.leaseHolder?.let { put("leaseHolder", JsonPrimitive(it.ownerId)) }
-            }
-            is RuntimeObservation.Terminal -> {
-                put("state", JsonPrimitive("terminal"))
-                put("at", JsonPrimitive(observation.terminalAtMs))
-                put("outcome", JsonPrimitive(outcomeWord(observation.terminal)))
-                when (val terminal = observation.terminal) {
-                    is TerminalObservation.Failed ->
-                        put("failureKind", JsonPrimitive(terminal.failureKind))
-                    is TerminalObservation.Other ->
-                        put("rawOutcome", JsonPrimitive(terminal.rawOutcome))
-                    else -> Unit
-                }
-            }
-            is RuntimeObservation.LiveButEmpty -> {
-                put("state", JsonPrimitive("empty"))
-                put("attempt", JsonPrimitive(observation.attempt.value))
-                put("reason", JsonPrimitive(observation.reason))
-            }
-            is RuntimeObservation.Unobservable -> {
-                put("state", JsonPrimitive("unobservable"))
-                put("failure", JsonPrimitive(failureWord(observation.reason)))
-                val cause = (observation.reason as? IntrospectionFailure.StorageError)?.cause
-                if (cause != null) put("cause", JsonPrimitive(cause))
-            }
-        }
-    }
-
-    /**
-     * The word a terminal carries.
-     */
-    private fun outcomeWord(terminal: TerminalObservation): String = when (terminal) {
-        is TerminalObservation.Succeeded -> "succeeded"
-        is TerminalObservation.Failed -> "failed"
-        is TerminalObservation.Unstable -> "unstable"
-        is TerminalObservation.Aborted -> "aborted"
-        is TerminalObservation.Cancelled -> "cancelled"
-        is TerminalObservation.Other -> "other"
-    }
-
-    /**
-     * The word a failure of the substrate carries.
-     */
-    private fun failureWord(failure: IntrospectionFailure): String = when (failure) {
-        IntrospectionFailure.NoControlRoot -> "no-control-root"
-        IntrospectionFailure.NoEventStore -> "no-event-store"
-        IntrospectionFailure.NoOutputPlane -> "no-output-plane"
-        IntrospectionFailure.NoJournal -> "no-journal"
-        is IntrospectionFailure.StorageError -> "storage-error"
-    }
+    private fun observationResult(observation: RuntimeObservation): JsonObject =
+        ServiceRunState.encode(observation)
 
     companion object {
 
@@ -222,6 +174,40 @@ internal class ServiceOperations(
             is RunStateRefusal.Inconsistent -> ServiceRefusal.Inconsistent(refusal.details)
             is RunStateRefusal.UnknownOperation ->
                 ServiceRefusal.UnknownRunOperation(refusal.operationId, refusal.attempt)
+        }
+
+        /**
+         * The run-state refusal [refusal] names, or null when it names none.
+         *
+         * The INVERSE of [refusalOf], and it lives beside it on purpose: the
+         * two vocabularies meet here and nowhere else, so the pair is one
+         * piece of code instead of two that could drift.
+         *
+         * The remote path needs it because the wire's refusal vocabulary is
+         * the one a client receives, and the command line's sentence for a
+         * refused run is the one the local path prints. Mapping back to the
+         * application's own refusal is what lets both paths print the SAME
+         * sentence for the SAME fact.
+         *
+         * Null when the refusal names the PROTOCOL and not the run: those
+         * have no local counterpart, and the remote path renders them by
+         * their own word.
+         */
+        fun runStateRefusalOf(refusal: ServiceRefusal): RunStateRefusal? = when (refusal) {
+            is ServiceRefusal.UnknownRun -> RunStateRefusal.UnknownRun(refusal.runId)
+            ServiceRefusal.NotConfiguredControlRoot ->
+                RunStateRefusal.NotConfigured(RunStateRefusal.Missing.CONTROL_ROOT)
+            ServiceRefusal.NotConfiguredEventPlane ->
+                RunStateRefusal.NotConfigured(RunStateRefusal.Missing.EVENT_PLANE)
+            ServiceRefusal.NotConfiguredOutputPlane ->
+                RunStateRefusal.NotConfigured(RunStateRefusal.Missing.OUTPUT_PLANE)
+            is ServiceRefusal.StorageFailed -> RunStateRefusal.StorageFailed(refusal.cause)
+            is ServiceRefusal.HeldByAnother ->
+                RunStateRefusal.HeldByAnother(refusal.heldBy, refusal.fencingToken)
+            is ServiceRefusal.Inconsistent -> RunStateRefusal.Inconsistent(refusal.details)
+            is ServiceRefusal.UnknownRunOperation ->
+                RunStateRefusal.UnknownOperation(refusal.operationId, refusal.attempt)
+            else -> null
         }
     }
 }

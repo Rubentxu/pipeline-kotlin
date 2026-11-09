@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import dev.rubentxu.pipeline.v2.service.FrameOrdinalToken
 
 /**
  * Dos planos de posición que se encuentran en el cable, y la promesa de que no se cruzan.
@@ -96,7 +97,7 @@ class CursorPlaneSeparationTest {
         // Los dos tokens los produce el productor real: el ordinal lo imprime el verbo de
         // consola y el cursor lo emite el plano de salida. Un token escrito a mano podría tener
         // una forma que ningún productor genera, y la fila pasaría por un motivo equivocado.
-        val frameToken = ConsoleFramePlane.encodeFrameOrdinal(4L)
+        val frameToken = FrameOrdinalToken.encode(4L)
         val byteToken = OutputCursor(OutputStreamId("run-1/op-1/stdout"), 42L).encode()
 
         assertNotEquals(
@@ -113,7 +114,7 @@ class CursorPlaneSeparationTest {
                 "$frameToken",
         )
         assertNull(
-            ConsoleFramePlane.decodeFrameOrdinal(byteToken),
+            FrameOrdinalToken.decode(byteToken),
             "una posición de bytes no es una posición de marco: si se admitiera, el verbo " +
                 "reanudaría por marcos desde un desfase de bytes. Token emitido: $byteToken",
         )

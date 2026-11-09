@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.application
+package dev.rubentxu.pipeline.v2.service
 
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import kotlinx.serialization.json.Json

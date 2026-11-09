@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.application
+package dev.rubentxu.pipeline.v2.service
 
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import kotlinx.serialization.json.Json
@@ -59,7 +59,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * protocol's — are separate, and their names do not overlap: the protocol's
  * unknown operation is `unknown-op` and the run's is `unknown-operation`.
  */
-internal object ServiceProtocol {
+object ServiceProtocol {
 
     /** The schema this build serves. The version travels with every answer. */
     const val SCHEMA: String = "pipelinek.service/2"
@@ -80,7 +80,7 @@ internal object ServiceProtocol {
  * which schema it speaks and a client that cannot compare the two has nothing
  * to compare.
  */
-internal sealed interface ServiceRequest {
+sealed interface ServiceRequest {
 
     /** The schema the client says it speaks. */
     val schema: String
@@ -116,7 +116,7 @@ internal sealed interface ServiceRequest {
  * street undecoded would be a cursor the street would have to distrust, and
  * distrusting a cursor is what this contract exists to prevent.
  */
-internal sealed interface ServiceSubscriptionRequest {
+sealed interface ServiceSubscriptionRequest {
 
     /** The schema the client says it speaks. */
     val schema: String
@@ -178,7 +178,7 @@ internal sealed interface ServiceSubscriptionRequest {
  * and a vocabulary that named it would be promising a case no client of this
  * service could ever see.
  */
-internal enum class ServiceEndReason(val word: String) {
+enum class ServiceEndReason(val word: String) {
 
     /** The run's terminal fact was observed. The only way a street ends. */
     TerminalObserved("terminal-observed"),
@@ -200,7 +200,7 @@ internal enum class ServiceEndReason(val word: String) {
  * are. A projection written apart from the cases would be a second copy of
  * every refusal, free to disagree with the one the code decides.
  */
-internal sealed interface ServiceRefusal {
+sealed interface ServiceRefusal {
 
     /** The word the wire carries for this refusal. */
     val kind: String
@@ -364,7 +364,7 @@ internal sealed interface ServiceRefusal {
  * answer can never read a refusal as one, and the encoding of each is decided
  * in one place.
  */
-internal sealed interface ServiceResponse {
+sealed interface ServiceResponse {
 
     /** The schema this build speaks. It travels in every answer. */
     val schema: String
@@ -383,7 +383,7 @@ internal sealed interface ServiceResponse {
  * sends nonsense gets a refusal it can read, not a stack trace and a closed
  * connection.
  */
-internal sealed interface ServiceDecoding {
+sealed interface ServiceDecoding {
 
     /** The line is a request the service can answer. */
     data class Decoded(val request: ServiceRequest) : ServiceDecoding
@@ -396,6 +396,42 @@ internal sealed interface ServiceDecoding {
 }
 
 /**
+ * What a line of the wire turned out to be, read by a CLIENT.
+ *
+ * ## Why the client needs its own reading
+ *
+ * The service's [ServiceDecoding] reads a line as a REQUEST, because that is
+ * what arrives on the service's side. The client reads the other direction:
+ * an answer, a refusal, a record of a street, or the end of a street. The two
+ * readings are of the same lines and they are not the same function, so they
+ * are two types and not one type with a flag.
+ *
+ * ## Why there is no "anything else"
+ *
+ * A line that is none of the four is not a line of this protocol. The decoder
+ * answers `null` and the client names the fact, because a client that read a
+ * foreign line as an answer would report a success that never happened.
+ */
+sealed interface ServiceLine {
+
+    /** The service answered. */
+    data class Answered(val schema: String, val result: JsonObject) : ServiceLine
+
+    /** The service refused. */
+    data class Refused(val schema: String, val refusal: ServiceRefusal) : ServiceLine
+
+    /** A record of a street. */
+    data class Record(
+        val cursor: String,
+        val record: JsonObject,
+        val hasMore: Boolean,
+    ) : ServiceLine
+
+    /** The end of a street. */
+    data class End(val reason: ServiceEndReason, val cursor: String) : ServiceLine
+}
+
+/**
  * The codec of the service's wire.
  *
  * ## What it owns
@@ -405,17 +441,22 @@ internal sealed interface ServiceDecoding {
  * function of its input — no socket, no store, no clock — so the contract can
  * be read and tested without a service running.
  *
+ * The client's direction lives here too, because the wire has ONE codec: a
+ * client that encoded requests by hand would be a second authority about the
+ * shape of a request, and the service would answer a line the client did not
+ * quite mean.
+ *
  * ## What it does not own
  *
  * What the service DOES with a request, and how the line travelled.
  */
-internal object ServiceCodec {
+object ServiceCodec {
 
     /** The family of the cursor the events street resumes from. */
     private const val EVENT_CURSOR_FAMILY: String = "evt-cursor-v1"
 
     /** The family of the cursor the output street resumes from. */
-    private const val FRAME_ORDINAL_FAMILY: String = ConsoleFramePlane.FRAME_ORDINAL_TOKEN_PREFIX
+    private val FRAME_ORDINAL_FAMILY: String = FrameOrdinalToken.PREFIX
 
     /** The position before the first frame of a run. */
     private const val FIRST_FRAME_ORDINAL: Long = -1L
@@ -497,7 +538,7 @@ internal object ServiceCodec {
             ?: return subscribed(
                 ServiceSubscriptionRequest.OutputFollow(schema, runId, FIRST_FRAME_ORDINAL),
             )
-        val ordinal = ConsoleFramePlane.decodeFrameOrdinal(token)
+        val ordinal = FrameOrdinalToken.decode(token)
             ?: return ServiceDecoding.Refused(
                 ServiceRefusal.InvalidCursor(token, FRAME_ORDINAL_FAMILY),
             )
@@ -571,6 +612,149 @@ internal object ServiceCodec {
         }
         return Json.encodeToString(JsonObject.serializer(), document)
     }
+
+    /**
+     * The line [request] travels as.
+     *
+     * The `op` word says what is asked for, and the schema travels with every
+     * line because a service that serves another schema has to be able to
+     * say so before it refuses.
+     */
+    fun encode(request: ServiceRequest): String {
+        val document = buildJsonObject {
+            put("schema", JsonPrimitive(request.schema))
+            when (request) {
+                is ServiceRequest.Version -> put("op", JsonPrimitive("version"))
+                is ServiceRequest.Health -> put("op", JsonPrimitive("health"))
+                is ServiceRequest.RunState -> {
+                    put("op", JsonPrimitive("run.state"))
+                    put("runId", JsonPrimitive(request.runId))
+                }
+            }
+        }
+        return Json.encodeToString(JsonObject.serializer(), document)
+    }
+
+    /**
+     * The line [request] travels as.
+     *
+     * The cursor travels ENCODED, and only when there is one: a street that
+     * was asked for from the beginning names no cursor, and a street that was
+     * asked to resume names the position it resumes from.
+     */
+    fun encode(request: ServiceSubscriptionRequest): String {
+        val document = buildJsonObject {
+            put("schema", JsonPrimitive(request.schema))
+            when (request) {
+                is ServiceSubscriptionRequest.EventsFollow -> {
+                    put("op", JsonPrimitive("events.follow"))
+                    put("runId", JsonPrimitive(request.runId))
+                    request.after?.let { put("after", JsonPrimitive(it.encode())) }
+                }
+                is ServiceSubscriptionRequest.OutputFollow -> {
+                    put("op", JsonPrimitive("output.follow"))
+                    put("runId", JsonPrimitive(request.runId))
+                    put("after", JsonPrimitive(FrameOrdinalToken.encode(request.after)))
+                }
+            }
+        }
+        return Json.encodeToString(JsonObject.serializer(), document)
+    }
+
+    /**
+     * What [line] is, read by a client.
+     *
+     * `null` when the line is not one of this protocol's four kinds. The
+     * client turns that into a named negative: a client that read a foreign
+     * line as an answer would report a success that never happened.
+     */
+    fun decodeLine(line: String): ServiceLine? {
+        val parsed = try {
+            Json.parseToJsonElement(line)
+        } catch (_: Exception) {
+            return null
+        }
+        val document = parsed as? JsonObject ?: return null
+        return when (document["kind"]?.jsonPrimitive?.contentOrNull) {
+            "answer" -> {
+                val schema = document["schema"]?.jsonPrimitive?.contentOrNull ?: return null
+                val result = document["result"] as? JsonObject ?: return null
+                ServiceLine.Answered(schema, result)
+            }
+            "refused" -> {
+                val schema = document["schema"]?.jsonPrimitive?.contentOrNull ?: return null
+                val refusal = (document["refusal"] as? JsonObject)?.let { decodeRefusal(it) } ?: return null
+                ServiceLine.Refused(schema, refusal)
+            }
+            "record" -> {
+                val cursor = document["cursor"]?.jsonPrimitive?.contentOrNull ?: return null
+                val record = document["record"] as? JsonObject ?: return null
+                val hasMore = document["hasMore"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
+                ServiceLine.Record(cursor, record, hasMore)
+            }
+            "end" -> {
+                val word = document["reason"]?.jsonPrimitive?.contentOrNull ?: return null
+                val reason = ServiceEndReason.entries.firstOrNull { it.word == word } ?: return null
+                val cursor = document["cursor"]?.jsonPrimitive?.contentOrNull ?: return null
+                ServiceLine.End(reason, cursor)
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * The refusal [document] carries.
+     *
+     * A total reading: the kinds of [ServiceRefusal] are closed, and a
+     * document whose kind is none of them is not a refusal of this protocol.
+     * The facts each kind carries are read here and nowhere else, so a
+     * refusal cannot lose a fact on the way in.
+     */
+    private fun decodeRefusal(document: JsonObject): ServiceRefusal? {
+        val kind = document["kind"]?.jsonPrimitive?.contentOrNull ?: return null
+        return when (kind) {
+            "unknown-run" -> ServiceRefusal.UnknownRun(document.str("runId") ?: return null)
+            "not-configured-control-root" -> ServiceRefusal.NotConfiguredControlRoot
+            "not-configured-event-plane" -> ServiceRefusal.NotConfiguredEventPlane
+            "not-configured-output-plane" -> ServiceRefusal.NotConfiguredOutputPlane
+            "storage-failed" -> ServiceRefusal.StorageFailed(document.str("cause") ?: return null)
+            "held-by-another" -> ServiceRefusal.HeldByAnother(
+                document.str("heldBy") ?: return null,
+                document.long("fencingToken") ?: return null,
+            )
+            "inconsistent-lease-state" -> ServiceRefusal.Inconsistent(document.str("details") ?: return null)
+            "unknown-operation" -> ServiceRefusal.UnknownRunOperation(
+                document.str("operationId") ?: return null,
+                document.long("attempt")?.toInt() ?: return null,
+            )
+            "incompatible-protocol" -> ServiceRefusal.IncompatibleProtocol
+            "malformed-request" -> ServiceRefusal.MalformedRequest
+            "request-too-large" -> ServiceRefusal.RequestTooLarge
+            "too-many-connections" -> ServiceRefusal.TooManyConnections
+            "unknown-op" -> ServiceRefusal.UnknownOp
+            "invalid-cursor" -> ServiceRefusal.InvalidCursor(
+                document.str("cursor") ?: return null,
+                document.str("expected") ?: return null,
+            )
+            "cursor-beyond-tail" -> ServiceRefusal.CursorBeyondTail(
+                document.str("runId") ?: return null,
+                document.long("requestedSequence") ?: return null,
+                document.long("tailSequence") ?: return null,
+            )
+            "output-plane-refused" -> ServiceRefusal.OutputPlaneRefused(
+                document.str("reason") ?: return null,
+                document.str("detail") ?: return null,
+            )
+            else -> null
+        }
+    }
+
+    /** The string [key] holds, or null when it does not hold a string. */
+    private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
+
+    /** The long [key] holds, or null when it does not hold one. */
+    private fun JsonObject.long(key: String): Long? =
+        this[key]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
 
     /**
      * The document a refusal travels as: its kind and the facts it carries.

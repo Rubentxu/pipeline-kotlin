@@ -83,6 +83,9 @@ class ServiceIntegrationTest {
 
     private val runId = "run-service-1"
 
+    /** A run whose terminal fact was never written. */
+    private val liveRunId = LIVE_RUN_ID
+
     private val clock: Clock = FixedClock
 
     @BeforeEach
@@ -111,6 +114,17 @@ class ServiceIntegrationTest {
                 diagnostics = emptyList(),
             ),
         )
+        // A run that never finishes: a street on it stays open, which is what
+        // a client that watches a live run needs.
+        store.append(
+            RunStarted(
+                eventId = "event-3",
+                runId = LIVE_RUN_ID,
+                sequence = 0L,
+                occurredAt = Instant.EPOCH,
+                scriptPath = workspace.resolve("pipeline.kts").toString(),
+            ),
+        )
         store.flush()
         val stores = DurableStores.open(store, root, clock)
         val owner = requireNotNull(RunOwnerId.of("owner-of-the-fixture"))
@@ -124,10 +138,10 @@ class ServiceIntegrationTest {
     fun `the client and the service agree on the version of the protocol`() {
         val service = start()
 
-        val answer = service.ask("""{"schema":"pipelinek.service/1","op":"version"}""")
+        val answer = service.ask("""{"schema":"pipelinek.service/2","op":"version"}""")
 
         assertEquals(ServiceProtocol.SCHEMA, answer["schema"]?.jsonPrimitive?.content)
-        assertEquals("true", answer["ok"]?.jsonPrimitive?.content)
+        assertEquals("answer", answer["kind"]?.jsonPrimitive?.content)
     }
 
     @Test
@@ -136,7 +150,7 @@ class ServiceIntegrationTest {
 
         val answer = service.ask("""{"schema":"pipelinek.service/9","op":"version"}""")
 
-        assertEquals("false", answer["ok"]?.jsonPrimitive?.content)
+        assertEquals("refused", answer["kind"]?.jsonPrimitive?.content)
         assertEquals(
             "incompatible-protocol",
             answer["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
@@ -148,10 +162,10 @@ class ServiceIntegrationTest {
         val service = start()
 
         val answer = service.ask(
-            """{"schema":"pipelinek.service/1","op":"run.state","runId":"$runId"}""",
+            """{"schema":"pipelinek.service/2","op":"run.state","runId":"$runId"}""",
         )
 
-        assertEquals("true", answer["ok"]?.jsonPrimitive?.content)
+        assertEquals("answer", answer["kind"]?.jsonPrimitive?.content)
         val result = answer["result"]?.jsonObject
         assertEquals("terminal", result?.get("state")?.jsonPrimitive?.content)
         assertEquals("succeeded", result?.get("outcome")?.jsonPrimitive?.content)
@@ -162,10 +176,10 @@ class ServiceIntegrationTest {
         val service = start()
 
         val answer = service.ask(
-            """{"schema":"pipelinek.service/1","op":"run.state","runId":"run-nobody-wrote"}""",
+            """{"schema":"pipelinek.service/2","op":"run.state","runId":"run-nobody-wrote"}""",
         )
 
-        assertEquals("false", answer["ok"]?.jsonPrimitive?.content)
+        assertEquals("refused", answer["kind"]?.jsonPrimitive?.content)
         assertEquals(
             "unknown-run",
             answer["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
@@ -207,8 +221,8 @@ class ServiceIntegrationTest {
 
         val service = start()
 
-        val answer = service.ask("""{"schema":"pipelinek.service/1","op":"version"}""")
-        assertEquals("true", answer["ok"]?.jsonPrimitive?.content)
+        val answer = service.ask("""{"schema":"pipelinek.service/2","op":"version"}""")
+        assertEquals("answer", answer["kind"]?.jsonPrimitive?.content)
     }
 
     @Test
@@ -313,8 +327,8 @@ class ServiceIntegrationTest {
         val before = treeOf(root)
         val storeBefore = Files.readAllBytes(db)
 
-        service.ask("""{"schema":"pipelinek.service/1","op":"run.state","runId":"$runId"}""")
-        service.ask("""{"schema":"pipelinek.service/1","op":"health"}""")
+        service.ask("""{"schema":"pipelinek.service/2","op":"run.state","runId":"$runId"}""")
+        service.ask("""{"schema":"pipelinek.service/2","op":"health"}""")
 
         assertEquals(
             before,
@@ -335,6 +349,124 @@ class ServiceIntegrationTest {
         service.stop()
 
         assertFalse(Files.exists(socket), "the socket of a service that stopped is not left behind")
+    }
+
+    @Test
+    fun `a client that subscribes to the events of a run receives them and the end of the street`() {
+        val service = start()
+
+        val frames = service.subscribe(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"$runId"}""",
+        )
+
+        assertEquals(3, frames.size, "the two events of the run and the end of the street: $frames")
+        assertEquals("record", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals("record", frames[1]["kind"]?.jsonPrimitive?.content)
+        assertEquals("end", frames[2]["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "terminal-observed",
+            frames[2]["reason"]?.jsonPrimitive?.content,
+            "the end says that the terminal fact was observed, and nothing more about the run",
+        )
+    }
+
+    @Test
+    fun `a client that resumes from the last cursor receives the end of the street and no record`() {
+        val service = start()
+
+        val first = service.subscribe(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"$runId"}""",
+        )
+        val cursor = first.last()["cursor"]?.jsonPrimitive?.content
+
+        val second = service.subscribe(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"$runId","after":"$cursor"}""",
+        )
+
+        assertEquals(1, second.size, "the street had nothing left to deliver: $second")
+        assertEquals("end", second[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals("terminal-observed", second[0]["reason"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `two clients of the same run do not see each other`() {
+        val service = start()
+
+        val fromTheStart = service.subscribe(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"$runId"}""",
+        )
+        val fromTheEnd = service.subscribe(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"$runId",""" +
+                """"after":"${fromTheStart.last()["cursor"]?.jsonPrimitive?.content}"}""",
+        )
+
+        assertEquals(
+            3,
+            fromTheStart.size,
+            "the first client received the whole history and the end",
+        )
+        assertEquals(
+            1,
+            fromTheEnd.size,
+            "the second client received only the end, because that is all that was left",
+        )
+    }
+
+    @Test
+    fun `a client that stops reading does not stop the service from answering another client`() {
+        val service = start()
+        SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { slow ->
+            slow.write(
+                ByteBuffer.wrap(
+                    ("""{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-service-live"}""" +
+                        "\n").toByteArray(Charsets.UTF_8),
+                ),
+            )
+            // The slow client reads ONE frame and then stops reading: its street is
+            // live and it is not listening any more.
+            readLineOrNull(slow)
+
+            val answer = service.ask("""{"schema":"pipelinek.service/2","op":"version"}""")
+
+            assertEquals(
+                "answer",
+                answer["kind"]?.jsonPrimitive?.content,
+                "a client that stopped reading holds a thread, not the service",
+            )
+        }
+    }
+
+    @Test
+    fun `a cursor of the other plane is refused by name over the socket`() {
+        val service = start()
+
+        val frames = service.subscribe(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"$runId",""" +
+                """"after":"out-frame-ord-v1:3"}""",
+        )
+
+        assertEquals(1, frames.size, "the street never opened: $frames")
+        assertEquals("refused", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "invalid-cursor",
+            frames[0]["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
+    fun `a run nobody knows is refused by name over the socket in a subscription`() {
+        val service = start()
+
+        val frames = service.subscribe(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-nobody-wrote"}""",
+        )
+
+        assertEquals(1, frames.size, "the street was refused before it delivered anything")
+        assertEquals("refused", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "unknown-run",
+            frames[0]["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+        )
     }
 
     /**
@@ -359,6 +491,24 @@ class ServiceIntegrationTest {
                 channel.write(ByteBuffer.wrap((request + "\n").toByteArray(Charsets.UTF_8)))
                 val line = readLine(channel)
                 return Json.parseToJsonElement(line).jsonObject
+            }
+        }
+
+        /**
+         * The frames of a subscription, read until the street ends.
+         *
+         * The street ends by closing the connection, so the read ends with
+         * the end of the socket.
+         */
+        fun subscribe(request: String): List<kotlinx.serialization.json.JsonObject> {
+            SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { channel ->
+                channel.write(ByteBuffer.wrap((request + "\n").toByteArray(Charsets.UTF_8)))
+                val frames = mutableListOf<kotlinx.serialization.json.JsonObject>()
+                while (true) {
+                    val line = readLineOrNull(channel) ?: break
+                    frames.add(Json.parseToJsonElement(line).jsonObject)
+                }
+                return frames
             }
         }
 
@@ -393,8 +543,13 @@ class ServiceIntegrationTest {
                 )
             },
         )
+        val stores = DurableStores.open(store, root, clock)
+        val streets = ServiceSubscription(
+            lanes = ComposeLanes.forService(store, root),
+            events = composeEventRecordReadPort(store, stores.lease),
+        )
         val transport = UnixSocketTransport.bind(socket)
-        return Service(ServiceServer(transport, operations, limits), store)
+        return Service(ServiceServer(transport, operations, streets, limits), store)
     }
 
     /**
@@ -428,6 +583,26 @@ class ServiceIntegrationTest {
     }
 
     /**
+     * The line the service wrote, or null when the connection ended.
+     */
+    private fun readLineOrNull(channel: SocketChannel): String? {
+        val buffer = ByteArray(8192)
+        val accumulated = ByteArrayOutputStream()
+        while (true) {
+            val read = channel.read(ByteBuffer.wrap(buffer))
+            if (read < 0) return null
+            val chunk = buffer.copyOf(read)
+            val newline = chunk.indexOf('\n'.code.toByte())
+            if (newline >= 0) {
+                accumulated.write(chunk, 0, newline)
+                break
+            }
+            accumulated.write(chunk, 0, read)
+        }
+        return accumulated.toString(Charsets.UTF_8)
+    }
+
+    /**
      * The tree of [root], with the size of every file in it.
      */
     private fun treeOf(root: Path): Map<String, Long> {
@@ -447,5 +622,10 @@ class ServiceIntegrationTest {
     /** The clock this lane stamps its material with: it does not move. */
     private object FixedClock : Clock {
         override fun now(): Instant = Instant.EPOCH
+    }
+
+    private companion object {
+        /** The run that never finishes. */
+        private const val LIVE_RUN_ID: String = "run-service-live"
     }
 }

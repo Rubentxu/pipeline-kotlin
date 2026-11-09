@@ -1,13 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
@@ -16,11 +15,11 @@ import org.junit.jupiter.api.Test
  * ## The guarantee under trial
  *
  * A line that arrives on the socket means EXACTLY one thing, and the meaning is
- * a typed value: a request the service can answer, or a refusal it can render.
- * A line that is not JSON, a line that asks for an operation the service does
- * not have, and a line that speaks another schema are three DIFFERENT facts,
- * and a client that cannot tell them apart cannot decide whether to retry, to
- * upgrade, or to give up.
+ * a typed value: a request the service can answer, a request for a street it
+ * can serve, or a refusal it can render. A line that is not JSON, a line that
+ * asks for an operation the service does not have, and a line that speaks
+ * another schema are three DIFFERENT facts, and a client that cannot tell them
+ * apart cannot decide whether to retry, to upgrade, or to give up.
  *
  * ## The capacity this serves
  *
@@ -47,7 +46,7 @@ class ServiceProtocolTest {
 
     @Test
     fun `a request for the version decodes`() {
-        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/1","op":"version"}""")
+        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/2","op":"version"}""")
 
         assertEquals(
             ServiceRequest.Version(ServiceProtocol.SCHEMA),
@@ -58,7 +57,7 @@ class ServiceProtocolTest {
 
     @Test
     fun `a request for the health decodes`() {
-        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/1","op":"health"}""")
+        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/2","op":"health"}""")
 
         assertEquals(
             ServiceRequest.Health(ServiceProtocol.SCHEMA),
@@ -70,7 +69,7 @@ class ServiceProtocolTest {
     @Test
     fun `a request for the state of a run decodes with its run`() {
         val decoded = ServiceCodec.decode(
-            """{"schema":"pipelinek.service/1","op":"run.state","runId":"run-1"}""",
+            """{"schema":"pipelinek.service/2","op":"run.state","runId":"run-1"}""",
         )
 
         assertEquals(
@@ -88,6 +87,17 @@ class ServiceProtocolTest {
             ServiceRefusal.IncompatibleProtocol,
             assertInstanceOf(ServiceDecoding.Refused::class.java, decoded).refusal,
             "a client that speaks another protocol is refused, not answered",
+        )
+    }
+
+    @Test
+    fun `the protocol this build served before the subscriptions is refused`() {
+        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/1","op":"version"}""")
+
+        assertEquals(
+            ServiceRefusal.IncompatibleProtocol,
+            assertInstanceOf(ServiceDecoding.Refused::class.java, decoded).refusal,
+            "a client of the previous protocol is refused, because the life of a connection changed",
         )
     }
 
@@ -115,7 +125,7 @@ class ServiceProtocolTest {
 
     @Test
     fun `a request without an operation is refused as a malformed request`() {
-        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/1"}""")
+        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/2"}""")
 
         assertEquals(
             ServiceRefusal.MalformedRequest,
@@ -126,7 +136,7 @@ class ServiceProtocolTest {
 
     @Test
     fun `a request for an operation the service does not have is refused as an unknown op`() {
-        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/1","op":"run.cancel"}""")
+        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/2","op":"run.cancel"}""")
 
         assertEquals(
             ServiceRefusal.UnknownOp,
@@ -137,12 +147,141 @@ class ServiceProtocolTest {
 
     @Test
     fun `a request for the state of a run without naming the run is refused`() {
-        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/1","op":"run.state"}""")
+        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/2","op":"run.state"}""")
 
         assertEquals(
             ServiceRefusal.MalformedRequest,
             assertInstanceOf(ServiceDecoding.Refused::class.java, decoded).refusal,
             "a question about a run that does not name the run has no answer",
+        )
+    }
+
+    @Test
+    fun `a request for the events of a run decodes as a subscription`() {
+        val decoded = ServiceCodec.decode(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-1"}""",
+        )
+
+        assertEquals(
+            ServiceSubscriptionRequest.EventsFollow(ServiceProtocol.SCHEMA, "run-1", null),
+            assertInstanceOf(ServiceDecoding.Subscribed::class.java, decoded).request,
+            "a subscription is not a question: it is a request for a street",
+        )
+    }
+
+    @Test
+    fun `a request for the events of a run decodes with the cursor it names`() {
+        val cursor = EventCursor("run-1", 7L)
+
+        val decoded = ServiceCodec.decode(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-1",""" +
+                """"after":"${cursor.encode()}"}""",
+        )
+
+        assertEquals(
+            ServiceSubscriptionRequest.EventsFollow(ServiceProtocol.SCHEMA, "run-1", cursor),
+            assertInstanceOf(ServiceDecoding.Subscribed::class.java, decoded).request,
+            "the cursor travels DECODED, so the street never has to distrust it",
+        )
+    }
+
+    @Test
+    fun `a request for the console of a run decodes as a subscription`() {
+        val decoded = ServiceCodec.decode(
+            """{"schema":"pipelinek.service/2","op":"output.follow","runId":"run-1"}""",
+        )
+
+        assertEquals(
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+            assertInstanceOf(ServiceDecoding.Subscribed::class.java, decoded).request,
+            "without a cursor the street starts before the first frame of the run",
+        )
+    }
+
+    @Test
+    fun `a request for the console of a run decodes with the ordinal it names`() {
+        val decoded = ServiceCodec.decode(
+            """{"schema":"pipelinek.service/2","op":"output.follow","runId":"run-1",""" +
+                """"after":"out-frame-ord-v1:12"}""",
+        )
+
+        assertEquals(
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", 12L),
+            assertInstanceOf(ServiceDecoding.Subscribed::class.java, decoded).request,
+            "the ordinal travels decoded, and it is the position the street resumes from",
+        )
+    }
+
+    @Test
+    fun `a subscription that does not name the run is refused`() {
+        val decoded = ServiceCodec.decode(
+            """{"schema":"pipelinek.service/2","op":"events.follow"}""",
+        )
+
+        assertEquals(
+            ServiceRefusal.MalformedRequest,
+            assertInstanceOf(ServiceDecoding.Refused::class.java, decoded).refusal,
+            "a street without a run has no history to serve",
+        )
+    }
+
+    @Test
+    fun `an events cursor of ANOTHER run is refused by name`() {
+        val foreign = EventCursor("run-other", 7L)
+
+        val decoded = ServiceCodec.decode(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-1",""" +
+                """"after":"${foreign.encode()}"}""",
+        )
+
+        assertEquals(
+            ServiceRefusal.InvalidCursor(foreign.encode(), "evt-cursor-v1"),
+            assertInstanceOf(ServiceDecoding.Refused::class.java, decoded).refusal,
+            "resuming from another run's cursor would skip the history of the run that WAS asked for",
+        )
+    }
+
+    @Test
+    fun `a cursor of the OTHER plane is refused by name in the events street`() {
+        val decoded = ServiceCodec.decode(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-1",""" +
+                """"after":"out-cursor-v1:run-1/op-1:40"}""",
+        )
+
+        assertEquals(
+            ServiceRefusal.InvalidCursor("out-cursor-v1:run-1/op-1:40", "evt-cursor-v1"),
+            assertInstanceOf(ServiceDecoding.Refused::class.java, decoded).refusal,
+            "a byte cursor is a position in bytes, and resuming from it would advance the client " +
+                "to a position in the wrong plane",
+        )
+    }
+
+    @Test
+    fun `a cursor of the OTHER plane is refused by name in the output street`() {
+        val decoded = ServiceCodec.decode(
+            """{"schema":"pipelinek.service/2","op":"output.follow","runId":"run-1",""" +
+                """"after":"evt-cursor-v1:run-1:7"}""",
+        )
+
+        assertEquals(
+            ServiceRefusal.InvalidCursor("evt-cursor-v1:run-1:7", "out-frame-ord-v1"),
+            assertInstanceOf(ServiceDecoding.Refused::class.java, decoded).refusal,
+            "an event cursor is a position in a sequence, and the console street reads ordinals",
+        )
+    }
+
+    @Test
+    fun `a cursor that does not decode at all is refused by name`() {
+        val decoded = ServiceCodec.decode(
+            """{"schema":"pipelinek.service/2","op":"events.follow","runId":"run-1",""" +
+                """"after":"not-a-cursor"}""",
+        )
+
+        assertEquals(
+            ServiceRefusal.InvalidCursor("not-a-cursor", "evt-cursor-v1"),
+            assertInstanceOf(ServiceDecoding.Refused::class.java, decoded).refusal,
+            "a token that does not decode is not a position, and the client is told which " +
+                "family of positions it should have offered",
         )
     }
 
@@ -158,7 +297,7 @@ class ServiceProtocolTest {
         val decoded = Json.parseToJsonElement(line).jsonObject
 
         assertEquals(ServiceProtocol.SCHEMA, decoded["schema"]?.jsonPrimitive?.content)
-        assertTrue(decoded["ok"]?.jsonPrimitive?.boolean ?: false, "the answer says that it answered")
+        assertEquals("answer", decoded["kind"]?.jsonPrimitive?.content)
         assertEquals(
             "0.95.0",
             decoded["result"]?.jsonObject?.get("productVersion")?.jsonPrimitive?.content,
@@ -177,8 +316,8 @@ class ServiceProtocolTest {
 
         assertEquals(ServiceProtocol.SCHEMA, decoded["schema"]?.jsonPrimitive?.content)
         assertEquals(
-            false,
-            decoded["ok"]?.jsonPrimitive?.boolean,
+            "refused",
+            decoded["kind"]?.jsonPrimitive?.content,
             "a refusal is not an answer, and it says so",
         )
         assertEquals("unknown-run", refusal?.get("kind")?.jsonPrimitive?.content)
@@ -186,6 +325,59 @@ class ServiceProtocolTest {
             "run-7",
             refusal?.get("runId")?.jsonPrimitive?.content,
             "the refusal keeps the fact it carried",
+        )
+    }
+
+    @Test
+    fun `a record carries its cursor, its document and whether more follows`() {
+        val line = ServiceCodec.encodeRecord(
+            cursor = "evt-cursor-v1:run-1:7",
+            record = Json.parseToJsonElement("""{"type":"event","kind":"RunStarted"}""").jsonObject,
+            hasMore = true,
+        )
+
+        val decoded = Json.parseToJsonElement(line).jsonObject
+
+        assertEquals(ServiceProtocol.SCHEMA, decoded["schema"]?.jsonPrimitive?.content)
+        assertEquals("record", decoded["kind"]?.jsonPrimitive?.content)
+        assertEquals("evt-cursor-v1:run-1:7", decoded["cursor"]?.jsonPrimitive?.content)
+        assertEquals(
+            "true",
+            decoded["hasMore"]?.jsonPrimitive?.content,
+            "the record says whether more of this lane follows it",
+        )
+        assertEquals(
+            "RunStarted",
+            decoded["record"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+            "the document travels whole",
+        )
+    }
+
+    @Test
+    fun `the end of a street carries its reason and its final position`() {
+        val line = ServiceCodec.encodeEnd(ServiceEndReason.TerminalObserved, "evt-cursor-v1:run-1:9")
+
+        val decoded = Json.parseToJsonElement(line).jsonObject
+
+        assertEquals(ServiceProtocol.SCHEMA, decoded["schema"]?.jsonPrimitive?.content)
+        assertEquals("end", decoded["kind"]?.jsonPrimitive?.content)
+        assertEquals("terminal-observed", decoded["reason"]?.jsonPrimitive?.content)
+        assertEquals(
+            "evt-cursor-v1:run-1:9",
+            decoded["cursor"]?.jsonPrimitive?.content,
+            "the end carries the position the street stood at",
+        )
+    }
+
+    @Test
+    fun `the vocabulary of the end of a street is ONE word`() {
+        val words = ServiceEndReason.entries.map { it.word }
+
+        assertEquals(
+            listOf("terminal-observed"),
+            words,
+            "the vocabulary names one way a street can end, and a word for the outcome of the " +
+                "run would be a second opinion about another authority's answer",
         )
     }
 
@@ -205,6 +397,9 @@ class ServiceProtocolTest {
             ServiceRefusal.RequestTooLarge,
             ServiceRefusal.TooManyConnections,
             ServiceRefusal.UnknownOp,
+            ServiceRefusal.InvalidCursor("not-a-cursor", "evt-cursor-v1"),
+            ServiceRefusal.CursorBeyondTail("run-1", 40L, 12L),
+            ServiceRefusal.OutputPlaneRefused("retention-gap", "the bytes are gone"),
         )
 
         val kinds = refusals.map { it.kind }
@@ -253,6 +448,18 @@ class ServiceProtocolTest {
             ServiceRefusal.UnknownRunOperation("op-1", 2) to Json.parseToJsonElement(
                 """{"kind":"unknown-operation","operationId":"op-1","attempt":2}""",
             ).jsonObject,
+            ServiceRefusal.InvalidCursor("nonsense", "evt-cursor-v1") to Json.parseToJsonElement(
+                """{"kind":"invalid-cursor","cursor":"nonsense","expected":"evt-cursor-v1"}""",
+            ).jsonObject,
+            ServiceRefusal.CursorBeyondTail("run-1", 40L, 12L) to Json.parseToJsonElement(
+                """{"kind":"cursor-beyond-tail","runId":"run-1","requestedSequence":40,""" +
+                    """"tailSequence":12}""",
+            ).jsonObject,
+            ServiceRefusal.OutputPlaneRefused("retention-gap", "the bytes are gone") to
+                Json.parseToJsonElement(
+                    """{"kind":"output-plane-refused","reason":"retention-gap",""" +
+                        """"detail":"the bytes are gone"}""",
+                ).jsonObject,
         )
 
         rows.forEach { (refusal, expected) ->

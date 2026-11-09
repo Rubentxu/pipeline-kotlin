@@ -56,10 +56,10 @@ class CliExitDecisionTest {
 
     @Test
     fun `a read-only verb answers with a decision`() {
-        val (outcome, streams) = capturing { out, err -> handleReadOnlyVerb(arrayOf("capabilities"), out, err) }
+        val (outcome, streams) = capturing { out, err -> handleInventoryVerb(arrayOf("capabilities"), out, err) }
 
         val answered = assertInstanceOf(
-            ReadOnlyVerbOutcome.Answered::class.java,
+            InventoryVerbOutcome.Answered::class.java,
             outcome,
             "a read-only verb answers the request",
         )
@@ -72,10 +72,10 @@ class CliExitDecisionTest {
 
     @Test
     fun `a family word on its own answers with a decision`() {
-        val (outcome, streams) = capturing { out, err -> handleReadOnlyVerb(arrayOf("saga"), out, err) }
+        val (outcome, streams) = capturing { out, err -> handleInventoryVerb(arrayOf("saga"), out, err) }
 
         val answered = assertInstanceOf(
-            ReadOnlyVerbOutcome.Answered::class.java,
+            InventoryVerbOutcome.Answered::class.java,
             outcome,
             "the door of the family answers the request",
         )
@@ -94,11 +94,11 @@ class CliExitDecisionTest {
     @Test
     fun `a refusal of the credentials family reaches stderr with the code the taxonomy declares`() {
         val (outcome, streams) = capturing { out, err ->
-            handleReadOnlyVerb(arrayOf("credentials", "list", ""), out, err)
+            handleInventoryVerb(arrayOf("credentials", "list", ""), out, err)
         }
 
         val answered = assertInstanceOf(
-            ReadOnlyVerbOutcome.Answered::class.java,
+            InventoryVerbOutcome.Answered::class.java,
             outcome,
             "the credentials family answers the request",
         )
@@ -171,10 +171,10 @@ class CliExitDecisionTest {
 
     @Test
     fun `a word no verb answers is not answered at all`() {
-        val outcome = capturing { out, err -> handleReadOnlyVerb(arrayOf("no-such-verb"), out, err) }.first
+        val outcome = capturing { out, err -> handleInventoryVerb(arrayOf("no-such-verb"), out, err) }.first
 
         assertInstanceOf(
-            ReadOnlyVerbOutcome.NotHandled::class.java,
+            InventoryVerbOutcome.NotHandled::class.java,
             outcome,
             "a word that names no verb is not a request this CLI answers",
         )

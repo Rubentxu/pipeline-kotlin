@@ -141,6 +141,13 @@ internal val CLI_VERBS: List<CliVerb> = buildList {
     add(CliVerb("version", "print the product version (--json)", ::runVersionVerb))
     add(CliVerb("capabilities", "print the capability keys this build admits", ::runCapabilitiesVerb))
     add(CliVerb("sdk-info", "print the SDK coordinates a plugin builds against", ::runSdkInfoVerb))
+    add(
+        CliVerb(
+            "serve",
+            "run the local service on a Unix socket (--db, --control-root, --socket)",
+            ::runServeVerb,
+        ),
+    )
 
     addAll(
         MainRunsCli.RunsVerb.entries.map {

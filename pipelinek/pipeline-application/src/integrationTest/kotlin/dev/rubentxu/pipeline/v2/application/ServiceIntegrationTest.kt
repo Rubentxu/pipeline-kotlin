@@ -1,0 +1,413 @@
+package dev.rubentxu.pipeline.v2.application
+
+import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.durable.DurableStores
+import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
+import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
+import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
+import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRequest
+import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
+import java.io.ByteArrayOutputStream
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
+import java.nio.ByteBuffer
+import java.nio.channels.ServerSocketChannel
+import java.nio.channels.SocketChannel
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermission
+import java.time.Instant
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * The local service, over a real Unix domain socket, over a real store.
+ *
+ * ## The guarantee under trial
+ *
+ * The service answers what the command line answers about the SAME run, over
+ * the SAME store, and it answers it to a client that speaks a protocol with a
+ * version and a vocabulary of names. Three facts have to hold together: the
+ * socket is really a socket and really private, a client that misbehaves gets
+ * a name instead of a closed connection, and NOTHING the service reads is
+ * changed by the reading.
+ *
+ * ## The capacity this serves
+ *
+ * A supervisor that watches a machine's runs has to trust the socket it reads.
+ * It can only trust it if the socket is one the operator alone can open, if
+ * the service says what it cannot do instead of going quiet, and if asking
+ * about a run leaves the run exactly as it was. A service that writes to the
+ * substrate it serves is a service whose answers cannot be trusted.
+ *
+ * ## Why this instrument is an INTEGRATION test
+ *
+ * The unit lane already knows what the answers ARE: the codec over lines, and
+ * the operations over a faked port. What only a real machine can say is
+ * whether the socket binds, whether its mode is the one the design promises,
+ * whether a leftover from a crash is told apart from a file that belongs to
+ * somebody else, and whether the reading leaves the tree untouched. Those are
+ * facts about the filesystem and about a socket, so the instrument has to have
+ * a real one.
+ *
+ * The only thing faked here is the world OUTSIDE the product: the temporary
+ * directory the material lives in, and the clock, which does not move.
+ *
+ * ## What is NOT here, and why
+ *
+ * The published distribution is not started: that belongs to the harness that
+ * certifies the released artifact. What this lane asserts is the seam that
+ * harness will exercise — the service, its socket and its substrate.
+ */
+class ServiceIntegrationTest {
+
+    @TempDir
+    lateinit var root: Path
+
+    /** The durable store the service reads. */
+    private lateinit var db: Path
+
+    /** The socket the service listens on. */
+    private lateinit var socket: Path
+
+    private val runId = "run-service-1"
+
+    private val clock: Clock = FixedClock
+
+    @BeforeEach
+    fun material() {
+        db = root.resolve("store.db")
+        socket = root.resolve("service.sock")
+        val workspace = Files.createDirectories(root.resolve("workspace"))
+        val admission = admitEventStore(db.toString(), EventStorePurpose.Produce)
+        val store = (admission as EventStoreAdmission.Admitted).store
+        store.append(
+            RunStarted(
+                eventId = "event-1",
+                runId = runId,
+                sequence = 0L,
+                occurredAt = Instant.EPOCH,
+                scriptPath = workspace.resolve("pipeline.kts").toString(),
+            ),
+        )
+        store.append(
+            RunFinished(
+                eventId = "event-2",
+                runId = runId,
+                sequence = 0L,
+                occurredAt = Instant.EPOCH,
+                outcome = "success",
+                diagnostics = emptyList(),
+            ),
+        )
+        store.flush()
+        val stores = DurableStores.open(store, root, clock)
+        val owner = requireNotNull(RunOwnerId.of("owner-of-the-fixture"))
+        val identity = requireNotNull(RunId.of(runId))
+        stores.lease.acquire(LeaseRequest(runId = identity, ownerId = owner))
+        stores.lease.release(owner)
+        store.close()
+    }
+
+    @Test
+    fun `the client and the service agree on the version of the protocol`() {
+        val service = start()
+
+        val answer = service.ask("""{"schema":"pipelinek.service/1","op":"version"}""")
+
+        assertEquals(ServiceProtocol.SCHEMA, answer["schema"]?.jsonPrimitive?.content)
+        assertEquals("true", answer["ok"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `a client that speaks another protocol is refused by name`() {
+        val service = start()
+
+        val answer = service.ask("""{"schema":"pipelinek.service/9","op":"version"}""")
+
+        assertEquals("false", answer["ok"]?.jsonPrimitive?.content)
+        assertEquals(
+            "incompatible-protocol",
+            answer["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
+    fun `the state of a run that finished is the state the command line reports`() {
+        val service = start()
+
+        val answer = service.ask(
+            """{"schema":"pipelinek.service/1","op":"run.state","runId":"$runId"}""",
+        )
+
+        assertEquals("true", answer["ok"]?.jsonPrimitive?.content)
+        val result = answer["result"]?.jsonObject
+        assertEquals("terminal", result?.get("state")?.jsonPrimitive?.content)
+        assertEquals("succeeded", result?.get("outcome")?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `a run nobody knows is refused over the socket by name`() {
+        val service = start()
+
+        val answer = service.ask(
+            """{"schema":"pipelinek.service/1","op":"run.state","runId":"run-nobody-wrote"}""",
+        )
+
+        assertEquals("false", answer["ok"]?.jsonPrimitive?.content)
+        assertEquals(
+            "unknown-run",
+            answer["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
+    fun `the socket and its directory belong to the operator alone`() {
+        start()
+
+        assertEquals(
+            setOf(
+                PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_WRITE,
+            ),
+            Files.getPosixFilePermissions(socket),
+            "the socket is readable and writable by its owner and by nobody else",
+        )
+        assertEquals(
+            setOf(
+                PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_WRITE,
+                PosixFilePermission.OWNER_EXECUTE,
+            ),
+            Files.getPosixFilePermissions(root),
+            "the directory of the socket is private, so the socket cannot be found",
+        )
+    }
+
+    @Test
+    fun `a socket left over from a crash is replaced and the service answers`() {
+        // The JDK does not delete the socket file when the channel closes, so
+        // a crash leaves one behind. This is the NORMAL case, not the exotic
+        // one: it is what the next start finds.
+        val abandoned = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
+        abandoned.bind(UnixDomainSocketAddress.of(socket))
+        abandoned.close()
+        assertTrue(Files.exists(socket), "the leftover is the file the crash left behind")
+
+        val service = start()
+
+        val answer = service.ask("""{"schema":"pipelinek.service/1","op":"version"}""")
+        assertEquals("true", answer["ok"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `a service that is already listening is not displaced and its socket is not deleted`() {
+        val listening = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
+        listening.bind(UnixDomainSocketAddress.of(socket))
+        try {
+            val refusal = assertThrowsServiceStartup {
+                UnixSocketTransport.bind(socket)
+            }
+
+            assertEquals(ServiceStartupRefusal.AnotherServiceIsListening, refusal.refusal)
+            assertTrue(Files.exists(socket), "the socket of the service that is running stays")
+        } finally {
+            listening.close()
+        }
+    }
+
+    @Test
+    fun `a path that is not a socket is neither served nor deleted`() {
+        val foreign = root.resolve("not-a-socket")
+        Files.writeString(foreign, "a file that belongs to somebody else")
+
+        val refusal = assertThrowsServiceStartup {
+            UnixSocketTransport.bind(foreign)
+        }
+
+        assertEquals(ServiceStartupRefusal.SocketPathIsNotASocket, refusal.refusal)
+        assertEquals(
+            "a file that belongs to somebody else",
+            Files.readString(foreign),
+            "the file of somebody else is still there, with its content",
+        )
+    }
+
+    @Test
+    fun `a client that connects and says nothing is closed`() {
+        val service = start(limits = ServiceLimits(readDeadlineMillis = 300L))
+        try {
+            SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { channel ->
+                val buffer = ByteArray(64)
+                val read = channel.read(ByteBuffer.wrap(buffer))
+
+                assertEquals(
+                    -1,
+                    read,
+                    "the service closes a client that does not finish its line, and does not wait for it",
+                )
+            }
+        } finally {
+            service.stop()
+        }
+    }
+
+    @Test
+    fun `asking about a run changes nothing of the substrate`() {
+        val service = start()
+
+        // The photo is taken with the service ALREADY serving, because opening
+        // the store is a fact of its own: SQLite puts its WAL sidecars next to
+        // the database when the connection opens. Those sidecars are the
+        // store being open, not the store being written, and a measurement
+        // that took the photo before the service started would be measuring
+        // the opening.
+        val before = treeOf(root)
+        val storeBefore = Files.readAllBytes(db)
+
+        service.ask("""{"schema":"pipelinek.service/1","op":"run.state","runId":"$runId"}""")
+        service.ask("""{"schema":"pipelinek.service/1","op":"health"}""")
+
+        assertEquals(
+            before,
+            treeOf(root),
+            "asking about a run left something behind in the tree of the control root",
+        )
+        assertTrue(
+            storeBefore.contentEquals(Files.readAllBytes(db)),
+            "asking about a run changed the bytes of the store",
+        )
+    }
+
+    @Test
+    fun `the socket is deleted when the service stops`() {
+        val service = start()
+        assertTrue(Files.exists(socket), "the socket is there while the service serves")
+
+        service.stop()
+
+        assertFalse(Files.exists(socket), "the socket of a service that stopped is not left behind")
+    }
+
+    /**
+     * The service, over a real socket, and the way to ask it and to stop it.
+     */
+    private inner class Service(
+        private val server: ServiceServer,
+        private val store: dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore,
+    ) {
+
+        /** The thread that serves. */
+        private val thread = Thread({ server.serve() }, "service-under-test").apply {
+            isDaemon = true
+            start()
+        }
+
+        /**
+         * The answer of [request], read as a document.
+         */
+        fun ask(request: String): Map<String, kotlinx.serialization.json.JsonElement> {
+            SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { channel ->
+                channel.write(ByteBuffer.wrap((request + "\n").toByteArray(Charsets.UTF_8)))
+                val line = readLine(channel)
+                return Json.parseToJsonElement(line).jsonObject
+            }
+        }
+
+        /**
+         * Stops the service.
+         */
+        fun stop() {
+            server.close()
+            thread.join(5_000L)
+            store.close()
+        }
+    }
+
+    /**
+     * Starts the service over a real socket.
+     */
+    private fun start(limits: ServiceLimits = ServiceLimits()): Service {
+        val admission = admitEventStore(db.toString(), EventStorePurpose.Read)
+        val store = (admission as EventStoreAdmission.Admitted).store
+        val operations = ServiceOperations(
+            introspection = composeRuntimeIntrospectionPort(
+                eventStore = store,
+                controlRoot = root,
+                clock = clock,
+            ),
+            substrate = {
+                ServiceSubstrate(
+                    eventStore = db.toString(),
+                    controlRoot = root.toString(),
+                    eventStorePresent = Files.exists(db),
+                    controlRootPresent = Files.exists(root),
+                )
+            },
+        )
+        val transport = UnixSocketTransport.bind(socket)
+        return Service(ServiceServer(transport, operations, limits), store)
+    }
+
+    /**
+     * The refusal a refused bind carries.
+     */
+    private fun assertThrowsServiceStartup(block: () -> Unit): ServiceStartupException = try {
+        block()
+        throw AssertionError("the bind was accepted and it should not have been")
+    } catch (e: ServiceStartupException) {
+        e
+    }
+
+    /**
+     * The line the service wrote, read until its end.
+     */
+    private fun readLine(channel: SocketChannel): String {
+        val buffer = ByteArray(8192)
+        val accumulated = ByteArrayOutputStream()
+        while (true) {
+            val read = channel.read(ByteBuffer.wrap(buffer))
+            if (read < 0) break
+            val chunk = buffer.copyOf(read)
+            val newline = chunk.indexOf('\n'.code.toByte())
+            if (newline >= 0) {
+                accumulated.write(chunk, 0, newline)
+                break
+            }
+            accumulated.write(chunk, 0, read)
+        }
+        return accumulated.toString(Charsets.UTF_8)
+    }
+
+    /**
+     * The tree of [root], with the size of every file in it.
+     */
+    private fun treeOf(root: Path): Map<String, Long> {
+        val tree = mutableMapOf<String, Long>()
+        Files.walk(root).use { paths ->
+            paths.forEach { path ->
+                tree[path.toString()] = if (Files.isRegularFile(path)) {
+                    Files.size(path)
+                } else {
+                    -1L
+                }
+            }
+        }
+        return tree
+    }
+
+    /** The clock this lane stamps its material with: it does not move. */
+    private object FixedClock : Clock {
+        override fun now(): Instant = Instant.EPOCH
+    }
+}

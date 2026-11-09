@@ -130,16 +130,16 @@ fun main(args: Array<String>) {
         return
     }
 
-    // The verbs that only read. They answer, and this is the one place that
+    // The verbs the inventory dispatches. They answer, and this is the one place that
     // ends the process, so the decision the verb made becomes the process's
     // exit code here. Nothing after this point is reached when one of them is
     // the verb.
-    when (val outcome = handleReadOnlyVerb(args, System.out, System.err)) {
-        is ReadOnlyVerbOutcome.Answered -> {
+    when (val outcome = handleInventoryVerb(args, System.out, System.err)) {
+        is InventoryVerbOutcome.Answered -> {
             System.exit(outcome.exit.code)
             return
         }
-        ReadOnlyVerbOutcome.NotHandled -> Unit
+        InventoryVerbOutcome.NotHandled -> Unit
     }
 
     // The control plane's verb. `runs cancel` closes a run that no live process

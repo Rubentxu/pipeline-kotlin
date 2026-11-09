@@ -159,7 +159,32 @@ fun CliError.toCliExit(): CliExit = when (this) {
         message = "run id '$runId' cannot name a durable directory",
         hint = "a run id may contain only letters, digits, '.', '_' and '-'",
     )
+    is CliError.SubstrateUnavailable -> substrateUnavailableExit(reason)
+    is CliError.ServiceUnavailable -> serviceUnavailableExit(reason, detail)
 }
+
+/**
+ * The exit a refusal of the substrate becomes.
+ *
+ * It is the runtime-not-available case: the request asked the service to serve
+ * a substrate this machine cannot give it, and that is a fact about the
+ * machine, not about the words the operator typed.
+ */
+private fun substrateUnavailableExit(reason: String): CliExit = CliExit.RuntimeNotAvailable(
+    message = "the substrate cannot be served: $reason",
+    hint = "the service reads the store it is given; it does not create one",
+)
+
+/**
+ * The exit a refusal of the startup becomes.
+ *
+ * The REASON is a word, because every way this fails has a different remedy,
+ * and the detail is the hint: it says what the machine answered.
+ */
+private fun serviceUnavailableExit(reason: String, detail: String): CliExit = CliExit.RuntimeNotAvailable(
+    message = "the service cannot start: $reason",
+    hint = detail,
+)
 
 /**
  * The exit a refusal from the admission core becomes.

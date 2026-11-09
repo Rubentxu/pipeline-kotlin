@@ -9,7 +9,7 @@ repository that a third party resolves from is not a directory of JARs: it is a
 set of documents that say what each artifact is, where it came from, and that
 nobody touched it on the way.
 
-This checker asks eleven questions about the bundle that is on disk:
+This checker asks twelve questions about the bundle that is on disk:
 
   1. the repository holds exactly the six coordinates and ONE version;
   2. every library carries its JAR, its sources and its javadoc, and the BOM
@@ -22,10 +22,12 @@ This checker asks eleven questions about the bundle that is on disk:
   7. no class is published by two of the six JARs;
   8. every file has its four checksums and they match the bytes;
   9. every artifact carries a detached signature that verifies against the
-     CURRENT key of this repository's trust set;
+     key this repository declares for the MAVEN ARTIFACTS, which is not the
+     key that signs the release tags;
  10. every published contract declares its maturity, and nothing in the bundle
      claims a stable ABI;
- 11. the bundle is not one of the artifacts the product publishes.
+ 11. the bundle is not one of the artifacts the product publishes;
+ 12. every directory of the bundle that carries files carries a POM.
 
 The list of the six is NOT written here. It is derived from the bundle itself:
 the BOM names the five contracts it pins, and the BOM is the sixth. A checker
@@ -56,7 +58,24 @@ from pathlib import Path
 
 MAVEN_NS = "{http://maven.apache.org/POM/4.0.0}"
 
-GROUP_PATH = "dev/rubentxu/pipeline/v2"
+# The group the SDK publishes under, and the one it published under before the
+# rename. A bundle carries ONE of them: the releases before the rename carry the
+# old group and the releases after it carry this one, and both are readable here
+# because a checker that only knew the current one would refuse a bundle of a
+# previous release as if it were malformed.
+GROUP_PATH = "dev/rubentxu/pipelinek"
+LEGACY_GROUP_PATH = "dev/rubentxu/pipeline/v2"
+
+
+def group_path_in(repo: Path) -> str:
+    """The group path this repository carries: the current one, or the one before it."""
+    for candidate in (GROUP_PATH, LEGACY_GROUP_PATH):
+        if (repo / candidate).is_dir():
+            return candidate
+    raise Failure(
+        f"the repository has no {GROUP_PATH} directory (nor the {LEGACY_GROUP_PATH} "
+        f"one the releases before the rename carried): {repo}"
+    )
 
 # The four digests a Maven repository carries beside every file. Central asks
 # for the first two; the other two are what this repository publishes anyway,
@@ -118,9 +137,7 @@ def pom_value(root: ET.Element, path: str) -> str:
 
 def module_coordinates(repo: Path) -> dict[str, Path]:
     """The artifact directories of the repository: artifact -> its version dir."""
-    base = repo / GROUP_PATH
-    if not base.is_dir():
-        raise Failure(f"the repository has no {GROUP_PATH} directory: {repo}")
+    base = repo / group_path_in(repo)
     found: dict[str, Path] = {}
     for artifact_dir in sorted(p for p in base.iterdir() if p.is_dir()):
         versions = sorted(p for p in artifact_dir.iterdir() if p.is_dir())
@@ -288,7 +305,7 @@ def check_pom_metadata(
     diverged: list[str] = []
     for artifact, version_dir in sorted(coordinates.items()):
         staged = version_dir / f"{artifact}-{version_dir.name}.pom"
-        landed = landing / GROUP_PATH / artifact / version_dir.name / staged.name
+        landed = landing / group_path_in(landing) / artifact / version_dir.name / staged.name
         if not landed.is_file():
             diverged.append(f"{artifact}: the RC carries no POM with that name")
         elif landed.read_bytes() != staged.read_bytes():
@@ -455,7 +472,7 @@ def check_signatures(
     report: Report,
 ) -> None:
     if not fingerprint:
-        report.row(False, "9", "no current signing key was given, so no signature can be checked")
+        report.row(False, "9", "no signing key was given, so no signature can be checked")
         return
     problems: list[str] = []
     checked = 0
@@ -482,13 +499,13 @@ def check_signatures(
                 if line.startswith("[GNUPG:] VALIDSIG "):
                     signer = line.split()[2]
             if signer.upper() != fingerprint.upper():
-                problems.append(f"{file.name}: the signature names the key {signer}, not the current one")
+                problems.append(f"{file.name}: the signature names the key {signer}, not the key declared for the Maven artifacts")
                 continue
             checked += 1
     if problems:
-        report.row(False, "9", "an artifact is not signed by the current key", problems)
+        report.row(False, "9", "an artifact is not signed by the key declared for the Maven artifacts", problems)
     else:
-        report.row(True, "9", f"the {checked} artifacts carry a detached signature that verifies against the current key")
+        report.row(True, "9", f"the {checked} artifacts carry a detached signature that verifies against the key declared for the Maven artifacts")
 
 
 def check_maturity(
@@ -550,6 +567,30 @@ def check_not_published(assets_path: Path | None, report: Report) -> None:
         report.row(True, "11", "the bundle is not among the artifacts the product publishes")
 
 
+def check_every_directory_carries_a_pom(repo: Path, report: Report) -> None:
+    """Every directory that carries files must carry a POM.
+
+    The destination refuses a bundle whose directory carries content and no POM, and
+    it names the directory it refuses. The rule is measured here rather than assumed:
+    a bundle is a set of artifacts, and a directory that holds files without a POM
+    holds something a consumer cannot resolve by its coordinate.
+
+    The shape that trips this is the index of a REPOSITORY: a `maven-metadata.xml`
+    in the directory of the module, whose POM is one level deeper. It travels to the
+    destination as content of a directory with no POM, and the destination refuses
+    the whole bundle for it.
+    """
+    offenders = []
+    for directory in sorted({path.parent for path in repo.rglob("*") if path.is_file()}):
+        files = sorted(path.name for path in directory.iterdir() if path.is_file())
+        if files and not any(name.endswith(".pom") for name in files):
+            offenders.append(f"{directory.relative_to(repo)}: {', '.join(files)}")
+    if offenders:
+        report.row(False, "12", "a directory of the bundle carries content and no POM", offenders)
+    else:
+        report.row(True, "12", "every directory of the bundle that carries files carries a POM")
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(add_help=True, description="Check the staged SDK bundle.")
     parser.add_argument("--repo", required=True, help="the staged Maven repository")
@@ -557,7 +598,11 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--landing-repo", default="", help="the repository the RC's SDK ZIP is built from")
     parser.add_argument("--maturity", default="", help="the published-contract maturity contract")
     parser.add_argument("--assets", default="", help="the published asset list of the candidate")
-    parser.add_argument("--fingerprint", default="", help="the current signing key")
+    parser.add_argument(
+        "--fingerprint",
+        default="",
+        help="the key declared for the Maven artifacts, whose signatures the bundle must carry",
+    )
     arguments = parser.parse_args(argv)
 
     repo = Path(arguments.repo).resolve()
@@ -583,6 +628,7 @@ def main(argv: list[str]) -> int:
         check_maturity(coordinates, bom, maturity, report)
         assets = Path(arguments.assets) if arguments.assets else None
         check_not_published(assets, report)
+        check_every_directory_carries_a_pom(repo, report)
         version = arguments.version or next(iter(coordinates.values())).name
         report.note(f"bundle version {version}, {len(coordinates)} coordinates")
     except Failure as failure:

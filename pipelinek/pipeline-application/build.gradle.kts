@@ -273,6 +273,84 @@ sourceSets.main {
     resources.srcDir(generateVersionResource)
 }
 
+/**
+ * The published coordinate, written into a Kotlin source the CLI reads.
+ *
+ * The coordinate is DECLARED once, in the root build, and this task writes it where
+ * the CLI can consume it. The alternative was a second list inside the CLI, and a
+ * second list is a second authority: the rename of the coordinates would have had
+ * to be applied in two places, and the one that was forgotten would have published
+ * a CLI that tells consumers to depend on artifacts that do not exist.
+ *
+ * It is a SOURCE and not a resource on purpose. The CLI's answer is a published
+ * contract, and a contract that is only there when the file is there is a contract
+ * that can be absent: a compile-time constant cannot.
+ */
+val generateSdkCoordinates by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/sdk-coordinates")
+    val publishedGroup = rootProject.extra["sdkBundleGroup"] as String
+    val publishedArtifactNames = rootProject.extra["sdkBundleArtifactNames"] as Map<*, *>
+
+    // The order the CLI publishes, and the scope each coordinate carries. The BOM is
+    // the one a consumer pins as a platform; the five contracts are the ones it
+    // compiles against.
+    val contracts = listOf(
+        "pipeline-domain",
+        "pipeline-events",
+        "pipeline-output",
+        "pipeline-runtime-api",
+        "pipeline-scripting-api",
+    )
+    val bom = "pipeline-sdk-bom"
+
+    val coordinates = (contracts.map { it to "implementation" } + (bom to "bom")).map { (module, scope) ->
+        Triple(publishedGroup, publishedArtifactNames[module] as String, scope)
+    }
+
+    inputs.property("group", publishedGroup)
+    inputs.property("coordinates", coordinates)
+    outputs.dir(outputDir)
+
+    doLast {
+        val target = outputDir.get()
+            .file("dev/rubentxu/pipeline/v2/application/SdkCoordinates.kt")
+            .asFile
+        target.parentFile.mkdirs()
+        target.writeText(
+            buildString {
+                appendLine("// GENERATED FILE. Do not edit: the build writes it.")
+                appendLine("//")
+                appendLine("// The published coordinate of the SDK, from the ONE declaration the root")
+                appendLine("// build owns (`sdkBundleGroup` and `sdkBundleArtifactNames`). The CLI reads")
+                appendLine("// THIS, so the coordinates it publishes cannot drift from the coordinates")
+                appendLine("// the publication declares.")
+                appendLine("package dev.rubentxu.pipeline.v2.application")
+                appendLine()
+                appendLine("internal object SdkCoordinates {")
+                appendLine("    /** The group every published coordinate carries. */")
+                appendLine("    const val GROUP: String = \"$publishedGroup\"")
+                appendLine()
+                appendLine("    /** One published coordinate, as the CLI exposes it. */")
+                appendLine("    data class Entry(val group: String, val artifact: String, val scope: String)")
+                appendLine()
+                appendLine("    /** Every published coordinate, in the order the CLI publishes them. */")
+                appendLine("    val ENTRIES: List<Entry> = listOf(")
+                coordinates.forEach { (group, artifact, scope) ->
+                    appendLine("        Entry(\"$group\", \"$artifact\", \"$scope\"),")
+                }
+                appendLine("    )")
+                appendLine("}")
+            },
+        )
+    }
+}
+
+kotlin {
+    // The generated source is part of the Kotlin source set, so the compile depends
+    // on the generator and the CLI cannot be compiled against a file that is not there.
+    sourceSets.getByName("main").kotlin.srcDir(generateSdkCoordinates)
+}
+
 dependencies {
     // OpenTelemetry is an implementation detail of the CLI adapter, not a published contract.
     // The SDK/autoconfigure/OTLP exporter provide the standard engine, environment configuration,

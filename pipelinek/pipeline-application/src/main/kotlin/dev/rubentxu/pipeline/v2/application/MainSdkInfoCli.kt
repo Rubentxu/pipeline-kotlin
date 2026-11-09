@@ -22,15 +22,18 @@ import java.io.PrintStream
 object MainSdkInfoCli {
     const val SCHEMA: String = "pipelinek.sdk/1"
 
-    /** The 5 SDK coordinates + the BOM, as declared in the publish script. */
-    private val COORDINATES: List<Coordinate> = listOf(
-        Coordinate(group = "dev.rubentxu.pipeline.v2", artifact = "pipeline-domain", scope = "implementation"),
-        Coordinate(group = "dev.rubentxu.pipeline.v2", artifact = "pipeline-events", scope = "implementation"),
-        Coordinate(group = "dev.rubentxu.pipeline.v2", artifact = "pipeline-output", scope = "implementation"),
-        Coordinate(group = "dev.rubentxu.pipeline.v2", artifact = "pipeline-runtime-api", scope = "implementation"),
-        Coordinate(group = "dev.rubentxu.pipeline.v2", artifact = "pipeline-scripting-api", scope = "implementation"),
-        Coordinate(group = "dev.rubentxu.pipeline.v2", artifact = "pipeline-sdk-bom", scope = "bom"),
-    )
+    /**
+     * The 5 SDK coordinates + the BOM.
+     *
+     * They are READ from the generated source, which the build writes from the one
+     * declaration of the published coordinate (the root build's `sdkBundleGroup` and
+     * `sdkBundleArtifactNames`). This list used to be written here as well, and that
+     * was a second authority over the same fact: the rename of the coordinates would
+     * have had to be applied in two places, and the one left behind would have
+     * published a CLI that sends consumers after artifacts that do not exist.
+     */
+    private val COORDINATES: List<Coordinate> =
+        SdkCoordinates.ENTRIES.map { Coordinate(it.group, it.artifact, it.scope) }
 
     /**
      * Runs the verb and writes what it answers to the streams it is given.
@@ -53,7 +56,7 @@ object MainSdkInfoCli {
         val obj: JsonObject = buildJsonObject {
             put("schema", JsonPrimitive(SCHEMA))
             put("version", JsonPrimitive(version))
-            put("group", JsonPrimitive("dev.rubentxu.pipeline.v2"))
+            put("group", JsonPrimitive(SdkCoordinates.GROUP))
             put(
                 "coordinates",
                 JsonArray(

@@ -183,7 +183,24 @@ repositories {
 // 80 ms slower to fix a console that the muting already fixes. The 0.94.2
 // train opens here (ProductVersion 0.94.2) and its first candidate can be
 // tagged v0.94.2-rc1.
-version = "0.94.2"
+// 2026-11-09: the 0.94.2 train closed at v0.94.2, and the law holds here
+// too: this tree has moved since that candidate. The published ARTIFACT does
+// not resolve to the same coordinate, and it is measured on what a consumer
+// observes: the 0.94.2 artifact is published under the group
+// `dev.rubentxu.pipeline.v2` and under the names `pipeline-domain`,
+// `pipeline-events`, `pipeline-output`, `pipeline-runtime-api`,
+// `pipeline-scripting-api` and `pipeline-sdk-bom`, so the coordinates it
+// publishes carry the Kotlin package root and NOT the name of the solution.
+// This tree publishes the same six contracts under the group
+// `dev.rubentxu.pipelinek` and under the names `pipelinek-*`, and the SDK
+// bundle it carries resolves under exactly the coordinates it prints: a
+// consumer that reads `pipelinek sdk-info` and asks for what it says gets
+// the artifact that carries that name. The two do NOT resolve to the same
+// coordinate, so one version cannot carry both, and the 0.94.2 coordinates are
+// WITHDRAWN from both channels rather than left standing as a second way to
+// name the same contracts. The 0.95.0 train opens here (ProductVersion
+// 0.95.0) and its first candidate can be tagged v0.95.0-rc1.
+version = "0.95.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
@@ -801,11 +818,92 @@ val publishedContractModules = listOf(
 // removal of the module's ABI.
 
 /**
- * The Maven layout of a published artifact: the group is one for every published
- * module, and the `sdk` publications declare no `artifactId`, so Gradle derives it
- * from the project name.
+ * The published coordinate of the SDK: the group every published module carries, and
+ * the artifact name each one carries inside it.
+ *
+ * ONE declaration, read by everything that has to name a published artifact: the
+ * publication itself, the BOM that pins the five contracts, the path the ABI
+ * comparison walks to find a published JAR, and the mirror that checks the staged
+ * bundle against the fresh build. A second declaration of the same fact is a second
+ * authority, and the two drift the first time only one of them is edited.
+ *
+ * The group is `dev.rubentxu.pipelinek`. The namespace the publisher holds
+ * (`dev.rubentxu`) covers it by the prefix rule, and the name of the solution is in
+ * the coordinate a consumer writes.
+ *
+ * The artifact name is NOT derived from the Gradle project name. The modules are
+ * `:pipeline-domain` and friends, and their PUBLISHED names are `pipelinek-domain`
+ * and friends: the name a consumer resolves carries the product's name, and the name
+ * the build uses internally is a different thing.
  */
-val PUBLISHED_GROUP_PATH = "dev/rubentxu/pipeline/v2"
+val sdkBundleGroup = "dev.rubentxu.pipelinek"
+
+/**
+ * The published name of every published module, by its Gradle project name.
+ */
+val sdkBundleArtifactNames: Map<String, String> = mapOf(
+    "pipeline-domain" to "pipelinek-domain",
+    "pipeline-scripting-api" to "pipelinek-scripting-api",
+    "pipeline-events" to "pipelinek-events",
+    "pipeline-output" to "pipelinek-output",
+    "pipeline-runtime-api" to "pipelinek-runtime-api",
+    "pipeline-sdk-bom" to "pipelinek-sdk-bom",
+)
+
+/**
+ * The group and the artifact name a published module carried BEFORE the rename.
+ *
+ * A published version is immutable: the 0.94.2 that carries
+ * `dev.rubentxu.pipeline.v2:pipeline-domain` will carry it forever, and the release
+ * that comes after has to be able to FIND it to compare against it. The names are
+ * kept here for that reading, and only for it: they are the name of the past, not a
+ * second name for the present.
+ */
+val legacyPublishedGroup = "dev.rubentxu.pipeline.v2"
+
+val legacyPublishedArtifactNames: Map<String, String> = mapOf(
+    "pipeline-domain" to "pipeline-domain",
+    "pipeline-scripting-api" to "pipeline-scripting-api",
+    "pipeline-events" to "pipeline-events",
+    "pipeline-output" to "pipeline-output",
+    "pipeline-runtime-api" to "pipeline-runtime-api",
+    "pipeline-sdk-bom" to "pipeline-sdk-bom",
+)
+
+/**
+ * The Maven layout of a published artifact: the group is one for every published
+ * module, and the artifact name is the one this build declares for it.
+ */
+val PUBLISHED_GROUP_PATH = sdkBundleGroup.replace('.', '/')
+
+/**
+ * Where the published artifact of a module lives in a Maven repository, for the side
+ * of the comparison that reads it.
+ *
+ * The candidate side carries the current names. The previous side may carry the
+ * names the module had when THAT version was published, because a published version
+ * never changes: the release before the rename still carries the old names, and the
+ * release after it does not. Both are tried, in this order, and the one that is
+ * there wins. When neither is there there is no artifact to read on this side, and
+ * the caller says so instead of reading an empty surface as a total removal of the
+ * module's ABI.
+ */
+fun publishedArtifactCandidates(module: String): List<Pair<String, String>> = listOf(
+    sdkBundleGroup to sdkBundleArtifactNames.getValue(module),
+    legacyPublishedGroup to legacyPublishedArtifactNames.getValue(module),
+)
+
+/**
+ * The published JAR of a module in a Maven repository, or null when that repository
+ * does not carry it under any of the names it was published under.
+ */
+fun publishedArtifactFile(repo: File, module: String, version: String): File? =
+    publishedArtifactCandidates(module).firstNotNullOfOrNull { (group, artifact) ->
+        File(
+            repo,
+            "${group.replace('.', '/')}/$artifact/$version/$artifact-$version.jar",
+        ).takeIf { it.isFile }
+    }
 
 /**
  * The two sides of the comparison and the Gradle properties that name them. The
@@ -890,6 +988,11 @@ val guardedUnpublishedModules = listOf("pipeline-credentials-api", "pipeline-ste
 extra["publishedApiDumpDirs"] = publishedApiDumpDirs
 extra["publishedApiVersions"] = publishedApiCoordinates.mapValues { it.value.second }
 extra["abiComparedModules"] = publishedContractModules + guardedUnpublishedModules
+// The published coordinate, handed to the modules that have to name it: the BOM that
+// pins the five contracts and the release module that writes the JSON manifest of
+// them. Read from here, so the coordinate is written in ONE place in this build.
+extra["sdkBundleGroup"] = sdkBundleGroup
+extra["sdkBundleArtifactNames"] = sdkBundleArtifactNames
 
 subprojects {
     val publishedModule = publishedContractModules.firstOrNull { ":$it" == project.path }
@@ -904,10 +1007,7 @@ subprojects {
                 val artifact = if (repo == null || version == null) {
                     null
                 } else {
-                    File(
-                        repo,
-                        "$PUBLISHED_GROUP_PATH/$publishedModule/$version/$publishedModule-$version.jar",
-                    )
+                    publishedArtifactFile(File(repo), publishedModule, version)
                 }
                 val outputFile = File(publishedApiDumpDirs.getValue(side), "$publishedModule.api")
                 tasks.register<KotlinApiBuildTask>("${side}ArtifactApiDump") {
@@ -1103,7 +1203,6 @@ val publishSdkForExternalPlugin by tasks.registering {
 // refuses a bundle whose POM differs from the POM the RC carries.
 val sdkBundleModules = (publishedContractModules + sdkBomModules).distinct()
 
-val sdkBundleGroup = "dev.rubentxu.pipeline.v2"
 val sdkBundleProjectUrl = "https://github.com/Rubentxu/pipeline-kotlin"
 val sdkBundleScmConnection = "scm:git:https://github.com/Rubentxu/pipeline-kotlin.git"
 val sdkBundleScmDeveloperConnection = "scm:git:ssh://git@github.com/Rubentxu/pipeline-kotlin.git"
@@ -1150,6 +1249,25 @@ val sdkPomMetadata = mapOf(
 // publish to.
 val sdkBundleRepositoryDir = layout.buildDirectory.dir("sdk-repo-staging")
 
+// The SECOND remote destination: the Maven registry of GitHub Packages.
+//
+// It exists because the first one (Central) needs a namespace and a token that are
+// facts about somebody else's database, and a second channel that needs NEITHER
+// keeps the SDK resolvable while those facts are pending.
+//
+// The coordinates do NOT change here. The Maven registry of GitHub Packages accepts
+// any groupId — measured in its own documentation, which uses `com.example` as its
+// example — so the six coordinates keep the group `dev.rubentxu.pipeline.v2` and a
+// consumer's build does not change between the two channels. The only thing that
+// changes is WHERE the bytes are served from.
+//
+// The credentials are read from the environment and never from a file of this
+// repository: `GITHUB_ACTOR` is the account that publishes and `GITHUB_TOKEN` is a
+// personal access token with the `write:packages` scope.
+val sdkGithubPackagesUrl = providers.gradleProperty("sdkGithubPackagesUrl")
+    .orElse("https://maven.pkg.github.com/Rubentxu/pipeline-kotlin")
+    .get()
+
 subprojects {
     val moduleProject = this
     val isBundleModule = sdkBundleModules.contains(moduleProject.name)
@@ -1163,6 +1281,16 @@ subprojects {
         moduleProject.pluginManager.withPlugin("maven-publish") {
             moduleProject.extensions.configure<PublishingExtension> {
                 publications.withType<MavenPublication>().configureEach {
+                    // The published coordinate is DECLARED, not derived. The group and the
+                    // artifact name come from the one declaration this build owns, so the
+                    // publication that lands in the RC's SDK ZIP and the publication that
+                    // lands in the staging repository cannot carry two different names for
+                    // the same artifact. Deriving the artifact name from the Gradle project
+                    // name would publish `:pipeline-domain` as `pipeline-domain`, and the
+                    // name a consumer resolves is the product's name.
+                    group = sdkBundleGroup
+                    artifactId = sdkBundleArtifactNames.getValue(moduleProject.name)
+
                     val metadata = sdkPomMetadata[moduleProject.name] ?: return@configureEach
                     pom {
                         name.set(metadata.first)
@@ -1194,6 +1322,19 @@ subprojects {
                     maven {
                         name = "staging"
                         url = uri(sdkBundleRepositoryDir)
+                    }
+                    // The mirror in GitHub Packages. Same coordinates, same POM, same
+                    // bytes: a second place to serve them, not a second build of them.
+                    maven {
+                        name = "githubPackages"
+                        url = uri(sdkGithubPackagesUrl)
+                        credentials {
+                            // Read from the environment and never from a file of this
+                            // repository. An empty value is not a credential: the
+                            // preconditions refuse before anything is published.
+                            username = providers.environmentVariable("GITHUB_ACTOR").getOrElse("")
+                            password = providers.environmentVariable("GITHUB_TOKEN").getOrElse("")
+                        }
                     }
                 }
             }
@@ -1227,6 +1368,21 @@ subprojects {
                         })
                     }
                 }
+
+                // The publication to the mirror in GitHub Packages cannot run before the
+                // door has said yes. The task is found by its NAME and not by its
+                // identity, because the plugin creates it when the publication is
+                // created, and this block runs before that happens.
+                moduleProject.tasks
+                    .matching { it.name == "publishSdkBundlePublicationToGithubPackagesRepository" }
+                    .configureEach {
+                        dependsOn(
+                            ":sdkGithubPackagesPreconditions",
+                            ":sdkSigningTrustCheck",
+                            ":sdkStagedBytesCheck",
+                            ":pipeline-release:mavenPublication",
+                        )
+                    }
             }
         }
     }
@@ -1240,6 +1396,270 @@ tasks.register("sdkBundle") {
     group = "build"
     description = "Publishes the six SDK coordinates into the staging Maven repository, with the shape a remote repository expects."
     dependsOn(sdkBundleModules.map { ":$it:publishSdkBundlePublicationToStagingRepository" })
+}
+
+// ── the remote destination of the six coordinates ────────────────────────────────
+//
+// Central Portal is NOT a Maven-layout HTTP repository: the service that accepted a push
+// per file is retired, and what the portal accepts is a BUNDLE — a ZIP with the layout of
+// a Maven repository — uploaded to ONE endpoint with a token.
+//
+// So the remote destination has two halves, and both are declared here next to the
+// publication that produces the bytes: the endpoint the bundle travels to, and the
+// repository with the shape of a remote that carries it. That repository is the staging
+// one — the same directory the bundle task publishes to and the signing script signs. The
+// bytes that travel are the bytes that were verified, and a second copy of them would be
+// a second set of bytes to keep in sync.
+//
+// The endpoint is a property, so the operator names where it publishes to and this tree
+// does not pretend to own a server.
+val sdkRemoteUploadUrl = providers.gradleProperty("sdkRemoteUploadUrl")
+    .orElse("https://central.sonatype.com/api/v1/publisher/upload")
+    .get()
+
+// The name the destination shows for the deployment. It names the PUBLICATION and not the
+// artifact: the destination groups the files it receives into one deployment, and a name
+// that said "six coordinates" would say nothing.
+val sdkRemoteDeploymentName = providers.gradleProperty("sdkRemoteDeploymentName")
+    .orElse("pipelinek-${project.version}")
+    .get()
+
+// ── the upload of the bundle to the remote destination ──────────────────────────
+//
+// The upload cannot run until the checks have passed. They are DEPENDENCIES of the upload
+// task and not steps inside it: a task that runs a check and then decides whether to
+// upload reads as "it checks", and the graph of Gradle is where the order is visible to
+// the reader.
+//
+// The order is the guarantee:
+//
+//   preconditions → the trust guard → the admission decision → the upload
+//
+// The preconditions refuse first, because a task that refuses before it does the expensive
+// work is a task an operator can run to find out what is missing. The trust guard refuses
+// a tree whose keys cannot be attributed. The admission decision is the verdict of the
+// product's own model, and it runs in THIS build: a nested invocation of the build would
+// be refused by the lock this checkout takes, and a second build is a second set of bytes.
+// The documents the admission reads, and what each one is. They are the SAME for
+// every channel: the request, the manifest, the certification, the bytes to
+// publish, the SDK ZIP of the candidate and the state of the destination. Two
+// channels that published the same version against two different sets of documents
+// would be two publications, and only one of them would be accountable.
+val sdkAdmissionDocuments = listOf(
+    "maven.request" to "the request that asks for the publication",
+    "maven.manifest" to "the manifest that describes the bytes to publish",
+    "maven.certification" to "the certification of the candidate",
+    "maven.bundle" to "the bytes to publish, the directory the bundle lives in",
+    "maven.sdkZip" to "the SDK ZIP of the candidate",
+    "maven.published" to "the state of the target repository",
+    "maven.verdict" to "the file the admission writes its verdict to",
+)
+
+val sdkUploadPreconditions = tasks.register("sdkUploadPreconditions") {
+    group = "verification"
+    description = "Refuses when the documents of the admission or the credentials of the destination are missing."
+    doLast {
+        val missingDocuments = sdkAdmissionDocuments
+            .filter { (name, _) -> providers.gradleProperty(name).orElse("").get().isBlank() }
+            .map { (name, what) -> "$name ($what)" }
+
+        val missingCredentials = listOf("SONATYPE_USERNAME", "SONATYPE_PASSWORD")
+            .filter { System.getenv(it).isNullOrBlank() }
+
+        if (missingDocuments.isNotEmpty() || missingCredentials.isNotEmpty()) {
+            val problems = mutableListOf<String>()
+            if (missingDocuments.isNotEmpty()) {
+                problems += "  the documents of the admission are missing: ${missingDocuments.joinToString(", ")}"
+            }
+            if (missingCredentials.isNotEmpty()) {
+                problems += "  the credentials of the destination are missing: ${missingCredentials.joinToString(", ")}"
+            }
+            throw GradleException(
+                "sdkUploadPreconditions: the publication cannot start, and nothing was uploaded.\n" +
+                    problems.joinToString("\n") + "\n" +
+                    "  The documents are the request, the manifest, the certification, the bytes to\n" +
+                    "  publish, the SDK ZIP of the candidate and the state of the target repository.\n" +
+                    "  The credentials are read from the environment and never from a file of this\n" +
+                    "  repository: the account is a fact about somebody else's database, and\n" +
+                    "  nothing here depends on it.",
+            )
+        }
+    }
+}
+
+val sdkSigningTrustCheck = tasks.register<Exec>("sdkSigningTrustCheck") {
+    group = "verification"
+    description = "The guard of the trust sets: both declarations, and the separation between them."
+    workingDir = rootProject.projectDir.parentFile
+    commandLine("python3", "scripts/check-signing-key-trust.py")
+}
+
+// The upload itself. The bundle it sends is the one the signing script signed and the
+// checker proved, and the script re-verifies it before it packages it: what travels is
+// what was verified, and the verification happens against the bytes that travel.
+val sdkUpload = tasks.register<Exec>("sdkUpload") {
+    group = "distribution"
+    description = "Uploads the signed bundle to the remote destination. It cannot run until the trust guard and the admission decision have passed."
+    dependsOn(sdkUploadPreconditions, sdkSigningTrustCheck, ":pipeline-release:mavenPublication")
+    workingDir = rootProject.projectDir.parentFile
+
+    // The bundle is NOT defaulted here. The admission names the bytes to publish in
+    // `maven.bundle`, and the upload sends the same name: a default on this side would be a
+    // second authority for what is published, and the two could name different bytes.
+    val bundle = providers.gradleProperty("maven.bundle").orElse("").get()
+    val verdict = providers.gradleProperty("maven.verdict").orElse("").get()
+
+    commandLine(
+        "bash",
+        "scripts/release/upload-sdk-bundle.sh",
+        "--bundle", bundle,
+        "--verdict", verdict,
+        "--url", sdkRemoteUploadUrl,
+        "--deployment", sdkRemoteDeploymentName,
+        "--out", layout.buildDirectory.file("sdk-upload-receipt.txt").get().asFile.absolutePath,
+    )
+}
+
+// ── the second channel: the mirror in GitHub Packages ───────────────────────────
+//
+// The mirror serves the SAME bytes the first channel serves, under the SAME
+// coordinates: the group does not change, so a consumer's build does not change
+// between the channels. What changes is where the bytes are served from, and
+// that the mirror needs a token of the publisher instead of a namespace.
+//
+// The bytes are the same because the build is reproducible, and that is MEASURED
+// here and not assumed: the digest of the JAR this build produces and the digest
+// of the JAR in the signed staging bundle have to be the same one, or the mirror
+// would publish bytes that nobody signed.
+//
+// The order is the guarantee, and it is the same order as in the first channel:
+//
+//   preconditions → the trust guard → the admission decision → the publication
+//
+// EVERY publish task depends on the admission, so a request the door refused
+// never reaches the network: the tasks are siblings of each other, and a sibling
+// is not a barrier.
+val sdkGithubPackagesPreconditions = tasks.register("sdkGithubPackagesPreconditions") {
+    group = "verification"
+    description = "Refuses when the documents of the admission or the credentials of the mirror are missing."
+    doLast {
+        val missingDocuments = sdkAdmissionDocuments
+            .filter { (name, _) -> providers.gradleProperty(name).orElse("").get().isBlank() }
+            .map { (name, what) -> "$name ($what)" }
+
+        val missingCredentials = listOf("GITHUB_ACTOR", "GITHUB_TOKEN")
+            .filter { System.getenv(it).isNullOrBlank() }
+
+        if (missingDocuments.isNotEmpty() || missingCredentials.isNotEmpty()) {
+            val problems = mutableListOf<String>()
+            if (missingDocuments.isNotEmpty()) {
+                problems += "  the documents of the admission are missing: ${missingDocuments.joinToString(", ")}"
+            }
+            if (missingCredentials.isNotEmpty()) {
+                problems += "  the credentials of the mirror are missing: ${missingCredentials.joinToString(", ")}"
+            }
+            throw GradleException(
+                "sdkGithubPackagesPreconditions: the publication cannot start, and nothing was published.\n" +
+                    problems.joinToString("\n") + "\n" +
+                    "  The documents are the request, the manifest, the certification, the bytes to\n" +
+                    "  publish, the SDK ZIP of the candidate and the state of the target repository.\n" +
+                    "  The credentials are read from the environment and never from a file of this\n" +
+                    "  repository: the account is a fact about somebody else's database, and\n" +
+                    "  nothing here depends on it.",
+            )
+        }
+    }
+}
+
+// The bytes the mirror would publish are the bytes the bundle was signed with.
+// The comparison is a measurement of the two digests, and a difference refuses
+// the publication naming both digests: a mirror that serves other bytes is a
+// second set of bytes, and nobody can say which one was certified.
+val sdkStagedBytesCheck = tasks.register("sdkStagedBytesCheck") {
+    group = "verification"
+    description = "Proves that the bytes the mirror would publish are the bytes the bundle was signed with."
+    // The JARs this build produces are the ones the comparison measures, so they
+    // have to be BUILT before the comparison runs: a check that measured a jar
+    // that does not exist yet would be a check that measured nothing.
+    dependsOn(sdkBundleModules.filter { it != "pipeline-sdk-bom" }.map { ":$it:jar" })
+    doLast {
+        val messageDigest = java.security.MessageDigest.getInstance("SHA-256")
+        fun digestOf(file: java.io.File): String {
+            messageDigest.reset()
+            file.inputStream().use { stream ->
+                val buffer = ByteArray(1 shl 16)
+                while (true) {
+                    val read = stream.read(buffer)
+                    if (read < 0) break
+                    messageDigest.update(buffer, 0, read)
+                }
+            }
+            return messageDigest.digest().joinToString("") { "%02x".format(it) }
+        }
+
+        val groupPath = sdkBundleGroup.replace('.', '/')
+        val releaseVersion = project.version.toString()
+        val staging = sdkBundleRepositoryDir.get().asFile
+        val differences = mutableListOf<String>()
+        val missing = mutableListOf<String>()
+
+        sdkBundleModules.filter { it != "pipeline-sdk-bom" }.forEach { module ->
+            // The published name and the built name are TWO names for the same bytes: the
+            // publication renames the JAR to the artifact name, and the build leaves it
+            // under the module name. The check compares the bytes, so it has to read
+            // both sides under the name each one carries.
+            val artifactName = sdkBundleArtifactNames.getValue(module)
+            val builtFileName = "$module-$releaseVersion.jar"
+            val publishedFileName = "$artifactName-$releaseVersion.jar"
+            val staged = staging.resolve("$groupPath/$artifactName/$releaseVersion/$publishedFileName")
+            val fresh = rootProject.projectDir.resolve("$module/build/libs/$builtFileName")
+            if (!staged.isFile) {
+                missing += "$publishedFileName is not in the staging bundle ($staging)"
+            } else if (!fresh.isFile) {
+                missing += "$builtFileName was not built ($fresh)"
+            } else {
+                val stagedDigest = digestOf(staged)
+                val freshDigest = digestOf(fresh)
+                if (stagedDigest != freshDigest) {
+                    differences += "$publishedFileName: the staging bundle holds $stagedDigest and this build " +
+                        "produced $freshDigest. The mirror would publish bytes that the bundle " +
+                        "that was signed does not carry."
+                }
+            }
+        }
+
+        if (missing.isNotEmpty() || differences.isNotEmpty()) {
+            val problems = mutableListOf<String>()
+            if (missing.isNotEmpty()) {
+                problems += "  the bytes to compare are missing: ${missing.joinToString("; ")}"
+            }
+            if (differences.isNotEmpty()) {
+                problems += "  the bytes are not the same: ${differences.joinToString("; ")}"
+            }
+            throw GradleException(
+                "sdkStagedBytesCheck: the mirror would not publish these bytes.\n" +
+                    problems.joinToString("\n") + "\n" +
+                    "  The mirror serves the bytes the bundle was signed with. A build that\n" +
+                    "  produces other bytes has to be signed again before it is published.",
+            )
+        }
+    }
+}
+
+// The publication in the mirror. It is six publications, one per coordinate, and
+// the aggregator exists so that the operator runs ONE command and the graph
+// shows what it does. Each of the six tasks carries the same dependencies (they
+// are configured where the publication is created, because the plugin creates
+// them there).
+tasks.register("sdkPublishToGithubPackages") {
+    group = "distribution"
+    description = "Publishes the six SDK coordinates to the mirror in GitHub Packages. It cannot run until the trust guard and the admission decision have passed."
+    dependsOn(
+        sdkGithubPackagesPreconditions,
+        sdkSigningTrustCheck,
+        ":pipeline-release:mavenPublication",
+        sdkBundleModules.map { ":$it:publishSdkBundlePublicationToGithubPackagesRepository" },
+    )
 }
 
 // The SDK the external consumers resolve from: the PUBLISHED artifact.

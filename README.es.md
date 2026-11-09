@@ -49,7 +49,7 @@ grep " ${ASSET}$" SHA256SUMS | sha256sum -c -
 unzip -q "$ASSET"
 PIPELINEK="./$(basename "$ASSET" .zip)/bin/pipelinek"
 
-"$PIPELINEK" version     # → pipeline 0.94.2
+"$PIPELINEK" version     # → pipeline 0.95.0
 "$PIPELINEK" doctor      # jdk / os / workdir / writable / script cache
 ```
 
@@ -138,9 +138,9 @@ En la distribución viajan además cuatro plugins que son ejemplos de trabajo de
 
 ### Ecosistema extendido
 
-Estos proyectos se construyen alrededor de PipelineK. La **columna 0.94.2** es el rango de SDK que cada uno declara frente a la release vigente: un proyecto fijado a un SDK anterior no carga con ella.
+Estos proyectos se construyen alrededor de PipelineK. La **columna 0.95.0** es el rango de SDK que cada uno declara frente a la release vigente: un proyecto fijado a un SDK anterior no carga con ella.
 
-| Proyecto | Qué es | Madurez | 0.94.2 |
+| Proyecto | Qué es | Madurez | 0.95.0 |
 |---|---|---|---|
 | pipelinek-fabric | Plano de control distribuido: workers, proveedores de podman y Kubernetes. *El repositorio aún no es público* | Preview | Fijado a 0.62.0 |
 | [pipelinek-studio](https://github.com/Rubentxu/pipelinek-studio) | UI web, servidor MCP por stdio y extensión de VS Code sobre un proceso real de PipelineK | Preview | Fijado a 0.48.0-rc1 |
@@ -148,7 +148,7 @@ Estos proyectos se construyen alrededor de PipelineK. La **columna 0.94.2** es e
 | [pipelinek-assurance](https://github.com/Rubentxu/pipelinek-assurance) | Comprobaciones de assurance como plugin | En desarrollo | Declara `[0.48.0, 0.52.0)`; su handler todavía no puede ejecutarse en vivo |
 | [pipelinek-saga](https://github.com/Rubentxu/pipelinek-saga) | Contrato de saga para compensaciones | En desarrollo | Todavía no declara rango |
 | pipelinek-fabric-backstage | Integración con Backstage para la Control API de Fabric. *El repositorio aún no es público* | En desarrollo | El cliente todavía no está sellado |
-| [asdf-pipelinek](https://github.com/Rubentxu/asdf-pipelinek) | Plugin de gestor de versiones para `asdf` y `mise`: resuelve la última versión estable y verifica su SHA-256 | Preview | Resuelve 0.94.2 |
+| [asdf-pipelinek](https://github.com/Rubentxu/asdf-pipelinek) | Plugin de gestor de versiones para `asdf` y `mise`: resuelve la última versión estable y verifica su SHA-256 | Preview | Resuelve 0.95.0 |
 
 **Escala de madurez:** *Disponible* — publicado y soportado en la release. *Preview* — funciona de extremo a extremo, todavía en movimiento. *En desarrollo* — código real, contrato incompleto. *Exploratorio* — una idea con un spike.
 
@@ -158,7 +158,7 @@ Nada de lo anterior es una promesa de compatibilidad: un proyecto declara el ran
 
 Un plugin es un build de Gradle independiente que compila contra el SDK publicado y contra nada más. Declara un `StepContract` — la clave de familia, el descriptor, los códecs tipados y las capacidades que requiere — y un manifiesto con el rango de API con el que se construyó.
 
-El SDK viaja con cada release como `pipelinek-<version>.sdk.zip`: seis artefactos (`pipeline-domain`, `pipeline-events`, `pipeline-output`, `pipeline-runtime-api`, `pipeline-scripting-api`, `pipeline-sdk-bom`) y un BOM que fija sus versiones entre sí. `pipelinek sdk-info` imprime el grupo y las coordenadas exactas contra las que compila un plugin.
+El SDK viaja con cada release como `pipelinek-<version>.sdk.zip`: seis artefactos (`pipelinek-domain`, `pipelinek-events`, `pipelinek-output`, `pipelinek-runtime-api`, `pipelinek-scripting-api`, `pipelinek-sdk-bom`) y un BOM que fija sus versiones entre sí. `pipelinek sdk-info` imprime el grupo y las coordenadas exactas contra las que compila un plugin.
 
 Un plugin se carga desde `--plugin-jar`. Con `--plugin-trust <file>` solo se admite si sus bytes coinciden con el SHA-256 fijado por el operador y llevan una firma Ed25519 válida; con `--require-plugin-trust`, un plugin que nadie ha avalado se rechaza antes de que corra su código.
 
@@ -278,8 +278,8 @@ Cada frontera tiene un único dueño. El runner es la autoridad de escritura sob
 ```bash
 curl -fL -o install-pipelinek.sh \
   "https://raw.githubusercontent.com/Rubentxu/pipeline-kotlin/main/scripts/install-pipelinek.sh"
-./install-pipelinek.sh install 0.94.2   # descargar, verificar, instalar
-./install-pipelinek.sh use 0.94.2       # cambiar la release activa
+./install-pipelinek.sh install 0.95.0   # descargar, verificar, instalar
+./install-pipelinek.sh use 0.95.0       # cambiar la release activa
 export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
 ```
 
@@ -287,10 +287,10 @@ export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
 
 ```bash
 asdf plugin add pipelinek https://github.com/Rubentxu/asdf-pipelinek
-asdf install pipelinek 0.94.2
+asdf install pipelinek 0.95.0
 
 mise plugins add pipelinek https://github.com/Rubentxu/asdf-pipelinek
-mise install pipelinek@0.94.2
+mise install pipelinek@0.95.0
 ```
 
 **Explora.** [`examples/`](examples/) contiene los cuatro plugins de ejemplo y un ejemplo de observabilidad: una configuración local de Collector, consultas PromQL y TraceQL, y un dashboard de Grafana que las ejecuta. El [catálogo de ejemplos](examples/catalogue/) reúne los ejemplos trabajados de las capacidades de arriba: cada uno es un pipeline ejecutable, con un README que explica sus etapas, sus pasos y qué espera. El arnés de releasing es quien los ejecuta. `pipelinek capabilities` y `pipelinek sdk-info` imprimen lo que admite esta build y contra qué compila un plugin.

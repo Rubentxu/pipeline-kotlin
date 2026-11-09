@@ -219,12 +219,13 @@ fi
 #     state of an account of a third party, which is a fact about somebody
 #     else's database and says nothing about the artifact.
 #
-#     The check is the guard of the trust set, the same one the gate runs
+#     The check is the guard of the trust sets, the same one the gate runs
 #     (scripts/check-signing-key-trust.py): it reads the tree and nothing
-#     else, and the row that carries the channel asks whether the fingerprint
-#     that signs is published. A disagreement between the declaration and the
-#     published fingerprint is a red, and a red refuses the promotion: a
-#     measurement that did not happen is not a pass.
+#     else, it asks of each declaration whether the fingerprint that signs is
+#     published, and it asks of the pair whether the two declarations name
+#     different keys. A disagreement between a declaration and the published
+#     fingerprint is a red, and a red refuses the promotion: a measurement that
+#     did not happen is not a pass.
 #
 #     The refusal names what to do about it, because a refusal nobody can act
 #     on is a wall rather than a door.
@@ -237,11 +238,11 @@ mkdir -p -- "$(dirname -- "$SIGNING_TRUST_VERDICT_FILE")"
 if ! python3 "${repo_root}/scripts/check-signing-key-trust.py" > "$SIGNING_TRUST_VERDICT_FILE" 2>&1; then
     printf 'promote-stable: refusing the promotion — the publisher cannot be attributed.\n' >&2
     printf '    The verdict is at %s\n' "$SIGNING_TRUST_VERDICT_FILE" >&2
-    printf '    The fingerprint that signs the release is not the one this repository\n' >&2
-    printf '    publishes to the consumers in RELEASE-SIGNING.md, so the stable release\n' >&2
-    printf '    would carry a signature that no consumer is able to place. Publish the\n' >&2
-    printf '    fingerprint the declaration names, or cut a candidate signed by a key\n' >&2
-    printf '    this repository declares and publishes.\n' >&2
+    printf '    The declarations of the signing keys do not have the shape this\n' >&2
+    printf '    repository requires. The verdict names the row that is red, and the\n' >&2
+    printf '    row names what to declare or to publish: the release tags and the\n' >&2
+    printf '    Maven artifacts are signed by two different keys, and each one is\n' >&2
+    printf '    published to the consumers in RELEASE-SIGNING.md.\n' >&2
     exit 1
 fi
 

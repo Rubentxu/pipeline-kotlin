@@ -37,12 +37,24 @@ import org.junit.jupiter.api.Test
  * into this test — would freeze the truth here, and the test would keep
  * passing the day the thing it watches changed. A derived fact cannot drift
  * from the code without the test going red.
+ *
+ * ## Why a coordinate is not a capability
+ * The group of the published artifacts has the SHAPE of a capability id, and
+ * a shape is not a fact about what a name means. The group is a coordinate the
+ * build declares, so the rule reads that declaration: a name the build
+ * publishes under a group it declares is not a capability the build has to
+ * announce, and every other name still has to be one.
  */
 class DocumentationDriftTest {
 
     @Test
     fun `the README names only capabilities this build delivers`() {
-        val named = CAPABILITY_ID.findAll(readme()).map { it.value }.distinct().toList()
+        val groups = declaredMavenGroups()
+        val named = capabilityLookalikes(readme())
+            .filterNot { it.token in groups }
+            .map { it.id }
+            .distinct()
+            .toList()
 
         assertTrue(
             named.isNotEmpty(),
@@ -506,6 +518,59 @@ class DocumentationDriftTest {
     }
 
     /**
+     * A name the text carries that looks like a capability id, with the dotted
+     * token it was read from.
+     *
+     * The token travels with the name because the token is what tells a
+     * capability apart from a coordinate: the group of the published artifacts
+     * is a dotted name shaped like a capability id, and the shape alone cannot
+     * say which of the two a reader is looking at.
+     */
+    private data class Lookalike(val token: String, val id: String)
+
+    /**
+     * The names a text carries that look like a capability id.
+     *
+     * The text is read token by token and not name by name, because a name
+     * that is only a PART of a dotted token is a fragment: the token says what
+     * the fragment is, and the reader of the document reads the token.
+     */
+    private fun capabilityLookalikes(text: String): List<Lookalike> =
+        DOTTED_NAME.findAll(text)
+            .map { it.value }
+            .distinct()
+            .flatMap { token ->
+                CAPABILITY_ID.findAll(token).map { Lookalike(token, it.value) }
+            }
+            .toList()
+
+    /**
+     * The Maven groups the build declares.
+     *
+     * The group of a project is a property of the project, and a property of
+     * the project is declared at the top level of its build script: the group
+     * of a task lives inside the task, and that one is not a coordinate.
+     *
+     * The fact is taken from the build and not written down here, so the list
+     * of coordinates this repository publishes has ONE authority and the rule
+     * that reads the README cannot drift from it.
+     */
+    private fun declaredMavenGroups(): Set<String> =
+        Files.walk(repositoryRoot()).use { paths ->
+            paths.iterator().asSequence()
+                .filter { Files.isRegularFile(it) }
+                .filter { it.fileName.toString() == BUILD_SCRIPT }
+                .filter { path ->
+                    PRUNED_DIRECTORIES.none { pruned ->
+                        path.toString().contains("${java.io.File.separator}$pruned${java.io.File.separator}")
+                    }
+                }
+                .flatMap { Files.readString(it).lines().asSequence() }
+                .mapNotNull { line -> MAVEN_GROUP.find(line)?.groupValues?.get(1) }
+                .toSet()
+        }
+
+    /**
      * The section of the README that states the telemetry contract.
      */
     private fun telemetrySection(): String =
@@ -620,6 +685,28 @@ class DocumentationDriftTest {
 
         /** A capability id, as the catalogue spells them. */
         val CAPABILITY_ID = Regex("\\b[a-z][a-z0-9]*\\.[a-z][a-z0-9]*\\.v[0-9]+\\b")
+
+        /**
+         * A dotted name, read as one token.
+         *
+         * The token is what a reader reads as a unit, and it is where the
+         * fragments of a longer name end: a name that is only a part of a
+         * dotted token cannot be told apart from a name of its own by its
+         * shape alone.
+         */
+        val DOTTED_NAME = Regex("[a-z][a-z0-9]*(?:\\.[a-z0-9]+)*")
+
+        /**
+         * The group of a project, as a build script declares it.
+         *
+         * The declaration is anchored at the start of the line because the
+         * group of a TASK is declared inside the task, and that one is a
+         * Gradle grouping and not a coordinate.
+         */
+        val MAVEN_GROUP = Regex("""^group\s*=\s*"([^"]+)"""")
+
+        /** The name of the script that declares what a project publishes. */
+        const val BUILD_SCRIPT = "build.gradle.kts"
 
         /** The subject of the promise this rule forbids. */
         val DOCUMENTATION_SUBJECT = Regex("comment|kdoc|markdown|documentation", RegexOption.IGNORE_CASE)

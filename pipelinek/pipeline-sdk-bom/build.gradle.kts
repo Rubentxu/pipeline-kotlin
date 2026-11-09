@@ -6,23 +6,27 @@ plugins {
     `maven-publish`
 }
 
-group = "dev.rubentxu.pipeline.v2"
+// The published coordinate of this BOM is DECLARED by the root build, together with the
+// one of the five contracts it pins: the publication sets the group and the artifact
+// name from the single declaration the root owns. A group written HERE would be a
+// second declaration of the same fact, and the two would drift the first time only
+// one of them is edited.
 
 // Why a BOM exists here, and why it is NOT a fifth contract ────────────────────────────
 // Before this module, an external consumer had to name every published coordinate with its version
 // repeated five times:
-//     implementation("dev.rubentxu.pipeline.v2:pipeline-domain:$sdkVersion")
-//     implementation("dev.rubentxu.pipeline.v2:pipeline-events:$sdkVersion")
-//     implementation("dev.rubentxu.pipeline.v2:pipeline-output:$sdkVersion")
-//     implementation("dev.rubentxu.pipeline.v2:pipeline-scripting-api:$sdkVersion")
-//     implementation("dev.rubentxu.pipeline.v2:pipeline-runtime-api:$sdkVersion")
+//     implementation("dev.rubentxu.pipelinek:pipelinek-domain:$sdkVersion")
+//     implementation("dev.rubentxu.pipelinek:pipelinek-events:$sdkVersion")
+//     implementation("dev.rubentxu.pipelinek:pipelinek-output:$sdkVersion")
+//     implementation("dev.rubentxu.pipelinek:pipelinek-scripting-api:$sdkVersion")
+//     implementation("dev.rubentxu.pipelinek:pipelinek-runtime-api:$sdkVersion")
 // A BOM lets the same consumer write the five coordinates once and pin them from a single version:
-//     implementation(platform("dev.rubentxu.pipeline.v2:pipeline-sdk-bom:$sdkVersion"))
-//     implementation("dev.rubentxu.pipeline.v2:pipeline-domain")
-//     implementation("dev.rubentxu.pipeline.v2:pipeline-events")
-//     implementation("dev.rubentxu.pipeline.v2:pipeline-output")
-//     implementation("dev.rubentxu.pipeline.v2:pipeline-scripting-api")
-//     implementation("dev.rubentxu.pipeline.v2:pipeline-runtime-api")
+//     implementation(platform("dev.rubentxu.pipelinek:pipelinek-sdk-bom:$sdkVersion"))
+//     implementation("dev.rubentxu.pipelinek:pipelinek-domain")
+//     implementation("dev.rubentxu.pipelinek:pipelinek-events")
+//     implementation("dev.rubentxu.pipelinek:pipelinek-output")
+//     implementation("dev.rubentxu.pipelinek:pipelinek-scripting-api")
+//     implementation("dev.rubentxu.pipelinek:pipelinek-runtime-api")
 // That is convenience of RESOLUTION, and it is the whole of what this module does.
 // The distinction that matters: a contract is a set of TYPES a consumer compiles against and whose
 // bytes are guarded by `apiCheck`. `publishedContractModules` in the root build remains the single
@@ -42,15 +46,15 @@ dependencies {
         // `implementation(platform(...))` sees on its COMPILE classpath. A `runtime` constraint
         // would pin versions for a consumer that never compiles against them, which is the exact
         // shape of an accidentally-unversioned compile dependency.
-        api("dev.rubentxu.pipeline.v2:pipeline-domain:${rootProject.version}")
-        api("dev.rubentxu.pipeline.v2:pipeline-scripting-api:${rootProject.version}")
-        api("dev.rubentxu.pipeline.v2:pipeline-events:${rootProject.version}")
-        api("dev.rubentxu.pipeline.v2:pipeline-output:${rootProject.version}")
+        api("dev.rubentxu.pipelinek:pipelinek-domain:${rootProject.version}")
+        api("dev.rubentxu.pipelinek:pipelinek-scripting-api:${rootProject.version}")
+        api("dev.rubentxu.pipelinek:pipelinek-events:${rootProject.version}")
+        api("dev.rubentxu.pipelinek:pipelinek-output:${rootProject.version}")
         // The runtime publish/subscribe ports join the BOM. They are also
         // listed in `publishedContractModules`, so a consumer that pins the platform version
         // pulls the runtime ports automatically; declaring them in only one of the two lists
         // would force every consumer to repeat the coordinate, defeating the BOM's purpose.
-        api("dev.rubentxu.pipeline.v2:pipeline-runtime-api:${rootProject.version}")
+        api("dev.rubentxu.pipelinek:pipelinek-runtime-api:${rootProject.version}")
     }
 }
 

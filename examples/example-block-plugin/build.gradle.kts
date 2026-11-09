@@ -81,8 +81,8 @@ configurations.all {
 }
 
 dependencies {
-    compileOnly("dev.rubentxu.pipeline.v2:pipeline-domain:$sdkVersion")
-    compileOnly("dev.rubentxu.pipeline.v2:pipeline-scripting-api:$sdkVersion")
+    compileOnly("dev.rubentxu.pipelinek:pipelinek-domain:$sdkVersion")
+    compileOnly("dev.rubentxu.pipelinek:pipelinek-scripting-api:$sdkVersion")
     compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
 

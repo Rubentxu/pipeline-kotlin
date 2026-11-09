@@ -56,20 +56,27 @@ disagree.
 
 ## The keys this repository trusts
 
-The declaration lives in `scripts/release/signing-key.conf`, and it is the one
-authority: the release path, the tag-signature check and the published-tag
-audit all read it through `scripts/release/read-signing-trust.sh`.
+This repository signs two things, and they belong to two trust domains:
 
-The declaration is a **set**, and it is a set for a reason. The current key
-signs the tags cut from now on. The keys of the second group signed the tags
-that are already published, and those signatures keep verifying: a published
-tag is a fact, and a key that stops signing does not un-sign what it already
-signed. A rotation that dropped the second group would turn every release
-ever published into a tag nobody can verify, which is the opposite of what a
-rotation is for.
+| What it signs | Where it is declared | What a consumer verifies |
+|---|---|---|
+| the release tags | `scripts/release/signing-key.conf` | the signature of the tag |
+| the Maven artifacts | `scripts/release/maven-signing-key.conf` | the signature of the JAR, the POM and the sources |
 
-The shape of the set is checked by `scripts/check-signing-key-trust.py`, which
-reads the tree and nothing else. Seven rows, and two of them have teeth:
+Both declarations are read through the same reader,
+`scripts/release/read-signing-trust.sh`. One reader per format is the rule;
+two facts that are not the same fact do not need two readers.
+
+Each declaration is a **set**, and a set is a set for a reason. The current key
+signs what is cut from now on. The keys of the second group signed what is
+already published, and those signatures keep verifying: a published tag is a
+fact, and a key that stops signing does not un-sign what it already signed. A
+rotation that dropped the second group would turn every release ever published
+into a tag nobody can verify, which is the opposite of what a rotation is for.
+
+The shape of a set is checked by `scripts/check-signing-key-trust.py`, which
+reads the tree and nothing else. Seven rows per declaration, and one more
+about the pair:
 
 | Row | What it asks |
 |---|---|
@@ -80,6 +87,7 @@ reads the tree and nothing else. Seven rows, and two of them have teeth:
 | 5 | every key of the second group declares the identity it claims |
 | 6 | the current key claims no domain reserved for documentation |
 | 7 | the fingerprint that signs is published in `RELEASE-SIGNING.md` |
+| 8 | the two declarations do not name the same key |
 
 Row 6 exists because a domain reserved for documentation belongs to nobody.
 An address under such a domain cannot be corroborated by any channel,
@@ -96,6 +104,12 @@ consumers read, so the attribution of a release rests on a declaration that is
 versioned in this repository and on nothing that lives in an account of a third
 party. The row is red while the two disagree, and the promotion to a stable
 release refuses while it is red.
+
+Row 8 is the separation between the two domains. They are only separate while
+they are signed by different keys: a fingerprint both declarations name binds
+them into one, and then the revocation of one reaches the other. The row is
+red while they share a fingerprint, and it names the fingerprint it found in
+both.
 
 ## The key that signs the tags cut from now on
 
@@ -128,11 +142,215 @@ A consumer that verifies a published tag against this key compares the
 fingerprint the tag's signature carries with the fingerprint above. The two
 are the same when the release was cut with this key.
 
+## The key that signs the Maven artifacts
+
+This is a **different key** from the one that signs the tags, and it is
+declared in `scripts/release/maven-signing-key.conf`.
+
+The two are different on purpose. The tag that names a release and the JAR
+that a third party downloads are two trust domains, and their revocations are
+two: compromising the key that signs the tags would leave every published
+artifact unsigned, and compromising the key that signs the artifacts would
+leave every release tag unattributable. One key pair would bind both domains
+into one, and then one revocation would reach the other. Row 8 of the guard
+is what keeps them apart, and the signer of the bundle refuses a bundle signed
+with the key of the tags.
+
+- **Fingerprint:** `965464FFF6496FAFCC62F49644E527FF58783108`
+- **Identity it claims:** `PipelineK Maven Artifacts <rubentxu74@gmail.com>`
+- **Algorithm:** RSA 4096, on the primary key, with no signing subkey. The
+  artifacts are signed by the primary key, and a consumer's verifier needs no
+  special case for it.
+
+The public key is published here as well, so a consumer needs nothing from
+the machine that published the artifact to verify a signature:
+
+```
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mQINBGrxff4BEADLO3ZwNctPEP9imOGG/uZHluJJojzuWRpoveNr75+8xCoRdN8y
+gMcljRq2coVPxwWFNoevmBcHyLTna69IRcW1fSZCESyTDhtn30719cBcclnbWe0J
+Mj+KY1tmlEOKFDaPBPkxR4LB4pe9/Bq+aaSf9PHWbUGG6zQ/pDBMvp6ufF2bwQME
+jzPlv2difO97O8XwbhbVpfow45OPhbCX3FuC8fPSzqnwLgC0cWUN9y5q5WasPtWa
+MYZMcmHN5iC+KmFy7kx3WPmYxNilDjdwn4Fhvp6qTVpKD04S4T+GPSl3R63LAUXF
+ZimlBsWNV2QM9ttXQLCPGD3M4ju1/+KMnBV1gqndSzuw+nhu7xT92orkprtbrjto
+MM5SxxeHin5cYE1+gCVGqWBoFdhtDTo2x4HAv8CjjXqVpHy/yipuv9RV9XeKL79y
+XbEWf4KJO1KX+WlZbkPTw65jWrMhJcR/1uGJpUqeMryopTih57/DkeotUxEYsZhn
+JnbwO6CZsJVSQJvzOHsr9/z01CD6IJxmoIbBN4wt/f1GvKCqqsc0G7L+PjJrpo9p
+nyo+szyI2zaWmxlJzmz86sVmFL4NaxSCEGWCqCAq89tGLpGgoDsSjcmAN7WH4EtR
+RV7EQcMbvOFKGzda2fgqam2gOrk2ZGuGUgvNh6F4GIuBZTZKdS1oOx3uywARAQAB
+tDBQaXBlbGluZUsgTWF2ZW4gQXJ0aWZhY3RzIDxydWJlbnR4dTc0QGdtYWlsLmNv
+bT6JAlEEEwEKADsWIQSWVGT/9klvr8xi9JZE5Sf/WHgxCAUCavF9/gIbAwULCQgH
+AgIiAgYVCgkICwIEFgIDAQIeBwIXgAAKCRBE5Sf/WHgxCKVQD/4/olW7W+QBYSiD
+tqLoBQRDf4kVkBIzKva/lKiOTa9N+ogtHiMatVBBKDmNN24CLp45SqyX9W6MpOwF
+PjRw4VgaZPaJu6pcGAw5VDbu27/0QGI178E0SamcIed81/N2hGoGt1Lzqz1lp/ms
+4zzHBiYQcI1AwY615/Frxq/oTvdYENk2Gk3VtjMYE4X76TuORiAj1qijRtYmujfI
+ZhY88SLqPSeYgKvL66MbttwRd5Srpd8bYmeFJuhkaZaJVgy0VjmwjZPbcD18OXkK
+A5s82TNIEq0laXVDfQ1PliLza9PZ+bJ0Cv2g7WD/D+Sj7ciG3ptfda1tjt2OLrTR
+x1Q69LUFP466n5YqmupxPK/hSSJf/53Cqoa9DJOw1W0wuLNeLTutHhF+cjF9LeI/
+/h/9nk1YcIs8byNqP6qpDCFuT8D1kpnYRDQwXplB2QIEx90igq+s+41vhoft5/W6
+awgtxPe4DewC8m3jxV0MR+eXf1oIOZeioJZzimDXraHnQuXOZVu73FMZEfQED8XP
+Rg4HLEmWkKYvR7huEA2QOXItewBJNVaU9TX/nR5DLQlFkzKFsVQFk/AkVdIZlRk5
+LzbumlF4VqUxA5V0igvGqNJuI4UgqdT0JikN+wec6Ura8fmOkOeD5hlQZYSagaz2
+BAuOFkSRYGCYAe/T6xxfQaBlo6+5hw==
+=hhpD
+-----END PGP PUBLIC KEY BLOCK-----
+```
+
+A consumer that verifies a published artifact against this key compares the
+fingerprint the artifact's signature carries with the fingerprint above. The
+two are the same when the artifact was published with this key.
+
+**What is done, and what is not.** This key is declared here and its public key
+is published here. Its public key has been published on the key servers
+`keys.openpgp.org` and `keyserver.ubuntu.com`, and a consumer who cannot reach
+either of them can still place the key with the armored block above. Maven
+Central found the key by that fingerprint when it validated the signature of the
+published bundle, which is the fact the publication needed.
+
+What is **not** done is registering the key on the account of the Maven
+Central Portal: that account is somebody else's database, and nothing here
+depends on it. The declaration above and the guard that reads it are the
+channel, and the guard never asks an account whether it holds a key.
+
+## How a consumer verifies a published artifact
+
+Every artifact of the bundle carries a detached signature beside it:
+`pipelinek-domain-0.95.0.jar` and `pipelinek-domain-0.95.0.jar.asc`. The
+signature is made with the key declared for the Maven artifacts, and the check
+is the same one this repository runs over its own bundle before it travels.
+
+```bash
+# 1. the public key of the signer: the one published above, and the one the
+#    declaration names.
+gpg --import pipelinek-maven-artifacts.asc
+
+# 2. the signature verifies, and it carries the published fingerprint.
+gpg --verify pipelinek-domain-0.95.0.jar.asc pipelinek-domain-0.95.0.jar
+```
+
+A good signature prints `Good signature` and the fingerprint of the key that
+made it. That fingerprint has to be the one published in this document,
+`965464FFF6496FAFCC62F49644E527FF58783108`. A signature that verifies against
+a key nobody published proves possession and nothing else, and a consumer who
+reads the fingerprint out of this repository and compares it with the one the
+signature carries is placing the publisher with the repository and not with an
+account of a third party.
+
+In a Gradle build, the same comparison is made by the dependency verification of
+Gradle: the `gradle/verification-metadata.xml` of the consumer carries the key
+and the checksums of the artifacts it accepts, and the build fails when an
+artifact arrives with bytes nobody pinned. In a Maven build there is no built-in
+equivalent: the `.asc` that sits beside the artifact is what a consumer can
+check, with `gpg --verify`, before it trusts the bytes.
+
+**Version 0.94.2 is published in Maven Central and in the GitHub Packages
+registry.** The bytes a consumer resolves there are the bytes this repository
+signed, and the key that signed them is the one named above. The paragraph below
+is how a consumer verifies what arrives.
+
+## How the artifacts travel to the remote destination
+
+The destination is **Maven Central**, through its portal. The portal is not a
+Maven-layout repository that accepts a push per file: the service that did is
+retired, and what the portal accepts is a **bundle** — one ZIP with the layout
+of a Maven repository — sent to one endpoint with a token. The six coordinates
+are published to one endpoint, and the bundle is the whole publication.
+
+The bytes that travel are the bytes that were signed. The bundle is not
+rebuilt on the way out: `scripts/release/stage-sdk-bundle.sh` publishes the
+six coordinates into `build/sdk-repo-staging`, signs every artifact there and
+compiles an independent consumer against the staged bytes, and
+`scripts/release/upload-sdk-bundle.sh` packages **that** directory. The script
+re-verifies the bundle against the key declared for the Maven artifacts before
+it packages it, so what travels is what was signed and not what the build
+happened to leave on disk.
+
+The upload is a task of the build, and the order is the guarantee:
+
+```bash
+cd pipelinek && ./gradlew :sdkUpload \
+  -Pmaven.request=<file> -Pmaven.manifest=<file> -Pmaven.certification=<file> \
+  -Pmaven.bundle=<dir> -Pmaven.sdkZip=<file> -Pmaven.published=<dir> \
+  -Pmaven.verdict=<file>
+```
+
+| Step | What it is | What it refuses |
+|---|---|---|
+| `sdkUploadPreconditions` | the documents of the admission and the credentials of the destination | a missing document or a missing credential, before anything expensive runs |
+| `sdkSigningTrustCheck` | `scripts/check-signing-key-trust.py` | a tree whose keys cannot be attributed, or two declarations that name the same key |
+| `:pipeline-release:mavenPublication` | the decision of the product's own model | a request that may not publish the bundle |
+| `sdkUpload` | `scripts/release/upload-sdk-bundle.sh` | a verdict that does not admit the publication, and a bundle that fails its own checker |
+
+The credentials are read from the environment (`SONATYPE_USERNAME` and
+`SONATYPE_PASSWORD`) and never from a file of this repository, and they reach
+the transport through its configuration on standard input, so they do not
+appear in the process list. The endpoint and the name the destination shows
+are properties (`sdkRemoteUploadUrl` and `sdkRemoteDeploymentName`), because
+this tree does not pretend to own a server.
+
+The publication is **fail-closed in both directions**: the upload task does not
+run while the admission refuses, and the upload script refuses a verdict that
+does not admit the publication even when it is handed one. The bundle is
+packaged before the credentials are read, so a missing secret costs a ZIP and
+not a half-published deployment.
+
+**Version 0.94.2 was uploaded to the portal and is published.** The account, its
+namespace, its token and the registration of the key on it are facts about
+somebody else's database, and nothing here depends on them: what depends on
+them is the upload, and the upload is the one thing this tree cannot do on its
+own. The deployment is named `pipelinek-0.94.2-r6` and the bytes it carried are
+the ones the signed bundle holds.
+
+## The channels the artifacts travel in
+
+The SDK is published under one group, `dev.rubentxu.pipelinek`, and it travels
+in three places. **The group is the same in all three**: a consumer's build does
+not change between them, and a coordinate that resolves from one resolves from
+the others with the same name.
+
+The release before this one, 0.94.2, was published under the group
+`dev.rubentxu.pipeline.v2` and under the artifact names `pipeline-domain`,
+`pipeline-events`, `pipeline-output`, `pipeline-runtime-api`,
+`pipeline-scripting-api` and `pipeline-sdk-bom`. A consumer that depended on
+those coordinates has to move to the new ones: one release has one name for the
+same contracts, and this one carries the name of the solution.
+
+| Channel | What it serves | What a consumer needs |
+|---|---|---|
+| the SDK ZIP of the release | the six coordinates with their JARs and POMs | unzip it and point the build at the directory |
+| Maven Central, through its portal | the same coordinates with `sources.jar`, `javadoc.jar` and a detached signature for every artifact | nothing but the coordinates |
+| the Maven registry of GitHub Packages | the same coordinates and the same bytes | a token with `read:packages` |
+
+The two remote channels exist because they fail differently. Central needs a
+namespace and a token that are facts about somebody else's database; the GitHub
+registry needs only a token. Publishing to one does not depend on the other being
+ready.
+
+**What the signature proves, per channel.** The detached signature travels with
+the artifacts of the Central channel, and the GitHub registry serves the same
+bytes. A signature is over the bytes of one artifact, not over the place they came
+from: the `.asc` that verifies a JAR downloaded from the registry is the same
+`.asc` that verifies the same JAR downloaded from Central. A consumer who wants
+the signature of a registry artifact takes it from the Central channel, where it
+travels, and verifies it against the fingerprint published above.
+
+**Version 0.94.2 is published in BOTH remote channels: Maven Central and the
+GitHub Packages registry**, under the coordinates that release was published
+with. Its six artifacts carry the same bytes the signed bundle carries, an
+independent consumer compiles against them from either channel, and every
+published file matches the digest of the signed artifact. The ZIP of the release
+is published as well.
+
 ## The review of the published fingerprint
 
 The fingerprint that signed the releases published so far was
 `9600F7D49B9C966E3BB04E6A17E44CA7C5288281`. It was reviewed on 2026-11-06,
-and this is what the review measured:
+and this is what the review measured. This is the **tag** key, and it is not
+the key that signs the Maven artifacts: the Maven artifacts are signed by
+`965464FFF6496FAFCC62F49644E527FF58783108`, which is published on both key
+servers and was found by Maven Central when it validated the published bundle.
+The measurements below are about the tag key, and they are still true of it:
 
 - The fingerprint appeared in **exactly one place** in the tree: the
   declaration file itself. It was in no README, in no release note and in no

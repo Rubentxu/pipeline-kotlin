@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# read-signing-trust.sh — the ONE reader of scripts/release/signing-key.conf.
+# read-signing-trust.sh — the ONE reader of the declarations of the signing keys.
 #
 # Sourced, not executed. The two verifiers and the release path all ask the
 # same question of the same file, and a second reader is a second authority:
 # two readers of one format drift, and the drift shows up as a tag that one
 # path accepts and the other refuses.
+#
+# This repository declares TWO sets, and both are read here: the keys that
+# sign the release tags (scripts/release/signing-key.conf) and the keys that
+# sign the Maven artifacts (scripts/release/maven-signing-key.conf). Two facts
+# that are not the same fact do not need two readers, and one format must not
+# have two parsers.
 #
 # WHAT IT PRINTS
 #

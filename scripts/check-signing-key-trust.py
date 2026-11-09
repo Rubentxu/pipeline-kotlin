@@ -1,24 +1,47 @@
 #!/usr/bin/env python3
 """The signing keys of this repository are a SET, and the set has a shape.
 
-The file `scripts/release/signing-key.conf` declares the key that signs the
-release tags and the keys that signed the tags already published. Both halves
-are needed: a rotation that dropped the second half would turn every release
-ever published into a tag nobody can verify, which is the opposite of what a
-rotation is for. So the shape of the declaration is a contract, and this guard
-is what checks it.
+This repository declares TWO sets, because it signs two things that belong to
+two trust domains:
 
-The guard reads the tree and nothing else: no network, no keyring, no
-subprocess. It asks seven questions about the declaration:
+  * `scripts/release/signing-key.conf` declares the key that signs the
+    RELEASE TAGS, and the keys that signed the tags already published;
+  * `scripts/release/maven-signing-key.conf` declares the key that signs the
+    MAVEN ARTIFACTS, and the keys that signed the artifacts already published.
+
+The two sets are separate because their revocations are separate. The tag that
+names a release and the JAR that any third party downloads are signed by
+different keys, so compromising one of them leaves the other intact: a single
+key pair would bind both domains into one, and then one revocation would
+reach the other.
+
+Both declarations have the SAME shape, and both are read with the same reader.
+One reader per format is the rule; two facts that are not the same fact do
+not need two readers.
+
+Each declaration is a set, and a set is a set for a reason. The current key
+signs what is cut from now on. The keys of the second group signed what is
+already out there, and those signatures keep verifying: a published tag is a
+fact, and a key that stops signing does not un-sign what it already signed. A
+rotation that dropped the second group would turn every release ever published
+into a tag nobody can verify, which is the opposite of what a rotation is for.
+
+The shape of a set is a contract, and this guard is what checks it. The guard
+reads the tree and nothing else: no network, no keyring, no subprocess. It
+asks seven questions about EACH declaration:
 
   1. exactly ONE current key is declared;
   2. every fingerprint it names is forty hexadecimal characters;
   3. no fingerprint is named twice;
-  4. the current key is not among the keys that signed the tags already
+  4. the current key is not among the keys that signed what was already
      published;
   5. every key of that second group declares the identity it claims;
   6. the current key does not claim a domain reserved for documentation;
   7. the fingerprint that signs is PUBLISHED to the consumers.
+
+and one more about the PAIR:
+
+  8. the two declarations do not name the same key.
 
 The sixth row is the one with teeth. A domain reserved for documentation
 belongs to nobody: an address under such a domain cannot be corroborated by
@@ -38,6 +61,12 @@ versioned here and on nothing that lives in an account of a third party. A
 key that signs and is not published is a key no consumer is able to place,
 and the row is red while the two disagree.
 
+The eighth row is the SEPARATION. The two domains are only separate while
+they are signed by different keys. A declaration that named the key of the
+other domain would bind them, and the revocation of one would reach the
+other. The row is red while the two declarations share a fingerprint, and it
+names the fingerprint it found in both.
+
 The rows are reported one per line, and the run fails when any of them fails.
 """
 
@@ -46,11 +75,19 @@ import sys
 from pathlib import Path
 
 CONF_RELATIVE = "scripts/release/signing-key.conf"
+MAVEN_CONF_RELATIVE = "scripts/release/maven-signing-key.conf"
 
 # The document that publishes the fingerprint to the consumers. It is the
 # channel: a consumer who reads it compares the fingerprint it names with the
 # fingerprint the release names.
 PUBLISHED_RELATIVE = "RELEASE-SIGNING.md"
+
+# The declarations this repository holds, each one with the name of the thing
+# it signs. The order is the order of the report.
+DECLARATIONS = (
+    ("the release tags", CONF_RELATIVE),
+    ("the Maven artifacts", MAVEN_CONF_RELATIVE),
+)
 
 FINGERPRINT = re.compile(r"^[0-9A-Fa-f]{40}$")
 
@@ -86,6 +123,31 @@ class Declaration:
     @property
     def current_uid(self) -> str:
         return self.current_uids[0][0] if self.current_uids else ""
+
+    def every_fingerprint(self) -> list[str]:
+        """Every fingerprint the declaration names, in the order it names them."""
+        found = [fingerprint for fingerprint, _number in self.current_fingerprints]
+        found += [fingerprint for fingerprint, _uid, _number in self.others]
+        return found
+
+
+class Report:
+    """The rows of the report, and the numbers of the ones that failed."""
+
+    def __init__(self) -> None:
+        self.rows: list[str] = []
+        self.failures: list[str] = []
+        self.number = 0
+
+    def row(self, ok: bool, detail: str) -> bool:
+        self.number += 1
+        self.rows.append(f"  row {self.number} verdict={'PASS' if ok else 'FAIL'} {detail}")
+        if not ok:
+            self.failures.append(str(self.number))
+        return ok
+
+    def note(self, text: str) -> None:
+        self.rows.append(text)
 
 
 def parse(text: str) -> Declaration:
@@ -128,32 +190,35 @@ def reserved_domain(domain: str) -> bool:
     return any(domain.endswith(suffix) for suffix in RESERVED_SUFFIXES)
 
 
-def main() -> int:
-    repo = Path(__file__).resolve().parent.parent
-    conf = repo / CONF_RELATIVE
+def check_declaration(
+    repo: Path,
+    conf_relative: str,
+    label: str,
+    published_exists: bool,
+    published: str,
+    report: Report,
+) -> list[str]:
+    """Ask the seven questions about ONE declaration.
 
+    Returns every fingerprint the declaration names, so that the question about
+    the PAIR can be asked with what was measured rather than with what the
+    file says it holds.
+    """
+    conf = repo / conf_relative
     if not conf.is_file():
-        print(f"  {CONF_RELATIVE}: the declaration of the signing keys is missing")
-        print("\nCLAVE DE FIRMA: FAIL")
-        print("El fichero que declara las claves de firma no existe.")
-        return 1
+        report.note(f"  {conf_relative}: the declaration of {label} is missing")
+        report.row(False, f"the declaration of {label} is missing")
+        return []
 
     declaration = parse(conf.read_text(encoding="utf-8"))
-    failures: list[str] = []
-    rows: list[str] = []
-
-    def row(ok: bool, number: str, detail: str) -> None:
-        rows.append(f"  row {number} verdict={'PASS' if ok else 'FAIL'} {detail}")
-        if not ok:
-            failures.append(f"row {number}")
 
     # Row 1. ONE current key. Two current keys would mean two keys sign, and
     # a signature does not say which of them did it.
     if len(declaration.current_fingerprints) == 1:
-        row(True, "1", "the declaration names exactly one current key")
+        report.row(True, f"the declaration of {label} names exactly one current key")
     else:
         found = len(declaration.current_fingerprints)
-        row(False, "1", f"the declaration names {found} current keys and it must name one")
+        report.row(False, f"the declaration of {label} names {found} current keys and it must name one")
 
     # Row 2. Every fingerprint is a fingerprint. A shape that is not a
     # fingerprint cannot be compared with a signature, and a checker that
@@ -165,11 +230,11 @@ def main() -> int:
         fingerprints.append(("other", fingerprint, number))
     malformed = [(role, value, number) for role, value, number in fingerprints if not FINGERPRINT.match(value)]
     if not malformed:
-        row(True, "2", f"all {len(fingerprints)} fingerprints are forty hexadecimal characters")
+        report.row(True, f"all {len(fingerprints)} fingerprints of {label} are forty hexadecimal characters")
     else:
         for role, value, number in malformed:
-            rows.append(f"  {CONF_RELATIVE}:{number}  a {role} fingerprint is not forty hexadecimal characters")
-        row(False, "2", f"{len(malformed)} fingerprint(s) are malformed")
+            report.note(f"  {conf_relative}:{number}  a {role} fingerprint is not forty hexadecimal characters")
+        report.row(False, f"{len(malformed)} fingerprint(s) of {label} are malformed")
 
     # Row 3. No fingerprint twice. The same key declared in two roles would
     # make the set's size a lie.
@@ -183,35 +248,35 @@ def main() -> int:
             duplicates.append(key)
         seen[key] = seen.get(key, 0) + 1
     if not duplicates:
-        row(True, "3", "no fingerprint is declared twice")
+        report.row(True, f"no fingerprint of {label} is declared twice")
     else:
         for key in sorted(set(duplicates)):
-            rows.append(f"  {CONF_RELATIVE}  the fingerprint {key} is declared twice")
-        row(False, "3", f"{len(set(duplicates))} fingerprint(s) are declared twice")
+            report.note(f"  {conf_relative}  the fingerprint {key} is declared twice")
+        report.row(False, f"{len(set(duplicates))} fingerprint(s) of {label} are declared twice")
 
     # Row 4. The current key is not also one of the others. A key that signs
     # and also counts as history is a key whose history nobody can read.
     current = declaration.current_fingerprint.upper()
     others_fingerprints = {value.upper() for value, _uid, _number in declaration.others}
     if current and current in others_fingerprints:
-        row(False, "4", "the current key is also declared among the keys that signed the tags already published")
+        report.row(False, f"the current key of {label} is also declared among the keys that signed what was already published")
     elif not current:
-        row(False, "4", "there is no current key to compare")
+        report.row(False, f"there is no current key of {label} to compare")
     else:
-        row(True, "4", "the current key is not among the keys that signed the tags already published")
+        report.row(True, f"the current key of {label} is not among the keys that signed what was already published")
 
     # Row 5. Every key of the second group says which identity it claims. A
     # key without an identity cannot be checked against the identity the
     # signature carries, so it can only ever be believed.
     without_identity = [number for _fingerprint, uid, number in declaration.others if not uid]
     if not declaration.others:
-        row(True, "5", "no key of the second group is declared")
+        report.row(True, f"no key of the second group of {label} is declared")
     elif not without_identity:
-        row(True, "5", f"all {len(declaration.others)} keys of the second group declare an identity")
+        report.row(True, f"all {len(declaration.others)} keys of the second group of {label} declare an identity")
     else:
         for number in without_identity:
-            rows.append(f"  {CONF_RELATIVE}:{number}  a key of the second group declares no identity")
-        row(False, "5", f"{len(without_identity)} key(s) of the second group declare no identity")
+            report.note(f"  {conf_relative}:{number}  a key of the second group declares no identity")
+        report.row(False, f"{len(without_identity)} key(s) of the second group of {label} declare no identity")
 
     # Row 6. The current key claims no domain reserved for documentation. A
     # domain nobody owns cannot corroborate an address, so a key that claims
@@ -221,13 +286,13 @@ def main() -> int:
     address = address_of(uid)
     domain = domain_of(address)
     if not uid:
-        row(False, "6", "the current key declares no identity")
+        report.row(False, f"the current key of {label} declares no identity")
     elif not address:
-        row(True, "6", f"the current key claims no address, so it claims no reserved domain (uid '{uid}')")
+        report.row(True, f"the current key of {label} claims no address, so it claims no reserved domain (uid '{uid}')")
     elif reserved_domain(domain):
-        row(False, "6", f"the current key claims '{address}', and '{domain}' is reserved for documentation")
+        report.row(False, f"the current key of {label} claims '{address}', and '{domain}' is reserved for documentation")
     else:
-        row(True, "6", f"the current key claims '{address}', and '{domain}' is a domain that can be corroborated")
+        report.row(True, f"the current key of {label} claims '{address}', and '{domain}' is a domain that can be corroborated")
 
     # Row 7. The fingerprint that signs is PUBLISHED to the consumers. The
     # declaration is the channel only if the consumers can read it: a key
@@ -235,33 +300,61 @@ def main() -> int:
     # consumer that compares the fingerprint the release names with the
     # fingerprint the document publishes finds two different keys. The
     # document is read from the tree, and the comparison is literal.
-    published_path = repo / PUBLISHED_RELATIVE
-    if not published_path.is_file():
-        rows.append(
-            f"  {PUBLISHED_RELATIVE}: the document that publishes the fingerprint is missing"
-        )
-        row(False, "7", f"the document that publishes the fingerprint to the consumers is missing")
+    if not published_exists:
+        report.note(f"  {PUBLISHED_RELATIVE}: the document that publishes the fingerprint is missing")
+        report.row(False, f"the document that publishes the fingerprint of {label} to the consumers is missing")
     elif not current:
-        row(False, "7", "there is no current key whose fingerprint could be published")
+        report.row(False, f"there is no current key of {label} whose fingerprint could be published")
+    elif current in published:
+        report.row(True, f"the fingerprint {current} that signs {label} is published in {PUBLISHED_RELATIVE}")
     else:
-        published = published_path.read_text(encoding="utf-8")
-        if current in published:
-            row(True, "7", f"the fingerprint {current} that signs is published in {PUBLISHED_RELATIVE}")
-        else:
-            rows.append(
-                f"  {PUBLISHED_RELATIVE}  the fingerprint {current} that signs is not published"
-            )
-            row(False, "7", f"the fingerprint {current} that signs is not published in {PUBLISHED_RELATIVE}")
+        report.note(f"  {PUBLISHED_RELATIVE}  the fingerprint {current} that signs {label} is not published")
+        report.row(False, f"the fingerprint {current} that signs {label} is not published in {PUBLISHED_RELATIVE}")
 
-    for line in rows:
+    return declaration.every_fingerprint()
+
+
+def main() -> int:
+    repo = Path(__file__).resolve().parent.parent
+
+    published_path = repo / PUBLISHED_RELATIVE
+    published_exists = published_path.is_file()
+    published = published_path.read_text(encoding="utf-8") if published_exists else ""
+
+    report = Report()
+    declared: list[tuple[str, str, list[str]]] = []
+    for label, conf_relative in DECLARATIONS:
+        fingerprints = check_declaration(
+            repo, conf_relative, label, published_exists, published, report
+        )
+        declared.append((label, conf_relative, fingerprints))
+
+    # Row 8. The two domains are separate only while they are signed by
+    # different keys. A fingerprint that both declarations name binds them,
+    # and then the revocation of one reaches the other.
+    shared: list[str] = []
+    for index, (label, _relative, fingerprints) in enumerate(declared):
+        others = {value.upper() for other_label, _other_relative, other_fingerprints in declared[index + 1:] for value in other_fingerprints}
+        for value in fingerprints:
+            if value.upper() in others:
+                shared.append(value.upper())
+    if shared:
+        for value in sorted(set(shared)):
+            report.note(f"  the declarations of {DECLARATIONS[0][0]} and {DECLARATIONS[1][0]} both name the fingerprint {value}")
+        report.row(False, f"the two declarations name {len(set(shared))} fingerprint(s) in common: the two trust domains are not separated")
+    else:
+        report.row(True, "the two declarations name different keys, so their revocations do not reach each other")
+
+    for line in report.rows:
         print(line)
-    if failures:
-        print(f"\nCLAVE DE FIRMA: FAIL ({len(failures)} row(s): {', '.join(failures)})")
+    if report.failures:
+        print(f"\nCLAVE DE FIRMA: FAIL ({len(report.failures)} row(s): {', '.join(report.failures)})")
         print("La declaracion de las claves de firma no tiene la forma que el camino de firma exige.")
         return 1
-    print(f"\nCLAVE DE FIRMA: OK ({len(rows)} rows)")
-    print("Una clave actual, un conjunto de confianza, ninguna identidad que nadie pueda corroborar,")
-    print("y una huella que los consumidores pueden leer en este repositorio.")
+    print(f"\nCLAVE DE FIRMA: OK ({report.number} rows)")
+    print("Dos conjuntos de confianza, una clave actual en cada uno, ninguna huella compartida,")
+    print("ninguna identidad que nadie pueda corroborar, y una huella que los consumidores")
+    print("pueden leer en este repositorio.")
     return 0
 
 

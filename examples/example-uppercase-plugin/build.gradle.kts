@@ -86,20 +86,20 @@ dependencies {
     // hoping they agree; this trusts the document the product publishes for
     // exactly that purpose, and lets the product be the only place that
     // decides which version of a contract a consumer gets.
-    compileOnly(platform("dev.rubentxu.pipeline.v2:pipeline-sdk-bom:$sdkVersion"))
-    compileOnly("dev.rubentxu.pipeline.v2:pipeline-domain")
-    compileOnly("dev.rubentxu.pipeline.v2:pipeline-scripting-api")
+    compileOnly(platform("dev.rubentxu.pipelinek:pipelinek-sdk-bom:$sdkVersion"))
+    compileOnly("dev.rubentxu.pipelinek:pipelinek-domain")
+    compileOnly("dev.rubentxu.pipelinek:pipelinek-scripting-api")
     // The Event Plane's published contract. Carrying the plugin's own event
     // definition and the emission seam as `compileOnly` is the point: the JAR ships only its
     // classes, and the host supplies the registry, the codec types and the capability at runtime.
     // A plugin that had to bundle the Event Plane would be able to run a SECOND registry beside
     // the host's, which is exactly the two-authorities split this seam exists to prevent.
-    compileOnly("dev.rubentxu.pipeline.v2:pipeline-events")
+    compileOnly("dev.rubentxu.pipelinek:pipelinek-events")
     // The runtime's observation seam. Carrying it as `compileOnly` is the point: the plugin
     // names a capability key and a small interface, and never a tracing library. A plugin that
     // carried the library would inherit its versions and its exporter configuration, and every
     // plugin that wanted a span would own a copy of the collector's configuration as well.
-    compileOnly("dev.rubentxu.pipeline.v2:pipeline-runtime-api")
+    compileOnly("dev.rubentxu.pipelinek:pipelinek-runtime-api")
     compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
 

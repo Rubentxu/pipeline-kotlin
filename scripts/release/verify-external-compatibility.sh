@@ -378,12 +378,24 @@ sdk_version_from_layout() {
     # check honest when a release is misnamed.
     local repo_dir="$1"
     local domain
-    domain="$(find "$repo_dir" -maxdepth 6 -type d -path '*/dev/rubentxu/pipeline/v2/pipeline-domain' -print -quit)"
-    if [[ -z "$domain" ]]; then
-        printf ''
-        return 1
-    fi
-    find "$domain" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' -quit
+    # The layout of the SDK repository has changed once: the releases before the
+    # rename carry the group and the artifact name the product published then, and
+    # the releases after it carry the current ones. BOTH are searched, and the one
+    # that is there wins: the version is read from the ARCHIVE, and an archive
+    # that is read by the name of the release rather than by its own content is
+    # an archive whose content nobody looked at.
+    local layout
+    for layout in \
+        '*/dev/rubentxu/pipelinek/pipelinek-domain' \
+        '*/dev/rubentxu/pipeline/v2/pipeline-domain' ; do
+        domain="$(find "$repo_dir" -maxdepth 6 -type d -path "$layout" -print -quit)"
+        if [[ -n "$domain" ]]; then
+            find "$domain" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' -quit
+            return 0
+        fi
+    done
+    printf ''
+    return 1
 }
 
 download_published_sdk() {

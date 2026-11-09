@@ -49,7 +49,7 @@ grep " ${ASSET}$" SHA256SUMS | sha256sum -c -
 unzip -q "$ASSET"
 PIPELINEK="./$(basename "$ASSET" .zip)/bin/pipelinek"
 
-"$PIPELINEK" version     # → pipeline 0.94.2
+"$PIPELINEK" version     # → pipeline 0.95.0
 "$PIPELINEK" doctor      # jdk / os / workdir / writable / script cache
 ```
 
@@ -89,6 +89,129 @@ Give the run a journal and a control root, and every step, event and output stay
 ```
 
 `inspect` shows the stages, the steps and their outcomes; `events` reads the event lane; `observe` reads the run's console and output plane. The full verb list is `pipelinek --help`.
+
+---
+
+## Use the SDK from Maven or Gradle
+
+The SDK is six coordinates under the group `dev.rubentxu.pipelinek`:
+
+| Coordinate | What it is |
+|---|---|
+| `pipelinek-domain` | the contracts: steps, events, outputs and the domains around them |
+| `pipelinek-scripting-api` | the Kotlin DSL that writes a pipeline |
+| `pipelinek-events` | the typed event lane |
+| `pipelinek-output` | the output plane |
+| `pipelinek-runtime-api` | the runtime API a plugin talks to |
+| `pipelinek-sdk-bom` | the BOM: pins the five above at one version |
+
+The five contracts are **experimental** — the maturity of each one is declared in
+`pipelinek/contract/published-contract-maturity.json` and printed by
+`pipelinek capabilities`.
+
+### Where the SDK is today
+
+The SDK travels as `pipelinek-<version>.sdk.zip`, an asset of the GitHub release: a
+Maven repository inside a ZIP. Unzip it and point your build at the directory.
+
+```bash
+curl -fL -o sdk.zip \
+  https://github.com/Rubentxu/pipeline-kotlin/releases/download/v0.95.0/pipelinek-0.95.0.sdk.zip
+unzip -q sdk.zip -d sdk
+```
+
+```kotlin
+// build.gradle.kts
+repositories {
+    maven { url = uri("file://${System.getProperty("user.dir")}/sdk") }
+}
+dependencies {
+    implementation("dev.rubentxu.pipelinek:pipelinek-domain:0.95.0")
+    implementation("dev.rubentxu.pipelinek:pipelinek-scripting-api:0.95.0")
+}
+```
+
+```xml
+<!-- pom.xml -->
+<repository>
+  <id>pipelinek-sdk</id>
+  <url>file://${project.basedir}/sdk</url>
+</repository>
+```
+
+### The two remote channels
+
+Both are wired, measured and fail-closed, and they serve the same six coordinates
+with the same bytes.
+
+- **Maven Central**, through its portal. The bundle carries `sources.jar`,
+  `javadoc.jar` and a detached signature for every artifact, signed with the key
+  whose fingerprint this repository publishes (`RELEASE-SIGNING.md`). It needs a
+  namespace and a token in the publisher's account, and the promotion certification
+  of the candidate.
+- **The Maven registry of GitHub Packages**, at
+  `https://maven.pkg.github.com/Rubentxu/pipeline-kotlin`. The same coordinates and
+  the same bytes; a build proves it before publishing that the bytes it serves are
+  the bytes the signed bundle carries. It needs a token with `write:packages`.
+
+**This release renames the coordinates.** The six contracts were published before
+as `dev.rubentxu.pipeline.v2:pipeline-*`; from this release they are published as
+`dev.rubentxu.pipelinek:pipelinek-*`. One release has one name for the same
+contracts, and this one carries the name of the solution: a build that depended on
+the old names has to move to the new ones.
+
+Both channels are measured the same way, and the measurement is what the channel
+is worth: every published file matches the digest of the signed artifact byte for
+byte, an independent consumer compiles against the published coordinates, the same
+consumer fails to resolve when the SDK's group is withheld, and the admission gate
+refuses to publish a version that is already published — a published version is
+never replaced. A published coordinate is verifiable against the fingerprint in
+`RELEASE-SIGNING.md`.
+
+This is how a consumer resolves the six coordinates from each channel, with Maven
+and with Gradle:
+
+```kotlin
+// build.gradle.kts — Maven Central
+repositories { mavenCentral() }
+
+// build.gradle.kts — the GitHub Packages registry
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/Rubentxu/pipeline-kotlin")
+        credentials {
+            username = System.getenv("GITHUB_ACTOR")
+            password = System.getenv("GITHUB_TOKEN")
+        }
+    }
+}
+```
+
+```xml
+<!-- pom.xml — Maven Central -->
+<repository>
+  <id>central</id>
+  <url>https://repo.maven.apache.org/maven2</url>
+</repository>
+
+<!-- pom.xml — the GitHub Packages registry -->
+<repository>
+  <id>github-packages</id>
+  <url>https://maven.pkg.github.com/Rubentxu/pipeline-kotlin</url>
+</repository>
+```
+
+The dependency block is the same in all four cases:
+
+```kotlin
+dependencies {
+    implementation("dev.rubentxu.pipelinek:pipelinek-domain:0.95.0")
+}
+```
+
+The GitHub Packages registry asks for a token even to read a public package, so
+that channel is for consumers who already hold one; Central is the channel that
+needs none.
 
 ---
 
@@ -138,9 +261,9 @@ Four more plugins ship in the distribution as working examples of the contract: 
 
 ### Extended ecosystem
 
-These projects are built around PipelineK. The **0.94.2 column** is the SDK range each one declares against the current release — a project pinned to an older SDK does not load with it.
+These projects are built around PipelineK. The **0.95.0 column** is the SDK range each one declares against the current release — a project pinned to an older SDK does not load with it.
 
-| Project | What it is | Maturity | 0.94.2 |
+| Project | What it is | Maturity | 0.95.0 |
 |---|---|---|---|
 | pipelinek-fabric | Distributed control plane: workers, podman and Kubernetes providers. *Repository not public yet* | Preview | Pinned to 0.62.0 |
 | [pipelinek-studio](https://github.com/Rubentxu/pipelinek-studio) | Web UI, MCP stdio server and VS Code extension over a real PipelineK process | Preview | Pinned to 0.48.0-rc1 |
@@ -148,7 +271,7 @@ These projects are built around PipelineK. The **0.94.2 column** is the SDK rang
 | [pipelinek-assurance](https://github.com/Rubentxu/pipelinek-assurance) | Assurance checks as a plugin | In development | Declares `[0.48.0, 0.52.0)`; its handler cannot execute live yet |
 | [pipelinek-saga](https://github.com/Rubentxu/pipelinek-saga) | Saga contract for compensations | In development | Declares no range yet |
 | pipelinek-fabric-backstage | Backstage integration for the Fabric control API. *Repository not public yet* | In development | Client is not sealed yet |
-| [asdf-pipelinek](https://github.com/Rubentxu/asdf-pipelinek) | Version manager plugin for `asdf` and `mise`: resolves the newest stable release and verifies its SHA-256 | Preview | Resolves 0.94.2 |
+| [asdf-pipelinek](https://github.com/Rubentxu/asdf-pipelinek) | Version manager plugin for `asdf` and `mise`: resolves the newest stable release and verifies its SHA-256 | Preview | Resolves 0.95.0 |
 
 **Maturity scale:** *Available* — shipped and supported in the release. *Preview* — works end to end, still moving. *In development* — real code, incomplete contract. *Exploratory* — an idea with a spike.
 
@@ -158,7 +281,7 @@ Nothing above is a promise of compatibility: a project declares the SDK range it
 
 A plugin is an independent Gradle build that compiles against the published SDK and nothing else. It declares a `StepContract` — the family key, the descriptor, the typed codecs and the capabilities it requires — and a manifest with the API range it was built against.
 
-The SDK ships with every release as `pipelinek-<version>.sdk.zip`: six artifacts (`pipeline-domain`, `pipeline-events`, `pipeline-output`, `pipeline-runtime-api`, `pipeline-scripting-api`, `pipeline-sdk-bom`) and a BOM that pins their versions together. `pipelinek sdk-info` prints the group and the exact coordinates a plugin builds against.
+The SDK ships with every release as `pipelinek-<version>.sdk.zip`: six artifacts (`pipelinek-domain`, `pipelinek-events`, `pipelinek-output`, `pipelinek-runtime-api`, `pipelinek-scripting-api`, `pipelinek-sdk-bom`) and a BOM that pins their versions together. `pipelinek sdk-info` prints the group and the exact coordinates a plugin builds against.
 
 A plugin is loaded from `--plugin-jar`. With `--plugin-trust <file>` it is admitted only if its bytes match the SHA-256 the operator pinned and it carries a valid detached Ed25519 signature; with `--require-plugin-trust`, a plugin nobody vouched for is refused before any of its code runs.
 
@@ -278,8 +401,8 @@ Each boundary has one owner. The runner owns the write authority over a run; the
 ```bash
 curl -fL -o install-pipelinek.sh \
   "https://raw.githubusercontent.com/Rubentxu/pipeline-kotlin/main/scripts/install-pipelinek.sh"
-./install-pipelinek.sh install 0.94.2   # download, verify, install
-./install-pipelinek.sh use 0.94.2       # switch the active release
+./install-pipelinek.sh install 0.95.0   # download, verify, install
+./install-pipelinek.sh use 0.95.0       # switch the active release
 export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
 ```
 
@@ -287,10 +410,10 @@ export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
 
 ```bash
 asdf plugin add pipelinek https://github.com/Rubentxu/asdf-pipelinek
-asdf install pipelinek 0.94.2
+asdf install pipelinek 0.95.0
 
 mise plugins add pipelinek https://github.com/Rubentxu/asdf-pipelinek
-mise install pipelinek@0.94.2
+mise install pipelinek@0.95.0
 ```
 
 **Explore.** [`examples/`](examples/) holds the four example plugins and an observability example — a local Collector configuration, PromQL and TraceQL queries, and a Grafana dashboard that runs them. The [catalogue of examples](examples/catalogue/) holds the worked examples of the capabilities above: each one is a pipeline you can run, with a README that explains its stages, its steps and what it expects. The release harness is what runs them. `pipelinek capabilities` and `pipelinek sdk-info` print what this build admits and what a plugin builds against.

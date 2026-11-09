@@ -238,6 +238,12 @@ DECLARED_EXECUTABLES = {
         "publication: it verifies that the certification of a candidate "
         "admits it to a stable release"
     ),
+    "scripts/release/upload-sdk-bundle.sh": (
+        "publication: it uploads the signed Maven bundle to the remote "
+        "destination, and it re-verifies the bundle before it travels, so what "
+        "is under test is the publication contract and not the behaviour of "
+        "this tree; it is not part of this gate"
+    ),
     "scripts/release/verify-external-compatibility.sh": (
         "the compatibility gate of the publication: it compares the PUBLISHED "
         "artifact against the PREVIOUSLY published one, so what is under test "

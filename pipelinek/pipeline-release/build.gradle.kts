@@ -645,17 +645,22 @@ tasks.register<JavaExec>("sdkZip") {
     // ZIP tracks a list of files and the list is not what it packages.
     inputs.dir(sdkRepo)
 
-    // The list of `group:artifact` pairs the BOM pins. Mirrors
-    // `publishedContractModules` in the root build (the five SDK
+    // The list of `group:artifact` pairs the BOM pins. It is READ from the root
+    // build's single declaration of the published coordinate, and not written
+    // here: a second list of the same five coordinates is a second authority,
+    // and the two drift the first time only one of them is edited. The five
+    // are the `publishedContractModules` of the root build (the SDK
     // contracts). The `:pipeline-sdk-bom` POM is in the SDK ZIP
     // implicitly; the JSON manifest only needs the contract list.
+    val publishedGroup = rootProject.extra["sdkBundleGroup"] as String
+    val publishedArtifactNames = rootProject.extra["sdkBundleArtifactNames"] as Map<*, *>
     val managedCoordinates = listOf(
-        "dev.rubentxu.pipeline.v2:pipeline-domain",
-        "dev.rubentxu.pipeline.v2:pipeline-scripting-api",
-        "dev.rubentxu.pipeline.v2:pipeline-events",
-        "dev.rubentxu.pipeline.v2:pipeline-output",
-        "dev.rubentxu.pipeline.v2:pipeline-runtime-api",
-    )
+        "pipeline-domain",
+        "pipeline-scripting-api",
+        "pipeline-events",
+        "pipeline-output",
+        "pipeline-runtime-api",
+    ).map { module -> "$publishedGroup:${publishedArtifactNames[module]}" }
 
     doFirst {
         val sdkRepoDir = sdkRepo.get().asFile

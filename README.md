@@ -90,6 +90,20 @@ Give the run a journal and a control root, and every step, event and output stay
 
 `inspect` shows the stages, the steps and their outcomes; `events` reads the event lane; `observe` reads the run's console and output plane. The full verb list is `pipelinek --help`.
 
+### Reading a run from outside
+
+A run's facts are readable from outside the product, and only through the doors the product opens.
+
+**What a consumer may read.** The published read ports are the whole of the read side:
+
+- the event lane, as typed events, paged by sequence (`EventRecordReadPort`);
+- the output plane, as committed bytes, addressed by stream and by cursor (`OutputReadPort`);
+- the run's state, as an observation (`RuntimeObservation`).
+
+**What a consumer may not do.** The write side of the event store, the output append port, the recovery entry point and the run's identity are not part of any published contract. A consumer that appended to a run's event lane, or committed to its output plane, would be a second authority over the facts of that run: read the plane, but do not write it, do not reserve it, do not recover it and do not prune it.
+
+**Two doors, one fact.** The command line reads a run from the store; the service reads the same run from the same store and answers on a socket. `pipelinek inspect --state` and `pipelinek inspect --state --endpoint <socket>` print the same line and exit with the same code, because the value behind both is the same `RuntimeObservation`.
+
 ---
 
 ## Use the SDK from Maven or Gradle

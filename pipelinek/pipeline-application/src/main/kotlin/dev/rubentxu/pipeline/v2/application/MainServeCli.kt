@@ -88,16 +88,10 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
     val store = when (storeAdmission) {
         is EventStoreAdmission.Admitted -> storeAdmission.store
         is EventStoreAdmission.Refused -> {
-            err.println(
-                CliError.SubstrateUnavailable(describeRefusal(storeAdmission.refusal))
-                    .refusalLines("serve")
-                    .joinToString("\n"),
-            )
+            val error = CliError.SubstrateUnavailable(describeRefusal(storeAdmission.refusal))
+            err.println(error.refusalLines("serve").joinToString("\n"))
             err.println(SERVE_USAGE)
-            return CliExit.RuntimeNotAvailable(
-                message = "the durable event store cannot be read: ${describeRefusal(storeAdmission.refusal)}",
-                hint = "the service reads the store it is given; it does not create one",
-            )
+            return error.toCliExit()
         }
     }
 
@@ -120,32 +114,22 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
         )
     } catch (e: Exception) {
         store.close()
-        err.println(
-            CliError.SubstrateUnavailable(e.message ?: "the control root cannot be read")
-                .refusalLines("serve")
-                .joinToString("\n"),
+        val error = CliError.SubstrateUnavailable(
+            e.message ?: "the control root cannot be read",
         )
+        err.println(error.refusalLines("serve").joinToString("\n"))
         err.println(SERVE_USAGE)
-        return CliExit.RuntimeNotAvailable(
-            message = "the substrate cannot be composed: ${e.message}",
-            hint = "the service reads the control root it is given; it does not create one",
-        )
+        return error.toCliExit()
     }
 
     val transport = try {
         UnixSocketTransport.bind(Path.of(socketPath))
     } catch (e: ServiceStartupException) {
         store.close()
-        err.println(
-            CliError.ServiceUnavailable(e.refusal.reason, e.detail)
-                .refusalLines("serve")
-                .joinToString("\n"),
-        )
+        val error = CliError.ServiceUnavailable(e.refusal.reason, e.detail)
+        err.println(error.refusalLines("serve").joinToString("\n"))
         err.println(SERVE_USAGE)
-        return CliExit.RuntimeNotAvailable(
-            message = "the service cannot start: ${e.refusal.reason}",
-            hint = e.detail,
-        )
+        return error.toCliExit()
     }
 
     val server = ServiceServer(transport, operations)

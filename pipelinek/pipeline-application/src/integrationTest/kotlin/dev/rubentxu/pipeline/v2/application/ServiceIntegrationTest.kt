@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.runtime.durable.LeaseRequest
 import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
 import java.nio.ByteBuffer
@@ -224,6 +225,43 @@ class ServiceIntegrationTest {
         } finally {
             listening.close()
         }
+    }
+
+    @Test
+    fun `a service without a substrate refuses to start and says why`() {
+        val outBytes = ByteArrayOutputStream()
+        val errBytes = ByteArrayOutputStream()
+        val out = PrintStream(outBytes, true, Charsets.UTF_8.name())
+        val err = PrintStream(errBytes, true, Charsets.UTF_8.name())
+
+        val exit = runServeVerb(
+            arrayOf(
+                "--db",
+                root.resolve("there-is-no-store.db").toString(),
+                "--control-root",
+                root.toString(),
+                "--socket",
+                root.resolve("never.sock").toString(),
+            ),
+            out,
+            err,
+        )
+        out.flush()
+        err.flush()
+
+        assertEquals(
+            4,
+            exit.code,
+            "a service that cannot read its substrate refuses with the runtime-not-available code",
+        )
+        assertTrue(
+            errBytes.toString(Charsets.UTF_8).contains("the substrate cannot be served"),
+            "the refusal says that the substrate is the problem: ${errBytes}",
+        )
+        assertFalse(
+            Files.exists(root.resolve("never.sock")),
+            "a service that did not start leaves no socket behind",
+        )
     }
 
     @Test

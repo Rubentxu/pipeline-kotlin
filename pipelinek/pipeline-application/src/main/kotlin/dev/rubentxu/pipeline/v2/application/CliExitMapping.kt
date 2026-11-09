@@ -172,7 +172,7 @@ fun CliError.toCliExit(): CliExit = when (this) {
  */
 private fun substrateUnavailableExit(reason: String): CliExit = CliExit.RuntimeNotAvailable(
     message = "the substrate cannot be served: $reason",
-    hint = "the service reads the store it is given; it does not create one",
+    hint = "the service reads the substrate it is given; it does not create one",
 )
 
 /**

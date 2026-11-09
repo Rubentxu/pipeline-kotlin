@@ -289,7 +289,7 @@ FALSE_POSITIVES = {
     "OPT-IN", "SIDE-EFFECT", "OFF-BY-ONE", "SHORT-CIRCUIT",
     "FAIL-CLOSED", "HALF-FINISHED", "NON-REPLAYABLE", "REPLAY-BREAKING",
     "EFFECT-AWARE", "SOURCE-TEXT", "SOURCE-ADDITIVE", "NO-SOURCE",
-    "LENGTH-PREFIXED", "STORE-ASSIGNED",
+    "LENGTH-PREFIXED", "STORE-ASSIGNED", "DE-PROJECTS",
     # literal values and names, not references to anything
     "SECRET-AB", "SECRET-ABCDEFGH", "X-Token", "A-Za-z0-9",
     # regex character classes that the TICKET rule picks up spuriously

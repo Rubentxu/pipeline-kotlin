@@ -244,10 +244,13 @@ artifact arrives with bytes nobody pinned. In a Maven build there is no built-in
 equivalent: the `.asc` that sits beside the artifact is what a consumer can
 check, with `gpg --verify`, before it trusts the bytes.
 
-**Version 0.94.2 is published in Maven Central and in the GitHub Packages
-registry.** The bytes a consumer resolves there are the bytes this repository
-signed, and the key that signed them is the one named above. The paragraph below
-is how a consumer verifies what arrives.
+**Version 0.94.2 is published in Maven Central.** It was published in the GitHub
+Packages registry too, under the coordinates that release carried, and this
+release withdraws its six packages from that registry: the two coordinate sets
+are the same contracts under two names, and a contract that answers to two
+names has no single name. The bytes a consumer resolves in Central are the bytes
+this repository signed, and the key that signed them is the one named above. The
+paragraph below is how a consumer verifies what arrives.
 
 ## How the artifacts travel to the remote destination
 
@@ -300,7 +303,11 @@ namespace, its token and the registration of the key on it are facts about
 somebody else's database, and nothing here depends on them: what depends on
 them is the upload, and the upload is the one thing this tree cannot do on its
 own. The deployment is named `pipelinek-0.94.2-r6` and the bytes it carried are
-the ones the signed bundle holds.
+the ones the signed bundle holds. This release withdraws that deployment BY
+HAND, in the portal, because the API of the publisher cannot drop a deployment
+that is already published: the packages of the GitHub Packages registry go with
+a DELETE that this release can make, and the deployment of the portal needs a
+person.
 
 ## The channels the artifacts travel in
 
@@ -335,12 +342,13 @@ from: the `.asc` that verifies a JAR downloaded from the registry is the same
 the signature of a registry artifact takes it from the Central channel, where it
 travels, and verifies it against the fingerprint published above.
 
-**Version 0.94.2 is published in BOTH remote channels: Maven Central and the
-GitHub Packages registry**, under the coordinates that release was published
-with. Its six artifacts carry the same bytes the signed bundle carries, an
-independent consumer compiles against them from either channel, and every
+**Version 0.94.2 is published in Maven Central**, under the coordinates that
+release was published with. Its six artifacts carry the same bytes the signed
+bundle carries, an independent consumer compiles against them, and every
 published file matches the digest of the signed artifact. The ZIP of the release
-is published as well.
+is published as well. It was published in the GitHub Packages registry too, and
+this release withdraws its six packages from there: a coordinate that answers to
+two names is not one name.
 
 ## The review of the published fingerprint
 

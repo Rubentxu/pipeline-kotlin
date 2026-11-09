@@ -197,9 +197,12 @@ repositories {
 // consumer that reads `pipelinek sdk-info` and asks for what it says gets
 // the artifact that carries that name. The two do NOT resolve to the same
 // coordinate, so one version cannot carry both, and the 0.94.2 coordinates are
-// WITHDRAWN from both channels rather than left standing as a second way to
-// name the same contracts. The 0.95.0 train opens here (ProductVersion
-// 0.95.0) and its first candidate can be tagged v0.95.0-rc1.
+// WITHDRAWN rather than left standing as a second way to name the same
+// contracts: this release withdraws the six packages from the GitHub Packages
+// registry, and the deployment of 0.94.2 in Maven Central is dropped by hand
+// in the portal, because the API of the publisher cannot drop a deployment
+// that is already published. The 0.95.0 train opens here (ProductVersion
+// 0.95.0) and its candidates can be tagged v0.95.0-rcN.
 version = "0.95.0"
 
 // Single-version provider. The root project.version is the SOLE authority

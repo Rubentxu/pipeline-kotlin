@@ -55,7 +55,7 @@ private fun scanOptions(args: Array<String>): InspectParseResult {
             "--failed", "--state", "--profile", "--explain", "--telemetry", "--otlp" ->
                 scan.flags += token
 
-            "--kind", "--stage", "--control-root", "--db" -> {
+            "--kind", "--stage", "--control-root", "--db", "--endpoint" -> {
                 val refusal = readInspectValue(scan, token, args, index, ::applyPlain)
                 if (refusal != null) return InspectParseResult.Rejected(refusal)
                 index += 1
@@ -229,6 +229,7 @@ private class InspectScan {
         format = format,
         controlRoot = plain["--control-root"],
         dbPath = plain["--db"],
+        endpoint = plain["--endpoint"],
         state = "--state" in flags,
         profile = "--profile" in flags,
         explain = "--explain" in flags,
@@ -247,6 +248,7 @@ private class InspectScan {
  * knows, and a value spelled like one of them is refused the same way.
  */
 private val INSPECT_OWNED_TOKENS: Set<String> = setOf(
+    "--endpoint",
     "--failed",
     "--state",
     "--profile",
@@ -283,6 +285,15 @@ data class CompiledInspectionQuery(
     val format: MainInspectCli.InspectFormat = MainInspectCli.InspectFormat.TEXT,
     val controlRoot: String? = null,
     val dbPath: String? = null,
+    /**
+     * The socket of a service to ask instead of the local substrate.
+     *
+     * It is admitted with `--state` and with nothing else, because the
+     * service answers the run's state and no other surface this CLI
+     * publishes. Null means the operator named no service, and the local
+     * path is the only one there is.
+     */
+    val endpoint: String? = null,
     /**
      * Report the RUN's lifecycle state instead of its records.
      *

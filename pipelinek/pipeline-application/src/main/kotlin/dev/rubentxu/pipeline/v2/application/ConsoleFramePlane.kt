@@ -111,29 +111,4 @@ object ConsoleFramePlane {
         val address = OutputStreamAddress.parse(OutputStreamId(streamId)) ?: return false
         return selection.includes(address.operationId)
     }
-
-    /**
-     * Frame-ordinal continuation token, distinct from the byte cursor's prefix.
-     *
-     * The byte path encodes `out-cursor-v1:<stream>:<offset>`; the per-frame path encodes
-     * `out-frame-ord-v1:<ordinal>`. Two prefixes, two planes, and a consumer that pastes the
-     * wrong one in the wrong command is told so at decode, not by being silently advanced to
-     * a position in the wrong bytes.
-*/
-    internal const val FRAME_ORDINAL_TOKEN_PREFIX: String = "out-frame-ord-v1"
-
-    internal fun encodeFrameOrdinal(ordinal: Long): String =
-        "$FRAME_ORDINAL_TOKEN_PREFIX:$ordinal"
-
-    /**
-     * Decode a frame-ordinal token. Returns `null` for anything else, including a byte-cursor
-     * token (which the byte path would decode) — two planes, two decoders, no accidental
-     * cross-wiring.
-*/
-    internal fun decodeFrameOrdinal(token: String): Long? {
-        val parts = token.split(':')
-        if (parts.size != 2) return null
-        if (parts[0] != FRAME_ORDINAL_TOKEN_PREFIX) return null
-        return parts[1].toLongOrNull()?.takeIf { it >= -1L }
-    }
 }

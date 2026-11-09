@@ -660,6 +660,7 @@ tasks.register<JavaExec>("sdkZip") {
         "pipeline-events",
         "pipeline-output",
         "pipeline-runtime-api",
+        "pipeline-service-client",
     ).map { module -> "$publishedGroup:${publishedArtifactNames[module]}" }
     // The coordinate the BOM ITSELF is published under. It is read from the same
     // declaration, because the BOM JSON declares this coordinate: a BOM that names

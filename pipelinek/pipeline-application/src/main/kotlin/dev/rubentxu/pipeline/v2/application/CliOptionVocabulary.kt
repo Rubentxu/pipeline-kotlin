@@ -444,8 +444,22 @@ private fun recognise(option: String): RecognisedOption? =
 internal fun knownOptionArity(token: String): Boolean? = when (recognise(token)) {
     is RecognisedOption.Flag -> false
     is RecognisedOption.Valued -> true
-    null -> null
+    null -> if (token in VERB_OWNED_TOKENS) true else null
 }
+
+/**
+ * The tokens this build KNOWS that the shared table does not admit.
+ *
+ * `--endpoint` belongs to `inspect --state`, and the shared parser does not
+ * carry it: a reader that admitted it would be promising a service it does
+ * not talk to.
+ *
+ * It is known all the same, and that is the whole point of the set: a VALUE
+ * spelled like it is refused by [readOptionValue] in every verb, instead of
+ * being swallowed by the option written before it. A token nobody can spell
+ * as a value is a token that cannot be passed off as a path.
+ */
+private val VERB_OWNED_TOKENS: Set<String> = setOf("--endpoint")
 
 /** Options with no value. Their outcome never depends on what follows them. */
 private object FlagOptions {

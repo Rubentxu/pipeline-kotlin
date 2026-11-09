@@ -17,6 +17,10 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import dev.rubentxu.pipeline.v2.service.ServiceProtocol
+import dev.rubentxu.pipeline.v2.service.ServiceRefusal
+import dev.rubentxu.pipeline.v2.service.ServiceRequest
+import dev.rubentxu.pipeline.v2.service.ServiceResponse
 
 /**
  * What the service answers when it is asked.

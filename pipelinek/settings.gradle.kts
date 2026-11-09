@@ -80,6 +80,11 @@ include(
     // It IS in `publishedContractModules` and in the BOM, and `:pipeline-runtime`
     // implements those three ports over the stores.
     ":pipeline-runtime-api",
+    // The client of the local service: the wire vocabulary of `pipelinek.service/2` and the
+    // typed client that speaks it. PUBLISHED CONTRACT: a consumer outside this repository
+    // has to resolve it to talk to the service over the socket, and the CLI's own
+    // `--endpoint` path compiles against it.
+    ":pipeline-service-client",
     // The runtime surface. The host-internal module that holds the three
     // adapters implementing the published ports, over the event store, the
     // journal and the lease. `:pipeline-application` depends on it at

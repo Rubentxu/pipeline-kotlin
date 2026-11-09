@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
+import dev.rubentxu.pipeline.v2.service.FrameOrdinalToken
 
 /**
  * A page of frames names the position a consumer resumes from.
@@ -78,7 +79,7 @@ class MainConsoleCliFramesPaginationTest {
     @Test
     fun `resuming from the printed token delivers no frame twice`() {
         val first = emit(opId = "op-b", afterOrdinal = -1L, format = MainConsoleCli.ConsoleFormat.JSONL)
-        val resumeAt = ConsoleFramePlane.decodeFrameOrdinal(first.token)
+        val resumeAt = FrameOrdinalToken.decode(first.token)
         assertEquals(4L, resumeAt, "the token did not name a position: ${first.token}")
 
         val second = emit(opId = "op-b", afterOrdinal = resumeAt!!, format = MainConsoleCli.ConsoleFormat.JSONL)

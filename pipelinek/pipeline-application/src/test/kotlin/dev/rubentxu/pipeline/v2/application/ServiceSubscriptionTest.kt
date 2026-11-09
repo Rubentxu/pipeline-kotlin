@@ -28,6 +28,11 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import dev.rubentxu.pipeline.v2.service.FrameOrdinalToken
+import dev.rubentxu.pipeline.v2.service.ServiceEndReason
+import dev.rubentxu.pipeline.v2.service.ServiceProtocol
+import dev.rubentxu.pipeline.v2.service.ServiceRefusal
+import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
 
 /**
  * The streets of the local service.

@@ -280,6 +280,10 @@ val bcvModules = setOf(
     // ports and their ADTs. Guiding the published ABI here so `apiCheck` refuses an
     // unannounced surface change.
     "pipeline-runtime-api",
+    // The service client's contract: the wire vocabulary of the local service and the typed
+    // client that speaks it. The dump freezes exactly which types a consumer of the SDK
+    // resolves, which is the whole point of publishing it.
+    "pipeline-service-client",
 )
 
 // SAST (detekt). Applied to every Kotlin subproject with a single
@@ -785,6 +789,10 @@ val publishedContractModules = listOf(
     // adding a sixth published contract must decide here, in review, whether it earns
     // publication.
     "pipeline-runtime-api",
+    // The client of the local service: the wire vocabulary and the typed client. It is
+    // published because a consumer OUTSIDE this repository has to resolve it to talk to
+    // the service, and a module nobody can resolve is a module nobody can use.
+    "pipeline-service-client",
 )
 
 // ── the second ABI reading: the candidate against the PREVIOUSLY PUBLISHED artifact ──
@@ -850,6 +858,7 @@ val sdkBundleArtifactNames: Map<String, String> = mapOf(
     "pipeline-events" to "pipelinek-events",
     "pipeline-output" to "pipelinek-output",
     "pipeline-runtime-api" to "pipelinek-runtime-api",
+    "pipeline-service-client" to "pipelinek-service-client",
     "pipeline-sdk-bom" to "pipelinek-sdk-bom",
 )
 
@@ -871,6 +880,12 @@ val legacyPublishedArtifactNames: Map<String, String> = mapOf(
     "pipeline-output" to "pipeline-output",
     "pipeline-runtime-api" to "pipeline-runtime-api",
     "pipeline-sdk-bom" to "pipeline-sdk-bom",
+    // `pipeline-service-client` is NOT here, and its absence is the honest
+    // entry: a module that this release publishes for the FIRST time never
+    // carried a legacy name, because there is no legacy version of it. An
+    // entry that named one would assert a publication that never happened,
+    // and the reading that looks for a previous artifact would go looking
+    // for a JAR that was never released.
 )
 
 /**
@@ -891,10 +906,13 @@ val PUBLISHED_GROUP_PATH = sdkBundleGroup.replace('.', '/')
  * the caller says so instead of reading an empty surface as a total removal of the
  * module's ABI.
  */
-fun publishedArtifactCandidates(module: String): List<Pair<String, String>> = listOf(
-    sdkBundleGroup to sdkBundleArtifactNames.getValue(module),
-    legacyPublishedGroup to legacyPublishedArtifactNames.getValue(module),
-)
+fun publishedArtifactCandidates(module: String): List<Pair<String, String>> = buildList {
+    sdkBundleArtifactNames[module]?.let { add(sdkBundleGroup to it) }
+    // A module with no legacy name is a module that was never published
+    // under the old coordinates: there is nothing older to look for, and the
+    // absence is not a defect to be papered over with an invented name.
+    legacyPublishedArtifactNames[module]?.let { add(legacyPublishedGroup to it) }
+}
 
 /**
  * The published JAR of a module in a Maven repository, or null when that repository
@@ -929,6 +947,25 @@ fun shortDigestOf(value: String): String =
         .digest(value.toByteArray())
         .take(6)
         .joinToString("") { "%02x".format(it) }
+
+/**
+ * Whether the previous release's repository is there to be read.
+ *
+ * The repository is the FACT about what the previous release published: the
+ * release script downloads it WHOLE and verifies it against the digest that
+ * release published, so an artifact that is not in it was not published.
+ *
+ * A repository that is missing, that is not a directory, or that is EMPTY is
+ * not a fact about the previous release: it is a reading that did not happen,
+ * and it must keep refusing rather than being read as "the previous release
+ * published nothing".
+ */
+fun previousRepositoryIsReadable(repo: String?): Boolean {
+    if (repo == null) return false
+    val directory = File(repo)
+    if (!directory.isDirectory) return false
+    return directory.listFiles()?.isNotEmpty() == true
+}
 
 /**
  * The repository and the version of each side, read ONCE from the Gradle
@@ -1013,15 +1050,54 @@ subprojects {
                     publishedArtifactFile(File(repo), publishedModule, version)
                 }
                 val outputFile = File(publishedApiDumpDirs.getValue(side), "$publishedModule.api")
-                tasks.register<KotlinApiBuildTask>("${side}ArtifactApiDump") {
-                    group = "verification"
-                    description =
-                        "Dump the public API surface of the $side published artifact of $publishedModule."
-                    runtimeClasspath.setFrom(apiBuildTask.map { it.runtimeClasspath })
-                    if (artifact != null && artifact.isFile) {
+                if (artifact != null && artifact.isFile) {
+                    tasks.register<KotlinApiBuildTask>("${side}ArtifactApiDump") {
+                        group = "verification"
+                        description =
+                            "Dump the public API surface of the $side published artifact of $publishedModule."
+                        runtimeClasspath.setFrom(apiBuildTask.map { it.runtimeClasspath })
                         inputJar.set(artifact)
                         outputApiFile.set(outputFile)
-                    } else {
+                    }
+                } else if (side == "previous" && previousRepositoryIsReadable(repo)) {
+                    // The previous release's repository IS there, whole and
+                    // verified by its digest, and it does NOT carry this
+                    // module. That is a FACT about what the previous release
+                    // published, and the fact is the repository: the module is
+                    // NEW.
+                    //
+                    // So the previous surface of a module that did not exist is
+                    // an EMPTY surface, and it is written here. The comparison
+                    // then says what it is: everything is added, and nothing
+                    // the previous release published is gone.
+                    //
+                    // What is NOT done here is writing an empty surface for a
+                    // module whose artifact could not be FOUND because the
+                    // repository itself is missing or empty: that reading did
+                    // not happen, so the task stays disabled and the comparison
+                    // refuses. An absent dump is still no reading at all.
+                    tasks.register("${side}ArtifactApiDump") {
+                        group = "verification"
+                        description =
+                            "Record the empty previous surface of a module the previous release " +
+                                "did not publish."
+                        val target = outputFile
+                        outputs.file(target)
+                        doLast {
+                            target.parentFile?.mkdirs()
+                            // A blank line and not nothing: the reader of a
+                            // surface accepts a blank line, and a file that is
+                            // visibly there cannot be read as a dump that was
+                            // never written.
+                            target.writeText("\n")
+                        }
+                    }
+                } else {
+                    tasks.register<KotlinApiBuildTask>("${side}ArtifactApiDump") {
+                        group = "verification"
+                        description =
+                            "Dump the public API surface of the $side published artifact of $publishedModule."
+                        runtimeClasspath.setFrom(apiBuildTask.map { it.runtimeClasspath })
                         // There is no artifact to read on this side. Skipped, not empty: an
                         // empty dump would read as a total removal of the module's ABI.
                         enabled = false
@@ -1164,6 +1240,9 @@ val sdkBomModules = listOf(
     // single resolution document, and leaving the runtime ports out of it would force
     // every consumer to declare the version independently.
     "pipeline-runtime-api",
+    // The service client, for the same reason: a consumer that pins the platform version
+    // pulls the SDK of the service with it, instead of repeating its version.
+    "pipeline-service-client",
 )
 
 val publishSdkForExternalPlugin by tasks.registering {
@@ -1237,6 +1316,10 @@ val sdkPomMetadata = mapOf(
     "pipeline-runtime-api" to (
         "PipelineK Runtime API" to
             "The publish/subscribe ports of the PipelineK runtime and the ADTs they carry."
+        ),
+    "pipeline-service-client" to (
+        "PipelineK Service Client" to
+            "The wire contract of the PipelineK local service and the typed client that speaks it."
         ),
     "pipeline-sdk-bom" to (
         "PipelineK SDK BOM" to

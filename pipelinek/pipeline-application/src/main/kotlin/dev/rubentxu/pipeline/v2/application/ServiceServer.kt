@@ -4,6 +4,14 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
+import dev.rubentxu.pipeline.v2.service.ServiceCodec
+import dev.rubentxu.pipeline.v2.service.ServiceDecoding
+import dev.rubentxu.pipeline.v2.service.ServiceEndReason
+import dev.rubentxu.pipeline.v2.service.ServiceProtocol
+import dev.rubentxu.pipeline.v2.service.ServiceRefusal
+import dev.rubentxu.pipeline.v2.service.ServiceRequest
+import dev.rubentxu.pipeline.v2.service.ServiceResponse
+import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
 
 /**
  * The transport of the local service.

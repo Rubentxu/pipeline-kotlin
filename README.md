@@ -94,7 +94,7 @@ Give the run a journal and a control root, and every step, event and output stay
 
 ## Use the SDK from Maven or Gradle
 
-The SDK is six coordinates under the group `dev.rubentxu.pipelinek`:
+The SDK is seven coordinates under the group `dev.rubentxu.pipelinek`:
 
 | Coordinate | What it is |
 |---|---|
@@ -103,9 +103,10 @@ The SDK is six coordinates under the group `dev.rubentxu.pipelinek`:
 | `pipelinek-events` | the typed event lane |
 | `pipelinek-output` | the output plane |
 | `pipelinek-runtime-api` | the runtime API a plugin talks to |
-| `pipelinek-sdk-bom` | the BOM: pins the five above at one version |
+| `pipelinek-service-client` | the client of the local service, and the vocabulary of its wire |
+| `pipelinek-sdk-bom` | the BOM: pins the six above at one version |
 
-The five contracts are **experimental** — the maturity of each one is declared in
+The six contracts are **experimental** — the maturity of each one is declared in
 `pipelinek/contract/published-contract-maturity.json` and printed by
 `pipelinek capabilities`.
 
@@ -141,7 +142,7 @@ dependencies {
 
 ### The two remote channels
 
-Both are wired, measured and fail-closed, and they serve the same six coordinates
+Both are wired, measured and fail-closed, and they serve the same seven coordinates
 with the same bytes.
 
 - **Maven Central**, through its portal. The bundle carries `sources.jar`,
@@ -154,9 +155,9 @@ with the same bytes.
   the same bytes; a build proves it before publishing that the bytes it serves are
   the bytes the signed bundle carries. It needs a token with `write:packages`.
 
-**This release renames the coordinates.** The six contracts were published before
-as `dev.rubentxu.pipeline.v2:pipeline-*`; from this release they are published as
-`dev.rubentxu.pipelinek:pipelinek-*`. One release has one name for the same
+**This release renames the coordinates.** The artifacts of the release before this
+one were published as `dev.rubentxu.pipeline.v2:pipeline-*`; from this release they
+are published as `dev.rubentxu.pipelinek:pipelinek-*`. One release has one name for the same
 contracts, and this one carries the name of the solution: a build that depended on
 the old names has to move to the new ones.
 
@@ -168,7 +169,7 @@ refuses to publish a version that is already published — a published version i
 never replaced. A published coordinate is verifiable against the fingerprint in
 `RELEASE-SIGNING.md`.
 
-This is how a consumer resolves the six coordinates from each channel, with Maven
+This is how a consumer resolves the seven coordinates from each channel, with Maven
 and with Gradle:
 
 ```kotlin
@@ -249,11 +250,13 @@ One request per line, one answer per line, in JSON, with the version of the prot
 
 ```json
 {"schema":"pipelinek.service/2","op":"run.state","runId":"34b28ddc-…"}
-{"schema":"pipelinek.service/2","kind":"answer","result":{"state":"terminal","outcome":"succeeded","at":0}}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"state":"terminal","attempt":1,"at":0,"outcome":"succeeded","terminalAt":0}}
 {"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
 The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections` — so a client reads a word and not a sentence.
+
+The `run.state` answer carries the WHOLE observation: the attempt, the lease and its fencing token, the journal position, the tails of the output and the terminal with its outcome. A client that rebuilds it gets the same `RuntimeObservation` the command line renders, and there is no second shape of the same fact.
 
 #### Subscriptions
 
@@ -276,6 +279,34 @@ The end of a street carries one word, `terminal-observed`: the run's terminal fa
 A row of the event history that this build cannot read is not a hole: it travels as a record of its own, with its position and its kind, so a client can act on it instead of guessing.
 
 The socket file is deleted when the service stops. A socket left behind by a crash is recognised for what it is and replaced on the next start; a socket another service is already listening on is never displaced, and a path that is not a socket is never deleted.
+
+#### Talking to the service from a program
+
+The wire's vocabulary is a **published artifact**: `pipelinek-service-client` carries the requests, the refusals, the codec and a typed client, so a consumer writes no copy of any of them.
+
+```kotlin
+val client = ServiceClient(Path.of("/run/pipelinek/service.sock"), Duration.ofSeconds(10))
+
+when (val answer = client.runState("34b28ddc-…")) {
+    is ServiceAnswer.Answered -> println(answer.value)   // a RuntimeObservation
+    is ServiceAnswer.Refused -> println(answer.refusal.kind)
+    is ServiceAnswer.Unreachable -> println("there is no service")
+    is ServiceAnswer.Unreadable -> println("it speaks another protocol")
+    ServiceAnswer.TimedOut -> println("it did not answer in time")
+}
+```
+
+`runState` returns the same `RuntimeObservation` the command line renders, so the answer a client reads and the line an operator sees are the same fact.
+
+The command line can speak to a service too, with `--endpoint`:
+
+```bash
+pipelinek inspect --state --endpoint ./state/pipelinek.sock 34b28ddc-…
+```
+
+`--endpoint` is admitted by **one** mode of **one** verb: `inspect --state`, the only surface this CLI publishes that the service answers with the same rendering. Every other verb refuses the option **by name**, and there is no fallback: a service that is not there is reported as not there, never answered from the local store.
+
+The client's deadline closes the connection it opened and touches nothing else: the service is read-only, so a client that goes away leaves the run exactly as it was.
 
 ### Telemetry
 
@@ -325,7 +356,7 @@ Nothing above is a promise of compatibility: a project declares the SDK range it
 
 A plugin is an independent Gradle build that compiles against the published SDK and nothing else. It declares a `StepContract` — the family key, the descriptor, the typed codecs and the capabilities it requires — and a manifest with the API range it was built against.
 
-The SDK ships with every release as `pipelinek-<version>.sdk.zip`: six artifacts (`pipelinek-domain`, `pipelinek-events`, `pipelinek-output`, `pipelinek-runtime-api`, `pipelinek-scripting-api`, `pipelinek-sdk-bom`) and a BOM that pins their versions together. `pipelinek sdk-info` prints the group and the exact coordinates a plugin builds against.
+The SDK ships with every release as `pipelinek-<version>.sdk.zip`: seven artifacts (`pipelinek-domain`, `pipelinek-events`, `pipelinek-output`, `pipelinek-runtime-api`, `pipelinek-scripting-api`, `pipelinek-service-client`, `pipelinek-sdk-bom`) and a BOM that pins their versions together. `pipelinek sdk-info` prints the group and the exact coordinates a plugin builds against.
 
 A plugin is loaded from `--plugin-jar`. With `--plugin-trust <file>` it is admitted only if its bytes match the SHA-256 the operator pinned and it carries a valid detached Ed25519 signature; with `--require-plugin-trust`, a plugin nobody vouched for is refused before any of its code runs.
 

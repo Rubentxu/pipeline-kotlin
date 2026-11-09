@@ -164,6 +164,34 @@ class PublishedApiCompatibilityDecisionTest {
     }
 
     @Test
+    fun `a module the previous release did not publish is compatible and says what was added`() {
+        // The previous surface of a module that did not exist is EMPTY, and an
+        // empty previous surface against a candidate that publishes something
+        // is a NEW SURFACE: nothing the previous release published is gone,
+        // because the previous release published nothing of this module.
+        //
+        // This is the reading the build writes for a module that the previous
+        // release's repository — whole, and verified by its digest — does not
+        // carry.
+        val verdict = PublishedApiCompatibility.decide(
+            module = "pipeline-service-client",
+            previousVersion = "0.95.0",
+            previous = surface(""),
+            candidate = candidate,
+            ledger = PublishedContractLedgerCodec.decode("""{"_comment":[],"entries":[]}"""),
+        )
+
+        assertTrue(
+            verdict is PublishedApiModuleVerdict.Compatible,
+            "a new module is not a break: $verdict",
+        )
+        assertEquals(
+            listOf("dev/rubentxu/pipeline/v2/domain/Added", "dev/rubentxu/pipeline/v2/domain/Kept"),
+            (verdict as PublishedApiModuleVerdict.Compatible).added.sorted(),
+        )
+    }
+
+    @Test
     fun `a candidate that only adds is compatible`() {
         val verdict = PublishedApiCompatibility.decide(
             module = "pipeline-domain",

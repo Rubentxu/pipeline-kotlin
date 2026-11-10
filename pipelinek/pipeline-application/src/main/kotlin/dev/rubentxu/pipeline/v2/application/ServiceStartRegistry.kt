@@ -71,6 +71,21 @@ internal sealed interface ServiceStartClaim {
 
     /** The key is free, and this caller owns the start. */
     data class Owner(val future: CompletableFuture<ServiceStartRecord>) : ServiceStartClaim
+
+    /**
+     * The key COULD NOT be claimed, because the claim could not be written.
+     *
+     * The claim is what makes the promise of the key survive a restart: it
+     * is written to the file BEFORE the child is launched, and a service that
+     * died with the claim on disk knows that the key is in flight. A claim
+     * that could not be written is not a claim, and a start that cannot be
+     * remembered is a start that cannot be promised: the run it would launch
+     * could be launched a second time after a restart, and the promise of the
+     * key —one key, one request— would be broken exactly where it was made.
+     *
+     * So the start does not happen, and the refusal says so by name.
+     */
+    data class Refused(val cause: String) : ServiceStartClaim
 }
 
 /**
@@ -123,10 +138,13 @@ internal sealed interface ServiceStartClaim {
  * life that sees many keys accumulates them, and that is a cost the
  * operator takes on when he lets the service start runs.
  *
- * What the service does NOT promise is that the file is always writable:
- * a claim that could not be written keeps its promise for the life of this
- * service and not beyond it, and the degradation is said out loud instead
- * of being hidden.
+ * What the service does NOT promise is that the file is always writable.
+ * The CLAIM is the promise that has to survive a restart, so a claim that
+ * could not be written is not a claim: the start is refused, and no child is
+ * launched (see [ServiceStartClaim.Refused]). The RECORD of a start that
+ * already happened cannot be un-written, and a record that could not be
+ * persisted keeps its promise for the life of this service and not beyond
+ * it: the degradation is said out loud instead of being hidden.
  */
 internal class ServiceStartRegistry private constructor(
     private val path: Path?,
@@ -195,7 +213,17 @@ internal class ServiceStartRegistry private constructor(
             val future = CompletableFuture<ServiceStartRecord>()
             pending[key] = PendingStart(digest, future)
             claims[key] = ServiceStartClaimRecord(digest, correlationId)
-            persistQuietly()
+            // The claim is written BEFORE the child is launched, and it is
+            // written or it is nothing: a claim that only lives in this
+            // process dies with it, and the key would be free again for a
+            // run that may still be alive.
+            try {
+                persist()
+            } catch (failure: Exception) {
+                pending.remove(key)
+                claims.remove(key)
+                return ServiceStartClaim.Refused(failure.shortDiagnostic())
+            }
             ServiceStartClaim.Owner(future)
         }
 
@@ -237,6 +265,19 @@ internal class ServiceStartRegistry private constructor(
             persistQuietly()
             inFlight?.future?.completeExceptionally(ServiceStartFailed(refusal))
         }
+    }
+
+    /**
+     * What the failure says about itself, in one line.
+     *
+     * The name of the failure and its own words, without the stack: a
+     * diagnostic that has to be read in a log is a diagnostic that nobody
+     * reads.
+     */
+    private fun Throwable.shortDiagnostic(): String {
+        val cls = this::class.simpleName ?: this.javaClass.name
+        val msg = message?.take(120)?.replace('\n', ' ')
+        return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
 
     /**

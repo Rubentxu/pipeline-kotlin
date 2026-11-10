@@ -333,6 +333,14 @@ internal class ServiceRunSupervisor(
 
                 is ServiceStartClaim.Awaiting -> return awaitOf(claim.future)
 
+                is ServiceStartClaim.Refused -> return ServiceStartOutcome.Refused(
+                    ServiceRefusal.RunStartRefused(
+                        "the-start-cannot-be-recorded",
+                        "the claim of this key could not be written, and a start that cannot be " +
+                            "remembered is a start that cannot be promised: ${claim.cause}",
+                    ),
+                )
+
                 is ServiceStartClaim.Owner -> Unit
             }
         }

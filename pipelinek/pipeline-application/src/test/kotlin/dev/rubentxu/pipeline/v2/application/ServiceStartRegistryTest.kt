@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -164,7 +165,7 @@ class ServiceStartRegistryTest {
     }
 
     @Test
-    fun `a caller that waits for a start whose file cannot be written is answered`(
+    fun `a start whose file cannot be written is refused and leaves nobody waiting`(
         @TempDir root: Path,
     ) {
         val unreachable = root.resolve("not-there").resolve(ServiceStartRegistry.FILE_NAME)
@@ -172,18 +173,19 @@ class ServiceStartRegistryTest {
             ServiceStartRegistryReading.Read::class.java,
             ServiceStartRegistry.read(unreachable),
         ).registry
-        registry.claim("key-1", DIGEST, CORRELATION)
-        val awaiting = assertInstanceOf(
-            ServiceStartClaim.Awaiting::class.java,
-            registry.claim("key-1", DIGEST, CORRELATION),
+
+        val first = registry.claim("key-1", DIGEST, CORRELATION)
+
+        val refused = assertInstanceOf(ServiceStartClaim.Refused::class.java, first)
+        assertTrue(
+            refused.cause.isNotBlank(),
+            "the refusal says why the claim could not be written",
         )
-
-        registry.complete("key-1", RECORD)
-
-        assertEquals(
-            RECORD,
-            awaiting.future.get(),
-            "a file that cannot be written must not leave the callers waiting for ever",
+        assertInstanceOf(
+            ServiceStartClaim.Refused::class.java,
+            registry.claim("key-1", DIGEST, CORRELATION),
+            "the second caller is refused too: a file that cannot be written must not leave the " +
+                "callers waiting for ever, and a key that was not claimed grants nothing",
         )
     }
 

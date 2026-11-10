@@ -79,6 +79,31 @@ class ServiceRunSupervisorTest {
     }
 
     @Test
+    fun `a start whose claim cannot be written is refused and no process is launched`(@TempDir root: Path) {
+        val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
+        // The record of the starts lives in a directory that is NOT there: the
+        // claim of the key cannot be written, and a start that cannot be
+        // remembered is a start that cannot be promised.
+        val reading = ServiceStartRegistry.read(root.resolve("absent").resolve(ServiceStartRegistry.FILE_NAME))
+        val registry = assertInstanceOf(ServiceStartRegistryReading.Read::class.java, reading).registry
+        val supervisor = supervisor(root, port, registry = registry)
+
+        val outcome = supervisor.start(request("build.kts", key = "key-1"))
+
+        val refused = assertInstanceOf(ServiceStartOutcome.Refused::class.java, outcome)
+        assertEquals(
+            "the-start-cannot-be-recorded",
+            (refused.refusal as ServiceRefusal.RunStartRefused).reason,
+            "the refusal names the fact: the key could not be claimed, so nothing was started",
+        )
+        assertEquals(
+            0,
+            port.requests.size,
+            "no child was launched for a start that could not be remembered",
+        )
+    }
+
+    @Test
     fun `a name that does not resolve is refused and no process is launched`(@TempDir root: Path) {
         val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
         val supervisor = supervisor(root, port)

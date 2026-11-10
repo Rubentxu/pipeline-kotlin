@@ -1103,8 +1103,13 @@ private fun decodeStartRun(request: JsonObject, schema: String, credential: Stri
 private fun decodeCancelRun(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
     val runId = request.runId() ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
     val reason = request.text("reason")
+    // The bounds are the ones the product imposes on its own annotated
+    // reason: a length and a line break. An EMPTY reason is legal, because
+    // the product accepts it —a cancel with nothing to say is a cancel with
+    // nothing to say, and refusing it would make the wire stricter than the
+    // thing it carries.
     if (reason != null &&
-        (reason.isEmpty() || reason.length > ServiceProtocol.MAX_CANCEL_REASON_LENGTH || '\n' in reason)
+        (reason.length > ServiceProtocol.MAX_CANCEL_REASON_LENGTH || '\n' in reason)
     ) {
         return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
     }

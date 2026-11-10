@@ -64,7 +64,8 @@ internal sealed interface ServiceCancelOutcome {
  *
  * Because a lease and a terminal may only be owned by one closer at a time,
  * and the service closes the runs of many clients. The lock that keeps it so
- * is described where it is.
+ * is described where it is, and its SCOPE is stated there too: one close at
+ * a time for the whole service, not one per run.
  */
 internal class ServiceRunCancellation(
     private val ender: ServiceRunEnder,
@@ -95,6 +96,15 @@ internal class ServiceRunCancellation(
      * cancellation the client just asked for. A close that WAITS answers
      * `already-cancelled` with the terminal that is already there, which is
      * what a repeated close has to answer.
+     *
+     * ## What the SCOPE of the lock is
+     *
+     * One close at a time for the WHOLE service, and not one per run: the
+     * lease store holds ONE lease, so two closes of two different runs would
+     * ask it for two leases at once. The scope is also LOCAL to this
+     * instance: another process that closes a run of the same substrate is
+     * kept out by the operating system's lock and not by this one, and the
+     * store refuses the second lease rather than corrupting the first.
      *
      * ## What the wait covers
      *

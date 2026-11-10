@@ -144,13 +144,18 @@ internal class ServiceOperations(
      * The refusal is the supervisor's own: it knows whether the names
      * resolved, whether the key was already used, and whether the child
      * took its ownership.
+     *
+     * It NEVER throws, even when the supervisor does: the promise of
+     * [answer] is that a connection gets a line, and a start that fails in
+     * an unforeseen way is a refusal with a name and not a closed
+     * connection.
      */
     private fun startOf(
         request: ServiceRequest.StartRun,
         credentialDigest: String?,
-    ): ServiceResponse =
-        when (
-            val outcome = starts.start(
+    ): ServiceResponse {
+        val outcome = try {
+            starts.start(
                 ServiceStartRequest(
                     script = request.script,
                     workspace = request.workspace,
@@ -158,7 +163,16 @@ internal class ServiceOperations(
                     credentialDigest = credentialDigest.orEmpty(),
                 ),
             )
-        ) {
+        } catch (failure: Exception) {
+            return ServiceResponse.Refused(
+                ServiceProtocol.SCHEMA,
+                ServiceRefusal.RunStartRefused(
+                    "the-start-failed",
+                    failure.message ?: "the start of the run failed",
+                ),
+            )
+        }
+        return when (outcome) {
             is ServiceStartOutcome.Accepted -> answered(
                 buildJsonObject {
                     put("runId", JsonPrimitive(outcome.runId))
@@ -173,6 +187,7 @@ internal class ServiceOperations(
                 outcome.refusal,
             )
         }
+    }
 
     /**
      * An answer, with the schema this build speaks.

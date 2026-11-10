@@ -226,6 +226,16 @@ internal class ServiceRunSupervisor(
     private val liveThreads = ConcurrentHashMap.newKeySet<Thread>()
 
     /**
+     * How many supervised runs are alive right now.
+     *
+     * It is the state of the budget, and it is readable so that a test can
+     * tell a budget that gives its slot back from one that leaks it: a
+     * counter that is only observable through its effect is a counter whose
+     * leak no test can see.
+     */
+    internal fun supervisedRunsInFlight(): Int = liveRuns.get()
+
+    /**
      * Starts the run [request] asks for.
      *
      * ## The order of the checks is the contract
@@ -264,13 +274,13 @@ internal class ServiceRunSupervisor(
 
         val admitted = admission.admit(request.script, request.workspace)
         if (admitted is ServiceStartAdmissionOutcome.Refused) {
-            if (key != null) registry.fail(key, "the names do not resolve")
+            if (key != null) registry.fail(key, admitted.refusal)
             return ServiceStartOutcome.Refused(admitted.refusal)
         }
         val paths = admitted as ServiceStartAdmissionOutcome.Admitted
 
         if (!takeSlot()) {
-            if (key != null) registry.fail(key, "the budget of supervised runs was full")
+            if (key != null) registry.fail(key, ServiceRefusal.TooManySupervisedRuns)
             return ServiceStartOutcome.Refused(ServiceRefusal.TooManySupervisedRuns)
         }
 
@@ -353,37 +363,58 @@ internal class ServiceRunSupervisor(
             liveRuns.decrementAndGet()
             liveJobs.remove(job)
             liveThreads.remove(thread)
-            if (key != null) registry.fail(key, "the child could not be launched")
-            return ServiceStartOutcome.Refused(
-                ServiceRefusal.RunStartRefused(
-                    "the-child-could-not-be-launched",
-                    failure.message ?: "the run's process could not be started",
-                ),
+            val refusal = ServiceRefusal.RunStartRefused(
+                "the-child-could-not-be-launched",
+                failure.message ?: "the run's process could not be started",
             )
+            if (key != null) registry.fail(key, refusal)
+            return ServiceStartOutcome.Refused(refusal)
         }
 
-        return when (val waited = watcher.await(limits.startDeadlineMillis)) {
+        val waited = try {
+            watcher.await(limits.startDeadlineMillis)
+        } catch (interrupted: InterruptedException) {
+            // The thread that waits was interrupted, which happens when the
+            // service is stopping. An interruption is NOT an answer, and an
+            // answer that never arrives reads as a closed connection: the
+            // request is refused with a name, the key is released, and the
+            // child is stopped through the port.
+            Thread.currentThread().interrupt()
+            job.cancel()
+            val refusal = ServiceRefusal.RunStartRefused(
+                "the-start-was-interrupted",
+                "the service stopped while the run was starting",
+            )
+            if (key != null) registry.fail(key, refusal)
+            return ServiceStartOutcome.Refused(refusal)
+        }
+
+        return when (waited) {
             is LaunchWatcher.Wait.Receipt -> {
                 val receipt = waited.receipt
                 if (receipt is ServiceLaunchReceipt.Refused) {
-                    if (key != null) registry.fail(key, "the run refused to launch")
-                    return ServiceStartOutcome.Refused(
-                        ServiceRefusal.RunStartRefused(
-                            "the-run-refused",
-                            "the run refused to start; the operator's log says why",
-                        ),
+                    // The child is stopped through the PORT, exactly as in
+                    // the deadline below: a run that will not own itself
+                    // must not keep a slot of the budget nor run on with
+                    // nobody waiting for it.
+                    job.cancel()
+                    val refusal = ServiceRefusal.RunStartRefused(
+                        "the-run-refused",
+                        "the run refused to start; the operator's log says why",
                     )
+                    if (key != null) registry.fail(key, refusal)
+                    return ServiceStartOutcome.Refused(refusal)
                 }
                 val launched = receipt as ServiceLaunchReceipt.Launched
                 if (launched.correlationId != correlationId) {
-                    if (key != null) registry.fail(key, "the receipt is not this request's")
-                    return ServiceStartOutcome.Refused(
-                        ServiceRefusal.RunStartRefused(
-                            "the-receipt-is-not-ours",
-                            "the receipt of the launch belongs to another request; " +
-                                "the operator's log says why",
-                        ),
+                    job.cancel()
+                    val refusal = ServiceRefusal.RunStartRefused(
+                        "the-receipt-is-not-ours",
+                        "the receipt of the launch belongs to another request; " +
+                            "the operator's log says why",
                     )
+                    if (key != null) registry.fail(key, refusal)
+                    return ServiceStartOutcome.Refused(refusal)
                 }
                 val record = ServiceStartRecord(
                     digest = digest,
@@ -397,13 +428,12 @@ internal class ServiceRunSupervisor(
             }
 
             LaunchWatcher.Wait.Finished -> {
-                if (key != null) registry.fail(key, "the run ended before it owned itself")
-                ServiceStartOutcome.Refused(
-                    ServiceRefusal.RunStartRefused(
-                        "the-child-died",
-                        "the run ended before it owned itself; the operator's log says why",
-                    ),
+                val refusal = ServiceRefusal.RunStartRefused(
+                    "the-child-died",
+                    "the run ended before it owned itself; the operator's log says why",
                 )
+                if (key != null) registry.fail(key, refusal)
+                ServiceStartOutcome.Refused(refusal)
             }
 
             LaunchWatcher.Wait.TimedOut -> {
@@ -411,13 +441,12 @@ internal class ServiceRunSupervisor(
                 // it can see: a run that nobody is waiting for any more must
                 // not keep a slot of the budget for ever.
                 job.cancel()
-                if (key != null) registry.fail(key, "the run did not own itself in time")
-                ServiceStartOutcome.Refused(
-                    ServiceRefusal.RunStartRefused(
-                        "no-ownership-in-time",
-                        "the run did not own itself in time; the operator's log says why",
-                    ),
+                val refusal = ServiceRefusal.RunStartRefused(
+                    "no-ownership-in-time",
+                    "the run did not own itself in time; the operator's log says why",
                 )
+                if (key != null) registry.fail(key, refusal)
+                ServiceStartOutcome.Refused(refusal)
             }
         }
     }
@@ -441,17 +470,27 @@ internal class ServiceRunSupervisor(
      * the failure of that start when it failed: a client that is told "it
      * did not finish in time" about a start that is known to have failed
      * would wait for a run that will never come.
+     *
+     * The failure that travels back is the refusal the owner read, with
+     * its NAME: a client that decides whether to try again by the name of
+     * the refusal is not told one thing by the owner and another by the
+     * waiter, because the two are the same fact told twice.
      */
-    private fun awaitOf(future: CompletableFuture<ServiceStartRecord>): ServiceStartOutcome = try {
-        acceptedOf(future.get(limits.startDeadlineMillis, TimeUnit.MILLISECONDS))
-    } catch (failure: Exception) {
-        val cause = (failure as? ExecutionException)?.cause
-        ServiceStartOutcome.Refused(
-            ServiceRefusal.RunStartRefused(
-                "the-other-start-did-not-finish",
-                cause?.message ?: "the start of this key did not finish in time",
-            ),
-        )
+    private fun awaitOf(future: CompletableFuture<ServiceStartRecord>): ServiceStartOutcome {
+        return try {
+            acceptedOf(future.get(limits.startDeadlineMillis, TimeUnit.MILLISECONDS))
+        } catch (failure: Exception) {
+            val cause = (failure as? ExecutionException)?.cause
+            if (cause is ServiceStartFailed) {
+                return ServiceStartOutcome.Refused(cause.refusal)
+            }
+            ServiceStartOutcome.Refused(
+                ServiceRefusal.RunStartRefused(
+                    "the-other-start-did-not-finish",
+                    cause?.message ?: "the start of this key did not finish in time",
+                ),
+            )
+        }
     }
 
     /**
@@ -502,12 +541,21 @@ internal class ServiceRunSupervisor(
          * the deadline and the argv are the service's, and a request that
          * repeats with the same names IS the same request.
          *
-         * The length of the script's name travels WITH it, because two
-         * different pairs of names can produce the same text when they are
-         * simply stuck together: `ab` with `c` is not `a` with `bc`.
+         * The length of EACH name travels WITH it, because two different
+         * pairs of names can produce the same text when they are simply
+         * stuck together: `ab` with `c` is not `a` with `bc`. A name that
+         * is absent is not the same as a name that is empty, and the
+         * fingerprint says so with a length of `-1` for the absent one.
          */
-        fun digestOf(script: String, workspace: String?): String =
-            ServiceAuthorizations.digestOf(script.length.toString() + ":" + script + (workspace ?: ""))
+        fun digestOf(script: String, workspace: String?): String {
+            val workspaceText = workspace ?: return ServiceAuthorizations.digestOf(
+                script.length.toString() + ":" + script + "|-1:",
+            )
+            return ServiceAuthorizations.digestOf(
+                script.length.toString() + ":" + script + "|" +
+                    workspaceText.length.toString() + ":" + workspaceText,
+            )
+        }
 
         /**
          * The key a client stores its starts under.

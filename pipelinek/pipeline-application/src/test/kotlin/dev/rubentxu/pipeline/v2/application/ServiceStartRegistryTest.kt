@@ -1,9 +1,9 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -100,7 +100,7 @@ class ServiceStartRegistryTest {
         val registry = registry(root)
         registry.claim("key-1", DIGEST)
 
-        registry.fail("key-1", "the child could not be launched")
+        registry.fail("key-1", REFUSAL)
 
         assertInstanceOf(
             ServiceStartClaim.Owner::class.java,
@@ -118,15 +118,64 @@ class ServiceStartRegistryTest {
             registry.claim("key-1", DIGEST),
         )
 
-        registry.fail("key-1", "the child died")
+        registry.fail("key-1", REFUSAL)
 
         val failure = assertInstanceOf(
             java.util.concurrent.ExecutionException::class.java,
             runCatching { awaiting.future.get() }.exceptionOrNull(),
         )
-        assertTrue(
-            failure.cause is ServiceStartFailed,
-            "the failure travels to the callers that were waiting for the same key",
+        val cause = assertInstanceOf(ServiceStartFailed::class.java, failure.cause)
+        assertEquals(
+            REFUSAL,
+            cause.refusal,
+            "the caller that waited reads the SAME refusal the owner read, " +
+                "and not a summary of it",
+        )
+    }
+
+    @Test
+    fun `a record that cannot be written stays in memory and the answer is still given`(
+        @TempDir root: Path,
+    ) {
+        // A registry whose file lives in a directory that is NOT there: the
+        // write fails and the machine, not the run, is at fault.
+        val unreachable = root.resolve("not-there").resolve(ServiceStartRegistry.FILE_NAME)
+        val registry = assertInstanceOf(
+            ServiceStartRegistryReading.Read::class.java,
+            ServiceStartRegistry.read(unreachable),
+        ).registry
+        registry.claim("key-1", DIGEST)
+
+        registry.complete("key-1", RECORD)
+
+        assertEquals(
+            RECORD,
+            registry.find("key-1"),
+            "the record stays in memory, so the promise holds for the life of this service",
+        )
+    }
+
+    @Test
+    fun `a caller that waits for a start whose file cannot be written is answered`(
+        @TempDir root: Path,
+    ) {
+        val unreachable = root.resolve("not-there").resolve(ServiceStartRegistry.FILE_NAME)
+        val registry = assertInstanceOf(
+            ServiceStartRegistryReading.Read::class.java,
+            ServiceStartRegistry.read(unreachable),
+        ).registry
+        registry.claim("key-1", DIGEST)
+        val awaiting = assertInstanceOf(
+            ServiceStartClaim.Awaiting::class.java,
+            registry.claim("key-1", DIGEST),
+        )
+
+        registry.complete("key-1", RECORD)
+
+        assertEquals(
+            RECORD,
+            awaiting.future.get(),
+            "a file that cannot be written must not leave the callers waiting for ever",
         )
     }
 
@@ -213,6 +262,12 @@ class ServiceStartRegistryTest {
     private companion object {
         /** The fingerprint of the request that is made. */
         private const val DIGEST: String = "digest-1"
+
+        /** The refusal a failed start is answered with. */
+        private val REFUSAL: ServiceRefusal = ServiceRefusal.RunStartRefused(
+            "the-child-died",
+            "the run ended before it owned itself",
+        )
 
         /** The start that is remembered. */
         private val RECORD: ServiceStartRecord = ServiceStartRecord(

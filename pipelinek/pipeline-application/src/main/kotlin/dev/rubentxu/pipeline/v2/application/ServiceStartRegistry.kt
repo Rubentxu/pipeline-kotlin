@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -83,6 +84,16 @@ internal sealed interface ServiceStartClaim {
  * to find the first one's start and NOT start a second run. The claim is
  * what the second one finds, and it is released when the start fails, so a
  * request that failed can be tried again.
+ *
+ * ## What it costs, and what it does not promise
+ *
+ * The records are KEPT: one entry per key that started a run, for the life
+ * of the service, and the file is rewritten whole on every start. The cost
+ * of the FILE is O(n) per start and the cost of the MEMORY is O(n) as well,
+ * and both are the price of a promise that has to survive the service: a
+ * record that was forgotten is a key that names two runs. A service of long
+ * life that sees many keys accumulates them, and that is a cost the
+ * operator takes on when he lets the service start runs.
  */
 internal class ServiceStartRegistry private constructor(
     private val path: Path?,
@@ -165,11 +176,17 @@ internal class ServiceStartRegistry private constructor(
      * not start a run has to be able to ask again. The future is completed
      * with the failure, so a caller that was waiting for it is answered
      * with the same failure and does not wait for a run that will not be.
+     *
+     * The failure that travels is the [refusal] ITSELF and not a summary of
+     * it: the caller that was waiting reads the same named refusal the owner
+     * of the start read, and a client that decides whether to try again by
+     * the NAME of the refusal is not told one thing by the owner and
+     * another by the waiter.
      */
-    fun fail(key: String, reason: String) {
+    fun fail(key: String, refusal: ServiceRefusal) {
         synchronized(lock) {
             val inFlight = pending.remove(key)
-            inFlight?.future?.completeExceptionally(ServiceStartFailed(reason))
+            inFlight?.future?.completeExceptionally(ServiceStartFailed(refusal))
         }
     }
 
@@ -313,5 +330,12 @@ internal sealed interface ServiceStartRegistryReading {
  * It travels to the callers that were waiting for the same key, so that
  * they are answered with the same failure and not with a wait that never
  * ends.
+ *
+ * The refusal it carries is the refusal the OWNER of the start read, and
+ * not a summary of it: the waiter reads the same name, so a client that
+ * decides whether to try again by the name of the refusal is not told one
+ * thing by the owner and another by the waiter.
  */
-internal class ServiceStartFailed(message: String) : RuntimeException(message)
+internal class ServiceStartFailed(val refusal: ServiceRefusal) : RuntimeException(
+    refusal.kind,
+)

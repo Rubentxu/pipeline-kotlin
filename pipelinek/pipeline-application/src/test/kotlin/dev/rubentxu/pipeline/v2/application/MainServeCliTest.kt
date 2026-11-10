@@ -227,6 +227,18 @@ class MainServeCliTest {
     }
 
     @Test
+    fun `a start deadline that is not a positive number is refused by name`(@TempDir root: Path) {
+        val answer = ask(root, "--start-deadline-ms", "0")
+
+        assertEquals(4, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("run-policy-refused"),
+            "a start deadline that is not a number of milliseconds is refused by name: " +
+                answer.stderr,
+        )
+    }
+
+    @Test
     fun `a record of the starts that cannot be read is refused by name`(@TempDir root: Path) {
         Files.writeString(root.resolve(ServiceStartRegistry.FILE_NAME), "not a document")
 

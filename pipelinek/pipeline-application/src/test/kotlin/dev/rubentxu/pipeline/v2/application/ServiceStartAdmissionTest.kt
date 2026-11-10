@@ -61,6 +61,22 @@ class ServiceStartAdmissionTest {
     }
 
     @Test
+    fun `a name with a directory inside it is admitted`(@TempDir root: Path) {
+        val scripts = Files.createDirectories(root.resolve("scripts"))
+        val nested = Files.createDirectories(scripts.resolve("sub"))
+        Files.writeString(nested.resolve("build.kts"), "print(1)")
+
+        val outcome = ServiceStartAdmission(scripts, null).admit("sub/build.kts", null)
+
+        val admitted = assertInstanceOf(ServiceStartAdmissionOutcome.Admitted::class.java, outcome)
+        assertEquals(
+            nested.resolve("build.kts").toRealPath(),
+            admitted.script,
+            "a name with a separator is a name too, as long as it stays inside the directory",
+        )
+    }
+
+    @Test
     fun `a workspace inside the directory is admitted`(@TempDir root: Path) {
         val scripts = Files.createDirectories(root.resolve("scripts"))
         val workspaces = Files.createDirectories(root.resolve("workspaces"))

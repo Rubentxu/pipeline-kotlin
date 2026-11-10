@@ -18,7 +18,8 @@ internal const val SERVE_USAGE: String =
     "Usage: pipelinek serve --db <path> --control-root <path> --socket <path> " +
         "[--trust-profile <name>] [--authorization-file <path>] " +
         "[--scripts <dir>] [--workspaces <dir>] " +
-        "[--run-deadline-ms <n>] [--run-allow-network] [--max-supervised-runs <n>]"
+        "[--run-deadline-ms <n>] [--start-deadline-ms <n>] " +
+        "[--run-allow-network] [--max-supervised-runs <n>]"
 
 /**
  * The requests `serve` accepts.
@@ -46,6 +47,12 @@ internal const val SERVE_USAGE: String =
  * Without `--scripts` the service starts and cannot start runs: a service
  * that could run whatever it is asked to run would not be a service with a
  * boundary, it would be a command line with a socket in front of it.
+ *
+ * `--start-deadline-ms` is the SIXTH of that declaration, and it is the
+ * deadline of the START and not of the run: it says how long the service
+ * waits for a child to take its lease. It is separate because the two
+ * deadlines govern two different things and only one of them is about the
+ * life of the run.
  */
 internal val SERVE_REQUEST: CliRequest = CliRequest(
     options = listOf(
@@ -57,6 +64,7 @@ internal val SERVE_REQUEST: CliRequest = CliRequest(
         CliOption("--scripts", takesValue = true),
         CliOption("--workspaces", takesValue = true),
         CliOption("--run-deadline-ms", takesValue = true),
+        CliOption("--start-deadline-ms", takesValue = true),
         CliOption("--run-allow-network", takesValue = false),
         CliOption("--max-supervised-runs", takesValue = true),
     ),
@@ -74,6 +82,19 @@ internal const val DEFAULT_RUN_DEADLINE_MILLIS: Long = 3_600_000L
  * How many runs the service watches at once, when the operator does not say.
  */
 internal const val DEFAULT_MAX_SUPERVISED_RUNS: Int = 4
+
+/**
+ * How long the service waits for a child to take its lease, when the
+ * operator does not say.
+ *
+ * Thirty seconds: long enough for a JVM to start and a script to compile,
+ * short enough that a child that never owns itself does not hold a slot of
+ * the budget for long. It is a CONSTANT of the product and not of the
+ * operator's machine — a machine that is slower than this needs
+ * `--start-deadline-ms`, because a child that is killed for being slow is a
+ * child the service refused to start.
+ */
+internal const val DEFAULT_START_DEADLINE_MILLIS: Long = 30_000L
 
 /**
  * The directory, next to the socket, where the supervised runs are watched.
@@ -163,6 +184,7 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
     val scriptsRoot = policy.scriptsRoot
     val workspacesRoot = policy.workspacesRoot
     val runDeadlineMillis = policy.deadlineMillis
+    val startDeadlineMillis = policy.startDeadlineMillis
     val maxSupervisedRuns = policy.maxSupervisedRuns
     val allowNetwork = policy.allowNetwork
     val registry = policy.registry
@@ -252,7 +274,7 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
     try {
         out.println("pipelinek service listening on $socketPath")
         describeBoundary(out, profile, authorizationPath, authorizations.size)
-        describeRuns(out, scriptsRoot, workspacesRoot, runDeadlineMillis, maxSupervisedRuns, allowNetwork)
+        describeRuns(out, policy)
         server.serve()
     } finally {
         try {
@@ -420,6 +442,7 @@ internal data class ServiceRunDeclaration(
     val scriptsRoot: Path?,
     val workspacesRoot: Path?,
     val deadlineMillis: Long,
+    val startDeadlineMillis: Long,
     val maxSupervisedRuns: Int,
     val allowNetwork: Boolean,
     val registry: ServiceStartRegistry,
@@ -464,6 +487,15 @@ private fun readRunPolicy(
             ),
         )
     } ?: DEFAULT_RUN_DEADLINE_MILLIS
+    val startDeadlineMillis = accepted.values["--start-deadline-ms"]?.let { text ->
+        text.toLongOrNull()?.takeIf { it > 0L } ?: return RunPolicyReading.Refused(
+            refuseStartup(
+                err,
+                ServiceStartupRefusal.RunPolicyRefused,
+                "the deadline of a start is a positive number of milliseconds: '$text'",
+            ),
+        )
+    } ?: DEFAULT_START_DEADLINE_MILLIS
     val maxSupervisedRuns = accepted.values["--max-supervised-runs"]?.let { text ->
         text.toIntOrNull()?.takeIf { it > 0 } ?: return RunPolicyReading.Refused(
             refuseStartup(
@@ -497,6 +529,7 @@ private fun readRunPolicy(
             scriptsRoot = scriptsRoot,
             workspacesRoot = workspacesRoot,
             deadlineMillis = deadlineMillis,
+            startDeadlineMillis = startDeadlineMillis,
             maxSupervisedRuns = maxSupervisedRuns,
             allowNetwork = allowNetwork,
             registry = registry,
@@ -538,7 +571,10 @@ private fun composeSupervisor(
         ),
         port = ProcessDurableTaskRuntime(supervisionRoot, clock),
         registry = registry,
-        limits = ServiceStartLimits(maxSupervisedRuns = policy.maxSupervisedRuns),
+        limits = ServiceStartLimits(
+            maxSupervisedRuns = policy.maxSupervisedRuns,
+            startDeadlineMillis = policy.startDeadlineMillis,
+        ),
         supervisionRoot = supervisionRoot,
     )
 }
@@ -705,21 +741,19 @@ private fun describeBoundary(
  */
 private fun describeRuns(
     out: PrintStream,
-    scriptsRoot: Path?,
-    workspacesRoot: Path?,
-    deadlineMillis: Long,
-    maxSupervisedRuns: Int,
-    allowNetwork: Boolean,
+    policy: ServiceRunDeclaration,
 ) {
+    val scriptsRoot = policy.scriptsRoot
     if (scriptsRoot == null) {
         out.println("runs none: this service answers questions and starts no run")
         return
     }
     out.println("scripts $scriptsRoot")
-    out.println("workspaces ${workspacesRoot ?: "the product's own scratch"}")
-    out.println("run-deadline-ms $deadlineMillis")
-    out.println("max-supervised-runs $maxSupervisedRuns")
-    out.println("run-network ${if (allowNetwork) "allowed" else "denied"}")
+    out.println("workspaces ${policy.workspacesRoot ?: "the product's own scratch"}")
+    out.println("run-deadline-ms ${policy.deadlineMillis}")
+    out.println("start-deadline-ms ${policy.startDeadlineMillis}")
+    out.println("max-supervised-runs ${policy.maxSupervisedRuns}")
+    out.println("run-network ${if (policy.allowNetwork) "allowed" else "denied"}")
 }
 
 /**

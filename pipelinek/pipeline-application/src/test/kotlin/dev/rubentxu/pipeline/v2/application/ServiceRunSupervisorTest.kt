@@ -16,6 +16,10 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 
 /**
  * The supervisor of the runs the service starts.
@@ -187,6 +191,100 @@ class ServiceRunSupervisorTest {
     }
 
     @Test
+    fun `a run that ended gives its slot of the budget back`(@TempDir root: Path) {
+        val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
+        val supervisor = supervisor(root, port, maxSupervisedRuns = 1)
+
+        val first = supervisor.start(request("build.kts"))
+        assertInstanceOf(
+            ServiceStartOutcome.Accepted::class.java,
+            first,
+            "the first run took the only slot of the budget",
+        )
+
+        awaitNoRunInFlight(supervisor)
+
+        val second = supervisor.start(request("other.kts"))
+        assertInstanceOf(
+            ServiceStartOutcome.Accepted::class.java,
+            second,
+            "a run that ended gives its slot back: a budget that leaks refuses every " +
+                "run after the fourth, for ever",
+        )
+    }
+
+    @Test
+    fun `a caller that waits for the same key reads the refusal the owner read`(@TempDir root: Path) {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val port = FakePort { _, _ ->
+            started.countDown()
+            release.await()
+        }
+        val supervisor = supervisor(root, port, startDeadlineMillis = 30_000L)
+        val owner = AtomicReference<ServiceStartOutcome>()
+
+        val ownerThread = thread { owner.set(supervisor.start(request("build.kts", key = "key-1"))) }
+        assertTrue(started.await(5, TimeUnit.SECONDS), "the owner launched the child")
+        val releaser = thread {
+            Thread.sleep(200L)
+            release.countDown()
+        }
+
+        val waiter = supervisor.start(request("build.kts", key = "key-1"))
+
+        releaser.join()
+        ownerThread.join(5_000L)
+        val ownerRefused = assertInstanceOf(ServiceStartOutcome.Refused::class.java, owner.get())
+        val waiterRefused = assertInstanceOf(ServiceStartOutcome.Refused::class.java, waiter)
+        assertEquals(
+            ownerRefused.refusal,
+            waiterRefused.refusal,
+            "the two callers read the SAME fact: one start that failed, told the same way",
+        )
+        assertEquals(
+            ServiceRefusal.RunStartRefused(
+                "the-child-died",
+                "the run ended before it owned itself; the operator's log says why",
+            ),
+            waiterRefused.refusal,
+            "the refusal is the one the owner read, with its NAME",
+        )
+    }
+
+    @Test
+    fun `a start that is interrupted is refused with a name and releases the key`(@TempDir root: Path) {
+        val started = CountDownLatch(1)
+        val port = FakePort { _, _ ->
+            started.countDown()
+            delay(30_000L)
+        }
+        val supervisor = supervisor(root, port, startDeadlineMillis = 30_000L)
+        val registry = registryAt(root)
+        val outcome = AtomicReference<ServiceStartOutcome>()
+
+        val worker = thread { outcome.set(supervisor.start(request("build.kts", key = "key-1"))) }
+        assertTrue(started.await(5, TimeUnit.SECONDS), "the child was launched")
+        worker.interrupt()
+        worker.join(5_000L)
+
+        val refused = assertInstanceOf(ServiceStartOutcome.Refused::class.java, outcome.get())
+        assertEquals(
+            ServiceRefusal.RunStartRefused(
+                "the-start-was-interrupted",
+                "the service stopped while the run was starting",
+            ),
+            refused.refusal,
+            "an interruption is a refusal with a name, and not a connection closed without a line",
+        )
+        assertInstanceOf(
+            ServiceStartClaim.Owner::class.java,
+            registry.claim("key-1", DIGEST),
+            "a key whose start was interrupted is free again: nothing was started",
+        )
+    }
+
+    @Test
     fun `the same key with the same request answers with the same run`(@TempDir root: Path) {
         val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
         val supervisor = supervisor(root, port)
@@ -293,12 +391,11 @@ class ServiceRunSupervisorTest {
         port: DurableTaskRuntime,
         maxSupervisedRuns: Int = 4,
         startDeadlineMillis: Long = 5_000L,
+        registry: ServiceStartRegistry = registryAt(root),
     ): ServiceRunSupervisor {
         val scripts = Files.createDirectories(root.resolve("scripts"))
         Files.writeString(scripts.resolve("build.kts"), "print(1)")
         Files.writeString(scripts.resolve("other.kts"), "print(2)")
-        val reading = ServiceStartRegistry.read(root.resolve(ServiceStartRegistry.FILE_NAME))
-        val registry = assertInstanceOf(ServiceStartRegistryReading.Read::class.java, reading).registry
         return ServiceRunSupervisor(
             admission = ServiceStartAdmission(scripts, null),
             runPolicy = ServiceRunPolicy(
@@ -319,6 +416,33 @@ class ServiceRunSupervisorTest {
                 startDeadlineMillis = startDeadlineMillis,
             ),
             supervisionRoot = root.resolve("supervisions"),
+        )
+    }
+
+    /**
+     * The record of the starts, in [root].
+     */
+    private fun registryAt(root: Path): ServiceStartRegistry {
+        val reading = ServiceStartRegistry.read(root.resolve(ServiceStartRegistry.FILE_NAME))
+        return assertInstanceOf(ServiceStartRegistryReading.Read::class.java, reading).registry
+    }
+
+    /**
+     * Waits until no supervised run is alive, and says so if one is not.
+     *
+     * The budget gives its slot back in the thread of the child, and that
+     * thread finishes on its own time: a test that wants to see the slot
+     * come back has to WAIT for it, and cannot assume it is already there.
+     */
+    private fun awaitNoRunInFlight(supervisor: ServiceRunSupervisor) {
+        val deadline = System.nanoTime() + 10_000_000_000L
+        while (supervisor.supervisedRunsInFlight() > 0 && System.nanoTime() < deadline) {
+            Thread.sleep(10L)
+        }
+        assertEquals(
+            0,
+            supervisor.supervisedRunsInFlight(),
+            "the child ended and gave its slot of the budget back",
         )
     }
 

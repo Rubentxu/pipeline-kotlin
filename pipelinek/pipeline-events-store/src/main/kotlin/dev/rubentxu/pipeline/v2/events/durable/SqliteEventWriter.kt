@@ -99,6 +99,26 @@ internal class SqliteEventWriter(
      */
     private val refusedAppends = java.util.concurrent.CopyOnWriteArrayList<EventAppendRefusal>()
 
+    /**
+     * How many of the refusals a BARRIER has already reported.
+     *
+     * The list above is cumulative and is reported again and again, on
+     * purpose: a producer that asks late still learns that its fact is
+     * missing. The CLOSE is the one barrier that is not a producer's
+     * question, and a close that repeats a refusal nobody asked about turns
+     * a refusal that was already heard into a failure of the shutdown: a
+     * store that has refused one append can never be closed cleanly, and
+     * the service that owns the store would leave through that refusal
+     * instead of through its own end.
+     *
+     * So the writer counts what it has already reported, and the close
+     * reports only what no barrier has reported yet. A refusal that
+     * arrived after the last barrier is still reported —the close is the
+     * last chance to say it— and a refusal that a barrier already said is
+     * not said again.
+     */
+    private val reportedRefusals = java.util.concurrent.atomic.AtomicInteger(0)
+
     // Prepared once on the persistent writer connection; created in init
     // AFTER schema creation (the table must exist first). This owner exists
     // only in the producer's lane: a reader's store has no writer connection
@@ -300,7 +320,10 @@ internal class SqliteEventWriter(
                             // The barrier publishes the refusals it covers BEFORE the commit that
                             // follows it: an event enqueued after the barrier is not part of what
                             // this barrier answers for.
-                            is PendingWrite.FlushBarrier -> pending.refusals = refusedAppends.toList()
+                            is PendingWrite.FlushBarrier -> {
+                                pending.refusals = refusedAppends.toList()
+                                reportedRefusals.set(pending.refusals.size)
+                            }
                             is PendingWrite.Stop -> {} // handled post-commit
                         }
                     }
@@ -444,8 +467,19 @@ internal class SqliteEventWriter(
             if (closed) return
             closed = true
         }
+        // What the barriers had already reported BEFORE this close asked its
+        // own question: those refusals were heard, and this close does not
+        // say them again.
+        val alreadyReported = reportedRefusals.get()
         try {
-            flush()
+            try {
+                flush()
+            } catch (_: EventAppendRefusedException) {
+                // The barrier answered, and its answer is about refusals that
+                // were already reported. The refusals that no barrier has
+                // reported are collected below, once the writer has stopped
+                // and the list has stopped growing.
+            }
         } finally {
             try {
                 appendQueue.put(PendingWrite.Stop)
@@ -456,6 +490,10 @@ internal class SqliteEventWriter(
             runCatching { insertStatement?.close() }
             runCatching { savepointStatement?.close() }
             runCatching { writerConnection.close() }
+        }
+        val unheard = refusedAppends.drop(alreadyReported)
+        if (unheard.isNotEmpty()) {
+            throw EventAppendRefusedException(unheard)
         }
     }
 

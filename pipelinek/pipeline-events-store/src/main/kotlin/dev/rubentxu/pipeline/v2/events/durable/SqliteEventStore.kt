@@ -150,6 +150,36 @@ class SqliteEventStore(
         writer?.flush()
     }
 
+    /**
+     * Makes the event [eventId] durable, and says so by returning.
+     *
+     * ## Why the barrier is asked about ONE fact
+     *
+     * Because the barrier reports EVERY refusal this store has accumulated,
+     * and a store that shares its lane with other producers accumulates
+     * refusals that are not its own. A producer that asked the lane in
+     * general would learn that somebody else's fact is missing, and would
+     * conclude that its own fact is missing too — when it is durable, and a
+     * reader can see it.
+     *
+     * So the store asks the only question the producer has: is MY fact among
+     * the refused? A refusal of another fact is not this fact's failure, and
+     * the store says nothing about it: the lane still reports it at the next
+     * barrier, and the producer that owns it hears it there.
+     *
+     * ## What a failure means
+     *
+     * That THIS fact is not in the log. The caller that asked for the fact to
+     * be durable did not get it, and the honest answer is to say so.
+     */
+    fun makeDurable(eventId: String) {
+        try {
+            flush()
+        } catch (refused: EventAppendRefusedException) {
+            if (refused.refusals.any { it.event.eventId == eventId }) throw refused
+        }
+    }
+
     override fun eventsFor(runId: String): Sequence<DomainEvent> = reader.eventsFor(runId)
 
     override fun readRecords(
@@ -175,10 +205,23 @@ class SqliteEventStore(
     /**
      * Closes the store: flush barrier, then stops the writer and releases
      * the persistent connection, then closes the durable lane's connections. Close is idempotent.
+     *
+     * ## Why the durable lane closes even when the writer does not
+     *
+     * Because the writer's close can REPORT something —an append the
+     * database refused and that no barrier had reported yet— and a report
+     * that stopped the closing would leave the durable lane's connections
+     * open. The store that owns a file has to release it, and the refusal
+     * that travels out of the close is about a fact of the log, not about
+     * the file: the file is released either way, and the refusal is still
+     * said.
     */
     override fun close() {
-        writer?.close()
-        durableConnections.close()
+        try {
+            writer?.close()
+        } finally {
+            durableConnections.close()
+        }
     }
 
     /**

@@ -13,13 +13,17 @@ import dev.rubentxu.pipeline.v2.service.ServiceAnswer
 import dev.rubentxu.pipeline.v2.service.ServiceClient
 import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import dev.rubentxu.pipeline.v2.service.ServiceRunStart
+import dev.rubentxu.pipeline.v2.service.ServiceStreet
+import dev.rubentxu.pipeline.v2.service.ServiceStreetItem
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
+import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -87,6 +91,23 @@ class RunParametersIntegrationTest {
                 "    stages {\n" +
                 "        stage(\"eager\") {\n" +
                 "            sh(\"echo the-body-ran\")\n" +
+                "        }\n" +
+                "    }\n" +
+                "}\n",
+        )
+        // A second script, whose step asks the ENVIRONMENT for the name of a parameter.
+        // The step says ABSENT when there is none, so the answer is a WORD and not a
+        // failure: a step that found no variable would fail, and a failed step says
+        // nothing about where the value went.
+        Files.writeString(
+            scripts.resolve("environment.pipeline.kts"),
+            "pipeline {\n" +
+                "    parameters {\n" +
+                "        string(\"BUILD_TARGET\")\n" +
+                "    }\n" +
+                "    stages {\n" +
+                "        stage(\"eager\") {\n" +
+                "            sh(\"printenv BUILD_TARGET || echo the-value-is-absent\")\n" +
                 "        }\n" +
                 "    }\n" +
                 "}\n",
@@ -221,6 +242,65 @@ class RunParametersIntegrationTest {
             )
         } finally {
             service.stop()
+        }
+    }
+
+    @Test
+    fun `the values of the parameters do not become the environment of the steps`() {
+        val service = start()
+        try {
+            val answer = client(STARTER_TOKEN).startRun(
+                script = "environment.pipeline.kts",
+                idempotencyKey = "key-environment",
+                parameters = mapOf("BUILD_TARGET" to "prod"),
+                parameterContract = listOf(ParameterSpec(name = "BUILD_TARGET", type = "string")),
+            )
+
+            val started = assertInstanceOf(ServiceRunStart::class.java, assertInstanceOf(
+                ServiceAnswer.Answered::class.java,
+                answer,
+            ).value)
+            awaitTerminal(started.runId)
+
+            val output = outputOf(started.runId)
+            assertTrue(
+                output.contains("the-value-is-absent"),
+                "the step asked the environment for the name of a parameter and found none: $output",
+            )
+            assertFalse(
+                output.contains("prod"),
+                "the value of a parameter did not become a variable of the step: $output",
+            )
+        } finally {
+            service.stop()
+        }
+    }
+
+    /**
+     * The stdout of [runId], read over the socket.
+     */
+    private fun outputOf(runId: String): String {
+        val answer = client(STARTER_TOKEN).output(runId)
+        val street = assertInstanceOf(ServiceStreet::class.java, assertInstanceOf(
+            ServiceAnswer.Answered::class.java,
+            answer,
+        ).value)
+        val text = StringBuilder()
+        street.use {
+            while (true) {
+                when (val item = it.next()) {
+                    is ServiceStreetItem.Record -> {
+                        val document = item.document
+                        val channel = document["channel"]?.jsonPrimitive?.content
+                        val line = document["text"]?.jsonPrimitive?.content
+                        if (channel == "stdout" && line != null) text.append(line).append('\n')
+                    }
+
+                    is ServiceStreetItem.End -> return text.toString()
+                    is ServiceStreetItem.Refused -> error("the street was refused: ${item.refusal}")
+                    null -> return text.toString()
+                }
+            }
         }
     }
 

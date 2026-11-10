@@ -116,15 +116,30 @@ internal sealed interface ServiceBrokers {
  * @param environment where the store is located and unlocked from.
  * @param opening how the store is opened; a parameter so that the decision can be observed without
  *   a store.
+ * @param connectedOnly whether the credentials of the runs are held by connected controllers and
+ *   not by the service. Then the store is NOT opened, whatever the environment says: the brokers
+ *   have no local provider, so a run that did not name a controller is refused every credential it
+ *   asks and no credential is looked up anywhere else.
  */
 internal fun composeServiceBrokers(
     authorizations: ServiceAuthorizations,
     brokersRoot: Path,
     environment: Map<String, String>,
     opening: (Map<String, String>) -> ServiceCredentialAccess = ::openServiceCredentialProvider,
+    connectedOnly: Boolean = false,
 ): ServiceBrokers {
     if (!authorizations.grantsAnyCredential) {
         return ServiceBrokers.Composed(factory = null, provider = null)
+    }
+    if (connectedOnly) {
+        val factory = RunBrokerFactory(brokersRoot, provider = null, grantsOf = authorizations::grantsOfDigest)
+        return if (factory.fits()) {
+            ServiceBrokers.Composed(factory, provider = null)
+        } else {
+            ServiceBrokers.Refused(
+                "the credential broker cannot be placed below the directory of the socket: its path would be too long",
+            )
+        }
     }
     val provider = when (val access = opening(environment)) {
         is ServiceCredentialAccess.Opened -> access.provider

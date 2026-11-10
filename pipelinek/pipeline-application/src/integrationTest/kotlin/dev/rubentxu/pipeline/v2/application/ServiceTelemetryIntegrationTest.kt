@@ -276,9 +276,11 @@ class ServiceTelemetryIntegrationTest {
             authorizations = authorizations,
             clock = SystemClock(),
             err = PrintStream(errors, true),
-            environment = emptyMap(),
-            brokerOpening = brokerOpening,
-            telemetryOpening = telemetryOpening,
+            openings = ServeOpenings(
+                environment = emptyMap(),
+                brokerOpening = brokerOpening,
+                telemetryOpening = telemetryOpening,
+            ),
         )
     }
 

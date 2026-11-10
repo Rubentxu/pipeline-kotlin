@@ -421,8 +421,8 @@ internal class ConfigurationProviderSessions(
 
     /** The first rule the declaration breaks, as a reason and a detail; null when it breaks none. */
     private fun declarationRefusal(provider: String, keys: List<ProviderKeyDeclaration>): Pair<String, String>? {
-        if (!PROVIDER_NAME.matches(provider)) {
-            return "provider-name-not-legal" to "a provider name matches [A-Za-z][A-Za-z0-9_-]{0,63}"
+        if (!isLegalProviderName(provider)) {
+            return "provider-name-not-legal" to "a provider name matches $PROVIDER_NAME_SHAPE"
         }
         if (keys.isEmpty()) return "provider-has-no-keys" to "a provider declares at least one key"
         if (keys.size > RunConfiguration.MAX_ENTRIES) {
@@ -495,9 +495,16 @@ internal class ConfigurationProviderSessions(
         const val MAX_REVISION_LENGTH = 64
         const val NON_SECRET = "non-secret"
         val SECRET_LABELS = setOf("secret", "sensitive", "credential", "password", "token")
-        val PROVIDER_NAME = Regex("[A-Za-z][A-Za-z0-9_-]{0,63}")
     }
 }
+
+/** The shape a provider name has, for the configuration providers and the credential providers alike. */
+internal const val PROVIDER_NAME_SHAPE = "[A-Za-z][A-Za-z0-9_-]{0,63}"
+
+private val PROVIDER_NAME = Regex(PROVIDER_NAME_SHAPE)
+
+/** Whether [name] is a name a provider may register under. */
+internal fun isLegalProviderName(name: String): Boolean = PROVIDER_NAME.matches(name)
 
 /**
  * The digest of a set of configuration [values]: SHA-256, in lower-case hexadecimal, of their

@@ -69,20 +69,25 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceClient {
 	public final fun answerProvider (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun cancelRun (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public static synthetic fun cancelRun$default (Ldev/rubentxu/pipeline/v2/service/ServiceClient;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public final fun closeCredentialProvider (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun closeProvider (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public final fun denyCredential (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun describeParameters (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun events (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public static synthetic fun events$default (Ldev/rubentxu/pipeline/v2/service/ServiceClient;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public final fun grantCredential (Ljava/lang/String;Ljava/lang/String;[B)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun health ()Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun output (Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public static synthetic fun output$default (Ldev/rubentxu/pipeline/v2/service/ServiceClient;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun pendingInputs (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public final fun pollCredentialProvider (Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun pollProvider (Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public final fun registerCredentialProvider (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun registerProvider (Ljava/lang/String;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun runConfiguration (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun runState (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
-	public final fun startRun (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
-	public static synthetic fun startRun$default (Ldev/rubentxu/pipeline/v2/service/ServiceClient;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public final fun startRun (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public static synthetic fun startRun$default (Ldev/rubentxu/pipeline/v2/service/ServiceClient;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun version ()Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 }
 
@@ -110,6 +115,33 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceConfigurationEntry {
 	public final fun getName ()Ljava/lang/String;
 	public final fun getOrigin ()Ljava/lang/String;
 	public final fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceCredentialPoll {
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceCredentialPoll$Asked : dev/rubentxu/pipeline/v2/service/ServiceCredentialPoll {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceCredentialPoll$Asked;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceCredentialPoll$Asked;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceCredentialPoll$Asked;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCorrelationId ()Ljava/lang/String;
+	public final fun getCredentialId ()Ljava/lang/String;
+	public final fun getKind ()Ljava/lang/String;
+	public final fun getRequestId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceCredentialPoll$Idle : dev/rubentxu/pipeline/v2/service/ServiceCredentialPoll {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceCredentialPoll$Idle;
+	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -310,6 +342,8 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceParameterDescription 
 public final class dev/rubentxu/pipeline/v2/service/ServiceProtocol {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceProtocol;
 	public static final field MAX_CANCEL_REASON_LENGTH I
+	public static final field MAX_CREDENTIAL_VALUE_BYTES I
+	public static final field MAX_CREDENTIAL_VALUE_ENCODED_LENGTH I
 	public static final field MAX_IDEMPOTENCY_KEY_LENGTH I
 	public static final field MAX_INPUT_ANSWER_MESSAGE_LENGTH I
 	public static final field MAX_INPUT_OP_ID_LENGTH I
@@ -429,6 +463,21 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$Configuration
 	public final fun component2 ()Ljava/lang/String;
 	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$ConfigurationProviderRefused;
 	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$ConfigurationProviderRefused;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$ConfigurationProviderRefused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetail ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$CredentialProviderRefused : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$CredentialProviderRefused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$CredentialProviderRefused;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$CredentialProviderRefused;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getDetail ()Ljava/lang/String;
 	public fun getKind ()Ljava/lang/String;
@@ -842,6 +891,66 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$CancelRun : d
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialAnswer : dev/rubentxu/pipeline/v2/service/ServiceRequest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Z
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialAnswer;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialAnswer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialAnswer;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getGranted ()Z
+	public final fun getRequestId ()Ljava/lang/String;
+	public fun getSchema ()Ljava/lang/String;
+	public final fun getSessionId ()Ljava/lang/String;
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialClose : dev/rubentxu/pipeline/v2/service/ServiceRequest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialClose;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialClose;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialClose;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getSchema ()Ljava/lang/String;
+	public final fun getSessionId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialPoll : dev/rubentxu/pipeline/v2/service/ServiceRequest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialPoll;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialPoll;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialPoll;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getSchema ()Ljava/lang/String;
+	public final fun getSessionId ()Ljava/lang/String;
+	public final fun getWaitMillis ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialRegister : dev/rubentxu/pipeline/v2/service/ServiceRequest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialRegister;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialRegister;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$CredentialRegister;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getProvider ()Ljava/lang/String;
+	public fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$DescribeParameters : dev/rubentxu/pipeline/v2/service/ServiceRequest {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -968,8 +1077,8 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$RunState : de
 }
 
 public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun : dev/rubentxu/pipeline/v2/service/ServiceRequest {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/String;
@@ -978,11 +1087,13 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun : de
 	public final fun component6 ()Ljava/util/Map;
 	public final fun component7 ()Ljava/util/List;
 	public final fun component8 ()Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getConfiguration ()Ljava/util/Map;
 	public final fun getConfigurationProvider ()Ldev/rubentxu/pipeline/v2/service/ServiceProviderReference;
+	public final fun getCredentialProvider ()Ljava/lang/String;
 	public final fun getIdempotencyKey ()Ljava/lang/String;
 	public final fun getParameterContract ()Ljava/util/List;
 	public final fun getParameters ()Ljava/util/Map;

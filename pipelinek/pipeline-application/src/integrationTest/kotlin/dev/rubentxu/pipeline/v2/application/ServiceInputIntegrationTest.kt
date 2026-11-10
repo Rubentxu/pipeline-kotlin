@@ -383,7 +383,7 @@ class ServiceInputIntegrationTest {
                     authorizations = authorizations(),
                     clock = clock,
                     err = PrintStream(errors, true),
-                    environment = emptyMap(),
+                    openings = ServeOpenings(environment = emptyMap()),
                 ),
                 "the service was composed: ${errors.toString(Charsets.UTF_8)}",
             )

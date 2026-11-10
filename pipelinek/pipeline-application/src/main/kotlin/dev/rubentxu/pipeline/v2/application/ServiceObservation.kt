@@ -135,6 +135,9 @@ internal fun serviceOutcomeOf(response: ServiceResponse): ServiceOutcome = when 
  * mutations too, enough pending starts would occupy the whole mutating pool and the answers
  * that would release them could never be served. The session operations are bounded by the
  * session limits instead, so the question pool cannot be occupied by them either.
+ *
+ * The operations of a credential provider session are questions for the same reason: a run that
+ * is waiting for a credential is held by a controller that answers through them.
  */
 internal fun kindOf(request: ServiceRequest): ServiceRequestKind = when (request) {
     is ServiceRequest.StartRun, is ServiceRequest.CancelRun, is ServiceRequest.AnswerInput ->
@@ -143,7 +146,8 @@ internal fun kindOf(request: ServiceRequest): ServiceRequestKind = when (request
     is ServiceRequest.Version, is ServiceRequest.Health, is ServiceRequest.DescribeParameters,
     is ServiceRequest.RunState, is ServiceRequest.ListInputs, is ServiceRequest.RunConfigurationQuery,
     is ServiceRequest.ProviderRegister, is ServiceRequest.ProviderPoll, is ServiceRequest.ProviderAnswer,
-    is ServiceRequest.ProviderClose,
+    is ServiceRequest.ProviderClose, is ServiceRequest.CredentialRegister, is ServiceRequest.CredentialPoll,
+    is ServiceRequest.CredentialAnswer, is ServiceRequest.CredentialClose,
     -> ServiceRequestKind.Query
 }
 
@@ -157,6 +161,8 @@ internal fun runOf(request: ServiceRequest): String? = when (request) {
     is ServiceRequest.StartRun, is ServiceRequest.Version, is ServiceRequest.Health,
     is ServiceRequest.DescribeParameters, is ServiceRequest.ProviderRegister,
     is ServiceRequest.ProviderPoll, is ServiceRequest.ProviderAnswer, is ServiceRequest.ProviderClose,
+    is ServiceRequest.CredentialRegister, is ServiceRequest.CredentialPoll,
+    is ServiceRequest.CredentialAnswer, is ServiceRequest.CredentialClose,
     -> null
 }
 

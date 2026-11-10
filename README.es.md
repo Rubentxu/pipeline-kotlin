@@ -146,7 +146,7 @@ Una petición por línea, una respuesta por línea, en JSON, con la versión del
 {"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
-El servicio lee tres cosas: `version` (la versión del producto y la del protocolo), `health` (el servicio y el sustrato con el que se compuso) y `run.state` (el estado de una ejecución, la misma respuesta que imprime `inspect --state` sobre el mismo almacén). También puede ARRANCAR una ejecución, CANCELAR una y RESPONDER la pregunta de una, que son una cuarta, una quinta y una sexta puerta, cada una con un derecho propio. Cada rechazo lleva un nombre — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `configuration-provider-refused`, `cancel-not-authorized`, `run-cancel-refused`, `answer-not-authorized`, `input-answer-refused` — para que el cliente lea una palabra y no una frase.
+El servicio lee tres cosas: `version` (la versión del producto y la del protocolo), `health` (el servicio y el sustrato con el que se compuso) y `run.state` (el estado de una ejecución, la misma respuesta que imprime `inspect --state` sobre el mismo almacén). También puede ARRANCAR una ejecución, CANCELAR una y RESPONDER la pregunta de una, que son una cuarta, una quinta y una sexta puerta, cada una con un derecho propio. Cada rechazo lleva un nombre — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `configuration-provider-refused`, `credential-provider-refused`, `cancel-not-authorized`, `run-cancel-refused`, `answer-not-authorized`, `input-answer-refused` — para que el cliente lea una palabra y no una frase.
 
 La respuesta de `run.state` lleva la observación ENTERA: el intento, la continuidad y su token de fencing, la posición del journal, las colas de la salida y el terminal con su desenlace. Un cliente que la reconstruye obtiene el mismo `RuntimeObservation` que la línea de órdenes renderiza, y no hay una segunda forma del mismo hecho.
 
@@ -221,6 +221,36 @@ Todo ello se puede preguntar después, sin un solo valor:
 `run.configuration` es una lectura de la ejecución, con la misma autorización que `run.state`, y responde desde la instantánea que la propia ejecución lee — no hay un segundo almacén que se desvíe. Un proveedor que no intervino deja fuera `provider`, `revision` y `sourceDigest`. El servicio guarda como máximo cuatro sesiones, para que las consultas que esperan no llenen los hilos que contestan las preguntas; un quinto registro se rechaza (`too-many-provider-sessions`). El cliente tipado tiene un método por operación (`registerProvider`, `pollProvider`, `answerProvider`, `closeProvider`, `runConfiguration`) y `startRun` acepta la referencia al proveedor.
 
 La configuración es la capa **más baja** del ambiente: el `environment { }` de un stage se compone encima y el ámbito `withEnv` encima de ese, y gana el ámbito más específico. Los valores llegan a los pasos por el ambiente que la ejecución ya compone, así que no hay ninguna regla de precedencia nueva que aprender.
+
+#### Una ejecución cuyas credenciales conserva un controlador
+
+Los valores de arriba no eran secretos. Una credencial sí lo es, y el servicio no quiere custodiarla: un servicio que guarda un secreto lo entrega por un socket a la ejecución que lo pide, y el operador preferiría que ese secreto nunca llegara. El controlador que arranca la ejecución puede conservarlo, y el servicio lo pide en el momento en que la ejecución lo necesita.
+
+```bash
+pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock --credential-sessions
+```
+
+`--credential-sessions` es una OPCIÓN, y cambia lo que el servicio custodia: con ella el servicio NO abre el almacén local de credenciales en absoluto —ni el fichero, ni la frase de paso—, así que la única fuente de una credencial es el controlador que registró la sesión de la ejecución. Sin ella el almacén es la única fuente, las cuatro operaciones de la sesión se rechazan por nombre (`credential-sessions-not-composed`), y un arranque que nombra un proveedor de credenciales se rechaza antes de convertirse en una reclamación. La alternativa considerada y rechazada: abrir ambos y preferir el controlador —haría que un controlador que ya no está se sustituyera, en silencio, por un secreto en disco, que es exactamente lo que esta capacidad promete no hacer—.
+
+La sesión la forman cuatro operaciones, como la de configuración, y el controlador **consulta** las peticiones:
+
+```json
+{"schema":"pipelinek.service/2","op":"credential.provider.register","provider":"controller","auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"sessionId":"c1d2…","leaseMillis":15000}}
+{"schema":"pipelinek.service/2","op":"credential.provider.poll","sessionId":"c1d2…","waitMillis":5000,"auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"state":"asked","requestId":"a91f…","correlationId":"34b2…","credentialId":"deploy-key","kind":"string"}}
+{"schema":"pipelinek.service/2","op":"credential.provider.answer","sessionId":"c1d2…","requestId":"a91f…","decision":"grant","value":"czNjcjN0…","auth":"…"}
+{"schema":"pipelinek.service/2","op":"run.start","script":"build.kts","idempotencyKey":"order-42","credentialProvider":"controller","auth":"…"}
+```
+
+`credential.provider.close` termina la sesión. El valor viaja en Base64 y está acotado a 32 KiB. Las cuatro operaciones exigen el derecho de ARRANCAR ejecuciones, porque una sesión es la manera en que una ejecución consigue sus credenciales. Lo que el servicio promete sobre la respuesta:
+
+- **La ejecución la pide cuando la necesita, y sólo entonces.** La ejecución no custodia ningún secreto hasta que entra en `withCredentials`; la petición queda atada a la ejecución que preguntó, a la credencial que la arrancó y a la credencial que el operador le concedió.
+- **Una respuesta por petición, y sólo por la sesión que la recibió.** Una segunda respuesta a la misma `requestId` se rechaza (`request-unknown`), y también una respuesta de otra credencial o de otra sesión (`provider-session-unknown`): el nombre del proveedor pertenece a la credencial que lo registró, y nadie más puede contestar lo que se le preguntó.
+- **Sin sustituto, nunca.** Un controlador que lo niega hace fallar la ejecución con `credential-provider-denied`; uno que cierra su sesión mientras la ejecución espera se rechaza de inmediato (`provider-gone`); uno que calla es un `provider-timeout` pasado ocho segundos. En ningún caso se busca la credencial en el almacén local ni en otro proveedor.
+- **El secreto viaja por el socket privado y no se escribe en ningún otro sitio.** Está en la línea de la petición de la respuesta, en el socket del intermediario de la ejecución y en el ambiente del paso que lo pidió —y en ningún otro lugar: ni en el almacén de los hechos, ni en el plano de salida, ni en la observación de la ejecución, ni en el argv del hijo—. El servicio nunca lo imprime: el tipo que lo lleva redacta su propio `toString`.
+
+Ninguno de los dos perfiles separa dos procesos del mismo usuario, y las sesiones de credenciales no cambian eso: lo que separa identidades es el TOKEN que el operador emitió, y la JVM no ve el UID del par de un socket Unix. La sesión añade una regla por encima —una sesión pertenece a la credencial que la registró, así que un cliente que presenta otra no puede registrar el nombre, ni recibir lo que se preguntó, ni contestar la petición—.
 
 
 La clave es lo que hace segura un reintento: la misma clave con la misma petición responde con la MISMA ejecución, y la misma clave con otra petición es un conflicto (`idempotency-conflict`). La promesa es duradera mientras el servicio pueda escribir su fichero —el servicio guarda el registro de los arranques en el fichero que posee junto al socket, `starts`—, así que un cliente que reintenta después de un reinicio recibe la ejecución que ya había arrancado. La RECLAMACIÓN de una clave se escribe ANTES de lanzar al hijo, y una reclamación que no se puede escribir no es una reclamación: el arranque se rechaza por nombre (`run-start-refused`, con el motivo `the-start-cannot-be-recorded`) y no se lanza ningún hijo, porque un arranque que no se puede recordar es un arranque que no se puede prometer. Lo que degrada cuando el disco se niega a escribir es el REGISTRO de una ejecución que ya arrancó: el registro se queda en memoria, al cliente se le contesta igualmente, y un reintento DESPUÉS de un reinicio puede arrancar una segunda ejecución con la misma clave.

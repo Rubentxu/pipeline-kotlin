@@ -464,6 +464,94 @@ class ServiceRunSupervisorTest {
         assertTrue(argv.last().endsWith("build.kts"), "the script is the last word of the argv")
     }
 
+    @Test
+    fun `a start that names a credential provider of a service that does not serve them is refused`(
+        @TempDir root: Path,
+    ) {
+        val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
+        val supervisor = supervisor(root, port)
+
+        val outcome = supervisor.start(request("build.kts", credentialProvider = "controller"))
+
+        val refusal = assertInstanceOf(ServiceStartOutcome.Refused::class.java, outcome).refusal
+        assertEquals(
+            "credential-sessions-not-composed",
+            assertInstanceOf(ServiceRefusal.CredentialProviderRefused::class.java, refusal).reason,
+            "a capability nobody asked for is refused by name",
+        )
+        assertTrue(port.requests.isEmpty(), "no child was launched for a start that was refused")
+    }
+
+    @Test
+    fun `a start that names a credential provider no live session backs is refused`(@TempDir root: Path) {
+        val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
+        val supervisor = supervisor(
+            root,
+            port,
+            credentialSessions = CredentialProviderSessions(),
+            brokers = connectedBrokers(root),
+        )
+
+        val outcome = supervisor.start(request("build.kts", credentialProvider = "controller"))
+
+        val refusal = assertInstanceOf(ServiceStartOutcome.Refused::class.java, outcome).refusal
+        assertEquals(
+            "provider-not-registered",
+            assertInstanceOf(ServiceRefusal.CredentialProviderRefused::class.java, refusal).reason,
+            "no controller of this client holds that name",
+        )
+        assertTrue(port.requests.isEmpty(), "no child was launched for a start that was refused")
+    }
+
+    @Test
+    fun `a start that names a credential provider of another client is refused`(@TempDir root: Path) {
+        val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
+        val sessions = CredentialProviderSessions()
+        sessions.register(OTHER_DIGEST, "controller")
+        val supervisor = supervisor(root, port, credentialSessions = sessions, brokers = connectedBrokers(root))
+
+        val outcome = supervisor.start(request("build.kts", credentialProvider = "controller"))
+
+        val refusal = assertInstanceOf(ServiceStartOutcome.Refused::class.java, outcome).refusal
+        assertEquals(
+            "provider-not-registered",
+            assertInstanceOf(ServiceRefusal.CredentialProviderRefused::class.java, refusal).reason,
+            "the name belongs to the credential that registered it",
+        )
+        assertTrue(port.requests.isEmpty(), "no child was launched for a start that was refused")
+    }
+
+    @Test
+    fun `a start that names an illegal credential provider is refused`(@TempDir root: Path) {
+        val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
+        val sessions = CredentialProviderSessions()
+        sessions.register(DIGEST, "controller")
+        val supervisor = supervisor(root, port, credentialSessions = sessions, brokers = connectedBrokers(root))
+
+        val outcome = supervisor.start(request("build.kts", credentialProvider = "not a name"))
+
+        val refusal = assertInstanceOf(ServiceStartOutcome.Refused::class.java, outcome).refusal
+        assertEquals(
+            "credential-provider-name-illegal",
+            assertInstanceOf(ServiceRefusal.CredentialProviderRefused::class.java, refusal).reason,
+            "the name of a provider is not a text the client writes",
+        )
+        assertTrue(port.requests.isEmpty(), "no child was launched for a start that was refused")
+    }
+
+    @Test
+    fun `a start that names a credential provider of this client goes on`(@TempDir root: Path) {
+        val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
+        val sessions = CredentialProviderSessions()
+        sessions.register(DIGEST, "controller")
+        val supervisor = supervisor(root, port, credentialSessions = sessions, brokers = connectedBrokers(root))
+
+        val outcome = supervisor.start(request("build.kts", credentialProvider = "controller"))
+
+        assertInstanceOf(ServiceStartOutcome.Accepted::class.java, outcome, "the run went on")
+        assertEquals(1, port.requests.size, "and its child was launched")
+    }
+
     /**
      * The supervisor of [root], with the [port] that launches the children.
      */
@@ -473,6 +561,8 @@ class ServiceRunSupervisorTest {
         maxSupervisedRuns: Int = 4,
         startDeadlineMillis: Long = 5_000L,
         registry: ServiceStartRegistry = registryAt(root),
+        credentialSessions: CredentialProviderSessions? = null,
+        brokers: RunBrokerFactory? = null,
     ): ServiceRunSupervisor {
         val scripts = Files.createDirectories(root.resolve("scripts"))
         Files.writeString(scripts.resolve("build.kts"), "print(1)")
@@ -497,8 +587,17 @@ class ServiceRunSupervisorTest {
                 startDeadlineMillis = startDeadlineMillis,
             ),
             supervisionRoot = root.resolve("supervisions"),
+            brokers = brokers,
+            credentialSessions = credentialSessions,
         )
     }
+
+    /**
+     * The broker factory of a service whose runs ask a connected controller, with no provider
+     * behind it: the controller is the only source of a credential.
+     */
+    private fun connectedBrokers(root: Path, grants: Set<CredentialGrant> = emptySet()): RunBrokerFactory =
+        RunBrokerFactory(root.resolve("brokers"), provider = null) { grants }
 
     /**
      * The record of the starts, in [root].
@@ -535,11 +634,13 @@ class ServiceRunSupervisorTest {
         script: String,
         key: String? = null,
         digest: String = DIGEST,
+        credentialProvider: String? = null,
     ): ServiceStartRequest = ServiceStartRequest(
         script = script,
         workspace = null,
         idempotencyKey = key,
         credentialDigest = digest,
+        credentialProvider = credentialProvider,
     )
 
     /**

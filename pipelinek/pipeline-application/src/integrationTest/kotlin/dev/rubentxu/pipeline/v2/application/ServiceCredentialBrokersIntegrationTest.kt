@@ -333,8 +333,10 @@ class ServiceCredentialBrokersIntegrationTest {
             authorizations = authorizations,
             clock = SystemClock(),
             err = PrintStream(errors, true),
-            environment = emptyMap(),
-            brokerOpening = opening,
+            openings = ServeOpenings(
+                environment = emptyMap(),
+                brokerOpening = opening,
+            ),
         )
     }
 

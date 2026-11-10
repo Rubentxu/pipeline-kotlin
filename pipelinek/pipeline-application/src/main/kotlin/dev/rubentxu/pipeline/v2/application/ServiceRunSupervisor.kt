@@ -51,6 +51,9 @@ import java.util.concurrent.atomic.AtomicReference
  * @property configurationProvider the provider session the keys the request did not set itself
  *   are resolved through, or null when the request asks none. The values are never in the
  *   request: the service asks the provider for them at the start.
+ * @property credentialProvider the name of the credential provider session of the client whose
+ *   controller holds the credentials of the run, or null when the request names none. The
+ *   credentials are never in the request: the run asks for each one when a step needs it.
  */
 internal data class ServiceStartRequest(
     val script: String,
@@ -71,6 +74,7 @@ internal data class ServiceStartRequest(
     val parameters: Map<String, String> = emptyMap(),
     val parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
     val configurationProvider: ServiceProviderReference? = null,
+    val credentialProvider: String? = null,
 ) {
 
     /**
@@ -85,7 +89,8 @@ internal data class ServiceStartRequest(
     override fun toString(): String =
         "ServiceStartRequest(script=$script, workspace=$workspace, idempotencyKey=$idempotencyKey, " +
             "credentialDigest=$credentialDigest, configuration=${configuration.size} entries, " +
-            "parameters=${parameters.size} values, provider=${configurationProvider?.provider})"
+            "parameters=${parameters.size} values, provider=${configurationProvider?.provider}, " +
+            "credentialProvider=$credentialProvider)"
 }
 
 /**
@@ -358,6 +363,7 @@ internal class ServiceRunSupervisor(
     private val supervisionRoot: Path,
     private val brokers: RunBrokerFactory? = null,
     private val configurations: ConfigurationResolver? = null,
+    private val credentialSessions: CredentialProviderSessions? = null,
 ) : ServiceRunStarter, ServiceRunEnder, ServiceRunConfigurations, AutoCloseable {
 
     /** The children this service is watching right now. */
@@ -483,6 +489,9 @@ internal class ServiceRunSupervisor(
             is ProviderPlan.Refused -> return ServiceStartOutcome.Refused(outcome.refusal)
             else -> outcome
         }
+        // The credential provider is checked here too, for the same reason: the checks are pure,
+        // and a start that names a controller which is not there never becomes a claim.
+        checkCredentialProvider(request)?.let { return ServiceStartOutcome.Refused(it) }
         val digest = digestOf(
             request.script,
             request.workspace,
@@ -490,6 +499,7 @@ internal class ServiceRunSupervisor(
             request.parameterContract,
             request.parameters,
             request.configurationProvider,
+            request.credentialProvider,
         )
         val key = request.idempotencyKey?.let { registryKeyOf(request.credentialDigest, it) }
         // The correlation is chosen BEFORE the claim, because the claim is
@@ -568,8 +578,37 @@ internal class ServiceRunSupervisor(
             configuration,
             effective,
             request.parameters,
-            request.credentialDigest,
+            BrokerBinding(request.credentialDigest, request.credentialProvider),
         )
+    }
+
+    /**
+     * Why the credential provider the request names cannot serve it, or null when it can.
+     *
+     * The order is the order of the remedies: a name that is not a name is the client's text; a
+     * service that was not started to serve credential sessions, or that grants no credential to
+     * any client, is the operator's; and a controller that is not registered is the client's
+     * again. Nothing here is asked of the controller, and nothing falls back to another provider.
+     */
+    private fun checkCredentialProvider(request: ServiceStartRequest): ServiceRefusal? {
+        val name = request.credentialProvider ?: return null
+        val refusal = when {
+            !isLegalProviderName(name) -> "credential-provider-name-illegal" to
+                "the name of a credential provider matches $PROVIDER_NAME_SHAPE"
+
+            credentialSessions == null -> CredentialProviderOperations.REASON_NOT_COMPOSED to
+                "this service was not started to serve credential sessions"
+
+            brokers == null -> "credential-brokers-not-composed" to
+                "no authorization of this service grants a credential, so its runs have no broker"
+
+            request.credentialDigest.isBlank() || !credentialSessions.hasSession(request.credentialDigest, name) ->
+                "provider-not-registered" to
+                    "no live session of the credential provider '$name' exists for this credential"
+
+            else -> return null
+        }
+        return ServiceRefusal.CredentialProviderRefused(refusal.first, refusal.second)
     }
 
     /**
@@ -752,8 +791,9 @@ internal class ServiceRunSupervisor(
      * @param configuration the configuration of the REQUEST, the one the answer echoes.
      * @param effective the configuration the child is given: the request's, completed by the
      *   provider when the request named one.
-     * @param clientDigest the digest of the token of the client that asked, or null when the
-     *   request came from nobody the service knows; it decides what the broker of the run grants.
+     * @param binding who asked: the digest of the token of the client, or null when the request
+     *   came from nobody the service knows, decides what the broker of the run grants, and the
+     *   name of its credential provider decides where the bytes of a grant come from.
      */
     private fun launchRun(
         paths: ServiceStartAdmissionOutcome.Admitted,
@@ -763,7 +803,7 @@ internal class ServiceRunSupervisor(
         configuration: RunConfiguration,
         effective: EffectiveConfiguration,
         delivered: Map<String, String>,
-        clientDigest: String?,
+        binding: BrokerBinding,
     ): ServiceStartOutcome {
         val supervisionId = "sup-" + UUID.randomUUID().toString()
         // The supervision's own directory: the port writes the child's
@@ -789,7 +829,7 @@ internal class ServiceRunSupervisor(
         // opened stops the run: a run that was promised credentials it will
         // never be given would only fail later, inside a step, with less to
         // say about why.
-        val lease = when (val opening = openBroker(key, clientDigest)) {
+        val lease = when (val opening = openBroker(key, binding, correlationId)) {
             is BrokerOpening.Opened -> opening.lease
             is BrokerOpening.Refused -> return ServiceStartOutcome.Refused(opening.refusal)
         }
@@ -972,9 +1012,9 @@ internal class ServiceRunSupervisor(
      * run goes back and the key of the claim is released, so the client may ask again once the
      * operator has fixed the cause. The words of the refusal are the fixed ones of the failure.
      */
-    private fun openBroker(key: String?, clientDigest: String?): BrokerOpening =
+    private fun openBroker(key: String?, binding: BrokerBinding, correlationId: String): BrokerOpening =
         try {
-            BrokerOpening.Opened(brokers?.open(clientDigest))
+            BrokerOpening.Opened(openLease(binding, correlationId))
         } catch (failure: RunBrokerLeaseException) {
             liveRuns.decrementAndGet()
             val refusal = ServiceRefusal.RunStartRefused(
@@ -984,6 +1024,29 @@ internal class ServiceRunSupervisor(
             if (key != null) registry.fail(key, refusal)
             BrokerOpening.Refused(refusal)
         }
+
+    /**
+     * The lease of a run: with the service's own provider, with the connected provider the
+     * request named, or none.
+     *
+     * A request that names a controller gets a provider of its own, bound to the identity that
+     * started the run and to the run itself, which the lease closes when the run is over. The
+     * checks before the claim made sure the pieces exist; a missing piece here is a broker that
+     * cannot be opened, and never a run that goes on with another source.
+     */
+    private fun openLease(binding: BrokerBinding, correlationId: String): RunBrokerLease? {
+        val name = binding.credentialProvider ?: return brokers?.open(binding.clientDigest)
+        val owner = binding.clientDigest?.takeIf { it.isNotBlank() }
+        val sessions = credentialSessions
+        val factory = brokers
+        if (owner == null || sessions == null || factory == null) {
+            throw RunBrokerLeaseException("the connected credential provider of the run is not available")
+        }
+        return factory.openConnected(owner, ConnectedCredentialProvider(sessions, owner, name, correlationId))
+    }
+
+    /** Who asked for the run, as far as its broker is concerned. */
+    private class BrokerBinding(val clientDigest: String?, val credentialProvider: String?)
 
     /** What opening the broker of a run came to. */
     private sealed interface BrokerOpening {
@@ -1442,6 +1505,7 @@ internal class ServiceRunSupervisor(
             parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
             parameters: Map<String, String> = emptyMap(),
             provider: ServiceProviderReference? = null,
+            credentialProvider: String? = null,
         ): String {
             val base = workspace?.let { workspaceText ->
                 script.length.toString() + ":" + script + "|" +
@@ -1470,10 +1534,18 @@ internal class ServiceRunSupervisor(
             // the fingerprint it had. The keys are sorted and distinct: the order a request
             // lists them in does not make it another request.
             val providerText = provider?.let(::providerCanonicalText).orEmpty()
-            if (providerText.isEmpty()) return ServiceAuthorizations.digestOf(withParameters)
-            return ServiceAuthorizations.digestOf(
-                withParameters + "@c:" + providerText.length.toString() + ":" + providerText,
-            )
+            val withProvider = if (providerText.isEmpty()) {
+                withParameters
+            } else {
+                withParameters + "@c:" + providerText.length.toString() + ":" + providerText
+            }
+            // The credential provider travels in a carrier of its own as well, appended only when
+            // the request names one: a start that asks the same run with another controller is
+            // another request, and the fingerprint of every start that names none is unchanged.
+            val withCredentials = credentialProvider?.let {
+                withProvider + "@k:" + it.length.toString() + ":" + it
+            } ?: withProvider
+            return ServiceAuthorizations.digestOf(withCredentials)
         }
 
         /** The canonical text of [provider]: the name and the keys, length-prefixed. */

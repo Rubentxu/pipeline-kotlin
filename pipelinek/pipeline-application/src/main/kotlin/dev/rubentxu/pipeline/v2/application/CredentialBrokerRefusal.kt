@@ -14,7 +14,7 @@ package dev.rubentxu.pipeline.v2.application
  *
  * ## Which are said by the broker and which are found by the run
  *
- * The first seven are decisions of the broker and cross the socket. The last
+ * The first eight are decisions of the broker and cross the socket. The last
  * three are what the run itself finds when there is no answer to read: nobody
  * to talk to, nobody who answers in time, or an answer that is not the
  * contract. They are words of the same vocabulary so that one sentence
@@ -52,6 +52,18 @@ internal enum class CredentialBrokerRefusal(
 
     /** The credential is bigger than the broker hands out. */
     CREDENTIAL_TOO_LARGE("credential-too-large", "the credential is larger than the broker hands out"),
+
+    /**
+     * The credential is granted and its holder, a connected controller, did not hand it out:
+     * it denied the request, it was gone, or it did not answer in time.
+     *
+     * The word does not say which of the three, and nothing falls back to another store: the
+     * reason is for the service, which knows it, and not for the run.
+     */
+    CREDENTIAL_PROVIDER_DENIED(
+        "credential-provider-denied",
+        "the client that holds the credential did not hand it out",
+    ),
 
     /** The line was not a request of the contract. */
     REQUEST_NOT_READABLE("request-not-readable", "the request was not a request of the broker's contract"),

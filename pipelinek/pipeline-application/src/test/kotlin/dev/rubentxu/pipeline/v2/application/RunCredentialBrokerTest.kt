@@ -204,6 +204,17 @@ class RunCredentialBrokerTest {
     }
 
     @Test
+    fun `a controller that does not hand the credential out is its own word and says nothing of why`() {
+        val store = StoreDouble(emptyMap(), failure = ConnectedCredentialDenied("provider-timeout"))
+        val broker = broker(store = store, grants = setOf(grant("deploy-key")))
+
+        val line = broker.answerFor(request("deploy-key"))
+
+        assertRefused(CredentialBrokerRefusal.CREDENTIAL_PROVIDER_DENIED, CredentialBrokerWire.decodeResponse(line))
+        assertFalse(line.contains("provider-timeout"), "the reason is for the service and not for the run: $line")
+    }
+
+    @Test
     fun `a failure of the store that is not a store refusal is the broker failing and says nothing of it`() {
         val store = StoreDouble(emptyMap(), failure = IllegalStateException("boom with s3cr3t-in-message"))
         val broker = broker(store = store, grants = setOf(grant("deploy-key")))

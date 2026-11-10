@@ -244,7 +244,7 @@ data class ServiceInputAnswer(
 )
 
 /**
- * The lease of a configuration provider session the service registered.
+ * The lease of a provider session the service registered, of configuration or of credentials.
  *
  * The [sessionId] is what every later call about the session names, and the [leaseMillis] is how
  * long the service keeps the session without hearing from it: each poll renews the lease, and a
@@ -276,15 +276,42 @@ sealed interface ServiceProviderPoll {
 }
 
 /**
- * The acknowledgement of an answer or of a close of a provider session.
+ * The acknowledgement of an answer or of a close of a provider session, of configuration or of
+ * credentials.
  *
- * The [outcome] is `answered` when the service delivered the values to the run that was waiting
- * for them, and `closed` when the session was closed.
+ * The [outcome] is `answered` when the service delivered the answer to the run that was waiting
+ * for it, and `closed` when the session was closed.
  */
 data class ServiceProviderAck(
     val sessionId: String,
     val outcome: String,
 )
+
+/**
+ * What a poll of a credential provider session found.
+ *
+ * Either nothing was asked while the service held the poll ([Idle]) or a run is waiting for ONE
+ * credential ([Asked]).
+ */
+sealed interface ServiceCredentialPoll {
+
+    /** No run asked for anything while the poll was held; the lease was renewed. */
+    data object Idle : ServiceCredentialPoll
+
+    /**
+     * A run is waiting for the credential [credentialId].
+     *
+     * The [requestId] is what the answer names and it can be answered ONCE. The [correlationId]
+     * names the run that is waiting, so the controller can show its operator which execution the
+     * credential is for, and the [kind] is the shape of the value the run expects.
+     */
+    data class Asked(
+        val requestId: String,
+        val correlationId: String,
+        val credentialId: String,
+        val kind: String,
+    ) : ServiceCredentialPoll
+}
 
 /**
  * Where one key of a run's configuration came from.
@@ -577,6 +604,7 @@ class ServiceClient internal constructor(
         parameters: Map<String, String> = emptyMap(),
         parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
         configurationProvider: ServiceProviderReference? = null,
+        credentialProvider: String? = null,
     ): ServiceAnswer<ServiceRunStart> =
         ask(
             ServiceRequest.StartRun(
@@ -588,6 +616,7 @@ class ServiceClient internal constructor(
                 parameters = parameters,
                 parameterContract = parameterContract,
                 configurationProvider = configurationProvider,
+                credentialProvider = credentialProvider,
             ),
         ).narrow { result ->
             val runId = result.string("runId")
@@ -733,6 +762,126 @@ class ServiceClient internal constructor(
                 ?: return@narrow ServiceAnswer.Unreadable("no outcome")
             ServiceAnswer.Answered(ServiceProviderAck(closedSession, outcome))
         }
+
+    /**
+     * Registers a credential provider session named [provider].
+     *
+     * ## What a session is
+     *
+     * A lease the service holds for as long as the client keeps polling it, like the session of
+     * [registerProvider]. The credentials stay with the client: a run that is started with
+     * `credentialProvider = provider` asks the session for ONE credential at the moment it needs
+     * it, and the client answers or denies. The service never stores a credential it was not
+     * asked to hand out.
+     *
+     * ## Who can ask it
+     *
+     * Only a run started with the SAME credential as this client. A session is registered under
+     * the credential of this client, so a client that presents another one can neither register
+     * a name this one holds nor answer what this one was asked.
+     *
+     * ## What is refused
+     *
+     * A name that is not legal, a name a live session of the same credential already holds, a
+     * service that was not started to serve credential sessions, and a credential that is not
+     * allowed to start runs.
+     */
+    fun registerCredentialProvider(provider: String): ServiceAnswer<ServiceProviderSession> =
+        ask(ServiceRequest.CredentialRegister(schema, provider)).narrow { result ->
+            val sessionId = result.text("sessionId")
+                ?: return@narrow ServiceAnswer.Unreadable("no sessionId")
+            val leaseMillis = result.number("leaseMillis")
+                ?: return@narrow ServiceAnswer.Unreadable("no leaseMillis")
+            ServiceAnswer.Answered(ServiceProviderSession(sessionId, leaseMillis))
+        }
+
+    /**
+     * Asks the credential session [sessionId] whether a run is waiting for a credential, holding
+     * the call for at most [waitMillis].
+     *
+     * The service caps the wait with its own limit, and the call renews the lease of the session.
+     * A client that polls less often than the lease lets the session lapse, and a run that was
+     * waiting for it is denied: there is no fallback to another source.
+     */
+    fun pollCredentialProvider(sessionId: String, waitMillis: Long): ServiceAnswer<ServiceCredentialPoll> =
+        ask(ServiceRequest.CredentialPoll(schema, sessionId, waitMillis)).narrow { result ->
+            when (result.text("state")) {
+                "idle" -> ServiceAnswer.Answered(ServiceCredentialPoll.Idle)
+                "asked" -> ServiceAnswer.Answered(
+                    ServiceCredentialPoll.Asked(
+                        requestId = result.text("requestId")
+                            ?: return@narrow ServiceAnswer.Unreadable("no requestId"),
+                        correlationId = result.text("correlationId")
+                            ?: return@narrow ServiceAnswer.Unreadable("no correlationId"),
+                        credentialId = result.text("credentialId")
+                            ?: return@narrow ServiceAnswer.Unreadable("no credentialId"),
+                        kind = result.text("kind")
+                            ?: return@narrow ServiceAnswer.Unreadable("no kind"),
+                    ),
+                )
+                else -> ServiceAnswer.Unreadable("no state")
+            }
+        }
+
+    /**
+     * Hands the credential [value] over for the request [requestId], and nothing else.
+     *
+     * ## What travels
+     *
+     * The bytes as Base64 text inside the request line, up to
+     * [ServiceProtocol.MAX_CREDENTIAL_VALUE_BYTES]. The caller owns [value] and should clear it
+     * once this returns; the text this call builds for the line is a JVM string, which nothing
+     * can wipe, so the boundary that protects it is the private socket and not the client.
+     *
+     * ## What it is
+     *
+     * A request is answered ONCE. A second answer to the same [requestId], an answer from
+     * another credential and an answer after the request expired are refused.
+     */
+    fun grantCredential(sessionId: String, requestId: String, value: ByteArray): ServiceAnswer<ServiceProviderAck> =
+        answerCredential(
+            ServiceRequest.CredentialAnswer(
+                schema = schema,
+                sessionId = sessionId,
+                requestId = requestId,
+                granted = true,
+                value = java.util.Base64.getEncoder().encodeToString(value),
+            ),
+        )
+
+    /**
+     * Refuses to hand out the credential asked by the request [requestId].
+     *
+     * The run that was waiting is denied at once and does not fall back to another source.
+     */
+    fun denyCredential(sessionId: String, requestId: String): ServiceAnswer<ServiceProviderAck> =
+        answerCredential(
+            ServiceRequest.CredentialAnswer(
+                schema = schema,
+                sessionId = sessionId,
+                requestId = requestId,
+                granted = false,
+                value = null,
+            ),
+        )
+
+    /**
+     * Closes the credential session [sessionId] instead of letting its lease lapse.
+     *
+     * A run that is waiting for the session is denied at once, with the reason that the provider
+     * is gone.
+     */
+    fun closeCredentialProvider(sessionId: String): ServiceAnswer<ServiceProviderAck> =
+        ask(ServiceRequest.CredentialClose(schema, sessionId)).narrow { result -> acknowledgement(result) }
+
+    private fun answerCredential(request: ServiceRequest.CredentialAnswer): ServiceAnswer<ServiceProviderAck> =
+        ask(request).narrow { result -> acknowledgement(result) }
+
+    private fun acknowledgement(result: JsonObject): ServiceAnswer<ServiceProviderAck> {
+        val session = result.text("sessionId") ?: return ServiceAnswer.Unreadable("no sessionId")
+        val outcome = result.text("outcome") ?: return ServiceAnswer.Unreadable("no outcome")
+        return ServiceAnswer.Answered(ServiceProviderAck(session, outcome))
+    }
 
     /**
      * Where the configuration of the run [runId] came from: the origin and the type of each key,

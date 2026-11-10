@@ -25,7 +25,7 @@ internal const val SERVE_USAGE: String =
         "[--trust-profile <name>] [--authorization-file <path>] " +
         "[--scripts <dir>] [--workspaces <dir>] " +
         "[--run-deadline-ms <n>] [--start-deadline-ms <n>] " +
-        "[--run-allow-network] [--max-supervised-runs <n>]"
+        "[--run-allow-network] [--max-supervised-runs <n>] [--credential-sessions]"
 
 /**
  * The requests `serve` accepts.
@@ -59,6 +59,25 @@ internal const val SERVE_USAGE: String =
  * waits for a child to take its lease. It is separate because the two
  * deadlines govern two different things and only one of them is about the
  * life of the run.
+ *
+ * `--credential-sessions` is the opt-in of the CREDENTIAL sessions, and it
+ * is the only mode in which a run may ask a connected controller for a
+ * credential. Without it the service answers `credential.provider.*` with a
+ * refusal and refuses any start that names a credential provider: a
+ * capability nobody asked for is not opened by accident.
+ *
+ * ## Why the opt-in CLOSES the local store
+ *
+ * Because the two sources of credentials are mutually exclusive by
+ * construction, and the one that loses is the one the operator did not name.
+ * With the opt-in the service does NOT open the local store at all: the
+ * broker of every run is opened with no provider behind it, so a run whose
+ * controller denies, vanishes or is late is denied, and the credential is
+ * never looked up in a store the operator may not have meant to open. The
+ * alternative considered and rejected: opening both and preferring the
+ * controller — it would make the failure of a controller SILENTLY fall back
+ * to a secret on disk, which is the exact thing this capability promises
+ * not to do.
  */
 internal val SERVE_REQUEST: CliRequest = CliRequest(
     options = listOf(
@@ -73,6 +92,7 @@ internal val SERVE_REQUEST: CliRequest = CliRequest(
         CliOption("--start-deadline-ms", takesValue = true),
         CliOption("--run-allow-network", takesValue = false),
         CliOption("--max-supervised-runs", takesValue = true),
+        CliOption("--credential-sessions", takesValue = false),
     ),
 )
 
@@ -203,12 +223,24 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
         socketAbsolute = socketAbsolute,
         socketPath = socketPath,
     )
-    val composed = composeServiceToServe(substrate, policy, authorizations, SystemClock(), err)
+    // The opt-in of the credential sessions. It is read HERE, with the rest
+    // of the operator's declaration, and not inside the composition: the
+    // composition is told what the service may do, and the verb is the one
+    // that reads what the operator asked for.
+    val credentialSessions = accepted.flags.contains("--credential-sessions")
+    val composed = composeServiceToServe(
+        substrate,
+        policy,
+        authorizations,
+        SystemClock(),
+        err,
+        openings = ServeOpenings(credentialSessions = credentialSessions),
+    )
     val service = when (composed) {
         is ServeComposition.Composed -> composed
         is ServeComposition.Refused -> return composed.exit
     }
-    return serveUntilStopped(service, substrate, profile, authorizationPath, policy, out)
+    return serveUntilStopped(service, substrate, profile, authorizationPath, policy, out, credentialSessions)
 }
 
 /**
@@ -273,6 +305,28 @@ internal sealed interface ServeComposition {
 }
 
 /**
+ * How the service opens the world around it.
+ *
+ * ## Why these travel together
+ *
+ * Because they are all the answer to ONE question —"what does this service open, and with what
+ * may it be replaced in a test?"— and a composition that took them one by one grew a parameter
+ * list nobody could read. One value says it once.
+ *
+ * @property environment the environment the store and the telemetry are opened from.
+ * @property brokerOpening how the local credential store is opened.
+ * @property telemetryOpening how the telemetry is opened.
+ * @property credentialSessions whether the service serves the sessions of the credential
+ *   providers, and therefore whether it opens the local store at all.
+ */
+internal data class ServeOpenings(
+    val environment: Map<String, String> = System.getenv(),
+    val brokerOpening: (Map<String, String>) -> ServiceCredentialAccess = ::openServiceCredentialProvider,
+    val telemetryOpening: (Map<String, String>) -> PipelineTelemetry = { PipelineTelemetryFactory.create(it) },
+    val credentialSessions: Boolean = false,
+)
+
+/**
  * Composes the substrate, the doors and the socket of the service.
  *
  * ## Why the substrate is composed BEFORE the socket exists
@@ -307,9 +361,7 @@ internal fun composeServiceToServe(
     authorizations: ServiceAuthorizations,
     clock: SystemClock,
     err: PrintStream,
-    environment: Map<String, String> = System.getenv(),
-    brokerOpening: (Map<String, String>) -> ServiceCredentialAccess = ::openServiceCredentialProvider,
-    telemetryOpening: (Map<String, String>) -> PipelineTelemetry = { PipelineTelemetryFactory.create(it) },
+    openings: ServeOpenings = ServeOpenings(),
 ): ServeComposition {
     val storePurpose = if (authorizations.mayCancelAnyRun) {
         EventStorePurpose.Write
@@ -342,12 +394,17 @@ internal fun composeServiceToServe(
     // passphrase of the operator and a service that grants nothing has no use for it.
     // A service that cannot open the store it was told to hand credentials from does
     // not start: it would refuse every credential of every run instead.
+    //
+    // With the opt-in of the credential sessions the store is NOT opened: the
+    // brokers are composed with no provider behind them, and the only source of
+    // a credential is the controller that registered the session of the run.
     val brokers = when (
         val composed = composeServiceBrokers(
             authorizations = authorizations,
             brokersRoot = requireNotNull(substrate.socketAbsolute.parent).resolve(BROKERS_DIRECTORY),
-            environment = environment,
-            opening = brokerOpening,
+            environment = openings.environment,
+            opening = openings.brokerOpening,
+            connectedOnly = openings.credentialSessions,
         )
     ) {
         is ServiceBrokers.Composed -> composed
@@ -364,6 +421,12 @@ internal fun composeServiceToServe(
     // session, so a service that grants no such right exposes none.
     val providers = ConfigurationProviderSessions()
 
+    // The sessions of the CREDENTIAL providers, and only when the operator
+    // asked for them: without the opt-in the registry does not exist, and every
+    // operation about a credential session is refused by name instead of
+    // answering from a registry nobody opened.
+    val credentialRegistry = if (openings.credentialSessions) CredentialProviderSessions() else null
+
     // The supervisor of the runs this service starts. It is composed with
     // the SAME store and the SAME control root the questions are answered
     // from, so a run started by a client is a run the service can answer
@@ -373,10 +436,10 @@ internal fun composeServiceToServe(
         dbAbsolute = substrate.dbAbsolute,
         controlAbsolute = substrate.controlAbsolute,
         socketAbsolute = substrate.socketAbsolute,
-        registry = policy.registry,
         clock = clock,
         brokers = brokers.factory,
         configurations = providers,
+        credentialSessions = credentialRegistry,
     )
 
     // The cancellation of a run, and the control port that writes its
@@ -416,6 +479,7 @@ internal fun composeServiceToServe(
             } else {
                 null
             },
+            credentialSessions = credentialRegistry,
         )
     ) {
         is ServiceComposition.Composed -> composed
@@ -440,7 +504,7 @@ internal fun composeServiceToServe(
     // The telemetry is opened last, once nothing can refuse the composition any more: a refusal
     // before this line has nothing to flush. It is the operator's opt-in (`PIPELINEK_OTEL_ENABLED`)
     // and without it the observer is the one that observes nothing.
-    val telemetry = telemetryOpening(environment)
+    val telemetry = openings.telemetryOpening(openings.environment)
     val observer = if (telemetry.enabled) TelemetryServiceObserver(telemetry) else NoServiceObserver
     val server = ServiceServer(
         transport,
@@ -485,13 +549,14 @@ private fun serveUntilStopped(
     authorizationPath: Path,
     policy: ServiceRunDeclaration,
     out: PrintStream,
+    credentialSessions: Boolean,
 ): CliExit {
     val server = service.server
     val shutdown = Thread({ service.close() }, "pipelinek-service-shutdown")
     Runtime.getRuntime().addShutdownHook(shutdown)
     try {
         out.println("pipelinek service listening on ${substrate.socketPath}")
-        describeBoundary(out, profile, authorizationPath, service.authorizationCount)
+        describeBoundary(out, profile, authorizationPath, service.authorizationCount, credentialSessions)
         describeRuns(out, policy)
         describeSubstrate(out, service.storePurpose)
         server.serve()
@@ -762,16 +827,23 @@ private fun readRunPolicy(
  * Because the child works in the directory of its script: a relative path
  * would mean something else there, and the run would write in a place the
  * operator never named.
+ *
+ * ## Why the record of the starts is NOT a parameter of its own
+ *
+ * Because the DECLARATION already carries it: a supervisor that received
+ * both could be handed one record of the starts and write the promises of
+ * another, and the promise of a key is the one thing the record exists to
+ * keep.
  */
 private fun composeSupervisor(
     policy: ServiceRunDeclaration,
     dbAbsolute: Path,
     controlAbsolute: Path,
     socketAbsolute: Path,
-    registry: ServiceStartRegistry,
     clock: dev.rubentxu.pipeline.v2.domain.durable.Clock,
     brokers: RunBrokerFactory?,
     configurations: ConfigurationResolver?,
+    credentialSessions: CredentialProviderSessions?,
 ): ServiceRunSupervisor {
     val supervisionRoot = requireNotNull(socketAbsolute.parent)
         .resolve(SUPERVISION_DIRECTORY)
@@ -789,7 +861,7 @@ private fun composeSupervisor(
             mainClass = SERVICE_MAIN_CLASS,
         ),
         port = ProcessDurableTaskRuntime(supervisionRoot, clock),
-        registry = registry,
+        registry = policy.registry,
         limits = ServiceStartLimits(
             maxSupervisedRuns = policy.maxSupervisedRuns,
             startDeadlineMillis = policy.startDeadlineMillis,
@@ -797,6 +869,7 @@ private fun composeSupervisor(
         supervisionRoot = supervisionRoot,
         brokers = brokers,
         configurations = configurations,
+        credentialSessions = credentialSessions,
     )
 }
 
@@ -850,6 +923,7 @@ private fun composeService(
     cancellations: ServiceRunCancellation?,
     providers: ConfigurationProviderSessions,
     inputs: ServiceInputsBinding?,
+    credentialSessions: CredentialProviderSessions?,
 ): ServiceComposition = try {
     val dbPath = substrate.dbPath
     val controlRoot = substrate.controlRoot
@@ -880,6 +954,7 @@ private fun composeService(
                 responderOf = it.responderOf,
             )
         },
+        credentialSessions = credentialSessions,
     )
     val stores = DurableStores.open(store, controlRootPath, clock)
     val streets = ServiceSubscription(
@@ -950,6 +1025,7 @@ private fun describeBoundary(
     profile: ServiceTrustProfile,
     authorizationPath: Path,
     authorizationCount: Int,
+    credentialSessions: Boolean,
 ) {
     out.println("trust-profile ${profile.word}")
     out.println(
@@ -961,7 +1037,8 @@ private fun describeBoundary(
 
             ServiceTrustProfile.Isolated ->
                 "boundary not-on-disk: the authorization was read from the standard input and " +
-                    "was written nowhere"
+                    "was written nowhere; it separates the identities the operator names, not " +
+                    "two processes of the same user"
         },
     )
     if (profile == ServiceTrustProfile.TrustedLocal) {
@@ -970,6 +1047,15 @@ private fun describeBoundary(
                 "a client presents the token of one of them",
         )
     }
+    out.println(
+        if (credentialSessions) {
+            "credential-sessions served: the local credential store was NOT opened; every " +
+                "credential of every run comes from the controller that registered its session"
+        } else {
+            "credential-sessions closed: a run may not name a credential provider, and the " +
+                "local credential store is the only source of a credential"
+        },
+    )
 }
 
 /**

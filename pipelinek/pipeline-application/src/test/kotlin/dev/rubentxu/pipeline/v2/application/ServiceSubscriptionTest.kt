@@ -280,7 +280,7 @@ class ServiceSubscriptionTest {
                 ),
             ),
             tails = listOf(OutputTailState.Sealed(5L)),
-            runPlane = RunPlane.Completed,
+            history = listOf(runFinished(1L)),
         )
         val connection = RecordingConnection()
         val subscription = ServiceSubscription(lanes = lanes, events = ScriptedEventPort { _ -> page(emptyList(), 0L) })
@@ -410,7 +410,7 @@ class ServiceSubscriptionTest {
                     ObservationOutputPage(records = emptyList(), lastOrdinal = 0L, moreFrames = false),
                 ),
             ),
-            planes = listOf(RunPlane.Live, RunPlane.Completed),
+            history = historyOfTwoPages(),
         )
         val connection = RecordingConnection()
         val subscription = ServiceSubscription(lanes = lanes, events = port)
@@ -442,7 +442,7 @@ class ServiceSubscriptionTest {
                 ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
             ),
             tails = listOf(OutputTailState.Sealed(5L)),
-            runPlane = RunPlane.Completed,
+            history = listOf(runFinished(1L)),
         )
         val connection = RecordingConnection()
         val subscription = ServiceSubscription(lanes = lanes, events = port)
@@ -509,7 +509,7 @@ class ServiceSubscriptionTest {
                     ),
                 ),
             ),
-            planes = listOf(RunPlane.Live, RunPlane.Completed),
+            history = historyOfTwoPages(),
         )
         val connection = RecordingConnection()
         val subscription = ServiceSubscription(lanes = lanes, events = port)
@@ -543,7 +543,7 @@ class ServiceSubscriptionTest {
                 ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
             ),
             tails = listOf(OutputTailState.Sealed(5L)),
-            planeFailure = IllegalStateException("the store is gone"),
+            sliceFailure = IllegalStateException("the store is gone"),
         )
         val connection = RecordingConnection()
         val subscription = ServiceSubscription(lanes = lanes, events = port)
@@ -575,7 +575,7 @@ class ServiceSubscriptionTest {
                 ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
             ),
             tails = listOf(OutputTailState.Sealed(5L)),
-            runPlane = RunPlane.Unavailable,
+            laneAbsent = true,
         )
         val connection = RecordingConnection()
         val subscription = ServiceSubscription(lanes = lanes, events = port)
@@ -693,7 +693,7 @@ class ServiceSubscriptionTest {
                 ),
             ),
             tails = listOf(OutputTailState.Sealed(5L)),
-            runPlane = RunPlane.Completed,
+            history = listOf(runFinished(1L)),
         )
         val connection = RecordingConnection()
         val subscription = ServiceSubscription(lanes = lanes, events = ScriptedEventPort { _ -> page(emptyList(), 0L) })
@@ -748,6 +748,158 @@ class ServiceSubscriptionTest {
             "a street that ended does not report a success: $frames",
         )
     }
+
+    @Test
+    fun `the street asks the plane in the first round and then only when its answer can change`() {
+        // The run plane is the run's own authority, and reading it is not free: it reads the
+        // run's history. The street asks it in the FIRST round —the first answer is the one that
+        // proves the plane can answer at all, so a plane that cannot answer is named in the first
+        // round— and after that only in the round whose answer can change what the street does.
+        //
+        // In the rounds that delivered a frame the answer changes nothing: the street reads again
+        // whatever the plane says. A street that asks anyway pays for an answer nobody reads, and
+        // a street that asks in EVERY round pays for the whole history in every round.
+        val lanes = FakeLanes(
+            outputs = List(5) { round ->
+                ObservationOutputRead.Page(
+                    ObservationOutputPage(
+                        records = listOf(frame(round.toLong(), "hello")),
+                        lastOrdinal = round.toLong(),
+                        moreFrames = true,
+                    ),
+                )
+            } + ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = 4L, moreFrames = false),
+            ),
+            tails = listOf(OutputTailState.Sealed(5L)),
+            history = listOf(runFinished(1L)),
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = ScriptedEventPort { _ -> page(emptyList(), 0L) })
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        assertEquals(
+            2,
+            lanes.planeReads,
+            "the street asked the plane twice in six rounds: the first one, and the one whose " +
+                "answer could change the decision",
+        )
+        assertEquals(6, connection.frames().size, "the street delivered five frames and ended")
+    }
+
+    @Test
+    fun `a run whose terminal fact is in the middle of its history ends with the terminal fact`() {
+        // The rule of the plane is the rule the tree has always had: the run ENDED when its rows
+        // hold a terminal fact, not when its last row happens to be one. A run that was resumed
+        // carries more than one terminal fact, and a street that waited for the LAST row would
+        // keep a run that is over alive —and would contradict the rest of the product, which
+        // reports the LAST terminal fact as the run's current state.
+        val lanes = FakeLanes(
+            output = ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+            ),
+            tails = listOf(OutputTailState.Sealed(5L)),
+            history = listOf(runStarted(1L), runFinished(2L), runStarted(3L)),
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = ScriptedEventPort { _ -> page(emptyList(), 0L) })
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        val frames = connection.frames()
+        assertEquals(1, frames.size, "the street ended on the terminal fact: $frames")
+        assertEquals("end", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals("terminal-observed", frames[0]["reason"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `a page with a row this binary cannot read ends the street with the store's word`() {
+        // The page FAILS CLOSED: the store hands the whole page or it hands nothing, so a page
+        // that carries a terminal fact AND a row this binary cannot read never delivers the
+        // terminal fact —and the street says so with the word that names the failure.
+        //
+        // This is the price of reading the run's history a page at a time: the sweep stopped at
+        // the terminal fact and never looked at the rows behind it, and the page looks at the
+        // rows of the page it brings.
+        val lanes = FakeLanes(
+            output = ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+            ),
+            tails = listOf(OutputTailState.Sealed(5L)),
+            history = listOf(runStarted(1L), runFinished(2L), runStarted(3L)),
+            undecodableFrom = 3L,
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = ScriptedEventPort { _ -> page(emptyList(), 0L) })
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        val frames = connection.frames()
+        assertEquals(1, frames.size, "the street refused and ended: $frames")
+        assertEquals("refused", frames[0]["kind"]?.jsonPrimitive?.content)
+        val refusal = frames[0]["refusal"]?.jsonObject
+        assertEquals("storage-failed", refusal?.get("kind")?.jsonPrimitive?.content)
+        assertEquals(
+            "IllegalStateException: a row this binary cannot read",
+            refusal?.get("cause")?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
+    fun `a subscriber of a long run does not read the whole history in every round`() {
+        // The instrument: the double counts the rows it serves. The run's history is 10.000 rows
+        // and its terminal fact is the last of them, so a street that read the whole history in
+        // every round would serve 10.000 rows per round. The street reads the history a PAGE at a
+        // time, from where the last page stopped, so every row is served ONCE and no round reads
+        // more than a page.
+        val history = (1..10_000).map { runStarted(it.toLong()) } + runFinished(10_001L)
+        val lanes = FakeLanes(
+            output = ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+            ),
+            tails = listOf(OutputTailState.Sealed(5L)),
+            history = history,
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = ScriptedEventPort { _ -> page(emptyList(), 0L) })
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        assertEquals(
+            history.size,
+            lanes.rowsServed,
+            "every row of the history was served once, not once per round",
+        )
+        assertEquals(
+            40,
+            lanes.planeReads,
+            "the street read the history in pages of 256 rows and stopped at the terminal fact",
+        )
+        assertEquals("end", connection.frames().single()["kind"]?.jsonPrimitive?.content)
+    }
+
+    /**
+     * A history whose terminal fact is in its SECOND page.
+     *
+     * The street reads the run plane a page at a time, so a run that ends in the first page reads
+     * as over from the first answer. A history that ends in the second page is how a test says
+     * "the run was still going when the street asked".
+     */
+    private fun historyOfTwoPages(): List<DomainEvent> =
+        (1..256).map { runStarted(it.toLong()) } + runFinished(257L)
 
     /**
      * A page with [records] and the position that follows them.
@@ -857,6 +1009,16 @@ class ServiceSubscriptionTest {
      *   console arrives late".
      * @param planes the answers the run plane gives, in order, when [planes] is not empty.
      * @param planeFailure the failure the run plane throws, when it cannot answer at all.
+     * @param history the rows of the run's event history. The OUTPUT street reads the run plane a
+     *   PAGE at a time, so the plane's answer is a fact about these rows and not a flag the fake
+     *   carries: a street that reads the whole history in every round is a street this double can
+     *   count.
+     * @param sliceFailure the failure the event lane throws when it cannot answer a page.
+     * @param laneAbsent whether the event lane is absent, which is the one case in which the run
+     *   plane cannot be asked at all.
+     * @param undecodableFrom the sequence of the first row the event lane cannot read. The lane
+     *   fails closed when the page it is asked for holds that row or a later one, which is how a
+     *   store that cannot decode a row behaves.
      */
     private class FakeLanes(
         private val output: ObservationOutputRead? = null,
@@ -865,10 +1027,23 @@ class ServiceSubscriptionTest {
         private val runPlane: RunPlane = RunPlane.Live,
         private val planes: List<RunPlane> = emptyList(),
         private val planeFailure: Throwable? = null,
+        private val history: List<DomainEvent> = emptyList(),
+        private val sliceFailure: Throwable? = null,
+        private val laneAbsent: Boolean = false,
+        private val undecodableFrom: Long? = null,
     ) : ObserveLanes {
         private var outputRounds = 0
         private var planeRounds = 0
-        override val hasEventStore: Boolean get() = true
+
+        /** How many pages of the run's history the street read. */
+        var planeReads = 0
+            private set
+
+        /** How many rows of the run's history the street was served, in total. */
+        var rowsServed = 0
+            private set
+
+        override val hasEventStore: Boolean get() = !laneAbsent
         override val hasOutputPlane: Boolean get() = true
         override fun eventsOf(runId: String): Sequence<DomainEvent> = emptySequence()
         override fun runPlaneOf(runId: String): RunPlane {
@@ -890,7 +1065,24 @@ class ServiceSubscriptionTest {
             runId: String,
             after: EventCursor?,
             limit: Int,
-        ): dev.rubentxu.pipeline.v2.events.EventSlice? = null
+        ): dev.rubentxu.pipeline.v2.events.EventSlice? {
+            sliceFailure?.let { throw it }
+            if (laneAbsent) return null
+            val from = after?.lastSequence ?: 0L
+            val page = history.filter { it.sequence > from }.take(limit)
+            val unreadable = undecodableFrom
+            if (unreadable != null && page.any { it.sequence >= unreadable }) {
+                error("a row this binary cannot read")
+            }
+            planeReads++
+            rowsServed += page.size
+            val next = page.lastOrNull()?.sequence ?: from
+            return dev.rubentxu.pipeline.v2.events.EventSlice(
+                events = page,
+                nextCursor = EventCursor(runId, next),
+                hasMore = history.any { it.sequence > next },
+            )
+        }
         override fun outputTailsOf(runId: String): List<OutputTailState?>? = tails
     }
 

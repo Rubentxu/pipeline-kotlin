@@ -209,3 +209,34 @@ fun followDecision(
     runPlane == RunPlane.Live -> FollowDecision.ReadAgain
     else -> FollowDecision.Finished
 }
+
+/**
+ * Whether the run plane's answer can change what [followDecision] decides.
+ *
+ * ## Why this exists
+ *
+ * [followDecision] reads the plane in three of its branches and ignores it in the other two. A
+ * follower that asks the plane in a round where the answer cannot change the decision pays for an
+ * answer nobody reads —and the plane is not a cheap authority: reading it can cost the run's
+ * whole history.
+ *
+ * ## The rule, and why it is exactly the decision's
+ *
+ * The plane's answer matters when, and only when, the decision differs between two different plane
+ * answers:
+ *  - while frames are pending, the decision is [FollowDecision.ReadAgain] whatever the plane says;
+ *  - while a stream is open, or its state could not be established, the decision is
+ *    [FollowDecision.ReadAgain] whatever the plane says;
+ *  - with no streams at all, or with every known stream sealed, the plane's answer is what
+ *    separates [FollowDecision.ReadAgain] from [FollowDecision.Finished].
+ *
+ * So the condition is: no frames pending, and every known stream sealed. The empty case is part of
+ * it, because a collection with no elements has all of its elements sealed.
+ *
+ * ## What it does NOT promise
+ *
+ * It says nothing about whether the plane can ANSWER. A plane that throws is a refusal with a name,
+ * and a follower that does not ask does not learn of it until it asks.
+ */
+fun planeAnswerMatters(moreFrames: Boolean, tailStates: Collection<OutputTailState?>): Boolean =
+    !moreFrames && tailStates.all { it is OutputTailState.Sealed }

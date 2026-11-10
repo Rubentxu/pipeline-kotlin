@@ -62,8 +62,13 @@ object MainObserveCli {
 */
     private const val FRAMES_PER_READ = 256
 
-    /** Rows per event-lane read while following. A read bound, never a result size. */
-    private const val EVENTS_PER_READ = 256
+    /**
+     * Rows per event-lane read while following. A read bound, never a result size.
+     *
+     * The socket's output street reads the SAME lane with the SAME bound, so the page size is one
+     * number in the product and not one per caller.
+     */
+    internal const val EVENTS_PER_READ = 256
 
     /**
      * Runs the verb and writes what it answers to the streams it is given.

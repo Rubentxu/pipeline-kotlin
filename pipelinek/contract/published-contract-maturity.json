@@ -172,7 +172,22 @@
       "there (`all+start`, `none+start`), while the published artifact grew only with the",
       "operation and with the names of the refusals it can be answered with. The next right will",
       "arrive the same way, and publishing the scope would freeze a vocabulary whose next case is",
-      "already known."
+      "already known.",
+      "THE SURFACE THIS ARTIFACT PUBLISHES NOW ALSO CARRIES A CANCEL. The wire can close a run",
+      "and not only ask about one or start one: the operation `run.cancel` and the two negatives",
+      "with name that answer it (`cancel-not-authorized` and `run-cancel-refused`). A client that",
+      "started a run over the socket had no way to stop it - the run outlives the connection that",
+      "asked for it - and a socket that started runs without being able to close them would be a",
+      "half-published authority. The answer is the TERMINAL of the run and it is durable when the",
+      "answer travels, so the client reads a fact and not an EOF; a repeated cancellation answers",
+      "the same terminal with `already-cancelled`, because a run is closed once and not twice.",
+      "The right to CANCEL is still NOT in this surface, and this slice is the second reason it was",
+      "worth keeping it out: the vocabulary of WHAT a client may do lives in the application and",
+      "grew there (`all+start+cancel`), while the published artifact grew only with the operation",
+      "and with the names of the refusals it can be answered with. The right grew as a SET inside",
+      "the application - `WithRights(over, granted)` - precisely so that adding a right did not",
+      "add a case to a published sealed interface: the next right will arrive the same way, and",
+      "publishing the scope would freeze a vocabulary whose next case is already known."
     ]
   },
   "surfaces": {

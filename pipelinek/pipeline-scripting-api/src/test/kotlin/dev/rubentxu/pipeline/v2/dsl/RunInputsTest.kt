@@ -121,7 +121,19 @@ class RunInputsTest {
         val outcome = RunInputs.of(declaration, mapOf("1LEADING_DIGIT" to "x"))
 
         val refused = assertInstanceOf(RunInputsOutcome.Refused::class.java, outcome)
-        assertEquals("the-parameter-name-is-reserved", refused.refusal.reason)
+        assertEquals("the-parameter-name-is-not-legal", refused.refusal.reason)
+    }
+
+    @Test
+    fun `a name that breaks the shape AND belongs to the product is refused by the shape`() {
+        // The two rules are two WORDS, and the order between them is part of
+        // the contract: the shape is the rule of the alphabet and the prefixes
+        // are the rule of the product's own namespaces, and the first one
+        // checked is the one that is answered.
+        val outcome = RunInputs.of(declaration, mapOf("1PIPELINE_X" to "x"))
+
+        val refused = assertInstanceOf(RunInputsOutcome.Refused::class.java, outcome)
+        assertEquals("the-parameter-name-is-not-legal", refused.refusal.reason)
     }
 
     @Test

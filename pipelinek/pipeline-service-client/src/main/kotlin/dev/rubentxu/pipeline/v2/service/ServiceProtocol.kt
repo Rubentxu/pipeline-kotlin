@@ -208,7 +208,9 @@ sealed interface ServiceRequest {
      * service. The contract the service checks the values against is
      * therefore the one the client carries, and it is DATA and not
      * authority — the authority is the declaration of the script, and the
-     * child verifies the values against it before the body runs.
+     * child verifies the values against it before any STEP of the run runs.
+     * The child's check cannot happen earlier: the declaration is built
+     * while the author's own body runs.
      *
      * The values are text, and they are not a secret: a value is a text,
      * and there is no oracle that says whether a text is a secret.
@@ -242,7 +244,7 @@ sealed interface ServiceRequest {
          * It travels because the service cannot read the script's own declaration, and it is
          * DATA and not authority: the rules that check a value against it are the product's
          * (see [dev.rubentxu.pipeline.v2.dsl.RunInputs]), and the child checks the same
-         * values against the script itself before the body runs.
+         * values against the script itself before any STEP of the run runs.
          */
         val parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
     ) : ServiceRequest {
@@ -308,10 +310,14 @@ sealed interface ServiceRequest {
      * question, and a question is easier to ask than a start.
      *
      * The service therefore answers this request with a NAMED refusal —see
-     * [ServiceRefusal.ParametersRefused]— that says what it cannot do and why. The name
-     * is reserved in the vocabulary on purpose: a build that can describe a script
+     * [ServiceRefusal.DescribeParametersRefused]— that says what it cannot do and why. The
+     * name is reserved in the vocabulary on purpose: a build that can describe a script
      * because it admits an artifact that was authorized beforehand answers this same
      * request, and a client written against the name works with both.
+     *
+     * The name is NOT the one the VALUES are refused with: the values of a request that
+     * break a rule are fixed and sent again, and a description this service cannot produce
+     * is asked of somebody else.
      *
      * A client that needs the description before it starts a run gets it from the
      * compiler —the command line compiles the script it is about to run— or from the
@@ -791,15 +797,45 @@ sealed interface ServiceRefusal {
      * ([MalformedRequest]). The rules of the parameters are a decision of the service, and
      * the service decides them.
      *
-     * ## Why the same refusal answers a request to DESCRIBE
+     * ## Why it is NOT the refusal of a request to DESCRIBE
      *
-     * Because the two facts have the same shape for the client: the parameters of a script
-     * are not something this service can produce. The [reason] says which of the two it is,
-     * and a client that reads the reason knows whether it has to fix a value or ask
-     * somebody else for the contract.
+     * Because the two facts are not the same for the client: this refusal says that the
+     * values the client sent break a rule, and the client has to fix a value and send it
+     * again. A refusal that says that the service cannot DESCRIBE the parameters of a script
+     * says that there is nothing to fix: the client has to ask somebody else for the
+     * contract. One word for both would make the client read the reason to tell them apart,
+     * and the reason is read by a machine far more often than by a person.
+     *
+     * The refusal of a description is [DescribeParametersRefused].
      */
     data class ParametersRefused(val reason: String, val detail: String) : ServiceRefusal {
         override val kind: String = "parameters-refused"
+        override val payload: JsonObject = buildJsonObject {
+            put("reason", JsonPrimitive(reason))
+            put("detail", JsonPrimitive(detail))
+        }
+    }
+
+    /**
+     * The request to DESCRIBE the parameters of a script was refused.
+     *
+     * ## What it says
+     *
+     * That this service does not serve the description, and why: describing the parameters of
+     * a script means compiling it, and compiling it means running the author's code inside
+     * the service.
+     *
+     * ## Why it is a word of its own
+     *
+     * Because the client's two actions are different and neither of them is a retry: the
+     * values of a request that break a rule are fixed and sent again, and a description this
+     * service cannot produce is asked of somebody else —the compiler, or the contract the
+     * client already carries. A word that covered both would leave the client reading the
+     * reason to learn which of the two happened, and the reason is a field of the refusal
+     * that a machine reads before a person does.
+     */
+    data class DescribeParametersRefused(val reason: String, val detail: String) : ServiceRefusal {
+        override val kind: String = "describe-parameters-refused"
         override val payload: JsonObject = buildJsonObject {
             put("reason", JsonPrimitive(reason))
             put("detail", JsonPrimitive(detail))
@@ -1675,6 +1711,10 @@ private fun decodeServiceRefusal(kind: String, document: JsonObject): ServiceRef
     )
     "not-authorized" -> ServiceRefusal.NotAuthorized
     "too-many-subscriptions" -> ServiceRefusal.TooManySubscriptions
+    "describe-parameters-refused" -> ServiceRefusal.DescribeParametersRefused(
+        document.str("reason") ?: return null,
+        document.str("detail") ?: return null,
+    )
         else -> null
     }
 }

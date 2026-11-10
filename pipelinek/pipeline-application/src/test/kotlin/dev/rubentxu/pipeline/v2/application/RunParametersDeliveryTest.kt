@@ -17,9 +17,12 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.StructureRunOptions
 import dev.rubentxu.pipeline.v2.service.ServiceProtocol
 import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import dev.rubentxu.pipeline.v2.service.ServiceRequest
+import dev.rubentxu.pipeline.v2.service.ServiceResponse
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -264,6 +267,74 @@ class RunParametersDeliveryTest {
         val asked = starter.asked.single()
         assertEquals(mapOf("dryRun" to "true"), asked.parameters)
         assertEquals(contract, asked.parameterContract)
+    }
+
+    @Test
+    fun `the answer of a start carries the values the client delivered`() {
+        // The echo: a service that does not know the field leaves it out and starts the run
+        // without the values, and a client that cannot tell the two apart believes in values
+        // that are not there. The echo turns that silence into a fact.
+        val starter = ServiceTestStarter(
+            ServiceStartOutcome.Accepted(
+                runId = "run-1",
+                correlationId = "corr-1",
+                ownerId = "owner-1",
+                startedAtMs = 1700,
+                parameters = mapOf("dryRun" to "true"),
+            ),
+        )
+        val operations = operations(starter)
+
+        val answer = operations.answer(
+            ServiceRequest.StartRun(
+                ServiceProtocol.SCHEMA,
+                "build.kts",
+                null,
+                null,
+                emptyMap(),
+                mapOf("dryRun" to "true"),
+                contract,
+            ),
+            credentialDigest = "digest",
+        )
+
+        val answered = assertInstanceOf(ServiceResponse.Answered::class.java, answer)
+        val echoed = answered.result["parameters"] as? kotlinx.serialization.json.JsonObject
+        assertEquals(
+            mapOf("dryRun" to "true"),
+            echoed?.mapValues { (_, value) -> value.jsonPrimitive.content },
+        )
+    }
+
+    @Test
+    fun `the answer of a start carries no values when the client delivered none`() {
+        val starter = ServiceTestStarter(
+            ServiceStartOutcome.Accepted(
+                runId = "run-1",
+                correlationId = "corr-1",
+                ownerId = "owner-1",
+                startedAtMs = 1700,
+            ),
+        )
+        val operations = operations(starter)
+
+        val answer = operations.answer(
+            ServiceRequest.StartRun(
+                ServiceProtocol.SCHEMA,
+                "build.kts",
+                null,
+                null,
+                emptyMap(),
+                emptyMap(),
+                emptyList(),
+            ),
+            credentialDigest = "digest",
+        )
+
+        val answered = assertInstanceOf(ServiceResponse.Answered::class.java, answer)
+        val echoed = answered.result["parameters"] as? kotlinx.serialization.json.JsonObject
+        assertNotNull(echoed, "the field travels even when it carries nothing")
+        assertTrue(echoed!!.isEmpty(), "and it carries nothing")
     }
 
     @Test

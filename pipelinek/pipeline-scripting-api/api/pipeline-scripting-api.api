@@ -232,6 +232,19 @@ public final class dev/rubentxu/pipeline/v2/dsl/RunInputsRefusal$TheDeclarationI
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/dsl/RunInputsRefusal$TheNameIsNotLegal : dev/rubentxu/pipeline/v2/dsl/RunInputsRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/RunInputsRefusal$TheNameIsNotLegal;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/RunInputsRefusal$TheNameIsNotLegal;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/RunInputsRefusal$TheNameIsNotLegal;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getDetail ()Ljava/lang/String;
+	public final fun getParameter ()Ljava/lang/String;
+	public fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/dsl/RunInputsRefusal$TheNameIsReserved : dev/rubentxu/pipeline/v2/dsl/RunInputsRefusal {
 	public fun <init> (Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;

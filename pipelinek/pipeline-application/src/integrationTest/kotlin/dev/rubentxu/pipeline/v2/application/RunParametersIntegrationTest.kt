@@ -133,6 +133,11 @@ class RunParametersIntegrationTest {
                 ServiceAnswer.Answered::class.java,
                 answer,
             ).value)
+            assertEquals(
+                mapOf("dryRun" to "false"),
+                started.parameters,
+                "the answer carries the values the client delivered",
+            )
 
             val terminal = awaitTerminal(started.runId)
             assertInstanceOf(
@@ -234,7 +239,7 @@ class RunParametersIntegrationTest {
             val answer = client(STARTER_TOKEN).describeParameters("parameters.pipeline.kts")
 
             val refusal = assertInstanceOf(ServiceAnswer.Refused::class.java, answer).refusal
-            val named = assertInstanceOf(ServiceRefusal.ParametersRefused::class.java, refusal)
+            val named = assertInstanceOf(ServiceRefusal.DescribeParametersRefused::class.java, refusal)
             assertEquals(
                 "the-service-does-not-describe-parameters",
                 named.reason,

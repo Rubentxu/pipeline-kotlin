@@ -115,6 +115,21 @@ internal sealed interface ServiceStartOutcome {
          * always the configuration of the run that is answered.
          */
         val configuration: RunConfiguration = RunConfiguration.EMPTY,
+        /**
+         * The parameter values the run WILL HAVE.
+         *
+         * They are the DELIVERED ones —the values the client sent— and not the
+         * effective ones, because the effective ones are the delivered plus the
+         * defaults of the SCRIPT's own declaration, and the script's
+         * declaration is not the service's to know: describing it is compiling
+         * it, and compiling it is running the author's code inside the service.
+         *
+         * They are the configuration's twin: the answer echoes what the client
+         * delivered, so a service that does not know the field ignores it in
+         * silence and starts the run without the values, and the client that
+         * sent them has to be able to tell the two apart.
+         */
+        val parameters: Map<String, String> = emptyMap(),
     ) : ServiceStartOutcome
 
     /** The run did not start, and the refusal says why. */
@@ -432,7 +447,11 @@ internal class ServiceRunSupervisor(
 
         if (key != null) {
             when (val claim = registry.claim(key, digest, correlationId)) {
-                is ServiceStartClaim.Known -> return acceptedOf(claim.record, configuration)
+                is ServiceStartClaim.Known -> return acceptedOf(
+                    claim.record,
+                    configuration,
+                    request.parameters,
+                )
 
                 is ServiceStartClaim.Conflict -> return ServiceStartOutcome.Refused(
                     ServiceRefusal.IdempotencyConflict(request.idempotencyKey),
@@ -446,7 +465,11 @@ internal class ServiceRunSupervisor(
                     ),
                 )
 
-                is ServiceStartClaim.Awaiting -> return awaitOf(claim.future, configuration)
+                is ServiceStartClaim.Awaiting -> return awaitOf(
+                    claim.future,
+                    configuration,
+                    request.parameters,
+                )
 
                 is ServiceStartClaim.Refused -> return ServiceStartOutcome.Refused(
                     ServiceRefusal.RunStartRefused(
@@ -484,10 +507,17 @@ internal class ServiceRunSupervisor(
      * are the values the client delivered: the effective values of the REQUEST are the
      * delivered ones plus the defaults of that declaration.
      *
-     * The script's own declaration is verified by the child, before the body runs, and the
-     * effective values of the RUN are the ones of the script. A client whose contract
-     * differs from the script gets a run that refuses to start, and the operator's log
-     * says why.
+     * The script's own declaration is verified by the child, and the effective values of the RUN
+     * are the ones of the script. A client whose contract differs from the script gets a run
+     * that refuses to start, and the operator's log says why.
+     *
+     * ## When the child's check happens
+     *
+     * AFTER the script's own top-level body ran, and BEFORE any step of the run ran. The
+     * declaration of a pipeline is built while the author's body runs —that is when the
+     * `pipeline { }` block is constructed— so the child cannot know it any earlier, and the
+     * check that is refused here is refused before the first step, not before the author's
+     * code.
      */
     private fun checkParameters(
         values: Map<String, String>,
@@ -640,7 +670,7 @@ internal class ServiceRunSupervisor(
                 // CHILD minted.
                 supervision.launched(supervised, launched.runId)
                 if (key != null) registry.complete(key, record)
-                acceptedOf(record, configuration)
+                acceptedOf(record, configuration, delivered)
             }
 
             LaunchWatcher.Wait.Finished -> {
@@ -926,6 +956,7 @@ internal class ServiceRunSupervisor(
     private fun acceptedOf(
         record: ServiceStartRecord,
         configuration: RunConfiguration,
+        parameters: Map<String, String>,
     ): ServiceStartOutcome.Accepted =
         ServiceStartOutcome.Accepted(
             record.runId,
@@ -933,6 +964,7 @@ internal class ServiceRunSupervisor(
             record.ownerId,
             record.startedAtMs,
             configuration,
+            parameters,
         )
 
     /**
@@ -952,9 +984,14 @@ internal class ServiceRunSupervisor(
     private fun awaitOf(
         future: CompletableFuture<ServiceStartRecord>,
         configuration: RunConfiguration,
+        parameters: Map<String, String>,
     ): ServiceStartOutcome {
         return try {
-            acceptedOf(future.get(limits.startDeadlineMillis, TimeUnit.MILLISECONDS), configuration)
+            acceptedOf(
+                future.get(limits.startDeadlineMillis, TimeUnit.MILLISECONDS),
+                configuration,
+                parameters,
+            )
         } catch (failure: Exception) {
             val cause = (failure as? ExecutionException)?.cause
             if (cause is ServiceStartFailed) {

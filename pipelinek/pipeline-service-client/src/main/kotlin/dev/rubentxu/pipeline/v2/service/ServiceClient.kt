@@ -144,10 +144,24 @@ data class ServiceRunStart(
      * not a silent success.
      */
     val configuration: Map<String, String> = emptyMap(),
+    /**
+     * The parameter values the service accepted.
+     *
+     * EMPTY when the request carried no parameter values. It is NEVER null:
+     * an answer that does not carry the field is read as an answer that
+     * carries no values, and the client compares that with what it sent. A
+     * service that ignored the field is therefore a mismatch and not a
+     * silent success.
+     *
+     * They are the DELIVERED values, and not the effective ones: the
+     * effective ones add the defaults of the script's own declaration, and
+     * the service does not compile the script, so it does not know them.
+     */
+    val parameters: Map<String, String> = emptyMap(),
 ) {
 
     /**
-     * The answer WITHOUT the values of its configuration.
+     * The answer WITHOUT the values of its configuration and of its parameters.
      *
      * The generated one would render them, and a line of log that carried
      * them would publish them to whoever reads the log. The values came from
@@ -155,7 +169,8 @@ data class ServiceRunStart(
      */
     override fun toString(): String =
         "ServiceRunStart(runId=$runId, correlationId=$correlationId, ownerId=$ownerId, " +
-            "startedAtMs=$startedAtMs, configuration=${configuration.size} entries)"
+            "startedAtMs=$startedAtMs, configuration=${configuration.size} entries, " +
+            "parameters=${parameters.size} values)"
 }
 
 /**
@@ -465,8 +480,15 @@ class ServiceClient internal constructor(
                         "(run $runId)",
                 )
             }
+            val echoedParameters = result.parameters()
+            if (echoedParameters != parameters) {
+                return@narrow ServiceAnswer.Unreadable(
+                    "the answer carries parameter values that are not the ones that were sent " +
+                        "(run $runId)",
+                )
+            }
             ServiceAnswer.Answered(
-                ServiceRunStart(runId, correlationId, ownerId, startedAtMs, echoed),
+                ServiceRunStart(runId, correlationId, ownerId, startedAtMs, echoed, echoedParameters),
             )
         }
 
@@ -802,6 +824,26 @@ private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.
  */
 private fun JsonObject.configuration(): Map<String, String>? {
     val element = this["configuration"] ?: return emptyMap()
+    val entries = element as? JsonObject ?: return null
+    val values = LinkedHashMap<String, String>()
+    for ((name, value) in entries) {
+        val text = (value as? JsonPrimitive)?.contentOrNull ?: return null
+        values[name] = text
+    }
+    return values
+}
+
+/**
+ * The parameter values the answer carries, or null when the answer carries
+ * ones that cannot be read.
+ *
+ * The reading is the configuration's, for the same reason: an ABSENT field is
+ * read as NO values, so a service that does not know the field leaves it out
+ * and the client that sent values sees the difference instead of a silent
+ * success.
+ */
+private fun JsonObject.parameters(): Map<String, String>? {
+    val element = this["parameters"] ?: return emptyMap()
     val entries = element as? JsonObject ?: return null
     val values = LinkedHashMap<String, String>()
     for ((name, value) in entries) {

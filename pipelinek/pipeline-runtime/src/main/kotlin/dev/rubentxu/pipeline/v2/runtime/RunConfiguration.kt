@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.runtime
 
+import dev.rubentxu.pipeline.v2.domain.ClientInputRules
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxEnvDenyList
@@ -96,28 +97,20 @@ class RunConfiguration private constructor(
         /**
          * The shape of the name of an entry.
          *
-         * The alphabet is the one of a shell variable, and it is CLOSED on
-         * purpose: it has no `+`, so the `PATH+<NAME>` form —which the
-         * environment machinery consumes and turns into a PATH prefix— is
-         * not expressible through this channel. That form belongs to the
-         * script, which is the author's own trusted code; here the writer is
-         * a client.
+         * The rule is the PRODUCT's, and it lives in the domain with the other
+         * channel that obeys it —the parameters a pipeline declares— so that
+         * the two checkers cannot disagree about what a name may look like.
          */
-        private val NAME_PATTERN: Regex = Regex("[A-Za-z_][A-Za-z0-9_]*")
+        private val NAME_PATTERN: Regex = ClientInputRules.NAME_PATTERN
 
         /**
          * The prefixes the product owns.
          *
-         * They are PREFIXES and not a list of names, so the list grows with
-         * the product without anybody having to remember to append a name.
-         * The three namespaces are the runtime's, the service's and the
-         * launcher wrapper's.
+         * They are the PRODUCT's, and they live in the domain with the other
+         * channel that obeys them, for the same reason: a prefix list written
+         * twice is a list that drifts.
          */
-        private val RESERVED_PREFIXES: List<String> = listOf(
-            "PIPELINE_",
-            "PIPELINEK_",
-            "DURABLE_SH_",
-        )
+        private val RESERVED_PREFIXES: List<String> = ClientInputRules.RESERVED_PREFIXES
 
         /**
          * The names the launcher consumes to BUILD the PATH of a step.

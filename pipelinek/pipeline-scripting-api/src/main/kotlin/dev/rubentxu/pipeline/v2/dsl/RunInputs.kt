@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.dsl
 
+import dev.rubentxu.pipeline.v2.domain.ClientInputRules
 import dev.rubentxu.pipeline.v2.domain.ParameterSpec
 
 /**
@@ -96,30 +97,27 @@ class RunInputs private constructor(
         /**
          * The shape of the name of a parameter.
          *
-         * The alphabet is the one of a shell variable, and it is CLOSED on purpose: it has no
-         * `+`, so the `PATH+<NAME>` form —which the environment machinery consumes and turns
-         * into a PATH prefix— is not expressible through this channel.
+         * The rule is the PRODUCT's, and it lives in the domain with the other channel that
+         * obeys it —the configuration of a run— so that the two checkers cannot disagree
+         * about what a name may look like. A rule that has two homes has two answers, and
+         * the second one is the one nobody read.
          *
          * It is READ by the description of the declaration, so that the description and the
          * checker cannot disagree about what a name may look like.
          */
-        val NAME_PATTERN: Regex = Regex("[A-Za-z_][A-Za-z0-9_]*")
+        val NAME_PATTERN: Regex = ClientInputRules.NAME_PATTERN
 
         /**
          * The prefixes the product owns.
          *
-         * They are PREFIXES and not a list of names, so the list grows with the product
-         * without anybody having to remember to append a name. The three namespaces are the
-         * runtime's, the service's and the launcher wrapper's.
+         * They are the PRODUCT's, and they live in the domain with the other channel that
+         * obeys them, for the same reason the shape of a name does: a prefix list written
+         * twice is a list that drifts.
          *
          * They are READ by the description of the declaration, for the same reason the shape
          * of a name is.
          */
-        val RESERVED_PREFIXES: List<String> = listOf(
-            "PIPELINE_",
-            "PIPELINEK_",
-            "DURABLE_SH_",
-        )
+        val RESERVED_PREFIXES: List<String> = ClientInputRules.RESERVED_PREFIXES
 
         /**
          * The inputs of [declaration] and [raw], or the refusal that there are none.
@@ -143,7 +141,10 @@ class RunInputs private constructor(
             declarationRefusal(declaration)?.let { return RunInputsOutcome.Refused(it) }
 
             for (name in raw.keys) {
-                if (!NAME_PATTERN.matches(name) || isReserved(name)) {
+                if (!NAME_PATTERN.matches(name)) {
+                    return RunInputsOutcome.Refused(RunInputsRefusal.TheNameIsNotLegal(name))
+                }
+                if (isReserved(name)) {
                     return RunInputsOutcome.Refused(RunInputsRefusal.TheNameIsReserved(name))
                 }
             }
@@ -203,7 +204,10 @@ class RunInputs private constructor(
         private fun declarationRefusal(declaration: List<ParameterSpec>): RunInputsRefusal? {
             val seen = HashSet<String>()
             for (spec in declaration) {
-                if (!NAME_PATTERN.matches(spec.name) || isReserved(spec.name)) {
+                if (!NAME_PATTERN.matches(spec.name)) {
+                    return RunInputsRefusal.TheNameIsNotLegal(spec.name)
+                }
+                if (isReserved(spec.name)) {
                     return RunInputsRefusal.TheNameIsReserved(spec.name)
                 }
                 if (!seen.add(spec.name)) {
@@ -381,17 +385,35 @@ sealed interface RunInputsRefusal {
     }
 
     /**
+     * A name does not have the shape of a name.
+     *
+     * The rule is the product's, and it is the same one the configuration obeys: the alphabet
+     * of a shell variable, closed, with no `+`.
+     */
+    data class TheNameIsNotLegal(val parameter: String) : RunInputsRefusal {
+        override val reason: String = "the-parameter-name-is-not-legal"
+        override val detail: String =
+            "the name of a parameter must match [A-Za-z_][A-Za-z0-9_]*; '$parameter' does not"
+    }
+
+    /**
      * A name is not the product's to give.
      *
-     * The name either does not have the shape of a name or begins with one of the prefixes
-     * the product owns. Both are the same fact seen from two sides: the name is not one a
-     * caller may choose.
+     * It begins with one of the prefixes the product owns, so it is a name the product has
+     * already given to something of its own.
+     *
+     * ## Why this is a different word than the shape of the name
+     *
+     * Because the two rules are fixed by DIFFERENT owners: the shape is the rule of the
+     * alphabet, and the prefixes are the rule of the product's own namespaces. A caller that
+     * sent `9mal` has to fix the spelling, and a caller that sent `PIPELINE_TARGET` has to
+     * fix the NAME, and a word that says both sends both to look in the same place.
      */
     data class TheNameIsReserved(val parameter: String) : RunInputsRefusal {
         override val reason: String = "the-parameter-name-is-reserved"
         override val detail: String =
-            "the name of a parameter must match [A-Za-z_][A-Za-z0-9_]* and may not begin with " +
-                "PIPELINE_, PIPELINEK_ or DURABLE_SH_; '$parameter' does not"
+            "the name of a parameter may not begin with PIPELINE_, PIPELINEK_ or DURABLE_SH_; " +
+                "'$parameter' does"
     }
 
     /**

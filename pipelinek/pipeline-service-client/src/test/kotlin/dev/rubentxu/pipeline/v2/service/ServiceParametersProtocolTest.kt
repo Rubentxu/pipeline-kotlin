@@ -200,4 +200,30 @@ class ServiceParametersProtocolTest {
         val refused = assertInstanceOf(ServiceDecoding.Refused::class.java, decoded)
         assertEquals(ServiceRefusal.MalformedRequest, refused.refusal)
     }
+
+    @Test
+    fun `the refusal of a description has a name of its own`() {
+        // The refusal of a DESCRIPTION is not the refusal of the VALUES: the
+        // values are fixed and sent again, and a description this service
+        // cannot produce is asked of somebody else. One word for both would
+        // make the client read the reason to tell them apart.
+        val line = ServiceCodec.encode(
+            ServiceResponse.Refused(
+                ServiceProtocol.SCHEMA,
+                ServiceRefusal.DescribeParametersRefused(
+                    "the-service-does-not-describe-parameters",
+                    "describing the parameters of a script means compiling it",
+                ),
+            ),
+        )
+
+        val decoded = ServiceCodec.decodeLine(line)
+        val refused = assertInstanceOf(ServiceLine.Refused::class.java, decoded)
+        val description = assertInstanceOf(
+            ServiceRefusal.DescribeParametersRefused::class.java,
+            refused.refusal,
+        )
+        assertEquals("the-service-does-not-describe-parameters", description.reason)
+        assertTrue(description.detail.contains("compiling"))
+    }
 }

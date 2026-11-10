@@ -79,6 +79,41 @@ data class ServiceHealth(
 )
 
 /**
+ * The identity of a run the service started.
+ *
+ * ## What the four facts are
+ *
+ * The [runId] is the run's own identity, and it is the one a client uses to
+ * ask about the run afterwards. The [ownerId] is the authority that holds
+ * the run's lease. The [correlationId] is the token the service chose and
+ * passed to the run, so a reader of the run's own facts can join them to
+ * this answer. The [startedAtMs] is when the run took its ownership.
+ *
+ * ## Why this is the whole answer
+ *
+ * Because the service answers a start with the identity of the run and not
+ * with the run's outcome: the run is still going when the answer is
+ * written, and its outcome is another authority's answer — the one the
+ * client's `runState` asks for.
+ *
+ * ## When the runId cannot be asked about
+ *
+ * The [runId] is the run's identity, and whether the SAME credential may
+ * ask about it is a question of the SCOPE the operator gave that credential,
+ * and not of this answer. A credential that may start runs and read none
+ * receives a [runId] it cannot ask about with that same credential: the
+ * scope that governs reading is the operator's, and the service does not
+ * widen it because a run was started. A client that has to follow the run
+ * it starts needs a scope that reads runs as well.
+ */
+data class ServiceRunStart(
+    val runId: String,
+    val correlationId: String,
+    val ownerId: String,
+    val startedAtMs: Long,
+)
+
+/**
  * One item of a street.
  *
  * A record, the end of the street, or a refusal: three facts, and a client
@@ -276,6 +311,50 @@ class ServiceClient internal constructor(
                 is ServiceRunStateDecoding.Observed -> ServiceAnswer.Answered(decoded.observation)
                 is ServiceRunStateDecoding.Unreadable -> ServiceAnswer.Unreadable(decoded.reason)
             }
+        }
+
+    /**
+     * Starts a run and returns its identity.
+     *
+     * ## What the client names and what it does not
+     *
+     * The client names the [script] and, optionally, the [workspace] — by
+     * their names inside the directories the operator admitted, never by a
+     * path. Everything else is the service's decision: the argv, the
+     * deadline, the policy.
+     *
+     * ## The idempotency key
+     *
+     * A request that carries an [idempotencyKey] and repeats with the same
+     * payload is the SAME request: the service answers with the same
+     * `runId` and does not start a second run. A request that repeats the
+     * key with a different payload is refused with `idempotency-conflict`.
+     * A request with no key is a request that does not ask to be
+     * repeatable.
+     *
+     * ## The deadline
+     *
+     * This call waits for the run to OWN ITSELF, which is not the same as
+     * waiting for it to finish: the answer comes when the run has its
+     * lease, and the run keeps going after it. A client that gives this
+     * call a short deadline will hear `timed-out` while the run starts
+     * anyway, so the deadline here is the client's decision to make.
+     */
+    fun startRun(
+        script: String,
+        workspace: String? = null,
+        idempotencyKey: String? = null,
+    ): ServiceAnswer<ServiceRunStart> =
+        ask(ServiceRequest.StartRun(schema, script, workspace, idempotencyKey)).narrow { result ->
+            val runId = result.string("runId")
+                ?: return@narrow ServiceAnswer.Unreadable("no runId")
+            val correlationId = result.string("correlationId")
+                ?: return@narrow ServiceAnswer.Unreadable("no correlationId")
+            val ownerId = result.string("ownerId")
+                ?: return@narrow ServiceAnswer.Unreadable("no ownerId")
+            val startedAtMs = result.long("startedAtMs")
+                ?: return@narrow ServiceAnswer.Unreadable("no startedAtMs")
+            ServiceAnswer.Answered(ServiceRunStart(runId, correlationId, ownerId, startedAtMs))
         }
 
     /**
@@ -540,3 +619,7 @@ private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.
 /** The boolean [key] holds, or null when it does not hold one. */
 private fun JsonObject.boolean(key: String): Boolean? =
     this[key]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
+
+/** The long [key] holds, or null when it does not hold one. */
+private fun JsonObject.long(key: String): Long? =
+    this[key]?.jsonPrimitive?.contentOrNull?.toLongOrNull()

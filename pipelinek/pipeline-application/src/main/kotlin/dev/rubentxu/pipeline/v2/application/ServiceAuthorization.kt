@@ -12,7 +12,8 @@ import java.security.MessageDigest
  * [All] names no run in particular: it may ask about every run the service
  * knows. [None] may ask about no run at all: it may ask the service about
  * ITSELF —its version and its health— and about nothing else. [Runs] may ask
- * about the runs it names, and about no other.
+ * about the runs it names, and about no other. [MayStart] adds the right to
+ * START a run, and keeps the reading rights of the scope it wraps.
  *
  * ## Why a scope is a TYPE and not a flag
  *
@@ -21,12 +22,21 @@ import java.security.MessageDigest
  * authorized at all", and those are different facts: the first is a client
  * that may still ask `version`, the second is a client that may ask nothing.
  *
+ * ## Why starting is a WRAPPER and not a flag of its own
+ *
+ * Because "may read these runs" and "may start runs" are two independent
+ * rights, and a scope that could only say one of them would force the
+ * operator to give up one to get the other. [MayStart] wraps the reading
+ * scope, so `all+start` and `none+start` are both expressible and neither
+ * of them is a special case of the other.
+ *
  * ## What a scope does NOT promise
  *
- * A scope says what a client may ASK about over the socket. It does not make
- * a run private: the same substrate is readable from the command line, with
- * no authorization at all. The scope is a boundary over the SERVICE, not over
- * the DATA, and a consumer that needs the second has to ask for it there.
+ * A scope says what a client may ASK about over the socket, and what it may
+ * START. It does not make a run private: the same substrate is readable
+ * from the command line, with no authorization at all. The scope is a
+ * boundary over the SERVICE, not over the DATA, and a consumer that needs
+ * the second has to ask for it there.
  */
 internal sealed interface ServiceScope {
 
@@ -40,6 +50,19 @@ internal sealed interface ServiceScope {
     data class Runs(val runIds: Set<String>) : ServiceScope
 
     /**
+     * May start a run, and may read what [over] allows.
+     *
+     * The wrapper exists so that the reading rights and the right to start
+     * are independent: a client that may start runs and read nothing is
+     * [MayStart] over [None], and one that may start and read everything is
+     * [MayStart] over [All].
+     */
+    data class MayStart(val over: ServiceScope) : ServiceScope
+
+    /** Whether this scope lets a client START a run. */
+    val mayStartRuns: Boolean get() = this is MayStart
+
+    /**
      * Whether this scope covers [runId].
      *
      * The question the service asks BEFORE it looks at the store: a run that
@@ -50,6 +73,7 @@ internal sealed interface ServiceScope {
         All -> true
         None -> false
         is Runs -> runId in runIds
+        is MayStart -> over.covers(runId)
     }
 }
 
@@ -88,9 +112,10 @@ internal data class ServiceAuthorization(
 /**
  * What the service decided about a request that carried an authorization.
  *
- * The three cases are the three facts a client acts on differently: it may
- * ask, it has to present another authorization, or it has to ask for a scope
- * that covers the run.
+ * The four cases are the four facts a client acts on differently: it may
+ * ask, it has to present another authorization, it has to ask for a scope
+ * that covers the run, or it has to ask for an authorization that may start
+ * runs.
  */
 internal sealed interface ServiceAuthorizationOutcome {
 
@@ -102,6 +127,17 @@ internal sealed interface ServiceAuthorizationOutcome {
 
     /** The authorization is one the service knows, and its scope does NOT cover the run. */
     data class RunNotAuthorized(val runId: String) : ServiceAuthorizationOutcome
+
+    /**
+     * The authorization is one the service knows, and its scope does not let
+     * it start a run.
+     *
+     * It is NOT [NotAuthorized]: the token was accepted, and what it lacks
+     * is the right to start. A client that could not tell the two apart
+     * would learn which authorizations exist by presenting tokens until one
+     * is accepted.
+     */
+    data object StartNotAuthorized : ServiceAuthorizationOutcome
 }
 
 /**
@@ -138,6 +174,11 @@ internal sealed interface ServiceAuthorizationOutcome {
  * run", "may answer THIS question" — and every one of them would add a case
  * to a SEALED interface that is already published, which is a versioned break
  * of a published ABI with its entry in the ledger of deliberate breaks.
+ *
+ * The scope has ALREADY grown once, and it grew here: `+start` is the right
+ * to start a run, and it is a wrapper over the reading scope, so the
+ * vocabulary of the file now says both what a client may read and what it
+ * may start. That is what a vocabulary that was kept unpublished is FOR.
  *
  * Keeping the scope here means the vocabulary can grow while the service
  * grows, and the only thing frozen in the published artifact is the thing
@@ -177,6 +218,41 @@ internal class ServiceAuthorizations private constructor(
             ServiceAuthorizationOutcome.Authorized
         } else {
             ServiceAuthorizationOutcome.RunNotAuthorized(runId)
+        }
+    }
+
+    /**
+     * The DIGEST of the credential [presentedToken] carries, when the
+     * service knows it.
+     *
+     * It is what makes a request attributable to a client WITHOUT carrying
+     * the secret: the digest is the same value the service looks the token
+     * up by, and it cannot be turned back into a token.
+     */
+    fun digestOfAuthorized(presentedToken: String?): String? {
+        if (presentedToken == null) return null
+        return if (scopesByDigest.containsKey(digestOf(presentedToken))) {
+            digestOf(presentedToken)
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Whether [presentedToken] may START a run.
+     *
+     * A null token means the client presented none. The decision is about
+     * the RIGHT and not about a run: starting a run is not about any run in
+     * particular, so there is no run to be out of scope of.
+     */
+    fun decideStart(presentedToken: String?): ServiceAuthorizationOutcome {
+        if (presentedToken == null) return ServiceAuthorizationOutcome.NotAuthorized
+        val scope = scopesByDigest[digestOf(presentedToken)]
+            ?: return ServiceAuthorizationOutcome.NotAuthorized
+        return if (scope.mayStartRuns) {
+            ServiceAuthorizationOutcome.Authorized
+        } else {
+            ServiceAuthorizationOutcome.StartNotAuthorized
         }
     }
 
@@ -253,7 +329,8 @@ internal class ServiceAuthorizations private constructor(
                     )
                 }
                 val parsed = parseScope(scope) ?: return ServiceAuthorizationsReading.Refused(
-                    "line $number: the scope is 'all', 'none' or a list of run ids; " +
+                    "line $number: the scope is 'all', 'none' or a list of run ids, " +
+                        "optionally with '+start' to let the client start runs; " +
                         "a run id may hold only letters, digits, '.', '_' and '-'",
                 )
                 val digest = digestOf(token)
@@ -304,8 +381,27 @@ internal class ServiceAuthorizations private constructor(
          * name a run the service would refuse to answer about. A scope that
          * names such a run would be a scope that could never cover anything,
          * and a file that says it is wrong is refused rather than read.
+         *
+         * ## The `+start` suffix
+         *
+         * The scope may end with `+start`, which adds the right to start a
+         * run. The separator cannot be part of a run id —the alphabet is
+         * `[a-z0-9._-]`— so the word is read one way and not two, and a
+         * file that says `all` still says `all`.
          */
-        private fun parseScope(text: String): ServiceScope? = when {
+        private fun parseScope(text: String): ServiceScope? {
+            val parts = text.split('+')
+            if (parts.size > 2) return null
+            val reading = parseReadingScope(parts[0]) ?: return null
+            if (parts.size == 1) return reading
+            if (parts[1] != START_CAPABILITY) return null
+            return ServiceScope.MayStart(reading)
+        }
+
+        /**
+         * The reading scope [text] names, or null when it names none.
+         */
+        private fun parseReadingScope(text: String): ServiceScope? = when {
             text == ALL_SCOPE -> ServiceScope.All
             text == NO_SCOPE -> ServiceScope.None
             else -> {
@@ -325,6 +421,7 @@ internal class ServiceAuthorizations private constructor(
             ServiceScope.All -> ALL_SCOPE
             ServiceScope.None -> NO_SCOPE
             is ServiceScope.Runs -> scope.runIds.joinToString(",")
+            is ServiceScope.MayStart -> "${scopeText(scope.over)}$START_SUFFIX"
         }
 
         /** The scope that names every run. */
@@ -332,6 +429,12 @@ internal class ServiceAuthorizations private constructor(
 
         /** The scope that names no run. */
         private const val NO_SCOPE: String = "none"
+
+        /** The capability that lets a client start a run. */
+        private const val START_CAPABILITY: String = "start"
+
+        /** The suffix that carries [START_CAPABILITY]. */
+        private const val START_SUFFIX: String = "+start"
 
         /** The characters a label may hold. */
         private val LABEL: Regex = Regex("[A-Za-z0-9._-]+")

@@ -273,6 +273,7 @@ class ServiceOperationsTest {
                 controlRootPresent = true,
             )
         },
+        starts = ServiceTestStarter(),
     )
 
     /**

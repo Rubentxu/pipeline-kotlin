@@ -2,9 +2,12 @@ package dev.rubentxu.pipeline.v2.application
 
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
+import java.nio.file.Files
+import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * The shape of the requests `serve` accepts.
@@ -201,6 +204,53 @@ class MainServeCliTest {
         )
     }
 
+    @Test
+    fun `a deadline that is not a positive number is refused by name`(@TempDir root: Path) {
+        val answer = ask(root, "--run-deadline-ms", "0")
+
+        assertEquals(4, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("run-policy-refused"),
+            "a deadline that is not a number of milliseconds is refused by name: ${answer.stderr}",
+        )
+    }
+
+    @Test
+    fun `a budget of supervised runs that is not a positive number is refused by name`(@TempDir root: Path) {
+        val answer = ask(root, "--max-supervised-runs", "-1")
+
+        assertEquals(4, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("run-policy-refused"),
+            "a budget that is not a number of runs is refused by name: ${answer.stderr}",
+        )
+    }
+
+    @Test
+    fun `a start deadline that is not a positive number is refused by name`(@TempDir root: Path) {
+        val answer = ask(root, "--start-deadline-ms", "0")
+
+        assertEquals(4, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("run-policy-refused"),
+            "a start deadline that is not a number of milliseconds is refused by name: " +
+                answer.stderr,
+        )
+    }
+
+    @Test
+    fun `a record of the starts that cannot be read is refused by name`(@TempDir root: Path) {
+        Files.writeString(root.resolve(ServiceStartRegistry.FILE_NAME), "not a document")
+
+        val answer = ask(root)
+
+        assertEquals(4, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("starts-record-refused"),
+            "a service that cannot read its record of the starts does not start: ${answer.stderr}",
+        )
+    }
+
     /**
      * The decision of the verb, and what it printed.
      */
@@ -210,6 +260,29 @@ class MainServeCliTest {
      * Asks the verb with [words] — the arguments that follow the verb's own
      * words — and reads its answer.
      */
+    private fun ask(root: Path, vararg words: String): Answer {
+        val authorizations = root.resolve("authorizations")
+        Files.writeString(authorizations, "token-of-the-operator operator all\n")
+        Files.setPosixFilePermissions(
+            authorizations,
+            setOf(
+                java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+            ),
+        )
+        val named = listOf(
+            "--db",
+            root.resolve("store.db").toString(),
+            "--control-root",
+            root.resolve("control").toString(),
+            "--socket",
+            root.resolve("service.sock").toString(),
+            "--authorization-file",
+            root.resolve("authorizations").toString(),
+        ) + words
+        return ask(*named.toTypedArray())
+    }
+
     private fun ask(vararg words: String): Answer {
         val outBytes = ByteArrayOutputStream()
         val errBytes = ByteArrayOutputStream()

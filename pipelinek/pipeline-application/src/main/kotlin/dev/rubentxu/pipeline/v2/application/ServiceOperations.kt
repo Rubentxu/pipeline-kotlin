@@ -68,6 +68,7 @@ internal data class ServiceSubstrate(
 internal class ServiceOperations(
     private val introspection: RuntimeIntrospectionPort,
     private val substrate: () -> ServiceSubstrate,
+    private val starts: ServiceRunStarter,
 ) {
 
     /**
@@ -77,10 +78,11 @@ internal class ServiceOperations(
      * exception, and an exception would close the connection without saying
      * why.
      */
-    fun answer(request: ServiceRequest): ServiceResponse = when (request) {
+    fun answer(request: ServiceRequest, credentialDigest: String? = null): ServiceResponse = when (request) {
         is ServiceRequest.Version -> answered(versionResult())
         is ServiceRequest.Health -> answered(healthResult())
         is ServiceRequest.RunState -> stateOf(request.runId)
+        is ServiceRequest.StartRun -> startOf(request, credentialDigest)
     }
 
     /**
@@ -130,6 +132,62 @@ internal class ServiceOperations(
                 refusalOf(answer.refusal),
             )
         }
+
+    /**
+     * The answer to a request to START a run.
+     *
+     * The answer is the identity of the run and not its outcome: the run is
+     * still going when the answer is written, and what it concludes is
+     * another authority's answer — the one the client asks for with
+     * `run.state`.
+     *
+     * The refusal is the supervisor's own: it knows whether the names
+     * resolved, whether the key was already used, and whether the child
+     * took its ownership.
+     *
+     * It NEVER throws, even when the supervisor does: the promise of
+     * [answer] is that a connection gets a line, and a start that fails in
+     * an unforeseen way is a refusal with a name and not a closed
+     * connection.
+     */
+    private fun startOf(
+        request: ServiceRequest.StartRun,
+        credentialDigest: String?,
+    ): ServiceResponse {
+        val outcome = try {
+            starts.start(
+                ServiceStartRequest(
+                    script = request.script,
+                    workspace = request.workspace,
+                    idempotencyKey = request.idempotencyKey,
+                    credentialDigest = credentialDigest.orEmpty(),
+                ),
+            )
+        } catch (failure: Exception) {
+            return ServiceResponse.Refused(
+                ServiceProtocol.SCHEMA,
+                ServiceRefusal.RunStartRefused(
+                    "the-start-failed",
+                    failure.message ?: "the start of the run failed",
+                ),
+            )
+        }
+        return when (outcome) {
+            is ServiceStartOutcome.Accepted -> answered(
+                buildJsonObject {
+                    put("runId", JsonPrimitive(outcome.runId))
+                    put("correlationId", JsonPrimitive(outcome.correlationId))
+                    put("ownerId", JsonPrimitive(outcome.ownerId))
+                    put("startedAtMs", JsonPrimitive(outcome.startedAtMs))
+                },
+            )
+
+            is ServiceStartOutcome.Refused -> ServiceResponse.Refused(
+                ServiceProtocol.SCHEMA,
+                outcome.refusal,
+            )
+        }
+    }
 
     /**
      * An answer, with the schema this build speaks.

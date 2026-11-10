@@ -63,6 +63,24 @@ internal enum class ServiceStartupRefusal(val reason: String) {
     /** Another service is already listening on that path. */
     AnotherServiceIsListening("another-service-is-listening"),
 
+    /**
+     * The policy of the supervised runs is not a policy the service can use.
+     *
+     * The deadline and the budget of the runs are numbers the operator
+     * wrote, and a number that is not a number is refused by name: the
+     * remedy is to write it again.
+     */
+    RunPolicyRefused("run-policy-refused"),
+
+    /**
+     * The record of the starts could not be read.
+     *
+     * The record is the promise that a key means one run, and a service
+     * that cannot read it would forget that promise and start a second run
+     * for a key it already answered. The service refuses to start instead.
+     */
+    StartsRecordRefused("starts-record-refused"),
+
     /** The directory of the socket can be read by others, so the socket can be too. */
     SocketDirectoryIsNotPrivate("socket-directory-is-not-private"),
 

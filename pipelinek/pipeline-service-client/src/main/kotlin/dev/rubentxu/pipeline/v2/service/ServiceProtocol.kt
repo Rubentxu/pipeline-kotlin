@@ -91,6 +91,35 @@ object ServiceProtocol {
      * "zero trust in the client's data" a fact rather than an intention.
      */
     const val MAX_RUN_ID_LENGTH: Int = 256
+
+    /**
+     * The longest name of a script a request may carry.
+     *
+     * A script is named by its name INSIDE the directory the operator
+     * admitted, never by a path: the name is resolved against that
+     * directory and the result has to stay inside it. A name longer than
+     * this is not a name, and it is refused before anything is resolved.
+     */
+    const val MAX_SCRIPT_NAME_LENGTH: Int = 256
+
+    /**
+     * The longest name of a workspace a request may carry.
+     *
+     * The same rule as the script's name, for the same reason: a workspace
+     * is a name inside a directory the operator admitted, and a name that
+     * does not fit in a path is not one.
+     */
+    const val MAX_WORKSPACE_NAME_LENGTH: Int = 256
+
+    /**
+     * The longest idempotency key a request may carry.
+     *
+     * The key is what makes a repeated request the SAME request, and it is
+     * a label the client chooses: a key of a megabyte is not a label. The
+     * bound is what keeps the record of the starts small enough to be a
+     * file a human can read.
+     */
+    const val MAX_IDEMPOTENCY_KEY_LENGTH: Int = 128
 }
 
 /**
@@ -113,6 +142,39 @@ sealed interface ServiceRequest {
 
     /** The state of one run. */
     data class RunState(override val schema: String, val runId: String) : ServiceRequest
+
+    /**
+     * The request to START a run.
+     *
+     * ## What the request carries
+     *
+     * Three names and nothing else: the script to run, the workspace to run
+     * it in, and the key that makes a repeated request the same request.
+     * The service owns everything else — the argv, the deadline, the
+     * policy — because everything else is a decision of the operator and
+     * not of the client.
+     *
+     * ## Why the script is a NAME and not a path
+     *
+     * Because the client does not get to say where the script is. It says
+     * WHICH script, by its name inside the directory the operator admitted,
+     * and the service resolves that name against that directory and refuses
+     * anything that lands outside. A request that carried a path would be a
+     * request to run whatever the client can name, which is exactly what a
+     * socket on a machine must not be.
+     *
+     * ## Why the workspace is optional
+     *
+     * Because a run without a workspace is a run in the product's own
+     * scratch, and that is a legitimate thing to ask for. When the client
+     * names one, the name is resolved with the same rule as the script's.
+     */
+    data class StartRun(
+        override val schema: String,
+        val script: String,
+        val workspace: String?,
+        val idempotencyKey: String?,
+    ) : ServiceRequest
 }
 
 /**
@@ -431,6 +493,108 @@ sealed interface ServiceRefusal {
         override val kind: String = "too-many-subscriptions"
         override val payload: JsonObject = buildJsonObject { }
     }
+
+    /**
+     * The authorization is one this service knows, and its scope does not
+     * cover STARTING a run.
+     *
+     * ## Why it is not `not-authorized`
+     *
+     * Because the two say different things and the client acts differently
+     * on them: `not-authorized` says "present an authorization this service
+     * accepts", and this one says "this authorization does not let you
+     * start runs". A client that could not tell them apart would learn
+     * which authorizations exist by presenting tokens until one is
+     * accepted — and that is the enumeration this refusal vocabulary exists
+     * to prevent.
+     */
+    data object StartNotAuthorized : ServiceRefusal {
+        override val kind: String = "start-not-authorized"
+        override val payload: JsonObject = buildJsonObject { }
+    }
+
+    /**
+     * The script the client named is not one this service admits.
+     *
+     * ## Why the name travels back
+     *
+     * Because the name is what the client sent and what it has to fix: a
+     * client that asked for a script the service does not admit has to
+     * know WHICH name was refused, or it can only guess. The name is the
+     * client's own text, so carrying it back leaks nothing.
+     */
+    data class ScriptNotAdmitted(val script: String) : ServiceRefusal {
+        override val kind: String = "script-not-admitted"
+        override val payload: JsonObject = buildJsonObject { put("script", JsonPrimitive(script)) }
+    }
+
+    /**
+     * The workspace the client named is not one this service admits.
+     *
+     * The same contract as [ScriptNotAdmitted], for the same reason: the
+     * workspace is a name inside a directory the operator admitted, and the
+     * name the client sent is what it has to fix.
+     */
+    data class WorkspaceNotAdmitted(val workspace: String) : ServiceRefusal {
+        override val kind: String = "workspace-not-admitted"
+        override val payload: JsonObject = buildJsonObject { put("workspace", JsonPrimitive(workspace)) }
+    }
+
+    /**
+     * The idempotency key was used before with a DIFFERENT payload.
+     *
+     * ## Why it is not a second run
+     *
+     * Because the key's promise is that one key means one request: the
+     * first request with that key decided what would run, and a second
+     * request with the same key and a different payload is a request to
+     * run something else under a name that already means something. The
+     * service refuses it instead of guessing which of the two the client
+     * meant.
+     */
+    data class IdempotencyConflict(val key: String) : ServiceRefusal {
+        override val kind: String = "idempotency-conflict"
+        override val payload: JsonObject = buildJsonObject { put("key", JsonPrimitive(key)) }
+    }
+
+    /**
+     * The service already supervises as many runs as it admits.
+     *
+     * ## Why it is not `too-many-connections`
+     *
+     * Because the budget is of a different thing: a connection is a client
+     * that is here NOW, and a supervised run is a CHILD PROCESS the service
+     * is watching. The remedy is the same — come back later — but the
+     * client has to know which budget it ran into, because the two are
+     * spent by different things.
+     */
+    data object TooManySupervisedRuns : ServiceRefusal {
+        override val kind: String = "too-many-supervised-runs"
+        override val payload: JsonObject = buildJsonObject { }
+    }
+
+    /**
+     * The run did not start.
+     *
+     * ## What the reason is
+     *
+     * A word that says WHICH step failed: the child could not be launched,
+     * it died before it owned the run, or it did not report its ownership
+     * in time. The [detail] is the service's own sentence about it.
+     *
+     * ## What does NOT travel here
+     *
+     * The child's own output. A client that starts a run does not get to
+     * read the output of the operator's script: the child's stderr is in
+     * the operator's log, under the service's own directory.
+     */
+    data class RunStartRefused(val reason: String, val detail: String) : ServiceRefusal {
+        override val kind: String = "run-start-refused"
+        override val payload: JsonObject = buildJsonObject {
+            put("reason", JsonPrimitive(reason))
+            put("detail", JsonPrimitive(detail))
+        }
+    }
 }
 
 /**
@@ -542,15 +706,6 @@ sealed interface ServiceLine {
  */
 object ServiceCodec {
 
-    /** The family of the cursor the events street resumes from. */
-    private const val EVENT_CURSOR_FAMILY: String = "evt-cursor-v1"
-
-    /** The family of the cursor the output street resumes from. */
-    private val FRAME_ORDINAL_FAMILY: String = FrameOrdinalToken.PREFIX
-
-    /** The position before the first frame of a run. */
-    private const val FIRST_FRAME_ORDINAL: Long = -1L
-
     /**
      * What [line] is.
      *
@@ -600,92 +755,10 @@ object ServiceCodec {
             }
             "events.follow" -> decodeEventsFollow(request, schema, credential)
             "output.follow" -> decodeOutputFollow(request, schema, credential)
+            "run.start" -> decodeStartRun(request, schema, credential)
             else -> ServiceDecoding.Refused(ServiceRefusal.UnknownOp)
         }
     }
-
-    /**
-     * The text [key] holds, or null when it holds none.
-     *
-     * A field that is not a string is a field that holds no text: the
-     * element is read as a primitive or not at all, so a client cannot make
-     * the decoder raise by sending an object where a string belongs.
-     */
-    private fun JsonObject.text(key: String): String? =
-        (this[key] as? JsonPrimitive)?.contentOrNull
-
-    /**
-     * The run this request is about, or null when it names none.
-     *
-     * A run id has to be a run id: it has to NAME a durable location, in the
-     * alphabet the product uses for that, and it has to be short enough to
-     * be one. The alphabet is [RunId]'s and not a second copy of it: the
-     * Output Plane builds a path out of the run id, and the one authority
-     * about which run ids may name a location is the identity itself.
-     *
-     * A run id that does not qualify is refused HERE, before anything is
-     * opened: a request that named a path would otherwise travel until the
-     * plane refused it, and the refusal would arrive as a closed connection
-     * instead of as a word the client can read.
-     */
-    private fun JsonObject.runId(): String? {
-        val runId = text("runId") ?: return null
-        if (runId.length > ServiceProtocol.MAX_RUN_ID_LENGTH) return null
-        if (!RunId.isNameable(runId)) return null
-        return runId
-    }
-
-    /**
-     * The events street this line asks for.
-     *
-     * The cursor is decoded HERE and not in the street, because a cursor that
-     * does not belong is a fact about the REQUEST, and the client that sent
-     * it has to be told before the street opens.
-     */
-    private fun decodeEventsFollow(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
-        val runId = request.runId()
-            ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
-        val token = request.text("after") ?: return subscribed(
-            ServiceSubscriptionRequest.EventsFollow(schema, runId, null),
-            credential,
-        )
-        val cursor = EventCursor.decode(token)
-            ?: return ServiceDecoding.Refused(
-                ServiceRefusal.InvalidCursor(token, EVENT_CURSOR_FAMILY),
-            )
-        if (cursor.runId != runId) {
-            // The cursor names a run this street is not. Resuming from it would
-            // skip the history of the run that WAS asked for, silently.
-            return ServiceDecoding.Refused(
-                ServiceRefusal.InvalidCursor(token, EVENT_CURSOR_FAMILY),
-            )
-        }
-        return subscribed(ServiceSubscriptionRequest.EventsFollow(schema, runId, cursor), credential)
-    }
-
-    /**
-     * The output street this line asks for.
-     */
-    private fun decodeOutputFollow(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
-        val runId = request.runId()
-            ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
-        val token = request.text("after")
-            ?: return subscribed(
-                ServiceSubscriptionRequest.OutputFollow(schema, runId, FIRST_FRAME_ORDINAL),
-                credential,
-            )
-        val ordinal = FrameOrdinalToken.decode(token)
-            ?: return ServiceDecoding.Refused(
-                ServiceRefusal.InvalidCursor(token, FRAME_ORDINAL_FAMILY),
-            )
-        return subscribed(ServiceSubscriptionRequest.OutputFollow(schema, runId, ordinal), credential)
-    }
-
-    /**
-     * The decoding of a street's request.
-     */
-    private fun subscribed(request: ServiceSubscriptionRequest, credential: String?): ServiceDecoding =
-        ServiceDecoding.Subscribed(request, credential)
 
     /**
      * The line a record travels as.
@@ -783,6 +856,12 @@ object ServiceCodec {
                     put("op", JsonPrimitive("run.state"))
                     put("runId", JsonPrimitive(request.runId))
                 }
+                is ServiceRequest.StartRun -> {
+                    put("op", JsonPrimitive("run.start"))
+                    put("script", JsonPrimitive(request.script))
+                    request.workspace?.let { put("workspace", JsonPrimitive(it)) }
+                    request.idempotencyKey?.let { put("idempotencyKey", JsonPrimitive(it)) }
+                }
             }
         }
         return Json.encodeToString(JsonObject.serializer(), document)
@@ -865,63 +944,6 @@ object ServiceCodec {
     }
 
     /**
-     * The refusal [document] carries.
-     *
-     * A total reading: the kinds of [ServiceRefusal] are closed, and a
-     * document whose kind is none of them is not a refusal of this protocol.
-     * The facts each kind carries are read here and nowhere else, so a
-     * refusal cannot lose a fact on the way in.
-     */
-    private fun decodeRefusal(document: JsonObject): ServiceRefusal? {
-        val kind = document["kind"]?.jsonPrimitive?.contentOrNull ?: return null
-        return when (kind) {
-            "unknown-run" -> ServiceRefusal.UnknownRun(document.str("runId") ?: return null)
-            "not-configured-control-root" -> ServiceRefusal.NotConfiguredControlRoot
-            "not-configured-event-plane" -> ServiceRefusal.NotConfiguredEventPlane
-            "not-configured-output-plane" -> ServiceRefusal.NotConfiguredOutputPlane
-            "storage-failed" -> ServiceRefusal.StorageFailed(document.str("cause") ?: return null)
-            "held-by-another" -> ServiceRefusal.HeldByAnother(
-                document.str("heldBy") ?: return null,
-                document.long("fencingToken") ?: return null,
-            )
-            "inconsistent-lease-state" -> ServiceRefusal.Inconsistent(document.str("details") ?: return null)
-            "unknown-operation" -> ServiceRefusal.UnknownRunOperation(
-                document.str("operationId") ?: return null,
-                document.long("attempt")?.toInt() ?: return null,
-            )
-            "incompatible-protocol" -> ServiceRefusal.IncompatibleProtocol
-            "malformed-request" -> ServiceRefusal.MalformedRequest
-            "request-too-large" -> ServiceRefusal.RequestTooLarge
-            "too-many-connections" -> ServiceRefusal.TooManyConnections
-            "unknown-op" -> ServiceRefusal.UnknownOp
-            "invalid-cursor" -> ServiceRefusal.InvalidCursor(
-                document.str("cursor") ?: return null,
-                document.str("expected") ?: return null,
-            )
-            "cursor-beyond-tail" -> ServiceRefusal.CursorBeyondTail(
-                document.str("runId") ?: return null,
-                document.long("requestedSequence") ?: return null,
-                document.long("tailSequence") ?: return null,
-            )
-            "output-plane-refused" -> ServiceRefusal.OutputPlaneRefused(
-                document.str("reason") ?: return null,
-                document.str("detail") ?: return null,
-            )
-            "not-authorized" -> ServiceRefusal.NotAuthorized
-            "run-not-authorized" -> ServiceRefusal.RunNotAuthorized(document.str("runId") ?: return null)
-            "too-many-subscriptions" -> ServiceRefusal.TooManySubscriptions
-            else -> null
-        }
-    }
-
-    /** The string [key] holds, or null when it does not hold a string. */
-    private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
-
-    /** The long [key] holds, or null when it does not hold one. */
-    private fun JsonObject.long(key: String): Long? =
-        this[key]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
-
-    /**
      * The document a refusal travels as: its kind and the facts it carries.
      */
     private fun refusalDocument(refusal: ServiceRefusal): JsonObject = buildJsonObject {
@@ -929,3 +951,247 @@ object ServiceCodec {
         refusal.payload.forEach { (name, value) -> put(name, value) }
     }
 }
+
+/** The family of the cursor the events street resumes from. */
+private const val EVENT_CURSOR_FAMILY: String = "evt-cursor-v1"
+
+/** The family of the cursor the output street resumes from. */
+private val FRAME_ORDINAL_FAMILY: String = FrameOrdinalToken.PREFIX
+
+/** The position before the first frame of a run. */
+private const val FIRST_FRAME_ORDINAL: Long = -1L
+
+/**
+ * The start request this line asks for.
+ *
+ * ## The script is read BEFORE anything else of the request
+ *
+ * Because a request without a script is not a request: the script is
+ * what the client asks to run, and a line that does not name it names
+ * nothing to start.
+ *
+ * ## Why the names are bounded here and not later
+ *
+ * Because the bound is about the LINE, and the line is what arrives.
+ * A name of a megabyte is refused before it reaches the service's
+ * admission, which is the same rule the run id follows.
+ *
+ * ## Why the workspace and the key may be absent
+ *
+ * Because both are optional in the CONTRACT: a run without a workspace
+ * runs in the product's own scratch, and a request without a key is a
+ * request that does not ask to be repeatable. An absent field is not a
+ * malformed field; a field of the wrong SHAPE is.
+ */
+
+
+private fun decodeStartRun(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
+    val script = request.text("script") ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    if (script.isEmpty() || script.length > ServiceProtocol.MAX_SCRIPT_NAME_LENGTH) {
+        return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    }
+    val workspace = request.text("workspace")
+    if (workspace != null && (workspace.isEmpty() || workspace.length > ServiceProtocol.MAX_WORKSPACE_NAME_LENGTH)) {
+        return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    }
+    val key = request.text("idempotencyKey")
+    if (key != null && (key.isEmpty() || key.length > ServiceProtocol.MAX_IDEMPOTENCY_KEY_LENGTH)) {
+        return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    }
+    return ServiceDecoding.Decoded(ServiceRequest.StartRun(schema, script, workspace, key), credential)
+}
+
+/**
+ * The text [key] holds, or null when it holds none.
+ *
+ * A field that is not a string is a field that holds no text: the
+ * element is read as a primitive or not at all, so a client cannot make
+ * the decoder raise by sending an object where a string belongs.
+ */
+private fun JsonObject.text(key: String): String? =
+    (this[key] as? JsonPrimitive)?.contentOrNull
+
+/**
+ * The run this request is about, or null when it names none.
+ *
+ * A run id has to be a run id: it has to NAME a durable location, in the
+ * alphabet the product uses for that, and it has to be short enough to
+ * be one. The alphabet is [RunId]'s and not a second copy of it: the
+ * Output Plane builds a path out of the run id, and the one authority
+ * about which run ids may name a location is the identity itself.
+ *
+ * A run id that does not qualify is refused HERE, before anything is
+ * opened: a request that named a path would otherwise travel until the
+ * plane refused it, and the refusal would arrive as a closed connection
+ * instead of as a word the client can read.
+ */
+private fun JsonObject.runId(): String? {
+    val runId = text("runId") ?: return null
+    if (runId.length > ServiceProtocol.MAX_RUN_ID_LENGTH) return null
+    if (!RunId.isNameable(runId)) return null
+    return runId
+}
+
+/**
+ * The events street this line asks for.
+ *
+ * The cursor is decoded HERE and not in the street, because a cursor that
+ * does not belong is a fact about the REQUEST, and the client that sent
+ * it has to be told before the street opens.
+ */
+private fun decodeEventsFollow(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
+    val runId = request.runId()
+        ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    val token = request.text("after") ?: return subscribed(
+        ServiceSubscriptionRequest.EventsFollow(schema, runId, null),
+        credential,
+    )
+    val cursor = EventCursor.decode(token)
+        ?: return ServiceDecoding.Refused(
+            ServiceRefusal.InvalidCursor(token, EVENT_CURSOR_FAMILY),
+        )
+    if (cursor.runId != runId) {
+        // The cursor names a run this street is not. Resuming from it would
+        // skip the history of the run that WAS asked for, silently.
+        return ServiceDecoding.Refused(
+            ServiceRefusal.InvalidCursor(token, EVENT_CURSOR_FAMILY),
+        )
+    }
+    return subscribed(ServiceSubscriptionRequest.EventsFollow(schema, runId, cursor), credential)
+}
+
+/**
+ * The output street this line asks for.
+ */
+private fun decodeOutputFollow(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
+    val runId = request.runId()
+        ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    val token = request.text("after")
+        ?: return subscribed(
+            ServiceSubscriptionRequest.OutputFollow(schema, runId, FIRST_FRAME_ORDINAL),
+            credential,
+        )
+    val ordinal = FrameOrdinalToken.decode(token)
+        ?: return ServiceDecoding.Refused(
+            ServiceRefusal.InvalidCursor(token, FRAME_ORDINAL_FAMILY),
+        )
+    return subscribed(ServiceSubscriptionRequest.OutputFollow(schema, runId, ordinal), credential)
+}
+
+/**
+ * The decoding of a street's request.
+ */
+private fun subscribed(request: ServiceSubscriptionRequest, credential: String?): ServiceDecoding =
+    ServiceDecoding.Subscribed(request, credential)
+
+
+/**
+ * The refusal [document] carries.
+ *
+ * A total reading: the kinds of [ServiceRefusal] are closed, and a
+ * document whose kind is none of them is not a refusal of this protocol.
+ * The facts each kind carries are read here and nowhere else, so a
+ * refusal cannot lose a fact on the way in.
+ *
+ * ## Why the vocabulary is read in THREE families
+ *
+ * Because the refusals are about three different things —the facts of a
+ * RUN, the names of a START and the door of the SERVICE— and a single flat
+ * reading of them grows with every kind that is added until it stops
+ * being readable. The families are read apart and the KIND says which one
+ * reads it, so the next refusal is added in the family it belongs to.
+ */
+private fun decodeRefusal(document: JsonObject): ServiceRefusal? {
+    val kind = document["kind"]?.jsonPrimitive?.contentOrNull ?: return null
+    return when (kind) {
+        "unknown-run", "held-by-another", "inconsistent-lease-state",
+        "unknown-run-operation", "run-not-authorized", "invalid-cursor",
+        "cursor-beyond-tail" -> decodeRunRefusal(kind, document)
+
+        "start-not-authorized", "script-not-admitted", "workspace-not-admitted",
+        "idempotency-conflict", "too-many-supervised-runs", "run-start-refused" ->
+            decodeStartRefusal(kind, document)
+
+        else -> decodeServiceRefusal(kind, document)
+    }
+}
+
+/**
+ * The refusal about the facts of a RUN, or null when [kind] is not one.
+ */
+private fun decodeRunRefusal(kind: String, document: JsonObject): ServiceRefusal? {
+    return when (kind) {
+    "unknown-run" -> ServiceRefusal.UnknownRun(document.str("runId") ?: return null)
+    "held-by-another" -> ServiceRefusal.HeldByAnother(
+        document.str("heldBy") ?: return null,
+        document.long("fencingToken") ?: return null,
+    )
+    "inconsistent-lease-state" -> ServiceRefusal.Inconsistent(document.str("details") ?: return null)
+    "unknown-run-operation" -> ServiceRefusal.UnknownRunOperation(
+        document.str("operationId") ?: return null,
+        document.long("attempt")?.toInt() ?: return null,
+    )
+    "run-not-authorized" -> ServiceRefusal.RunNotAuthorized(document.str("runId") ?: return null)
+    "invalid-cursor" -> ServiceRefusal.InvalidCursor(
+        document.str("cursor") ?: return null,
+        document.str("expected") ?: return null,
+    )
+    "cursor-beyond-tail" -> ServiceRefusal.CursorBeyondTail(
+        document.str("runId") ?: return null,
+        document.long("requestedSequence") ?: return null,
+        document.long("tailSequence") ?: return null,
+    )
+        else -> null
+    }
+}
+
+/**
+ * The refusal about the names of a START, or null when [kind] is not one.
+ */
+private fun decodeStartRefusal(kind: String, document: JsonObject): ServiceRefusal? {
+    return when (kind) {
+    "start-not-authorized" -> ServiceRefusal.StartNotAuthorized
+    "script-not-admitted" -> ServiceRefusal.ScriptNotAdmitted(document.str("script") ?: return null)
+    "workspace-not-admitted" -> ServiceRefusal.WorkspaceNotAdmitted(
+        document.str("workspace") ?: return null,
+    )
+    "idempotency-conflict" -> ServiceRefusal.IdempotencyConflict(document.str("key") ?: return null)
+    "too-many-supervised-runs" -> ServiceRefusal.TooManySupervisedRuns
+    "run-start-refused" -> ServiceRefusal.RunStartRefused(
+        document.str("reason") ?: return null,
+        document.str("detail") ?: return null,
+    )
+        else -> null
+    }
+}
+
+/**
+ * The refusal about the door of the SERVICE, or null when [kind] is not one.
+ */
+private fun decodeServiceRefusal(kind: String, document: JsonObject): ServiceRefusal? {
+    return when (kind) {
+    "not-configured-control-root" -> ServiceRefusal.NotConfiguredControlRoot
+    "not-configured-event-plane" -> ServiceRefusal.NotConfiguredEventPlane
+    "not-configured-output-plane" -> ServiceRefusal.NotConfiguredOutputPlane
+    "storage-failed" -> ServiceRefusal.StorageFailed(document.str("cause") ?: return null)
+    "incompatible-protocol" -> ServiceRefusal.IncompatibleProtocol
+    "malformed-request" -> ServiceRefusal.MalformedRequest
+    "request-too-large" -> ServiceRefusal.RequestTooLarge
+    "too-many-connections" -> ServiceRefusal.TooManyConnections
+    "unknown-op" -> ServiceRefusal.UnknownOp
+    "output-plane-refused" -> ServiceRefusal.OutputPlaneRefused(
+        document.str("reason") ?: return null,
+        document.str("detail") ?: return null,
+    )
+    "not-authorized" -> ServiceRefusal.NotAuthorized
+    "too-many-subscriptions" -> ServiceRefusal.TooManySubscriptions
+        else -> null
+    }
+}
+
+/** The string [key] holds, or null when it does not hold a string. */
+private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
+
+/** The long [key] holds, or null when it does not hold one. */
+private fun JsonObject.long(key: String): Long? =
+    this[key]?.jsonPrimitive?.contentOrNull?.toLongOrNull()

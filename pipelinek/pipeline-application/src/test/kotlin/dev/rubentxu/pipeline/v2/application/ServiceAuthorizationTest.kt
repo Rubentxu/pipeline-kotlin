@@ -263,6 +263,118 @@ class ServiceAuthorizationTest {
         )
     }
 
+    @Test
+    fun `a scope with the suffix start lets the client start runs`() {
+        val reading = ServiceAuthorizations.parse("$TOKEN operator all+start")
+
+        val authorizations = assertInstanceOf(
+            ServiceAuthorizationsReading.Read::class.java,
+            reading,
+            "the scope may end with the right to start a run",
+        )
+        assertEquals(
+            ServiceScope.MayStart(ServiceScope.All),
+            authorizations.authorizations.first().scope,
+            "the right to start wraps the reading scope it adds to",
+        )
+    }
+
+    @Test
+    fun `a scope that starts nothing still may start runs`() {
+        val reading = ServiceAuthorizations.parse("$TOKEN operator none+start")
+
+        val authorizations = assertInstanceOf(
+            ServiceAuthorizationsReading.Read::class.java,
+            reading,
+            "the right to start and the right to read are two rights",
+        )
+        assertEquals(
+            ServiceScope.MayStart(ServiceScope.None),
+            authorizations.authorizations.first().scope,
+            "a client that may start and read nothing is expressible",
+        )
+    }
+
+    @Test
+    fun `a scope with a capability this build does not know is refused`() {
+        val reading = ServiceAuthorizations.parse("$TOKEN operator all+cancel")
+
+        assertInstanceOf(
+            ServiceAuthorizationsReading.Refused::class.java,
+            reading,
+            "a capability nobody serves is refused rather than taken for the default",
+        )
+    }
+
+    @Test
+    fun `a client that may not start runs is refused by name`() {
+        val outcome = authorizations(ServiceScope.All).decideStart(TOKEN)
+
+        assertEquals(
+            ServiceAuthorizationOutcome.StartNotAuthorized,
+            outcome,
+            "the token was accepted and what it lacks is the right to start",
+        )
+    }
+
+    @Test
+    fun `a client that may start runs is authorized to start them`() {
+        val outcome = authorizations(ServiceScope.MayStart(ServiceScope.All)).decideStart(TOKEN)
+
+        assertEquals(
+            ServiceAuthorizationOutcome.Authorized,
+            outcome,
+            "the right to start is the scope's own word",
+        )
+    }
+
+    @Test
+    fun `a client that presents nothing may not start runs`() {
+        val outcome = authorizations(ServiceScope.MayStart(ServiceScope.All)).decideStart(null)
+
+        assertEquals(
+            ServiceAuthorizationOutcome.NotAuthorized,
+            outcome,
+            "no token is no authorization, and the start is not one of them",
+        )
+    }
+
+    @Test
+    fun `the scope of a start keeps the reading rights it wraps`() {
+        val scoped = authorizations(ServiceScope.MayStart(ServiceScope.Runs(setOf("run-1"))))
+
+        assertEquals(
+            ServiceAuthorizationOutcome.Authorized,
+            scoped.decide(TOKEN, "run-1"),
+            "the right to start does not take the reading rights away",
+        )
+        assertEquals(
+            ServiceAuthorizationOutcome.RunNotAuthorized("run-2"),
+            scoped.decide(TOKEN, "run-2"),
+            "and it does not widen them either",
+        )
+    }
+
+    @Test
+    fun `the scope of a start survives the round trip`() {
+        val written = ServiceAuthorizations.format(
+            listOf(ServiceAuthorization(TOKEN, "operator", ServiceScope.MayStart(ServiceScope.All))),
+        )
+
+        val reading = ServiceAuthorizations.parse(written)
+
+        val authorizations = assertInstanceOf(
+            ServiceAuthorizationsReading.Read::class.java,
+            reading,
+            "the file the service writes is a file it can read",
+        )
+        assertEquals(
+            ServiceScope.MayStart(ServiceScope.All),
+            authorizations.authorizations.first().scope,
+            "the right to start survives the round trip",
+        )
+    }
+
     /**
      * The authorizations this service knows.
      */

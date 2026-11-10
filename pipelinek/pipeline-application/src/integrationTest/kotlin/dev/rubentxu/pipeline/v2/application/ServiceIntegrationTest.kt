@@ -608,6 +608,7 @@ class ServiceIntegrationTest {
                     controlRootPresent = Files.exists(root),
                 )
             },
+        starts = ServiceIntegrationStarter(),
         )
         val stores = DurableStores.open(store, root, clock)
         val streets = ServiceSubscription(

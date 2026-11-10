@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+import dev.rubentxu.pipeline.v2.service.CredentialMaterialCodec
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -54,14 +55,16 @@ internal class SocketCredentialProvider(
     override val providerId: String = PROVIDER_ID
 
     override fun resolve(id: CredentialsId): SecretHandle {
-        val credential = resolveToCredential(id) as SecretText
-        return SecretHandle.secret(credential.bytes)
+        val credential = resolveToCredential(id)
+        val text = credential as? SecretText
+            ?: throw refused(id, CredentialBrokerRefusal.CREDENTIAL_KIND_NOT_BROKERED)
+        return SecretHandle.secret(text.bytes)
     }
 
     override fun resolveToCredential(id: CredentialsId): Credential {
         val token = sessionToken ?: throw refused(id, CredentialBrokerRefusal.BROKER_UNREACHABLE)
         val answer = try {
-            link.exchange(CredentialBrokerWire.encodeRequest(token, id.value, BrokeredCredentialKind.STRING))
+            link.exchange(CredentialBrokerWire.encodeRequest(token, id.value))
         } catch (e: CredentialBrokerRefusedException) {
             throw refused(id, e.refusal)
         } catch (_: Throwable) {
@@ -72,10 +75,31 @@ internal class SocketCredentialProvider(
             CredentialBrokerWire.ResponseReading.Unreadable ->
                 throw refused(id, CredentialBrokerRefusal.BROKER_ANSWER_NOT_READABLE)
             is CredentialBrokerWire.ResponseReading.Refused -> throw refused(id, reading.refusal)
-            is CredentialBrokerWire.ResponseReading.Granted -> when (reading.kind) {
-                BrokeredCredentialKind.STRING -> SecretText(id = id, bytes = reading.secret)
-            }
+            is CredentialBrokerWire.ResponseReading.Granted -> decode(id, reading)
         }
+    }
+
+    /**
+     * The credential the answer carries.
+     *
+     * The answer is the material of the credential and it says what it is. A material that is not
+     * a form this code knows, or that is not the form the answer says, is not a credential: the
+     * run is told that the broker answered something it cannot read, and it does not get a
+     * credential nobody wrote.
+     */
+    private fun decode(id: CredentialsId, reading: CredentialBrokerWire.ResponseReading.Granted): Credential {
+        val credential = try {
+            CredentialMaterialCodec.decode(id, reading.material)
+        } finally {
+            reading.material.fill(0)
+        }
+        if (credential == null) {
+            throw refused(id, CredentialBrokerRefusal.BROKER_ANSWER_NOT_READABLE)
+        }
+        if (CredentialMaterialCodec.kindOf(credential) != reading.kind.word) {
+            throw refused(id, CredentialBrokerRefusal.CREDENTIAL_KIND_NOT_BROKERED)
+        }
+        return credential
     }
 
     /** The provider has nothing to release: every request opens and closes its own connection. */

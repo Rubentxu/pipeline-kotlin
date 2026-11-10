@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+import dev.rubentxu.pipeline.v2.service.CredentialMaterialCodec
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -24,7 +25,7 @@ class ConnectedCredentialProviderTest {
 
     private val asked = mutableListOf<List<String>>()
     private val released = mutableListOf<Pair<String, String>>()
-    private var resolution: CredentialResolution = CredentialResolution.Granted(SECRET.copyOf())
+    private var resolution: CredentialResolution = CredentialResolution.Granted(materialOf(SECRET))
 
     private val asker = object : CredentialAsker {
         override fun ask(owner: String, provider: String, execution: String, credentialId: String, kind: String): CredentialResolution {
@@ -37,7 +38,13 @@ class ConnectedCredentialProviderTest {
         }
     }
 
-    private val provider = ConnectedCredentialProvider(asker, owner = "owner-a", provider = "vault", execution = "run-7")
+    private val provider = ConnectedCredentialProvider(
+        asker,
+        owner = "owner-a",
+        provider = "vault",
+        execution = "run-7",
+        grants = setOf(CredentialGrant("deploy-token", BrokeredCredentialKind.STRING)),
+    )
 
     @Test
     fun `the credential the controller hands out reaches the broker as a secret text with the name that was asked`() {
@@ -53,6 +60,16 @@ class ConnectedCredentialProviderTest {
         provider.resolveToCredential(CredentialsId("deploy-token"))
 
         assertEquals(listOf(listOf("owner-a", "vault", "run-7", "deploy-token", "string")), asked)
+    }
+
+    @Test
+    fun `a credential the client was not granted is refused without the controller being asked`() {
+        val denied = assertThrows(ConnectedCredentialDenied::class.java) {
+            provider.resolveToCredential(CredentialsId("other-token"))
+        }
+
+        assertEquals("credential-not-granted", denied.reason)
+        assertEquals(emptyList<List<String>>(), asked, "the controller is not asked for a credential nobody granted")
     }
 
     @Test
@@ -97,6 +114,10 @@ class ConnectedCredentialProviderTest {
         val rendered = provider.toString()
         assertFalse(rendered.contains(String(SECRET, Charsets.UTF_8)), rendered)
     }
+
+    /** The material a controller hands out: the form that says what the credential is. */
+    private fun materialOf(bytes: ByteArray): ByteArray =
+        CredentialMaterialCodec.encode(SecretText(CredentialsId("deploy-token"), bytes = bytes.copyOf()))
 
     private companion object {
         val SECRET = "connected-secret-value".toByteArray(Charsets.UTF_8)

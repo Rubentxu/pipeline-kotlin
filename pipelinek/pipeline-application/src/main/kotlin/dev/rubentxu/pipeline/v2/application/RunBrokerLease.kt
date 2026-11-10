@@ -276,9 +276,19 @@ internal class RunBrokerFactory(
      * from. [connected] belongs to the run: the lease closes it when the run is over, and also
      * when the lease cannot be opened. The service's own provider is not consulted, so a
      * credential the controller refuses is never looked up anywhere else.
+     *
+     * The grants are handed to [buildConnected] rather than only to the lease: a provider that
+     * asks a controller for a credential has to ask for it in the FORM the authorization granted,
+     * and the grants are where that form is written down. Computing them once and giving them to
+     * both is what keeps the two from disagreeing.
      */
-    fun openConnected(clientDigest: String?, connected: CredentialProvider): RunBrokerLease =
-        RunBrokerLease.open(root, grantsOf(clientDigest), connected, ownsProvider = true)
+    fun openConnected(
+        clientDigest: String?,
+        buildConnected: (Set<CredentialGrant>) -> CredentialProvider,
+    ): RunBrokerLease {
+        val grants = grantsOf(clientDigest)
+        return RunBrokerLease.open(root, grants, buildConnected(grants), ownsProvider = true)
+    }
 
     /** Removes the leftovers of earlier processes of the service. */
     fun sweep() = RunBrokerLease.sweep(root)

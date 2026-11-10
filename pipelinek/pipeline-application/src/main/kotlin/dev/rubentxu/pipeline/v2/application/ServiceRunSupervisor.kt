@@ -1042,7 +1042,9 @@ internal class ServiceRunSupervisor(
         if (owner == null || sessions == null || factory == null) {
             throw RunBrokerLeaseException("the connected credential provider of the run is not available")
         }
-        return factory.openConnected(owner, ConnectedCredentialProvider(sessions, owner, name, correlationId))
+        return factory.openConnected(owner) { grants ->
+            ConnectedCredentialProvider(sessions, owner, name, correlationId, grants)
+        }
     }
 
     /** Who asked for the run, as far as its broker is concerned. */

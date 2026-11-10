@@ -73,7 +73,7 @@ class CredentialGrantsTest {
 
     @Test
     fun `a kind the broker does not carry is refused with the line`() {
-        val reading = ServiceAuthorizations.parse("$TOKEN operator all credentials=deploy-key:file")
+        val reading = ServiceAuthorizations.parse("$TOKEN operator all credentials=deploy-key:username-password")
 
         val refused = assertInstanceOf(
             ServiceAuthorizationsReading.Refused::class.java,
@@ -82,6 +82,25 @@ class CredentialGrantsTest {
         )
         assertTrue(refused.detail.contains("line 1"), "the refusal names the line: ${refused.detail}")
         assertTrue(refused.detail.contains("string"), "the refusal names the kind the broker does carry: ${refused.detail}")
+    }
+
+    @Test
+    fun `the forms the broker carries are named for the operator`() {
+        val reading = ServiceAuthorizations.parse(
+            "$TOKEN operator all credentials=deploy-key:private-key,keystore:keystore,archive:archive,notes:file",
+        )
+
+        val read = assertInstanceOf(ServiceAuthorizationsReading.Read::class.java, reading)
+        assertEquals(
+            setOf(
+                CredentialGrant("deploy-key", BrokeredCredentialKind.PRIVATE_KEY),
+                CredentialGrant("keystore", BrokeredCredentialKind.KEYSTORE),
+                CredentialGrant("archive", BrokeredCredentialKind.ARCHIVE),
+                CredentialGrant("notes", BrokeredCredentialKind.FILE),
+            ),
+            read.authorizations.single().credentialGrants,
+            "the file names the form of every credential it grants",
+        )
     }
 
     @Test

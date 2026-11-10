@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
-import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+import dev.rubentxu.pipeline.v2.service.CredentialMaterialCodec
 import java.security.MessageDigest
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.RejectedExecutionException
@@ -27,8 +27,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * 2. **The grant.** The client that started the run must have been granted the
  *    credential. A credential that is not granted is refused with the same word
  *    whether or not the store holds it, so asking cannot map the store.
- * 3. **The kind.** The credential must be granted as the kind requested, and the
- *    kind must be one the broker hands out.
+ * 3. **The form.** The grant says in which form the credential may be handed
+ *    over, and the request does not get a say: the run asks for the credential
+ *    by name and the authorization names the form. The form is decided BEFORE
+ *    anything is read.
  * 4. **The store.** Only now is the provider asked, and only for a credential
  *    that passed the three checks above.
  *
@@ -107,13 +109,18 @@ internal class RunCredentialBroker(
 
     private fun judge(request: CredentialBrokerWire.BrokerRequest): String {
         if (!sameSession(request.token)) return refused(CredentialBrokerRefusal.SESSION_NOT_RECOGNIZED)
-        if (grants.none { it.credentialId == request.credentialId }) {
+        val granted = grants.filter { it.credentialId == request.credentialId }
+        if (granted.isEmpty()) {
             return refused(CredentialBrokerRefusal.CREDENTIAL_NOT_GRANTED)
         }
-        val kind = BrokeredCredentialKind.ofWord(request.kindWord)
-        if (kind == null || CredentialGrant(request.credentialId, kind) !in grants) {
+        if (granted.size > 1) {
+            // The operator's file refuses an id named twice, so this can only
+            // happen when the grants were composed in code. Two forms of one
+            // credential are two answers to one question, and the broker would
+            // have to pick one of them: it refuses instead of choosing.
             return refused(CredentialBrokerRefusal.CREDENTIAL_KIND_NOT_BROKERED)
         }
+        val kind = granted.single().kind
         val source = provider ?: return refused(CredentialBrokerRefusal.CREDENTIAL_NOT_AVAILABLE)
         return handOut(source, request.credentialId, kind)
     }
@@ -125,6 +132,11 @@ internal class RunCredentialBroker(
      * another kind of credential under that id is a store that has nothing to
      * hand out under this name; the broker says so with the words it has and
      * does not repeat what the store said.
+     *
+     * The FORM of the answer is the form the authorization granted, and the
+     * broker checks that what it read is of that form before it encodes it: a
+     * credential that is not the form the client was granted is not handed
+     * over in another one.
      */
     private fun handOut(source: CredentialProvider, credentialId: String, kind: BrokeredCredentialKind): String {
         val credential = try {
@@ -136,16 +148,20 @@ internal class RunCredentialBroker(
         } catch (_: Exception) {
             return refused(CredentialBrokerRefusal.BROKER_FAILED)
         }
-        val secret = credential as? SecretText
-            ?: return refused(CredentialBrokerRefusal.CREDENTIAL_KIND_NOT_BROKERED)
-        val bytes = secret.bytes
+        if (CredentialMaterialCodec.kindOf(credential) != kind.word) {
+            return refused(CredentialBrokerRefusal.CREDENTIAL_KIND_NOT_BROKERED)
+        }
+        val material = CredentialMaterialCodec.encode(credential)
         try {
-            if (bytes.size > CredentialBrokerWire.MAX_SECRET_BYTES) {
+            if (material.size > CredentialBrokerWire.MAX_MATERIAL_BYTES) {
                 return refused(CredentialBrokerRefusal.CREDENTIAL_TOO_LARGE)
             }
-            return CredentialBrokerWire.encodeGranted(kind, bytes)
+            return CredentialBrokerWire.encodeGranted(kind, material)
         } finally {
-            bytes.fill(0)
+            material.fill(0)
+            // The credential came from the provider and the broker is the one that holds it:
+            // the bytes it read do not outlive the answer.
+            CredentialMaterialCodec.wipe(credential)
         }
     }
 

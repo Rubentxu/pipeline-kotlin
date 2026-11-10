@@ -1,10 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.credentials.executor.SecretMaskingStrictness
-import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
-import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKindUnsupportedException
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
-import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.StageSpec
@@ -37,7 +34,9 @@ import java.util.concurrent.TimeUnit
  *    deletes its file, so a token nobody uses does not wait to be read;
  *  - when the broker cannot be reached the scope fails by name and with fixed words: no path of
  *    the machine, and no answer from anywhere else;
- *  - the materialization of a brokered run projects no file.
+ *  - a brokered run projects files the same way a run with a local store does, and a binding
+ *    that needs one fails because the broker did not answer, and not because the run refuses to
+ *    project a file.
  *
  * ## Why the broker does not answer here
  *
@@ -110,25 +109,31 @@ class BrokeredCredentialSeamTest {
     }
 
     @Test
-    fun `the materialization of a brokered run refuses every file projection by name`() {
-        val credential = SecretText(CredentialsId("deploy-key"), bytes = "s3cr3t".toByteArray())
-        val kinds = listOf(
-            MaterializationKind.SecretFile to "SecretFile",
-            MaterializationKind.SshPrivateKey to "SshPrivateKey",
-            MaterializationKind.Certificate to "Certificate",
-            MaterializationKind.Zip to "Zip",
-        )
+    fun `a brokered run that binds a file credential fails because the broker does not answer and not because it projects no file`(
+        @TempDir broker: Path,
+    ) {
+        Files.writeString(broker.resolve(RunBrokerLease.TOKEN_FILE_NAME), "session-token")
+        val seam = seamOf(specOf(binding("deploy-key")), broker)
 
-        for ((kind, name) in kinds) {
-            val failure = assertThrows<MaterializationKindUnsupportedException>(name) {
-                NoFileMaterialization.materialize(credential, kind)
+        val failure = assertThrows<CredentialBrokerRefusedException> {
+            runBlocking {
+                seam.executor!!.bind(
+                    listOf(StepSpec.CredentialsBinding.file("deploy-key", "KEY_FILE")),
+                    "run-1",
+                    NullEventSink,
+                )
             }
-
-            assertEquals(CredentialsId("deploy-key"), failure.credentialsId, name)
-            assertEquals(name, failure.actualKind)
-            assertTrue(failure.supportedKinds.isEmpty(), "$name: the brokered run supports no file")
-            assertFalse(failure.message.orEmpty().contains("s3cr3t"), "$name: no secret in the words")
         }
+
+        assertEquals(
+            CredentialBrokerRefusal.BROKER_UNREACHABLE,
+            failure.refusal,
+            "the run asked the broker and the broker did not answer: the file was never the reason",
+        )
+        assertFalse(
+            failure.message.orEmpty().contains("materialization"),
+            "the refusal is the broker's and not the materializer's: ${failure.message}",
+        )
     }
 
     private fun seamOf(spec: PipelineSpec, broker: Path): CredentialSeam =

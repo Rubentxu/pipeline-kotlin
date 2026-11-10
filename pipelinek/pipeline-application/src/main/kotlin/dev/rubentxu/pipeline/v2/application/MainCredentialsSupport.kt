@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.credentials.executor.SecretMaskingStrictness
+import dev.rubentxu.pipeline.v2.credentials.executor.SpiCredentialLinkedSecretResolver
 import dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor
 import dev.rubentxu.pipeline.v2.credentials.local.CredentialsStorePath
 import dev.rubentxu.pipeline.v2.credentials.local.LocalCredentialProvider
@@ -131,8 +132,16 @@ internal fun composeCredentialSeam(
     // Composition root: construct credential ports and executor
     // LocalSecretStore (existing) -> LocalCredentialProvider -> CredentialMaterializer
     // -> LocalFileMaterialization -> WithCredentialsExecutor
+    //
+    // The materializer resolves the LINKED secrets through the same provider the projector uses:
+    // one authority for the question "what is the passphrase of this key", and therefore one place
+    // where a secret can come from. A materializer that read the store on its own would be a
+    // second authority, and a run whose credentials come from somewhere else would find the
+    // passphrase of a remote key in the local store.
     val provider: CredentialProvider = LocalCredentialProvider(secretStore)
-    val materialization: CredentialMaterialization = LocalFileMaterialization(CredentialMaterializer(secretStore))
+    val materialization: CredentialMaterialization = LocalFileMaterialization(
+        CredentialMaterializer(SpiCredentialLinkedSecretResolver(provider)),
+    )
     val executor = WithCredentialsExecutor(
         provider,
         materialization,
@@ -148,7 +157,7 @@ internal fun composeCredentialSeam(
     Runtime.getRuntime().addShutdownHook(
         Thread(
             {
-                closeQuietly(materialization)
+                closeMaterialization(materialization)
                 closeQuietly(provider)
             },
             "pipelinek-credentials-cleanup",
@@ -163,11 +172,27 @@ internal fun composeCredentialSeam(
  * A failure while releasing must not turn a successful run into a failed one,
  * so the exception is swallowed on this path.
  */
-private fun closeQuietly(resource: AutoCloseable) {
+internal fun closeQuietly(resource: AutoCloseable) {
     try {
         resource.close()
     } catch (_: Exception) {
         // Shutdown path.
+    }
+}
+
+/**
+ * Closes the materialization and SAYS what could not be removed.
+ *
+ * The report names the paths that survived and the cause of each, and never the content: a
+ * report about a secret that carries the secret is a second copy of it. It does not say that the
+ * material was erased either, because zeroing and deleting are best-effort acts on a filesystem
+ * that may keep the old blocks.
+ */
+internal fun closeMaterialization(materialization: CredentialMaterialization) {
+    try {
+        materialization.close()
+    } catch (failure: Exception) {
+        System.err.println("Error: ${failure.message}")
     }
 }
 

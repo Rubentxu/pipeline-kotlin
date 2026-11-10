@@ -284,7 +284,16 @@
       "The echo carries the DELIVERED values and not the defaults of the declaration, which are",
       "the business of the child that compiles the script. The value that carries the answer",
       "gained the field, so a consumer that constructs it with the previous number of arguments",
-      "breaks, and no published consumer exists to break: the artifact has never been published."
+      "breaks, and no published consumer exists to break: the artifact has never been published.",
+      "",
+      "THE ANSWER TO A QUESTION OF A RUN IS A PAIR OF OPERATIONS, `inputs.list` AND `input.answer`, covered",
+      "by one new right of the scope. The decision is the closed pair `proceed` and `abort` that the step",
+      "already had, the label of the responder is stamped by the service from the credential and never",
+      "travels on the wire, and the refusals are two words (`answer-not-authorized`, asked before the",
+      "scope, and `input-answer-refused` with a reason) and not one per rule. Two cases were added to each",
+      "of the sealed interfaces of the requests and of the refusals, so a consumer with an exhaustive",
+      "`when` stops compiling, and no member of the dump was removed: the artifact has never been",
+      "published, so no published consumer exists to break."
     ]
   },
   "surfaces": {

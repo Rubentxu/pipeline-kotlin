@@ -128,6 +128,17 @@ internal class ServiceSubscription(
         request: ServiceSubscriptionRequest.EventsFollow,
     ) {
         var cursor: EventCursor? = request.after
+        // Whether the street has delivered a row already. The run plane is
+        // asked ONLY while the street has delivered NOTHING: the plane exists
+        // to tell the street that the client stands at the tail of a run
+        // that is already over, and once the street has delivered a row the
+        // terminal fact will be DELIVERED, not asked for.
+        //
+        // Asking after a delivery is not merely useless, it is dangerous: the
+        // lane's answer comes from a read that FAILS CLOSED on a row this
+        // binary cannot decode, and that read would stop a street that has
+        // already delivered that very row as a record.
+        var deliveredAnything = false
         // Whether the run plane has already been asked. It is asked ONCE, and
         // the reason is a proof, not an economy: the street asks at its first
         // quiet page, which is the moment its cursor stands at the tail. If
@@ -153,6 +164,7 @@ internal class ServiceSubscription(
                     val slice = read.slice
                     if (slice.records.isNotEmpty()) {
                         delivered = true
+                        deliveredAnything = true
                         slice.records.forEachIndexed { index, record ->
                             connection.writeLine(
                                 ServiceCodec.encodeRecord(
@@ -177,7 +189,7 @@ internal class ServiceSubscription(
                             )
                             return
                         }
-                    } else if (!askedAboutTheRun) {
+                    } else if (!deliveredAnything && !askedAboutTheRun) {
                         askedAboutTheRun = true
                         when (val execution = executionOf(request.runId)) {
                             is Execution.Failed -> {
@@ -187,7 +199,7 @@ internal class ServiceSubscription(
                                 connection.writeLine(refusedLine(execution.refusal))
                                 return
                             }
-                            is Execution.Answered -> if (execution.plane == RunPlane.Completed) {
+                            is Execution.Answered.Over -> {
                                 connection.writeLine(
                                     ServiceCodec.encodeEnd(
                                         ServiceEndReason.TerminalObserved,
@@ -196,6 +208,7 @@ internal class ServiceSubscription(
                                 )
                                 return
                             }
+                            is Execution.Answered.Going -> Unit
                         }
                     }
                 }
@@ -225,13 +238,17 @@ internal class ServiceSubscription(
     ) {
         var afterOrdinal = request.after
         var cursor = FrameOrdinalToken.encode(afterOrdinal)
+        // Whether the street has delivered a frame already. A frame IS the proof that the run
+        // exists: the console of a run that does not exist is empty. So the question about the
+        // existence is asked ONLY while the street has delivered nothing, and a run that has a
+        // console is never refused for not existing.
+        var deliveredAnything = false
         // Whether the street has already asked whether the run exists. It asks ONCE, and the
         // reason is a proof, not an economy: a run nobody declared and that holds no rows is not
         // going to declare itself later, and a run that exists keeps existing.
         var askedAboutTheRun = false
         while (true) {
             var moreFrames = false
-            var delivered = false
             when (val read = lanes.outputOf(request.runId, afterOrdinal, FRAMES_PER_READ)) {
                 null -> {
                     connection.writeLine(refusedLine(ServiceRefusal.NotConfiguredOutputPlane))
@@ -244,7 +261,7 @@ internal class ServiceSubscription(
                 is ObservationOutputRead.Page -> {
                     val page = read.page
                     moreFrames = page.moreFrames
-                    delivered = page.records.isNotEmpty()
+                    if (page.records.isNotEmpty()) deliveredAnything = true
                     page.records.forEachIndexed { index, record ->
                         connection.writeLine(
                             ServiceCodec.encodeRecord(
@@ -258,21 +275,6 @@ internal class ServiceSubscription(
                     // about itself: an empty page carries back the position it was asked for.
                     afterOrdinal = page.lastOrdinal
                     cursor = FrameOrdinalToken.encode(page.lastOrdinal)
-                }
-            }
-
-            // A round that delivered NOTHING is the moment the question of the run's existence
-            // matters: the street is about to wait, and waiting for the console of a run that
-            // does not exist is the hole this street closes. A round that delivered something
-            // has already answered the question: the run has a console, so it exists.
-            if (!delivered && !askedAboutTheRun) {
-                askedAboutTheRun = true
-                when (val existence = existenceOf(request.runId)) {
-                    is Existence.Refused -> {
-                        connection.writeLine(refusedLine(existence.refusal))
-                        return
-                    }
-                    Existence.Known -> Unit
                 }
             }
 
@@ -291,6 +293,21 @@ internal class ServiceSubscription(
                     followDecision(moreFrames, tails, execution.plane)
                 ) {
                     FollowDecision.ReadAgain -> {
+                        // The street is about to WAIT, and waiting for the console of a run that
+                        // does not exist is the hole this street closes. The question is asked
+                        // only while the street has delivered NOTHING: a frame is the proof
+                        // that the run exists, and a street that already served the console
+                        // cannot be told that the run does not exist.
+                        if (!deliveredAnything && !askedAboutTheRun) {
+                            askedAboutTheRun = true
+                            when (val existence = existenceOf(request.runId)) {
+                                is Existence.Refused -> {
+                                    connection.writeLine(refusedLine(existence.refusal))
+                                    return
+                                }
+                                Existence.Known -> Unit
+                            }
+                        }
                         if (!moreFrames && !idle()) return
                     }
                     // The decision can only be FINISHED when the plane says the run is over, so
@@ -320,8 +337,12 @@ internal class ServiceSubscription(
      *
      * The question carries a `null` cursor because it asks whether the run
      * exists, not what is behind the position the client resumed from.
+     *
+     * The port's contract does NOT promise that it never throws, so the
+     * street guards the call: an exception here would leave the street
+     * without a word, which is the one thing this street exists to avoid.
      */
-    private fun existenceOf(runId: String): Existence =
+    private fun existenceOf(runId: String): Existence = try {
         when (val read = events.readRecords(
             runId = runId,
             after = null,
@@ -331,6 +352,9 @@ internal class ServiceSubscription(
             is EventRecordReadResult.Page -> Existence.Known
             is EventRecordReadResult.Refused -> Existence.Refused(refusalOf(read.refusal))
         }
+    } catch (failure: Exception) {
+        Existence.Refused(ServiceRefusal.StorageFailed(failure.shortDiagnostic()))
+    }
 
     /**
      * What the execution authority says about [runId].
@@ -344,8 +368,8 @@ internal class ServiceSubscription(
      */
     private fun executionOf(runId: String): Execution = try {
         when (lanes.runPlaneOf(runId)) {
-            RunPlane.Completed -> Execution.Answered(RunPlane.Completed)
-            RunPlane.Live -> Execution.Answered(RunPlane.Live)
+            RunPlane.Completed -> Execution.Answered.Over
+            RunPlane.Live -> Execution.Answered.Going
             RunPlane.Unavailable -> Execution.Failed(ServiceRefusal.NotConfiguredEventPlane)
         }
     } catch (failure: Exception) {
@@ -361,8 +385,28 @@ internal class ServiceSubscription(
      */
     private sealed interface Execution {
 
-        /** The authority answered, and [plane] is what it said. */
-        data class Answered(val plane: RunPlane) : Execution
+        /**
+         * The authority answered, and the run is either over or going.
+         *
+         * The two states are named here and not borrowed from the plane, so
+         * that the plane's third answer —the one that is a refusal and not a
+         * state— can never be carried by an answer.
+         */
+        sealed interface Answered : Execution {
+
+            /** The plane this answer means for the shared decision. */
+            val plane: RunPlane
+
+            /** The run reached a terminal state. */
+            data object Over : Answered {
+                override val plane: RunPlane = RunPlane.Completed
+            }
+
+            /** The run is still going. */
+            data object Going : Answered {
+                override val plane: RunPlane = RunPlane.Live
+            }
+        }
 
         /** The authority could not answer, and [refusal] is the word the street refuses with. */
         data class Failed(val refusal: ServiceRefusal) : Execution
@@ -389,7 +433,7 @@ internal class ServiceSubscription(
      */
     private fun Throwable.shortDiagnostic(): String {
         val cls = this::class.simpleName ?: this.javaClass.name
-        val msg = message?.take(120)?.replace('\n', ' ')
+        val msg = message?.take(120)?.replace('\r', ' ')?.replace('\n', ' ')
         return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
 

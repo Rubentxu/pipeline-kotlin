@@ -26,6 +26,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -64,7 +65,15 @@ import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
  * The transport that carries the lines, and whether the real authorities
  * answer the way these fakes say they do. That is what the integration lane
  * is for.
+ *
+ * ## Why every row carries a time limit
+ *
+ * A street that cannot decide waits, and a waiting street never fails: it
+ * hangs, and a hang is a lost lane, not a red one. The limit is on the class
+ * so that EVERY row can turn that hang into a red row —a defect that stops a
+ * street from ending has to be a datum, not a lost lane.
  */
+@Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
 class ServiceSubscriptionTest {
 
     @Test
@@ -341,8 +350,7 @@ class ServiceSubscriptionTest {
     }
 
     @Test
-    @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
-    fun `a console of a run nobody knows is refused by name`() {
+    fun `the console street refuses a run nobody knows by name`() {
         // The console of a run that does not exist. Nothing in the output lane says so: the
         // output plane answers an empty page and the run plane says the run is live, because a
         // run nobody wrote a row in looks exactly like a run that is still going. Only the read
@@ -379,21 +387,30 @@ class ServiceSubscriptionTest {
         // The run has a console, so it exists. The street that delivered a frame has already
         // answered the question, and it does not ask it: a run whose frames were published took
         // its lease in the same control root, so the read port knows it.
+        //
+        // The row has the street DELIVER a frame and then go quiet, because a street that ends
+        // in the round that delivered never reaches the question at all. A street that asked
+        // there would answer the client with a refusal that contradicts the transcript it just
+        // delivered.
         var asked = 0
         val port = ScriptedEventPort { _ ->
             asked++
             EventRecordReadResult.Refused(EventRecordReadRefusal.UnknownRun("run-1"))
         }
         val lanes = FakeLanes(
-            output = ObservationOutputRead.Page(
-                ObservationOutputPage(
-                    records = listOf(frame(0L, "hello")),
-                    lastOrdinal = 0L,
-                    moreFrames = false,
+            outputs = listOf(
+                ObservationOutputRead.Page(
+                    ObservationOutputPage(
+                        records = listOf(frame(0L, "hello")),
+                        lastOrdinal = 0L,
+                        moreFrames = false,
+                    ),
+                ),
+                ObservationOutputRead.Page(
+                    ObservationOutputPage(records = emptyList(), lastOrdinal = 0L, moreFrames = false),
                 ),
             ),
-            tails = listOf(OutputTailState.Sealed(5L)),
-            runPlane = RunPlane.Completed,
+            planes = listOf(RunPlane.Live, RunPlane.Completed),
         )
         val connection = RecordingConnection()
         val subscription = ServiceSubscription(lanes = lanes, events = port)
@@ -409,6 +426,68 @@ class ServiceSubscriptionTest {
         assertEquals("record", frames[0]["kind"]?.jsonPrimitive?.content)
         assertEquals("end", frames[1]["kind"]?.jsonPrimitive?.content)
         assertEquals("terminal-observed", frames[1]["reason"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `a console of a run that is over ends without asking whether it exists`() {
+        // The run is over and the client resumed past its console: the street ends on the
+        // terminal fact it observed. It does not ASK whether the run exists, because it is not
+        // going to wait for anything, and a question it does not need is a chance to answer the
+        // client with a refusal where the honest answer is an end.
+        val port = ScriptedEventPort { _ ->
+            EventRecordReadResult.Refused(EventRecordReadRefusal.UnknownRun("run-1"))
+        }
+        val lanes = FakeLanes(
+            output = ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+            ),
+            tails = listOf(OutputTailState.Sealed(5L)),
+            runPlane = RunPlane.Completed,
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        assertEquals(0, port.calls.size, "the street did not ask: it was going to end")
+        val frames = connection.frames()
+        assertEquals(1, frames.size, "the street ended with the terminal fact: $frames")
+        assertEquals("end", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals("terminal-observed", frames[0]["reason"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `the question about the existence asks for one row and no cursor`() {
+        // The question asks whether the run EXISTS, so it carries no cursor: the cursor of the
+        // client is a position in the console, and the cursor of the port is a position in the
+        // events. A question that carried the client's cursor would be refused with the wrong
+        // word, and a question that asked for the run's whole history would cost a read it does
+        // not need.
+        val port = ScriptedEventPort { _ ->
+            EventRecordReadResult.Refused(EventRecordReadRefusal.UnknownRun("run-1"))
+        }
+        val lanes = FakeLanes(
+            output = ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+            ),
+            tails = listOf(OutputTailState.Sealed(5L)),
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        assertEquals(1, port.calls.size, "the street asked once")
+        val call = port.calls.single()
+        assertNull(call.after, "the question does not carry a cursor")
+        assertEquals(EventQuery.All, call.query, "the question is not filtered")
+        assertEquals(1, call.limit, "the question needs one row, not the run's whole history")
     }
 
     @Test
@@ -446,10 +525,14 @@ class ServiceSubscriptionTest {
         assertEquals("hello", frames[0]["record"]?.jsonObject?.get("text")?.jsonPrimitive?.content)
         assertEquals("end", frames[1]["kind"]?.jsonPrimitive?.content)
         assertEquals("terminal-observed", frames[1]["reason"]?.jsonPrimitive?.content)
+        assertEquals(
+            1,
+            port.calls.size,
+            "the street asked about the existence ONCE, and not on every round",
+        )
     }
 
     @Test
-    @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
     fun `a console whose run plane throws is refused by name`() {
         // The run plane is there and could not answer. The street cannot end on a fact nobody
         // observed, and it cannot wait for ever either, so it refuses with the word that names
@@ -483,7 +566,6 @@ class ServiceSubscriptionTest {
     }
 
     @Test
-    @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
     fun `a console whose run plane cannot be asked is refused by name`() {
         // The run plane has no execution authority to ask. That is not the same fact as a
         // failure: there is nobody to fail, so the word says there is no plane.
@@ -513,7 +595,42 @@ class ServiceSubscriptionTest {
     }
 
     @Test
-    @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
+    fun `the events street does not consult the plane once it has delivered a row`() {
+        // The lane's answer comes from a read that FAILS CLOSED on a row this binary cannot
+        // decode, and that row is the one the street just delivered as a record. A street that
+        // asked the plane after delivering it would die with a word about the store, and the
+        // client would lose the rest of a run that is still going. The terminal fact will be
+        // DELIVERED, so the plane is not needed.
+        val port = ScriptedEventPort { call ->
+            when (call) {
+                0 -> page(listOf(EventRecordRead.Decoded(runStarted(1L))), lastSequence = 1L)
+                1 -> page(emptyList(), lastSequence = 1L)
+                else -> error("the port went away")
+            }
+        }
+        val lanes = FakeLanes(planeFailure = IllegalStateException("the store is gone"))
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        val failure = runCatching {
+            subscription.serve(
+                connection,
+                ServiceSubscriptionRequest.EventsFollow(ServiceProtocol.SCHEMA, "run-1", null),
+            )
+        }.exceptionOrNull()
+
+        assertEquals(
+            "the port went away",
+            failure?.message,
+            "the street kept reading: it reached the port's next round instead of the plane",
+        )
+        assertTrue(
+            connection.frames().none { it["kind"]?.jsonPrimitive?.content == "refused" },
+            "the street did not refuse: ${connection.frames()}",
+        )
+    }
+
+    @Test
     fun `the events street names the failure of the run plane too`() {
         // The same failure, in the other street. The two streets refuse with the same word
         // because there is ONE translation, and a client that gets a name in one street gets
@@ -540,7 +657,6 @@ class ServiceSubscriptionTest {
     }
 
     @Test
-    @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
     fun `the events street names a run plane that cannot be asked`() {
         val port = ScriptedEventPort { _ -> page(emptyList(), 0L) }
         val lanes = FakeLanes(runPlane = RunPlane.Unavailable)
@@ -712,12 +828,20 @@ class ServiceSubscriptionTest {
         private val answer: (Int) -> EventRecordReadResult,
     ) : EventRecordReadPort {
         private var call = 0
+
+        /** The parameters of every call, in order: the shape of the question is part of it. */
+        val calls = mutableListOf<Call>()
+
+        /** One call to the port. */
+        data class Call(val after: EventCursor?, val query: EventQuery, val limit: Int)
+
         override fun readRecords(
             runId: String,
             after: EventCursor?,
             query: EventQuery,
             limit: Int,
         ): EventRecordReadResult {
+            calls.add(Call(after, query, limit))
             val index = call
             call++
             return answer(index)

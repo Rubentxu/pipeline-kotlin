@@ -518,7 +518,7 @@ class ServiceIntegrationTest {
 
     @Test
     @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
-    fun `a console of a run nobody knows is refused by name over the socket`() {
+    fun `the console street refuses a run nobody knows over the socket`() {
         val service = start()
 
         val frames = service.subscribe(

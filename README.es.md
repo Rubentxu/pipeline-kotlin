@@ -49,7 +49,7 @@ grep " ${ASSET}$" SHA256SUMS | sha256sum -c -
 unzip -q "$ASSET"
 PIPELINEK="./$(basename "$ASSET" .zip)/bin/pipelinek"
 
-"$PIPELINEK" version     # → pipeline 0.95.0
+"$PIPELINEK" version     # → pipeline 0.96.0
 "$PIPELINEK" doctor      # jdk / os / workdir / writable / script cache
 ```
 
@@ -443,7 +443,7 @@ podman run -d --name pipelinek-service \
   -v pipelinek-socket:/var/lib/pipelinek/socket \
   -v pipelinek-control:/var/lib/pipelinek/control \
   -v pipelinek-state:/var/lib/pipelinek/state \
-  localhost/pipelinek:0.95.0
+  localhost/pipelinek:0.96.0
 ```
 
 **El servicio sirve un sustrato; no lo crea.** Sobre un volumen todavía vacío el servicio se niega a arrancar y lo dice —`the substrate cannot be served: the store is not there`— porque ese fichero es de la vía del productor. Una ejecución lo crea, y los datos de esa ejecución quedan después en el volumen:
@@ -453,7 +453,7 @@ podman run --rm \
   -v pipelinek-state:/var/lib/pipelinek/state \
   -v pipelinek-control:/var/lib/pipelinek/control \
   -v "$PWD":/scripts:ro,z \
-  localhost/pipelinek:0.95.0 \
+  localhost/pipelinek:0.96.0 \
   run --db /var/lib/pipelinek/state/store.db \
        --control-root /var/lib/pipelinek/control \
        /scripts/my.pipeline.kts
@@ -464,7 +464,7 @@ podman run --rm \
 ```bash
 podman run --rm \
   -v pipelinek-socket:/var/lib/pipelinek/socket \
-  localhost/pipelinek:0.95.0 \
+  localhost/pipelinek:0.96.0 \
   inspect <runId> --state --endpoint /var/lib/pipelinek/socket/pipelinek.sock
 ```
 
@@ -500,9 +500,9 @@ En la distribución viajan además cuatro plugins que son ejemplos de trabajo de
 
 ### Ecosistema extendido
 
-Estos proyectos se construyen alrededor de PipelineK. La **columna 0.95.0** es el rango de SDK que cada uno declara frente a la release vigente: un proyecto fijado a un SDK anterior no carga con ella.
+Estos proyectos se construyen alrededor de PipelineK. La **columna 0.96.0** es el rango de SDK que cada uno declara frente a la release vigente: un proyecto fijado a un SDK anterior no carga con ella.
 
-| Proyecto | Qué es | Madurez | 0.95.0 |
+| Proyecto | Qué es | Madurez | 0.96.0 |
 |---|---|---|---|
 | pipelinek-fabric | Plano de control distribuido: workers, proveedores de podman y Kubernetes. *El repositorio aún no es público* | Preview | Fijado a 0.62.0 |
 | [pipelinek-studio](https://github.com/Rubentxu/pipelinek-studio) | UI web, servidor MCP por stdio y extensión de VS Code sobre un proceso real de PipelineK | Preview | Fijado a 0.48.0-rc1 |
@@ -510,7 +510,7 @@ Estos proyectos se construyen alrededor de PipelineK. La **columna 0.95.0** es e
 | [pipelinek-assurance](https://github.com/Rubentxu/pipelinek-assurance) | Comprobaciones de assurance como plugin | En desarrollo | Declara `[0.48.0, 0.52.0)`; su handler todavía no puede ejecutarse en vivo |
 | [pipelinek-saga](https://github.com/Rubentxu/pipelinek-saga) | Contrato de saga para compensaciones | En desarrollo | Todavía no declara rango |
 | pipelinek-fabric-backstage | Integración con Backstage para la Control API de Fabric. *El repositorio aún no es público* | En desarrollo | El cliente todavía no está sellado |
-| [asdf-pipelinek](https://github.com/Rubentxu/asdf-pipelinek) | Plugin de gestor de versiones para `asdf` y `mise`: resuelve la última versión estable y verifica su SHA-256 | Preview | Resuelve 0.95.0 |
+| [asdf-pipelinek](https://github.com/Rubentxu/asdf-pipelinek) | Plugin de gestor de versiones para `asdf` y `mise`: resuelve la última versión estable y verifica su SHA-256 | Preview | Resuelve 0.96.0 |
 
 **Escala de madurez:** *Disponible* — publicado y soportado en la release. *Preview* — funciona de extremo a extremo, todavía en movimiento. *En desarrollo* — código real, contrato incompleto. *Exploratorio* — una idea con un spike.
 
@@ -640,8 +640,8 @@ Cada frontera tiene un único dueño. El runner es la autoridad de escritura sob
 ```bash
 curl -fL -o install-pipelinek.sh \
   "https://raw.githubusercontent.com/Rubentxu/pipeline-kotlin/main/scripts/install-pipelinek.sh"
-./install-pipelinek.sh install 0.95.0   # descargar, verificar, instalar
-./install-pipelinek.sh use 0.95.0       # cambiar la release activa
+./install-pipelinek.sh install 0.96.0   # descargar, verificar, instalar
+./install-pipelinek.sh use 0.96.0       # cambiar la release activa
 export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
 ```
 
@@ -649,10 +649,10 @@ export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
 
 ```bash
 asdf plugin add pipelinek https://github.com/Rubentxu/asdf-pipelinek
-asdf install pipelinek 0.95.0
+asdf install pipelinek 0.96.0
 
 mise plugins add pipelinek https://github.com/Rubentxu/asdf-pipelinek
-mise install pipelinek@0.95.0
+mise install pipelinek@0.96.0
 ```
 
 **Explora.** [`examples/`](examples/) contiene los cuatro plugins de ejemplo y un ejemplo de observabilidad: una configuración local de Collector, consultas PromQL y TraceQL, y un dashboard de Grafana que las ejecuta. El [catálogo de ejemplos](examples/catalogue/) reúne los ejemplos trabajados de las capacidades de arriba: cada uno es un pipeline ejecutable, con un README que explica sus etapas, sus pasos y qué espera. El arnés de releasing es quien los ejecuta. `pipelinek capabilities` y `pipelinek sdk-info` imprimen lo que admite esta build y contra qué compila un plugin.

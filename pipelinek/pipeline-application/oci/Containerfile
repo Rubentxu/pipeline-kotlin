@@ -1,0 +1,91 @@
+# The OCI profile of the local service.
+#
+# WHAT THIS IMAGE IS
+#
+# A PACKAGING of the published distribution and not a second build of it: the
+# bytes under /opt/pipelinek are the bytes of the ZIP the release publishes,
+# unpacked. An image that rebuilt the product would be a second authority for
+# what a release is, and an operator comparing the two would be comparing two
+# products that both claim to be the release.
+#
+# WHY THE USER IS NOT ROOT
+#
+# A rootless container is not a container that happens to run without
+# privileges: it is a container whose USER is a non-root uid, and every path
+# the service writes to belongs to that uid. The uid is 1000 and it is
+# DOCUMENTED, because a client of the same environment has to run as the SAME
+# uid to open the socket the service binds: the service hardens its socket to
+# rw-------, and the JVM cannot read the credentials of the peer of a Unix
+# socket, so the uid and the token are the two halves of one boundary and
+# neither of them is enough alone.
+#
+# WHY THE BASE IS A JRE AND NOT A JDK
+#
+# The product needs a virtual machine and not a compiler. The base is pinned
+# by the digest of the manifest LIST, so the build asks for the same bytes on
+# every machine and on every architecture, and a base that moved under the
+# tag cannot change what the image holds.
+#
+# The base is the Jammy one, and the reason is the uid: the images of the
+# newer Ubuntu releases carry a user at 1000 already, and a profile that
+# declares 1000 and finds it taken has to either take the name of another
+# user's home or move its own uid. Jammy leaves 1000 free, so the uid of the
+# profile is the conventional one and it is the same on every base.
+#
+# WHY THE VOLUMES ARE NAMED AND NOT BINDS
+#
+# A rootless runtime maps the host's directories into the container through a
+# user namespace, and a directory the host owns arrives owned by an id the
+# service cannot write as. A NAMED volume is created by the runtime FROM the
+# image, so it arrives with the ownership and the modes declared below. This
+# is the difference between a profile that works rootless and one that
+# refuses to write.
+
+FROM docker.io/library/eclipse-temurin:21-jre-jammy@sha256:1eac8b8fee11ca7d6725a48bc5d41992ed1561504ebae25490d2d062847e8269
+
+# The identity the service runs as. The group is created first because the
+# user names it, and the home is the state directory: the product writes its
+# compiled script cache under the home, and a home the service cannot write
+# into is a service that cannot run a script.
+RUN groupadd --gid 1000 pipelinek \
+    && useradd --uid 1000 --gid 1000 --home-dir /var/lib/pipelinek --no-create-home --shell /usr/sbin/nologin pipelinek
+
+# The distribution, unpacked from the ZIP the release published.
+COPY distribution/ /opt/pipelinek/
+
+# The ZIP carries no executable bit -- a ZIP is a container of names and
+# bytes, not of modes -- and the installer sets it on the file it installs.
+# The image does the same thing to the file it unpacked.
+RUN chmod +x /opt/pipelinek/bin/pipelinek
+
+# The three places the service owns, and the home it writes under.
+#
+# The modes are the ones the service expects and not the ones that are
+# convenient: the directory of the socket is PRIVATE, because the transport
+# refuses to bind on a directory others can walk, and the control root holds
+# the journal and the leases of the runs.
+RUN install -d -o 1000 -g 1000 -m 700 /var/lib/pipelinek \
+    && install -d -o 1000 -g 1000 -m 700 /var/lib/pipelinek/socket \
+    && install -d -o 1000 -g 1000 -m 700 /var/lib/pipelinek/control \
+    && install -d -o 1000 -g 1000 -m 700 /var/lib/pipelinek/state
+
+# The volumes the operator mounts, and nothing else: the socket with the
+# authorizations file beside it, the control root, and the state that holds
+# the substrate of the runs.
+VOLUME ["/var/lib/pipelinek/socket", "/var/lib/pipelinek/control", "/var/lib/pipelinek/state"]
+
+# The home of the state. The base image's home is /root, which the service
+# cannot write into, and the cache of the compiled scripts would land there.
+ENV HOME=/var/lib/pipelinek
+
+# The user the service runs as. Not root: the whole point of the profile.
+USER 1000:1000
+
+WORKDIR /var/lib/pipelinek
+
+# The launcher of the distribution, and the service it serves. The command is
+# the one the README documents: the substrate to serve, the control root and
+# the socket to listen on. An operator who wants the service to START runs
+# adds --scripts and --workspaces, and the container is the same one.
+ENTRYPOINT ["/opt/pipelinek/bin/pipelinek"]
+CMD ["serve", "--db", "/var/lib/pipelinek/state/store.db", "--control-root", "/var/lib/pipelinek/control", "--socket", "/var/lib/pipelinek/socket/pipelinek.sock"]

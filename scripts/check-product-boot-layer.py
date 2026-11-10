@@ -189,6 +189,10 @@ DECLARED_EXECUTABLES = {
         "distribution against a table of figures with no threshold, asserts "
         "nothing and certifies nothing about the tree"
     ),
+    "scripts/build-oci-image.sh": (
+        "the builder of the OCI profile: it packages the distribution that "
+        "leaves this tree into an image and starts nothing of the product"
+    ),
     "scripts/install-pipelinek.sh": (
         "the installer of a published release: it installs the archive for a "
         "user and asks the installed command for its version"

@@ -509,6 +509,13 @@ tasks.test {
         rootProject.file("../README.md"),
         rootProject.file("../AGENTS.md"),
         rootProject.file("../examples/observability"),
+        // The OCI profile is a file of the tree and not a document about it,
+        // and the rules that read its shape read these two. Without the
+        // declaration the lane is UP-TO-DATE after they change, and the
+        // report it leaves is the report of a profile that is no longer the
+        // one in the tree.
+        file("oci/Containerfile"),
+        rootProject.file("../scripts/build-oci-image.sh"),
     )
     // The example plugins are a subject by NAME and not by content: the rule
     // asks which plugin directories exist, so hashing their build outputs

@@ -417,6 +417,61 @@ mkdir -p ./state/socket && chmod 700 ./state/socket
 
 **El token de la instalación.** El servicio escribe el fichero de autorizaciones que sirve junto a su socket cuando ese fichero no está, y lo estrecha a `0600` cuando está. El token que presenta un cliente es la primera palabra de su primera línea. La línea de órdenes lee el token de `PIPELINEK_SERVICE_TOKEN`, del fichero junto al socket o del fichero que nombra `--authorization-file`, y nunca lo imprime.
 
+### El perfil OCI
+
+La distribución es también un contenedor, y el contenedor es un EMPAQUETADO de ella: `pipelinek/pipeline-application/oci/Containerfile` lleva el ZIP que descarga quien opera, desempaquetado, y `scripts/build-oci-image.sh` pide a un runtime de contenedores que lo construya. Nada de la construcción ordinaria llama a ese script, y el producto funciona sin runtime de contenedores.
+
+| | |
+|---|---|
+| usuario | `1000:1000` (`pipelinek`), nunca root |
+| home | `/var/lib/pipelinek`, el dueño del estado |
+| socket | `/var/lib/pipelinek/socket/pipelinek.sock`, `rw-------` |
+| tokens | `/var/lib/pipelinek/socket/authorizations`, `0600` |
+| control root | `/var/lib/pipelinek/control` |
+| sustrato | `/var/lib/pipelinek/state/store.db` |
+
+**Por qué el cliente usa el mismo uid.** El servicio estrecha su socket a `rw-------`, y la JVM no expone las credenciales del par de un socket de Unix: el modo del socket y el token son las dos mitades de una misma frontera, y ninguna basta sola. Un cliente del mismo entorno se ejecuta con el MISMO uid y presenta el token que lee del fichero que está junto al socket. Medido en esta máquina con podman rootless: un contenedor cliente con el mismo uid leyó el estado de una ejecución por el socket, y un contenedor cliente con otro uid fue rechazado — no pudo ni abrir el socket ni leer el token. Un cliente que se ejecuta como root dentro del contenedor no lo detiene el modo, porque root tiene las capacidades que lo ignoran.
+
+**Los volúmenes tienen nombre, y eso es lo que los hace rootless.** Un runtime rootless mapea los directorios del host dentro del contenedor a través de un espacio de nombres de usuario, y un directorio del host llega con un uid con el que el servicio no puede escribir. Un volumen CON NOMBRE lo crea el runtime DESDE la imagen, así que llega con la propiedad y los modos declarados arriba.
+
+```bash
+podman volume create pipelinek-socket
+podman volume create pipelinek-control
+podman volume create pipelinek-state
+
+podman run -d --name pipelinek-service \
+  -v pipelinek-socket:/var/lib/pipelinek/socket \
+  -v pipelinek-control:/var/lib/pipelinek/control \
+  -v pipelinek-state:/var/lib/pipelinek/state \
+  localhost/pipelinek:0.95.0
+```
+
+**El servicio sirve un sustrato; no lo crea.** Sobre un volumen todavía vacío el servicio se niega a arrancar y lo dice —`the substrate cannot be served: the store is not there`— porque ese fichero es de la vía del productor. Una ejecución lo crea, y los datos de esa ejecución quedan después en el volumen:
+
+```bash
+podman run --rm \
+  -v pipelinek-state:/var/lib/pipelinek/state \
+  -v pipelinek-control:/var/lib/pipelinek/control \
+  -v "$PWD":/scripts:ro,z \
+  localhost/pipelinek:0.95.0 \
+  run --db /var/lib/pipelinek/state/store.db \
+       --control-root /var/lib/pipelinek/control \
+       /scripts/my.pipeline.kts
+```
+
+**El cliente del mismo entorno** pregunta por el socket, y el token es el que el servicio escribió junto a él:
+
+```bash
+podman run --rm \
+  -v pipelinek-socket:/var/lib/pipelinek/socket \
+  localhost/pipelinek:0.95.0 \
+  inspect <runId> --state --endpoint /var/lib/pipelinek/socket/pipelinek.sock
+```
+
+**Pararlo** envía SIGTERM, y el contenedor se comporta como la instalación: el socket se borra, las autorizaciones se quedan, y el arranque siguiente vuelve a enlazarlo y responde por las mismas ejecuciones, porque sus datos están en el volumen. Medido en esta máquina: la ejecución que leyó el cliente antes del reinicio es la que leyó después.
+
+**En un sistema con SELinux en modo enforcing**, un directorio montado dentro del contenedor necesita la etiqueta (`:z` o `:Z`), o el contenedor no lee nada: un volumen con nombre no necesita etiqueta, porque lo crea el runtime. **Lo que el perfil no hace**: no monta ningún socket de Docker, no pide contenedor privilegiado ni red del host, y no arranca ningún orquestador. La imagen es un empaquetado, y el servicio que lleva dentro es el mismo proceso que corre una instalación.
+
 ### Telemetría
 
 La telemetría es opcional, y lo que transporta son **tiempos, recuentos y buckets: nunca cargas útiles**. Ni el texto del script, ni la orden, ni la transcripción viajan en una señal: ese contenido vive en el plano de salida y en el journal, y una segunda copia en la telemetría sería un segundo sitio donde esconderse un secreto.

@@ -108,6 +108,15 @@ internal class ParseState(
      */
     var receiptPath: String? = null
     /**
+     * `--run-config <path>`. The snapshot of the configuration of the run.
+     *
+     * It is a PATH and not a set of name/value pairs on the command line:
+     * the values would then be readable by any user of the machine through
+     * the arguments of the process, and the channel is public by
+     * construction.
+     */
+    var runConfigPath: String? = null
+    /**
      * Every `--output-protocol`
      * token the operator supplied. The last one wins. Validation
      * against [dev.rubentxu.pipeline.v2.application.OutputProtocol.SUPPORTED_IDS]
@@ -308,6 +317,10 @@ private val EXECUTION_ONLY_VALUED: List<ValuedOption> =
         // The receipt is the run's OWN account of itself, so only a verb that runs can carry
         // it. A reader that accepted it would be promising a file it never writes.
         ValuedOption.RECEIPT,
+        // The snapshot of the configuration of the run is a file the RUN reads, so only
+        // a verb that runs may carry it. A reader that accepted it would be promising an
+        // environment it never has.
+        ValuedOption.RUN_CONFIG,
     )
 
 internal val EXECUTION_ONLY_OPTIONS: Set<String> =
@@ -410,6 +423,9 @@ private enum class ValuedOption(val token: String) {
     // Where the run writes its receipt: what it concluded and what it wrote, in one document.
     // Only a run may carry it; the readers refuse it by naming the verb that owns it.
     RECEIPT("--receipt"),
+    // The snapshot of the configuration of the run. It is a file the RUN reads, and it
+    // is the only way a configuration reaches the environment of the steps.
+    RUN_CONFIG("--run-config"),
     // Opt-in versioned
     // output protocol. Repeating the flag collects the tokens;
     // Main.kt validates the last-supplied id against
@@ -517,39 +533,24 @@ private object ValuedOptions {
         // the boundary; downstream the CliFlags.correlationId field
         // converts the string to a typed [CorrelationId] with the
         // same init guard.
-        ValuedOption.CORRELATION_ID -> {
-            if (value.isBlank()) {
-                ApplyOutcome.Rejected(CliError.MissingOptionValue("--correlation-id"))
-            } else {
-                state.correlationId = value
-                ApplyOutcome.Applied(index + 2)
-            }
-        }
+        ValuedOption.CORRELATION_ID -> nonBlank(value, "--correlation-id", index) { state.correlationId = value }
         // A path. Existence is NOT checked here: the path a receipt goes to is a
         // legitimate thing to name before it exists, and the effect boundary
         // reports it when the write fails.
-        ValuedOption.RECEIPT -> {
-            if (value.isBlank()) {
-                ApplyOutcome.Rejected(CliError.MissingOptionValue("--receipt"))
-            } else {
-                state.receiptPath = value
-                ApplyOutcome.Applied(index + 2)
-            }
-        }
+        ValuedOption.RECEIPT -> nonBlank(value, "--receipt", index) { state.receiptPath = value }
+
+        // A path to the snapshot of the configuration. Existence is NOT checked
+        // here either: the file is read at the start of the run, and a file
+        // that cannot be read refuses the run THERE, where the refusal can
+        // name the file that could not be read.
+        ValuedOption.RUN_CONFIG -> nonBlank(value, "--run-config", index) { state.runConfigPath = value }
 
         // Collect every supplied
         // --output-protocol token in the order the operator passed them.
         // The list is the client's priority for the negotiation. Resolution
         // (intersection with OutputProtocol.SUPPORTED_IDS, fail-closed on
         // no intersection) lives in OutputProtocolDecision.kt#negotiateOutputProtocol.
-        ValuedOption.OUTPUT_PROTOCOL -> {
-            if (value.isBlank()) {
-                ApplyOutcome.Rejected(CliError.MissingOptionValue("--output-protocol"))
-            } else {
-                state.outputProtocolTokens += value
-                ApplyOutcome.Applied(index + 2)
-            }
-        }
+        ValuedOption.OUTPUT_PROTOCOL -> nonBlank(value, "--output-protocol", index) { state.outputProtocolTokens += value }
 
         // Closed vocabulary or a number, resolved HERE at the boundary so nothing downstream re-decides
         // what a token names. Repeating a flag unions, per the AND-across/OR-within rule.
@@ -569,6 +570,22 @@ private object ValuedOptions {
         ValuedOption.STEP -> TextFilterOptions.addTextFilter(option.token, value, index, state.stepNames)
         ValuedOption.KIND -> TextFilterOptions.addTextFilter(option.token, value, index, state.eventKinds)
     }
+
+    /**
+     * A value that must not be blank, applied to the state of the parse.
+     *
+     * A blank value is a MISSING value, and the refusal says which option is
+     * missing it. The check is here, at the boundary where the value is read,
+     * so that nothing downstream has to re-decide whether the operator wrote
+     * something.
+     */
+    private fun nonBlank(value: String, option: String, index: Int, set: () -> Unit): ApplyOutcome =
+        if (value.isBlank()) {
+            ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+        } else {
+            set()
+            ApplyOutcome.Applied(index + 2)
+        }
 }
 
 /**

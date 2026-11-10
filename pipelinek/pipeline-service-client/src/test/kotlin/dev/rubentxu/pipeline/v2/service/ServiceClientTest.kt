@@ -3,10 +3,6 @@ package dev.rubentxu.pipeline.v2.service
 import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue

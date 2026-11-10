@@ -1,5 +1,23 @@
 plugins {
     kotlin("jvm")
+    // Selective mutation (the rules of the configuration of a run). Run
+    // explicitly::pipeline-runtime:pitest
+    id("info.solidsoft.pitest")
+}
+
+pitest {
+    junit5PluginVersion = "1.2.1"
+    // The type that HOLDS the rules, and the companion that APPLIES them:
+    // the two halves of the same subject, and a lane that mutated one of
+    // them would leave the other unmeasured.
+    targetClasses = listOf("dev.rubentxu.pipeline.v2.runtime.RunConfiguration*")
+    targetTests = listOf(
+        "dev.rubentxu.pipeline.v2.runtime.RunConfigurationTest",
+    )
+    threads = System.getenv("PIT_THREADS")?.toInt() ?: 4
+    timeoutConstInMillis = 10000
+    outputFormats = listOf("XML", "HTML")
+    mutators = listOf("DEFAULTS")
 }
 
 group = "dev.rubentxu.pipeline.v2"

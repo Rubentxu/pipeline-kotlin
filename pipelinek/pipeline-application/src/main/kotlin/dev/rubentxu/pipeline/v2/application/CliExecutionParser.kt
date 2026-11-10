@@ -183,6 +183,7 @@ internal object CliExecutionParser {
                 requirePluginTrust = state.requirePluginTrust,
                 correlationId = state.correlationId,
                 receiptPath = state.receiptPath,
+                runConfigPath = state.runConfigPath,
                 view = state.view,
                 format = state.format,
                 outputProtocolTokens = state.outputProtocolTokens,
@@ -195,10 +196,10 @@ internal object CliExecutionParser {
     /**
      * The refusal an option that belongs to the OTHER verb of this pair earns here, or nothing.
      *
-     * The two verbs share one option vocabulary, and two of the options are promises only one of
-     * them can keep: `--receipt` names a file the RUN writes, and `--compile-only` asks for a
-     * compilation without running the author's body. Each is refused by naming the verb that
-     * owns it.
+     * The two verbs share one option vocabulary, and the options are promises only one of
+     * them can keep: `--receipt` names a file the RUN writes, `--run-config` names a file the
+     * RUN reads, and `--compile-only` asks for a compilation without running the author's body.
+     * Each is refused by naming the verb that owns it.
      *
      * They are one fact with two faces, so they are asked together and the first one the
      * request carries is the one that is named.
@@ -206,6 +207,8 @@ internal object CliExecutionParser {
     private fun foreignVerbOptionRefusal(state: ParseState, command: CliCommand): CliError? = when {
         state.receiptPath != null && command == CliCommand.VALIDATE ->
             CliError.OptionBelongsToVerb("--receipt", "run", RECEIPT_BELONGS_TO_RUN)
+        state.runConfigPath != null && command == CliCommand.VALIDATE ->
+            CliError.OptionBelongsToVerb("--run-config", "run", RUN_CONFIG_BELONGS_TO_RUN)
         state.compileOnly && command == CliCommand.RUN ->
             CliError.OptionBelongsToVerb("--compile-only", "validate", COMPILE_ONLY_BELONGS_TO_VALIDATE)
         else -> null
@@ -214,6 +217,17 @@ internal object CliExecutionParser {
     /** Why `--receipt` is refused by the verb that never runs anything. */
     private const val RECEIPT_BELONGS_TO_RUN =
         "'validate' compiles a script and publishes nothing, so it has no receipt to write."
+
+    /**
+     * Why `--run-config` is refused by the verb that never runs anything.
+     *
+     * The snapshot of the configuration is read by the RUN, and its values
+     * become the environment of the steps of the run. A validation has no
+     * steps, so accepting the option would promise an environment that
+     * never exists.
+     */
+    private const val RUN_CONFIG_BELONGS_TO_RUN =
+        "'validate' compiles a script and runs no step, so it has no configuration to apply."
 
     /** Why `--compile-only` is refused by the verb that runs the author's body. */
     private const val COMPILE_ONLY_BELONGS_TO_VALIDATE =

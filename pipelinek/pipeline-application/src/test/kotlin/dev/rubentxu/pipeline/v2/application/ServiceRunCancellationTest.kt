@@ -226,12 +226,10 @@ class ServiceRunCancellationTest {
                 return ended
             }
         },
-        control = object : RuntimeControlPort {
-            override fun cancel(runId: String, reason: CancelReason): CancelOutcome {
-                events += "cancel:$runId"
-                reasons += reason
-                return outcome
-            }
+        control = RuntimeControlPort { runId, reason ->
+            events += "cancel:$runId"
+            reasons += reason
+            outcome
         },
     )
 }

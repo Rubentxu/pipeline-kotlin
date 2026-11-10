@@ -163,6 +163,7 @@ internal class ServiceOperations(
                     workspace = request.workspace,
                     idempotencyKey = request.idempotencyKey,
                     credentialDigest = credentialDigest.orEmpty(),
+                    configuration = request.configuration,
                 ),
             )
         } catch (failure: Exception) {
@@ -181,6 +182,20 @@ internal class ServiceOperations(
                     put("correlationId", JsonPrimitive(outcome.correlationId))
                     put("ownerId", JsonPrimitive(outcome.ownerId))
                     put("startedAtMs", JsonPrimitive(outcome.startedAtMs))
+                    // The configuration comes back on EVERY path, and it is
+                    // the configuration of the request that is being
+                    // answered. A client that sent one compares it with what
+                    // it sent, and a difference is a fact the client can
+                    // act on instead of a run that quietly has another
+                    // configuration.
+                    put(
+                        "configuration",
+                        buildJsonObject {
+                            outcome.configuration.values.forEach { (name, value) ->
+                                put(name, JsonPrimitive(value))
+                            }
+                        },
+                    )
                 },
             )
 

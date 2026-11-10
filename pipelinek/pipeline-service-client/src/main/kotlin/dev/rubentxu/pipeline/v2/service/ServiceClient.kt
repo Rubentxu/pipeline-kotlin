@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.service
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
@@ -81,13 +82,14 @@ data class ServiceHealth(
 /**
  * The identity of a run the service started.
  *
- * ## What the four facts are
+ * ## What the five facts are
  *
  * The [runId] is the run's own identity, and it is the one a client uses to
  * ask about the run afterwards. The [ownerId] is the authority that holds
  * the run's lease. The [correlationId] is the token the service chose and
  * passed to the run, so a reader of the run's own facts can join them to
- * this answer. The [startedAtMs] is when the run took its ownership.
+ * this answer. The [startedAtMs] is when the run took its ownership. The
+ * [configuration] is the configuration the service accepted, echoed back.
  *
  * ## Why this is the whole answer
  *
@@ -95,6 +97,15 @@ data class ServiceHealth(
  * with the run's outcome: the run is still going when the answer is
  * written, and its outcome is another authority's answer — the one the
  * client's `runState` asks for.
+ *
+ * ## Why the configuration comes back
+ *
+ * Because the answer is the only place where a client can learn that the
+ * configuration it sent is the configuration the run WILL HAVE. A service
+ * that does not know the field ignores it in silence and starts the run
+ * without it, and a client that cannot tell the two apart believes in a
+ * configuration that is not there. The echo turns that silence into a
+ * fact, and the client that receives it compares it with what it sent.
  *
  * ## When the runId cannot be asked about
  *
@@ -111,7 +122,29 @@ data class ServiceRunStart(
     val correlationId: String,
     val ownerId: String,
     val startedAtMs: Long,
-)
+    /**
+     * The configuration the service accepted.
+     *
+     * EMPTY when the request carried no configuration. It is NEVER null:
+     * an answer that does not carry the field is read as an answer that
+     * carries no configuration, and the client compares that with what it
+     * sent. A service that ignored the field is therefore a mismatch and
+     * not a silent success.
+     */
+    val configuration: Map<String, String> = emptyMap(),
+) {
+
+    /**
+     * The answer WITHOUT the values of its configuration.
+     *
+     * The generated one would render them, and a line of log that carried
+     * them would publish them to whoever reads the log. The values came from
+     * the client and belong to the steps of the run, not to a diagnostic.
+     */
+    override fun toString(): String =
+        "ServiceRunStart(runId=$runId, correlationId=$correlationId, ownerId=$ownerId, " +
+            "startedAtMs=$startedAtMs, configuration=${configuration.size} entries)"
+}
 
 /**
  * The answer of a cancellation.
@@ -347,6 +380,28 @@ class ServiceClient internal constructor(
      * path. Everything else is the service's decision: the argv, the
      * deadline, the policy.
      *
+     * ## The configuration
+     *
+     * The [configuration] is the set of name/value pairs the steps of the
+     * run will see in their environment. It is a snapshot, and it is NOT a
+     * secret: the values end up in the environment of the steps, which
+     * every process of the step inherits, and the service cannot tell a
+     * secret from a plain text.
+     *
+     * ## What the client does with the answer
+     *
+     * It COMPARES the configuration the answer carries with the one it
+     * sent, and a difference is an [ServiceAnswer.Unreadable] — never a
+     * successful start that quietly runs with another configuration. The
+     * comparison happens on EVERY path, including the idempotent one: the
+     * answer of a repeated request carries the configuration of the request
+     * that is being answered, and a request that repeats a key with
+     * another configuration is refused by the service before this point.
+     *
+     * The detail of that refusal names the run, because the run EXISTS: a
+     * service that ignored the configuration started it without one, and
+     * the operator is the one who has to cancel it.
+     *
      * ## The idempotency key
      *
      * A request that carries an [idempotencyKey] and repeats with the same
@@ -368,8 +423,9 @@ class ServiceClient internal constructor(
         script: String,
         workspace: String? = null,
         idempotencyKey: String? = null,
+        configuration: Map<String, String> = emptyMap(),
     ): ServiceAnswer<ServiceRunStart> =
-        ask(ServiceRequest.StartRun(schema, script, workspace, idempotencyKey)).narrow { result ->
+        ask(ServiceRequest.StartRun(schema, script, workspace, idempotencyKey, configuration)).narrow { result ->
             val runId = result.string("runId")
                 ?: return@narrow ServiceAnswer.Unreadable("no runId")
             val correlationId = result.string("correlationId")
@@ -378,7 +434,16 @@ class ServiceClient internal constructor(
                 ?: return@narrow ServiceAnswer.Unreadable("no ownerId")
             val startedAtMs = result.long("startedAtMs")
                 ?: return@narrow ServiceAnswer.Unreadable("no startedAtMs")
-            ServiceAnswer.Answered(ServiceRunStart(runId, correlationId, ownerId, startedAtMs))
+            val echoed = result.configuration()
+            if (echoed != configuration) {
+                return@narrow ServiceAnswer.Unreadable(
+                    "the answer carries a configuration that is not the one that was sent " +
+                        "(run $runId)",
+                )
+            }
+            ServiceAnswer.Answered(
+                ServiceRunStart(runId, correlationId, ownerId, startedAtMs, echoed),
+            )
         }
 
     /**
@@ -477,7 +542,7 @@ class ServiceClient internal constructor(
         val channel = open() ?: return ServiceAnswer.Unreachable(endpoint.toString(), "no service at the endpoint")
         return try {
             channel.write(ServiceCodec.encode(request, credential))
-            ServiceAnswer.Answered(SocketServiceStreet(channel, deadlineMillis()))
+            ServiceAnswer.Answered(SocketServiceStreet(channel))
         } catch (failure: IOException) {
             channel.close()
             ServiceAnswer.Unreachable(endpoint.toString(), failure.message ?: failure.javaClass.simpleName)
@@ -523,7 +588,6 @@ class ServiceClient internal constructor(
  */
 private class SocketServiceStreet(
     private val channel: ServiceChannel,
-    private val deadlineMillis: Long?,
 ) : ServiceStreet {
 
     private var ended = false
@@ -675,6 +739,27 @@ private class SocketChannelServiceChannel(
 
 /** The string [key] holds, or null when it does not hold a string. */
 private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
+
+/**
+ * The configuration the answer carries, or null when the answer carries one
+ * that cannot be read.
+ *
+ * An ABSENT field is read as an EMPTY configuration, and that is the whole
+ * point of the reading: a service that does not know the field leaves it
+ * out, and the client that sent a configuration has to see the difference.
+ * A field that is present and is not an object of primitives is `null`,
+ * because a value the client cannot read is not a value it may compare.
+ */
+private fun JsonObject.configuration(): Map<String, String>? {
+    val element = this["configuration"] ?: return emptyMap()
+    val entries = element as? JsonObject ?: return null
+    val values = LinkedHashMap<String, String>()
+    for ((name, value) in entries) {
+        val text = (value as? JsonPrimitive)?.contentOrNull ?: return null
+        values[name] = text
+    }
+    return values
+}
 
 /** The boolean [key] holds, or null when it does not hold one. */
 private fun JsonObject.boolean(key: String): Boolean? =

@@ -28,10 +28,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import dev.rubentxu.pipeline.v2.service.FrameOrdinalToken
-import dev.rubentxu.pipeline.v2.service.ServiceEndReason
 import dev.rubentxu.pipeline.v2.service.ServiceProtocol
-import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
 
 /**
@@ -138,7 +135,7 @@ class ServiceSubscriptionTest {
     @Test
     fun `a run that is still going leaves the street open`() {
         val port = ScriptedEventPort { call ->
-            if (call == 0) page(emptyList(), lastSequence = 0L) else throw IllegalStateException("gone")
+            if (call == 0) page(emptyList(), lastSequence = 0L) else error("gone")
         }
         val connection = RecordingConnection()
         val subscription = ServiceSubscription(

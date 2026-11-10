@@ -49,13 +49,30 @@ import java.nio.file.Path
  *   every run on a machine that had ever stored a secret ask for a passphrase,
  *   including the runs that bind nothing. The caller therefore hands over the
  *   declaration and lets this function decide.
+ * @param credentialBroker the directory of the broker the run was given, or null when it was
+ *   given none. With a broker the run asks it for each credential when it enters
+ *   `withCredentials` and never opens the local store; without one it behaves as described above.
  */
 internal fun composeCredentialSeam(
     redactionRegistry: SecretPatternRegistry?,
     clock: Clock,
     pipelineSpec: PipelineSpec?,
     maskingStrictness: SecretMaskingStrictness,
+    credentialBroker: Path?,
 ): CredentialSeam {
+    // A run that was given a broker gets its credentials from it and from nowhere else: the
+    // branch below never reads the environment, never looks for the store and never asks for a
+    // passphrase, and it is decided BEFORE any of that so that it cannot be reached by accident.
+    if (credentialBroker != null) {
+        return composeBrokeredCredentialSeam(
+            redactionRegistry,
+            clock,
+            pipelineSpec,
+            maskingStrictness,
+            credentialBroker,
+        )
+    }
+
     // [controlDirRoot] is deliberately NOT a parameter of this function. A control
     // root would put the store under the run's own directory, and the documented
     // `credentials add` -> `run` flow could not find the store it had just written.
@@ -73,16 +90,7 @@ internal fun composeCredentialSeam(
     // and the operator may move it in either direction with one variable. A variable that
     // names a posture this product does not have is a decision that cannot be honoured, and
     // guessing what the operator meant is not honouring it: the run is refused instead.
-    val strictness = resolveMaskingStrictness(
-        requested = maskingStrictness,
-        declared = System.getenv(SecretMaskingStrictness.ENVIRONMENT_VARIABLE),
-    ) ?: throw CommandRefused(
-        CliExit.InvalidArgument(
-            message = "the masking posture named by ${SecretMaskingStrictness.ENVIRONMENT_VARIABLE} " +
-                "cannot be read: the postures are '${SecretMaskingStrictness.REQUIRED}' and " +
-                "'${SecretMaskingStrictness.BEST_EFFORT}'",
-        ),
-    )
+    val strictness = resolveRunMaskingStrictness(maskingStrictness)
 
     val secretStore: SecretStore = try {
         val passphraseChars = PassphraseResolver.resolve()
@@ -162,6 +170,25 @@ private fun closeQuietly(resource: AutoCloseable) {
         // Shutdown path.
     }
 }
+
+/**
+ * The masking posture this run applies, read from the environment of the process.
+ *
+ * Both ways a run gets its credentials ask this, so the posture is decided in ONE place.
+ *
+ * @throws CommandRefused when the variable names a posture this product does not have.
+ */
+internal fun resolveRunMaskingStrictness(requested: SecretMaskingStrictness): SecretMaskingStrictness =
+    resolveMaskingStrictness(
+        requested = requested,
+        declared = System.getenv(SecretMaskingStrictness.ENVIRONMENT_VARIABLE),
+    ) ?: throw CommandRefused(
+        CliExit.InvalidArgument(
+            message = "the masking posture named by ${SecretMaskingStrictness.ENVIRONMENT_VARIABLE} " +
+                "cannot be read: the postures are '${SecretMaskingStrictness.REQUIRED}' and " +
+                "'${SecretMaskingStrictness.BEST_EFFORT}'",
+        ),
+    )
 
 /**
  * The masking posture this run applies.

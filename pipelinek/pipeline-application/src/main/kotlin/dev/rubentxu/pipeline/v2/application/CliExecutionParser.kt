@@ -185,6 +185,7 @@ internal object CliExecutionParser {
                 receiptPath = state.receiptPath,
                 runConfigPath = state.runConfigPath,
                 runInputsPath = state.runInputsPath,
+                credentialBrokerPath = state.credentialBrokerPath,
                 parameters = state.parameterValues.toMap(),
                 describeParameters = state.describeParameters,
                 view = state.view,
@@ -214,6 +215,8 @@ internal object CliExecutionParser {
             CliError.OptionBelongsToVerb("--run-config", "run", RUN_CONFIG_BELONGS_TO_RUN)
         state.runInputsPath != null && command == CliCommand.VALIDATE ->
             CliError.OptionBelongsToVerb("--run-inputs", "run", RUN_INPUTS_BELONGS_TO_RUN)
+        state.credentialBrokerPath != null && command == CliCommand.VALIDATE ->
+            CliError.OptionBelongsToVerb("--credential-broker", "run", CREDENTIAL_BROKER_BELONGS_TO_RUN)
         state.parameterValues.isNotEmpty() && command == CliCommand.VALIDATE ->
             CliError.OptionBelongsToVerb("--param", "run", PARAM_BELONGS_TO_RUN)
         state.compileOnly && command == CliCommand.RUN ->
@@ -245,6 +248,16 @@ internal object CliExecutionParser {
      */
     private const val RUN_INPUTS_BELONGS_TO_RUN =
         "'validate' compiles a script and runs no step, so it has no parameters to apply."
+
+    /**
+     * Why `--credential-broker` is refused by the verb that never runs anything.
+     *
+     * The broker is where a RUN asks for the credentials of a `withCredentials` block. A
+     * validation enters no block, so accepting the option would promise a credential it never
+     * asks for.
+     */
+    private const val CREDENTIAL_BROKER_BELONGS_TO_RUN =
+        "'validate' compiles a script and runs no step, so it asks no broker for a credential."
 
     /**
      * Why `--param` is refused by the verb that never runs anything.

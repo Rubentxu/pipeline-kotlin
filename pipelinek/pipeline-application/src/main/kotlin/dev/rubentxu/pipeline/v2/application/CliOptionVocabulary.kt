@@ -126,6 +126,15 @@ internal class ParseState(
      */
     var runInputsPath: String? = null
     /**
+     * `--credential-broker <directory>`. Where the broker of this run listens.
+     *
+     * It is a DIRECTORY and not a credential: the broker holds the secrets and the run asks it
+     * for the ones it needs when it enters `withCredentials`. The service creates the directory,
+     * private to the run, and hands its path to the child through the command line; an
+     * operator who names one is naming the broker of a run that is not theirs to start.
+     */
+    var credentialBrokerPath: String? = null
+    /**
      * `--param <name>=<value>`. The values the caller delivers for the parameters the
      * pipeline declares.
      *
@@ -359,6 +368,10 @@ private val EXECUTION_ONLY_VALUED: List<ValuedOption> =
         // that runs may carry it. A reader that accepted it would be promising values it
         // never has.
         ValuedOption.RUN_INPUTS,
+        // The broker the run asks for its credentials is a socket the RUN connects to, so only a
+        // verb that runs may carry it. A reader that accepted it would be promising a credential
+        // it never asks for.
+        ValuedOption.CREDENTIAL_BROKER,
         // The values of the parameters are delivered to a RUN, so only a verb that runs may
         // carry them.
         ValuedOption.PARAM,
@@ -484,6 +497,9 @@ private enum class ValuedOption(val token: String) {
     // The snapshot of the parameters of the run. It is a file the RUN reads, and it is the
     // only way the values of the parameters reach the run.
     RUN_INPUTS("--run-inputs"),
+    // Where the run finds the broker that hands it the credentials it asks for. It is a
+    // directory the RUN connects to, and it is the only way a run learns that it has a broker.
+    CREDENTIAL_BROKER("--credential-broker"),
     // The values the caller delivers for the parameters the pipeline declares. Repeating the
     // flag delivers one value per parameter.
     PARAM("--param"),
@@ -658,6 +674,12 @@ private object ValuedOptions {
         // file is read at the start of the run, and a file that cannot be read refuses the
         // run THERE, where the refusal can name the file that could not be read.
         ValuedOption.RUN_INPUTS -> nonBlank(value, "--run-inputs", index) { state.runInputsPath = value }
+
+        // A path to the directory of the broker. Existence is NOT checked here: the run connects
+        // when a step asks for a credential, and a broker that cannot be reached refuses THAT step
+        // by name, where the refusal can say which credential was asked for.
+        ValuedOption.CREDENTIAL_BROKER ->
+            nonBlank(value, "--credential-broker", index) { state.credentialBrokerPath = value }
 
         // The value of a parameter, spelled `name=value`.
         ValuedOption.PARAM -> applyParameter(value, index, state)

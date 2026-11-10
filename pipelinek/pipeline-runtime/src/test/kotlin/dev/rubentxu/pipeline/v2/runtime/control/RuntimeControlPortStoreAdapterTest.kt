@@ -258,9 +258,14 @@ class RuntimeControlPortStoreAdapterTest {
         fixture.adapter.cancel(runId, CancelReason.UserRequested)
 
         assertEquals(
-            listOf("durable"),
-            fixture.durability.calls,
+            1,
+            fixture.durability.calls.size,
             "el cancel confirma su hecho terminal antes de responder",
+        )
+        assertEquals(
+            fixture.lane.bookendsOf(runId).single().eventId,
+            fixture.durability.calls.single(),
+            "la barrera se pregunta por el hecho terminal de ESTE cancel, y no por el lane entero",
         )
         assertEquals(
             1,
@@ -339,6 +344,41 @@ class RuntimeControlPortStoreAdapterTest {
         )
     }
 
+    /**
+     * El terminal que aparece MIENTRAS se toma la lease no se reescribe.
+     *
+     * Los hechos de la decisión se leen bajo la lease, que es la exclusión
+     * sobre el run. Un run que alcanza su propio desenlace en esa ventana
+     * tiene un terminal, y escribir el suyo encima dejaría DOS estados
+     * terminales para una ejecución —que es la ambigüedad que este puerto
+     * existe para quitar—.
+     *
+     * Sin la lectura bajo la lease, la decisión se tomaría con el terminal
+     * leído antes de la adquisición, que era ninguno, y el cancel escribiría
+     * su bookend encima del ajeno.
+     */
+    @Test
+    fun `el terminal que aparece mientras se toma la lease no se reescribe`() {
+        val fixture = fixture()
+        fixture.lease.onAcquire = { fixture.lane.finishTheRun(runId, "success") }
+
+        val refused = assertInstanceOf(
+            CancelOutcome.Refused::class.java,
+            fixture.adapter.cancel(runId, CancelReason.UserRequested),
+        )
+        assertInstanceOf(
+            CancelRefusal.RunTerminal::class.java,
+            refused.refusal,
+            "el run alcanzó su propio desenlace mientras el cancel tomaba la lease, y un cancel " +
+                "no pisa el desenlace de un run",
+        )
+        assertEquals(
+            1,
+            fixture.lane.bookendsOf(runId).size,
+            "una ejecución tiene un estado terminal, y el cancel no escribe el suyo encima",
+        )
+    }
+
     // ---------------------------------------------------------------------
     // Fixtures
     // ---------------------------------------------------------------------
@@ -381,7 +421,7 @@ class RuntimeControlPortStoreAdapterTest {
             sealStream = seals::seal,
             clock = clock,
             ownerId = RunOwnerId.of("operator")!!,
-            makeTerminalDurable = durability::makeDurable,
+            makeTerminalDurable = { eventId -> durability.makeDurable(eventId) },
         )
         return Fixture(adapter, journal, lane, lease, seals, durability)
     }
@@ -479,6 +519,26 @@ class RuntimeControlPortStoreAdapterTest {
         /** Los hechos terminales que el lane guarda de este run. */
         fun bookendsOf(runId: String): List<RunFinished> =
             committed.filterIsInstance<RunFinished>().filter { it.runId == runId }
+
+        /**
+         * El run alcanza su propio desenlace, y el hecho queda visible.
+         *
+         * Es lo que otro proceso —o el hijo de este run— deja en el lane
+         * mientras esta cancelación está tomando la lease.
+         */
+        fun finishTheRun(runId: String, outcome: String) {
+            append(
+                RunFinished(
+                    eventId = "terminal-of-another-writer",
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = Instant.parse("2026-10-21T09:59:00Z"),
+                    outcome = outcome,
+                    diagnostics = emptyList(),
+                ),
+            )
+            commit()
+        }
     }
 
     /**
@@ -495,9 +555,15 @@ class RuntimeControlPortStoreAdapterTest {
             failing = true
         }
 
-        /** Confirma lo que el lane tenía en cola. */
-        fun makeDurable() {
-            calls += "durable"
+        /**
+         * Confirma lo que el lane tenía en cola, y dice a QUIÉN se le pregunta.
+         *
+         * La barrera se pregunta por el hecho que el cancel quiere durable, y
+         * no por el lane entero: un lane que rechazó el hecho de otro
+         * productor no rechazó este.
+         */
+        fun makeDurable(eventId: String) {
+            calls += eventId
             if (failing) {
                 failing = false
                 lane.discardPending()
@@ -513,15 +579,27 @@ class RuntimeControlPortStoreAdapterTest {
     private class FakeLease : RunLeasePort {
         val releases = mutableListOf<RunOwnerId>()
 
-        override fun acquire(request: LeaseRequest): LeaseAcquisition = LeaseAcquisition.Acquired(
-            record = LeaseRecord(
-                runId = request.runId,
-                ownerId = request.ownerId,
+        /**
+         * Lo que pasa MIENTRE se toma la lease.
+         *
+         * Es la ventana en la que otro escritor puede dejar el run con su
+         * propio desenlace, y la que hace que los hechos de la decisión
+         * tengan que leerse bajo la lease y no antes.
+         */
+        var onAcquire: (() -> Unit)? = null
+
+        override fun acquire(request: LeaseRequest): LeaseAcquisition {
+            onAcquire?.invoke()
+            return LeaseAcquisition.Acquired(
+                record = LeaseRecord(
+                    runId = request.runId,
+                    ownerId = request.ownerId,
+                    fencingToken = FencingToken.FIRST,
+                    ownerAlive = true,
+                ),
                 fencingToken = FencingToken.FIRST,
-                ownerAlive = true,
-            ),
-            fencingToken = FencingToken.FIRST,
-        )
+            )
+        }
 
         override fun release(ownerId: RunOwnerId) {
             releases += ownerId

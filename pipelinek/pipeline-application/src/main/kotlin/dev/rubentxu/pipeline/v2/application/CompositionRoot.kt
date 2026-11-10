@@ -220,7 +220,7 @@ internal fun composeRuntimeControlPort(
         sealStream = { stream -> output.seal(stream) },
         clock = clock,
         ownerId = requireNotNull(owner) { "the cancel owner id is always well formed" },
-        makeTerminalDurable = { eventStore.flush() },
+        makeTerminalDurable = { eventId -> eventStore.makeDurable(eventId) },
     )
 }
 

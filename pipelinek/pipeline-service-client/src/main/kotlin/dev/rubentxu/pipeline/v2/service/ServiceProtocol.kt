@@ -132,6 +132,56 @@ object ServiceProtocol {
      * product already imposes on its own annotated cancellations.
      */
     const val MAX_CANCEL_REASON_LENGTH: Int = 256
+
+    /**
+     * The longest operation id an answer may name.
+     *
+     * The operation id says WHICH question of a run is answered: it is built
+     * from the run id and from the position of the step, and a step nested in
+     * several parallel branches makes it longer than a run id. It is a KEY and
+     * never a path, so a line that carries more than this is not naming an
+     * operation of any run.
+     */
+    const val MAX_INPUT_OP_ID_LENGTH: Int = 1024
+
+    /**
+     * The longest message an answer to a question may carry.
+     *
+     * The message is the responder's own words and the run records it in its
+     * history. It is bounded for the reason a cancellation's reason is: a
+     * message longer than this is a document, and every reader of the run
+     * would have to carry it.
+     */
+    const val MAX_INPUT_ANSWER_MESSAGE_LENGTH: Int = 256
+}
+
+/**
+ * What a client decides about a question a run asked.
+ *
+ * ## Why two words and nothing else
+ *
+ * Because a question of a run is closed: the run proceeds or it aborts. A
+ * third word would be a decision the run cannot take, so the wire does not
+ * have it, and a line that carries one is a malformed request and not a
+ * decision to be interpreted.
+ *
+ * @property word The word the decision travels as on the wire.
+ */
+enum class ServiceInputDecision(val word: String) {
+
+    /** The run goes on with the body of the question. */
+    PROCEED("proceed"),
+
+    /** The run does not go on: the question is closed without running the body. */
+    ABORT("abort"),
+    ;
+
+    /** Reads a decision back from the word that travels on the wire. */
+    companion object {
+
+        /** The decision [word] names, or null when it names none. */
+        fun ofWord(word: String): ServiceInputDecision? = entries.firstOrNull { it.word == word }
+    }
 }
 
 /**
@@ -292,6 +342,57 @@ sealed interface ServiceRequest {
         override val schema: String,
         val runId: String,
         val reason: String?,
+    ) : ServiceRequest
+
+    /**
+     * The request to LIST the questions of a run that are waiting for an answer.
+     *
+     * ## What the request carries
+     *
+     * The [runId] of the run, and nothing else. The questions are the ones the
+     * run itself published when its pipeline reached an `input` step; the
+     * service reads them and does not make any up.
+     *
+     * ## Why it needs the right to answer
+     *
+     * Because the text of a question is the pipeline author's and it can hold
+     * what only the person who is going to answer should read. Reading the
+     * questions is therefore the right of whoever may answer them, and a
+     * credential that may only follow a run is refused.
+     */
+    data class ListInputs(
+        override val schema: String,
+        val runId: String,
+    ) : ServiceRequest
+
+    /**
+     * The request to ANSWER one question of a run.
+     *
+     * ## What the request carries
+     *
+     * The [runId], the [opId] of the question and the [decision]. The
+     * [message] is the responder's own words and is optional.
+     *
+     * ## What the request does NOT carry
+     *
+     * Who is answering. The service knows it from the credential the line was
+     * authenticated with, and a name written by the client would be a claim
+     * and not a fact: the answer is attributed to the authorization, never to
+     * what the line says.
+     *
+     * ## Why the operation id and not the position of the step
+     *
+     * Because two steps of a run can share a position: the same step in two
+     * stages, or in two branches of a `parallel`, are two questions. The
+     * operation id is the durable identity of the dispatch and tells them
+     * apart.
+     */
+    data class AnswerInput(
+        override val schema: String,
+        val runId: String,
+        val opId: String,
+        val decision: ServiceInputDecision,
+        val message: String?,
     ) : ServiceRequest
 
     /**
@@ -879,6 +980,43 @@ sealed interface ServiceRefusal {
             put("detail", JsonPrimitive(detail))
         }
     }
+
+    /**
+     * The authorization is one this service knows, and its scope does not
+     * cover ANSWERING the questions of this run.
+     *
+     * The same contract as [CancelNotAuthorized]: the token was accepted and
+     * what it lacks is the RIGHT. It is the refusal of listing the questions
+     * too, because reading them is the right of whoever may answer them.
+     */
+    data object AnswerNotAuthorized : ServiceRefusal {
+        override val kind: String = "answer-not-authorized"
+        override val payload: JsonObject = buildJsonObject { }
+    }
+
+    /**
+     * The question was not answered, or the questions could not be listed.
+     *
+     * ## What the reason is
+     *
+     * A word that says WHICH fact stopped it: the service has no way to answer
+     * questions, the run is not one it knows, the question is not one the run
+     * is waiting on, it was already answered, it expired, or the run reached
+     * its terminal. The [detail] is the service's own sentence about it.
+     *
+     * ## Why it is ONE refusal
+     *
+     * For the reason of [RunCancelRefused]: the vocabulary of reasons is still
+     * growing and it travels inside, so it does not freeze a name per fact
+     * into a published artifact.
+     */
+    data class InputAnswerRefused(val reason: String, val detail: String) : ServiceRefusal {
+        override val kind: String = "input-answer-refused"
+        override val payload: JsonObject = buildJsonObject {
+            put("reason", JsonPrimitive(reason))
+            put("detail", JsonPrimitive(detail))
+        }
+    }
 }
 
 /**
@@ -1041,6 +1179,11 @@ object ServiceCodec {
             "output.follow" -> decodeOutputFollow(request, schema, credential)
             "run.start" -> decodeStartRun(request, schema, credential)
             "run.cancel" -> decodeCancelRun(request, schema, credential)
+            "inputs.list" -> {
+                val runId = request.runId() ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+                ServiceDecoding.Decoded(ServiceRequest.ListInputs(schema, runId), credential)
+            }
+            "input.answer" -> decodeAnswerInput(request, schema, credential)
             "describe.parameters" -> decodeDescribeParameters(request, schema, credential)
             else -> ServiceDecoding.Refused(ServiceRefusal.UnknownOp)
         }
@@ -1184,6 +1327,17 @@ object ServiceCodec {
                     put("op", JsonPrimitive("run.cancel"))
                     put("runId", JsonPrimitive(request.runId))
                     request.reason?.let { put("reason", JsonPrimitive(it)) }
+                }
+                is ServiceRequest.ListInputs -> {
+                    put("op", JsonPrimitive("inputs.list"))
+                    put("runId", JsonPrimitive(request.runId))
+                }
+                is ServiceRequest.AnswerInput -> {
+                    put("op", JsonPrimitive("input.answer"))
+                    put("runId", JsonPrimitive(request.runId))
+                    put("opId", JsonPrimitive(request.opId))
+                    put("decision", JsonPrimitive(request.decision.word))
+                    request.message?.let { put("message", JsonPrimitive(it)) }
                 }
                 is ServiceRequest.DescribeParameters -> {
                     put("op", JsonPrimitive("describe.parameters"))
@@ -1502,6 +1656,40 @@ private fun decodeCancelRun(request: JsonObject, schema: String, credential: Str
 }
 
 /**
+ * The request to answer a question of a run.
+ *
+ * ## What is refused here
+ *
+ * A run id that does not name a run, an operation id that is empty or longer
+ * than the bound, a decision that is not one of the two words, and a message
+ * that is longer than the bound or holds a line break. All of them are
+ * refused as a malformed request BEFORE the service looks at any question: a
+ * word that is not `proceed` or `abort` is not a decision to be guessed.
+ *
+ * ## Why the operation id is not checked against an alphabet
+ *
+ * Because it is never used as a path or as a name of anything: the service
+ * looks for it among the questions the run published and finds none when it
+ * is not one of them. The bound is what keeps the line small.
+ */
+private fun decodeAnswerInput(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
+    val runId = request.runId() ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    val opId = request.text("opId")
+    if (opId == null || opId.isEmpty() || opId.length > ServiceProtocol.MAX_INPUT_OP_ID_LENGTH) {
+        return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    }
+    val decision = request.text("decision")?.let(ServiceInputDecision::ofWord)
+        ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    val message = request.text("message")
+    if (message != null &&
+        (message.length > ServiceProtocol.MAX_INPUT_ANSWER_MESSAGE_LENGTH || '\n' in message)
+    ) {
+        return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    }
+    return ServiceDecoding.Decoded(ServiceRequest.AnswerInput(schema, runId, opId, decision, message), credential)
+}
+
+/**
  * The text [key] holds, or null when it holds none.
  *
  * A field that is not a string is a field that holds no text: the
@@ -1616,7 +1804,24 @@ private fun decodeRefusal(document: JsonObject): ServiceRefusal? {
         "cancel-not-authorized", "run-cancel-refused" ->
             decodeCancelRefusal(kind, document)
 
+        "answer-not-authorized", "input-answer-refused" ->
+            decodeInputRefusal(kind, document)
+
         else -> decodeServiceRefusal(kind, document)
+    }
+}
+
+/**
+ * The refusal about the QUESTIONS of a run, or null when [kind] is not one.
+ */
+private fun decodeInputRefusal(kind: String, document: JsonObject): ServiceRefusal? {
+    return when (kind) {
+        "answer-not-authorized" -> ServiceRefusal.AnswerNotAuthorized
+        "input-answer-refused" -> ServiceRefusal.InputAnswerRefused(
+            document.str("reason") ?: return null,
+            document.str("detail") ?: return null,
+        )
+        else -> null
     }
 }
 

@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreRefusal
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
+import dev.rubentxu.pipeline.v2.runtime.InputQuestionLayout
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
@@ -381,6 +382,14 @@ internal fun composeServiceToServe(
             clock = clock,
             supervisor = supervisor,
             cancellations = cancellations,
+            inputs = if (authorizations.mayAnswerAnyInput) {
+                ServiceInputsBinding(
+                    root = substrate.controlAbsolute.resolve(InputQuestionLayout.INPUTS_DIRECTORY),
+                    responderOf = authorizations::labelOfDigest,
+                )
+            } else {
+                null
+            },
         )
     ) {
         is ServiceComposition.Composed -> composed
@@ -760,6 +769,19 @@ private sealed interface ServiceComposition {
 }
 
 /**
+ * Where the questions of the runs are answered from, and who answers them.
+ *
+ * The two travel together because an answer is attributed with the label the
+ * responder's digest belongs to, and a root without that attribution would
+ * record answers nobody can account for. It exists only when some
+ * authorization holds the right to answer.
+ */
+private class ServiceInputsBinding(
+    val root: Path,
+    val responderOf: (String?) -> String?,
+)
+
+/**
  * Composes the operations and the streets of the service over [store].
  *
  * ## Why the two are composed together
@@ -781,13 +803,15 @@ private fun composeService(
     clock: SystemClock,
     supervisor: ServiceRunSupervisor,
     cancellations: ServiceRunCancellation?,
+    inputs: ServiceInputsBinding?,
 ): ServiceComposition = try {
+    val introspection = composeRuntimeIntrospectionPort(
+        eventStore = store,
+        controlRoot = controlRootPath,
+        clock = clock,
+    )
     val operations = ServiceOperations(
-        introspection = composeRuntimeIntrospectionPort(
-            eventStore = store,
-            controlRoot = controlRootPath,
-            clock = clock,
-        ),
+        introspection = introspection,
         substrate = {
             ServiceSubstrate(
                 eventStore = dbPath,
@@ -798,6 +822,13 @@ private fun composeService(
         },
         starts = supervisor,
         cancellations = cancellations,
+        inputs = inputs?.let {
+            ServiceInputAnswers(
+                inputsRoot = it.root,
+                runState = RunStateQuery(introspection)::stateOf,
+                responderOf = it.responderOf,
+            )
+        },
     )
     val stores = DurableStores.open(store, controlRootPath, clock)
     val streets = ServiceSubscription(

@@ -348,7 +348,8 @@ internal class ServiceServer(
                 when (val decision = decide(decoded)) {
                     is ServiceAuthorizationOutcome.Authorized -> {
                         if (decoded.request is ServiceRequest.StartRun ||
-                            decoded.request is ServiceRequest.CancelRun
+                            decoded.request is ServiceRequest.CancelRun ||
+                            decoded.request is ServiceRequest.AnswerInput
                         ) {
                             return serveMutating(connection, decoded)
                         }
@@ -373,6 +374,9 @@ internal class ServiceServer(
 
                     is ServiceAuthorizationOutcome.CancelNotAuthorized ->
                         connection.writeLine(answerOfRefusal(ServiceRefusal.CancelNotAuthorized))
+
+                    is ServiceAuthorizationOutcome.AnswerNotAuthorized ->
+                        connection.writeLine(answerOfRefusal(ServiceRefusal.AnswerNotAuthorized))
                 }
             }
 
@@ -459,6 +463,11 @@ internal class ServiceServer(
                 return
             }
 
+            is ServiceAuthorizationOutcome.AnswerNotAuthorized -> {
+                connection.writeLine(answerOfRefusal(ServiceRefusal.AnswerNotAuthorized))
+                return
+            }
+
             is ServiceAuthorizationOutcome.Authorized -> Unit
         }
 
@@ -503,12 +512,20 @@ internal class ServiceServer(
      * client that may cancel every run and may read none has no run to
      * cancel, and one that may read a run and may cancel none may not
      * touch it.
+     *
+     * Listing the questions of a run and answering one are the same question
+     * as cancelling: the right to answer AND the run. Reading a question is
+     * the right of whoever may answer it.
      */
     private fun decide(decoded: ServiceDecoding.Decoded): ServiceAuthorizationOutcome =
         when (val request = decoded.request) {
             is ServiceRequest.StartRun -> authorizations.decideStart(decoded.credential)
             is ServiceRequest.CancelRun ->
                 authorizations.decideCancel(decoded.credential, request.runId)
+            is ServiceRequest.ListInputs ->
+                authorizations.decideAnswer(decoded.credential, request.runId)
+            is ServiceRequest.AnswerInput ->
+                authorizations.decideAnswer(decoded.credential, request.runId)
             is ServiceRequest.RunState ->
                 authorizations.decide(decoded.credential, request.runId)
             is ServiceRequest.Version, is ServiceRequest.Health,

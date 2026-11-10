@@ -146,7 +146,7 @@ Una petición por línea, una respuesta por línea, en JSON, con la versión del
 {"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
-El servicio lee tres cosas: `version` (la versión del producto y la del protocolo), `health` (el servicio y el sustrato con el que se compuso) y `run.state` (el estado de una ejecución, la misma respuesta que imprime `inspect --state` sobre el mismo almacén). También puede ARRANCAR una ejecución y CANCELAR una, que son una cuarta y una quinta puerta, cada una con un derecho propio. Cada rechazo lleva un nombre — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `cancel-not-authorized`, `run-cancel-refused` — para que el cliente lea una palabra y no una frase.
+El servicio lee tres cosas: `version` (la versión del producto y la del protocolo), `health` (el servicio y el sustrato con el que se compuso) y `run.state` (el estado de una ejecución, la misma respuesta que imprime `inspect --state` sobre el mismo almacén). También puede ARRANCAR una ejecución, CANCELAR una y RESPONDER la pregunta de una, que son una cuarta, una quinta y una sexta puerta, cada una con un derecho propio. Cada rechazo lleva un nombre — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `cancel-not-authorized`, `run-cancel-refused`, `answer-not-authorized`, `input-answer-refused` — para que el cliente lea una palabra y no una frase.
 
 La respuesta de `run.state` lleva la observación ENTERA: el intento, la continuidad y su token de fencing, la posición del journal, las colas de la salida y el terminal con su desenlace. Un cliente que la reconstruye obtiene el mismo `RuntimeObservation` que la línea de órdenes renderiza, y no hay una segunda forma del mismo hecho.
 
@@ -221,6 +221,27 @@ Un servicio que no puede cancelar ejecuciones abre el sustrato en SOLO LECTURA y
 
 El fichero del socket se borra cuando el servicio para. Un socket que dejó una caída se reconoce por lo que es y se reemplaza en el siguiente arranque; un socket en el que ya escucha otro servicio no se desplaza nunca, y una ruta que no sea un socket no se borra nunca.
 
+#### Responder una pregunta de una ejecución
+
+Una ejecución que llega a `input("…")` PUBLICA una pregunta y espera. El servicio la muestra y recibe la respuesta, como una sexta y una séptima puerta con UN derecho propio: `+answer`. Listar y responder están cerradas a un cliente sin él, porque ver una pregunta es ver lo que el pipeline está a punto de hacer.
+
+```json
+{"schema":"pipelinek.service/2","op":"inputs.list","runId":"34b28ddc-…","auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"inputs":[{"opId":"34b28ddc-…-s0-0","message":"Deploy to production?","ok":"Proceed","publishedAtMs":1730000000000}]}}
+{"schema":"pipelinek.service/2","op":"input.answer","runId":"34b28ddc-…","opId":"34b28ddc-…-s0-0","decision":"proceed","auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"runId":"34b28ddc-…","opId":"34b28ddc-…-s0-0","decision":"proceed","outcome":"answered"}}
+```
+
+La decisión es `proceed` o `abort`, y significa lo que significa en el pipeline: `proceed` deja que se ejecute el cuerpo del paso, `abort` cierra el paso y el cuerpo nunca se ejecuta. El derecho crece con el sufijo `+answer` y se compone con los demás (`all+start+cancel+answer`); un ámbito que no nombra ninguna ejecución no puede llevarlo. Un cliente sin el derecho se rechaza por su nombre (`answer-not-authorized`), y el derecho se pregunta ANTES que el ámbito, así que un cliente que no puede responder nada no aprende nada de las ejecuciones que existen.
+
+QUIÉN respondió es un hecho de la credencial y nunca una afirmación de la petición. La petición no lleva ningún nombre: el servicio escribe, como `submitter` del historial propio de la ejecución, la etiqueta de la autorización a la que pertenece el token. El `declaredSubmitter` que una pregunta puede mostrar es lo que el autor del pipeline ESCRIBIÓ en el paso; dice a quién espera y no autoriza a nadie.
+
+Una pregunta tiene UNA respuesta. Dos clientes que responden a la vez no hacen que la ejecución continúe dos veces: una se registra y la otra se rechaza (`input-answer-refused`, motivo `the-question-was-already-answered`). Repetir la misma respuesta con la misma autorización contesta `already-answered`. Los demás motivos son `the-run-is-unknown`, `the-run-is-already-terminal`, `the-question-is-unknown` y `the-question-expired`, y cada uno es un rechazo y nunca un éxito silencioso.
+
+El estado vive en el disco, junto a la ejecución, así que sobrevive a un reinicio del servicio y a una desconexión del cliente: el servicio nuevo lista la pregunta que sigue esperando y recibe la respuesta una vez, y una pregunta ya respondida no se vuelve a hacer.
+
+Lo que esta puerta NO hace, dicho una vez: el canal entre el servicio y la ejecución es un directorio de la raíz de control, así que cualquier proceso del mismo usuario con escritura sobre ella aún puede responder; una JVM no puede leer el usuario del par de un socket, y el servicio separa las identidades que el operador EMITIÓ, no los procesos de un usuario. El `declaredSubmitter` no es una lista de respondedores que se haga cumplir. Las preguntas publicadas por una compilación anterior (sin `runId`) y los ficheros de más de 16 KiB son invisibles, lo que falla cerrado.
+
 #### Quién puede preguntar, y cuál es la frontera de verdad
 
 El servicio emite una credencial la primera vez que arranca y la guarda en el fichero que posee junto al socket, `authorizations`, con modo `0600`. Una autorización por línea — un token, una etiqueta y un ámbito:
@@ -229,7 +250,7 @@ El servicio emite una credencial la primera vez que arranca y la guarda en el fi
 <token> <etiqueta> <ámbito>
 ```
 
-El ámbito es `all`, `none`, o las ejecuciones que cubre, y puede llevar los sufijos `+start` y `+cancel` cuando el cliente además puede arrancar y cancelar ejecuciones. La etiqueta es para el operador y **nunca viaja**: una etiqueta que viaja se puede enumerar con un cliente que va probando tokens hasta que uno pasa.
+El ámbito es `all`, `none`, o las ejecuciones que cubre, y puede llevar los sufijos `+start`, `+cancel` y `+answer` cuando el cliente además puede arrancar ejecuciones, cancelarlas y responder sus preguntas. La etiqueta es para el operador y **nunca viaja**: una etiqueta que viaja se puede enumerar con un cliente que va probando tokens hasta que uno pasa.
 
 Dos perfiles, y cada uno dice en voz alta, al arrancar el servicio, qué promete:
 

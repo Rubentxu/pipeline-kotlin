@@ -3,9 +3,11 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.runtime.RuntimeApiVersion
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import dev.rubentxu.pipeline.v2.service.ServiceInputDecision
 import dev.rubentxu.pipeline.v2.service.ServiceProtocol
 import dev.rubentxu.pipeline.v2.service.ServiceRequest
 import dev.rubentxu.pipeline.v2.service.ServiceRefusal
@@ -70,6 +72,7 @@ internal class ServiceOperations(
     private val substrate: () -> ServiceSubstrate,
     private val starts: ServiceRunStarter,
     private val cancellations: ServiceRunCancellation?,
+    private val inputs: ServiceInputAnswers? = null,
 ) {
 
     /**
@@ -85,6 +88,8 @@ internal class ServiceOperations(
         is ServiceRequest.RunState -> stateOf(request.runId)
         is ServiceRequest.StartRun -> startOf(request, credentialDigest)
         is ServiceRequest.CancelRun -> cancelOf(request)
+        is ServiceRequest.ListInputs -> listInputsOf(request)
+        is ServiceRequest.AnswerInput -> answerInputOf(request, credentialDigest)
         is ServiceRequest.DescribeParameters -> describeParametersOf()
     }
 
@@ -315,6 +320,88 @@ internal class ServiceOperations(
             )
         }
     }
+
+    /**
+     * The answer to a request to LIST the questions a run is waiting on.
+     *
+     * The answer holds the questions and nothing else: who may read them was decided before
+     * the request arrived here, and the text of a question is the pipeline author's own.
+     *
+     * It NEVER throws, for the reason [answer] never throws.
+     */
+    private fun listInputsOf(request: ServiceRequest.ListInputs): ServiceResponse {
+        val answers = inputs ?: return notComposedToAnswer()
+        val outcome = try {
+            answers.pending(request.runId)
+        } catch (_: Exception) {
+            // The message of a failure over the file system names paths: it does not travel.
+            return inputRefused(ServiceInputAnswers.REASON_FAILED, "the questions could not be listed")
+        }
+        return when (outcome) {
+            is ServiceInputListOutcome.Listed -> answered(
+                buildJsonObject {
+                    put(
+                        "inputs",
+                        JsonArray(outcome.questions.map(ServiceInputAnswers::questionJson)),
+                    )
+                },
+            )
+
+            is ServiceInputListOutcome.Refused -> inputRefused(outcome.reason, outcome.detail)
+        }
+    }
+
+    /**
+     * The answer to a request to ANSWER a question of a run.
+     *
+     * The answer names the decision that was RECORDED, and its `outcome` differs in a word
+     * —`answered` and `already-answered`— because the same answer repeated by the same
+     * authorization is not an error. A different answer to a question that has one is a
+     * refusal.
+     *
+     * It NEVER throws, for the reason [answer] never throws.
+     */
+    private fun answerInputOf(request: ServiceRequest.AnswerInput, credentialDigest: String?): ServiceResponse {
+        val answers = inputs ?: return notComposedToAnswer()
+        val outcome = try {
+            answers.answer(request.runId, request.opId, request.decision, request.message, credentialDigest)
+        } catch (_: Exception) {
+            return inputRefused(ServiceInputAnswers.REASON_FAILED, "the answer could not be recorded")
+        }
+        return when (outcome) {
+            is ServiceInputAnswerOutcome.Answered ->
+                recorded(request, outcome.decision, ServiceInputAnswers.OUTCOME_ANSWERED)
+
+            is ServiceInputAnswerOutcome.AlreadyAnswered ->
+                recorded(request, outcome.decision, ServiceInputAnswers.OUTCOME_ALREADY_ANSWERED)
+
+            is ServiceInputAnswerOutcome.Refused -> inputRefused(outcome.reason, outcome.detail)
+        }
+    }
+
+    private fun recorded(
+        request: ServiceRequest.AnswerInput,
+        decision: ServiceInputDecision,
+        outcome: String,
+    ): ServiceResponse = answered(
+        buildJsonObject {
+            put("runId", JsonPrimitive(request.runId))
+            put("opId", JsonPrimitive(request.opId))
+            put("decision", JsonPrimitive(decision.word))
+            put("outcome", JsonPrimitive(outcome))
+        },
+    )
+
+    private fun notComposedToAnswer(): ServiceResponse = inputRefused(
+        // The service was composed without the ability to answer: no authorization carries the
+        // right. The server refuses such a request before it arrives here, and this is the
+        // safety net under it.
+        ServiceInputAnswers.REASON_NOT_COMPOSED,
+        "this service was not composed to answer the questions of runs",
+    )
+
+    private fun inputRefused(reason: String, detail: String): ServiceResponse =
+        ServiceResponse.Refused(ServiceProtocol.SCHEMA, ServiceRefusal.InputAnswerRefused(reason, detail))
 
     /**
      * An answer, with the schema this build speaks.

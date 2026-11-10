@@ -1,11 +1,17 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.AttemptId
+import dev.rubentxu.pipeline.v2.runtime.InputAnswerCodec
+import dev.rubentxu.pipeline.v2.runtime.InputDecision
+import dev.rubentxu.pipeline.v2.runtime.InputQuestionCodec
+import dev.rubentxu.pipeline.v2.runtime.InputQuestionLayout
+import dev.rubentxu.pipeline.v2.runtime.PublishedInputQuestion
 import dev.rubentxu.pipeline.v2.runtime.control.CancelOutcome
 import dev.rubentxu.pipeline.v2.runtime.inspect.OperationInspectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RunStructureResult
+import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.StructureRunOptions
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -13,6 +19,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import dev.rubentxu.pipeline.v2.service.ServiceCodec
@@ -53,6 +62,9 @@ import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
  * The transport itself, and the bytes on the wire.
  */
 class ServiceServerTest {
+
+    @TempDir
+    lateinit var inputs: Path
 
     @Test
     fun `a request is answered and the connection is closed`() {
@@ -638,6 +650,120 @@ class ServiceServerTest {
         )
     }
 
+    @Test
+    fun `a client that may not answer questions is refused with a name for both operations`() {
+        listOf(LIST_INPUTS_REQUEST, ANSWER_INPUT_REQUEST).forEach { request ->
+            val connection = ScriptedConnection(ServiceRead.Line(request))
+
+            serve(connection)
+
+            assertEquals(
+                "answer-not-authorized",
+                refusalKindOf(connection),
+                "a client that may read but not answer is told which right it lacks: $request",
+            )
+        }
+    }
+
+    @Test
+    fun `a client that presents nothing may not list or answer questions`() {
+        listOf(LIST_INPUTS_REQUEST, ANSWER_INPUT_REQUEST).forEach { request ->
+            val connection = ScriptedConnection(ServiceRead.Line(request.replace(",\"auth\":\"token-1\"", "")))
+
+            serve(connection)
+
+            assertEquals("not-authorized", refusalKindOf(connection), "no token is no authorization: $request")
+        }
+    }
+
+    @Test
+    fun `a client that may answer a run it does not cover is refused with a name`() {
+        listOf(LIST_INPUTS_REQUEST, ANSWER_INPUT_REQUEST).forEach { request ->
+            val connection = ScriptedConnection(ServiceRead.Line(request))
+            val server = ServiceServer(
+                ScriptedTransport(listOf(connection)),
+                operations(),
+                streets(),
+                authorizations(
+                    ServiceScope.WithRights(
+                        ServiceScope.Runs(setOf("another-run")),
+                        setOf(ServiceScope.Right.Answer),
+                    ),
+                ),
+            )
+            try {
+                server.serve()
+                connection.awaitAnswered()
+            } finally {
+                server.close()
+            }
+
+            assertEquals(
+                "run-not-authorized",
+                refusalKindOf(connection),
+                "the questions of a run the scope does not cover are neither listed nor answered: $request",
+            )
+        }
+    }
+
+    @Test
+    fun `a client that may answer lists the questions and its label is the one that answers`() {
+        val opId = "run-1-s0-0"
+        val dir = inputs.resolve(InputQuestionLayout.directoryName(opId))
+        Files.createDirectories(dir)
+        Files.writeString(
+            dir.resolve(InputQuestionLayout.REQUEST_FILE),
+            InputQuestionCodec.encode(
+                PublishedInputQuestion(
+                    runId = "run-1",
+                    opId = opId,
+                    message = "Deploy?",
+                    ok = "Proceed",
+                    submitter = "alice",
+                    id = null,
+                    publishedAtMs = 1L,
+                    expiresAtMs = null,
+                ),
+            ),
+        )
+        val authorizations = authorizations(ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Answer)))
+        val answers = ServiceInputAnswers(
+            inputsRoot = inputs,
+            runState = {
+                RunStateAnswer.Observed(RuntimeObservation.LiveButEmpty(AttemptId(1), "the run has not written yet"))
+            },
+            responderOf = authorizations::labelOfDigest,
+        )
+        val listing = ScriptedConnection(ServiceRead.Line(LIST_INPUTS_REQUEST))
+        val answering = ScriptedConnection(ServiceRead.Line(ANSWER_INPUT_REQUEST))
+        val server = ServiceServer(
+            ScriptedTransport(listOf(listing, answering)),
+            operations(inputs = answers),
+            streets(),
+            authorizations,
+        )
+        try {
+            server.serve()
+            listing.awaitAnswered()
+            answering.awaitAnswered()
+        } finally {
+            server.close()
+        }
+
+        val listed = answerOf(listing)["result"]?.jsonObject?.get("inputs").toString()
+        assertTrue("Deploy?" in listed && opId in listed, "the question of the run is in the list: $listed")
+        assertEquals(
+            "answered",
+            answerOf(answering)["result"]?.jsonObject?.get("outcome")?.jsonPrimitive?.content,
+            "the client that holds the right reached the door of the answers",
+        )
+        assertEquals(
+            InputDecision.Proceed("operator", null),
+            InputAnswerCodec.decode(Files.readString(dir.resolve(InputQuestionLayout.RESPONSE_FILE))),
+            "the responder written is the label of the token the client presented, and alice is only what the pipeline declared",
+        )
+    }
+
     /**
      * Serves the scripted connections and waits for the answers.
      */
@@ -683,6 +809,7 @@ class ServiceServerTest {
     private fun operations(
         starter: ServiceRunStarter = ServiceTestStarter(),
         cancellations: ServiceRunCancellation? = null,
+        inputs: ServiceInputAnswers? = null,
     ): ServiceOperations =
         ServiceOperations(
             introspection = UnusedPort(),
@@ -696,6 +823,7 @@ class ServiceServerTest {
             },
             starts = starter,
             cancellations = cancellations,
+            inputs = inputs,
         )
 
     /**
@@ -881,5 +1009,13 @@ class ServiceServerTest {
         /** A request to cancel a run, with NO credential. */
         private const val ANONYMOUS_CANCEL_REQUEST: String =
             """{"schema":"pipelinek.service/2","op":"run.cancel","runId":"run-1"}"""
+
+        /** A request to list the questions of a run, with the credential. */
+        private const val LIST_INPUTS_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"inputs.list","runId":"run-1","auth":"token-1"}"""
+
+        /** A request to answer a question of a run, with the credential. */
+        private const val ANSWER_INPUT_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"input.answer","runId":"run-1","opId":"run-1-s0-0","decision":"proceed","auth":"token-1"}"""
     }
 }

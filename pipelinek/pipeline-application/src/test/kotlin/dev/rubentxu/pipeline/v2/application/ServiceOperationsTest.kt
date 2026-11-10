@@ -1,6 +1,10 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.AttemptId
+import dev.rubentxu.pipeline.v2.runtime.InputQuestionCodec
+import dev.rubentxu.pipeline.v2.runtime.InputQuestionLayout
+import dev.rubentxu.pipeline.v2.runtime.PublishedInputQuestion
+import dev.rubentxu.pipeline.v2.runtime.durable.OpId
 import dev.rubentxu.pipeline.v2.runtime.control.CancelOutcome
 import dev.rubentxu.pipeline.v2.runtime.control.CancelRefusal
 import dev.rubentxu.pipeline.v2.runtime.inspect.IntrospectionFailure
@@ -12,6 +16,9 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.RunStructureResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.StructureRunOptions
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -19,6 +26,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import dev.rubentxu.pipeline.v2.service.ServiceInputDecision
 import dev.rubentxu.pipeline.v2.service.ServiceProtocol
 import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import dev.rubentxu.pipeline.v2.service.ServiceRequest
@@ -55,6 +64,9 @@ import dev.rubentxu.pipeline.v2.service.ServiceResponse
  * The socket, the line format, and the transport.
  */
 class ServiceOperationsTest {
+
+    @TempDir
+    lateinit var tmp: Path
 
     @Test
     fun `the version answers the version of the product and the schema of the protocol`() {
@@ -330,6 +342,101 @@ class ServiceOperationsTest {
         )
     }
 
+    @Test
+    fun `the questions of a run are listed as a document that holds what the author wrote`() {
+        publish("run-1", OP, message = "Deploy?", submitter = "alice")
+
+        val response = operations(terminalRun(), inputs = answering()).answer(
+            ServiceRequest.ListInputs(ServiceProtocol.SCHEMA, "run-1"),
+        )
+
+        val listed = (resultOf(response)["inputs"] as JsonArray).single().jsonObject
+        assertEquals(OP, listed["opId"]?.jsonPrimitive?.content)
+        assertEquals("Deploy?", listed["message"]?.jsonPrimitive?.content)
+        assertEquals(
+            "alice",
+            listed["declaredSubmitter"]?.jsonPrimitive?.content,
+            "what the pipeline declared travels under the name that says it is only declared",
+        )
+    }
+
+    @Test
+    fun `an answer names the decision that was recorded and tells a repeat from a first answer`() {
+        publish("run-1", OP)
+        val operations = operations(terminalRun(), inputs = answering())
+        val request = ServiceRequest.AnswerInput(ServiceProtocol.SCHEMA, "run-1", OP, ServiceInputDecision.PROCEED, null)
+
+        val first = resultOf(operations.answer(request, DIGEST))
+        val repeated = resultOf(operations.answer(request, DIGEST))
+
+        assertEquals("answered", first["outcome"]?.jsonPrimitive?.content)
+        assertEquals("proceed", first["decision"]?.jsonPrimitive?.content)
+        assertEquals("run-1", first["runId"]?.jsonPrimitive?.content)
+        assertEquals(OP, first["opId"]?.jsonPrimitive?.content)
+        assertEquals(
+            "already-answered",
+            repeated["outcome"]?.jsonPrimitive?.content,
+            "a client that retries must be able to tell that its answer was already there",
+        )
+    }
+
+    @Test
+    fun `an answer that was refused travels with the name of the refusal`() {
+        val response = operations(terminalRun(), inputs = answering()).answer(
+            ServiceRequest.AnswerInput(ServiceProtocol.SCHEMA, "run-1", OP, ServiceInputDecision.ABORT, null),
+            DIGEST,
+        )
+
+        val refused = assertInstanceOf(ServiceResponse.Refused::class.java, response)
+        assertEquals(
+            ServiceInputAnswers.REASON_UNKNOWN_QUESTION,
+            (refused.refusal as ServiceRefusal.InputAnswerRefused).reason,
+            "a question nobody published is refused by name and not answered",
+        )
+    }
+
+    @Test
+    fun `a service composed without the answers refuses both operations by name`() {
+        val operations = operations(terminalRun())
+
+        listOf(
+            ServiceRequest.ListInputs(ServiceProtocol.SCHEMA, "run-1"),
+            ServiceRequest.AnswerInput(ServiceProtocol.SCHEMA, "run-1", OP, ServiceInputDecision.PROCEED, null),
+        ).forEach { request ->
+            val refused = assertInstanceOf(ServiceResponse.Refused::class.java, operations.answer(request, DIGEST))
+
+            assertEquals(
+                ServiceInputAnswers.REASON_NOT_COMPOSED,
+                (refused.refusal as ServiceRefusal.InputAnswerRefused).reason,
+                "$request",
+            )
+        }
+    }
+
+    @Test
+    fun `an answer or a list that fails in an unforeseen way is refused by name and shows no path`() {
+        val failing = ServiceInputAnswers(
+            inputsRoot = tmp,
+            runState = { RunStateAnswer.Observed(liveRun()) },
+            responderOf = { throw IllegalStateException("/var/secret/control-root is broken") },
+            nowMillis = { throw IllegalStateException("/var/secret/control-root is broken") },
+        )
+        val operations = operations(terminalRun(), inputs = failing)
+
+        listOf(
+            ServiceRequest.ListInputs(ServiceProtocol.SCHEMA, "run-1"),
+            ServiceRequest.AnswerInput(ServiceProtocol.SCHEMA, "run-1", OP, ServiceInputDecision.PROCEED, null),
+        ).forEach { request ->
+            val refusal = assertInstanceOf(
+                ServiceRefusal.InputAnswerRefused::class.java,
+                assertInstanceOf(ServiceResponse.Refused::class.java, operations.answer(request, DIGEST)).refusal,
+            )
+
+            assertEquals(ServiceInputAnswers.REASON_FAILED, refusal.reason, "$request")
+            assertTrue("/var/secret" !in refusal.detail, "the message of a failure over the file system names paths")
+        }
+    }
+
     /**
      * The result of an answer, read as a document.
      */
@@ -350,6 +457,7 @@ class ServiceOperationsTest {
         observation: RuntimeObservation,
         refusal: IntrospectionRefusal? = null,
         cancellations: ServiceRunCancellation? = null,
+        inputs: ServiceInputAnswers? = null,
     ): ServiceOperations = ServiceOperations(
         introspection = AnsweringPort(
             if (refusal != null) {
@@ -368,6 +476,40 @@ class ServiceOperationsTest {
         },
         starts = ServiceTestStarter(),
         cancellations = cancellations,
+        inputs = inputs,
+    )
+
+    /** The answers over [tmp], for a run that is alive and one authorization behind [DIGEST]. */
+    private fun answering(): ServiceInputAnswers = ServiceInputAnswers(
+        inputsRoot = tmp,
+        runState = { RunStateAnswer.Observed(liveRun()) },
+        responderOf = { digest -> if (digest == DIGEST) "operator" else null },
+        nowMillis = { NOW },
+    )
+
+    private fun publish(runId: String, opId: String, message: String = "Proceed?", submitter: String? = null) {
+        val dir = tmp.resolve(InputQuestionLayout.directoryName(opId))
+        Files.createDirectories(dir)
+        Files.writeString(
+            dir.resolve(InputQuestionLayout.REQUEST_FILE),
+            InputQuestionCodec.encode(
+                PublishedInputQuestion(
+                    runId = runId,
+                    opId = opId,
+                    message = message,
+                    ok = "Proceed",
+                    submitter = submitter,
+                    id = null,
+                    publishedAtMs = NOW,
+                    expiresAtMs = null,
+                ),
+            ),
+        )
+    }
+
+    private fun liveRun(): RuntimeObservation = RuntimeObservation.LiveButEmpty(
+        attempt = AttemptId(1),
+        reason = "the run has not written yet",
     )
 
     /**
@@ -414,4 +556,10 @@ class ServiceOperationsTest {
         terminal = TerminalObservation.Succeeded(0L),
         terminalAtMs = 0L,
     )
+
+    private companion object {
+        val OP: String = OpId("run-1", 0, 0).format()
+        const val DIGEST: String = "digest-of-the-operator"
+        const val NOW: Long = 1_700_000_000_000L
+    }
 }

@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.service
 
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -195,6 +196,51 @@ data class ServiceRunCancel(
     val runId: String,
     val outcome: String,
     val terminalAtMs: Long,
+)
+
+/**
+ * A question of a run that is waiting for an answer.
+ *
+ * ## What the facts are
+ *
+ * The [opId] says WHICH question it is, and is what an answer names. The
+ * [message] is the text the pipeline asked and [ok] the label of the button
+ * that proceeds. [id] is the label the author gave the step, when it gave one.
+ * [publishedAtMs] is when the run published the question and [expiresAtMs]
+ * when it stops waiting for it, or `null` when the wait has no bound.
+ *
+ * ## What [declaredSubmitter] is NOT
+ *
+ * It is the attribution the pipeline author WROTE in the step. It says whom
+ * the author expects to answer and it authorizes nobody: the service decides
+ * who may answer from the credential of the request, never from this field.
+ */
+data class ServiceInputQuestion(
+    val opId: String,
+    val message: String,
+    val ok: String,
+    val id: String?,
+    val declaredSubmitter: String?,
+    val publishedAtMs: Long,
+    val expiresAtMs: Long?,
+)
+
+/**
+ * The answer of a request to answer a question.
+ *
+ * The [outcome] says whether THIS call recorded the answer (`answered`) or
+ * found the very same answer already recorded by the same authorization
+ * (`already-answered`). A client that retries an answer whose reply was lost
+ * therefore reads a success and not a refusal; an answer that differs from
+ * the one recorded is always a refusal, because a question has one answer.
+ *
+ * The [decision] is the one the service recorded.
+ */
+data class ServiceInputAnswer(
+    val runId: String,
+    val opId: String,
+    val decision: ServiceInputDecision,
+    val outcome: String,
 )
 
 /**
@@ -555,6 +601,69 @@ class ServiceClient internal constructor(
         }
 
     /**
+     * The questions of [runId] that are waiting for an answer.
+     *
+     * ## What the call returns
+     *
+     * The questions the run published and nobody has answered yet, that have
+     * not expired and whose run has not reached its terminal. The list is
+     * empty when the run asks nothing at the moment; it is never a guess.
+     *
+     * ## What the call needs
+     *
+     * An authorization that may answer the questions of the run. Reading them
+     * is the right of whoever may answer, because the text of a question can
+     * hold what only that person should read.
+     */
+    fun pendingInputs(runId: String): ServiceAnswer<List<ServiceInputQuestion>> =
+        ask(ServiceRequest.ListInputs(schema, runId)).narrow { result ->
+            val items = result["inputs"] as? JsonArray
+                ?: return@narrow ServiceAnswer.Unreadable("no inputs")
+            val questions = items.map { item ->
+                (item as? JsonObject)?.question()
+                    ?: return@narrow ServiceAnswer.Unreadable("a question that cannot be read")
+            }
+            ServiceAnswer.Answered(questions)
+        }
+
+    /**
+     * Answers the question [opId] of the run [runId] with [decision].
+     *
+     * ## Who answers
+     *
+     * The authorization the client was built with. The call carries no name of
+     * the responder: the service attributes the answer to the credential, and
+     * a name written here would be a claim and not a fact.
+     *
+     * ## One answer per question
+     *
+     * A question has ONE answer. If two clients answer it at the same time,
+     * one is recorded and the other is refused as already answered, so the run
+     * never continues twice. Repeating the SAME answer with the SAME
+     * authorization is not a refusal: it answers `already-answered`.
+     *
+     * The [message] is the responder's own words, recorded in the run's
+     * history. It is optional.
+     */
+    fun answerInput(
+        runId: String,
+        opId: String,
+        decision: ServiceInputDecision,
+        message: String? = null,
+    ): ServiceAnswer<ServiceInputAnswer> =
+        ask(ServiceRequest.AnswerInput(schema, runId, opId, decision, message)).narrow { result ->
+            val answeredRun = result.text("runId")
+                ?: return@narrow ServiceAnswer.Unreadable("no runId")
+            val answeredOp = result.text("opId")
+                ?: return@narrow ServiceAnswer.Unreadable("no opId")
+            val recorded = result.text("decision")?.let(ServiceInputDecision::ofWord)
+                ?: return@narrow ServiceAnswer.Unreadable("no decision")
+            val outcome = result.text("outcome")
+                ?: return@narrow ServiceAnswer.Unreadable("no outcome")
+            ServiceAnswer.Answered(ServiceInputAnswer(answeredRun, answeredOp, recorded, outcome))
+        }
+
+    /**
      * The events of [runId], from [after] onwards.
      *
      * A `null` [after] asks for the whole history of the run. The street is
@@ -851,6 +960,32 @@ private fun JsonObject.parameters(): Map<String, String>? {
         values[name] = text
     }
     return values
+}
+
+/** The text [key] holds, or null when it holds a null, nothing, or something that is not a primitive. */
+private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
+
+/** The number [key] holds, or null when it holds a null, nothing, or something that is not a number. */
+private fun JsonObject.number(key: String): Long? = text(key)?.toLongOrNull()
+
+/**
+ * The question this object describes, or null when it lacks a mandatory fact.
+ *
+ * The optional facts —the label, the declared submitter and the expiry— are
+ * read as absent when they are null or missing. The mandatory ones are not
+ * defaulted: a question that cannot say which operation it is cannot be
+ * answered, and showing it would invite an answer that names nothing.
+ */
+private fun JsonObject.question(): ServiceInputQuestion? {
+    return ServiceInputQuestion(
+        opId = text("opId") ?: return null,
+        message = text("message") ?: return null,
+        ok = text("ok") ?: return null,
+        id = text("id"),
+        declaredSubmitter = text("declaredSubmitter"),
+        publishedAtMs = number("publishedAtMs") ?: return null,
+        expiresAtMs = number("expiresAtMs"),
+    )
 }
 
 /** The boolean [key] holds, or null when it does not hold one. */

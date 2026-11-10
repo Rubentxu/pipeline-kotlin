@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.runtime.durable
 
+import dev.rubentxu.pipeline.v2.runtime.InputQuestionLayout
 import dev.rubentxu.pipeline.v2.runtime.PLATFORM_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.events.registry.PLUGIN_EVENT_EMISSION_CAPABILITY
 import dev.rubentxu.pipeline.v2.runtime.telemetry.STEP_OBSERVABILITY_CAPABILITY
@@ -354,7 +355,7 @@ class RuntimeCapabilityAccess internal constructor(
         // always find it and answer it.
         builder[INPUT_DECISIONS_CAPABILITY] = CapabilitySlot.of(
             FileInputDecisions(
-                root = root.resolve("inputs"),
+                root = root.resolve(InputQuestionLayout.INPUTS_DIRECTORY),
                 // The identity of THIS dispatch: stage, step, branch and body path.
                 // `runId#stepIndex` would file the questions of two stages, or of two
                 // branches of a `parallel`, under one name and give both the same answer.

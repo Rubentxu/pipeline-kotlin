@@ -101,6 +101,9 @@ object InputQuestionCodec {
  */
 object InputQuestionLayout {
 
+    /** The directory, below the control root, where every question is published. */
+    const val INPUTS_DIRECTORY: String = "inputs"
+
     /** The file the run writes the question in. */
     const val REQUEST_FILE: String = "request.json"
 
@@ -111,8 +114,9 @@ object InputQuestionLayout {
      * The directory name of the question of [opId].
      *
      * The mapping is INJECTIVE: two operations never share a directory, because two questions
-     * that shared one would share an answer. Every byte outside `[A-Za-z0-9_-]` is written as
-     * `~` and two hexadecimal digits, `~` itself included, and a dot is escaped when it opens
+     * that shared one would share an answer. Every byte that is not an ASCII letter, a digit, an
+     * underscore or a hyphen is written as `~` and two hexadecimal digits, `~` itself included,
+     * and a dot is escaped when it opens
      * the name so that no operation id can name `.` or `..`. A name too long for a file system
      * keeps its beginning and ends in a digest of the whole identity.
      */

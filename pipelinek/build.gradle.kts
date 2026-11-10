@@ -201,9 +201,9 @@ repositories {
 // contracts: this release withdraws the six packages from the GitHub Packages
 // registry, and the deployment of 0.94.2 in Maven Central is dropped by hand
 // in the portal, because the API of the publisher cannot drop a deployment
-// that is already published. The 0.95.0 train opens here (ProductVersion
-// 0.95.0) and its candidates can be tagged v0.95.0-rcN.
-version = "0.95.0"
+// that is already published. The 0.96.0 train opens here (ProductVersion
+// 0.96.0) and its candidates can be tagged v0.96.0-rcN.
+version = "0.96.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

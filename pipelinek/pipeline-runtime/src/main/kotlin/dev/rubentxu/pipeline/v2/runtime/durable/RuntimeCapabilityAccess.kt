@@ -12,6 +12,7 @@ import dev.rubentxu.pipeline.v2.runtime.ExecutionLaneId
 import dev.rubentxu.pipeline.v2.runtime.FileLockCoordinator
 import dev.rubentxu.pipeline.v2.runtime.FileInputDecisions
 import dev.rubentxu.pipeline.v2.runtime.INPUT_DECISIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.InputOperation
 import dev.rubentxu.pipeline.v2.runtime.LOCK_COORDINATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.runtime.SHELL_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.runtime.STAGE_IDENTITY_CAPABILITY
@@ -353,7 +354,11 @@ class RuntimeCapabilityAccess internal constructor(
         // always find it and answer it.
         builder[INPUT_DECISIONS_CAPABILITY] = CapabilitySlot.of(
             FileInputDecisions(
-                root.resolve("inputs"),
+                root = root.resolve("inputs"),
+                // The identity of THIS dispatch: stage, step, branch and body path.
+                // `runId#stepIndex` would file the questions of two stages, or of two
+                // branches of a `parallel`, under one name and give both the same answer.
+                operation = InputOperation(runId = context.runId, opId = context.opId.format()),
             ),
         )
         // the compensation intent port.

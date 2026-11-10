@@ -105,10 +105,10 @@ object CoreInputStep {
             is InputIntentResolution.Resolved -> when (
                 val answer = try {
                     decisions.awaitDecision(
-                        // The durable OPERATION, not the run: two input steps in one
-                        // run are two questions and must not share a file.
+                        // The adapter is bound to the durable OPERATION of this
+                        // dispatch, so the question is filed under it and not under a
+                        // name this handler could build from the run and the index.
                         request = InputRequest(
-                            opId = "${ctx.runId.value}#${ctx.stepIndex}",
                             message = input.message,
                             ok = input.ok,
                             submitter = input.submitter,

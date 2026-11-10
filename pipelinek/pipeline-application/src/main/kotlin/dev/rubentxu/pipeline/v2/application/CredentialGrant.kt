@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.service.CredentialMaterialCodec
+
 /**
  * The kinds of credential the broker hands out.
  *
@@ -10,11 +12,19 @@ package dev.rubentxu.pipeline.v2.application
  * travels under that word. A kind the broker does not carry is refused when
  * the operator's file is read, not discovered when a step asks for it.
  *
+ * ## The words are not written here
+ *
+ * They are the words of [CredentialMaterialCodec], which is the code that
+ * encodes and decodes the material of a credential. A grant says in which FORM
+ * a credential may be handed over, and the form of a credential is what the
+ * codec carries: two vocabularies for one decision are two chances to
+ * disagree about what a client is allowed to receive.
+ *
  * ## What is not here
  *
- * The credentials that are files, certificates or keys. They need a
- * projection the broker does not offer, and adding a word here without that
- * projection would grant something nobody can receive.
+ * The credentials that are a username and a password. They are not files, so
+ * nothing projects them, and a word here without a projection would grant
+ * something nobody can receive.
  */
 internal enum class BrokeredCredentialKind(
     /** The word the operator's file and the broker's wire spell the kind with. */
@@ -22,7 +32,19 @@ internal enum class BrokeredCredentialKind(
 ) {
 
     /** A secret text: the bytes of one value, projected into a step's environment. */
-    STRING("string"),
+    STRING(CredentialMaterialCodec.KIND_TEXT),
+
+    /** A secret file: the bytes of a file, projected into a file on disk. */
+    FILE(CredentialMaterialCodec.KIND_FILE),
+
+    /** A private key: the bytes of a key and the passphrase it may be locked with. */
+    PRIVATE_KEY(CredentialMaterialCodec.KIND_PRIVATE_KEY),
+
+    /** A keystore: the bytes of a keystore and the password it may be locked with. */
+    KEYSTORE(CredentialMaterialCodec.KIND_KEYSTORE),
+
+    /** An archive: several entries, projected into a directory on disk. */
+    ARCHIVE(CredentialMaterialCodec.KIND_ARCHIVE),
     ;
 
     internal companion object {

@@ -42,32 +42,31 @@ class CredentialBrokerWireTest {
 
     @Test
     fun `a request is read back as it was written`() {
-        val line = CredentialBrokerWire.encodeRequest(TOKEN, "deploy-key", BrokeredCredentialKind.STRING)
+        val line = CredentialBrokerWire.encodeRequest(TOKEN, "deploy-key")
 
         val reading = CredentialBrokerWire.decodeRequest(line)
 
         val read = assertInstanceOf(CredentialBrokerWire.RequestReading.Read::class.java, reading)
         assertEquals(TOKEN, read.request.token)
         assertEquals("deploy-key", read.request.credentialId)
-        assertEquals("string", read.request.kindWord)
     }
 
     @Test
     fun `a request names its schema and is one line`() {
-        val line = CredentialBrokerWire.encodeRequest(TOKEN, "deploy-key", BrokeredCredentialKind.STRING)
+        val line = CredentialBrokerWire.encodeRequest(TOKEN, "deploy-key")
 
         assertTrue(line.contains(CredentialBrokerWire.SCHEMA), "the line says which contract it speaks: $line")
         assertFalse(line.contains('\n'), "a request is one line: the reader stops at the first newline")
     }
 
     @Test
-    fun `a request for a kind the broker does not carry is still read, so the broker can say why it refuses`() {
-        val line = """{"schema":"${CredentialBrokerWire.SCHEMA}","token":"$TOKEN","op":"resolve","credentialId":"a","kind":"file"}"""
+    fun `a request names the credential and nothing else, because the form is the authorization's`() {
+        val line = CredentialBrokerWire.encodeRequest(TOKEN, "deploy-key")
 
-        val reading = CredentialBrokerWire.decodeRequest(line)
-
-        val read = assertInstanceOf(CredentialBrokerWire.RequestReading.Read::class.java, reading)
-        assertEquals("file", read.request.kindWord, "the kind travels as the word it was written with")
+        assertFalse(
+            line.contains("kind"),
+            "the question does not say in which form the credential may be handed over: $line",
+        )
     }
 
     @Test
@@ -77,13 +76,12 @@ class CredentialBrokerWireTest {
             "not json",
             "[]",
             "{}",
-            """{"schema":"pipelinek.credentials/2","token":"$TOKEN","op":"resolve","credentialId":"a","kind":"string"}""",
-            """{"schema":"${CredentialBrokerWire.SCHEMA}","token":"$TOKEN","op":"list","credentialId":"a","kind":"string"}""",
-            """{"schema":"${CredentialBrokerWire.SCHEMA}","op":"resolve","credentialId":"a","kind":"string"}""",
-            """{"schema":"${CredentialBrokerWire.SCHEMA}","token":"$TOKEN","op":"resolve","kind":"string"}""",
-            """{"schema":"${CredentialBrokerWire.SCHEMA}","token":"$TOKEN","op":"resolve","credentialId":"a"}""",
-            """{"schema":"${CredentialBrokerWire.SCHEMA}","token":7,"op":"resolve","credentialId":"a","kind":"string"}""",
-            """{"schema":"${CredentialBrokerWire.SCHEMA}","token":"$TOKEN","op":"resolve","credentialId":"a","kind":"string""",
+            """{"schema":"pipelinek.credentials/3","token":"$TOKEN","op":"resolve","credentialId":"a"}""",
+            """{"schema":"${CredentialBrokerWire.SCHEMA}","token":"$TOKEN","op":"list","credentialId":"a"}""",
+            """{"schema":"${CredentialBrokerWire.SCHEMA}","op":"resolve","credentialId":"a"}""",
+            """{"schema":"${CredentialBrokerWire.SCHEMA}","token":"$TOKEN","op":"resolve"}""",
+            """{"schema":"${CredentialBrokerWire.SCHEMA}","token":7,"op":"resolve","credentialId":"a"}""",
+            """{"schema":"${CredentialBrokerWire.SCHEMA}","token":"$TOKEN","op":"resolve","credentialId":"a" """,
         )
 
         for (line in lines) {
@@ -106,7 +104,7 @@ class CredentialBrokerWireTest {
         assertFalse(line.contains('\n'), "an answer is one line, whatever the secret holds")
         val granted = assertInstanceOf(CredentialBrokerWire.ResponseReading.Granted::class.java, reading)
         assertEquals(BrokeredCredentialKind.STRING, granted.kind)
-        assertArrayEquals(secret, granted.secret, "the bytes arrive as they left")
+        assertArrayEquals(secret, granted.material, "the bytes arrive as they left")
     }
 
     @Test
@@ -141,7 +139,7 @@ class CredentialBrokerWireTest {
             "not json",
             """{"schema":"${CredentialBrokerWire.SCHEMA}","ok":true,"kind":"string","value":"$secretLooking"}""",
             """{"schema":"${CredentialBrokerWire.SCHEMA}","ok":true,"kind":"string"}""",
-            """{"schema":"${CredentialBrokerWire.SCHEMA}","ok":true,"kind":"file","value":"AAAA"}""",
+            """{"schema":"${CredentialBrokerWire.SCHEMA}","ok":true,"kind":"a-kind-nobody-carries","value":"AAAA"}""",
             """{"schema":"${CredentialBrokerWire.SCHEMA}","ok":false,"refusal":"$secretLooking"}""",
             """{"schema":"${CredentialBrokerWire.SCHEMA}","ok":false}""",
             """{"schema":"${CredentialBrokerWire.SCHEMA}","ok":true,"kind":"string","value":"AAAA","refusal":"broker-failed"}""",
@@ -149,7 +147,7 @@ class CredentialBrokerWireTest {
             """{"schema":"pipelinek.credentials/9","ok":false,"refusal":"broker-failed"}""",
             """{"schema":"${CredentialBrokerWire.SCHEMA}","ok":"true","kind":"string","value":"AAAA"}""",
             """{"schema":"${CredentialBrokerWire.SCHEMA}","ok":true,"kind":"string","value":"not base64 !!"}""",
-            CredentialBrokerWire.encodeGranted(BrokeredCredentialKind.STRING, ByteArray(CredentialBrokerWire.MAX_SECRET_BYTES + 1)),
+            CredentialBrokerWire.encodeGranted(BrokeredCredentialKind.STRING, ByteArray(CredentialBrokerWire.MAX_MATERIAL_BYTES + 1)),
             """{"schema":"${CredentialBrokerWire.SCHEMA}","ok":true,"kind":"string","value":"$secretLooking""",
         )
 
@@ -166,7 +164,7 @@ class CredentialBrokerWireTest {
         val secret = "plain-secret-text".toByteArray()
 
         val request = (CredentialBrokerWire.decodeRequest(
-            CredentialBrokerWire.encodeRequest(TOKEN, "deploy-key", BrokeredCredentialKind.STRING),
+            CredentialBrokerWire.encodeRequest(TOKEN, "deploy-key"),
         ) as CredentialBrokerWire.RequestReading.Read).request
         val granted = CredentialBrokerWire.decodeResponse(
             CredentialBrokerWire.encodeGranted(BrokeredCredentialKind.STRING, secret),
@@ -182,7 +180,7 @@ class CredentialBrokerWireTest {
 
     @Test
     fun `the largest secret fits in the answer the reader accepts`() {
-        val secret = ByteArray(CredentialBrokerWire.MAX_SECRET_BYTES) { 0xFF.toByte() }
+        val secret = ByteArray(CredentialBrokerWire.MAX_MATERIAL_BYTES) { 0xFF.toByte() }
 
         val line = CredentialBrokerWire.encodeGranted(BrokeredCredentialKind.STRING, secret)
 
@@ -195,7 +193,7 @@ class CredentialBrokerWireTest {
     @Test
     fun `the longest request the broker grants fits in the line it reads`() {
         val id = "k".repeat(CredentialGrant.MAX_CREDENTIAL_ID_LENGTH)
-        val line = CredentialBrokerWire.encodeRequest(CredentialBrokerWire.newSessionToken(), id, BrokeredCredentialKind.STRING)
+        val line = CredentialBrokerWire.encodeRequest(CredentialBrokerWire.newSessionToken(), id)
 
         assertTrue(
             line.toByteArray(Charsets.UTF_8).size <= CredentialBrokerWire.MAX_REQUEST_LINE_BYTES,

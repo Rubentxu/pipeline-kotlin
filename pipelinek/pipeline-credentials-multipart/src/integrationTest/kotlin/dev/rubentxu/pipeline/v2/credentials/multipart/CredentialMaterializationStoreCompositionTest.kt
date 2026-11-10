@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.credentials.multipart
 
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreLinkedSecretResolver
 import dev.rubentxu.pipeline.v2.credentials.local.CredentialsStorePath
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.credentials.local.PassphraseResolver
@@ -12,14 +13,18 @@ import dev.rubentxu.pipeline.v2.domain.credentials.Zip
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
+import java.util.concurrent.TimeUnit
 
 /**
  * The materializer and the store, wired the way the product wires them.
@@ -55,6 +60,7 @@ import java.nio.file.Path
  * so no terminal and no operator is ever asked for one. No clock, no
  * subprocess and no network are involved: neither half has any.
  */
+@Timeout(value = 120, unit = TimeUnit.SECONDS)
 class CredentialMaterializationStoreCompositionTest {
 
     /** The directory the store and the materialization live in. */
@@ -107,7 +113,7 @@ class CredentialMaterializationStoreCompositionTest {
         val store = openStore()
         store.add(id, Zip(id, CredentialScope.GLOBAL, entries))
         val read = assertInstanceOf(Zip::class.java, store.get(id))
-        val materializer = CredentialMaterializer(store)
+        val materializer = CredentialMaterializer(SecretStoreLinkedSecretResolver(store))
         try {
             val materialized = materializer.materialize(read, MaterializationKind.Zip)
             val directory = requireNotNull(materialized.path) {
@@ -141,7 +147,7 @@ class CredentialMaterializationStoreCompositionTest {
             Zip(id, CredentialScope.GLOBAL, mapOf("../escape.txt" to "owned".toByteArray())),
         )
         val read = assertInstanceOf(Zip::class.java, store.get(id))
-        val materializer = CredentialMaterializer(store)
+        val materializer = CredentialMaterializer(SecretStoreLinkedSecretResolver(store))
         try {
             val refusal = assertThrows(
                 ZipEntryEscapesMaterializationException::class.java,
@@ -168,7 +174,7 @@ class CredentialMaterializationStoreCompositionTest {
         val store = openStore()
         store.add(id, SecretFile(id, CredentialScope.GLOBAL, bytes, "notes.txt"))
         val read = assertInstanceOf(SecretFile::class.java, store.get(id))
-        val materializer = CredentialMaterializer(store)
+        val materializer = CredentialMaterializer(SecretStoreLinkedSecretResolver(store))
         try {
             val materialized = materializer.materialize(read, MaterializationKind.SecretFile)
             val path = requireNotNull(materialized.path) {
@@ -187,6 +193,46 @@ class CredentialMaterializationStoreCompositionTest {
             )
         } finally {
             materializer.close()
+            store.close()
+        }
+    }
+
+    @Test
+    fun `a cleanup that cannot remove the material says so and says nothing of what the material was`() {
+        val id = CredentialsId("undeletable")
+        val secret = "the bytes of a secret nobody may read again"
+        val store = openStore()
+        store.add(id, SecretFile(id, CredentialScope.GLOBAL, secret.toByteArray(), "notes.txt"))
+        val read = assertInstanceOf(SecretFile::class.java, store.get(id))
+        val materializer = CredentialMaterializer(SecretStoreLinkedSecretResolver(store))
+        try {
+            val materialized = materializer.materialize(read, MaterializationKind.SecretFile)
+            requireNotNull(materialized.path) { "the materializer named no file for the secret" }
+            // The directory the material lives in stops accepting changes. The file can still be
+            // written --its own permissions allow it-- but it can no longer be unlinked, which is
+            // what a cleanup that cannot finish looks like.
+            Files.setPosixFilePermissions(scratch, PosixFilePermissions.fromString("r-x------"))
+
+            val failure = assertThrows(
+                CredentialCleanupException::class.java,
+                { materializer.close() },
+                "a material that could not be removed was reported as removed",
+            )
+
+            assertTrue(
+                failure.survivors.isNotEmpty(),
+                "the failure names the path whose material could not be removed",
+            )
+            assertTrue(
+                failure.message.orEmpty().contains("may still be readable"),
+                "the report does not promise that the material is gone: ${failure.message}",
+            )
+            assertFalse(
+                failure.message.orEmpty().contains(secret),
+                "the report does not carry the material it could not remove: ${failure.message}",
+            )
+        } finally {
+            Files.setPosixFilePermissions(scratch, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
             store.close()
         }
     }

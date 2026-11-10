@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+import dev.rubentxu.pipeline.v2.service.CredentialMaterialCodec
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -62,7 +63,7 @@ class SocketCredentialProviderTest {
 
     @Test
     fun `a granted answer becomes a secret text with the name that was asked and the bytes that were delivered`() {
-        val link = LinkDouble { CredentialBrokerWire.encodeGranted(BrokeredCredentialKind.STRING, SECRET) }
+        val link = LinkDouble { grantedText(SECRET) }
         val provider = SocketCredentialProvider(link, TOKEN)
 
         val credential = provider.resolveToCredential(CredentialsId("deploy-key"))
@@ -74,7 +75,7 @@ class SocketCredentialProviderTest {
 
     @Test
     fun `resolve hands the delivered bytes to the handle`() {
-        val link = LinkDouble { CredentialBrokerWire.encodeGranted(BrokeredCredentialKind.STRING, SECRET) }
+        val link = LinkDouble { grantedText(SECRET) }
         val provider = SocketCredentialProvider(link, TOKEN)
 
         val handle = provider.resolve(CredentialsId("deploy-key"))
@@ -83,8 +84,8 @@ class SocketCredentialProviderTest {
     }
 
     @Test
-    fun `the request carries the session of the run the name asked for and the kind string`() {
-        val link = LinkDouble { CredentialBrokerWire.encodeGranted(BrokeredCredentialKind.STRING, SECRET) }
+    fun `the request carries the session of the run and the name asked for`() {
+        val link = LinkDouble { grantedText(SECRET) }
         val provider = SocketCredentialProvider(link, TOKEN)
 
         provider.resolveToCredential(CredentialsId("Deploy-Key_01"))
@@ -96,7 +97,6 @@ class SocketCredentialProviderTest {
         )
         assertEquals(TOKEN, read.request.token)
         assertEquals("Deploy-Key_01", read.request.credentialId, "the name travels as it was written, case included")
-        assertEquals(BrokeredCredentialKind.STRING.word, read.request.kindWord)
         assertFalse(line.contains('\n'), "a request is one line")
     }
 
@@ -189,7 +189,7 @@ class SocketCredentialProviderTest {
         val answers = CopyOnWriteArrayList(
             listOf(
                 CredentialBrokerWire.encodeRefused(CredentialBrokerRefusal.CREDENTIAL_NOT_GRANTED),
-                CredentialBrokerWire.encodeGranted(BrokeredCredentialKind.STRING, SECRET),
+                grantedText(SECRET),
             ),
         )
         val link = LinkDouble { answers.removeAt(0) }
@@ -247,6 +247,18 @@ class SocketCredentialProviderTest {
             return answer(requestLine)
         }
     }
+
+    /**
+     * The answer of a broker that hands out the secret [bytes].
+     *
+     * The answer carries the MATERIAL of the credential, which is the form that says what it is:
+     * a run that received bare bytes would have to guess what they are.
+     */
+    private fun grantedText(bytes: ByteArray): String =
+        CredentialBrokerWire.encodeGranted(
+            BrokeredCredentialKind.STRING,
+            CredentialMaterialCodec.encode(SecretText(CredentialsId("deploy-key"), bytes = bytes)),
+        )
 
     private companion object {
         const val TOKEN = "Wm9uZS10b2tlbi1vZi10aGUtcnVuLTAxMjM0NTY3ODk"

@@ -1,8 +1,5 @@
 package dev.rubentxu.pipeline.v2.credentials.multipart
 
-import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceTypeMismatchException
-import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
-import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException
 import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
 import dev.rubentxu.pipeline.v2.credentials.spi.MaterializedCredential
 import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKindUnsupportedException
@@ -10,11 +7,11 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialFilePermissions
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialLinkedSecretResolver
 import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretFile
 import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
 import dev.rubentxu.pipeline.v2.domain.credentials.Zip
-import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
@@ -27,10 +24,20 @@ import java.util.UUID
  * - [MaterializationKind.Certificate]: creates temp file for keystore + optionally for password
  * - [MaterializationKind.Zip]: extracts to temp directory with 0700 permissions
  * All materialized paths are tracked and wiped on [close].
- * @param store The secret store to retrieve credentials from
+ *
+ * ## Where the LINKED secret comes from
+ *
+ * From [linkedSecrets], and from nowhere else. The passphrase of a private key and the password
+ * of a keystore are credentials of their own, and the materializer asks for them through the one
+ * port that answers that question: the provider the run was given. A run whose credentials come
+ * from a controller resolves them through that controller, and a run whose credentials come from
+ * a store resolves them through that store. There is no second place to look, and therefore no
+ * way for a run to receive a secret that the source it was given would not hand over.
+ *
+ * @param linkedSecrets the port that resolves a linked secret into its bytes
 */
 class CredentialMaterializer(
-    private val store: SecretStore
+    private val linkedSecrets: CredentialLinkedSecretResolver,
 ) : AutoCloseable {
 
     // Track all materialized paths for cleanup
@@ -53,8 +60,9 @@ class CredentialMaterializer(
      * @param kind The materialization kind (must match credential type)
      * @return [MaterializedCredential] with path or handle
      * @throws MaterializationKindUnsupportedException if kind doesn't match credential type
-     * @throws SecretStoreException if the referenced credential is not there
-     * @throws LinkedSecretReferenceTypeMismatchException if referenced credential is wrong type
+     * @throws Exception the refusal of [linkedSecrets] when the linked secret is not there or is
+     *   not of the kind a linked secret may be. The refusal is the one of the source the run was
+     *   given, and it is not swallowed: a run that cannot read a passphrase does not run.
 */
     fun materialize(credential: Credential, kind: MaterializationKind): MaterializedCredential {
         val cacheKey = credential.id to kind
@@ -124,26 +132,22 @@ class CredentialMaterializer(
         return MaterializedCredential.fromPath(credential.id, MaterializationKind.SshPrivateKey, keyFile)
     }
 
+    /**
+     * Writes the bytes of the linked secret [ref] to a file of its own.
+     *
+     * The bytes come from the one port that answers that question, and the handle they arrive in
+     * is wiped as soon as they are written: the material of a passphrase is not kept twice.
+     */
     private fun resolvePassphraseFile(ref: LinkedSecretRef, credentialId: CredentialsId): Path {
-        // Get the referenced credential (must be SecretText)
-        val refCredential = store.get(ref.credentialsId)
-        if (refCredential !is SecretText) {
-            throw LinkedSecretReferenceTypeMismatchException(
-                ref.credentialsId,
-                expectedType = "SecretText",
-                actualType = refCredential::class.simpleName ?: "Unknown"
-            )
-        }
-
-        // Materialize passphrase to temp file
         val passphraseFile = createTempFile(
             prefix = "pipeline-ssh-passphrase-",
             suffix = "-${credentialId.value}"
         )
-        Files.write(passphraseFile, refCredential.bytes)
         Files.setPosixFilePermissions(passphraseFile, CredentialFilePermissions.OWNER_READ_WRITE)
         trackedPaths.add(passphraseFile)
-
+        linkedSecrets.resolve(ref).use { bytes ->
+            Files.write(passphraseFile, bytes)
+        }
         return passphraseFile
     }
 
@@ -165,24 +169,22 @@ class CredentialMaterializer(
         return MaterializedCredential.fromPath(credential.id, MaterializationKind.Certificate, keystoreFile)
     }
 
+    /**
+     * Writes the bytes of the linked secret [ref] to a file of its own.
+     *
+     * The bytes come from the one port that answers that question, and the handle they arrive in
+     * is wiped as soon as they are written: the material of a password is not kept twice.
+     */
     private fun resolvePasswordFile(ref: LinkedSecretRef, credentialId: CredentialsId): Path {
-        val refCredential = store.get(ref.credentialsId)
-        if (refCredential !is SecretText) {
-            throw LinkedSecretReferenceTypeMismatchException(
-                ref.credentialsId,
-                expectedType = "SecretText",
-                actualType = refCredential::class.simpleName ?: "Unknown"
-            )
-        }
-
         val passwordFile = createTempFile(
             prefix = "pipeline-cert-password-",
             suffix = "-${credentialId.value}"
         )
-        Files.write(passwordFile, refCredential.bytes)
         Files.setPosixFilePermissions(passwordFile, CredentialFilePermissions.OWNER_READ_WRITE)
         trackedPaths.add(passwordFile)
-
+        linkedSecrets.resolve(ref).use { bytes ->
+            Files.write(passwordFile, bytes)
+        }
         return passwordFile
     }
 
@@ -238,8 +240,23 @@ class CredentialMaterializer(
     /**
      * Closes the materializer, wiping all tracked paths.
      * Files are zeroed and deleted, directories are deleted.
+     *
+     * ## What it says when it could not finish
+     *
+     * The paths that survived, and the cause of each. Nothing else: a report about a secret that
+     * carries the secret is a second copy of it.
+     *
+     * The report does NOT say that the material is gone. Zeroing a file and deleting it are two
+     * best-effort acts on a filesystem that may keep the old blocks, may copy on write, and may
+     * be a volume that never accepted the delete at all. A diagnostic that promised the material
+     * was gone would be promising something the product cannot know.
+     *
+     * @throws CredentialCleanupException when some of the material could not be removed.
 */
     override fun close() {
+        val failures = mutableListOf<Throwable>()
+        val survivors = mutableListOf<Path>()
+
         // Wipe and delete files
         for (path in trackedPaths.reversed()) {
             try {
@@ -252,8 +269,9 @@ class CredentialMaterializer(
                     }
                     Files.delete(path)
                 }
-            } catch (_: Exception) {
-                // Silently ignore cleanup failures
+            } catch (failure: Exception) {
+                failures += failure
+                survivors.add(path)
             }
         }
         trackedPaths.clear()
@@ -264,13 +282,40 @@ class CredentialMaterializer(
                 if (Files.exists(dir)) {
                     Files.delete(dir)
                 }
-            } catch (_: Exception) {
-                // Silently ignore cleanup failures
+            } catch (failure: Exception) {
+                failures += failure
+                survivors.add(dir)
             }
         }
         trackedDirs.clear()
 
         materializationCache.clear()
+
+        if (failures.isNotEmpty()) {
+            throw CredentialCleanupException(survivors, failures)
+        }
+    }
+}
+
+/**
+ * The material of a credential that could not be removed from the disk.
+ *
+ * The exception names the paths that survived and the cause of each. It does NOT say that the
+ * material was erased: erasing it is a best-effort act on a filesystem that may keep the old
+ * blocks, and a diagnostic that promised it would be promising something nobody can know.
+ *
+ * @property survivors the paths whose material could not be removed
+ */
+class CredentialCleanupException(
+    val survivors: List<Path>,
+    val failures: List<Throwable>,
+) : Exception(
+    "the credential material could not be removed from ${survivors.size} path(s) " +
+        "(${survivors.joinToString(", ") { it.toString() }}); its content may still be readable " +
+        "on disk",
+) {
+    init {
+        failures.forEach { addSuppressed(it) }
     }
 }
 

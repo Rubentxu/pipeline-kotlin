@@ -11,16 +11,36 @@ import java.security.SecureRandom
 import java.util.Base64
 
 /**
- * The contract `pipelinek.credentials/1`: what a run and its credential broker
+ * The contract `pipelinek.credentials/2`: what a run and its credential broker
  * say to each other over a private socket.
+ *
+ * ## What the SECOND version changed
+ *
+ * The value of an answer is the MATERIAL of the credential --the canonical form
+ * that says what it is-- and not the bytes of one secret. A key and its
+ * passphrase, a keystore and its password and an archive of several entries
+ * are one credential, and the first version could only carry one secret.
+ * The question lost its `kind` field for the same reason: the form is the
+ * authorization's decision, and a question that carried it would be a second
+ * authority for one decision.
  *
  * ## The shape
  *
  * One request per connection, one line each way. The run sends
- * `{schema, token, op:"resolve", credentialId, kind}` and the broker answers
- * `{schema, ok:true, kind, value}` — the value is the secret, Base64 — or
+ * `{schema, token, op:"resolve", credentialId}` and the broker answers
+ * `{schema, ok:true, kind, value}` — the kind is the FORM the credential was
+ * granted in, and the value is the material of the credential, Base64 — or
  * `{schema, ok:false, refusal}` where the refusal is one of the fixed words of
  * [CredentialBrokerRefusal].
+ *
+ * ## Why the question carries no kind
+ *
+ * Because the FORM of a credential is not the run's decision: it is the
+ * authorization's. The operator's file names each credential once and says in
+ * which form it may be handed over, and the run asks for the credential by
+ * NAME. A question that also carried a form would be a second authority for
+ * one decision, and the two would disagree the first time a run asked for a
+ * form the operator had not written down.
  *
  * ## Why Base64 and one line
  *
@@ -44,7 +64,7 @@ import java.util.Base64
 internal object CredentialBrokerWire {
 
     /** The contract this wire speaks. */
-    const val SCHEMA: String = "pipelinek.credentials/1"
+    const val SCHEMA: String = "pipelinek.credentials/2"
 
     /** The only operation: ask for a credential. */
     const val OPERATION_RESOLVE: String = "resolve"
@@ -53,10 +73,10 @@ internal object CredentialBrokerWire {
     const val MAX_REQUEST_LINE_BYTES: Int = 1024
 
     /** The biggest secret the broker hands out, in bytes. */
-    const val MAX_SECRET_BYTES: Int = 64 * 1024
+    const val MAX_MATERIAL_BYTES: Int = 64 * 1024
 
     /** The longest answer line a run reads: the largest secret in Base64, plus the envelope. */
-    const val MAX_RESPONSE_LINE_BYTES: Int = 4 * ((MAX_SECRET_BYTES + 2) / 3) + 512
+    const val MAX_RESPONSE_LINE_BYTES: Int = 4 * ((MAX_MATERIAL_BYTES + 2) / 3) + 512
 
     /** How many random bytes a session token holds. */
     private const val TOKEN_BYTES: Int = 32
@@ -72,23 +92,22 @@ internal object CredentialBrokerWire {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 
-    /** The request line asking for [credentialId] as [kind], on behalf of the session [token]. */
-    fun encodeRequest(token: String, credentialId: String, kind: BrokeredCredentialKind): String =
+    /** The request line asking for [credentialId], on behalf of the session [token]. */
+    fun encodeRequest(token: String, credentialId: String): String =
         buildJsonObject {
             put("schema", SCHEMA)
             put("token", token)
             put("op", OPERATION_RESOLVE)
             put("credentialId", credentialId)
-            put("kind", kind.word)
         }.toString()
 
-    /** The answer line that hands out [secret] as [kind]. */
-    fun encodeGranted(kind: BrokeredCredentialKind, secret: ByteArray): String =
+    /** The answer line that hands out [material] as [kind]. */
+    fun encodeGranted(kind: BrokeredCredentialKind, material: ByteArray): String =
         buildJsonObject {
             put("schema", SCHEMA)
             put("ok", true)
             put("kind", kind.word)
-            put("value", Base64.getEncoder().encodeToString(secret))
+            put("value", Base64.getEncoder().encodeToString(material))
         }.toString()
 
     /** The answer line that says why nothing is handed out. */
@@ -107,8 +126,7 @@ internal object CredentialBrokerWire {
         }
         val token = textOf(fields, "token") ?: return RequestReading.Unreadable
         val credentialId = textOf(fields, "credentialId") ?: return RequestReading.Unreadable
-        val kindWord = textOf(fields, "kind") ?: return RequestReading.Unreadable
-        return RequestReading.Read(BrokerRequest(token, credentialId, kindWord))
+        return RequestReading.Read(BrokerRequest(token, credentialId))
     }
 
     /** Reads [line] as an answer, or as [ResponseReading.Unreadable] when it is not one. */
@@ -125,13 +143,13 @@ internal object CredentialBrokerWire {
         val kind = textOf(fields, "kind")?.let { BrokeredCredentialKind.ofWord(it) }
             ?: return ResponseReading.Unreadable
         val encoded = textOf(fields, "value") ?: return ResponseReading.Unreadable
-        val secret = try {
+        val material = try {
             Base64.getDecoder().decode(encoded)
         } catch (_: IllegalArgumentException) {
             return ResponseReading.Unreadable
         }
-        if (secret.size > MAX_SECRET_BYTES) return ResponseReading.Unreadable
-        return ResponseReading.Granted(kind, secret)
+        if (material.size > MAX_MATERIAL_BYTES) return ResponseReading.Unreadable
+        return ResponseReading.Granted(kind, material)
     }
 
     private fun readRefused(fields: JsonObject): ResponseReading {
@@ -159,20 +177,18 @@ internal object CredentialBrokerWire {
     /**
      * A request as the broker reads it.
      *
-     * The kind stays the word it was written with: deciding whether the broker
-     * carries it is the broker's job, and a request for a kind it does not
-     * carry must be answered with that reason and not with "unreadable".
+     * The request names the credential and nothing else: the FORM it is handed
+     * over in is the authorization's decision, and a request that carried one
+     * would be a second authority for the same fact.
      */
     class BrokerRequest(
         /** The session token the run presents. */
         val token: String,
         /** The credential asked for. */
         val credentialId: String,
-        /** The kind asked for, as written. */
-        val kindWord: String,
     ) {
         /** The token is a credential of the run, so it is not printed. */
-        override fun toString(): String = "BrokerRequest(credentialId=$credentialId, kind=$kindWord)"
+        override fun toString(): String = "BrokerRequest(credentialId=$credentialId)"
     }
 
     /** The result of reading a request line. */
@@ -190,10 +206,10 @@ internal object CredentialBrokerWire {
     /** The result of reading an answer line. */
     sealed interface ResponseReading {
 
-        /** The broker handed out a secret. */
-        class Granted(val kind: BrokeredCredentialKind, val secret: ByteArray) : ResponseReading {
-            /** The secret is not printed, nor is any encoding of it. */
-            override fun toString(): String = "Granted(kind=${kind.word}, secret=<${secret.size} bytes>)"
+        /** The broker handed out the material of a credential, in the form [kind]. */
+        class Granted(val kind: BrokeredCredentialKind, val material: ByteArray) : ResponseReading {
+            /** The material is not printed, nor is any encoding of it. */
+            override fun toString(): String = "Granted(kind=${kind.word}, material=<${material.size} bytes>)"
         }
 
         /** The broker said why it hands out nothing. */

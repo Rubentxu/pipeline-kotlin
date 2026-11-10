@@ -1,5 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
+import dev.rubentxu.pipeline.v2.domain.credentials.Credential
+import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
+import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
+import dev.rubentxu.pipeline.v2.domain.credentials.Zip
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
@@ -8,6 +15,7 @@ import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
+import dev.rubentxu.pipeline.v2.service.CredentialMaterialCodec
 import dev.rubentxu.pipeline.v2.service.ServiceAnswer
 import dev.rubentxu.pipeline.v2.service.ServiceClient
 import dev.rubentxu.pipeline.v2.service.ServiceCredentialPoll
@@ -99,6 +107,51 @@ class CredentialProviderIntegrationTest {
                 "            environment(\"deploy-key\", \"DEPLOY_KEY\") {\n" +
                 "                sh(\"printenv DEPLOY_KEY | wc -c\")\n" +
                 "            }\n        }\n    }\n}\n",
+        )
+        // The multipart script binds a private key and a certificate, and MEASURES what it
+        // receives: the length of the key file, of the passphrase, of the keystore and of the
+        // password. A length never carries the secret it measures. The last step CATS the key,
+        // so the transcript would carry it if nothing masked it.
+        Files.writeString(
+            scripts.resolve(MULTIPART_SCRIPT_NAME),
+            """
+            pipeline {
+                stages {
+                    stage("eager") {
+                        withCredentials(
+                            StepSpec.CredentialsBinding.sshUserPrivateKey("ssh-key", "KEY_FILE", "KEY_PASSPHRASE"),
+                            StepSpec.CredentialsBinding.certificate("deploy-cert", "KEYSTORE", "KEY_ALIAS", "KEYSTORE_PASSWORD"),
+                        ) {
+                            sh("cat \"${'$'}KEY_FILE\" | wc -c")
+                            sh("printenv KEY_PASSPHRASE | wc -c")
+                            sh("cat \"${'$'}KEYSTORE\" | wc -c")
+                            sh("printenv KEYSTORE_PASSWORD | wc -c")
+                            sh("cat \"${'$'}KEY_FILE\"")
+                        }
+                    }
+                }
+            }
+            """.trimIndent() + "\n",
+        )
+        // The archive script binds an archive and looks at what was unpacked: the name of the
+        // entry, the mode of the entry and the mode of the root it was unpacked into.
+        Files.writeString(
+            scripts.resolve(ARCHIVE_SCRIPT_NAME),
+            """
+            pipeline {
+                stages {
+                    stage("eager") {
+                        withCredentials(StepSpec.CredentialsBinding.zip("deploy-archive", "ARCHIVE_DIR")) {
+                            sh("echo the-step-ran")
+                            sh("ls \"${'$'}ARCHIVE_DIR\"")
+                            sh("stat -c %a \"${'$'}ARCHIVE_DIR/entry.txt\"")
+                            sh("stat -c %a \"${'$'}ARCHIVE_DIR\"")
+                            sh("cat \"${'$'}ARCHIVE_DIR/entry.txt\"")
+                        }
+                    }
+                }
+            }
+            """.trimIndent() + "\n",
         )
         val admission = admitEventStore(db.toString(), EventStorePurpose.Produce)
         val writable = (admission as EventStoreAdmission.Admitted).store
@@ -202,10 +255,10 @@ class CredentialProviderIntegrationTest {
                 ),
             )
             val request = asked.get(120, TimeUnit.SECONDS)
-            val first = client(STARTER_TOKEN).grantCredential(session.sessionId, request.requestId, SECRET)
+            val first = client(STARTER_TOKEN).grantCredential(session.sessionId, request.requestId, secretMaterial())
             assertInstanceOf(ServiceAnswer.Answered::class.java, first, "the first answer was accepted")
 
-            val second = client(STARTER_TOKEN).grantCredential(session.sessionId, request.requestId, SECRET)
+            val second = client(STARTER_TOKEN).grantCredential(session.sessionId, request.requestId, secretMaterial())
             assertEquals(
                 "request-unknown",
                 assertInstanceOf(
@@ -273,7 +326,7 @@ class CredentialProviderIntegrationTest {
             )
             val request = asked.get(120, TimeUnit.SECONDS)
 
-            val stolen = client(OTHER_STARTER_TOKEN).grantCredential(session.sessionId, request.requestId, SECRET)
+            val stolen = client(OTHER_STARTER_TOKEN).grantCredential(session.sessionId, request.requestId, secretMaterial())
             assertEquals(
                 "provider-session-unknown",
                 assertInstanceOf(
@@ -293,7 +346,7 @@ class CredentialProviderIntegrationTest {
             )
 
             // The rightful controller still answers, and the run goes on.
-            val granted = client(STARTER_TOKEN).grantCredential(session.sessionId, request.requestId, SECRET)
+            val granted = client(STARTER_TOKEN).grantCredential(session.sessionId, request.requestId, secretMaterial())
             assertInstanceOf(ServiceAnswer.Answered::class.java, granted)
             assertInstanceOf(
                 TerminalObservation.Succeeded::class.java,
@@ -396,6 +449,188 @@ class CredentialProviderIntegrationTest {
         }
     }
 
+    @Test
+    fun `a private key and a certificate are materialized with the values the controller holds`() {
+        val service = start()
+        val pool = Executors.newFixedThreadPool(1)
+        try {
+            val session = registered(STARTER_TOKEN, PROVIDER)
+            val controller = pool.submit(Callable { grantEverything(session.sessionId, STARTER_TOKEN) })
+
+            val run = started(
+                client(STARTER_TOKEN).startRun(
+                    script = MULTIPART_SCRIPT_NAME,
+                    idempotencyKey = "key-multipart",
+                    credentialProvider = PROVIDER,
+                ),
+            )
+            val terminal = awaitTerminal(run.runId)
+            client(STARTER_TOKEN).closeCredentialProvider(session.sessionId)
+            assertEquals(
+                setOf(SSH_KEY_ID, SSH_PASSPHRASE_ID, CERT_ID, CERT_PASSWORD_ID),
+                controller.get(180, TimeUnit.SECONDS).toSet(),
+                "the controller was asked for the key, its passphrase, the certificate and its password",
+            )
+            assertInstanceOf(
+                TerminalObservation.Succeeded::class.java,
+                terminal.terminal,
+                "the run went on with the credentials the controller handed over: ${outputOf(run.runId)}",
+            )
+            val output = flatOutput(run.runId)
+            assertTrue(
+                output.contains(KEY_TEXT.length.toString()),
+                "the key file holds the bytes the controller sent: $output",
+            )
+            assertTrue(
+                output.contains((PASSPHRASE.length + 1).toString()),
+                "the passphrase is the one the controller holds: $output",
+            )
+            assertTrue(
+                output.contains(KEYSTORE.size.toString()),
+                "the keystore holds the bytes the controller sent: $output",
+            )
+            assertTrue(
+                output.contains((PASSWORD.length + 1).toString()),
+                "the password of the keystore is the one the controller holds: $output",
+            )
+            assertFalse(
+                output.contains(KEY_BODY),
+                "the transcript does not carry the key the controller handed over: $output",
+            )
+            assertFalse(
+                output.contains(KEY_TEXT),
+                "the transcript does not carry the key the controller handed over: $output",
+            )
+        } finally {
+            pool.shutdownNow()
+            service.stop()
+        }
+    }
+
+    @Test
+    fun `a linked secret the controller does not hold fails the run before the step and is looked up nowhere else`() {
+        val service = start()
+        val pool = Executors.newFixedThreadPool(1)
+        try {
+            val session = registered(STARTER_TOKEN, PROVIDER)
+            val controller = pool.submit(
+                Callable { grantEverything(session.sessionId, STARTER_TOKEN, without = SSH_PASSPHRASE_ID) },
+            )
+
+            val run = started(
+                client(STARTER_TOKEN).startRun(
+                    script = MULTIPART_SCRIPT_NAME,
+                    idempotencyKey = "key-missing-passphrase",
+                    credentialProvider = PROVIDER,
+                ),
+            )
+            val terminal = awaitTerminal(run.runId)
+            client(STARTER_TOKEN).closeCredentialProvider(session.sessionId)
+            assertEquals(
+                setOf(SSH_KEY_ID, SSH_PASSPHRASE_ID),
+                controller.get(180, TimeUnit.SECONDS).toSet(),
+                "the controller was asked for the key and for the passphrase it does not hold",
+            )
+            assertInstanceOf(
+                TerminalObservation.Failed::class.java,
+                terminal.terminal,
+                "the run was denied: the passphrase never came",
+            )
+            assertFalse(
+                outputOf(run.runId).contains(KEY_TEXT.length.toString()),
+                "the step never ran: there was no passphrase to run it with",
+            )
+        } finally {
+            pool.shutdownNow()
+            service.stop()
+        }
+    }
+
+    @Test
+    fun `an archive is unpacked inside its own root and its files stay private to their owner`() {
+        val service = start()
+        val pool = Executors.newFixedThreadPool(1)
+        try {
+            val session = registered(STARTER_TOKEN, PROVIDER)
+            val controller = pool.submit(Callable { grantEverything(session.sessionId, STARTER_TOKEN) })
+
+            val run = started(
+                client(STARTER_TOKEN).startRun(
+                    script = ARCHIVE_SCRIPT_NAME,
+                    idempotencyKey = "key-archive",
+                    credentialProvider = PROVIDER,
+                ),
+            )
+            val terminal = awaitTerminal(run.runId)
+            client(STARTER_TOKEN).closeCredentialProvider(session.sessionId)
+            assertEquals(
+                setOf(ARCHIVE_ID),
+                controller.get(180, TimeUnit.SECONDS).toSet(),
+                "the controller was asked for the archive and for nothing else",
+            )
+            assertInstanceOf(
+                TerminalObservation.Succeeded::class.java,
+                terminal.terminal,
+                "the archive was unpacked and the run went on: ${outputOf(run.runId)}",
+            )
+            val output = flatOutput(run.runId)
+            assertTrue(output.contains(ARCHIVE_ENTRY), "the entry of the archive is there: $output")
+            assertTrue(output.contains("600"), "the file of the archive is private to its owner: $output")
+            assertTrue(output.contains("700"), "the root of the archive is private to its owner: $output")
+            assertFalse(
+                output.contains(ARCHIVE_CONTENT),
+                "the transcript does not carry the entry of the archive: $output",
+            )
+        } finally {
+            pool.shutdownNow()
+            service.stop()
+        }
+    }
+
+    @Test
+    fun `an archive whose entry leaves its root is refused and the run does not go on`() {
+        val service = start()
+        val pool = Executors.newFixedThreadPool(1)
+        try {
+            val session = registered(STARTER_TOKEN, PROVIDER)
+            val controller = pool.submit(
+                Callable { grantEverything(session.sessionId, STARTER_TOKEN, hostileArchive = true) },
+            )
+
+            val run = started(
+                client(STARTER_TOKEN).startRun(
+                    script = ARCHIVE_SCRIPT_NAME,
+                    idempotencyKey = "key-hostile-archive",
+                    credentialProvider = PROVIDER,
+                ),
+            )
+            val terminal = awaitTerminal(run.runId)
+            client(STARTER_TOKEN).closeCredentialProvider(session.sessionId)
+            assertEquals(
+                setOf(ARCHIVE_ID),
+                controller.get(180, TimeUnit.SECONDS).toSet(),
+                "the controller was asked for the archive and for nothing else",
+            )
+            assertInstanceOf(
+                TerminalObservation.Failed::class.java,
+                terminal.terminal,
+                "the archive that leaves its root is refused and the run does not go on",
+            )
+            val output = flatOutput(run.runId)
+            assertFalse(
+                output.contains(STEP_MARK),
+                "the step never ran: the archive was refused before it was unpacked: $output",
+            )
+            assertFalse(
+                output.contains(ESCAPING_ENTRY),
+                "the entry that leaves the root was never written: $output",
+            )
+        } finally {
+            pool.shutdownNow()
+            service.stop()
+        }
+    }
+
     /**
      * The service, composed by the REAL composition root, and the way to stop it.
      *
@@ -458,11 +693,110 @@ class CredentialProviderIntegrationTest {
 
     /**
      * Polls [sessionId] until a run asks for a credential, then hands over [value].
+     *
+     * The value is handed over in the canonical form of a secret text: the form says what the
+     * credential is, so the run never has to be told.
+     *
      * Whether it answered is what it returns.
      */
     private fun grantWhenAsked(sessionId: String, token: String, value: ByteArray): Boolean {
         val asked = awaitAsked(sessionId, token)
-        return client(token).grantCredential(sessionId, asked.requestId, value) is ServiceAnswer.Answered
+        val material = CredentialMaterialCodec.encode(
+            SecretText(id = CredentialsId(CREDENTIAL_ID), bytes = value.copyOf()),
+        )
+        return client(token).grantCredential(sessionId, asked.requestId, material) is ServiceAnswer.Answered
+    }
+
+    /** The material of the secret the controller holds, in the canonical form of a secret text. */
+    private fun secretMaterial(): ByteArray = CredentialMaterialCodec.encode(
+        SecretText(id = CredentialsId(CREDENTIAL_ID), bytes = SECRET.copyOf()),
+    )
+
+    /**
+     * Answers every ask of [sessionId] with the material of the credential that was asked for.
+     *
+     * The controller holds one credential per name and hands over the FORM the authorization
+     * granted: the material is the canonical form of the credential, and the form says what it
+     * is. A credential named [without] is DENIED instead, so the row that uses it proves that a
+     * controller that does not hold a linked secret stops the run instead of running without it.
+     *
+     * The loop ends when the session is gone: the row closes it once the run has ended.
+     *
+     * @return the names of the credentials the controller was asked for, in the order it was
+     *   asked for them.
+     */
+    private fun grantEverything(
+        sessionId: String,
+        token: String,
+        without: String? = null,
+        hostileArchive: Boolean = false,
+    ): List<String> {
+        val asked = mutableListOf<String>()
+        while (true) {
+            val poll = client(token).pollCredentialProvider(sessionId, 1_000L)
+            if (poll !is ServiceAnswer.Answered) return asked
+            val state = poll.value
+            if (state !is ServiceCredentialPoll.Asked) continue
+            asked.add(state.credentialId)
+            if (state.credentialId == without) {
+                client(token).denyCredential(sessionId, state.requestId)
+                continue
+            }
+            val material = materialOf(state.credentialId, state.kind, hostileArchive)
+            client(token).grantCredential(sessionId, state.requestId, material)
+        }
+    }
+
+    /**
+     * The material a controller hands over for [credentialId]: the canonical form of the
+     * credential, which says what it is.
+     *
+     * The [kind] is the form the authorization granted, and the material carries that same form:
+     * a controller that answered with another one would be answering a question nobody asked.
+     */
+    private fun materialOf(credentialId: String, kind: String, hostileArchive: Boolean): ByteArray {
+        val credential: Credential = when (credentialId) {
+            SSH_KEY_ID -> SshPrivateKey(
+                id = CredentialsId(SSH_KEY_ID),
+                username = "git",
+                privateKey = KEY_TEXT.toByteArray(Charsets.UTF_8),
+                passphraseRef = LinkedSecretRef(CredentialsId(SSH_PASSPHRASE_ID)),
+            )
+
+            SSH_PASSPHRASE_ID -> SecretText(
+                id = CredentialsId(SSH_PASSPHRASE_ID),
+                bytes = PASSPHRASE.toByteArray(Charsets.UTF_8),
+            )
+
+            CERT_ID -> Certificate(
+                id = CredentialsId(CERT_ID),
+                keystore = KEYSTORE.copyOf(),
+                passwordRef = LinkedSecretRef(CredentialsId(CERT_PASSWORD_ID)),
+                alias = "deploy",
+            )
+
+            CERT_PASSWORD_ID -> SecretText(
+                id = CredentialsId(CERT_PASSWORD_ID),
+                bytes = PASSWORD.toByteArray(Charsets.UTF_8),
+            )
+
+            ARCHIVE_ID -> Zip(
+                id = CredentialsId(ARCHIVE_ID),
+                entries = if (hostileArchive) {
+                    mapOf(ESCAPING_ENTRY to "the entry that leaves the root".toByteArray(Charsets.UTF_8))
+                } else {
+                    mapOf(ARCHIVE_ENTRY to ARCHIVE_CONTENT.toByteArray(Charsets.UTF_8))
+                },
+            )
+
+            else -> error("the controller holds no credential named '$credentialId'")
+        }
+        assertEquals(
+            kind,
+            CredentialMaterialCodec.kindOf(credential),
+            "the form of the answer is the form the authorization granted",
+        )
+        return CredentialMaterialCodec.encode(credential)
     }
 
     /** Polls [sessionId] until a run asks for a credential. */
@@ -498,6 +832,16 @@ class CredentialProviderIntegrationTest {
             ServiceRunStart::class.java,
             assertInstanceOf(ServiceAnswer.Answered::class.java, answer).value,
         )
+
+    /**
+     * The stdout and the stderr of [runId] as ONE text.
+     *
+     * The transcript carries the output in the pieces the child wrote it, and a piece can end
+     * in the middle of a line: the length of a secret and the name of a variable are facts of
+     * the run, not of the way the bytes were read. The line breaks are what the run wrote; the
+     * breaks BETWEEN the pieces are not, and they are removed here.
+     */
+    private fun flatOutput(runId: String): String = outputOf(runId).replace("\n", "")
 
     /** The stdout and the stderr of [runId], read over the socket. */
     private fun outputOf(runId: String): String {
@@ -654,7 +998,14 @@ class CredentialProviderIntegrationTest {
                 STARTER_TOKEN,
                 "starter",
                 ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Start)),
-                setOf(CredentialGrant(CREDENTIAL_ID, BrokeredCredentialKind.STRING)),
+                setOf(
+                    CredentialGrant(CREDENTIAL_ID, BrokeredCredentialKind.STRING),
+                    CredentialGrant(SSH_KEY_ID, BrokeredCredentialKind.PRIVATE_KEY),
+                    CredentialGrant(SSH_PASSPHRASE_ID, BrokeredCredentialKind.STRING),
+                    CredentialGrant(CERT_ID, BrokeredCredentialKind.KEYSTORE),
+                    CredentialGrant(CERT_PASSWORD_ID, BrokeredCredentialKind.STRING),
+                    CredentialGrant(ARCHIVE_ID, BrokeredCredentialKind.ARCHIVE),
+                ),
             ),
             ServiceAuthorization(
                 OTHER_STARTER_TOKEN,
@@ -718,6 +1069,57 @@ class CredentialProviderIntegrationTest {
 
         /** The secret the controller keeps and hands over when the run asks. */
         private val SECRET: ByteArray = "s3cr3t-of-the-controller".toByteArray()
+
+        /** The name of the script that binds a private key and a certificate. */
+        private const val MULTIPART_SCRIPT_NAME: String = "multipart.pipeline.kts"
+
+        /** The name of the script that binds an archive. */
+        private const val ARCHIVE_SCRIPT_NAME: String = "archive.pipeline.kts"
+
+        /** The credential the controller holds as a private key. */
+        private const val SSH_KEY_ID: String = "ssh-key"
+
+        /** The credential the controller holds as the passphrase of the key. */
+        private const val SSH_PASSPHRASE_ID: String = "ssh-passphrase"
+
+        /** The credential the controller holds as a keystore. */
+        private const val CERT_ID: String = "deploy-cert"
+
+        /** The credential the controller holds as the password of the keystore. */
+        private const val CERT_PASSWORD_ID: String = "cert-password"
+
+        /** The credential the controller holds as an archive. */
+        private const val ARCHIVE_ID: String = "deploy-archive"
+
+        /** The entry the well-behaved archive carries. */
+        private const val ARCHIVE_ENTRY: String = "entry.txt"
+
+        /** What the entry of the archive holds: the secret the transcript must not carry. */
+        private const val ARCHIVE_CONTENT: String = "the content of the entry"
+
+        /** The entry that leaves the root of the archive, which is refused. */
+        private const val ESCAPING_ENTRY: String = "../escape.txt"
+
+        /** What the step of the archive prints first: the step ran. */
+        private const val STEP_MARK: String = "the-step-ran"
+
+        /** The private key the controller holds, in the shape a PEM has. */
+        private val KEY_TEXT: String = "-----BEGIN OPENSSH PRIVATE KEY-----\n" +
+            "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\n" +
+            "-----END OPENSSH PRIVATE KEY-----\n"
+
+        /** The body of the key: the record the transcript would carry if nothing masked it. */
+        private const val KEY_BODY: String =
+            "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW"
+
+        /** The passphrase of the key, which is a credential of its own. */
+        private const val PASSPHRASE: String = "the-passphrase-of-the-remote-key"
+
+        /** The keystore the controller holds: bytes that are not text. */
+        private val KEYSTORE: ByteArray = ByteArray(24) { (it + 1).toByte() }
+
+        /** The password of the keystore, which is a credential of its own. */
+        private const val PASSWORD: String = "the-password-of-the-remote-cert"
 
         /**
          * The length the step prints: the secret plus the newline `printenv` writes.

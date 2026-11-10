@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
+import dev.rubentxu.pipeline.v2.service.CredentialMaterialCodec
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -62,7 +63,7 @@ class RunCredentialBrokerTest {
 
         val granted = assertInstanceOf(CredentialBrokerWire.ResponseReading.Granted::class.java, reading)
         assertEquals(BrokeredCredentialKind.STRING, granted.kind)
-        assertArrayEquals("s3cr3t-bytes".toByteArray(), granted.secret)
+        assertArrayEquals("s3cr3t-bytes".toByteArray(), secretOf(granted))
         assertEquals(listOf("deploy-key"), store.asked, "the store is asked once, for that name")
     }
 
@@ -154,19 +155,20 @@ class RunCredentialBrokerTest {
     }
 
     @Test
-    fun `a kind the broker does not carry is refused and the store is not asked`() {
+    fun `a credential that is not of the form the authorization granted is refused and the run is told nothing`() {
         val store = StoreDouble(mapOf("deploy-key" to "s3cr3t".toByteArray()))
-        val broker = broker(store = store, grants = setOf(grant("deploy-key")))
-        val line = """{"schema":"${CredentialBrokerWire.SCHEMA}","token":"$TOKEN","op":"resolve","credentialId":"deploy-key","kind":"file"}"""
+        val broker = broker(
+            store = store,
+            grants = setOf(CredentialGrant("deploy-key", BrokeredCredentialKind.FILE)),
+        )
 
-        val reading = CredentialBrokerWire.decodeResponse(broker.answerFor(line))
+        val reading = answer(broker, request("deploy-key"))
 
         assertRefused(CredentialBrokerRefusal.CREDENTIAL_KIND_NOT_BROKERED, reading)
-        assertTrue(store.asked.isEmpty())
     }
 
     @Test
-    fun `the session is judged before the grant and the grant before the kind`() {
+    fun `the session is judged before the grant and the grant names the form`() {
         val store = StoreDouble(mapOf("held" to "s3cr3t".toByteArray()))
         val broker = broker(store = store, grants = setOf(grant("held")))
         val notGrantedAndUnknownKind =
@@ -241,7 +243,7 @@ class RunCredentialBrokerTest {
 
     @Test
     fun `a secret bigger than the broker hands out is refused and wiped`() {
-        val big = ByteArray(CredentialBrokerWire.MAX_SECRET_BYTES + 1) { 0x41 }
+        val big = ByteArray(CredentialBrokerWire.MAX_MATERIAL_BYTES + 1) { 0x41 }
         val store = StoreDouble(mapOf("deploy-key" to big))
         val broker = broker(store = store, grants = setOf(grant("deploy-key")))
 
@@ -301,7 +303,7 @@ class RunCredentialBrokerTest {
 
             val reading = CredentialBrokerWire.decodeResponse(connection.written.single())
             val granted = assertInstanceOf(CredentialBrokerWire.ResponseReading.Granted::class.java, reading)
-            assertArrayEquals("s3cr3t-bytes".toByteArray(), granted.secret)
+            assertArrayEquals("s3cr3t-bytes".toByteArray(), secretOf(granted))
         } finally {
             broker.close()
         }
@@ -430,7 +432,20 @@ class RunCredentialBrokerTest {
     private fun grant(id: String): CredentialGrant = CredentialGrant(id, BrokeredCredentialKind.STRING)
 
     private fun request(id: String, token: String = TOKEN): String =
-        CredentialBrokerWire.encodeRequest(token, id, BrokeredCredentialKind.STRING)
+        CredentialBrokerWire.encodeRequest(token, id)
+
+    /**
+     * The bytes of the secret the answer carries, read out of the form it travels in.
+     *
+     * The answer carries the MATERIAL of the credential, not the bare secret: the material says
+     * what it is, and reading it back is what proves the answer was the credential it claimed.
+     */
+    private fun secretOf(granted: CredentialBrokerWire.ResponseReading.Granted): ByteArray {
+        val credential = CredentialMaterialCodec.decode(CredentialsId("deploy-key"), granted.material)
+        val text = credential as? SecretText
+            ?: throw AssertionError("the answer did not carry a secret text: $credential")
+        return text.bytes
+    }
 
     private fun answer(broker: RunCredentialBroker, line: String): CredentialBrokerWire.ResponseReading =
         CredentialBrokerWire.decodeResponse(broker.answerFor(line))

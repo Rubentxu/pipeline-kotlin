@@ -2,12 +2,11 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.credentials.executor.SecretMaskingStrictness
+import dev.rubentxu.pipeline.v2.credentials.executor.SpiCredentialLinkedSecretResolver
 import dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor
+import dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer
+import dev.rubentxu.pipeline.v2.credentials.multipart.LocalFileMaterialization
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization
-import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
-import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKindUnsupportedException
-import dev.rubentxu.pipeline.v2.credentials.spi.MaterializedCredential
-import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import java.nio.file.Path
@@ -37,6 +36,18 @@ internal fun CliFlags.brokerDir(): Path? = credentialBrokerPath?.let(Path::of)
  * same masking posture, so a secret that arrives through the broker is bound, masked and wiped
  * exactly like one that arrives from the store.
  *
+ * ## The files it projects
+ *
+ * The SAME materializer the local store uses, and the linked secrets resolved through the
+ * SAME provider -- the broker of this run. A private key is a file and a keystore is a file,
+ * and a run whose credentials are held by a controller has to be able to use them: the
+ * material is written with the same permissions, in the same place, and is wiped the same way.
+ *
+ * What the run may NOT have is a secret the controller did not hand over: the passphrase of a
+ * key is resolved through the broker, so a controller that does not hold it produces a refusal
+ * and the binding fails before the step runs. There is no second place where the passphrase
+ * could be found.
+ *
  * ## Why the token is taken even when the run binds nothing
  *
  * The token file is deleted by the first look at it. A run that asks for nothing would
@@ -56,31 +67,27 @@ internal fun composeBrokeredCredentialSeam(
     if (pipelineSpec?.declaresCredentialBinding() != true) {
         return CredentialSeam(provider = null, executor = null)
     }
+    val materialization: CredentialMaterialization = LocalFileMaterialization(
+        CredentialMaterializer(SpiCredentialLinkedSecretResolver(provider)),
+    )
     val executor = WithCredentialsExecutor(
         provider,
-        NoFileMaterialization,
+        materialization,
         clock,
         redactionRegistry,
         maskingStrictness = resolveRunMaskingStrictness(maskingStrictness),
     )
+    // The process wrote the credential material to disk, so the process is what gives it back.
+    // Without this the material of a run that ended would outlive it under the shared temporary
+    // directory, which is where a secret outlives the run that needed it.
+    Runtime.getRuntime().addShutdownHook(
+        Thread(
+            {
+                closeMaterialization(materialization)
+                closeQuietly(provider)
+            },
+            "pipelinek-brokered-credentials-cleanup",
+        ),
+    )
     return CredentialSeam(provider = provider, executor = executor)
-}
-
-/**
- * The materialization of a run whose credentials come from a broker: it projects no file.
- *
- * The broker carries secret texts, which travel as bytes in the environment of a step. A
- * credential that would need a file on disk is refused by name, so the run never writes the
- * material of a secret where it could outlive the run.
- */
-internal object NoFileMaterialization : CredentialMaterialization {
-
-    override fun materialize(credential: Credential, kind: MaterializationKind): MaterializedCredential =
-        throw MaterializationKindUnsupportedException(
-            credentialsId = credential.id,
-            actualKind = kind::class.simpleName ?: "unknown",
-            supportedKinds = emptyList(),
-        )
-
-    override fun close() = Unit
 }

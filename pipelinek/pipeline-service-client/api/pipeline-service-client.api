@@ -1,3 +1,17 @@
+public final class dev/rubentxu/pipeline/v2/service/CredentialMaterialCodec {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/CredentialMaterialCodec;
+	public static final field KIND_ARCHIVE Ljava/lang/String;
+	public static final field KIND_FILE Ljava/lang/String;
+	public static final field KIND_KEYSTORE Ljava/lang/String;
+	public static final field KIND_PRIVATE_KEY Ljava/lang/String;
+	public static final field KIND_TEXT Ljava/lang/String;
+	public final fun decode-WGG8HUI (Ljava/lang/String;[B)Ldev/rubentxu/pipeline/v2/domain/credentials/Credential;
+	public final fun encode (Ldev/rubentxu/pipeline/v2/domain/credentials/Credential;)[B
+	public final fun getKinds ()Ljava/util/List;
+	public final fun kindOf (Ldev/rubentxu/pipeline/v2/domain/credentials/Credential;)Ljava/lang/String;
+	public final fun wipe (Ldev/rubentxu/pipeline/v2/domain/credentials/Credential;)V
+}
+
 public final class dev/rubentxu/pipeline/v2/service/FrameOrdinalToken {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/FrameOrdinalToken;
 	public final fun decode (Ljava/lang/String;)Ljava/lang/Long;

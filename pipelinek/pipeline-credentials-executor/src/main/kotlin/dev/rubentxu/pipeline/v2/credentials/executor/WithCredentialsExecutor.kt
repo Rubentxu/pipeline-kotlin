@@ -249,10 +249,29 @@ class WithCredentialsExecutor(
         BoundSecretRegistration.register(redactionRegistry, spec, bindings, warning)
 
     /**
-     * Registers the CONTENT of every materialised file, record by record.
+     * Registers the CONTENT of every materialisation, record by record.
      *
      * The path of a materialised file is bound as a MASKED handle and is not a secret; the
      * content it holds is.
+     *
+     * ## The archive is registered too
+     *
+     * A materialisation that is a DIRECTORY holds the entries of an archive, and every one of
+     * them is the secret: a run that cats a file of the archive would put it in the transcript
+     * in the clear. The directory was skipped as a whole, so the entries of an archive were
+     * never registered and the transcript could carry them.
+     *
+     * ## What is not registered
+     *
+     * The content that is NOT text. The registry masks text: it holds records a transcript can
+     * carry. The bytes of a keystore are not text, and their lossy decoding would put a long
+     * line of rubbish in the registry -- a window the redactor holds on every byte of every
+     * step, and a literal that could mask innocent output.
+     *
+     * The registration is best-effort, deliberately. Failing the BINDING because an observability
+     * concern could not be registered would turn a redaction gap into a pipeline outage -- the
+     * credential still works, it is merely less protected. The gap is documented rather than
+     * thrown.
      */
     private fun registerMaterializedSecrets(
         projections: List<dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult>,
@@ -261,16 +280,49 @@ class WithCredentialsExecutor(
 
         for (materialization in projections.asSequence().flatMap { it.retainedMaterializations }) {
             val path = materialization.path ?: continue
-            // Only a regular FILE carries credential content. A directory materialization (Zip)
-            // has no single content to register.
-            if (!java.nio.file.Files.isRegularFile(path)) continue
-            // Best-effort, deliberately. Failing the BINDING because an observability concern
-            // could not be registered would turn a redaction gap into a pipeline outage — the
-            // credential still works, it is merely less protected. The gap is documented rather
-            // than thrown.
-            runCatching { java.nio.file.Files.readString(path) }
-                .onSuccess { registry.addSecretRecords(it) }
+            for (content in contentsOf(path)) {
+                registry.addSecretRecords(content)
+            }
         }
+    }
+
+    /**
+     * The text of every file of the materialisation at [path].
+     *
+     * A file is its own content; a directory holds the entries of an archive, and each one is
+     * read on its own. The content that is not text is left out, and the reason is in the
+     * KDoc of the caller.
+     */
+    private fun contentsOf(path: java.nio.file.Path): List<String> =
+        try {
+            if (java.nio.file.Files.isDirectory(path)) {
+                java.nio.file.Files.walk(path).use { walk ->
+                    walk.filter { java.nio.file.Files.isRegularFile(it) }
+                        .map { textOf(it) }
+                        .collect(java.util.stream.Collectors.toList())
+                        .filterNotNull()
+                }
+            } else {
+                listOfNotNull(textOf(path))
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+    /**
+     * The text of [path], or null when it is not text.
+     *
+     * The decoding REPORTS a byte that is not UTF-8 instead of replacing it: a replacement
+     * would turn binary material into a long line of text, and that line would be registered
+     * as a secret nobody wrote.
+     */
+    private fun textOf(path: java.nio.file.Path): String? = try {
+        val decoder = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+        decoder.decode(java.nio.ByteBuffer.wrap(java.nio.file.Files.readAllBytes(path))).toString()
+    } catch (_: Exception) {
+        null
     }
 
     /**

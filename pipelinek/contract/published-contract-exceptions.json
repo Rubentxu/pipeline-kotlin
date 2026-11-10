@@ -1354,6 +1354,123 @@
       ],
       "removal_boundary": "the wire this artifact publishes keeps the start operation, the configuration it carries and the word `run-configuration-refused`; the scope vocabulary stays OUT of it, and the rules of a configuration travel as reasons INSIDE that one word and not as a word each. What this entry does NOT authorize: a change of the shape of a published request beyond the OPTIONAL `configuration` field, the removal or the renaming of a published refusal word, the growth of the published vocabulary with one word per rule of the configuration, or a change of the `run.state` document.",
       "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "bc6009f72",
+      "surface": "the class ParameterSpec, the declaration of ONE parameter of a pipeline, and the field `choices` it gained",
+      "change": "added one field to the published data class ParameterSpec: `choices`, the list of the texts a parameter of a closed set accepts, whose default value is the empty list. The regenerated dump differs from the previous one in 6 added and 4 removed lines: the removed ones are the three-argument constructor of ParameterSpec, the synthetic constructor that carries the default marker, and the `copy`/`copy$default` pair that took three arguments. This is a BINARY break and not only a source one: Kotlin does not emit the previous constructor when a field with a default value is added, so a consumer compiled against the previous artifact receives a NoSuchMethodError when it constructs or copies a ParameterSpec. The alternative was rejected: a `@JvmOverloads` constructor, or a property declared in the body of the class, would publish a way of building a declaration WITHOUT the set of choices, and that is exactly the declaration the type `choice` cannot be.",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "THE DECLARATION OF A PARAMETER HAD NO WAY TO SAY WHAT IT ACCEPTS. The published CompiledPipeline already carried a `parameters` list of ParameterSpec, and the type it named was a NAME: the domain read it and did not interpret it. A parameter that says `choice` and does not say WHICH texts it accepts cannot be checked against anything, and the slice that makes the parameters of a run typed needs a declaration a checker can read. The field `choices` is that missing half, and it is one field and not a new class: the product has ONE way to say what a parameter accepts, and it is the declaration the author wrote.",
+        "THE BREAK IS THE PRICE OF A DATA CLASS THAT CARRIES ITS OWN CONTRACT, and it is not avoided. A field with a default value keeps the SOURCE of a consumer that only READS the declaration intact, and breaks the BINARY of one that constructs it. The alternative —a second class for the closed sets, or a property in the body— would keep the binary and publish a declaration that can be built without its set, and a declaration that can be built wrong is worse than a declaration whose builder changed.",
+        "THE TYPE STAYS A NAME. The domain does not interpret the type of a parameter and did not start to: `choices` is a list of texts and the domain does not know what a `choice` is. The product keeps ONE place where a type is interpreted —the validator in the scripting API— and the domain keeps being an algebra of data. That is why the field is a plain list and not a sealed class of the three types: a class in the domain would have moved the interpretation here.",
+        "THE OBLIGATION OF A PARAMETER IS STILL DERIVED and not stored: a parameter that declares no default is the one a caller has to deliver, and the absence of the default IS the obligation. A `required` flag would be a second way to say the same thing, and two ways to say it are two answers.",
+        "WHAT DID NOT CHANGE, measured on the regenerated dump: the class ParameterSpec is still a data class of texts and a list of texts, the name and the type and the default keep their meaning, and no other published declaration of this module changed.",
+        "THE INSTRUMENT IS THE ABI GATE, not a hand-written dump: the baseline was regenerated with `:pipeline-domain:apiDump` and `:pipeline-domain:apiCheck` reads it green. The second reading of the published ABI (`:pipeline-release:publishedApiCompatibility`, candidate 0.95.0 against the published 0.94.2) reported exactly these four removals as the unauthorized breaks of this module, and every other module COMPATIBLE.",
+        "THE SHA IS THE COMMIT THAT CARRIES THE REGENERATED DUMP, and not the one that introduced the field: the claim this entry makes is about the DUMP, and a reader has to be able to VERIFY it at the SHA, with `git show <sha>:pipelinek/pipeline-domain/api/pipeline-domain.api`."
+      ],
+      "removal_boundary": "the published surface keeps ParameterSpec with its name, its type, its default and its set of choices, and the obligation of a parameter stays derived from the absence of a default. What this entry does NOT authorize: a change of the meaning of the `type` field, a second way of declaring the texts a parameter accepts, the interpretation of a type inside this module, or the removal of any other published member of this artifact.",
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.76.0",
+        "0.77.0",
+        "0.78.0",
+        "0.79.0",
+        "0.80.0",
+        "0.81.0",
+        "0.82.0",
+        "0.83.0",
+        "0.84.0",
+        "0.85.0",
+        "0.86.0",
+        "0.87.0",
+        "0.88.0",
+        "0.89.0",
+        "0.90.0",
+        "0.91.0",
+        "0.92.0",
+        "0.93.0",
+        "0.94.0",
+        "0.94.1",
+        "0.94.2",
+        "0.95.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/domain/ParameterSpec#<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+        "dev/rubentxu/pipeline/v2/domain/ParameterSpec#<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V",
+        "dev/rubentxu/pipeline/v2/domain/ParameterSpec#copy(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/ParameterSpec;",
+        "dev/rubentxu/pipeline/v2/domain/ParameterSpec#copy$default(Ldev/rubentxu/pipeline/v2/domain/ParameterSpec;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/ParameterSpec;"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.76.0..v0.95.0: every one of them publishes these removals, and the candidate's published surface does not. The class ParameterSpec appears for the first time in the committed baseline of v0.76.0-rc1, and the baseline of v0.95.0 is byte-identical to the one of v0.94.2, so every published version from 0.76.0 to 0.95.0 carries them. The candidates publish under the plain number: the tags v0.92.0-rc1 and v0.93.0-rc1 state 0.92.0 and 0.93.0."
+    },
+    {
+      "module": "pipeline-scripting-api",
+      "sha": "bc6009f72",
+      "surface": "the class PipelineSpec, the specification of a pipeline, and the field `parameters` it gained",
+      "change": "added one field to the published data class PipelineSpec: `parameters`, the list of the declarations the pipeline accepts, whose default value is the empty list. The regenerated dump differs from the previous one in 148 added and 3 removed lines: the removed ones are the one-argument constructor of PipelineSpec and the `copy`/`copy$default` pair that took one argument. This is a BINARY break and not only a source one: Kotlin does not emit the previous constructor when a field with a default value is added, so a consumer compiled against the previous artifact receives a NoSuchMethodError when it constructs or copies a PipelineSpec. The SOURCE of a consumer that constructs it with the named argument `stages` keeps compiling, because the new field has a default value.",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "THE SPECIFICATION OF A PIPELINE COULD NOT CARRY WHAT IT ACCEPTS. The published PipelineSpec had only `stages`, so a declaration of parameters had nowhere to live: the author wrote a contract the product could not read, and the compiler had nothing to put in the `parameters` field that CompiledPipeline already had in the domain. The field is the missing half of the way the description of this slice measures.",
+        "THE TYPE THAT CARRIES THE DECLARATION IS THE DOMAIN'S ParameterSpec, and not a copy of it: the scripting API already depends on the domain, and a second type for the same declaration would be a second contract with two truths. A copy would also drift: the set of choices lives in the domain's type, and a copy would not have it.",
+        "THE FIELD IS OPTIONAL AND ITS DEFAULT IS THE EMPTY LIST, so a pipeline that declares no parameters is the pipeline it always was, and a consumer that constructs a PipelineSpec with `stages` alone keeps compiling. What breaks is the BINARY of a consumer compiled against the previous artifact, and this entry records that break with its exact keys.",
+        "THE OBLIGATION OF A PARAMETER IS NOT A FIELD: it is the absence of a default, and the validator reads that absence. A `required` flag would be a second way to say the same thing, and two ways to say it are two answers.",
+        "THE DECLARATION IS CARRIED AS DATA AND NEVER AS AUTHORITY: the DSL offers one function per type the product knows, and the rules that decide whether a value fits the declaration live in the validator, so the DSL and the checker cannot disagree about what a declaration means.",
+        "WHAT DID NOT CHANGE, measured on the regenerated dump: the classes of the authoring surface keep their names and their meaning, the DSL keeps its markers, and the only removed members are the constructor and the `copy` pair that the new field replaces.",
+        "THE INSTRUMENT IS THE ABI GATE, not a hand-written dump: the baseline was regenerated with `:pipeline-scripting-api:apiDump` and `:pipeline-scripting-api:apiCheck` reads it green. The second reading of the published ABI (`:pipeline-release:publishedApiCompatibility`, candidate 0.95.0 against the published 0.94.2) reported exactly these three removals as the unauthorized breaks of this module, and every other module COMPATIBLE.",
+        "THE SHA IS THE COMMIT THAT CARRIES THE REGENERATED DUMP, and not the one that introduced the field: the claim this entry makes is about the DUMP, and a reader has to be able to VERIFY it at the SHA, with `git show <sha>:pipelinek/pipeline-scripting-api/api/pipeline-scripting-api.api`."
+      ],
+      "removal_boundary": "the published surface keeps PipelineSpec with its stages and with the declarations the pipeline accepts, and the obligation of a parameter stays derived from the absence of a default. What this entry does NOT authorize: a change of the meaning of the `stages` field, a second way of declaring the parameters of a pipeline, the interpretation of a type inside this module, or the removal of any other published member of this artifact.",
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.76.0",
+        "0.77.0",
+        "0.78.0",
+        "0.79.0",
+        "0.80.0",
+        "0.81.0",
+        "0.82.0",
+        "0.83.0",
+        "0.84.0",
+        "0.85.0",
+        "0.86.0",
+        "0.87.0",
+        "0.88.0",
+        "0.89.0",
+        "0.90.0",
+        "0.91.0",
+        "0.92.0",
+        "0.93.0",
+        "0.94.0",
+        "0.94.1",
+        "0.94.2",
+        "0.95.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/dsl/PipelineSpec#<init>(Ljava/util/List;)V",
+        "dev/rubentxu/pipeline/v2/dsl/PipelineSpec#copy(Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/PipelineSpec;",
+        "dev/rubentxu/pipeline/v2/dsl/PipelineSpec#copy$default(Ldev/rubentxu/pipeline/v2/dsl/PipelineSpec;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/PipelineSpec;"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.76.0..v0.95.0: every one of them publishes these removals, and the candidate's published surface does not. The class PipelineSpec appears for the first time in the committed baseline of v0.76.0-rc1, and the baseline of v0.95.0 is byte-identical to the one of v0.94.2, so every published version from 0.76.0 to 0.95.0 carries them. The candidates publish under the plain number: the tags v0.92.0-rc1 and v0.93.0-rc1 state 0.92.0 and 0.93.0."
+    },
+    {
+      "module": "pipeline-service-client",
+      "sha": "bc6009f72",
+      "surface": "the request ServiceRequest.StartRun, the two fields `parameters` and `parameterContract` it gained; the new request ServiceRequest.DescribeParameters; the new refusal ServiceRefusal.ParametersRefused, whose word is `parameters-refused`; and the new operation ServiceClient.describeParameters",
+      "change": "added two fields to the published class ServiceRequest.StartRun —`parameters`, a map of names to plain texts, and `parameterContract`, the list of the declarations the client knows the pipeline has— added one case to the sealed interface ServiceRequest (DescribeParameters) and one case to the sealed interface ServiceRefusal (ParametersRefused, whose word is `parameters-refused`), and added the classes and the operation that carry them. The line of the wire gained the OPTIONAL fields `parameters` and `parameterContract` inside the operation `run.start`, and the operation `describe.parameters`, whose request carries a script and whose answer is a REFUSAL on a service that does not compile the scripts it is asked about. A `parameters` that is not an object of texts, a `parameterContract` that is not an array, or a type that is not a text, are refused as `malformed-request` by the codec, which is the word for the SHAPE of a line; the RULES of a parameter are refused by the service with the new word `parameters-refused` and the reason inside it. The regenerated dump differs from the previous one in 52 added and 6 removed lines: the removed ones are the five-argument constructor of ServiceRequest.StartRun, the synthetic constructor that carries the default marker, the `copy`/`copy$default` pair of that class, and the previous four-argument signature of ServiceClient.startRun. This is a BINARY break as well as a source one, and it is the price of fields that travel in a request that a consumer may already construct.",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "THE ARTIFACT HAS NEVER BEEN PUBLISHED, measured and not assumed: no tag of the repository names a path of `service-client` (the scan of every `v0.*` tag finds none), and the module was created after the last published train. There is therefore NO published consumer of the surface this entry describes, which is why the entry carries no `applies_to_versions`, no `authorized_removals` and no evidence: an entry without those three approves nothing, because the reader of the ledger closes on all three. This entry is the RECEIPT of a decision that was taken deliberately, not a permission to break anything.",
+        "WHAT THE DECISION IS: the wire can carry WHAT THE PARAMETERS OF A RUN ARE, and it can ASK for the description of them. A client that starts a run over the socket had no way to say anything about the values the pipeline expects, and the only contract it could reach was the one of the machine that happened to run the service.",
+        "THE CONTRACT TRAVELS BECAUSE THE SERVICE DOES NOT COMPILE THE SCRIPT. The service launches a child process per run, and the child is the one that compiles the script; describing a script inside the service would be running the author's code there. So the client carries the declaration it knows, the service checks the values against it to refuse early, and the CHILD checks them against the declaration of the script, which is the truth. The contract that travels is DATA and not authority, and the wire says so in the refusal of a request that delivers values without one (`the-service-has-no-contract-for-these-parameters`).",
+        "ONE NEW WORD WITH THE REASONS INSIDE IT, and not one word per rule: the reasons are what a client reads to decide whether it retries, and a vocabulary that grew with the rules would multiply the published words without giving the client more power. The shape of a line is a different fact from the rules of a parameter, and it keeps its own word (`malformed-request`).",
+        "THE OPERATION `describe.parameters` IS IN THE VOCABULARY AND THE SERVICE REFUSES IT, and that is deliberate: a build that can describe a script —one that admits an artifact that was authorized beforehand— answers the same request, and a client written against the name works with both. A client that had no way to ask could only find out by starting a run and reading the operator's log.",
+        "THE VALUES ARE A PUBLIC CHANNEL AND THE ARTIFACT SAYS SO. There is no oracle that tells a secret from a plain text, so the wire cannot promise to keep one: the values are in the snapshot the service owns and in whatever the run prints. What the wire DOES refuse, by name, is the vocabulary of the product and the shape of the declaration.",
+        "WHAT DID NOT CHANGE, measured on the regenerated dump: the schema of the protocol is still `pipelinek.service/2`, the `run.state` document is the same document, and the vocabulary of the scope stays OUT of this surface.",
+        "THE INSTRUMENT IS THE ABI GATE, not a hand-written dump: the baseline was regenerated with `:pipeline-service-client:apiDump` and `:pipeline-service-client:apiCheck` reads it green."
+      ],
+      "removal_boundary": "the wire this artifact publishes keeps the start operation with the two OPTIONAL fields it carries, the refusal word `parameters-refused` and the operation `describe.parameters`; the scope vocabulary stays OUT of it, and the rules of a parameter travel as reasons INSIDE that one word and not as a word each. What this entry does NOT authorize: a change of the shape of a published request beyond those two OPTIONAL fields, the removal or the renaming of a published refusal word, the growth of the published vocabulary with one word per rule of the parameters, or a change of the `run.state` document.",
+      "supersedes": null
     }
   ]
 }

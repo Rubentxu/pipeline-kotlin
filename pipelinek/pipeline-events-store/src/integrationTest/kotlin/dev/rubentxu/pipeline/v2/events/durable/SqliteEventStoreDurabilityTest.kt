@@ -1,8 +1,13 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.events.RunStarted
+import java.lang.reflect.Proxy
 import java.nio.file.Path
+import java.sql.Connection
+import java.sql.SQLException
 import java.time.Instant
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -80,6 +85,72 @@ class SqliteEventStoreDurabilityTest {
         } finally {
             store.close()
         }
+    }
+
+    @Test
+    fun `the barrier of a fact committed before the lane died does not fail`() {
+        val file = tempDir.resolve("pipeline.db").toString()
+        // The disk goes away under the lane: the COMMIT fails and the lane
+        // dies with it. The door is the store's own, and the failure is
+        // staged at the COMMIT —the one step that decides whether the facts
+        // of the batch are in the log— and not at the insert, which the
+        // engine refuses per fact.
+        val diskGone = AtomicBoolean(false)
+        val door = {
+            val connection = openEventStoreConnection(file, EventStoreMode.Writable)
+            Proxy.newProxyInstance(
+                Connection::class.java.classLoader,
+                arrayOf<Class<*>>(Connection::class.java),
+            ) { _, method, args ->
+                if (method.name == "commit" && diskGone.get()) {
+                    throw SQLException("the disk went away")
+                }
+                method.invoke(connection, *(args ?: emptyArray()))
+            } as Connection
+        }
+        val store = SqliteEventStore(file, EventStoreMode.Writable, connections = door)
+        try {
+            // A fact of its own, committed and visible to a reader.
+            store.append(started("event-1").copy(sequence = 7L))
+            store.flush()
+
+            // The lane dies on the NEXT fact. The death is on a LATER fact
+            // than the one above, and that is the whole shape of the window:
+            // the facts committed before the death survive it, and they are
+            // durable.
+            diskGone.set(true)
+            store.append(started("event-2").copy(sequence = 8L))
+            awaitDeadLane(store)
+
+            // The barrier of the committed fact must NOT fail. A barrier that
+            // failed here would answer "the storage failed" about a run that
+            // IS closed, and the next cancellation of that run would answer
+            // "already cancelled": two contradictory answers about the same
+            // run.
+            store.makeDurable("event-1")
+        } finally {
+            // The close of a store whose lane is dead reports the death, and
+            // this row is about the barrier, not about the close.
+            runCatching { store.close() }
+        }
+    }
+
+    /**
+     * Waits until the lane that writes is dead.
+     *
+     * The death is observable in the NEXT append: a lane that is dead
+     * refuses to enqueue, because it will never write what was enqueued.
+     * The wait is bounded, because a lane that did not die would leave this
+     * row measuring nothing.
+     */
+    private fun awaitDeadLane(store: SqliteEventStore) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        while (System.nanoTime() < deadline) {
+            val appended = runCatching { store.append(started("event-3").copy(sequence = 9L)) }
+            if (appended.exceptionOrNull() is IllegalStateException) return
+            Thread.sleep(10)
+        }
+        throw AssertionError("the lane that writes did not die")
     }
 
     @Test

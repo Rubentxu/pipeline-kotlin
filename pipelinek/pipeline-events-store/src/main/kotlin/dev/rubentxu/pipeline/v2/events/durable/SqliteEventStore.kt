@@ -167,6 +167,19 @@ class SqliteEventStore(
      * the store says nothing about it: the lane still reports it at the next
      * barrier, and the producer that owns it hears it there.
      *
+     * ## Why a DEAD lane is asked about the fact too
+     *
+     * Because a lane that dies on a LATER fact leaves the facts it committed
+     * before it there, durable and visible. A barrier that answered "the lane
+     * is dead" about a fact a reader can see would say "your fact is missing"
+     * about a fact that is in the log, and the producer would answer its
+     * caller that the write failed — while the run it closed is closed. The
+     * two answers would contradict each other about the same fact, which is
+     * the one thing a barrier may not do.
+     *
+     * So when the lane is dead, the store asks the READER whether the fact
+     * is there. A fact a reader can see is durable, and the barrier says so.
+     *
      * ## What a failure means
      *
      * That THIS fact is not in the log. The caller that asked for the fact to
@@ -177,6 +190,10 @@ class SqliteEventStore(
             flush()
         } catch (refused: EventAppendRefusedException) {
             if (refused.refusals.any { it.event.eventId == eventId }) throw refused
+        } catch (dead: IllegalStateException) {
+            // The lane is dead and it may have died on a later fact. The
+            // reader decides whether THIS fact survived it.
+            if (!reader.containsEvent(eventId)) throw dead
         }
     }
 

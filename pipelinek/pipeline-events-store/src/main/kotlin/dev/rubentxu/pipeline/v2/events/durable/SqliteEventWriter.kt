@@ -130,11 +130,51 @@ internal class SqliteEventWriter(
     }
 
     /**
+     * The counter of [runId], seeded from the durable truth when this
+     * instance has never written for that run.
+     *
+     * A run that APPEARS after the store was opened has no counter here: a
+     * run another process started (the child of a run this service
+     * supervised, a run the operator launched elsewhere), a run whose
+     * history is already in the database. A counter that starts at zero
+     * would restart that run's history at 1 and collide with the facts that
+     * are already durable, so the counter of a lane this instance has never
+     * touched is seeded from the same truth the counters present at
+     * construction are seeded from.
+     *
+     * The seed is read once per lane: the counter is then the authority,
+     * and the later appends advance it monotonically.
+     */
+    private fun counterFor(runId: String): AtomicLong {
+        sequenceCounters[runId]?.let { return it }
+        val seeded = AtomicLong(durableMaxSequence(runId))
+        return sequenceCounters.putIfAbsent(runId, seeded) ?: seeded
+    }
+
+    /**
+     * The durable MAX(sequence) of [runId], or zero when the run has no
+     * events yet.
+     */
+    private fun durableMaxSequence(runId: String): Long {
+        val conn = connections()
+        return try {
+            conn.prepareStatement("SELECT MAX(sequence) FROM events WHERE run_id = ?").use { stmt ->
+                stmt.setString(1, runId)
+                stmt.executeQuery().use { rs ->
+                    if (rs.next()) rs.getLong(1) else 0L
+                }
+            }
+        } finally {
+            conn.close()
+        }
+    }
+
+    /**
      * Seeds [sequenceCounters] with the durable per-run MAX(sequence) from
      * the events table. Called once at construction; later appends advance
      * the in-memory counters monotonically and persist through the normal
      * write path.
-*/
+    */
     private fun seedSequenceCounters() {
         val conn = connections()
         try {
@@ -170,8 +210,9 @@ internal class SqliteEventWriter(
     fun appendAssigned(event: DomainEvent): DomainEvent {
         writerError?.let { throw IllegalStateException("event writer failed earlier", it) }
         // Assign per-runId sequence eagerly (monotonic per run
-        // counters seeded from durable truth at construction).
-        val counter = sequenceCounters.computeIfAbsent(event.runId) { AtomicLong() }
+        // counters seeded from durable truth: the ones present at
+        // construction, and the one of a run that appears later).
+        val counter = counterFor(event.runId)
         val assignedSequence = if (event.sequence == 0L) {
             counter.incrementAndGet()
         } else {

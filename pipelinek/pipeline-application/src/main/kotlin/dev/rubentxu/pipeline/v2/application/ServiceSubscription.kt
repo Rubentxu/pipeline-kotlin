@@ -324,7 +324,12 @@ internal class ServiceSubscription(
             // until it has answered once. In the other rounds the decision is ReadAgain whatever
             // the plane says, and asking would be work whose result nobody reads —and the plane
             // is read from the run's history, so asking it is not free.
-            if (!askedThePlane || planeAnswerMatters(moreFrames, tails)) {
+            //
+            // And once the terminal fact has been OBSERVED the plane is not asked again: the
+            // answer is known, and asking could only cost a page per round —or kill the street
+            // with a row that the sweep never reached, because the reading has gone past the
+            // terminal fact.
+            if (!askedThePlane || (!terminalObserved && planeAnswerMatters(moreFrames, tails))) {
                 when (val execution = executionOfPage(request.runId, planeCursor)) {
                     is Execution.Failed -> {
                         connection.writeLine(refusedLine(execution.refusal))

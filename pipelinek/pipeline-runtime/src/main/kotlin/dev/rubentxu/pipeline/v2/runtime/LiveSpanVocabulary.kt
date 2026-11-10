@@ -68,6 +68,15 @@ object LiveSpanNames {
 
     /** The release of the run's output plane. */
     const val RELEASE: String = "pipelinek.release"
+
+    /** One question the local service answered. */
+    const val SERVICE_QUERY: String = "pipelinek.service.query"
+
+    /** One request of the local service that changes something. */
+    const val SERVICE_MUTATION: String = "pipelinek.service.mutation"
+
+    /** One subscription of the local service, for as long as it lasts. */
+    const val SERVICE_SUBSCRIPTION: String = "pipelinek.service.subscription"
 }
 
 /**

@@ -475,6 +475,10 @@ Telemetry is optional, and what it carries is **timing, counts and buckets — n
 
 The conventions are the OpenTelemetry CI/CD ones, pinned at `1.44.0` and declared a release candidate: the pin is part of what the product promises, and it is read from the product, not from the payload. Nothing is exported unless `PIPELINEK_OTEL_ENABLED=true`, and the endpoint, the protocol and the credentials come from the environment — so the same build points at a local Collector, at Tempo, at Jaeger or at nothing at all.
 
+The local service publishes through the same switch, and it measures what a CLIENT pays, not what happened to a run: that is in the Event Plane, and a second copy of it here could disagree with the first. Each request it serves is one span — `pipelinek.service.query`, `pipelinek.service.mutation` or `pipelinek.service.subscription` — and one measurement whose `operation_kind` is `service.query`, `service.mutation` or `service.subscription`. The `status` of the measurement says who has to act: `success`; `refused` when a rule of the service refused what the client asked (the span ends with `failure.class` `rejected`); `worker_error` when the store the service reads from failed or contradicted itself; and `cancelled` when the answer was never delivered, because the client went away or the service was stopping. The span of the last two ends with `failure.class` `failed`.
+
+A span carries `run.id` only when the request was authorized and named a run. A refused request is counted but never named, because a client that is not authorized chooses that text. The credential of the client, the id of an input question, the idempotency key, the script and the configuration of a start never travel, and `run.id` is never a dimension of a metric: it would make one series per run. The span of a request hangs from the session parent of the process, like every outermost span, so a service started with a well-formed `PIPELINEK_OTEL_TRACEPARENT` in its environment joins that trace. A subscription is measured for as long as its connection lives and ends coarsely: its stream returned, or it failed.
+
 ---
 
 ## Plugin ecosystem

@@ -8,10 +8,14 @@ import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreRefusal
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.runtime.InputQuestionLayout
+import dev.rubentxu.pipeline.v2.runtime.NoopPipelineTelemetry
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetry
+import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetryFactory
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The usage the `serve` verb prints when its request is refused.
@@ -242,18 +246,25 @@ internal sealed interface ServeComposition {
         val storePurpose: EventStorePurpose,
         val authorizationCount: Int,
         val credentials: CredentialProvider?,
+        val telemetry: PipelineTelemetry = NoopPipelineTelemetry,
     ) : ServeComposition {
 
+        private val telemetryClosed = AtomicBoolean(false)
+
         /**
-         * Stops the server, then the children it supervises, then the store, and the credential
-         * provider LAST: the children and the brokers that read from it are already gone.
-         * Idempotent in every piece it closes.
+         * Stops the server, then the children it supervises, then the store, then the credential
+         * provider, and the telemetry LAST: the requests that were answered while the service was
+         * stopping are the last thing it has to export. Idempotent in every piece it closes.
+         *
+         * The telemetry is closed ONCE even when the shutdown hook and the end of the verb both
+         * close the service: closing an exporter twice reports a loss that did not happen.
          */
         fun close() {
             server.close()
             supervisor.close()
             store.close()
             closeServiceCredentials(credentials)
+            if (telemetryClosed.compareAndSet(false, true)) runCatching { telemetry.close() }
         }
     }
 
@@ -282,6 +293,13 @@ internal sealed interface ServeComposition {
  * Because a refusal that leaves the store open leaves a writer thread
  * holding the operator's file, and the process that goes on serving would
  * hold a lock nobody asked it to hold.
+ *
+ * ## Why the telemetry is opened last, and from the operator's environment only
+ *
+ * Because it is the one piece nothing else depends on: a refusal before it
+ * has nothing to flush, and a service that was not told to export opens
+ * nothing. The opt-in is the one the engine already reads, and the service
+ * adds no switch of its own.
  */
 internal fun composeServiceToServe(
     substrate: ServeSubstrate,
@@ -291,6 +309,7 @@ internal fun composeServiceToServe(
     err: PrintStream,
     environment: Map<String, String> = System.getenv(),
     brokerOpening: (Map<String, String>) -> ServiceCredentialAccess = ::openServiceCredentialProvider,
+    telemetryOpening: (Map<String, String>) -> PipelineTelemetry = { PipelineTelemetryFactory.create(it) },
 ): ServeComposition {
     val storePurpose = if (authorizations.mayCancelAnyRun) {
         EventStorePurpose.Write
@@ -411,8 +430,27 @@ internal fun composeServiceToServe(
     // service on the same directory fails to bind above, and it must not remove the brokers of the
     // runs of the service that is alive.
     brokers.factory?.sweep()
-    val server = ServiceServer(transport, composition.operations, composition.streets, authorizations)
-    return ServeComposition.Composed(server, supervisor, store, storePurpose, authorizations.size, brokers.provider)
+    // The telemetry is opened last, once nothing can refuse the composition any more: a refusal
+    // before this line has nothing to flush. It is the operator's opt-in (`PIPELINEK_OTEL_ENABLED`)
+    // and without it the observer is the one that observes nothing.
+    val telemetry = telemetryOpening(environment)
+    val observer = if (telemetry.enabled) TelemetryServiceObserver(telemetry) else NoServiceObserver
+    val server = ServiceServer(
+        transport,
+        composition.operations,
+        composition.streets,
+        authorizations,
+        observer = observer,
+    )
+    return ServeComposition.Composed(
+        server,
+        supervisor,
+        store,
+        storePurpose,
+        authorizations.size,
+        brokers.provider,
+        telemetry,
+    )
 }
 
 /** Prints why the service does not start and gives the exit that says so. */

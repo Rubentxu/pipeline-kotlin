@@ -85,6 +85,17 @@ import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
  * a second opinion about the run's fate. A street that cannot say that the
  * terminal fact was observed does NOT end: it refuses, naming the fact that
  * stopped it.
+ *
+ * ## Why the socket REFUSES where the command line DEGRADES
+ *
+ * The decision that ends a street is the command line's, and both end it on
+ * the same fact. But the command line's lane can be one with NO event store at
+ * all, and such a lane still has to be able to end: degrading to the output
+ * lane's own authority is what lets a console-only follow finish on a sealed
+ * stream. The socket composes both authorities, and it has a vocabulary of
+ * refusals, so a run plane it cannot ask is a REFUSAL with a name and not a
+ * degradation that keeps reading. The two disagree on this one point, on
+ * purpose: a street that cannot decide must not wait for ever.
  */
 internal class ServiceSubscription(
     private val lanes: ObserveLanes,
@@ -117,6 +128,17 @@ internal class ServiceSubscription(
         request: ServiceSubscriptionRequest.EventsFollow,
     ) {
         var cursor: EventCursor? = request.after
+        // Whether the street has delivered a row already. The run plane is
+        // asked ONLY while the street has delivered NOTHING: the plane exists
+        // to tell the street that the client stands at the tail of a run
+        // that is already over, and once the street has delivered a row the
+        // terminal fact will be DELIVERED, not asked for.
+        //
+        // Asking after a delivery is not merely useless, it is dangerous: the
+        // lane's answer comes from a read that FAILS CLOSED on a row this
+        // binary cannot decode, and that read would stop a street that has
+        // already delivered that very row as a record.
+        var deliveredAnything = false
         // Whether the run plane has already been asked. It is asked ONCE, and
         // the reason is a proof, not an economy: the street asks at its first
         // quiet page, which is the moment its cursor stands at the tail. If
@@ -142,6 +164,7 @@ internal class ServiceSubscription(
                     val slice = read.slice
                     if (slice.records.isNotEmpty()) {
                         delivered = true
+                        deliveredAnything = true
                         slice.records.forEachIndexed { index, record ->
                             connection.writeLine(
                                 ServiceCodec.encodeRecord(
@@ -166,16 +189,26 @@ internal class ServiceSubscription(
                             )
                             return
                         }
-                    } else if (!askedAboutTheRun) {
+                    } else if (!deliveredAnything && !askedAboutTheRun) {
                         askedAboutTheRun = true
-                        if (runIsOver(request.runId)) {
-                            connection.writeLine(
-                                ServiceCodec.encodeEnd(
-                                    ServiceEndReason.TerminalObserved,
-                                    (cursor ?: EventCursor(request.runId, 0L)).encode(),
-                                ),
-                            )
-                            return
+                        when (val execution = executionOf(request.runId)) {
+                            is Execution.Failed -> {
+                                // The plane refused to answer and the street cannot answer
+                                // either, so it refuses with the plane's own word instead of
+                                // claiming a terminal fact nobody observed.
+                                connection.writeLine(refusedLine(execution.refusal))
+                                return
+                            }
+                            is Execution.Answered.Over -> {
+                                connection.writeLine(
+                                    ServiceCodec.encodeEnd(
+                                        ServiceEndReason.TerminalObserved,
+                                        (cursor ?: EventCursor(request.runId, 0L)).encode(),
+                                    ),
+                                )
+                                return
+                            }
+                            is Execution.Answered.Going -> Unit
                         }
                     }
                 }
@@ -192,6 +225,12 @@ internal class ServiceSubscription(
      *
      * The street reads a page at a time and writes each record as it goes,
      * so a street that the client stops reading holds no more than one page.
+     *
+     * The street ends with a WORD whenever it cannot go on: a run that does
+     * not exist is refused by name, a run plane that cannot be asked is
+     * refused by name, and a run plane that refused to answer at all is
+     * refused by name too. It never closes in silence, and it never waits
+     * for a console that is not going to arrive.
      */
     private fun serveOutput(
         connection: ServiceConnection,
@@ -199,6 +238,15 @@ internal class ServiceSubscription(
     ) {
         var afterOrdinal = request.after
         var cursor = FrameOrdinalToken.encode(afterOrdinal)
+        // Whether the street has delivered a frame already. A frame IS the proof that the run
+        // exists: the console of a run that does not exist is empty. So the question about the
+        // existence is asked ONLY while the street has delivered nothing, and a run that has a
+        // console is never refused for not existing.
+        var deliveredAnything = false
+        // Whether the street has already asked whether the run exists. It asks ONCE, and the
+        // reason is a proof, not an economy: a run nobody declared and that holds no rows is not
+        // going to declare itself later, and a run that exists keeps existing.
+        var askedAboutTheRun = false
         while (true) {
             var moreFrames = false
             when (val read = lanes.outputOf(request.runId, afterOrdinal, FRAMES_PER_READ)) {
@@ -213,6 +261,7 @@ internal class ServiceSubscription(
                 is ObservationOutputRead.Page -> {
                     val page = read.page
                     moreFrames = page.moreFrames
+                    if (page.records.isNotEmpty()) deliveredAnything = true
                     page.records.forEachIndexed { index, record ->
                         connection.writeLine(
                             ServiceCodec.encodeRecord(
@@ -232,28 +281,41 @@ internal class ServiceSubscription(
             // Two authorities, asked separately: the tails say whether more BYTES can arrive, and
             // the run plane says whether the run ended at all. The decision is the command line's,
             // so the socket and the command line end a street at the same moment for the same
-            // reason.
+            // reason — but the socket does not DEGRADE a plane it cannot ask: it refuses, because
+            // a street that cannot decide cannot wait for ever.
             val tails = lanes.outputTailsOf(request.runId).orEmpty()
-            val runPlane = lanes.runPlaneOf(request.runId)
-            when (followDecision(moreFrames, tails, runPlane)) {
-                FollowDecision.ReadAgain -> {
-                    if (!moreFrames && !idle()) return
+            when (val execution = executionOf(request.runId)) {
+                is Execution.Failed -> {
+                    connection.writeLine(refusedLine(execution.refusal))
+                    return
                 }
-                FollowDecision.Finished -> when (runPlane) {
-                    RunPlane.Completed -> {
+                is Execution.Answered -> when (
+                    followDecision(moreFrames, tails, execution.plane)
+                ) {
+                    FollowDecision.ReadAgain -> {
+                        // The street is about to WAIT, and waiting for the console of a run that
+                        // does not exist is the hole this street closes. The question is asked
+                        // only while the street has delivered NOTHING: a frame is the proof
+                        // that the run exists, and a street that already served the console
+                        // cannot be told that the run does not exist.
+                        if (!deliveredAnything && !askedAboutTheRun) {
+                            askedAboutTheRun = true
+                            when (val existence = existenceOf(request.runId)) {
+                                is Existence.Refused -> {
+                                    connection.writeLine(refusedLine(existence.refusal))
+                                    return
+                                }
+                                Existence.Known -> Unit
+                            }
+                        }
+                        if (!moreFrames && !idle()) return
+                    }
+                    // The decision can only be FINISHED when the plane says the run is over, so
+                    // the terminal fact was observed and the street ends saying so.
+                    FollowDecision.Finished -> {
                         connection.writeLine(
                             ServiceCodec.encodeEnd(ServiceEndReason.TerminalObserved, cursor),
                         )
-                        return
-                    }
-                    // The run plane says the run is still going while the output says it is
-                    // final: the decision cannot be taken at face value, and the safe direction
-                    // is to keep reading.
-                    RunPlane.Live -> Unit
-                    // The execution authority could not be reached, so this street cannot say
-                    // that the run's terminal fact was observed. It refuses instead of ending.
-                    RunPlane.Unavailable -> {
-                        connection.writeLine(refusedLine(ServiceRefusal.NotConfiguredEventPlane))
                         return
                     }
                 }
@@ -262,17 +324,117 @@ internal class ServiceSubscription(
     }
 
     /**
-     * Whether the run plane says that [runId] is over.
+     * Whether [runId] names a run this instance knows.
      *
-     * A run plane that cannot answer is not a run plane that says "no": the
-     * street refuses, because a street that ended on an unanswered question
-     * would be claiming a terminal fact nobody observed.
+     * The question goes to the READ PORT, because its refusal IS that
+     * distinction: the port asks the event store AND the authority that
+     * declares a run, and it refuses `unknown-run` only when both say no.
+     *
+     * The output plane cannot answer it — it knows STREAMS, not runs — and
+     * the run plane cannot either: it answers about the rows of the run, and
+     * a run nobody wrote a row in looks exactly like a run that does not
+     * exist.
+     *
+     * The question carries a `null` cursor because it asks whether the run
+     * exists, not what is behind the position the client resumed from.
+     *
+     * The port's contract does NOT promise that it never throws, so the
+     * street guards the call: an exception here would leave the street
+     * without a word, which is the one thing this street exists to avoid.
      */
-    private fun runIsOver(runId: String): Boolean = try {
-        lanes.runPlaneOf(runId) == RunPlane.Completed
-    } catch (_: Exception) {
-        // The run plane refused to answer, and the street cannot answer either.
-        false
+    private fun existenceOf(runId: String): Existence = try {
+        when (val read = events.readRecords(
+            runId = runId,
+            after = null,
+            query = EventQuery.All,
+            limit = 1,
+        )) {
+            is EventRecordReadResult.Page -> Existence.Known
+            is EventRecordReadResult.Refused -> Existence.Refused(refusalOf(read.refusal))
+        }
+    } catch (failure: Exception) {
+        Existence.Refused(ServiceRefusal.StorageFailed(failure.shortDiagnostic()))
+    }
+
+    /**
+     * What the execution authority says about [runId].
+     *
+     * The plane has three answers and can throw a fourth fact on top of
+     * them, and the street turns them into two: an answer it can act on, or
+     * a refusal it can name. A plane that cannot be asked is NOT a plane that
+     * says "no": a street that ended on an unanswered question would be
+     * claiming a terminal fact nobody observed, and a street that kept
+     * reading on it would wait for ever.
+     */
+    private fun executionOf(runId: String): Execution = try {
+        when (lanes.runPlaneOf(runId)) {
+            RunPlane.Completed -> Execution.Answered.Over
+            RunPlane.Live -> Execution.Answered.Going
+            RunPlane.Unavailable -> Execution.Failed(ServiceRefusal.NotConfiguredEventPlane)
+        }
+    } catch (failure: Exception) {
+        Execution.Failed(ServiceRefusal.StorageFailed(failure.shortDiagnostic()))
+    }
+
+    /**
+     * What the street learned about the run's execution.
+     *
+     * The street's own vocabulary, and deliberately NOT the plane's: the
+     * plane's third answer —that it cannot be asked— is a REFUSAL here, not
+     * a state to keep reading in.
+     */
+    private sealed interface Execution {
+
+        /**
+         * The authority answered, and the run is either over or going.
+         *
+         * The two states are named here and not borrowed from the plane, so
+         * that the plane's third answer —the one that is a refusal and not a
+         * state— can never be carried by an answer.
+         */
+        sealed interface Answered : Execution {
+
+            /** The plane this answer means for the shared decision. */
+            val plane: RunPlane
+
+            /** The run reached a terminal state. */
+            data object Over : Answered {
+                override val plane: RunPlane = RunPlane.Completed
+            }
+
+            /** The run is still going. */
+            data object Going : Answered {
+                override val plane: RunPlane = RunPlane.Live
+            }
+        }
+
+        /** The authority could not answer, and [refusal] is the word the street refuses with. */
+        data class Failed(val refusal: ServiceRefusal) : Execution
+    }
+
+    /**
+     * Whether a run exists, as the street learned it.
+     */
+    private sealed interface Existence {
+
+        /** The run exists. */
+        data object Known : Existence
+
+        /** The run does not exist, or the authority that says so could not answer. */
+        data class Refused(val refusal: ServiceRefusal) : Existence
+    }
+
+    /**
+     * What the failure says about itself, in one line.
+     *
+     * The name of the failure and its own words, without the stack: a
+     * diagnostic that has to be read in a log is a diagnostic that nobody
+     * reads.
+     */
+    private fun Throwable.shortDiagnostic(): String {
+        val cls = this::class.simpleName ?: this.javaClass.name
+        val msg = message?.take(120)?.replace('\r', ' ')?.replace('\n', ' ')
+        return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
 
     /**

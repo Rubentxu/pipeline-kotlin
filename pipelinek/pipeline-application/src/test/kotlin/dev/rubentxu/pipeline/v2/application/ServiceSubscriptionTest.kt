@@ -26,8 +26,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import dev.rubentxu.pipeline.v2.service.ServiceProtocol
 import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
 
@@ -63,7 +65,15 @@ import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
  * The transport that carries the lines, and whether the real authorities
  * answer the way these fakes say they do. That is what the integration lane
  * is for.
+ *
+ * ## Why every row carries a time limit
+ *
+ * A street that cannot decide waits, and a waiting street never fails: it
+ * hangs, and a hang is a lost lane, not a red one. The limit is on the class
+ * so that EVERY row can turn that hang into a red row —a defect that stops a
+ * street from ending has to be a datum, not a lost lane.
  */
+@Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
 class ServiceSubscriptionTest {
 
     @Test
@@ -340,6 +350,334 @@ class ServiceSubscriptionTest {
     }
 
     @Test
+    fun `the console street refuses a run nobody knows by name`() {
+        // The console of a run that does not exist. Nothing in the output lane says so: the
+        // output plane answers an empty page and the run plane says the run is live, because a
+        // run nobody wrote a row in looks exactly like a run that is still going. Only the read
+        // port knows the difference, and its refusal is the name the street carries.
+        val port = ScriptedEventPort { _ ->
+            EventRecordReadResult.Refused(EventRecordReadRefusal.UnknownRun("run-1"))
+        }
+        val lanes = FakeLanes(
+            output = ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+            ),
+            tails = listOf(OutputTailState.Sealed(5L)),
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        val frames = connection.frames()
+        assertEquals(1, frames.size, "the street refused and ended: $frames")
+        assertEquals("refused", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "unknown-run",
+            frames[0]["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+            "the refusal names the fact that stopped the street",
+        )
+    }
+
+    @Test
+    fun `a console that already delivered frames is not asked whether the run exists`() {
+        // The run has a console, so it exists. The street that delivered a frame has already
+        // answered the question, and it does not ask it: a run whose frames were published took
+        // its lease in the same control root, so the read port knows it.
+        //
+        // The row has the street DELIVER a frame and then go quiet, because a street that ends
+        // in the round that delivered never reaches the question at all. A street that asked
+        // there would answer the client with a refusal that contradicts the transcript it just
+        // delivered.
+        var asked = 0
+        val port = ScriptedEventPort { _ ->
+            asked++
+            EventRecordReadResult.Refused(EventRecordReadRefusal.UnknownRun("run-1"))
+        }
+        val lanes = FakeLanes(
+            outputs = listOf(
+                ObservationOutputRead.Page(
+                    ObservationOutputPage(
+                        records = listOf(frame(0L, "hello")),
+                        lastOrdinal = 0L,
+                        moreFrames = false,
+                    ),
+                ),
+                ObservationOutputRead.Page(
+                    ObservationOutputPage(records = emptyList(), lastOrdinal = 0L, moreFrames = false),
+                ),
+            ),
+            planes = listOf(RunPlane.Live, RunPlane.Completed),
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        assertEquals(0, asked, "the street did not ask whether the run exists")
+        val frames = connection.frames()
+        assertEquals(2, frames.size, "the street delivered the frame and ended: $frames")
+        assertEquals("record", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals("end", frames[1]["kind"]?.jsonPrimitive?.content)
+        assertEquals("terminal-observed", frames[1]["reason"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `a console of a run that is over ends without asking whether it exists`() {
+        // The run is over and the client resumed past its console: the street ends on the
+        // terminal fact it observed. It does not ASK whether the run exists, because it is not
+        // going to wait for anything, and a question it does not need is a chance to answer the
+        // client with a refusal where the honest answer is an end.
+        val port = ScriptedEventPort { _ ->
+            EventRecordReadResult.Refused(EventRecordReadRefusal.UnknownRun("run-1"))
+        }
+        val lanes = FakeLanes(
+            output = ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+            ),
+            tails = listOf(OutputTailState.Sealed(5L)),
+            runPlane = RunPlane.Completed,
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        assertEquals(0, port.calls.size, "the street did not ask: it was going to end")
+        val frames = connection.frames()
+        assertEquals(1, frames.size, "the street ended with the terminal fact: $frames")
+        assertEquals("end", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals("terminal-observed", frames[0]["reason"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `the question about the existence asks for one row and no cursor`() {
+        // The question asks whether the run EXISTS, so it carries no cursor: the cursor of the
+        // client is a position in the console, and the cursor of the port is a position in the
+        // events. A question that carried the client's cursor would be refused with the wrong
+        // word, and a question that asked for the run's whole history would cost a read it does
+        // not need.
+        val port = ScriptedEventPort { _ ->
+            EventRecordReadResult.Refused(EventRecordReadRefusal.UnknownRun("run-1"))
+        }
+        val lanes = FakeLanes(
+            output = ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+            ),
+            tails = listOf(OutputTailState.Sealed(5L)),
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        assertEquals(1, port.calls.size, "the street asked once")
+        val call = port.calls.single()
+        assertNull(call.after, "the question does not carry a cursor")
+        assertEquals(EventQuery.All, call.query, "the question is not filtered")
+        assertEquals(1, call.limit, "the question needs one row, not the run's whole history")
+    }
+
+    @Test
+    fun `a run whose console arrives late is not refused`() {
+        // The first round finds nothing, and that is the moment the street asks whether the run
+        // exists. The run does exist, so the street waits and the console arrives. A street that
+        // refused a quiet run would refuse every run that has not spoken yet.
+        val port = ScriptedEventPort { _ -> page(emptyList(), 0L) }
+        val lanes = FakeLanes(
+            outputs = listOf(
+                ObservationOutputRead.Page(
+                    ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+                ),
+                ObservationOutputRead.Page(
+                    ObservationOutputPage(
+                        records = listOf(frame(0L, "hello")),
+                        lastOrdinal = 0L,
+                        moreFrames = false,
+                    ),
+                ),
+            ),
+            planes = listOf(RunPlane.Live, RunPlane.Completed),
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        val frames = connection.frames()
+        assertEquals(2, frames.size, "the street delivered the late frame and ended: $frames")
+        assertEquals("record", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals("hello", frames[0]["record"]?.jsonObject?.get("text")?.jsonPrimitive?.content)
+        assertEquals("end", frames[1]["kind"]?.jsonPrimitive?.content)
+        assertEquals("terminal-observed", frames[1]["reason"]?.jsonPrimitive?.content)
+        assertEquals(
+            1,
+            port.calls.size,
+            "the street asked about the existence ONCE, and not on every round",
+        )
+    }
+
+    @Test
+    fun `a console whose run plane throws is refused by name`() {
+        // The run plane is there and could not answer. The street cannot end on a fact nobody
+        // observed, and it cannot wait for ever either, so it refuses with the word that names
+        // the failure — and the word carries the cause.
+        val port = ScriptedEventPort { _ -> page(emptyList(), 0L) }
+        val lanes = FakeLanes(
+            output = ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+            ),
+            tails = listOf(OutputTailState.Sealed(5L)),
+            planeFailure = IllegalStateException("the store is gone"),
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        val frames = connection.frames()
+        assertEquals(1, frames.size, "the street refused and ended: $frames")
+        assertEquals("refused", frames[0]["kind"]?.jsonPrimitive?.content)
+        val refusal = frames[0]["refusal"]?.jsonObject
+        assertEquals("storage-failed", refusal?.get("kind")?.jsonPrimitive?.content)
+        assertEquals(
+            "IllegalStateException: the store is gone",
+            refusal?.get("cause")?.jsonPrimitive?.content,
+            "the cause says what failed, so the word alone does not have to",
+        )
+    }
+
+    @Test
+    fun `a console whose run plane cannot be asked is refused by name`() {
+        // The run plane has no execution authority to ask. That is not the same fact as a
+        // failure: there is nobody to fail, so the word says there is no plane.
+        val port = ScriptedEventPort { _ -> page(emptyList(), 0L) }
+        val lanes = FakeLanes(
+            output = ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+            ),
+            tails = listOf(OutputTailState.Sealed(5L)),
+            runPlane = RunPlane.Unavailable,
+        )
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        val frames = connection.frames()
+        assertEquals(1, frames.size, "the street refused and ended: $frames")
+        assertEquals("refused", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "not-configured-event-plane",
+            frames[0]["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
+    fun `the events street does not consult the plane once it has delivered a row`() {
+        // The lane's answer comes from a read that FAILS CLOSED on a row this binary cannot
+        // decode, and that row is the one the street just delivered as a record. A street that
+        // asked the plane after delivering it would die with a word about the store, and the
+        // client would lose the rest of a run that is still going. The terminal fact will be
+        // DELIVERED, so the plane is not needed.
+        val port = ScriptedEventPort { call ->
+            when (call) {
+                0 -> page(listOf(EventRecordRead.Decoded(runStarted(1L))), lastSequence = 1L)
+                1 -> page(emptyList(), lastSequence = 1L)
+                else -> error("the port went away")
+            }
+        }
+        val lanes = FakeLanes(planeFailure = IllegalStateException("the store is gone"))
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        val failure = runCatching {
+            subscription.serve(
+                connection,
+                ServiceSubscriptionRequest.EventsFollow(ServiceProtocol.SCHEMA, "run-1", null),
+            )
+        }.exceptionOrNull()
+
+        assertEquals(
+            "the port went away",
+            failure?.message,
+            "the street kept reading: it reached the port's next round instead of the plane",
+        )
+        assertTrue(
+            connection.frames().none { it["kind"]?.jsonPrimitive?.content == "refused" },
+            "the street did not refuse: ${connection.frames()}",
+        )
+    }
+
+    @Test
+    fun `the events street names the failure of the run plane too`() {
+        // The same failure, in the other street. The two streets refuse with the same word
+        // because there is ONE translation, and a client that gets a name in one street gets
+        // the same name in the other.
+        val port = ScriptedEventPort { _ -> page(emptyList(), 0L) }
+        val lanes = FakeLanes(planeFailure = IllegalStateException("the store is gone"))
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.EventsFollow(ServiceProtocol.SCHEMA, "run-1", null),
+        )
+
+        val frames = connection.frames()
+        assertEquals(1, frames.size, "the street refused and ended: $frames")
+        assertEquals("refused", frames[0]["kind"]?.jsonPrimitive?.content)
+        val refusal = frames[0]["refusal"]?.jsonObject
+        assertEquals("storage-failed", refusal?.get("kind")?.jsonPrimitive?.content)
+        assertEquals(
+            "IllegalStateException: the store is gone",
+            refusal?.get("cause")?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
+    fun `the events street names a run plane that cannot be asked`() {
+        val port = ScriptedEventPort { _ -> page(emptyList(), 0L) }
+        val lanes = FakeLanes(runPlane = RunPlane.Unavailable)
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(lanes = lanes, events = port)
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.EventsFollow(ServiceProtocol.SCHEMA, "run-1", null),
+        )
+
+        val frames = connection.frames()
+        assertEquals(1, frames.size, "the street refused and ended: $frames")
+        assertEquals("refused", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "not-configured-event-plane",
+            frames[0]["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
     fun `bytes that are not text travel whole and the channel stays distinguishable`() {
         // The process wrote bytes that are not valid UTF-8. A projection that
         // replaced them with U+FFFD would hand the client a character the
@@ -490,12 +828,20 @@ class ServiceSubscriptionTest {
         private val answer: (Int) -> EventRecordReadResult,
     ) : EventRecordReadPort {
         private var call = 0
+
+        /** The parameters of every call, in order: the shape of the question is part of it. */
+        val calls = mutableListOf<Call>()
+
+        /** One call to the port. */
+        data class Call(val after: EventCursor?, val query: EventQuery, val limit: Int)
+
         override fun readRecords(
             runId: String,
             after: EventCursor?,
             query: EventQuery,
             limit: Int,
         ): EventRecordReadResult {
+            calls.add(Call(after, query, limit))
             val index = call
             call++
             return answer(index)
@@ -504,17 +850,41 @@ class ServiceSubscriptionTest {
 
     /**
      * The lanes, faked.
+     *
+     * @param output the page every round answers, when [outputs] is empty.
+     * @param outputs the pages the rounds answer, in order; the last one answers every round
+     *   after it. A lane that answers differently on the second round is how a test says "the
+     *   console arrives late".
+     * @param planes the answers the run plane gives, in order, when [planes] is not empty.
+     * @param planeFailure the failure the run plane throws, when it cannot answer at all.
      */
     private class FakeLanes(
         private val output: ObservationOutputRead? = null,
+        private val outputs: List<ObservationOutputRead?> = emptyList(),
         private val tails: List<OutputTailState?> = emptyList(),
         private val runPlane: RunPlane = RunPlane.Live,
+        private val planes: List<RunPlane> = emptyList(),
+        private val planeFailure: Throwable? = null,
     ) : ObserveLanes {
+        private var outputRounds = 0
+        private var planeRounds = 0
         override val hasEventStore: Boolean get() = true
         override val hasOutputPlane: Boolean get() = true
         override fun eventsOf(runId: String): Sequence<DomainEvent> = emptySequence()
-        override fun runPlaneOf(runId: String): RunPlane = runPlane
-        override fun outputOf(runId: String, afterOrdinal: Long, frameLimit: Int) = output
+        override fun runPlaneOf(runId: String): RunPlane {
+            val failure = planeFailure
+            if (failure != null) throw failure
+            if (planes.isEmpty()) return runPlane
+            val round = planeRounds
+            planeRounds++
+            return planes[round.coerceAtMost(planes.size - 1)]
+        }
+        override fun outputOf(runId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead? {
+            if (outputs.isEmpty()) return output
+            val round = outputRounds
+            outputRounds++
+            return outputs[round.coerceAtMost(outputs.size - 1)]
+        }
         override fun tailOf(runId: String, tailBytes: Long): ObservationOutputRead? = null
         override fun eventSliceOf(
             runId: String,

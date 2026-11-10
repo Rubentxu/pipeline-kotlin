@@ -39,7 +39,16 @@
 { name = "pipelinek.recovery" }
 { name = "pipelinek.retry.attempt" }
 
-# --- 5. Error taxonomy -------------------------------------------------------
+# --- 5. Local service --------------------------------------------------------
+# Question: what did a client of the local service pay, and how did it end?
+# Decision: the service measures the request and not the run: a slow query is
+# the service's own cost, a refused mutation is a client asking for what it may
+# not have, and a failed one is the store the service reads from.
+{ name = "pipelinek.service.query" }
+{ name = "pipelinek.service.mutation" }
+{ name = "pipelinek.service.subscription" }
+
+# --- 6. Error taxonomy -------------------------------------------------------
 # Question: which class of failure is this?
 # Decision: the class says who has to act, so it is what routes the alert.
 { status = error }

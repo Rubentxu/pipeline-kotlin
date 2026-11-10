@@ -4,6 +4,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.service.ServiceCodec
 import dev.rubentxu.pipeline.v2.service.ServiceDecoding
 import dev.rubentxu.pipeline.v2.service.ServiceProtocol
@@ -56,6 +57,28 @@ internal interface ServiceConnection : AutoCloseable {
      * Writes [line] as the answer of this connection.
      */
     fun writeLine(line: String)
+
+    /**
+     * Writes [line], and gives the connection up when the peer has not taken
+     * it within [deadlineMillis].
+     *
+     * A peer that stops reading would otherwise hold the thread that writes
+     * to it for as long as it stays connected. The default writes without a
+     * deadline, which is right for a connection that cannot stall.
+     */
+    fun writeLine(line: String, deadlineMillis: Long) {
+        writeLine(line)
+    }
+
+    /**
+     * Whether the peer has closed its end of the connection.
+     *
+     * A street that is waiting for something to say asks it, because a
+     * street writes only when it has a frame and a client that left while
+     * the street was quiet would otherwise keep its slot until the run ends.
+     * The default says no, which is right for a connection that cannot tell.
+     */
+    fun peerGone(): Boolean = false
 }
 
 /**
@@ -120,6 +143,15 @@ internal sealed interface ServiceRead {
  * tell a busy service from a broken one. The two budgets are separate, so
  * the slots a subscription may take are always fewer than the slots a
  * question may take.
+ *
+ * ## Why a write has a deadline too
+ *
+ * A client that connects, asks to follow a run and never reads fills the
+ * socket buffer, and the thread that writes to it blocks for as long as the
+ * client lives. The read deadline protects the service from a client that
+ * does not talk; the write deadline protects it from a client that does not
+ * listen. Without it, eight such clients would hold every subscription slot
+ * for ever.
  */
 internal data class ServiceLimits(
     /** How many connections the service holds open at once. */
@@ -128,9 +160,44 @@ internal data class ServiceLimits(
     val maxSubscriptions: Int = 8,
     /** How long a client has to send its line, in milliseconds. */
     val readDeadlineMillis: Long = 5_000L,
+    /** How long a client has to take a line the service writes, in milliseconds. */
+    val writeDeadlineMillis: Long = 10_000L,
     /** The biggest line the service reads, in bytes. */
     val maxLineBytes: Int = ServiceProtocol.MAX_LINE_BYTES,
 )
+
+/**
+ * A connection whose every write has a deadline.
+ *
+ * ## Why it wraps the connection
+ *
+ * An answer, a refusal and a street are written by different code, and a
+ * peer that stops reading stalls any of them. Giving the deadline here, once,
+ * means no path that writes has to remember to ask for it: the server hands
+ * out only connections that cannot hold a thread longer than the limit says.
+ */
+private class BoundedConnection(
+    private val inner: ServiceConnection,
+    private val writeDeadlineMillis: Long,
+) : ServiceConnection {
+
+    override fun readLine(maxBytes: Int, deadlineMillis: Long): ServiceRead =
+        inner.readLine(maxBytes, deadlineMillis)
+
+    override fun writeLine(line: String) {
+        inner.writeLine(line, writeDeadlineMillis)
+    }
+
+    override fun writeLine(line: String, deadlineMillis: Long) {
+        inner.writeLine(line, deadlineMillis)
+    }
+
+    override fun peerGone(): Boolean = inner.peerGone()
+
+    override fun close() {
+        inner.close()
+    }
+}
 
 /**
  * The service: it accepts connections and answers them.
@@ -175,6 +242,29 @@ internal data class ServiceLimits(
  * A client that cannot connect gets a refusal it can read, and it learns that
  * the service is busy rather than that something went wrong. Refusing it
  * silently would make a busy service look like a broken one.
+ *
+ * ## Why a client that leaves gives back what it held
+ *
+ * A connection holds a slot, a descriptor and, for a street, a worker. They
+ * are returned when the work on the connection ends, and the work ends in
+ * three ways a client can force: it closes (the next write fails), it stops
+ * reading (the write deadline of the limits closes the connection) or it goes
+ * quiet on a street with nothing to say (the street asks the connection
+ * whether the peer is still there). Stopping the service closes the
+ * transport and interrupts the workers, so nothing outlives it.
+ *
+ * ## What is observed, and what the observer cannot do
+ *
+ * Every request that decoded is handed to the [observer] once: when it is
+ * admitted, and again when it ends, with the class of its ending. A request
+ * the codec refused is not observed — it names no operation, so it would be a
+ * measurement without a kind — and a request that was refused for want of
+ * authorization is observed WITHOUT the run it named, because the run is the
+ * text a client that is not authorized chose.
+ *
+ * The observer is a guest. Whatever it throws is swallowed here, before it
+ * can change the line a client reads, the slot a connection gives back or the
+ * worker that serves it.
  */
 internal class ServiceServer(
     private val transport: ServiceTransport,
@@ -182,6 +272,7 @@ internal class ServiceServer(
     private val streets: ServiceStreets,
     private val authorizations: ServiceAuthorizations,
     private val limits: ServiceLimits = ServiceLimits(),
+    private val observer: ServiceObserver = NoServiceObserver,
 ) : AutoCloseable {
 
     /** The connections this service holds open right now. */
@@ -242,11 +333,12 @@ internal class ServiceServer(
      */
     fun serve() {
         while (true) {
-            val connection = try {
+            val accepted = try {
                 transport.accept()
             } catch (_: Exception) {
                 null
             } ?: return
+            val connection = BoundedConnection(accepted, limits.writeDeadlineMillis)
 
             if (openConnections.get() >= limits.maxConnections) {
                 refuseOverTheLimit(connection)
@@ -344,47 +436,96 @@ internal class ServiceServer(
      */
     private fun serveLine(connection: ServiceConnection, text: String): Boolean {
         when (val decoded = ServiceCodec.decode(text)) {
-            is ServiceDecoding.Decoded -> {
-                when (val decision = decide(decoded)) {
-                    is ServiceAuthorizationOutcome.Authorized -> {
-                        if (decoded.request is ServiceRequest.StartRun ||
-                            decoded.request is ServiceRequest.CancelRun ||
-                            decoded.request is ServiceRequest.AnswerInput
-                        ) {
-                            return serveMutating(connection, decoded)
-                        }
-                        connection.writeLine(
-                            ServiceCodec.encode(
-                                operations.answer(
-                                    decoded.request,
-                                    authorizations.digestOfAuthorized(decoded.credential),
-                                ),
-                            ),
-                        )
-                    }
-
-                    is ServiceAuthorizationOutcome.NotAuthorized ->
-                        connection.writeLine(answerOfRefusal(ServiceRefusal.NotAuthorized))
-
-                    is ServiceAuthorizationOutcome.RunNotAuthorized ->
-                        connection.writeLine(answerOfRefusal(ServiceRefusal.RunNotAuthorized(decision.runId)))
-
-                    is ServiceAuthorizationOutcome.StartNotAuthorized ->
-                        connection.writeLine(answerOfRefusal(ServiceRefusal.StartNotAuthorized))
-
-                    is ServiceAuthorizationOutcome.CancelNotAuthorized ->
-                        connection.writeLine(answerOfRefusal(ServiceRefusal.CancelNotAuthorized))
-
-                    is ServiceAuthorizationOutcome.AnswerNotAuthorized ->
-                        connection.writeLine(answerOfRefusal(ServiceRefusal.AnswerNotAuthorized))
-                }
-            }
-
+            is ServiceDecoding.Decoded -> return serveDecoded(connection, decoded)
             is ServiceDecoding.Subscribed -> serveSubscription(connection, decoded)
-
             is ServiceDecoding.Refused -> connection.writeLine(answerOfRefusal(decoded.refusal))
         }
         return false
+    }
+
+    /**
+     * Serves a request that decoded: refuses it, or answers it where its kind is answered.
+     *
+     * The refusal of a client that is not authorized is observed with no run
+     * on it, and the request of one that is, with the run it is about.
+     */
+    private fun serveDecoded(connection: ServiceConnection, decoded: ServiceDecoding.Decoded): Boolean {
+        val refusal = refusalOfDecision(decide(decoded))
+        val kind = kindOf(decoded.request)
+        if (refusal != null) {
+            refuse(connection, refusal, begin(kind, null))
+            return false
+        }
+        val observation = begin(kind, runOf(decoded.request))
+        if (kind == ServiceRequestKind.Mutation) return serveMutating(connection, decoded, observation)
+        answer(connection, decoded, observation)
+        return false
+    }
+
+    /**
+     * Answers [decoded] on [connection] and ends [observation] with how it went.
+     *
+     * The observation ends in a `finally`, so a request that throws —because
+     * the operation broke, or because the client left before the line was
+     * written— is still ended, with the class that says which of the two it
+     * was: until the operation answers, the ending is a fault of the engine;
+     * from then on, a line that was not delivered is an abandoned request.
+     */
+    private fun answer(
+        connection: ServiceConnection,
+        decoded: ServiceDecoding.Decoded,
+        observation: ServiceObservation,
+    ) {
+        var outcome: ServiceOutcome = ServiceOutcome.Faulted(FailureKind.ENGINE)
+        try {
+            val response = operations.answer(
+                decoded.request,
+                authorizations.digestOfAuthorized(decoded.credential),
+            )
+            outcome = ServiceOutcome.Abandoned
+            connection.writeLine(ServiceCodec.encode(response))
+            outcome = serviceOutcomeOf(response)
+        } finally {
+            finish(observation, outcome)
+        }
+    }
+
+    /** Writes the refusal [refusal] and ends [observation] as a refused request, or as an abandoned one. */
+    private fun refuse(connection: ServiceConnection, refusal: ServiceRefusal, observation: ServiceObservation) {
+        var outcome: ServiceOutcome = ServiceOutcome.Abandoned
+        try {
+            connection.writeLine(answerOfRefusal(refusal))
+            outcome = ServiceOutcome.Refused
+        } finally {
+            finish(observation, outcome)
+        }
+    }
+
+    /** The refusal that [decision] stands for, or null when the client may ask. */
+    private fun refusalOfDecision(decision: ServiceAuthorizationOutcome): ServiceRefusal? = when (decision) {
+        is ServiceAuthorizationOutcome.Authorized -> null
+        is ServiceAuthorizationOutcome.NotAuthorized -> ServiceRefusal.NotAuthorized
+        is ServiceAuthorizationOutcome.RunNotAuthorized -> ServiceRefusal.RunNotAuthorized(decision.runId)
+        is ServiceAuthorizationOutcome.StartNotAuthorized -> ServiceRefusal.StartNotAuthorized
+        is ServiceAuthorizationOutcome.CancelNotAuthorized -> ServiceRefusal.CancelNotAuthorized
+        is ServiceAuthorizationOutcome.AnswerNotAuthorized -> ServiceRefusal.AnswerNotAuthorized
+    }
+
+    /** Opens the observation of a request; an observer that fails leaves the request unobserved. */
+    private fun begin(kind: ServiceRequestKind, runId: String?): ServiceObservation =
+        try {
+            observer.begin(kind, runId)
+        } catch (_: Exception) {
+            NoServiceObserver.begin(kind, runId)
+        }
+
+    /** Ends [observation] with [outcome]; an observer that fails changes nothing the client can see. */
+    private fun finish(observation: ServiceObservation, outcome: ServiceOutcome) {
+        try {
+            observation.end(outcome)
+        } catch (_: Exception) {
+            // The observer is a guest: what it throws is not the client's concern.
+        }
     }
 
     /**
@@ -398,20 +539,18 @@ internal class ServiceServer(
      *
      * It says whether the connection was handed over: a service that is
      * stopping has nobody to answer the request, and the connection is
-     * closed by the worker that could not take it.
+     * closed by the worker that could not take it. The observation of such a
+     * request ends as an abandoned one.
      */
-    private fun serveMutating(connection: ServiceConnection, decoded: ServiceDecoding.Decoded): Boolean {
+    private fun serveMutating(
+        connection: ServiceConnection,
+        decoded: ServiceDecoding.Decoded,
+        observation: ServiceObservation,
+    ): Boolean {
         try {
             mutatingWorker.execute {
                 try {
-                    connection.writeLine(
-                        ServiceCodec.encode(
-                            operations.answer(
-                                decoded.request,
-                                authorizations.digestOfAuthorized(decoded.credential),
-                            ),
-                        ),
-                    )
+                    answer(connection, decoded, observation)
                 } catch (_: Exception) {
                     // A connection that fails while it is answered is a
                     // connection that ends, and the client reads it as a
@@ -425,6 +564,7 @@ internal class ServiceServer(
             // The service is stopping and the worker is already closed:
             // this request has nobody to answer it, and the connection is
             // closed by the worker that owns it.
+            finish(observation, ServiceOutcome.Abandoned)
             return false
         }
     }
@@ -442,43 +582,28 @@ internal class ServiceServer(
      * did not happen would leak the budget of a street that ended.
      */
     private fun serveSubscription(connection: ServiceConnection, decoded: ServiceDecoding.Subscribed) {
-        when (val decision = authorizations.decide(decoded.credential, decoded.request.runId)) {
-            is ServiceAuthorizationOutcome.NotAuthorized -> {
-                connection.writeLine(answerOfRefusal(ServiceRefusal.NotAuthorized))
-                return
-            }
-
-            is ServiceAuthorizationOutcome.RunNotAuthorized -> {
-                connection.writeLine(answerOfRefusal(ServiceRefusal.RunNotAuthorized(decision.runId)))
-                return
-            }
-
-            is ServiceAuthorizationOutcome.StartNotAuthorized -> {
-                connection.writeLine(answerOfRefusal(ServiceRefusal.StartNotAuthorized))
-                return
-            }
-
-            is ServiceAuthorizationOutcome.CancelNotAuthorized -> {
-                connection.writeLine(answerOfRefusal(ServiceRefusal.CancelNotAuthorized))
-                return
-            }
-
-            is ServiceAuthorizationOutcome.AnswerNotAuthorized -> {
-                connection.writeLine(answerOfRefusal(ServiceRefusal.AnswerNotAuthorized))
-                return
-            }
-
-            is ServiceAuthorizationOutcome.Authorized -> Unit
-        }
-
-        if (!takeSubscriptionSlot()) {
-            connection.writeLine(answerOfRefusal(ServiceRefusal.TooManySubscriptions))
+        val refusal = refusalOfDecision(authorizations.decide(decoded.credential, decoded.request.runId))
+        val observation = begin(
+            ServiceRequestKind.Subscription,
+            if (refusal == null) decoded.request.runId else null,
+        )
+        if (refusal != null) {
+            refuse(connection, refusal, observation)
             return
         }
+        if (!takeSubscriptionSlot()) {
+            refuse(connection, ServiceRefusal.TooManySubscriptions, observation)
+            return
+        }
+        // A street that returns served its subscription to the end, whatever the
+        // end was; one that throws could not finish on this connection.
+        var outcome: ServiceOutcome = ServiceOutcome.Abandoned
         try {
             streets.serve(connection, decoded.request)
+            outcome = ServiceOutcome.Answered
         } finally {
             liveSubscriptions.decrementAndGet()
+            finish(observation, outcome)
         }
     }
 

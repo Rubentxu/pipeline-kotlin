@@ -170,6 +170,82 @@ class ServiceSubscriptionTest {
         )
     }
 
+    /**
+     * A street that has nothing to say ends when the peer is gone.
+     *
+     * The street writes only when it has a frame, so a client that left while
+     * the run was quiet is a fact the street never learns by writing. The
+     * row is red as a hang, bounded by its own limit: a street that never
+     * asks about the peer waits for ever.
+     */
+    @Test
+    @Timeout(value = 5, unit = java.util.concurrent.TimeUnit.SECONDS)
+    fun `a quiet events street ends when the peer has gone`() {
+        val port = ScriptedEventPort { _ -> page(emptyList(), lastSequence = 0L) }
+        val connection = RecordingConnection(goneAfterAsks = 3)
+        val subscription = ServiceSubscription(
+            lanes = FakeLanes(runPlane = RunPlane.Live),
+            events = port,
+        )
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.EventsFollow(ServiceProtocol.SCHEMA, "run-1", null),
+        )
+
+        assertEquals(3, connection.asks, "the street asked about the peer once per quiet round")
+        assertTrue(
+            connection.frames().none { it["kind"]?.jsonPrimitive?.content == "end" },
+            "a client that left is not told the run ended: ${connection.frames()}",
+        )
+    }
+
+    @Test
+    @Timeout(value = 5, unit = java.util.concurrent.TimeUnit.SECONDS)
+    fun `a quiet console street ends when the peer has gone`() {
+        // The run exists and has written no console yet: the street asks once whether the
+        // run exists, and then it waits for a console that is not there.
+        val lanes = FakeLanes(
+            output = ObservationOutputRead.Page(
+                ObservationOutputPage(records = emptyList(), lastOrdinal = -1L, moreFrames = false),
+            ),
+        )
+        val connection = RecordingConnection(goneAfterAsks = 3)
+        val subscription = ServiceSubscription(
+            lanes = lanes,
+            events = ScriptedEventPort { _ -> page(emptyList(), 0L) },
+        )
+
+        subscription.serve(
+            connection,
+            ServiceSubscriptionRequest.OutputFollow(ServiceProtocol.SCHEMA, "run-1", -1L),
+        )
+
+        assertEquals(3, connection.asks, "the console street asked about the peer once per quiet round")
+    }
+
+    @Test
+    fun `a quiet street whose peer is still there keeps waiting`() {
+        val port = ScriptedEventPort { call ->
+            if (call < 4) page(emptyList(), lastSequence = 0L) else error("gone")
+        }
+        val connection = RecordingConnection()
+        val subscription = ServiceSubscription(
+            lanes = FakeLanes(runPlane = RunPlane.Live),
+            events = port,
+        )
+
+        val failure = runCatching {
+            subscription.serve(
+                connection,
+                ServiceSubscriptionRequest.EventsFollow(ServiceProtocol.SCHEMA, "run-1", null),
+            )
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException, "the street kept reading while its peer was there")
+        assertEquals(4, connection.asks, "the street asked about the peer in every quiet round before the store went away")
+    }
+
     @Test
     fun `a run nobody knows is refused by name`() {
         val port = ScriptedEventPort { _ ->
@@ -1216,8 +1292,17 @@ class ServiceSubscriptionTest {
     /**
      * The connection, recording what the street wrote on it.
      */
-    private class RecordingConnection : ServiceConnection {
+    private class RecordingConnection(private val goneAfterAsks: Int? = null) : ServiceConnection {
         private val written = mutableListOf<String>()
+
+        /** How many times the street asked whether the peer had gone. */
+        var asks: Int = 0
+            private set
+
+        override fun peerGone(): Boolean {
+            asks++
+            return goneAfterAsks != null && asks >= goneAfterAsks
+        }
 
         override fun readLine(maxBytes: Int, deadlineMillis: Long): ServiceRead = ServiceRead.Closed
 

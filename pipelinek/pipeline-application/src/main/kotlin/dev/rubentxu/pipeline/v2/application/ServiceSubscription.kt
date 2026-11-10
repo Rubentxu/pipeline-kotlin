@@ -217,7 +217,7 @@ internal class ServiceSubscription(
             // A round that delivered something is followed by another round at once: the store
             // may have more behind the page. A round that delivered nothing is followed by a
             // wait, because the street asked for nothing and there was nothing to give it.
-            if (!delivered && !idle()) return
+            if (!delivered && !idle(connection)) return
         }
     }
 
@@ -360,7 +360,7 @@ internal class ServiceSubscription(
                             Existence.Known -> Unit
                         }
                     }
-                    if (!moreFrames && !idle()) return
+                    if (!moreFrames && !idle(connection)) return
                 }
                 // The decision can only be FINISHED when the plane says the run is over, so
                 // the terminal fact was observed and the street ends saying so.
@@ -640,10 +640,15 @@ internal class ServiceSubscription(
      * The wait is the consumer's, not the product's: the street asked for
      * nothing and there was nothing to give it. An interrupted street is a
      * street that is closing, and it says so instead of spinning.
+     *
+     * A street also ends when the peer of [connection] has gone. A street
+     * writes only when it has a frame, so a client that left while the run
+     * was quiet would otherwise hold its thread, its slot and its descriptor
+     * until the run wrote something.
      */
-    private fun idle(): Boolean = try {
+    private fun idle(connection: ServiceConnection): Boolean = try {
         Thread.sleep(POLL_INTERVAL_MILLIS)
-        true
+        !connection.peerGone()
     } catch (_: InterruptedException) {
         Thread.currentThread().interrupt()
         false

@@ -34,6 +34,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import dev.rubentxu.pipeline.v2.service.ServiceProtocol
+import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
 
 /**
  * The local service, over a real Unix domain socket, over a real store.
@@ -73,7 +74,16 @@ import dev.rubentxu.pipeline.v2.service.ServiceProtocol
  * The published distribution is not started: that belongs to the harness that
  * certifies the released artifact. What this lane asserts is the seam that
  * harness will exercise — the service, its socket and its substrate.
+ *
+ * ## Why one class holds so many rows
+ *
+ * Every row needs the same expensive fixture —a materialised store, a socket
+ * path and a started service— and the rows are independent facts about it.
+ * Splitting the class would copy the fixture into each half, and a fixture
+ * that exists twice drifts. `TooManyFunctions` counts rows and helpers, and
+ * neither is a sign of a class doing too much.
  */
+@Suppress("TooManyFunctions")
 class ServiceIntegrationTest {
 
     @TempDir
@@ -483,6 +493,127 @@ class ServiceIntegrationTest {
         }
     }
 
+    /**
+     * A client that LEAVES while its street has nothing to say gives its slot back.
+     *
+     * The street of a live run writes only when the run has a row, so a client
+     * that closed its end while the run was quiet is a fact the street never
+     * learns by writing. The slot has to come back anyway: the budget is eight,
+     * and eight departed clients would otherwise refuse every honest one for as
+     * long as the run lasts.
+     */
+    @Test
+    @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
+    fun `a subscriber that leaves while its street is quiet gives its slot back`() {
+        val service = start(ServiceLimits(maxSubscriptions = 1))
+        try {
+            SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { leaver ->
+                leaver.write(follow(LIVE_RUN_ID))
+                assertNotNull(readLineOrNull(leaver), "the street opened and delivered the first row of the live run")
+            }
+
+            val served = awaitSlot(LIVE_RUN_ID)
+
+            assertNotNull(served, "the slot of the client that left came back, so another client was served")
+        } finally {
+            service.stop()
+        }
+    }
+
+    /**
+     * A client that STOPS READING gives its slot back once the write deadline passes.
+     *
+     * The street blocks writing to a peer whose buffer is full, and a blocked
+     * write holds the thread, the slot and the descriptor for as long as the
+     * peer stays connected. A deadline on the write is what turns a stalled
+     * client into a finished connection.
+     */
+    @Test
+    @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
+    fun `a subscriber that stops reading gives its slot back once the write deadline passes`() {
+        val service = start(
+            ServiceLimits(maxSubscriptions = 1, writeDeadlineMillis = 300L),
+            streets = FloodStreets,
+        )
+        try {
+            SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { stalled ->
+                stalled.write(follow(LIVE_RUN_ID))
+                // One byte proves the street took the only slot: a refusal would
+                // start with a brace and the flood starts with an x. From then on
+                // the client never reads, so the street's write cannot finish.
+                val first = ByteBuffer.allocate(1)
+                assertEquals(1, stalled.read(first), "the street wrote to the client")
+                assertEquals('x'.code.toByte(), first.get(0), "the client was served and not refused")
+
+                val served = awaitSlot(LIVE_RUN_ID)
+
+                assertNotNull(served, "the slot of the client that stopped reading came back after the deadline")
+            }
+        } finally {
+            service.stop()
+        }
+    }
+
+    /**
+     * Clients that stall leave the process with the descriptors it had.
+     *
+     * The first rounds warm the process up (classes, pools, the watchdog),
+     * so what the later rounds measure is growth and not start-up. A leak
+     * costs descriptors per client; the margin only absorbs the jitter of
+     * the machine.
+     */
+    @Test
+    @Timeout(value = 60, unit = java.util.concurrent.TimeUnit.SECONDS)
+    fun `stalled subscribers leave the descriptors of the process where they were`() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            Files.isDirectory(DESCRIPTORS),
+            "this machine does not list the descriptors of a process",
+        )
+        val service = start(
+            ServiceLimits(maxSubscriptions = 8, writeDeadlineMillis = 200L),
+            streets = FloodStreets,
+        )
+        try {
+            repeat(2) { stallRound(clients = 8) }
+            val baseline = openDescriptors()
+
+            repeat(4) { stallRound(clients = 8) }
+
+            val settled = settle { openDescriptors() <= baseline + DESCRIPTOR_JITTER }
+            assertTrue(
+                settled,
+                "descriptors after the stalled clients: ${openDescriptors()}, before: $baseline",
+            )
+        } finally {
+            service.stop()
+        }
+    }
+
+    /**
+     * Stopping the service while a client stalls leaves no socket and no worker.
+     */
+    @Test
+    @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
+    fun `stopping the service while a subscriber is stalled leaves no socket and no worker behind`() {
+        val before = serviceWorkers()
+        val service = start(streets = FloodStreets)
+        SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { stalled ->
+            stalled.write(follow(LIVE_RUN_ID))
+            assertTrue(
+                settle { (serviceWorkers() - before).isNotEmpty() },
+                "the street took a worker of the service",
+            )
+
+            service.stop()
+
+            assertFalse(Files.exists(socket), "the socket is gone")
+            assertTrue(
+                settle { (serviceWorkers() - before).isEmpty() },
+                "the workers of the stopped service ended: ${(serviceWorkers() - before).map { it.name }}",
+            )
+        }
+    }
+
     @Test
     fun `a cursor of the other plane is refused by name over the socket`() {
         val service = start()
@@ -641,9 +772,83 @@ class ServiceIntegrationTest {
     }
 
     /**
+     * The line that follows the events of [run], with the credential this service knows.
+     */
+    private fun follow(run: String): ByteBuffer = ByteBuffer.wrap(
+        (withCredential("""{"schema":"pipelinek.service/2","op":"events.follow","runId":"$run"}""") + "\n")
+            .toByteArray(Charsets.UTF_8),
+    )
+
+    /**
+     * The first line of a street that was served, or null when no slot came free.
+     *
+     * A client that is refused for want of a slot gets a name, and it asks
+     * again: what the rows measure is whether the slot of an earlier client
+     * ever comes back.
+     */
+    private fun awaitSlot(run: String): String? {
+        val limit = System.nanoTime() + SLOT_PATIENCE_NANOS
+        while (System.nanoTime() < limit) {
+            SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { client ->
+                client.write(follow(run))
+                val line = readLineOrNull(client)
+                if (line != null && !line.contains(BUDGET_REFUSAL)) return line
+            }
+            Thread.sleep(SLOT_RETRY_MILLIS)
+        }
+        return null
+    }
+
+    /**
+     * [clients] connections that ask for a street and never read it.
+     *
+     * They stay connected for longer than the write deadline of the rows
+     * that use this, and then they leave.
+     */
+    private fun stallRound(clients: Int) {
+        val channels = List(clients) { SocketChannel.open(UnixDomainSocketAddress.of(socket)) }
+        try {
+            channels.forEach { it.write(follow(LIVE_RUN_ID)) }
+            Thread.sleep(STALL_MILLIS)
+        } finally {
+            channels.forEach { it.close() }
+        }
+    }
+
+    /** How many descriptors this process holds open. */
+    private fun openDescriptors(): Int = Files.list(DESCRIPTORS).use { it.count().toInt() }
+
+    /** The live threads that belong to a service of this product. */
+    private fun serviceWorkers(): Set<Thread> = Thread.getAllStackTraces().keys
+        .filter { it.isAlive && it.name.startsWith("pipelinek-service") }
+        .toSet()
+
+    /** Whether [condition] holds before the patience of the lane runs out. */
+    private fun settle(condition: () -> Boolean): Boolean {
+        val limit = System.nanoTime() + SLOT_PATIENCE_NANOS
+        while (System.nanoTime() < limit) {
+            if (condition()) return true
+            Thread.sleep(SLOT_RETRY_MILLIS)
+        }
+        return condition()
+    }
+
+    /**
+     * A street that writes a frame far bigger than a socket buffer.
+     *
+     * Whoever does not read it leaves the street blocked in its write, which
+     * is the state a stalled client puts the service in.
+     */
+    private object FloodStreets : ServiceStreets {
+        override fun serve(connection: ServiceConnection, request: ServiceSubscriptionRequest) {
+            connection.writeLine("x".repeat(FLOOD_BYTES))
+        }
+    }
+
+    /**
      * Starts the service over a real socket.
      */
-    private fun start(limits: ServiceLimits = ServiceLimits()): Service {
+    private fun start(limits: ServiceLimits = ServiceLimits(), streets: ServiceStreets? = null): Service {
         val admission = admitEventStore(db.toString(), EventStorePurpose.Read)
         val store = (admission as EventStoreAdmission.Admitted).store
         val operations = ServiceOperations(
@@ -664,12 +869,12 @@ class ServiceIntegrationTest {
             cancellations = null,
         )
         val stores = DurableStores.open(store, root, clock)
-        val streets = ServiceSubscription(
+        val served = streets ?: ServiceSubscription(
             lanes = ComposeLanes.forService(store, root),
             events = composeEventRecordReadPort(store, stores.lease),
         )
         val transport = UnixSocketTransport.bind(socket)
-        return Service(ServiceServer(transport, operations, streets, authorizations(), limits), store)
+        return Service(ServiceServer(transport, operations, served, authorizations(), limits), store)
     }
 
     /**
@@ -751,5 +956,26 @@ class ServiceIntegrationTest {
 
         /** The token this service knows. */
         private const val TOKEN: String = "token-of-the-service"
+
+        /** The descriptors of this process, on a machine that lists them. */
+        private val DESCRIPTORS: Path = Path.of("/proc/self/fd")
+
+        /** How many descriptors of difference the machine's own jitter may explain. */
+        private const val DESCRIPTOR_JITTER: Int = 3
+
+        /** A frame far bigger than the buffer of a socket. */
+        private const val FLOOD_BYTES: Int = 8 * 1024 * 1024
+
+        /** How long a stalled client stays connected, in milliseconds. */
+        private const val STALL_MILLIS: Long = 500L
+
+        /** How long a row waits for a fact that has to come true, in nanoseconds. */
+        private const val SLOT_PATIENCE_NANOS: Long = 8_000_000_000L
+
+        /** How long a row waits between two looks, in milliseconds. */
+        private const val SLOT_RETRY_MILLIS: Long = 50L
+
+        /** The word the service refuses with when the budget of subscriptions is spent. */
+        private const val BUDGET_REFUSAL: String = "too-many-subscriptions"
     }
 }

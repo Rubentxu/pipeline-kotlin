@@ -85,6 +85,23 @@ enum class MetricBoundary(val operationKind: String) {
      * boundary contributes keeps its place in the product's own bounded set.
      */
     PluginExecute("plugin.execute"),
+
+    /**
+     * One question the local service answered: the time between the line it read and the line it wrote.
+     *
+     * The service measures what a client PAYS for a question; the run the
+     * question is about is measured by the boundaries above, and the facts of
+     * that run stay in the Event Plane. The three service boundaries are one
+     * word each so that a reader tells the cost of a question from the cost
+     * of a change and from the lifetime of a subscription.
+     */
+    ServiceQuery("service.query"),
+
+    /** One request that changes something — a start, a cancellation or an answer — from its line to its reply. */
+    ServiceMutation("service.mutation"),
+
+    /** One subscription, from the moment it was admitted until its street ended. */
+    ServiceSubscription("service.subscription"),
 }
 
 /**

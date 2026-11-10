@@ -96,6 +96,9 @@ class SqliteEventStoreDurabilityTest {
         // of the batch are in the log— and not at the insert, which the
         // engine refuses per fact.
         val diskGone = AtomicBoolean(false)
+        // The reflective call takes the proxy's arguments as a vararg: there is
+        // no way to forward them without the spread.
+        @Suppress("SpreadOperator")
         val door = {
             val connection = openEventStoreConnection(file, EventStoreMode.Writable)
             Proxy.newProxyInstance(

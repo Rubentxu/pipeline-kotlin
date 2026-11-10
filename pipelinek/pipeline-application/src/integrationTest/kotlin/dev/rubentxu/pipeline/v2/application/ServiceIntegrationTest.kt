@@ -23,9 +23,12 @@ import java.nio.file.attribute.PosixFilePermission
 import java.time.Instant
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -513,6 +516,66 @@ class ServiceIntegrationTest {
         )
     }
 
+    @Test
+    @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
+    fun `a console of a run nobody knows is refused by name over the socket`() {
+        val service = start()
+
+        val frames = service.subscribe(
+            """{"schema":"pipelinek.service/2","op":"output.follow","runId":"run-nobody-wrote"}""",
+        )
+
+        assertEquals(
+            1,
+            frames.size,
+            "the street was refused before it delivered anything, and it ENDED: $frames",
+        )
+        assertEquals("refused", frames[0]["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "unknown-run",
+            frames[0]["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+            "the console street refuses by name, like the events street",
+        )
+    }
+
+    @Test
+    @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
+    fun `a console that is refused gives its slot back and the service keeps serving`() {
+        val service = start(ServiceLimits(maxSubscriptions = 1))
+        SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { first ->
+            first.write(
+                ByteBuffer.wrap(
+                    (withCredential(
+                        """{"schema":"pipelinek.service/2","op":"output.follow","runId":"run-nobody-wrote"}""",
+                    ) + "\n").toByteArray(Charsets.UTF_8),
+                ),
+            )
+            // The refusal is the FIRST line: the client learns that the run is unknown
+            // before the street ends, and it learns it from the street and not from a
+            // socket that closed without a word.
+            val refusal = readLineOrNull(first)?.let { Json.parseToJsonElement(it).jsonObject }
+            assertNotNull(refusal, "the street wrote the refusal before it ended")
+            assertEquals("refused", refusal?.get("kind")?.jsonPrimitive?.content)
+            assertEquals(
+                "unknown-run",
+                refusal?.get("refusal")?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+            )
+            // The street ended and the server closed the connection, but THIS client keeps
+            // its channel open: the budget has to be free even so.
+            assertNull(readLineOrNull(first), "the street ended and the connection closed")
+
+            val served = service.subscribe(
+                """{"schema":"pipelinek.service/2","op":"events.follow","runId":"$runId"}""",
+            )
+
+            assertEquals(
+                3,
+                served.size,
+                "the second client was served, so the refused street gave its slot back: $served",
+            )
+        }
+    }
+
     /**
      * The service, over a real socket, and the way to ask it and to stop it.
      */
@@ -542,7 +605,7 @@ class ServiceIntegrationTest {
         fun askRaw(request: String): Map<String, kotlinx.serialization.json.JsonElement> {
             SocketChannel.open(UnixDomainSocketAddress.of(socket)).use { channel ->
                 channel.write(ByteBuffer.wrap((request + "\n").toByteArray(Charsets.UTF_8)))
-                val line = readLine(channel)
+                val line = readLineOrNull(channel).orEmpty()
                 return Json.parseToJsonElement(line).jsonObject
             }
         }
@@ -638,26 +701,6 @@ class ServiceIntegrationTest {
         throw AssertionError("the bind was accepted and it should not have been")
     } catch (e: ServiceStartupException) {
         e
-    }
-
-    /**
-     * The line the service wrote, read until its end.
-     */
-    private fun readLine(channel: SocketChannel): String {
-        val buffer = ByteArray(8192)
-        val accumulated = ByteArrayOutputStream()
-        while (true) {
-            val read = channel.read(ByteBuffer.wrap(buffer))
-            if (read < 0) break
-            val chunk = buffer.copyOf(read)
-            val newline = chunk.indexOf('\n'.code.toByte())
-            if (newline >= 0) {
-                accumulated.write(chunk, 0, newline)
-                break
-            }
-            accumulated.write(chunk, 0, read)
-        }
-        return accumulated.toString(Charsets.UTF_8)
     }
 
     /**

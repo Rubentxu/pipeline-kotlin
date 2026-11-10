@@ -17,6 +17,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import dev.rubentxu.pipeline.v2.service.ServiceCodec
 import dev.rubentxu.pipeline.v2.service.ServiceProtocol
+import dev.rubentxu.pipeline.v2.service.ServiceRefusal
+import dev.rubentxu.pipeline.v2.service.ServiceResponse
 import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
 
 /**
@@ -410,6 +412,64 @@ class ServiceServerTest {
                         cursor = "evt-cursor-v1:${request.runId}:0",
                         record = Json.parseToJsonElement("""{"type":"event"}""").jsonObject,
                         hasMore = false,
+                    ),
+                )
+                streetEnded.countDown()
+            }
+        }
+        // The second connection is handed out only after the first street
+        // ended, so the row measures the budget and not the order in which
+        // two workers happened to run.
+        val transport = object : ServiceTransport {
+            private val pending = ArrayDeque(listOf(first, second))
+
+            override fun accept(): ServiceConnection? {
+                val next = pending.removeFirstOrNull() ?: return null
+                if (next === second) streetEnded.await(5, TimeUnit.SECONDS)
+                return next
+            }
+
+            override fun close() = Unit
+        }
+
+        val server = ServiceServer(transport, operations(), streets, authorizations(), ServiceLimits(maxSubscriptions = 1))
+        try {
+            server.serve()
+            second.awaitAnswered()
+
+            assertEquals(
+                2,
+                served.size,
+                "the second subscription took the slot the first one gave back",
+            )
+        } finally {
+            server.close()
+        }
+    }
+
+    /**
+     * The slot of a subscription is given back when the street REFUSES.
+     *
+     * A street that refuses ends the same way a street that delivered ends,
+     * and a budget that only counts the streets that delivered is a budget
+     * that runs out after eight refusals: the counter has to be decremented
+     * where the street is left, whatever the street wrote on its way out.
+     */
+    @Test
+    fun `the slot of a subscription is given back when the street refuses`() {
+        val streetEnded = CountDownLatch(1)
+        val first = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
+        val second = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
+        val served = mutableListOf<ServiceSubscriptionRequest>()
+        val streets = object : ServiceStreets {
+            override fun serve(connection: ServiceConnection, request: ServiceSubscriptionRequest) {
+                served.add(request)
+                connection.writeLine(
+                    ServiceCodec.encode(
+                        ServiceResponse.Refused(
+                            ServiceProtocol.SCHEMA,
+                            ServiceRefusal.UnknownRun(request.runId),
+                        ),
                     ),
                 )
                 streetEnded.countDown()

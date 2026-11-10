@@ -172,7 +172,10 @@ class ProcessDurableTaskRuntime(
                 } finally {
                     // Single destruction point: covers timeout, cancellation,
                     // and any pump failure. Normal exits are a no-op here.
-                    if (process.isAlive) destroyTree(process)
+                    if (process.isAlive) {
+                        destroyTree(process)
+                        awaitDeath(process)
+                    }
                 }
 
                 // Both pumps drain to EOF after the process is gone.
@@ -221,6 +224,31 @@ class ProcessDurableTaskRuntime(
             // Unsupported platform: fall through to direct-child kill.
         }
         process.destroyForcibly()
+    }
+
+    /**
+     * Waits for the process [process] to be gone, for a bounded while.
+     *
+     * ## Why the kill is not the death
+     *
+     * Because a process that was told to die has not died yet, and what it
+     * holds is held until it is: the lease of the run it publishes, the
+     * files it has open, the lock another process is waiting for. A caller
+     * that returns from a cancellation before the death is a caller that
+     * believes the child is gone while the child is still holding what it
+     * held — and the next actor, the one that writes the run's terminal,
+     * would be refused by a lease that the dead child has not released.
+     *
+     * The wait is BOUNDED: a process that does not die in time does not
+     * hold the caller for ever, and the caller is told the truth by the
+     * lease it finds.
+     */
+    private fun awaitDeath(process: Process) {
+        try {
+            process.waitFor(DEATH_WAIT_MILLIS, TimeUnit.MILLISECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 
     /** Atomic durable record (spec: result durable/atómico). Temp + ATOMIC_MOVE. */
@@ -277,5 +305,15 @@ class ProcessDurableTaskRuntime(
          * take, and the runtime holds a window, not the whole output.
          */
         const val CHANNEL_CAPACITY = 16
+
+        /**
+         * How long a kill waits for the death it caused.
+         *
+         * Five seconds: long enough for a JVM that was told to die to die,
+         * and short enough that a process that refuses does not hold the
+         * caller for ever. The caller is told the truth by what it finds
+         * afterwards, and not by this number.
+         */
+        const val DEATH_WAIT_MILLIS: Long = 5_000L
     }
 }

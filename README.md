@@ -270,7 +270,7 @@ One request per line, one answer per line, in JSON, with the version of the prot
 {"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
-The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). It can also START a run and CANCEL one, which are a fourth and a fifth door, each with a right of its own. Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `cancel-not-authorized`, `run-cancel-refused` — so a client reads a word and not a sentence.
+The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). It can also START a run, CANCEL one and ANSWER the question of one, which are a fourth, a fifth and a sixth door, each with a right of its own. Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `cancel-not-authorized`, `run-cancel-refused`, `answer-not-authorized`, `input-answer-refused` — so a client reads a word and not a sentence.
 
 #### Who may ask, and what the boundary really is
 
@@ -280,7 +280,7 @@ The service issues one credential itself the first time it starts and keeps it i
 <token> <label> <scope>
 ```
 
-The scope is `all`, `none`, or the run ids it covers, and it may carry the suffixes `+start` and `+cancel` when the client may also start and cancel runs. The label is for the operator and **never travels**: a label that travels can be enumerated by a client that presents tokens until one is accepted.
+The scope is `all`, `none`, or the run ids it covers, and it may carry the suffixes `+start`, `+cancel` and `+answer` when the client may also start runs, cancel them and answer their questions. The label is for the operator and **never travels**: a label that travels can be enumerated by a client that presents tokens until one is accepted.
 
 A line may end with a fourth field, `credentials=<id>:<kind>,...`, that names the credentials the runs started by that token may ask for (`string` is the only kind today). The field is the allowlist of the broker each run gets: a run receives no secret when it starts and asks for one only when it enters `withCredentials`, over a private socket below `brokers/` next to the service socket. A credential the line does not name is refused by name (`credential-not-granted`) even when the local store holds it, and a run that was started with the broker never falls back to the local store.
 
@@ -365,6 +365,27 @@ Cancelling twice is not an error. The second call answers `already-cancelled` wi
 A cancel never crosses a LIVE lease: the service does not take the lease of a run another process is publishing, and the refusal names the holder (`the-lease-is-held-by-another`). That is why the child is ended first — the child IS the holder, and a holder that is dead is taken over, which is what makes the cancel the RECONCILIATION of a run whose writer died without ever saying how it ended. A writer that is still ALIVE is not reconciled by the verb: it holds the lock, the refusal names it, and the run is freed only when that process ends.
 
 A service that may not cancel runs opens the substrate READ-ONLY and says so when it starts (`substrate read-only`). A service that may cancel them opens it read-write, because the terminal of a cancelled run is a fact and the service is the one that writes it.
+
+#### Answering a question of a run
+
+A run that reaches `input("…")` PUBLISHES a question and waits. The service shows it and takes the answer, as a sixth and a seventh door with ONE right of their own: `+answer`. Listing and answering are both closed to a client without it, because to see a question is to see what the pipeline is about to do.
+
+```json
+{"schema":"pipelinek.service/2","op":"inputs.list","runId":"34b28ddc-…","auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"inputs":[{"opId":"34b28ddc-…-s0-0","message":"Deploy to production?","ok":"Proceed","publishedAtMs":1730000000000}]}}
+{"schema":"pipelinek.service/2","op":"input.answer","runId":"34b28ddc-…","opId":"34b28ddc-…-s0-0","decision":"proceed","auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"runId":"34b28ddc-…","opId":"34b28ddc-…-s0-0","decision":"proceed","outcome":"answered"}}
+```
+
+The decision is `proceed` or `abort`, and means what it means in the pipeline: `proceed` lets the body of the step run, `abort` closes the step and the body never runs. The right grows with the suffix `+answer` and composes with the others (`all+start+cancel+answer`); a scope that names no run may not carry it. A client without the right is refused by name (`answer-not-authorized`), and the right is asked BEFORE the scope, so a client that may answer nothing learns nothing about the runs that exist.
+
+WHO answered is a fact of the credential and never a claim of the request. The request carries no name: the service writes, as the `submitter` of the run's own history, the label of the authorization the token belongs to. The `declaredSubmitter` a question may show is what the pipeline author WROTE in the step; it says whom they expect and it authorizes nobody.
+
+A question has ONE answer. Two clients that answer at the same time do not make the run continue twice: one is recorded and the other is refused (`input-answer-refused`, reason `the-question-was-already-answered`). Repeating the same answer with the same authorization answers `already-answered`. The other reasons are `the-run-is-unknown`, `the-run-is-already-terminal`, `the-question-is-unknown` and `the-question-expired`, and each one is a refusal and never a silent success.
+
+The state lives on the disk, next to the run, so it survives a restart of the service and a disconnection of the client: the new service lists the question that still waits and takes the answer once, and a question already answered is not asked again.
+
+What this door does NOT do, said once: the channel between the service and the run is a directory of the control root, so any process of the same user with write access to it can still answer; a JVM cannot read the user of the peer of a socket, and the service separates identities that the operator ISSUED, not processes of one user. The `declaredSubmitter` is not an enforced list of responders. Questions published by an older build (no `runId`) and files above 16 KiB are invisible, which fails closed.
 
 #### Subscriptions
 

@@ -500,6 +500,176 @@ class ServiceAuthorizationTest {
         )
     }
 
+    @Test
+    fun `a scope with the suffix answer lets the client answer the questions of the runs it covers`() {
+        val reading = ServiceAuthorizations.parse("$TOKEN operator all+answer")
+
+        val authorizations = assertInstanceOf(
+            ServiceAuthorizationsReading.Read::class.java,
+            reading,
+            "the scope may end with the right to answer the questions of a run",
+        )
+        assertEquals(
+            ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Answer)),
+            authorizations.authorizations.first().scope,
+            "the right to answer wraps the reading scope it adds to",
+        )
+    }
+
+    @Test
+    fun `a scope that names no run may not carry the right to answer`() {
+        val reading = ServiceAuthorizations.parse("$TOKEN operator none+answer")
+
+        assertInstanceOf(
+            ServiceAuthorizationsReading.Refused::class.java,
+            reading,
+            "a scope that covers no run cannot exercise a right about a run",
+        )
+    }
+
+    @Test
+    fun `the right to answer named twice is refused`() {
+        val reading = ServiceAuthorizations.parse("$TOKEN operator all+answer+answer")
+
+        assertInstanceOf(
+            ServiceAuthorizationsReading.Refused::class.java,
+            reading,
+            "a right named twice is a file with a mistake",
+        )
+    }
+
+    @Test
+    fun `a client that may not answer is refused by name whatever run it names`() {
+        val readOnly = authorizations(ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Cancel)))
+
+        assertEquals(
+            ServiceAuthorizationOutcome.AnswerNotAuthorized,
+            readOnly.decideAnswer(TOKEN, "run-1"),
+            "the token was accepted and what it lacks is the right to answer",
+        )
+        assertEquals(
+            ServiceAuthorizationOutcome.AnswerNotAuthorized,
+            readOnly.decideAnswer(TOKEN, "a-run-nobody-has"),
+            "the right is asked before the run, so the refusal says nothing about runs",
+        )
+    }
+
+    @Test
+    fun `a client that may answer a run it does not cover is refused by name`() {
+        val scoped = authorizations(
+            ServiceScope.WithRights(ServiceScope.Runs(setOf("run-1")), setOf(ServiceScope.Right.Answer)),
+        )
+
+        assertEquals(
+            ServiceAuthorizationOutcome.RunNotAuthorized("run-2"),
+            scoped.decideAnswer(TOKEN, "run-2"),
+            "a run the scope does not cover may not be answered, and the refusal names it",
+        )
+        assertEquals(
+            ServiceAuthorizationOutcome.Authorized,
+            scoped.decideAnswer(TOKEN, "run-1"),
+            "and a run it covers may",
+        )
+    }
+
+    @Test
+    fun `a client that presents nothing or a token nobody knows may not answer`() {
+        val scoped = authorizations(ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Answer)))
+
+        assertEquals(ServiceAuthorizationOutcome.NotAuthorized, scoped.decideAnswer(null, "run-1"), "no token")
+        assertEquals(
+            ServiceAuthorizationOutcome.NotAuthorized,
+            scoped.decideAnswer("another-token", "run-1"),
+            "a token the service does not know",
+        )
+    }
+
+    @Test
+    fun `the right to answer is independent of the rights to start and to cancel`() {
+        val onlyStartAndCancel = authorizations(
+            ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Start, ServiceScope.Right.Cancel)),
+        )
+        val onlyAnswer = authorizations(ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Answer)))
+
+        assertEquals(
+            ServiceAuthorizationOutcome.AnswerNotAuthorized,
+            onlyStartAndCancel.decideAnswer(TOKEN, "run-1"),
+            "a client that may start and cancel does not thereby answer",
+        )
+        assertEquals(
+            ServiceAuthorizationOutcome.CancelNotAuthorized,
+            onlyAnswer.decideCancel(TOKEN, "run-1"),
+            "and a client that may answer does not thereby cancel",
+        )
+        assertEquals(
+            ServiceAuthorizationOutcome.StartNotAuthorized,
+            onlyAnswer.decideStart(TOKEN),
+            "nor start",
+        )
+    }
+
+    @Test
+    fun `the service knows whether any authorization may answer`() {
+        assertTrue(
+            authorizations(ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Answer))).mayAnswerAnyInput,
+            "one authorization with the right is enough",
+        )
+        assertTrue(
+            !authorizations(ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Cancel))).mayAnswerAnyInput,
+            "a service nobody granted the right to has no reason to compose the channel",
+        )
+    }
+
+    @Test
+    fun `the label of an authorization is found by the digest of its token and by nothing else`() {
+        val authorizations = authorizations()
+
+        assertEquals(
+            "operator",
+            authorizations.labelOfDigest(ServiceAuthorizations.digestOf(TOKEN)),
+            "the name the operator gave the token is the one that comes out",
+        )
+        assertEquals(null, authorizations.labelOfDigest(null), "a run nobody started has no responder")
+        assertEquals(
+            null,
+            authorizations.labelOfDigest(ServiceAuthorizations.digestOf("another-token")),
+            "a digest the service does not know names nobody",
+        )
+        assertEquals(null, authorizations.labelOfDigest("operator"), "the label itself is not a digest")
+    }
+
+    @Test
+    fun `the scope of an answer survives the round trip`() {
+        val written = ServiceAuthorizations.format(
+            listOf(
+                ServiceAuthorization(
+                    TOKEN,
+                    "operator",
+                    ServiceScope.WithRights(
+                        ServiceScope.Runs(setOf("run-1")),
+                        setOf(ServiceScope.Right.Cancel, ServiceScope.Right.Answer),
+                    ),
+                ),
+            ),
+        )
+
+        val reading = ServiceAuthorizations.parse(written)
+
+        val authorizations = assertInstanceOf(
+            ServiceAuthorizationsReading.Read::class.java,
+            reading,
+            "the file the service writes is a file it can read",
+        )
+        assertEquals(
+            ServiceScope.WithRights(
+                ServiceScope.Runs(setOf("run-1")),
+                setOf(ServiceScope.Right.Cancel, ServiceScope.Right.Answer),
+            ),
+            authorizations.authorizations.first().scope,
+            "the right to answer survives the round trip next to the others",
+        )
+    }
+
     /**
      * The authorizations this service knows.
      */

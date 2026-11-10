@@ -40,10 +40,23 @@ interface InputDecisions {
     suspend fun awaitDecision(request: InputRequest, waitMillis: Long?): InputResolution
 }
 
+/**
+ * The durable operation an [InputDecisions] adapter is bound to.
+ *
+ * The engine binds the adapter once per dispatch, so the question is filed under the identity
+ * of the operation that asks it — the stage, the step, the branch and the body path — and not
+ * under a name the step could build from the little it knows. [opId] is
+ * `OpId.format()` of the dispatch: two `input` steps in one run, in two stages or in two
+ * branches of a `parallel`, are two questions and never share a file. A resumed run binds the
+ * same identity, so it finds the answer it was given.
+ */
+data class InputOperation(
+    val runId: String,
+    val opId: String,
+)
+
 /** What the pipeline author asked, in the vocabulary the port understands. */
 data class InputRequest(
-    /** Stable operation identity: the answer is filed under it, so a resumed run finds it. */
-    val opId: String,
     val message: String,
     /** Label of the affirmative answer, Jenkins `ok`. */
     val ok: String,

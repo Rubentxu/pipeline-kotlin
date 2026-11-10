@@ -2,18 +2,20 @@ package dev.rubentxu.pipeline.v2.runtime
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardOpenOption
+import java.nio.file.StandardCopyOption
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
 
 /**
  * [InputDecisions] over the control directory
  * ```text
- * <root>/<opId>/request.json    written by this adapter
- * <root>/<opId>/response.json   written by whoever answers
+ * <root>/<name of the operation>/request.json    written by this adapter
+ * <root>/<name of the operation>/response.json   written by whoever answers
  * ```
- * `opId` is the durable operation identity, not the run: two `input` steps in one
- * run are two questions and must not share a file.
+ * The adapter is bound to ONE [InputOperation]: the durable identity of the dispatch, not the
+ * run and not the step index alone. Two `input` steps in one run, in two stages or in two
+ * branches of a `parallel`, are two questions and must not share a file. The name of the
+ * directory is [InputQuestionLayout.directoryName], which never maps two operations to one.
  * ## The law this adapter exists to enforce
  * **A file that is not yet a complete, valid answer is not an answer.**
  * A human answering through a filesystem is a writer, and writers are not atomic
@@ -42,32 +44,20 @@ import kotlinx.coroutines.delay
 */
 class FileInputDecisions(
     private val root: Path,
+    private val operation: InputOperation,
     private val pollIntervalMs: Long = DEFAULT_POLL_INTERVAL_MS,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
 ) : InputDecisions {
 
-    /**
-     * The directory of one question. Op ids are composed of a run id and a step
-     * index, but a caller may pass anything, so the name is sanitised rather than
-     * trusted: a path separator here would let a question address another
-     * question's directory.
-*/
-    private fun dirFor(opId: String): Path = root.resolve(sanitize(opId))
-
-    private fun sanitize(opId: String): String =
-        opId.map { if (it.isLetterOrDigit() || it == '-' || it == '_' || it == '.') it else '_' }
-            .joinToString("")
-            .ifBlank { "unnamed" }
-
     override suspend fun awaitDecision(request: InputRequest, waitMillis: Long?): InputResolution {
-        val dir = dirFor(request.opId)
-        val requestFile = dir.resolve(REQUEST_FILE)
-        val responseFile = dir.resolve(RESPONSE_FILE)
+        val dir = root.resolve(InputQuestionLayout.directoryName(operation.opId))
+        val requestFile = dir.resolve(InputQuestionLayout.REQUEST_FILE)
+        val responseFile = dir.resolve(InputQuestionLayout.RESPONSE_FILE)
         val startedAt = nowMillis()
+        val deadline = waitMillis?.let { startedAt + it }
         val resolution: InputResolution = try {
-            publish(dir, request, requestFile)
+            publish(dir, request, requestFile, startedAt, deadline)
 
-            val deadline = waitMillis?.let { startedAt + it }
             var answer: InputResolution? = null
             while (answer == null) {
                 // Read first: an answer that landed while we were publishing must
@@ -104,19 +94,37 @@ class FileInputDecisions(
      * Publishes the question. Idempotent by construction: the same op re-publishes
      * the same content, which is what a resumed run does when it re-asks for a
      * decision it has not obtained yet.
-*/
-    private fun publish(dir: Path, request: InputRequest, requestFile: Path) {
+     *
+     * The file is written beside its destination and moved over it in one step, so a
+     * reader that lists the questions while a resumed run re-publishes one sees the old
+     * document or the new one and never half of either.
+     */
+    private fun publish(
+        dir: Path,
+        request: InputRequest,
+        requestFile: Path,
+        publishedAtMs: Long,
+        expiresAtMs: Long?,
+    ) {
+        var staged: Path? = null
         try {
             Files.createDirectories(dir)
-            val payload = buildString {
-                append("{")
-                append("\"message\":").append(quote(request.message))
-                append(",\"ok\":").append(quote(request.ok))
-                append(",\"submitter\":").append(quote(request.submitter))
-                append(",\"id\":").append(quote(request.id))
-                append("}")
-            }
-            Files.writeString(requestFile, payload, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            val payload = InputQuestionCodec.encode(
+                PublishedInputQuestion(
+                    runId = operation.runId,
+                    opId = operation.opId,
+                    message = request.message,
+                    ok = request.ok,
+                    submitter = request.submitter,
+                    id = request.id,
+                    publishedAtMs = publishedAtMs,
+                    expiresAtMs = expiresAtMs,
+                ),
+            )
+            staged = Files.createTempFile(dir, "request-", ".tmp")
+            Files.writeString(staged, payload)
+            Files.move(staged, requestFile, StandardCopyOption.ATOMIC_MOVE)
+            staged = null
         } catch (e: Exception) {
             // A question nobody can read is not a question. This is the one place
             // the port reports "I could not even ask", and it is a denial, not an
@@ -124,6 +132,8 @@ class FileInputDecisions(
             throw UnanswerableException(
                 "core.input could not publish its request at $requestFile: ${e.message ?: e::class.java.simpleName}",
             )
+        } finally {
+            staged?.let { runCatching { Files.deleteIfExists(it) } }
         }
     }
 
@@ -141,12 +151,7 @@ class FileInputDecisions(
         return InputAnswerCodec.decode(raw)
     }
 
-    private fun quote(value: String?): String =
-        if (value == null) "null" else "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-
     private companion object {
-        const val REQUEST_FILE = "request.json"
-        const val RESPONSE_FILE = "response.json"
         const val DEFAULT_POLL_INTERVAL_MS = 50L
     }
 }

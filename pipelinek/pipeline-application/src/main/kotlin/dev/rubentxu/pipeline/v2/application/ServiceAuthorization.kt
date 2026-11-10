@@ -13,8 +13,8 @@ import java.security.MessageDigest
  * knows. [None] may ask about no run at all: it may ask the service about
  * ITSELF —its version and its health— and about nothing else. [Runs] may ask
  * about the runs it names, and about no other. [WithRights] adds the rights
- * it carries —to start a run, to cancel one— and keeps the reading rights
- * of the scope it wraps.
+ * it carries —to start a run, to cancel one, to answer the questions a run
+ * asks— and keeps the reading rights of the scope it wraps.
  *
  * ## Why a scope is a TYPE and not a flag
  *
@@ -75,6 +75,9 @@ internal sealed interface ServiceScope {
 
         /** May ask the service to cancel a run. */
         Cancel,
+
+        /** May list the questions a run is waiting for and answer them. */
+        Answer,
     }
 
     /**
@@ -96,6 +99,9 @@ internal sealed interface ServiceScope {
 
     /** Whether this scope lets a client CANCEL a run. */
     val mayCancelRuns: Boolean get() = Right.Cancel in grantedRights
+
+    /** Whether this scope lets a client LIST and ANSWER the questions of a run. */
+    val mayAnswerInputs: Boolean get() = Right.Answer in grantedRights
 
     /**
      * Whether this scope covers [runId].
@@ -156,10 +162,10 @@ internal data class ServiceAuthorization(
 /**
  * What the service decided about a request that carried an authorization.
  *
- * The four cases are the four facts a client acts on differently: it may
- * ask, it has to present another authorization, it has to ask for a scope
- * that covers the run, or it has to ask for an authorization that may start
- * runs.
+ * The cases are the facts a client acts on differently: it may ask, it has
+ * to present another authorization, it has to ask for a scope that covers
+ * the run, or it has to ask for an authorization that holds the right the
+ * operation needs.
  */
 internal sealed interface ServiceAuthorizationOutcome {
 
@@ -191,6 +197,15 @@ internal sealed interface ServiceAuthorizationOutcome {
      * is not: the token was accepted, and what it lacks is the right.
      */
     data object CancelNotAuthorized : ServiceAuthorizationOutcome
+
+    /**
+     * The authorization is one the service knows, and its scope does not let
+     * it list or answer the questions of a run.
+     *
+     * It is NOT [NotAuthorized], for the same reason [StartNotAuthorized]
+     * is not: the token was accepted, and what it lacks is the right.
+     */
+    data object AnswerNotAuthorized : ServiceAuthorizationOutcome
 }
 
 /**
@@ -247,6 +262,7 @@ internal sealed interface ServiceAuthorizationOutcome {
 internal class ServiceAuthorizations private constructor(
     private val scopesByDigest: Map<String, ServiceScope>,
     private val grantsByDigest: Map<String, Set<CredentialGrant>>,
+    private val labelsByDigest: Map<String, String>,
     private val knownLabels: List<String>,
 ) {
 
@@ -276,6 +292,18 @@ internal class ServiceAuthorizations private constructor(
 
     /** The labels of the authorizations the service knows, for the operator. */
     val labels: List<String> get() = knownLabels
+
+    /**
+     * The label of the authorization whose token has [digest], or null when
+     * the service does not know it.
+     *
+     * It is how the service names WHO answered a question without carrying
+     * the name on the wire: the client presents a token, the service looks
+     * the digest up, and the name that comes out is the one the OPERATOR
+     * gave that token. A label a client could choose would be attribution,
+     * not identity.
+     */
+    fun labelOfDigest(digest: String?): String? = if (digest == null) null else labelsByDigest[digest]
 
     /**
      * What [presentedToken] may ask about [runId].
@@ -359,6 +387,31 @@ internal class ServiceAuthorizations private constructor(
     }
 
     /**
+     * Whether [presentedToken] may LIST and ANSWER the questions of [runId].
+     *
+     * The same two facts as [decideCancel] and in the same order: the right
+     * is a fact about the credential and the coverage is a fact about a run,
+     * and a client that lacks the right hears that whatever run it names.
+     */
+    fun decideAnswer(presentedToken: String?, runId: String): ServiceAuthorizationOutcome {
+        if (presentedToken == null) return ServiceAuthorizationOutcome.NotAuthorized
+        val scope = scopesByDigest[digestOf(presentedToken)]
+            ?: return ServiceAuthorizationOutcome.NotAuthorized
+        if (!scope.mayAnswerInputs) return ServiceAuthorizationOutcome.AnswerNotAuthorized
+        if (!scope.covers(runId)) return ServiceAuthorizationOutcome.RunNotAuthorized(runId)
+        return ServiceAuthorizationOutcome.Authorized
+    }
+
+    /**
+     * Whether ANY authorization may answer a question.
+     *
+     * The service reads this BEFORE it composes the part that reads the
+     * questions a run published and writes the answers: a service nobody
+     * granted the right to has no reason to hold the means of doing it.
+     */
+    val mayAnswerAnyInput: Boolean get() = scopesByDigest.values.any { it.mayAnswerInputs }
+
+    /**
      * Whether ANY authorization may cancel a run.
      *
      * The service reads this BEFORE it opens the substrate, because a
@@ -403,14 +456,16 @@ internal class ServiceAuthorizations private constructor(
         fun of(authorizations: List<ServiceAuthorization>): ServiceAuthorizations {
             val scopes = LinkedHashMap<String, ServiceScope>()
             val grants = LinkedHashMap<String, Set<CredentialGrant>>()
+            val labelsByDigest = LinkedHashMap<String, String>()
             val labels = mutableListOf<String>()
             for (authorization in authorizations) {
                 val digest = digestOf(authorization.token)
                 scopes[digest] = authorization.scope
                 grants[digest] = authorization.credentialGrants
+                labelsByDigest[digest] = authorization.label
                 labels += authorization.label
             }
-            return ServiceAuthorizations(scopes, grants, labels.sorted())
+            return ServiceAuthorizations(scopes, grants, labelsByDigest, labels.sorted())
         }
 
         /**
@@ -449,11 +504,11 @@ internal class ServiceAuthorizations private constructor(
                 }
                 val parsed = parseScope(scope) ?: return ServiceAuthorizationsReading.Refused(
                     "line $number: the scope is 'all', 'none' or a list of run ids, " +
-                        "optionally with '+start' and '+cancel' to let the client start " +
-                        "and cancel runs; " +
+                        "optionally with '+start', '+cancel' and '+answer' to let the client " +
+                        "start runs, cancel them and answer the questions they ask; " +
                         "a run id may hold only letters, digits, '.', '_' and '-'; " +
-                        "'+cancel' needs a scope that covers a run, so 'none+cancel' " +
-                        "is refused",
+                        "'+cancel' and '+answer' need a scope that covers a run, so " +
+                        "'none+cancel' and 'none+answer' are refused",
                 )
                 val digest = digestOf(token)
                 if (!digests.add(digest)) {
@@ -551,7 +606,7 @@ internal class ServiceAuthorizations private constructor(
          * names such a run would be a scope that could never cover anything,
          * and a file that says it is wrong is refused rather than read.
          *
-         * ## The `+start` and `+cancel` suffixes
+         * ## The `+start`, `+cancel` and `+answer` suffixes
          *
          * The scope may carry the rights it grants, each of them named after
          * a `+`. The separator cannot be part of a run id —the alphabet is
@@ -559,14 +614,15 @@ internal class ServiceAuthorizations private constructor(
          * file that says `all` still says `all`. A right named twice is a
          * file with a mistake, and it is refused rather than read as one.
          *
-         * ## Why `none+cancel` is refused and `none+start` is not
+         * ## Why `none+cancel` and `none+answer` are refused and `none+start` is not
          *
          * Because the right to START is not about any run —the run it
-         * starts does not exist yet— and the right to CANCEL is about a run
-         * that does exist. A scope that names no run covers no run, so a
-         * right to cancel could never be exercised: a line that says
-         * `none+cancel` is a file with a mistake, and the file is refused
-         * rather than read as a promise the service cannot keep.
+         * starts does not exist yet— and the rights to CANCEL and to ANSWER
+         * are about a run that does exist. A scope that names no run covers
+         * no run, so those rights could never be exercised: a line that says
+         * `none+cancel` or `none+answer` is a file with a mistake, and the
+         * file is refused rather than read as a promise the service cannot
+         * keep.
          */
         private fun parseScope(text: String): ServiceScope? {
             val parts = text.split('+')
@@ -577,11 +633,13 @@ internal class ServiceAuthorizations private constructor(
                 val right = when (capability) {
                     START_CAPABILITY -> ServiceScope.Right.Start
                     CANCEL_CAPABILITY -> ServiceScope.Right.Cancel
+                    ANSWER_CAPABILITY -> ServiceScope.Right.Answer
                     else -> return null
                 }
                 if (!rights.add(right)) return null
             }
-            if (ServiceScope.Right.Cancel in rights && reading is ServiceScope.None) return null
+            val needsARun = ServiceScope.Right.Cancel in rights || ServiceScope.Right.Answer in rights
+            if (needsARun && reading is ServiceScope.None) return null
             return ServiceScope.WithRights(reading, rights)
         }
 
@@ -614,6 +672,7 @@ internal class ServiceAuthorizations private constructor(
                         when (capability) {
                             ServiceScope.Right.Start -> START_SUFFIX
                             ServiceScope.Right.Cancel -> CANCEL_SUFFIX
+                            ServiceScope.Right.Answer -> ANSWER_SUFFIX
                         }
                     }
         }
@@ -635,6 +694,12 @@ internal class ServiceAuthorizations private constructor(
 
         /** The suffix that carries [CANCEL_CAPABILITY]. */
         private const val CANCEL_SUFFIX: String = "+cancel"
+
+        /** The capability that lets a client list and answer the questions of a run. */
+        private const val ANSWER_CAPABILITY: String = "answer"
+
+        /** The suffix that carries [ANSWER_CAPABILITY]. */
+        private const val ANSWER_SUFFIX: String = "+answer"
 
         /** The prefix of the fourth field, the one that grants credentials. */
         private const val GRANTS_PREFIX: String = "credentials="

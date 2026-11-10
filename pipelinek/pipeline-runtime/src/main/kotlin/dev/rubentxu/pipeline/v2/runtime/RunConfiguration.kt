@@ -128,8 +128,18 @@ class RunConfiguration private constructor(
          * named them would put a directory of its own at the front of the
          * PATH of every step, in front of the paths the operator kept, and
          * the keep-set would never see it.
+         *
+         * `PATH` is here for the same reason and for one more. The sandbox
+         * filters and normalises a caller's PATH only under the LOCAL
+         * profile: under the pass-through profile —which is the default, and
+         * the profile the supervised runs use, because the supervisor never
+         * names one— a declared PATH reaches the step verbatim. A
+         * configuration that named `PATH` would therefore replace the PATH
+         * of every step of the run with a directory of the client's, and the
+         * operator's own directories would not be in it. The PATH of a step
+         * is the launcher's, and so is the rule that builds it.
          */
-        private val PATH_ANCHORS: Set<String> = setOf("JAVA_HOME", "M2_HOME")
+        private val PATH_ANCHORS: Set<String> = setOf("JAVA_HOME", "M2_HOME", "PATH")
 
         /**
          * The configuration of [raw], or the refusal that it breaks a rule.
@@ -148,9 +158,10 @@ class RunConfiguration private constructor(
          *  2. how long the name is;
          *  3. whether the name has the shape of a name;
          *  4. whether the name belongs to the product;
-         *  5. whether the name is denied by the sandbox;
-         *  6. how long the value is;
-         *  7. whether the value carries a NUL.
+         *  5. whether the name is an anchor of the PATH of a step;
+         *  6. whether the name is denied by the sandbox;
+         *  7. how long the value is;
+         *  8. whether the value carries a NUL.
          */
         fun of(raw: Map<String, String>): RunConfigurationOutcome {
             if (raw.size > MAX_ENTRIES) {
@@ -297,7 +308,7 @@ enum class RunConfigurationRefusal(val reason: String, val detail: String) {
     /** The name of an entry is one the launcher consumes to build the PATH. */
     NameIsAPathAnchor(
         "the-configuration-name-is-a-path-anchor",
-        "JAVA_HOME and M2_HOME are the launcher's own names for the PATH of a step",
+        "JAVA_HOME, M2_HOME and PATH are the launcher's own names for the PATH of a step",
     ),
 
     /** The name of an entry is one the sandbox removes from an environment. */

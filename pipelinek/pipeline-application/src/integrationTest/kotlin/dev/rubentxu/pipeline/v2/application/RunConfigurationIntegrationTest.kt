@@ -190,6 +190,36 @@ class RunConfigurationIntegrationTest {
         }
     }
 
+    @Test
+    fun `a configuration that breaks no rule but does not fit the line is refused by the transport`() {
+        // The rules bound the CHARACTER count, and the wire escapes: a value
+        // made of control characters travels as six bytes per character. The
+        // biggest configuration that breaks no rule is bigger than the line
+        // the protocol bounds, and the refusal that says so is the
+        // transport's —it says nothing about the configuration, and that is
+        // what the client is told.
+        val service = start()
+        try {
+            val maximal = (1..32).associate { index ->
+                "K$index".padEnd(64, 'K') to "".repeat(512)
+            }
+            val answer = client(STARTER_TOKEN).startRun(
+                script = "config.pipeline.kts",
+                idempotencyKey = "key-too-large",
+                configuration = maximal,
+            )
+
+            val refusal = assertInstanceOf(ServiceAnswer.Refused::class.java, answer).refusal
+            assertEquals(
+                ServiceRefusal.RequestTooLarge,
+                refusal,
+                "the transport refuses the line it cannot carry, and its word is its own",
+            )
+        } finally {
+            service.stop()
+        }
+    }
+
     /**
      * The run the answer names.
      */

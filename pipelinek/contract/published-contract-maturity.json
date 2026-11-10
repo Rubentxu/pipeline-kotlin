@@ -202,7 +202,7 @@
       "in the documentation: there is no oracle that tells a secret from a plain text, so the wire",
       "cannot promise to keep one. What it refuses, BY NAME, is the vocabulary of the product: the",
       "three prefixes the service and the launcher own, the names the sandbox removes from an",
-      "environment, and the two names the launcher consumes to build the PATH of a step. Those",
+      "environment, and the three names the launcher consumes to build the PATH of a step. Those",
       "are refused with the single new word `run-configuration-refused` and the reason inside it,",
       "because a vocabulary that grew with the rules would multiply the published words without",
       "giving the client more power. The right to start still governs it, and no new right was",

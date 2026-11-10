@@ -126,6 +126,21 @@ class RunConfigurationTest {
     }
 
     @Test
+    fun `the PATH of a step is refused because only the local profile filters it`() {
+        // The sandbox normalises a caller's PATH under the LOCAL profile only.
+        // The supervised runs do not name a profile, so they run under the
+        // pass-through one, where a declared PATH reaches the step verbatim:
+        // a client that named PATH would put its own directory in front of
+        // every program the step runs, and the operator's would not be there.
+        val refused = assertInstanceOf(
+            RunConfigurationOutcome.Refused::class.java,
+            RunConfiguration.of(mapOf("PATH" to "/tmp/evil")),
+            "the PATH of a step is the launcher's own",
+        )
+        assertEquals("the-configuration-name-is-a-path-anchor", refused.refusal.reason)
+    }
+
+    @Test
     fun `the last value that fits is accepted and the one that does not is refused`() {
         val value = "v".repeat(RunConfiguration.MAX_VALUE_LENGTH)
         assertInstanceOf(

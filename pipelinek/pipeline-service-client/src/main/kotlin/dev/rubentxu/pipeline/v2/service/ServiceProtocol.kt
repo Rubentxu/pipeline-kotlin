@@ -211,7 +211,20 @@ sealed interface ServiceRequest {
          * there is none to carry.
          */
         val configuration: Map<String, String> = emptyMap(),
-    ) : ServiceRequest
+    ) : ServiceRequest {
+
+        /**
+         * The request WITHOUT the values of its configuration.
+         *
+         * The generated one would render them, and a line of log that
+         * carried them would publish them to whoever reads the log. The
+         * channel is public, and public is not the same as printed: the
+         * values belong to the steps of the run, not to a diagnostic.
+         */
+        override fun toString(): String =
+            "StartRun(schema=$schema, script=$script, workspace=$workspace, " +
+                "idempotencyKey=$idempotencyKey, configuration=${configuration.size} entries)"
+    }
 
     /**
      * The request to CANCEL a run.

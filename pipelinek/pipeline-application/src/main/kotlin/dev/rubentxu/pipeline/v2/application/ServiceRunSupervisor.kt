@@ -56,7 +56,19 @@ internal data class ServiceStartRequest(
      */
     val credentialDigest: String,
     val configuration: Map<String, String> = emptyMap(),
-)
+) {
+
+    /**
+     * The request WITHOUT the values of its configuration.
+     *
+     * The generated one would render them, and a line of log that carried
+     * them would publish them to whoever reads the log. The rules are the
+     * supervisor's to apply, and the values are the client's own text.
+     */
+    override fun toString(): String =
+        "ServiceStartRequest(script=$script, workspace=$workspace, idempotencyKey=$idempotencyKey, " +
+            "credentialDigest=$credentialDigest, configuration=${configuration.size} entries)"
+}
 
 /**
  * What the service decided about a request to start a run.

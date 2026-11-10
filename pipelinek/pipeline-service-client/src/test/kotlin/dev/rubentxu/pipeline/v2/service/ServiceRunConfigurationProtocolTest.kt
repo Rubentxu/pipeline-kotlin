@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.service
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -94,6 +95,65 @@ class ServiceRunConfigurationProtocolTest {
         val request = assertInstanceOf(ServiceDecoding.Decoded::class.java, decoded).request
         val start = assertInstanceOf(ServiceRequest.StartRun::class.java, request)
         assertEquals(mapOf("PORT" to "8080", "DEBUG" to "true"), start.configuration)
+    }
+
+    @Test
+    fun `the published request and answer do not print the values of the configuration`() {
+        // The values are the client's own text, and a line of log that
+        // carried them would publish them to whoever reads the log. The
+        // channel is public, and public is not the same as printed.
+        val request = ServiceRequest.StartRun(
+            schema = "pipelinek.service/2",
+            script = "build.kts",
+            workspace = "scratch",
+            idempotencyKey = "order-42",
+            configuration = mapOf("BUILD_PROFILE" to "release"),
+        )
+        assertFalse(
+            request.toString().contains("release"),
+            "the request prints the values of the configuration to whoever reads the log",
+        )
+
+        val answer = ServiceRunStart(
+            runId = "run-1",
+            correlationId = "corr-1",
+            ownerId = "owner-1",
+            startedAtMs = 1L,
+            configuration = mapOf("BUILD_PROFILE" to "release"),
+        )
+        assertFalse(
+            answer.toString().contains("release"),
+            "the answer prints the values of the configuration to whoever reads the log",
+        )
+    }
+
+    @Test
+    fun `a configuration that breaks no rule can still be too big for the line`() {
+        // The rules bound the CHARACTER count, and the wire escapes: a value
+        // made of control characters travels as six bytes per character. The
+        // biggest configuration that breaks no rule is therefore bigger than
+        // the line the protocol bounds, and the transport refuses it with its
+        // own word — `request-too-large` — which says nothing about the
+        // configuration. This row names that boundary, so that whoever
+        // changes the limits has to change this row and the document with it.
+        val maximal = (1..32).associate { index ->
+            "K$index".padEnd(64, 'K') to "".repeat(512)
+        }
+        val line = ServiceCodec.encode(
+            ServiceRequest.StartRun(
+                schema = "pipelinek.service/2",
+                script = "build.kts",
+                workspace = null,
+                idempotencyKey = null,
+                configuration = maximal,
+            ),
+        )
+        val bytes = line.toByteArray(Charsets.UTF_8).size
+        assertTrue(
+            bytes > ServiceProtocol.MAX_LINE_BYTES,
+            "the maximal configuration travels in $bytes bytes and the line bounds " +
+                "${ServiceProtocol.MAX_LINE_BYTES}",
+        )
     }
 
     @Test

@@ -132,7 +132,19 @@ data class ServiceRunStart(
      * not a silent success.
      */
     val configuration: Map<String, String> = emptyMap(),
-)
+) {
+
+    /**
+     * The answer WITHOUT the values of its configuration.
+     *
+     * The generated one would render them, and a line of log that carried
+     * them would publish them to whoever reads the log. The values came from
+     * the client and belong to the steps of the run, not to a diagnostic.
+     */
+    override fun toString(): String =
+        "ServiceRunStart(runId=$runId, correlationId=$correlationId, ownerId=$ownerId, " +
+            "startedAtMs=$startedAtMs, configuration=${configuration.size} entries)"
+}
 
 /**
  * The answer of a cancellation.

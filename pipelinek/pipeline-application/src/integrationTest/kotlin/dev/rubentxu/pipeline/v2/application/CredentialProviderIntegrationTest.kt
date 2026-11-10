@@ -707,11 +707,6 @@ class CredentialProviderIntegrationTest {
         return client(token).grantCredential(sessionId, asked.requestId, material) is ServiceAnswer.Answered
     }
 
-    /** The material of the secret the controller holds, in the canonical form of a secret text. */
-    private fun secretMaterial(): ByteArray = CredentialMaterialCodec.encode(
-        SecretText(id = CredentialsId(CREDENTIAL_ID), bytes = SECRET.copyOf()),
-    )
-
     /**
      * Answers every ask of [sessionId] with the material of the credential that was asked for.
      *
@@ -747,57 +742,6 @@ class CredentialProviderIntegrationTest {
         }
     }
 
-    /**
-     * The material a controller hands over for [credentialId]: the canonical form of the
-     * credential, which says what it is.
-     *
-     * The [kind] is the form the authorization granted, and the material carries that same form:
-     * a controller that answered with another one would be answering a question nobody asked.
-     */
-    private fun materialOf(credentialId: String, kind: String, hostileArchive: Boolean): ByteArray {
-        val credential: Credential = when (credentialId) {
-            SSH_KEY_ID -> SshPrivateKey(
-                id = CredentialsId(SSH_KEY_ID),
-                username = "git",
-                privateKey = KEY_TEXT.toByteArray(Charsets.UTF_8),
-                passphraseRef = LinkedSecretRef(CredentialsId(SSH_PASSPHRASE_ID)),
-            )
-
-            SSH_PASSPHRASE_ID -> SecretText(
-                id = CredentialsId(SSH_PASSPHRASE_ID),
-                bytes = PASSPHRASE.toByteArray(Charsets.UTF_8),
-            )
-
-            CERT_ID -> Certificate(
-                id = CredentialsId(CERT_ID),
-                keystore = KEYSTORE.copyOf(),
-                passwordRef = LinkedSecretRef(CredentialsId(CERT_PASSWORD_ID)),
-                alias = "deploy",
-            )
-
-            CERT_PASSWORD_ID -> SecretText(
-                id = CredentialsId(CERT_PASSWORD_ID),
-                bytes = PASSWORD.toByteArray(Charsets.UTF_8),
-            )
-
-            ARCHIVE_ID -> Zip(
-                id = CredentialsId(ARCHIVE_ID),
-                entries = if (hostileArchive) {
-                    mapOf(ESCAPING_ENTRY to "the entry that leaves the root".toByteArray(Charsets.UTF_8))
-                } else {
-                    mapOf(ARCHIVE_ENTRY to ARCHIVE_CONTENT.toByteArray(Charsets.UTF_8))
-                },
-            )
-
-            else -> error("the controller holds no credential named '$credentialId'")
-        }
-        assertEquals(
-            kind,
-            CredentialMaterialCodec.kindOf(credential),
-            "the form of the answer is the form the authorization granted",
-        )
-        return CredentialMaterialCodec.encode(credential)
-    }
 
     /** Polls [sessionId] until a run asks for a credential. */
     private fun awaitAsked(sessionId: String, token: String): ServiceCredentialPoll.Asked {
@@ -1104,7 +1048,7 @@ class CredentialProviderIntegrationTest {
         private const val STEP_MARK: String = "the-step-ran"
 
         /** The private key the controller holds, in the shape a PEM has. */
-        private val KEY_TEXT: String = "-----BEGIN OPENSSH PRIVATE KEY-----\n" +
+        private const val KEY_TEXT: String = "-----BEGIN OPENSSH PRIVATE KEY-----\n" +
             "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\n" +
             "-----END OPENSSH PRIVATE KEY-----\n"
 
@@ -1131,6 +1075,68 @@ class CredentialProviderIntegrationTest {
 
         /** How long the test waits for a run to ask a session for a credential. */
         private const val ASKED_DEADLINE_MILLIS: Long = 60_000L
+
+        // The two functions that DERIVE the material live next to the constants they derive
+        // it from: the class keeps the ROWS, and the companion keeps what a row needs to
+        // build the material it hands over. It is also what keeps the class under the
+        // `TooManyFunctions` limit, which counts the fixtures as if they were logic.
+
+        /** The material of the secret the controller holds, in the canonical form of a secret text. */
+        private fun secretMaterial(): ByteArray = CredentialMaterialCodec.encode(
+            SecretText(id = CredentialsId(CREDENTIAL_ID), bytes = SECRET.copyOf()),
+        )
+
+        /**
+         * The material a controller hands over for [credentialId]: the canonical form of the
+         * credential, which says what it is.
+         *
+         * The [kind] is the form the authorization granted, and the material carries that same form:
+         * a controller that answered with another one would be answering a question nobody asked.
+         */
+        private fun materialOf(credentialId: String, kind: String, hostileArchive: Boolean): ByteArray {
+            val credential: Credential = when (credentialId) {
+                SSH_KEY_ID -> SshPrivateKey(
+                    id = CredentialsId(SSH_KEY_ID),
+                    username = "git",
+                    privateKey = KEY_TEXT.toByteArray(Charsets.UTF_8),
+                    passphraseRef = LinkedSecretRef(CredentialsId(SSH_PASSPHRASE_ID)),
+                )
+
+                SSH_PASSPHRASE_ID -> SecretText(
+                    id = CredentialsId(SSH_PASSPHRASE_ID),
+                    bytes = PASSPHRASE.toByteArray(Charsets.UTF_8),
+                )
+
+                CERT_ID -> Certificate(
+                    id = CredentialsId(CERT_ID),
+                    keystore = KEYSTORE.copyOf(),
+                    passwordRef = LinkedSecretRef(CredentialsId(CERT_PASSWORD_ID)),
+                    alias = "deploy",
+                )
+
+                CERT_PASSWORD_ID -> SecretText(
+                    id = CredentialsId(CERT_PASSWORD_ID),
+                    bytes = PASSWORD.toByteArray(Charsets.UTF_8),
+                )
+
+                ARCHIVE_ID -> Zip(
+                    id = CredentialsId(ARCHIVE_ID),
+                    entries = if (hostileArchive) {
+                        mapOf(ESCAPING_ENTRY to "the entry that leaves the root".toByteArray(Charsets.UTF_8))
+                    } else {
+                        mapOf(ARCHIVE_ENTRY to ARCHIVE_CONTENT.toByteArray(Charsets.UTF_8))
+                    },
+                )
+
+                else -> error("the controller holds no credential named '$credentialId'")
+            }
+            assertEquals(
+                kind,
+                CredentialMaterialCodec.kindOf(credential),
+                "the form of the answer is the form the authorization granted",
+            )
+            return CredentialMaterialCodec.encode(credential)
+        }
     }
 }
 

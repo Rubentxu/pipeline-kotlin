@@ -1675,7 +1675,7 @@ private fun decodeCancelRun(request: JsonObject, schema: String, credential: Str
 private fun decodeAnswerInput(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
     val runId = request.runId() ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
     val opId = request.text("opId")
-    if (opId == null || opId.isEmpty() || opId.length > ServiceProtocol.MAX_INPUT_OP_ID_LENGTH) {
+    if (opId.isNullOrEmpty() || opId.length > ServiceProtocol.MAX_INPUT_OP_ID_LENGTH) {
         return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
     }
     val decision = request.text("decision")?.let(ServiceInputDecision::ofWord)

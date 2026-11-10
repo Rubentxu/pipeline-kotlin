@@ -125,6 +125,7 @@ class ProcessDurableTaskRuntimeDeathTest {
      * The coroutine lives in a scope of its own, so the cancellation the row
      * asks for reaches the runtime and not the test.
      */
+    @Suppress("InjectDispatcher")
     private fun run(runtime: ProcessDurableTaskRuntime): Job {
         val request = TaskExecutionRequest(
             task = TaskSpec.ExecTask(listOf("/bin/sh", "-c", "true")),

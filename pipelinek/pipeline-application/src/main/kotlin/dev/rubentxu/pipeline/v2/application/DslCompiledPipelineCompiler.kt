@@ -105,6 +105,7 @@ object DslCompiledPipelineCompiler {
         return CompiledPipeline(
             id = definitionId,
             source = SourceDescriptor(sourcePath, Digest(sha256(sourceContent))),
+            parameters = spec.parameters,
             stages = stages,
             pluginLockDigest = pluginLockDigest,
         )

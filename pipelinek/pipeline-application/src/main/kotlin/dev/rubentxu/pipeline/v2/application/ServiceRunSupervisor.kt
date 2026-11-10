@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.dsl.RunInputs
+import dev.rubentxu.pipeline.v2.dsl.RunInputsOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskRuntime
 import dev.rubentxu.pipeline.v2.domain.durable.ExecutionOutputSink
 import dev.rubentxu.pipeline.v2.domain.durable.OutputChunk
@@ -39,6 +41,12 @@ import java.util.concurrent.atomic.AtomicReference
  * @property configuration the name/value pairs the steps of the run will see, as the client
  *   sent them. They are RAW here: the rules are the supervisor's to apply, and the supervisor
  *   applies them before it claims the idempotency key.
+ * @property parameters the values the client delivered for the parameters the pipeline
+ *   declares, as the client sent them. They are RAW here too, and they are checked against
+ *   the [parameterContract] before the idempotency key is claimed.
+ * @property parameterContract the declaration the client knows the pipeline has. It travels
+ *   because the service does not compile the script: describing it is compiling it, and
+ *   compiling it is running the author's code inside the service.
  */
 internal data class ServiceStartRequest(
     val script: String,
@@ -56,6 +64,8 @@ internal data class ServiceStartRequest(
      */
     val credentialDigest: String,
     val configuration: Map<String, String> = emptyMap(),
+    val parameters: Map<String, String> = emptyMap(),
+    val parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
 ) {
 
     /**
@@ -64,10 +74,13 @@ internal data class ServiceStartRequest(
      * The generated one would render them, and a line of log that carried
      * them would publish them to whoever reads the log. The rules are the
      * supervisor's to apply, and the values are the client's own text.
+     *
+     * The same is true of the parameters' values, and for the same reason.
      */
     override fun toString(): String =
         "ServiceStartRequest(script=$script, workspace=$workspace, idempotencyKey=$idempotencyKey, " +
-            "credentialDigest=$credentialDigest, configuration=${configuration.size} entries)"
+            "credentialDigest=$credentialDigest, configuration=${configuration.size} entries, " +
+            "parameters=${parameters.size} values)"
 }
 
 /**
@@ -224,6 +237,7 @@ internal data class ServiceRunCommand(
         correlationId: String,
         policy: ServiceRunPolicy,
         runConfig: Path? = null,
+        runInputs: Path? = null,
     ): List<String> {
         val argv = mutableListOf(
             javaBinary,
@@ -243,6 +257,7 @@ internal data class ServiceRunCommand(
         )
         if (policy.allowNetwork) argv += "--allow-network"
         runConfig?.let { argv += listOf("--run-config", it.toString()) }
+        runInputs?.let { argv += listOf("--run-inputs", it.toString()) }
         if (workspace != null) {
             argv += listOf("--workspace", workspace.toString())
         } else {
@@ -372,7 +387,43 @@ internal class ServiceRunSupervisor(
                 ),
             )
         }
-        val digest = digestOf(request.script, request.workspace, configuration)
+        // The PARAMETERS are checked next, and for the same reason as the
+        // configuration: the rules are pure and they have no effect, so a
+        // request that breaks them never becomes a claim.
+        //
+        // What they are checked against is the CONTRACT the client carries,
+        // and not the declaration of the script: the service does not compile
+        // the scripts it is asked about, and describing one is compiling it.
+        //
+        // A request that delivers values WITHOUT the contract is refused
+        // before it is checked: the service cannot check what it cannot
+        // know, and taking the values on faith is not something it does.
+        if (request.parameters.isNotEmpty() && request.parameterContract.isEmpty()) {
+            return ServiceStartOutcome.Refused(
+                ServiceRefusal.ParametersRefused(
+                    "the-service-has-no-contract-for-these-parameters",
+                    "the service does not compile the scripts it is asked about, so it cannot " +
+                        "know the parameters a script declares; the request has to carry the " +
+                        "declaration the client knows",
+                ),
+            )
+        }
+        when (val outcome = checkParameters(request.parameters, request.parameterContract)) {
+            is RunInputsOutcome.Accepted -> Unit
+            is RunInputsOutcome.Refused -> return ServiceStartOutcome.Refused(
+                ServiceRefusal.ParametersRefused(
+                    outcome.refusal.reason,
+                    outcome.refusal.detail,
+                ),
+            )
+        }
+        val digest = digestOf(
+            request.script,
+            request.workspace,
+            configuration,
+            request.parameterContract,
+            request.parameters,
+        )
         val key = request.idempotencyKey?.let { registryKeyOf(request.credentialDigest, it) }
         // The correlation is chosen BEFORE the claim, because the claim is
         // written to the file: a claim that does not say which run it may
@@ -421,7 +472,29 @@ internal class ServiceRunSupervisor(
             return ServiceStartOutcome.Refused(ServiceRefusal.TooManySupervisedRuns)
         }
 
-        return launchRun(paths, key, digest, correlationId, configuration)
+        return launchRun(paths, key, digest, correlationId, configuration, request.parameters)
+    }
+
+    /**
+     * The check of the [values] of a request against the [contract] it carries.
+     *
+     * ## Why the check applies the contract's DEFAULTS
+     *
+     * Because the contract is the declaration the client knows, and the values of a request
+     * are the values the client delivered: the effective values of the REQUEST are the
+     * delivered ones plus the defaults of that declaration.
+     *
+     * The script's own declaration is verified by the child, before the body runs, and the
+     * effective values of the RUN are the ones of the script. A client whose contract
+     * differs from the script gets a run that refuses to start, and the operator's log
+     * says why.
+     */
+    private fun checkParameters(
+        values: Map<String, String>,
+        contract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec>,
+    ): RunInputsOutcome {
+        if (values.isEmpty() && contract.isEmpty()) return RunInputsOutcome.Accepted(RunInputs.EMPTY)
+        return RunInputs.of(contract, values)
     }
 
     /**
@@ -446,6 +519,7 @@ internal class ServiceRunSupervisor(
         digest: String,
         correlationId: String,
         configuration: RunConfiguration,
+        delivered: Map<String, String>,
     ): ServiceStartOutcome {
         val supervisionId = "sup-" + UUID.randomUUID().toString()
         // The supervision's own directory: the port writes the child's
@@ -460,18 +534,20 @@ internal class ServiceRunSupervisor(
             // is refused with what the port said.
         }
 
-        // The snapshot of the configuration, written BEFORE the child is
-        // launched. A run without a configuration has no snapshot and no
-        // option in its argv: the argv of a plain run is the argv it always
-        // was, and the behaviour of a run that was given nothing is the
-        // behaviour it always had.
-        val snapshot = when (val outcome = writeSnapshot(supervisionDir, key, configuration)) {
-            is SnapshotOutcome.None -> null
-            is SnapshotOutcome.Written -> outcome.path
-            is SnapshotOutcome.Refused -> return ServiceStartOutcome.Refused(outcome.refusal)
+        // The snapshots the child reads, written BEFORE the child is launched.
+        val snapshots = when (val outcome = snapshotsOf(supervisionDir, key, configuration, delivered)) {
+            is SnapshotsOutcome.Written -> outcome
+            is SnapshotsOutcome.Refused -> return ServiceStartOutcome.Refused(outcome.refusal)
         }
 
-        val argv = command.argvFor(paths.script, paths.workspace, correlationId, runPolicy, snapshot)
+        val argv = command.argvFor(
+            paths.script,
+            paths.workspace,
+            correlationId,
+            runPolicy,
+            snapshots.configuration,
+            snapshots.parameters,
+        )
         val watcher = LaunchWatcher(supervisionDir.resolve(CHILD_LOG_NAME))
         val job = Job()
         val supervision = Supervision(job)
@@ -634,6 +710,42 @@ internal class ServiceRunSupervisor(
     }
 
     /**
+     * The snapshots the CHILD reads, written before the child is launched.
+     *
+     * They are two files and not one, because they are two different things: the
+     * configuration is what the steps of the run will SEE, and the parameters are what the
+     * pipeline DECLARES it accepts. The child checks the parameters against the declaration
+     * of the script, and the declaration is a product of the child's own compilation.
+     *
+     * A run that was given neither has no file and no option in its argv: the argv of a
+     * plain run is the argv it always was, and the behaviour of a run that was given nothing
+     * is the behaviour it always had.
+     *
+     * A snapshot that cannot be written stops the run, because a run whose values do not
+     * exist is a run that cannot be promised: the child that does not receive them cannot
+     * check them against the declaration. The slot the budget gave to it goes back and the
+     * key is released, so the client is free to repeat the request with the same key.
+     */
+    private fun snapshotsOf(
+        supervisionDir: Path,
+        key: String?,
+        configuration: RunConfiguration,
+        delivered: Map<String, String>,
+    ): SnapshotsOutcome {
+        val configurationSnapshot = when (val outcome = writeSnapshot(supervisionDir, key, configuration)) {
+            is SnapshotOutcome.None -> null
+            is SnapshotOutcome.Written -> outcome.path
+            is SnapshotOutcome.Refused -> return SnapshotsOutcome.Refused(outcome.refusal)
+        }
+        val parametersSnapshot = when (val outcome = writeInputsSnapshot(supervisionDir, key, delivered)) {
+            is SnapshotOutcome.None -> null
+            is SnapshotOutcome.Written -> outcome.path
+            is SnapshotOutcome.Refused -> return SnapshotsOutcome.Refused(outcome.refusal)
+        }
+        return SnapshotsOutcome.Written(configurationSnapshot, parametersSnapshot)
+    }
+
+    /**
      * The snapshot of the configuration, written BEFORE the child is launched.
      *
      * A run without a configuration has no snapshot and no option in its
@@ -669,6 +781,88 @@ internal class ServiceRunSupervisor(
             )
             if (key != null) registry.fail(key, refusal)
             SnapshotOutcome.Refused(refusal)
+        }
+    }
+
+    /**
+     * Writes the snapshot of the PARAMETERS at [path].
+     *
+     * ## Why it is a FILE and not the argv
+     *
+     * Because the argv of a process is readable by any user of the machine through
+     * `/proc/<pid>/cmdline`, and the argv carries the PATH of the snapshot, which is a path
+     * inside the service's own directory. The values themselves stay in the file.
+     *
+     * ## Why it is written the way the registry writes its own
+     *
+     * Because a file that is created and only THEN chmod'ed has a window in which it exists
+     * with the mode of the umask and with the content inside. The recipe is the one the
+     * product already uses: a temporary file created with the mode it will keep, the content
+     * written into it, and an ATOMIC move into place.
+     *
+     * ## Why a snapshot that cannot be written stops the run
+     *
+     * Because the child checks the values against the declaration of the SCRIPT, and a
+     * child that does not receive them cannot check them: a run that would run with
+     * parameters nobody delivered is not a run that can be promised.
+     */
+    private fun writeInputsSnapshot(
+        supervisionDir: Path,
+        key: String?,
+        delivered: Map<String, String>,
+    ): SnapshotOutcome {
+        if (delivered.isEmpty()) return SnapshotOutcome.None
+        val path = supervisionDir.resolve(RUN_INPUTS_NAME)
+        return try {
+            writeRunInputs(path, delivered)
+            SnapshotOutcome.Written(path)
+        } catch (failure: Exception) {
+            liveRuns.decrementAndGet()
+            val refusal = ServiceRefusal.ParametersRefused(
+                "the-parameters-cannot-be-written",
+                "the snapshot of the parameters could not be written, and a run that does not " +
+                    "receive the parameters it was asked for is not a run that can be " +
+                    "promised: " + (failure.message ?: failure.javaClass.simpleName),
+            )
+            if (key != null) registry.fail(key, refusal)
+            SnapshotOutcome.Refused(refusal)
+        }
+    }
+
+    /**
+     * Writes the snapshot of [parameters] at [path].
+     *
+     * ## What the file holds
+     *
+     * The schema of the document and the values that were DELIVERED. The defaults are not
+     * written: the child knows the declaration of the script, and it applies the defaults
+     * of THAT declaration when it checks the values.
+     */
+    private fun writeRunInputs(path: Path, delivered: Map<String, String>) {
+        val directory = checkNotNull(path.parent) { "the snapshot has no directory" }
+        val document = runInputsDocument(delivered)
+        val temporary = Files.createTempFile(directory, RUN_INPUTS_NAME, ".tmp")
+        try {
+            Files.setPosixFilePermissions(
+                temporary,
+                setOf(
+                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                ),
+            )
+            Files.writeString(temporary, document.toString())
+            try {
+                Files.move(
+                    temporary,
+                    path,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            Files.deleteIfExists(temporary)
         }
     }
 
@@ -885,6 +1079,16 @@ internal class ServiceRunSupervisor(
         const val RUN_CONFIG_NAME: String = "run-config.json"
 
         /**
+         * The name of the snapshot of the parameters.
+         *
+         * It is a name of its own and not a second field of the configuration's snapshot: the
+         * configuration is the environment of the steps and the parameters are the inputs the
+         * pipeline declares, and two documents that carry one thing each are two documents
+         * that can be read apart.
+         */
+        const val RUN_INPUTS_NAME: String = "run-inputs.json"
+
+        /**
          * The fingerprint of the request that is made.
          *
          * The two names the client controls and the configuration it
@@ -914,15 +1118,29 @@ internal class ServiceRunSupervisor(
             script: String,
             workspace: String?,
             configuration: RunConfiguration = RunConfiguration.EMPTY,
+            parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
+            parameters: Map<String, String> = emptyMap(),
         ): String {
             val base = workspace?.let { workspaceText ->
                 script.length.toString() + ":" + script + "|" +
                     workspaceText.length.toString() + ":" + workspaceText
             } ?: (script.length.toString() + ":" + script + "|-1:")
             val canonical = RunConfiguration.canonicalText(configuration.values)
-            if (canonical.isEmpty()) return ServiceAuthorizations.digestOf(base)
+            val withConfiguration = if (canonical.isEmpty()) {
+                base
+            } else {
+                base + "#" + canonical.length.toString() + ":" + canonical
+            }
+            // The parameters travel in a carrier of their OWN, and the marker is
+            // one the configuration's canonical text can never begin with: a
+            // request that carries a configuration and a request that carries
+            // parameters with the same texts are DIFFERENT requests, and a
+            // fingerprint that could not tell them apart would answer the
+            // second one with the run of the first.
+            val parametersText = RunInputs.canonicalText(parameterContract, parameters)
+            if (parametersText.isEmpty()) return ServiceAuthorizations.digestOf(withConfiguration)
             return ServiceAuthorizations.digestOf(
-                base + "#" + canonical.length.toString() + ":" + canonical,
+                withConfiguration + "@p:" + parametersText.length.toString() + ":" + parametersText,
             )
         }
 
@@ -969,6 +1187,32 @@ internal class ServiceRunSupervisor(
  * the child reads, and a run whose snapshot could not be written has a
  * refusal and no run at all.
  */
+/**
+ * The two files the child reads before it runs.
+ *
+ * They are written together because they are written at the same moment and for the same
+ * reason: the child cannot check the values of the parameters, nor compose the environment,
+ * without a file to read.
+ */
+private sealed interface SnapshotsOutcome {
+
+    /**
+     * The files are written.
+     *
+     * Each path is null when the run was given nothing of that kind: a run without a
+     * configuration has no configuration file, and a run without parameters has none either.
+     */
+    data class Written(
+        /** The file with the configuration, or null when the run was given none. */
+        val configuration: Path?,
+        /** The file with the parameters, or null when the run was given none. */
+        val parameters: Path?,
+    ) : SnapshotsOutcome
+
+    /** One of the files could not be written, and the refusal says why. */
+    data class Refused(val refusal: ServiceRefusal) : SnapshotsOutcome
+}
+
 private sealed interface SnapshotOutcome {
 
     /** The run was given no configuration, so it has no snapshot. */
@@ -978,7 +1222,7 @@ private sealed interface SnapshotOutcome {
     data class Written(val path: Path) : SnapshotOutcome
 
     /** The snapshot could not be written, and the refusal says why. */
-    data class Refused(val refusal: ServiceRefusal.RunConfigurationRefused) : SnapshotOutcome
+    data class Refused(val refusal: ServiceRefusal) : SnapshotOutcome
 }
 
 private class Supervision(

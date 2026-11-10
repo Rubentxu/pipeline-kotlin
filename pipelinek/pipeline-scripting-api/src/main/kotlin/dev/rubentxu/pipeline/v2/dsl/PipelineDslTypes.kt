@@ -2,9 +2,15 @@ package dev.rubentxu.pipeline.v2.dsl
 
 /**
  * Specification of a pipeline as built by the DSL.
+ *
+ * The [parameters] are the inputs the pipeline declares it accepts, and they are EMPTY for a
+ * pipeline that declares none. They are carried as data and never as authority: the
+ * declaration is the author's, and whoever checks a value against it does so with the rules
+ * of [RunInputs].
 */
 data class PipelineSpec(
     val stages: List<StageSpec>,
+    val parameters: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
 )
 
 /**

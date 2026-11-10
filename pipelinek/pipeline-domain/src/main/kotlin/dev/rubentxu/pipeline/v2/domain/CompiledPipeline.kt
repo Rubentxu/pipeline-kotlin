@@ -174,12 +174,29 @@ sealed interface StageOption {
  * a name and not a parsed type — the domain does not interpret it. The
  * default is the text a caller may supply instead of a value; `null` means
  * the parameter declares none.
+ *
+ * The [choices] are the texts a parameter of a closed set accepts, and they
+ * are EMPTY for a parameter whose type is not closed. The domain does not
+ * read them either: it carries the declaration, and whoever validates a
+ * value against it is the one that knows what the type means.
+ *
+ * A parameter with no default is a parameter a caller has to satisfy: the
+ * obligation is derived from the absence of the default and not stored as a
+ * field of its own, because there is only one way for it to be written.
  */
 @Serializable
-data class ParameterSpec(val name: String, val type: String, val defaultValue: String? = null) {
+data class ParameterSpec(
+    val name: String,
+    val type: String,
+    val defaultValue: String? = null,
+    val choices: List<String> = emptyList(),
+) {
     init {
         require(name.isNotBlank()) { "ParameterSpec.name must not be blank" }
         require(type.isNotBlank()) { "ParameterSpec.type must not be blank" }
+        require(choices.none { it.isBlank() }) {
+            "ParameterSpec.choices must not carry a blank choice"
+        }
     }
 }
 

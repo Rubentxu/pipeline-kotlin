@@ -64,6 +64,18 @@ sealed interface ServiceAnswer<out T> {
 data class ServiceVersion(val schema: String, val productVersion: String)
 
 /**
+ * The description of the parameters a script declares.
+ *
+ * It is a JSON Schema 2020-12 document, and it is the SAME declaration the script carries:
+ * a representation of it, and not another contract. A service that cannot describe a script
+ * answers the request with a refusal instead of with one of these.
+ */
+data class ServiceParameterDescription(
+    val schema: String,
+    val description: JsonObject,
+)
+
+/**
  * The health of the service and of the substrate it was composed with.
  *
  * Not the health of the installation: that is `doctor`'s, and it talks about
@@ -424,8 +436,20 @@ class ServiceClient internal constructor(
         workspace: String? = null,
         idempotencyKey: String? = null,
         configuration: Map<String, String> = emptyMap(),
+        parameters: Map<String, String> = emptyMap(),
+        parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
     ): ServiceAnswer<ServiceRunStart> =
-        ask(ServiceRequest.StartRun(schema, script, workspace, idempotencyKey, configuration)).narrow { result ->
+        ask(
+            ServiceRequest.StartRun(
+                schema = schema,
+                script = script,
+                workspace = workspace,
+                idempotencyKey = idempotencyKey,
+                configuration = configuration,
+                parameters = parameters,
+                parameterContract = parameterContract,
+            ),
+        ).narrow { result ->
             val runId = result.string("runId")
                 ?: return@narrow ServiceAnswer.Unreadable("no runId")
             val correlationId = result.string("correlationId")
@@ -444,6 +468,32 @@ class ServiceClient internal constructor(
             ServiceAnswer.Answered(
                 ServiceRunStart(runId, correlationId, ownerId, startedAtMs, echoed),
             )
+        }
+
+    /**
+     * Asks the service to DESCRIBE the parameters of [script].
+     *
+     * ## What the answer is
+     *
+     * A refusal, on a service that does not compile the scripts it is asked about:
+     * describing the parameters of a script means compiling it, and compiling it means
+     * running the author's code inside the service.
+     *
+     * ## Why the name is in the vocabulary
+     *
+     * Because a service that CAN describe a script —one that admits an artifact that was
+     * authorized beforehand— answers the same request, and a client written against the
+     * name works with both. A client that had no way to ask could only find out by
+     * starting a run and reading the operator's log.
+     *
+     * The description a client needs before it starts a run comes from the compiler, or
+     * from the contract it already carries.
+     */
+    fun describeParameters(script: String): ServiceAnswer<ServiceParameterDescription> =
+        ask(ServiceRequest.DescribeParameters(schema, script)).narrow { result ->
+            val description = result["description"] as? JsonObject
+                ?: return@narrow ServiceAnswer.Unreadable("no description")
+            ServiceAnswer.Answered(ServiceParameterDescription(schema, description))
         }
 
     /**

@@ -145,6 +145,16 @@ private fun runVolatilePipelineOwned(
         )
     }
 
+    // The PARAMETERS of the run, checked against the declaration the compilation just
+    // produced. The check is HERE because this is the first moment at which the product
+    // knows what the script declares, and the values are checked against the SCRIPT and
+    // not against a contract a client may have carried.
+    //
+    // A compilation that produced NO pipeline declares nothing, and a value cannot be
+    // unknown in a script that says nothing: the refusal of that compilation is the one
+    // the operator has to read, and it is read further down.
+    compiledPipeline?.let { RunParameters.of(config, it.parameters) }
+
     // The seams of this run, in the ONE order every run uses. The order is written down in
     // the contract (composeRunSeams) and not here, so that this branch and the durable one
     // cannot answer the operator differently about a single run.

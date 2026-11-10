@@ -85,7 +85,32 @@ internal class ServiceOperations(
         is ServiceRequest.RunState -> stateOf(request.runId)
         is ServiceRequest.StartRun -> startOf(request, credentialDigest)
         is ServiceRequest.CancelRun -> cancelOf(request)
+        is ServiceRequest.DescribeParameters -> describeParametersOf()
     }
+
+    /**
+     * The answer to a request to DESCRIBE the parameters of a script.
+     *
+     * The answer is a REFUSAL, and it is the same refusal for every script: this service
+     * does not compile the scripts it is asked about, and describing the parameters of a
+     * script is compiling it.
+     *
+     * ## Why the name is the same one the values are refused with
+     *
+     * Because the two facts have the same shape for the client: the parameters of a script
+     * are not something this service can produce. The reason says which of the two it is, so
+     * a client that reads it knows whether it has to fix a value or ask somebody else for
+     * the contract.
+     */
+    private fun describeParametersOf(): ServiceResponse = ServiceResponse.Refused(
+        ServiceProtocol.SCHEMA,
+        ServiceRefusal.ParametersRefused(
+            "the-service-does-not-describe-parameters",
+            "describing the parameters of a script means compiling it, and this service does " +
+                "not compile the scripts it is asked about; the description comes from the " +
+                "compiler, or from the contract the client already carries",
+        ),
+    )
 
     /**
      * The version of the product and the version of the protocol.
@@ -164,6 +189,8 @@ internal class ServiceOperations(
                     idempotencyKey = request.idempotencyKey,
                     credentialDigest = credentialDigest.orEmpty(),
                     configuration = request.configuration,
+                    parameters = request.parameters,
+                    parameterContract = request.parameterContract,
                 ),
             )
         } catch (failure: Exception) {

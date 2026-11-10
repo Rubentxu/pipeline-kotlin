@@ -272,7 +272,7 @@ internal class ServiceAuthorizations private constructor(
      * reachable from another's digest.
      */
     fun grantsOfDigest(digest: String?): Set<CredentialGrant> =
-        if (digest == null) emptySet() else grantsByDigest[digest] ?: emptySet()
+        if (digest == null) emptySet() else grantsByDigest[digest].orEmpty()
 
     /** The labels of the authorizations the service knows, for the operator. */
     val labels: List<String> get() = knownLabels

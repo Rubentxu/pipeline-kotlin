@@ -125,6 +125,11 @@ private fun runDurablePipelineOwned(
     scriptPath: Path,
     telemetry: PipelineTelemetry,
 ): Int {
+    // The configuration of the run, read ONCE from the snapshot the service
+    // wrote. It is read HERE, before anything of the run happens, because a
+    // snapshot that cannot be read has to refuse the run and not half of it.
+    val configuration = RunConfigurationReader.read(config.runConfigPath)
+
     // Durable mode: the run's events are kept in a SQLite journal. The narration is composed by
     // the SAME authority the volatile world asks, so the two worlds differ in WHERE the events
     // are kept and in nothing else: a run tells its story the same way with a database as
@@ -299,6 +304,12 @@ private fun runDurablePipelineOwned(
                                 withCredentialsExecutor = credentials.executor,
                                 allowNetwork = config.allowNetwork,
                                 secretPatternRegistry = secretPatternRegistry,
+                                // The configuration of the run, read ONCE from the
+                                // snapshot and validated with the same rules the
+                                // service applied. A snapshot that cannot be read,
+                                // or that breaks a rule, refuses the run before it
+                                // starts.
+                                configuration = configuration,
                             ),
                             // S6/G: the frozen composition, not a step registry plus a classloader.
                             composition = composition,

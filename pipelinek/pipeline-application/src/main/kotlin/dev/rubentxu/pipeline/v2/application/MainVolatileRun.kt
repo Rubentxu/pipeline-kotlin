@@ -91,6 +91,11 @@ private fun runVolatilePipelineOwned(
     outputProtocol: OutputProtocol,
     telemetry: PipelineTelemetry,
 ): Int {
+    // The configuration of the run, read ONCE from the snapshot the service
+    // wrote. It is read HERE, before anything of the run happens, because a
+    // snapshot that cannot be read has to refuse the run and not half of it.
+    val configuration = RunConfigurationReader.read(config.runConfigPath)
+
     // the single-runtime-spine storage rule (single runtime spine): storage choice must not select a
     // different execution algorithm. Without --db the run uses the
     // canonical durable coordinator with volatile (in-memory) stores;
@@ -270,6 +275,11 @@ private fun runVolatilePipelineOwned(
                         // operator believes they opened the network and did not.
                         allowNetwork = config.allowNetwork,
                         secretPatternRegistry = secretPatternRegistry,
+                        // The configuration of the run, read ONCE from the snapshot and
+                        // validated with the same rules the service applied. A snapshot that
+                        // cannot be read, or that breaks a rule, refuses the run before it
+                        // starts.
+                        configuration = configuration,
                     ),
                     // S6/G: the frozen composition, not a step registry plus a classloader.
                     // There is no path here that can reach a registry without a directive registry

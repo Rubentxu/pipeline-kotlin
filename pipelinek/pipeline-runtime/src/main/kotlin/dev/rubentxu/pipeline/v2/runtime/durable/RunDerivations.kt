@@ -55,7 +55,16 @@ internal fun canonicalShellOptions(policy: RunPolicy): ShOptions = ShOptions(
     workspaceRoot = policy.workspace.base ?: policy.controlDirRoot.resolve("workspace"),
     captureStdout = false,
     timeoutMs = null,
-    env = emptyMap(),
+    // The configuration of the run enters the BASE environment, and the base
+    // environment is the LOWEST layer of the composition: the stage's
+    // `environment { }` is composed on top of it (`base.env + stageEnv`) and
+    // the `withEnv` scope on top of that. So the configuration is the layer
+    // a pipeline OVERRIDES, and not a layer that overrides the pipeline.
+    //
+    // The values are plain handles, because the channel is public: they end
+    // up in the environment of the steps, which every process of the step
+    // inherits.
+    env = policy.configuration.asEnvironment(),
     // The profile is the policy's; the EXTRA paths and the kept paths are the ambient
     // configuration the resolver reads, and they are read in ONE place so that the transport
     // cannot disagree with itself about which sandbox it is.

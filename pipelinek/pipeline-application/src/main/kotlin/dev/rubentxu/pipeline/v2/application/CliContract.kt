@@ -160,6 +160,22 @@ data class CliFlags(
      */
     val receiptPath: String? = null,
     /**
+     * The snapshot of the configuration of this run: a file the run reads
+     * once, at its start, and whose values the steps of the run see in
+     * their environment.
+     *
+     * The service writes it, in the supervision's own directory, and hands
+     * the PATH to the child through the command line. An operator may name
+     * a file as well, and then the file is read under the SAME rules the
+     * service applies: a file that cannot be read, or that breaks a rule,
+     * refuses the run.
+     *
+     * Absent means the run was given no configuration, and that is the
+     * historical behaviour: the environment of the steps is the one they
+     * always had.
+     */
+    val runConfigPath: String? = null,
+    /**
      * Which families of observation reach the reader. Orthogonal to
      * [format]; neither changes execution.
 */

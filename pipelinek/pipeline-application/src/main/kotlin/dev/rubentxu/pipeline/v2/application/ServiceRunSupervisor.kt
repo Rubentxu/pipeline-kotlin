@@ -7,16 +7,20 @@ import dev.rubentxu.pipeline.v2.domain.durable.OutputChunk
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream
+import dev.rubentxu.pipeline.v2.runtime.RunConfiguration
+import dev.rubentxu.pipeline.v2.runtime.RunConfigurationOutcome
 import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
@@ -33,6 +37,9 @@ import java.util.concurrent.atomic.AtomicReference
  * @property script the name of the script, inside the directory the operator admitted.
  * @property workspace the name of the workspace, or null for the product's own scratch.
  * @property idempotencyKey the label that makes a repeated request the same request.
+ * @property configuration the name/value pairs the steps of the run will see, as the client
+ *   sent them. They are RAW here: the rules are the supervisor's to apply, and the supervisor
+ *   applies them before it claims the idempotency key.
  */
 internal data class ServiceStartRequest(
     val script: String,
@@ -49,6 +56,7 @@ internal data class ServiceStartRequest(
      * very boundary the credential draws.
      */
     val credentialDigest: String,
+    val configuration: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -72,6 +80,17 @@ internal sealed interface ServiceStartOutcome {
         val correlationId: String,
         val ownerId: String,
         val startedAtMs: Long,
+        /**
+         * The configuration the run WILL HAVE.
+         *
+         * It is the configuration of the REQUEST that is being answered,
+         * and not a copy of something the service remembered: the
+         * fingerprint of a request covers the configuration, so a request
+         * that repeats a key with another configuration is refused before
+         * this point, and the configuration of the answer is therefore
+         * always the configuration of the run that is answered.
+         */
+        val configuration: RunConfiguration = RunConfiguration.EMPTY,
     ) : ServiceStartOutcome
 
     /** The run did not start, and the refusal says why. */
@@ -172,12 +191,28 @@ internal data class ServiceRunCommand(
      * The promise that a key means ONE run is the service's own, and it is
      * kept here in the file of the starts, not in the reuse rule of the
      * command line.
+     *
+     * ## Why the configuration travels in a FILE and not in the argv
+     *
+     * Because the argv of a process is readable by any user of the machine
+     * through `/proc/<pid>/cmdline`, and the configuration is a PUBLIC
+     * channel: its values are in the environment of the steps of the run.
+     * Putting them in the argv as well would publish them to a wider
+     * audience than the one that asked for them. The argv carries the PATH
+     * of the snapshot, which is a path inside the service's own directory.
+     *
+     * ## Why the option is ABSENT when there is no configuration
+     *
+     * Because the argv of a run that was given nothing is the argv it
+     * always was: no option, no snapshot, and the behaviour of the run is
+     * the behaviour it always had.
      */
     fun argvFor(
         script: Path,
         workspace: Path?,
         correlationId: String,
         policy: ServiceRunPolicy,
+        runConfig: Path? = null,
     ): List<String> {
         val argv = mutableListOf(
             javaBinary,
@@ -196,6 +231,7 @@ internal data class ServiceRunCommand(
             correlationId,
         )
         if (policy.allowNetwork) argv += "--allow-network"
+        runConfig?.let { argv += listOf("--run-config", it.toString()) }
         if (workspace != null) {
             argv += listOf("--workspace", workspace.toString())
         } else {
@@ -293,12 +329,16 @@ internal class ServiceRunSupervisor(
      *
      * ## The order of the checks is the contract
      *
-     * The key is claimed FIRST, because a client that retries with a key the
-     * service already answered must get the run that started — even if the
-     * script has been removed from the directory since. Then the names are
-     * resolved, because a request for a script that does not exist is not a
-     * request to run. And only then is a slot of the budget taken, because
-     * a request that is already answered needs no slot.
+     * The CONFIGURATION is checked first, because its rules are pure and
+     * have no effect: a request that is not a request does not occupy the
+     * client's idempotency key, and the client can fix it and repeat with
+     * the SAME key. Then the key is claimed, because a client that retries
+     * with a key the service already answered must get the run that
+     * started — even if the script has been removed from the directory
+     * since. Then the names are resolved, because a request for a script
+     * that does not exist is not a request to run. And only then is a slot
+     * of the budget taken, because a request that is already answered
+     * needs no slot.
      *
      * ## What the answer proves
      *
@@ -308,7 +348,20 @@ internal class ServiceRunSupervisor(
      * request is not evidence of anything, and it is refused.
      */
     override fun start(request: ServiceStartRequest): ServiceStartOutcome {
-        val digest = digestOf(request.script, request.workspace)
+        // The rules of the configuration are checked BEFORE anything else,
+        // and the reason is the ORDER: they have no effect, so a request
+        // that breaks them never becomes a claim, and the client keeps a
+        // key it can retry with.
+        val configuration = when (val outcome = RunConfiguration.of(request.configuration)) {
+            is RunConfigurationOutcome.Accepted -> outcome.configuration
+            is RunConfigurationOutcome.Refused -> return ServiceStartOutcome.Refused(
+                ServiceRefusal.RunConfigurationRefused(
+                    outcome.refusal.reason,
+                    outcome.refusal.detail,
+                ),
+            )
+        }
+        val digest = digestOf(request.script, request.workspace, configuration)
         val key = request.idempotencyKey?.let { registryKeyOf(request.credentialDigest, it) }
         // The correlation is chosen BEFORE the claim, because the claim is
         // written to the file: a claim that does not say which run it may
@@ -317,7 +370,7 @@ internal class ServiceRunSupervisor(
 
         if (key != null) {
             when (val claim = registry.claim(key, digest, correlationId)) {
-                is ServiceStartClaim.Known -> return acceptedOf(claim.record)
+                is ServiceStartClaim.Known -> return acceptedOf(claim.record, configuration)
 
                 is ServiceStartClaim.Conflict -> return ServiceStartOutcome.Refused(
                     ServiceRefusal.IdempotencyConflict(request.idempotencyKey),
@@ -331,7 +384,7 @@ internal class ServiceRunSupervisor(
                     ),
                 )
 
-                is ServiceStartClaim.Awaiting -> return awaitOf(claim.future)
+                is ServiceStartClaim.Awaiting -> return awaitOf(claim.future, configuration)
 
                 is ServiceStartClaim.Refused -> return ServiceStartOutcome.Refused(
                     ServiceRefusal.RunStartRefused(
@@ -357,7 +410,7 @@ internal class ServiceRunSupervisor(
             return ServiceStartOutcome.Refused(ServiceRefusal.TooManySupervisedRuns)
         }
 
-        return launchRun(paths, key, digest, correlationId)
+        return launchRun(paths, key, digest, correlationId, configuration)
     }
 
     /**
@@ -381,9 +434,9 @@ internal class ServiceRunSupervisor(
         key: String?,
         digest: String,
         correlationId: String,
+        configuration: RunConfiguration,
     ): ServiceStartOutcome {
         val supervisionId = "sup-" + UUID.randomUUID().toString()
-        val argv = command.argvFor(paths.script, paths.workspace, correlationId, runPolicy)
         // The supervision's own directory: the port writes the child's
         // result there, and the child's error output goes next to it. It is
         // under the service's own directory, so it is the operator's.
@@ -395,6 +448,38 @@ internal class ServiceRunSupervisor(
             // cannot be made, the port will fail on its own and the start
             // is refused with what the port said.
         }
+
+        // The snapshot of the configuration, written BEFORE the child is
+        // launched. A run without a configuration has no snapshot and no
+        // option in its argv: the argv of a plain run is the argv it always
+        // was, and the behaviour of a run that was given nothing is the
+        // behaviour it always had.
+        val snapshot = if (configuration.isEmpty) {
+            null
+        } else {
+            val path = supervisionDir.resolve(RUN_CONFIG_NAME)
+            try {
+                writeRunConfiguration(path, configuration)
+            } catch (failure: Exception) {
+                // The slot the budget gave to this run is given back: the
+                // run is NOT going to happen, and a budget that keeps the
+                // slot of a run that never started is a budget that leaks.
+                liveRuns.decrementAndGet()
+                val refusal = ServiceRefusal.RunConfigurationRefused(
+                    "the-configuration-cannot-be-written",
+                    "the snapshot of the configuration could not be written, and a run whose " +
+                        "configuration does not exist is a run that cannot be promised: " +
+                        (failure.message ?: failure.javaClass.simpleName),
+                )
+                // The key is released: the request produced no run, so the
+                // client is free to repeat it with the same key.
+                if (key != null) registry.fail(key, refusal)
+                return ServiceStartOutcome.Refused(refusal)
+            }
+            path
+        }
+
+        val argv = command.argvFor(paths.script, paths.workspace, correlationId, runPolicy, snapshot)
         val watcher = LaunchWatcher(supervisionDir.resolve(CHILD_LOG_NAME))
         val job = Job()
         val supervision = Supervision(job)
@@ -518,7 +603,7 @@ internal class ServiceRunSupervisor(
                 // CHILD minted.
                 supervision.launched(supervised, launched.runId)
                 if (key != null) registry.complete(key, record)
-                acceptedOf(record)
+                acceptedOf(record, configuration)
             }
 
             LaunchWatcher.Wait.Finished -> {
@@ -546,14 +631,75 @@ internal class ServiceRunSupervisor(
     }
 
     /**
+     * Writes the snapshot of [configuration] at [path].
+     *
+     * ## Why the file is written the way the registry writes its own
+     *
+     * Because a file that is created and only THEN chmod'ed has a window in
+     * which it exists with the mode of the umask and with the content
+     * inside, and another user of the machine can read it in that window.
+     * The recipe is the one the product already uses: a temporary file
+     * created with the mode it will keep, the content written into it, and
+     * an ATOMIC move into place. The file is therefore never visible under
+     * any other mode.
+     *
+     * ## What the file holds
+     *
+     * The schema of the document and the values. It is a document the CHILD
+     * reads, and the child re-validates it: the disk is not an authority,
+     * and a file that the service wrote is still a file on the disk.
+     */
+    private fun writeRunConfiguration(path: Path, configuration: RunConfiguration) {
+        val directory = path.parent ?: throw IllegalStateException("the snapshot has no directory")
+        val document = runConfigurationDocument(configuration.values)
+        val temporary = Files.createTempFile(directory, RUN_CONFIG_NAME, ".tmp")
+        try {
+            Files.setPosixFilePermissions(
+                temporary,
+                setOf(
+                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                ),
+            )
+            Files.writeString(temporary, document.toString())
+            try {
+                Files.move(
+                    temporary,
+                    path,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            Files.deleteIfExists(temporary)
+        }
+    }
+
+    /**
      * The answer of a run that started.
      */
-    private fun acceptedOf(record: ServiceStartRecord): ServiceStartOutcome.Accepted =
+    /**
+     * The answer of a request whose run is already known.
+     *
+     * The [configuration] is the one of the REQUEST that is being answered
+     * and not one the service remembered: the fingerprint of the request
+     * covers the configuration, so a request that reaches this point with
+     * another configuration was refused as a conflict before it got here.
+     * That is what lets the answer echo the configuration without the
+     * service keeping the client's values in a record of its own.
+     */
+    private fun acceptedOf(
+        record: ServiceStartRecord,
+        configuration: RunConfiguration,
+    ): ServiceStartOutcome.Accepted =
         ServiceStartOutcome.Accepted(
             record.runId,
             record.correlationId,
             record.ownerId,
             record.startedAtMs,
+            configuration,
         )
 
     /**
@@ -570,9 +716,12 @@ internal class ServiceRunSupervisor(
      * the refusal is not told one thing by the owner and another by the
      * waiter, because the two are the same fact told twice.
      */
-    private fun awaitOf(future: CompletableFuture<ServiceStartRecord>): ServiceStartOutcome {
+    private fun awaitOf(
+        future: CompletableFuture<ServiceStartRecord>,
+        configuration: RunConfiguration,
+    ): ServiceStartOutcome {
         return try {
-            acceptedOf(future.get(limits.startDeadlineMillis, TimeUnit.MILLISECONDS))
+            acceptedOf(future.get(limits.startDeadlineMillis, TimeUnit.MILLISECONDS), configuration)
         } catch (failure: Exception) {
             val cause = (failure as? ExecutionException)?.cause
             if (cause is ServiceStartFailed) {
@@ -686,25 +835,55 @@ internal class ServiceRunSupervisor(
         const val CHILD_LOG_NAME: String = "child.err.log"
 
         /**
+         * The name of the snapshot of the configuration, inside the
+         * supervision's own directory.
+         *
+         * It is a NAME and not a path, and the directory is the service's
+         * own: the client never names a file, it names a script and a
+         * workspace by their names inside the directories the operator
+         * admitted, and the configuration does not open a third door.
+         */
+        const val RUN_CONFIG_NAME: String = "run-config.json"
+
+        /**
          * The fingerprint of the request that is made.
          *
-         * The two names the client controls, and nothing else: the policy,
-         * the deadline and the argv are the service's, and a request that
-         * repeats with the same names IS the same request.
+         * The two names the client controls and the configuration it
+         * delivered, and nothing else: the policy, the deadline and the
+         * argv are the service's, and a request that repeats with the same
+         * names AND the same configuration IS the same request.
          *
          * The length of EACH name travels WITH it, because two different
          * pairs of names can produce the same text when they are simply
          * stuck together: `ab` with `c` is not `a` with `bc`. A name that
          * is absent is not the same as a name that is empty, and the
          * fingerprint says so with a length of `-1` for the absent one.
+         *
+         * The configuration travels in its CANONICAL form, which is
+         * length-prefixed as well: a plain join would make
+         * `{"A":"1","B":"2"}` and `{"A":"1\nB=2"}` the same request, and
+         * the second request would then be answered with the run of the
+         * first, running with the first's configuration.
+         *
+         * A request WITHOUT a configuration keeps the fingerprint it had
+         * before the configuration existed: the suffix is only appended
+         * when there is something to append, so the records of the starts
+         * that were written before are still comparable with the ones that
+         * are written now.
          */
-        fun digestOf(script: String, workspace: String?): String {
-            val workspaceText = workspace ?: return ServiceAuthorizations.digestOf(
-                script.length.toString() + ":" + script + "|-1:",
-            )
-            return ServiceAuthorizations.digestOf(
+        fun digestOf(
+            script: String,
+            workspace: String?,
+            configuration: RunConfiguration = RunConfiguration.EMPTY,
+        ): String {
+            val base = workspace?.let { workspaceText ->
                 script.length.toString() + ":" + script + "|" +
-                    workspaceText.length.toString() + ":" + workspaceText,
+                    workspaceText.length.toString() + ":" + workspaceText
+            } ?: (script.length.toString() + ":" + script + "|-1:")
+            val canonical = RunConfiguration.canonicalText(configuration.values)
+            if (canonical.isEmpty()) return ServiceAuthorizations.digestOf(base)
+            return ServiceAuthorizations.digestOf(
+                base + "#" + canonical.length.toString() + ":" + canonical,
             )
         }
 

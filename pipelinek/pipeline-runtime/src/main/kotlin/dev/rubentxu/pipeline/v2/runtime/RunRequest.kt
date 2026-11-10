@@ -93,6 +93,19 @@ data class RunPolicy(
     val withCredentialsExecutor: WithCredentialsExecutor?,
     val allowNetwork: Boolean,
     val secretPatternRegistry: SecretPatternRegistry,
+    /**
+     * The configuration the steps of this run will see.
+     *
+     * It is a POLICY input and not a derived fact: it is what the caller
+     * was given (the snapshot a client handed to the service, or nothing),
+     * and the run's shell transport derives from it —the same way the
+     * workspace and the sandbox profile do.
+     *
+     * It is EMPTY by default, and the default is the historical behaviour:
+     * a run that was given no configuration projects no configuration into
+     * the environment of its steps.
+     */
+    val configuration: RunConfiguration = RunConfiguration.EMPTY,
 )
 
 /**

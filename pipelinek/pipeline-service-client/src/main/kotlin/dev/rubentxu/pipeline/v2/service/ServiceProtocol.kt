@@ -159,11 +159,11 @@ sealed interface ServiceRequest {
      *
      * ## What the request carries
      *
-     * Three names and nothing else: the script to run, the workspace to run
-     * it in, and the key that makes a repeated request the same request.
-     * The service owns everything else — the argv, the deadline, the
-     * policy — because everything else is a decision of the operator and
-     * not of the client.
+     * Three names and a configuration: the script to run, the workspace to
+     * run it in, the key that makes a repeated request the same request, and
+     * the configuration the steps of the run will see. The service owns
+     * everything else — the argv, the deadline, the policy — because
+     * everything else is a decision of the operator and not of the client.
      *
      * ## Why the script is a NAME and not a path
      *
@@ -179,12 +179,38 @@ sealed interface ServiceRequest {
      * Because a run without a workspace is a run in the product's own
      * scratch, and that is a legitimate thing to ask for. When the client
      * names one, the name is resolved with the same rule as the script's.
+     *
+     * ## What the configuration is
+     *
+     * A set of NAME/VALUE pairs that the steps of THIS run will see in
+     * their environment. It is a snapshot: it is read once, when the run
+     * starts, and it does not change while the run lives.
+     *
+     * It is NOT a secret, and the wire does not pretend it might be: a
+     * value is text, and there is no oracle that says whether a text is a
+     * secret. The channel is public —the values end up in the environment
+     * of the steps— and a client that puts a secret here has published it
+     * to whoever can read that process.
+     *
+     * The RULES (how many entries, what a name may look like, which names
+     * are refused) are the service's, and it refuses them by name: see
+     * [ServiceRefusal.RunConfigurationRefused].
      */
     data class StartRun(
         override val schema: String,
         val script: String,
         val workspace: String?,
         val idempotencyKey: String?,
+        /**
+         * The configuration the steps of the run will see.
+         *
+         * EMPTY means "no configuration", which is not the same as "an
+         * empty configuration": the first is a request that asks for
+         * nothing, and the second is a request that asks for nothing and
+         * says so. The wire carries no difference between them, because
+         * there is none to carry.
+         */
+        val configuration: Map<String, String> = emptyMap(),
     ) : ServiceRequest
 
     /**
@@ -637,6 +663,38 @@ sealed interface ServiceRefusal {
     }
 
     /**
+     * The configuration the client sent breaks a rule.
+     *
+     * ## Why the reason travels inside
+     *
+     * Because the rules are many and a client acts differently on each one:
+     * a name that is too long is fixed by shortening it, a reserved name is
+     * fixed by renaming it, and a value with a NUL is fixed by removing it.
+     * One word for every rule would say only "no", and the client would
+     * have to guess. The [reason] says WHICH rule, and the [detail] says
+     * which one in prose.
+     *
+     * ## Why it is NOT a shape refusal
+     *
+     * Because a shape is a property of the LINE and the codec owns the
+     * shape of a line ([MalformedRequest]). The rules of the configuration
+     * are a decision of the service, and the service decides them.
+     *
+     * ## What the client learns
+     *
+     * Only that its configuration was refused, and which rule it broke. The
+     * rules are not secret: they are published, in the documentation of the
+     * configuration itself.
+     */
+    data class RunConfigurationRefused(val reason: String, val detail: String) : ServiceRefusal {
+        override val kind: String = "run-configuration-refused"
+        override val payload: JsonObject = buildJsonObject {
+            put("reason", JsonPrimitive(reason))
+            put("detail", JsonPrimitive(detail))
+        }
+    }
+
+    /**
      * The authorization is one this service knows, and its scope does not
      * cover CANCELLING a run.
      *
@@ -940,6 +998,16 @@ object ServiceCodec {
                     put("script", JsonPrimitive(request.script))
                     request.workspace?.let { put("workspace", JsonPrimitive(it)) }
                     request.idempotencyKey?.let { put("idempotencyKey", JsonPrimitive(it)) }
+                    if (request.configuration.isNotEmpty()) {
+                        put(
+                            "configuration",
+                            buildJsonObject {
+                                request.configuration.forEach { (name, value) ->
+                                    put(name, JsonPrimitive(value))
+                                }
+                            },
+                        )
+                    }
                 }
                 is ServiceRequest.CancelRun -> {
                     put("op", JsonPrimitive("run.cancel"))
@@ -1082,7 +1150,49 @@ private fun decodeStartRun(request: JsonObject, schema: String, credential: Stri
     if (key != null && (key.isEmpty() || key.length > ServiceProtocol.MAX_IDEMPOTENCY_KEY_LENGTH)) {
         return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
     }
-    return ServiceDecoding.Decoded(ServiceRequest.StartRun(schema, script, workspace, key), credential)
+    val configuration = request.configuration()
+        ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    return ServiceDecoding.Decoded(
+        ServiceRequest.StartRun(schema, script, workspace, key, configuration),
+        credential,
+    )
+}
+
+/**
+ * The configuration this line carries, or null when it carries a shape the
+ * protocol does not admit.
+ *
+ * ## What the shape is
+ *
+ * An OBJECT whose entries are all PRIMITIVES. The value of an entry is read
+ * as its text, exactly as every other field of the wire is read: a number
+ * is the text of that number and a boolean is the text of that boolean. That
+ * is the house reading of a primitive and it is not a special case of the
+ * configuration.
+ *
+ * ## What is refused
+ *
+ * A field that is not an object, and an entry whose value is not a
+ * primitive. Both are a property of the LINE, and the codec is the owner of
+ * the shape of a line: `malformed-request` is the word for it.
+ *
+ * ## What the RULES are NOT
+ *
+ * The count of the entries, the shape of a name, the length of a value and
+ * the names that are refused are the service's decision, and the service
+ * refuses them by name — `run-configuration-refused` — and not here. The
+ * difference matters: a rule is a DECISION, and a decision the service does
+ * not take is not taken by the codec either.
+ */
+private fun JsonObject.configuration(): Map<String, String>? {
+    val element = this["configuration"] ?: return emptyMap()
+    val object_ = element as? JsonObject ?: return null
+    val values = LinkedHashMap<String, String>()
+    for ((name, value) in object_) {
+        val text = (value as? JsonPrimitive)?.contentOrNull ?: return null
+        values[name] = text
+    }
+    return values
 }
 
 /**
@@ -1224,7 +1334,8 @@ private fun decodeRefusal(document: JsonObject): ServiceRefusal? {
         "cursor-beyond-tail" -> decodeRunRefusal(kind, document)
 
         "start-not-authorized", "script-not-admitted", "workspace-not-admitted",
-        "idempotency-conflict", "too-many-supervised-runs", "run-start-refused" ->
+        "idempotency-conflict", "too-many-supervised-runs", "run-start-refused",
+        "run-configuration-refused" ->
             decodeStartRefusal(kind, document)
 
         "cancel-not-authorized", "run-cancel-refused" ->
@@ -1290,6 +1401,10 @@ private fun decodeStartRefusal(kind: String, document: JsonObject): ServiceRefus
     "idempotency-conflict" -> ServiceRefusal.IdempotencyConflict(document.str("key") ?: return null)
     "too-many-supervised-runs" -> ServiceRefusal.TooManySupervisedRuns
     "run-start-refused" -> ServiceRefusal.RunStartRefused(
+        document.str("reason") ?: return null,
+        document.str("detail") ?: return null,
+    )
+    "run-configuration-refused" -> ServiceRefusal.RunConfigurationRefused(
         document.str("reason") ?: return null,
         document.str("detail") ?: return null,
     )

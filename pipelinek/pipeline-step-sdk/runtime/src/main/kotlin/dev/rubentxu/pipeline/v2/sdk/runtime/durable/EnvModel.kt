@@ -253,6 +253,45 @@ private val DENY_LIST: Set<String> = setOf(
 private val DENY_LIST_GLOB = setOf("BASH_FUNC_")
 
 /**
+ * The names the sandbox removes from the environment it hands to a child.
+ *
+ * ## Why the list is PUBLIC and not a private detail of the launcher
+ *
+ * Because the list is not only a rule about the environment the child
+ * INHERITS: it is the product's own answer to "which names are a vector for
+ * injecting code into a child through its environment". A channel that
+ * delivers environment variables from OUTSIDE the run —the configuration a
+ * client hands to the service— has to answer the same question, and it has to
+ * answer it with the SAME list: two lists are two answers, and the second
+ * one drifts.
+ *
+ * ## What this list is NOT
+ *
+ * It is not a list of secrets (that is [CONTROLLER_SECRET_VARIABLES]) and not
+ * a list of the product's own names (the runtime's namespaces are the
+ * product's business, not the sandbox's). It is exactly the list of names
+ * whose presence lets whoever sets them change what the child EXECUTES.
+ */
+object SandboxEnvDenyList {
+
+    /** The names the sandbox removes. */
+    val NAMES: Set<String> = DENY_LIST
+
+    /** The prefixes the sandbox removes (every name that starts with one). */
+    val PREFIXES: Set<String> = DENY_LIST_GLOB
+
+    /**
+     * Whether [name] is one of the names the sandbox removes.
+     *
+     * The same question [applyDenyList] asks, asked about ONE name, so that
+     * a caller that composes an environment from outside the run answers the
+     * same way the launcher does.
+     */
+    fun denies(name: String): Boolean =
+        name in NAMES || PREFIXES.any { name.startsWith(it) }
+}
+
+/**
  * Applies the env deny-list: strips deny-listed keys unless in [allowExtra].
  * Called for [SandboxProfile.LOCAL] only. [SandboxProfile.NONE] skips this entirely.
  * @receiver The base environment map (typically pb.environment snapshot).

@@ -199,8 +199,22 @@ class DefaultEffectReplayPolicyTest {
     }
 
     @Test
-    fun `MEMOIZED re-executes when the step declared NO effect at all`() {
-        // An executor that declared no effect has said nothing about purity. Treating the empty set
+    fun `row 8 MEMOIZED re-executes a set that mixes READ_ONLY with any other effect`() {
+        // The partition the rows above leave open. The rule is "all": a set of ONE read-only
+        // effect is memoisable, a set of none is not, and a set that mixes the read-only effect
+        // with ANY other one is not either. The effect that aborts the pipeline is left out
+        // because the containment row outranks this one and answers ABORT, not RERUN.
+        for (other in Effect.entries.filter { it != Effect.READ_ONLY && it != Effect.ABORTS_PIPELINE }) {
+            assertEquals(
+                ReplayDecision.RERUN,
+                decide(ReplayPolicy.MEMOIZED, setOf(Effect.READ_ONLY, other), true, OperationStatus.SUCCEEDED),
+                "a set that mixes READ_ONLY with $other must not be memoisable",
+            )
+        }
+    }
+
+    @Test
+    fun `MEMOIZED re-executes when the step declared NO effect at all`() {        // An executor that declared no effect has said nothing about purity. Treating the empty set
         // as read-only would silently memoise the most under-declared steps in the system.
         assertEquals(ReplayDecision.RERUN, decide(ReplayPolicy.MEMOIZED, emptySet(), true, OperationStatus.SUCCEEDED))
     }

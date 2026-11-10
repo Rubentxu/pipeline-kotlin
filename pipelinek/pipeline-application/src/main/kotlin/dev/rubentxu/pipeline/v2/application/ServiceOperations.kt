@@ -75,7 +75,10 @@ internal class ServiceOperations(
     private val inputs: ServiceInputAnswers? = null,
     private val providers: ConfigurationProviderSessions? = null,
     private val configurations: ServiceRunConfigurations? = null,
+    credentialSessions: CredentialProviderSessions? = null,
 ) {
+
+    private val credentials = CredentialProviderOperations(credentialSessions)
 
     /**
      * The answer to [request].
@@ -98,6 +101,10 @@ internal class ServiceOperations(
         is ServiceRequest.ProviderAnswer -> providerAnswerOf(request, credentialDigest)
         is ServiceRequest.ProviderClose -> providerCloseOf(request, credentialDigest)
         is ServiceRequest.RunConfigurationQuery -> runConfigurationOf(request)
+        is ServiceRequest.CredentialRegister -> credentials.register(request, credentialDigest)
+        is ServiceRequest.CredentialPoll -> credentials.poll(request, credentialDigest)
+        is ServiceRequest.CredentialAnswer -> credentials.answer(request, credentialDigest)
+        is ServiceRequest.CredentialClose -> credentials.close(request, credentialDigest)
     }
 
     /**
@@ -204,6 +211,7 @@ internal class ServiceOperations(
                     parameters = request.parameters,
                     parameterContract = request.parameterContract,
                     configurationProvider = request.configurationProvider,
+                    credentialProvider = request.credentialProvider,
                 ),
             )
         } catch (failure: Exception) {

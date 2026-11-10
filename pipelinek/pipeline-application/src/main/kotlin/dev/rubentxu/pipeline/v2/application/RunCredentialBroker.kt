@@ -129,6 +129,8 @@ internal class RunCredentialBroker(
     private fun handOut(source: CredentialProvider, credentialId: String, kind: BrokeredCredentialKind): String {
         val credential = try {
             source.resolveToCredential(CredentialsId(credentialId))
+        } catch (_: ConnectedCredentialDenied) {
+            return refused(CredentialBrokerRefusal.CREDENTIAL_PROVIDER_DENIED)
         } catch (_: SecretStoreException) {
             return refused(CredentialBrokerRefusal.CREDENTIAL_NOT_AVAILABLE)
         } catch (_: Exception) {

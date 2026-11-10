@@ -270,7 +270,7 @@ One request per line, one answer per line, in JSON, with the version of the prot
 {"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
-The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). It can also START a run, CANCEL one and ANSWER the question of one, which are a fourth, a fifth and a sixth door, each with a right of its own. Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `configuration-provider-refused`, `cancel-not-authorized`, `run-cancel-refused`, `answer-not-authorized`, `input-answer-refused` — so a client reads a word and not a sentence.
+The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). It can also START a run, CANCEL one and ANSWER the question of one, which are a fourth, a fifth and a sixth door, each with a right of its own. Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `configuration-provider-refused`, `credential-provider-refused`, `cancel-not-authorized`, `run-cancel-refused`, `answer-not-authorized`, `input-answer-refused` — so a client reads a word and not a sentence.
 
 #### Who may ask, and what the boundary really is
 
@@ -371,6 +371,36 @@ All of it is askable afterwards, without a value:
 `run.configuration` is a read of the run, with the same authorization as `run.state`, and it answers from the snapshot the run itself reads — there is no second store to drift. A provider that took no part leaves `provider`, `revision` and `sourceDigest` out. The service keeps at most four sessions, so the polls that wait cannot fill the threads that answer questions; a fifth registration is refused (`too-many-provider-sessions`). The typed client has one method for each operation (`registerProvider`, `pollProvider`, `answerProvider`, `closeProvider`, `runConfiguration`) and `startRun` takes the reference to the provider.
 
 The configuration is the **lowest** layer of the environment: the `environment { }` of a stage is composed on top of it and the `withEnv` scope on top of that, and the more specific scope wins. The values reach the steps through the environment the run already composes, so there is no new precedence rule to learn.
+
+#### A run whose credentials a controller keeps
+
+The values above were not secrets. A credential is, and the service does not want to hold one: a service that keeps a secret hands it out over a socket to a run that asks for it, and the operator would rather the secret never arrived at all. The controller that starts the run can keep it, and the service asks for it at the moment the run needs it.
+
+```bash
+pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock --credential-sessions
+```
+
+`--credential-sessions` is an OPT-IN, and it changes what the service holds: with it the service does **not** open the local credential store at all —not the file, not the passphrase— so the only source of a credential is the controller that registered the session of the run. Without it the store is the only source, the four operations of the session are refused by name (`credential-sessions-not-composed`), and a start that names a credential provider is refused before it becomes a claim. The alternative considered and rejected: opening both and preferring the controller —it would make a controller that is gone fall back, in silence, to a secret on disk, which is the one thing this capability promises not to do.
+
+The session is made of four operations, like the configuration one, and the controller **polls** for the requests:
+
+```json
+{"schema":"pipelinek.service/2","op":"credential.provider.register","provider":"controller","auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"sessionId":"c1d2…","leaseMillis":15000}}
+{"schema":"pipelinek.service/2","op":"credential.provider.poll","sessionId":"c1d2…","waitMillis":5000,"auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"state":"asked","requestId":"a91f…","correlationId":"34b2…","credentialId":"deploy-key","kind":"string"}}
+{"schema":"pipelinek.service/2","op":"credential.provider.answer","sessionId":"c1d2…","requestId":"a91f…","decision":"grant","value":"czNjcjN0…","auth":"…"}
+{"schema":"pipelinek.service/2","op":"run.start","script":"build.kts","idempotencyKey":"order-42","credentialProvider":"controller","auth":"…"}
+```
+
+`credential.provider.close` ends the session. The value travels as Base64 and is capped at 32 KiB. Every one of the four operations needs the right to START runs, because a session is how a run gets its credentials. What the service promises about the answer:
+
+- **The run asks for it when it needs it, and only then.** The run holds no secret until it enters `withCredentials`; the ask is bound to the run that asked, to the credential that started it and to the credential the operator granted to it.
+- **One answer per request, by the session it was handed to.** A second answer to the same `requestId` is refused (`request-unknown`), and so is an answer from another credential or another session (`provider-session-unknown`): the name of the provider belongs to the credential that registered it, and nobody else can answer what it was asked.
+- **No fallback, ever.** A controller that denies makes the run fail with `credential-provider-denied`; one that closes its session while the run waits is refused at once (`provider-gone`); one that is silent is a `provider-timeout` after eight seconds. In no case is the credential looked up in the local store or in another provider.
+- **The secret travels by the private socket and is written nowhere else.** It is in the request line of the answer, in the socket of the broker of the run and in the environment of the step that asked for it —and nowhere else: not in the store of the events, not in the output plane, not in the observation of the run, not in the argv of the child. The service never renders it: the type that carries it redacts its own `toString`.
+
+Neither profile separates two processes of the same user, and the credential sessions do not change that: what separates identities is the TOKEN the operator issued, and the JVM cannot see the UID of the peer of a Unix socket. The session adds one rule on top of it —a session belongs to the credential that registered it, so a client that presents another one can neither register the name, nor receive what was asked, nor answer the request.
 
 The key is what makes a retry safe: the same key with the same request answers with the SAME run, and the same key with another request is a conflict (`idempotency-conflict`). The promise is durable while the service can write its file — the service keeps the record of the starts in the file it owns next to the socket, `starts` — so a client that retries after a restart gets the run that already started. The CLAIM of a key is written BEFORE the child is launched, and a claim that cannot be written is not a claim: the start is refused by name (`run-start-refused`, with the reason `the-start-cannot-be-recorded`) and no child is launched, because a start that cannot be remembered is a start that cannot be promised. What degrades when the disk refuses the write is the RECORD of a run that already started: the record stays in memory, the client is still answered, and a retry AFTER a restart may start a second run for the same key.
 

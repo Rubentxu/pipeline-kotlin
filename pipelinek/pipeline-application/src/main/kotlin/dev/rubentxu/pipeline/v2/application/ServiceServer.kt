@@ -642,8 +642,8 @@ internal class ServiceServer(
      * as cancelling: the right to answer AND the run. Reading a question is
      * the right of whoever may answer it.
      *
-     * A configuration provider is the controller that starts runs and asks nothing
-     * about any run in particular, so its session operations are the same question as
+     * A configuration or credential provider is the controller that starts runs and asks
+     * nothing about any run in particular, so its session operations are the same question as
      * starting: the right to start. What a run was started with is read like the rest of
      * the run, with the right to read it.
      */
@@ -651,7 +651,9 @@ internal class ServiceServer(
         when (val request = decoded.request) {
             is ServiceRequest.StartRun, is ServiceRequest.ProviderRegister,
             is ServiceRequest.ProviderPoll, is ServiceRequest.ProviderAnswer,
-            is ServiceRequest.ProviderClose,
+            is ServiceRequest.ProviderClose, is ServiceRequest.CredentialRegister,
+            is ServiceRequest.CredentialPoll, is ServiceRequest.CredentialAnswer,
+            is ServiceRequest.CredentialClose,
             -> authorizations.decideStart(decoded.credential)
             is ServiceRequest.RunConfigurationQuery ->
                 authorizations.decide(decoded.credential, request.runId)

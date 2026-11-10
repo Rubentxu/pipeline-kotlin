@@ -6,6 +6,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -274,6 +275,43 @@ class MainServeCliTest {
         assertFalse(
             Files.exists(root.resolve("store.db")),
             "the refusal must not leave an empty store where the operator kept their facts",
+        )
+    }
+
+    @Test
+    fun `the opt-in of the credential sessions is admitted as a flag of the verb`() {
+        val admission = CliOptionAdmission.admit(
+            arrayOf(
+                "--db",
+                "/tmp/store.db",
+                "--control-root",
+                "/tmp/control",
+                "--socket",
+                "/tmp/service.sock",
+                "--credential-sessions",
+            ),
+            SERVE_REQUEST,
+        )
+
+        val admitted = assertInstanceOf(CliAdmission.Admitted::class.java, admission)
+        assertTrue(
+            admitted.flags.contains("--credential-sessions"),
+            "the opt-in is a flag the verb owns: ${admitted.flags}",
+        )
+        assertFalse(
+            admitted.values.containsKey("--credential-sessions"),
+            "and it carries no value: ${admitted.values}",
+        )
+    }
+
+    @Test
+    fun `the opt-in of the credential sessions is not taken as the value of another option`() {
+        val answer = ask("--db", "--credential-sessions")
+
+        assertEquals(2, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("--credential-sessions"),
+            "the refusal names the token that was not a value: ${answer.stderr}",
         )
     }
 

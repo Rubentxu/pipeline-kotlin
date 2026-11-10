@@ -2,6 +2,10 @@ package dev.rubentxu.pipeline.v2.service
 
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
+import dev.rubentxu.pipeline.v2.service.CredentialProviderWire.putAnswer
+import dev.rubentxu.pipeline.v2.service.CredentialProviderWire.putClose
+import dev.rubentxu.pipeline.v2.service.CredentialProviderWire.putPoll
+import dev.rubentxu.pipeline.v2.service.CredentialProviderWire.putRegister
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -175,6 +179,21 @@ object ServiceProtocol {
      * limit, which is smaller, and this bound is only what keeps the number a number.
      */
     const val MAX_PROVIDER_POLL_WAIT_MILLIS: Long = 60_000L
+
+    /**
+     * The longest secret, in bytes, a credential provider may hand over in one answer.
+     *
+     * A credential is a token or a password, never a document: a value longer than this is
+     * refused before it is held. The bound is chosen so that the secret, once written as
+     * Base64, fits in [MAX_LINE_BYTES] together with the rest of the line.
+     */
+    const val MAX_CREDENTIAL_VALUE_BYTES: Int = 32 * 1024
+
+    /**
+     * The longest text a credential value travels as: the Base64 form of
+     * [MAX_CREDENTIAL_VALUE_BYTES] bytes.
+     */
+    const val MAX_CREDENTIAL_VALUE_ENCODED_LENGTH: Int = (MAX_CREDENTIAL_VALUE_BYTES + 2) / 3 * 4
 }
 
 /**
@@ -368,6 +387,16 @@ sealed interface ServiceRequest {
          * under another credential.
          */
         val configurationProvider: ServiceProviderReference? = null,
+        /**
+         * The credential provider session whose controller holds the credentials of the run.
+         *
+         * `null` means the run's credentials, if it asks for any, are the service's own. A name
+         * means each credential the run asks for is requested, at the moment the run asks, from
+         * the controller that registered a session of that name under the SAME authorization.
+         * The name is never a lookup across authorizations and there is no fallback to the
+         * service's own store.
+         */
+        val credentialProvider: String? = null,
     ) : ServiceRequest {
 
         /**
@@ -384,7 +413,8 @@ sealed interface ServiceRequest {
             "StartRun(schema=$schema, script=$script, workspace=$workspace, " +
                 "idempotencyKey=$idempotencyKey, configuration=${configuration.size} entries, " +
                 "parameters=${parameters.size} values, " +
-                "configurationProvider=${configurationProvider?.provider})"
+                "configurationProvider=${configurationProvider?.provider}, " +
+                "credentialProvider=$credentialProvider)"
     }
 
     /**
@@ -451,6 +481,72 @@ sealed interface ServiceRequest {
 
     /** The request to CLOSE a provider session instead of letting its lease lapse. */
     data class ProviderClose(
+        override val schema: String,
+        val sessionId: String,
+    ) : ServiceRequest
+
+    /**
+     * The request to REGISTER a credential provider session.
+     *
+     * ## What a credential provider is
+     *
+     * The controller that keeps the credentials of the runs it starts. The [provider] name is
+     * the one a later `run.start` names; the session is a lease the controller holds by polling,
+     * exactly as for a configuration provider, because the service never opens a connection to
+     * the controller.
+     *
+     * ## What the session never holds
+     *
+     * A credential. The controller hands each one over when a run asks, and the service gives
+     * it to that run and keeps nothing.
+     */
+    data class CredentialRegister(
+        override val schema: String,
+        val provider: String,
+    ) : ServiceRequest
+
+    /**
+     * The request to POLL a credential provider session: "has a run asked for a credential?".
+     *
+     * The service holds the request for at most [waitMillis] —bounded by its own limit— and
+     * answers either with the credential a run is waiting for or with an idle answer. The poll
+     * renews the lease of the session.
+     */
+    data class CredentialPoll(
+        override val schema: String,
+        val sessionId: String,
+        val waitMillis: Long,
+    ) : ServiceRequest
+
+    /**
+     * The request to ANSWER what a poll asked: to hand the credential over or to deny it.
+     *
+     * ## The shape
+     *
+     * [granted] is the decision, written on the wire as `grant` or `deny` and nothing else. A
+     * grant carries the secret in [value], as the Base64 text of its bytes; a denial carries
+     * none. The request that was answered is named by [requestId] and is answered once.
+     *
+     * ## What it never does
+     *
+     * It never renders the [value]: [toString] shows the identity of the answer and its decision.
+     */
+    data class CredentialAnswer(
+        override val schema: String,
+        val sessionId: String,
+        val requestId: String,
+        val granted: Boolean,
+        val value: String?,
+    ) : ServiceRequest {
+
+        /** The request WITHOUT its value: a diagnostic is not where a secret belongs. */
+        override fun toString(): String =
+            "CredentialAnswer(schema=$schema, sessionId=$sessionId, requestId=$requestId, " +
+                "decision=${if (granted) "grant" else "deny"}, value=<redacted>)"
+    }
+
+    /** The request to CLOSE a credential provider session instead of letting its lease lapse. */
+    data class CredentialClose(
         override val schema: String,
         val sessionId: String,
     ) : ServiceRequest
@@ -1120,6 +1216,31 @@ sealed interface ServiceRefusal {
     }
 
     /**
+     * A request about a credential provider session was refused.
+     *
+     * ## What it says
+     *
+     * Which rule the request broke —the name is not legal or is taken, the session is unknown or
+     * has lapsed, the request was answered already or belongs to another session, the secret is
+     * too long or is not Base64— in the [reason], and the same fact in prose in the [detail]. The
+     * [detail] never carries a value of the answer.
+     *
+     * ## Why it is NOT [ConfigurationProviderRefused]
+     *
+     * Because the client's action is different: a credential provider keeps secrets and a
+     * configuration provider does not, and a client that read one refusal as the other would
+     * repair the wrong session. A run start that is refused because its credential provider is
+     * not there is still a [RunStartRefused], since the run is what was refused.
+     */
+    data class CredentialProviderRefused(val reason: String, val detail: String) : ServiceRefusal {
+        override val kind: String = "credential-provider-refused"
+        override val payload: JsonObject = buildJsonObject {
+            put("reason", JsonPrimitive(reason))
+            put("detail", JsonPrimitive(detail))
+        }
+    }
+
+    /**
      * The authorization is one this service knows, and its scope does not
      * cover CANCELLING a run.
      *
@@ -1497,6 +1618,10 @@ object ServiceCodec {
                     put("op", JsonPrimitive("run.configuration"))
                     put("runId", JsonPrimitive(request.runId))
                 }
+                is ServiceRequest.CredentialRegister -> putRegister(request)
+                is ServiceRequest.CredentialPoll -> putPoll(request)
+                is ServiceRequest.CredentialAnswer -> putAnswer(request)
+                is ServiceRequest.CredentialClose -> putClose(request)
             }
         }
         return Json.encodeToString(JsonObject.serializer(), document)
@@ -1646,6 +1771,11 @@ private fun decodeStartRun(request: JsonObject, schema: String, credential: Stri
         ProviderWire.reference(providerElement)
             ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
     }
+    val credentialProvider = when (val named = CredentialProviderWire.startProvider(request)) {
+        CredentialProviderWire.Named.Absent -> null
+        CredentialProviderWire.Named.Malformed -> return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        is CredentialProviderWire.Named.Present -> named.name
+    }
     return ServiceDecoding.Decoded(
         ServiceRequest.StartRun(
             schema = schema,
@@ -1656,6 +1786,7 @@ private fun decodeStartRun(request: JsonObject, schema: String, credential: Stri
             parameters = parameters,
             parameterContract = parameterContract,
             configurationProvider = configurationProvider,
+            credentialProvider = credentialProvider,
         ),
         credential,
     )
@@ -1717,6 +1848,7 @@ private fun JsonObjectBuilder.putStartRun(request: ServiceRequest.StartRun) {
             },
         )
     }
+    request.credentialProvider?.let { put("credentialProvider", JsonPrimitive(it)) }
     if (request.parameterContract.isNotEmpty()) {
         put("parameterContract", JsonArray(request.parameterContract.map { spec ->
             buildJsonObject {
@@ -1801,7 +1933,7 @@ private object ProviderWire {
                 ServiceDecoding.Decoded(ServiceRequest.RunConfigurationQuery(schema, runId), credential)
             }
         }
-        else -> ServiceDecoding.Refused(ServiceRefusal.UnknownOp)
+        else -> CredentialProviderWire.decode(op, request, schema, credential)
     }
 
     /**
@@ -2204,7 +2336,32 @@ private fun decodeRefusal(document: JsonObject): ServiceRefusal? {
         "answer-not-authorized", "input-answer-refused" ->
             decodeInputRefusal(kind, document)
 
+        "configuration-provider-refused", "credential-provider-refused" ->
+            decodeProviderRefusal(kind, document)
+
         else -> decodeServiceRefusal(kind, document)
+    }
+}
+
+/**
+ * The refusal about a PROVIDER session, of configuration or of credentials, or null when [kind]
+ * is not one.
+ *
+ * The two live together because they have the same shape: a reason and a detail, and neither
+ * of them ever carries a value. A client that read one as the other would repair the wrong
+ * session, which is why they are two words and not one.
+ */
+private fun decodeProviderRefusal(kind: String, document: JsonObject): ServiceRefusal? {
+    return when (kind) {
+    "configuration-provider-refused" -> ServiceRefusal.ConfigurationProviderRefused(
+        document.str("reason") ?: return null,
+        document.str("detail") ?: return null,
+    )
+    "credential-provider-refused" -> ServiceRefusal.CredentialProviderRefused(
+        document.str("reason") ?: return null,
+        document.str("detail") ?: return null,
+    )
+        else -> null
     }
 }
 

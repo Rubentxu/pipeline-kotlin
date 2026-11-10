@@ -36,22 +36,41 @@ import java.util.concurrent.atomic.AtomicBoolean
  * the identity of the run would make the limit depend on it. The name says
  * nothing about the run; the service knows which lease belongs to which run.
  *
+ * ## A provider that belongs to the run
+ *
+ * A lease may own the provider its broker reads from. A provider the lease owns is closed with
+ * it, also when the lease could not be opened, so the service never has to remember to give it
+ * back; a provider the lease does not own is the service's, shared by every broker, and the
+ * lease never closes it.
+ *
  * @property directory where the run finds the socket and the token.
  */
 internal class RunBrokerLease private constructor(
     val directory: Path,
     private val broker: RunCredentialBroker,
+    private val owned: CredentialProvider?,
 ) : AutoCloseable {
 
     private val closed = AtomicBoolean(false)
 
-    /** Stops the broker and removes everything the lease created. Idempotent. */
+    /**
+     * Stops the broker, removes everything the lease created and closes the provider the lease
+     * owns, if it owns one. Idempotent.
+     *
+     * The broker goes first: stopping it interrupts a request that is waiting for a connected
+     * controller, and only then is the provider closed, so that whatever the provider still
+     * holds for the run is released after nothing can ask for more.
+     */
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         try {
             broker.close()
         } finally {
-            deleteTree(directory)
+            try {
+                deleteTree(directory)
+            } finally {
+                closeQuietly(owned)
+            }
         }
     }
 
@@ -100,9 +119,31 @@ internal class RunBrokerLease private constructor(
          *   refused everything it asks.
          * @param provider where the credentials come from, or null when there is
          *   no store behind the service.
+         * @param ownsProvider whether the lease owns [provider]: it closes it with the lease,
+         *   and closes it too when the lease cannot be opened.
          * @throws RunBrokerLeaseException when the lease could not be opened.
          */
-        fun open(root: Path, grants: Set<CredentialGrant>, provider: CredentialProvider?): RunBrokerLease {
+        fun open(
+            root: Path,
+            grants: Set<CredentialGrant>,
+            provider: CredentialProvider?,
+            ownsProvider: Boolean = false,
+        ): RunBrokerLease {
+            val owned = provider.takeIf { ownsProvider }
+            try {
+                return bind(root, grants, provider, owned)
+            } catch (failure: RunBrokerLeaseException) {
+                closeQuietly(owned)
+                throw failure
+            }
+        }
+
+        private fun bind(
+            root: Path,
+            grants: Set<CredentialGrant>,
+            provider: CredentialProvider?,
+            owned: CredentialProvider?,
+        ): RunBrokerLease {
             val absoluteRoot = root.toAbsolutePath()
             val name = UUID.randomUUID().toString().replace("-", "").take(DIRECTORY_NAME_CHARS)
             val directory = absoluteRoot.resolve(name)
@@ -121,7 +162,7 @@ internal class RunBrokerLease private constructor(
                 writeToken(directory.resolve(TOKEN_FILE_NAME), token)
                 transport = UnixSocketTransport.bind(directory.resolve(SOCKET_FILE_NAME))
                 val broker = RunCredentialBroker(transport, token, grants, provider).start()
-                return RunBrokerLease(directory, broker)
+                return RunBrokerLease(directory, broker, owned)
             } catch (_: Exception) {
                 try {
                     transport?.close()
@@ -148,6 +189,15 @@ internal class RunBrokerLease private constructor(
                 }
             } catch (_: IOException) {
                 // A leftover that cannot be listed is a leftover that stays; the next start tries again.
+            }
+        }
+
+        /** Closes [provider] if there is one; a failure to give it back must not hide how the lease ended. */
+        private fun closeQuietly(provider: CredentialProvider?) {
+            try {
+                provider?.close()
+            } catch (_: Exception) {
+                // The lease is going away; there is nobody to tell and nothing left to protect.
             }
         }
 
@@ -218,6 +268,17 @@ internal class RunBrokerFactory(
     /** The broker of one run started by the client whose token has [clientDigest]. */
     fun open(clientDigest: String?): RunBrokerLease =
         RunBrokerLease.open(root, grantsOf(clientDigest), provider)
+
+    /**
+     * The broker of one run whose credentials are held by a connected controller.
+     *
+     * The grants are the same ones [open] gives that client; what changes is where the bytes come
+     * from. [connected] belongs to the run: the lease closes it when the run is over, and also
+     * when the lease cannot be opened. The service's own provider is not consulted, so a
+     * credential the controller refuses is never looked up anywhere else.
+     */
+    fun openConnected(clientDigest: String?, connected: CredentialProvider): RunBrokerLease =
+        RunBrokerLease.open(root, grantsOf(clientDigest), connected, ownsProvider = true)
 
     /** Removes the leftovers of earlier processes of the service. */
     fun sweep() = RunBrokerLease.sweep(root)

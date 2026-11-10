@@ -189,6 +189,31 @@ class ServiceCredentialBrokersTest {
     }
 
     @Test
+    fun `a service that serves connected controllers does not open the store at all`() {
+        val opened = AtomicInteger(0)
+
+        val composed = composeServiceBrokers(
+            authorizations = authorizations(grants = GRANTS),
+            brokersRoot = tmp.resolve("brokers"),
+            environment = mapOf(CredentialsStorePath.ENV_VAR to tmp.resolve("store.bin").toString()),
+            opening = {
+                opened.incrementAndGet()
+                ServiceCredentialAccess.Opened(ProviderDouble())
+            },
+            connectedOnly = true,
+        )
+
+        val result = assertInstanceOf(ServiceBrokers.Composed::class.java, composed)
+        assertNotNull(result.factory, "a granted credential needs a broker per run")
+        assertNull(result.provider, "and no provider behind it: the controller is the only source")
+        assertEquals(
+            0,
+            opened.get(),
+            "the store is not opened, so the passphrase of the operator is not even asked for",
+        )
+    }
+
+    @Test
     fun `a store that cannot be opened is a service that does not start`() {
         val composed = composeServiceBrokers(
             authorizations = authorizations(grants = GRANTS),

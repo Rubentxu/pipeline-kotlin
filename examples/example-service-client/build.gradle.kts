@@ -25,7 +25,7 @@ val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").o
     """
     -PsdkVersion is required: this example resolves the published SDK and has no default
     version, because a default could only be one that fails to resolve. Pass the candidate's
-    version explicitly, e.g. -PsdkVersion=0.95.0
+    version explicitly, e.g. -PsdkVersion=0.96.0
     """.trimIndent()
 }
 

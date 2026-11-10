@@ -49,7 +49,7 @@ grep " ${ASSET}$" SHA256SUMS | sha256sum -c -
 unzip -q "$ASSET"
 PIPELINEK="./$(basename "$ASSET" .zip)/bin/pipelinek"
 
-"$PIPELINEK" version     # → pipeline 0.95.0
+"$PIPELINEK" version     # → pipeline 0.96.0
 "$PIPELINEK" doctor      # jdk / os / workdir / writable / script cache
 ```
 
@@ -131,7 +131,7 @@ Maven repository inside a ZIP. Unzip it and point your build at the directory.
 
 ```bash
 curl -fL -o sdk.zip \
-  https://github.com/Rubentxu/pipeline-kotlin/releases/download/v0.95.0/pipelinek-0.95.0.sdk.zip
+  https://github.com/Rubentxu/pipeline-kotlin/releases/download/v0.96.0/pipelinek-0.96.0.sdk.zip
 unzip -q sdk.zip -d sdk
 ```
 
@@ -141,8 +141,8 @@ repositories {
     maven { url = uri("file://${System.getProperty("user.dir")}/sdk") }
 }
 dependencies {
-    implementation("dev.rubentxu.pipelinek:pipelinek-domain:0.95.0")
-    implementation("dev.rubentxu.pipelinek:pipelinek-scripting-api:0.95.0")
+    implementation("dev.rubentxu.pipelinek:pipelinek-domain:0.96.0")
+    implementation("dev.rubentxu.pipelinek:pipelinek-scripting-api:0.96.0")
 }
 ```
 
@@ -220,7 +220,7 @@ The dependency block is the same in all four cases:
 
 ```kotlin
 dependencies {
-    implementation("dev.rubentxu.pipelinek:pipelinek-domain:0.95.0")
+    implementation("dev.rubentxu.pipelinek:pipelinek-domain:0.96.0")
 }
 ```
 
@@ -591,7 +591,7 @@ podman run -d --name pipelinek-service \
   -v pipelinek-socket:/var/lib/pipelinek/socket \
   -v pipelinek-control:/var/lib/pipelinek/control \
   -v pipelinek-state:/var/lib/pipelinek/state \
-  localhost/pipelinek:0.95.0
+  localhost/pipelinek:0.96.0
 ```
 
 **The service serves a substrate; it does not create one.** On a volume that is still empty the service refuses to start and says so —`the substrate cannot be served: the store is not there`— because the producer's lane owns that file. A run creates it, and the run's data then lives in the volume:
@@ -601,7 +601,7 @@ podman run --rm \
   -v pipelinek-state:/var/lib/pipelinek/state \
   -v pipelinek-control:/var/lib/pipelinek/control \
   -v "$PWD":/scripts:ro,z \
-  localhost/pipelinek:0.95.0 \
+  localhost/pipelinek:0.96.0 \
   run --db /var/lib/pipelinek/state/store.db \
        --control-root /var/lib/pipelinek/control \
        /scripts/my.pipeline.kts
@@ -612,7 +612,7 @@ podman run --rm \
 ```bash
 podman run --rm \
   -v pipelinek-socket:/var/lib/pipelinek/socket \
-  localhost/pipelinek:0.95.0 \
+  localhost/pipelinek:0.96.0 \
   inspect <runId> --state --endpoint /var/lib/pipelinek/socket/pipelinek.sock
 ```
 
@@ -652,9 +652,9 @@ Four more plugins ship in the distribution as working examples of the contract: 
 
 ### Extended ecosystem
 
-These projects are built around PipelineK. The **0.95.0 column** is the SDK range each one declares against the current release — a project pinned to an older SDK does not load with it.
+These projects are built around PipelineK. The **0.96.0 column** is the SDK range each one declares against the current release — a project pinned to an older SDK does not load with it.
 
-| Project | What it is | Maturity | 0.95.0 |
+| Project | What it is | Maturity | 0.96.0 |
 |---|---|---|---|
 | pipelinek-fabric | Distributed control plane: workers, podman and Kubernetes providers. *Repository not public yet* | Preview | Pinned to 0.62.0 |
 | [pipelinek-studio](https://github.com/Rubentxu/pipelinek-studio) | Web UI, MCP stdio server and VS Code extension over a real PipelineK process | Preview | Pinned to 0.48.0-rc1 |
@@ -662,7 +662,7 @@ These projects are built around PipelineK. The **0.95.0 column** is the SDK rang
 | [pipelinek-assurance](https://github.com/Rubentxu/pipelinek-assurance) | Assurance checks as a plugin | In development | Declares `[0.48.0, 0.52.0)`; its handler cannot execute live yet |
 | [pipelinek-saga](https://github.com/Rubentxu/pipelinek-saga) | Saga contract for compensations | In development | Declares no range yet |
 | pipelinek-fabric-backstage | Backstage integration for the Fabric control API. *Repository not public yet* | In development | Client is not sealed yet |
-| [asdf-pipelinek](https://github.com/Rubentxu/asdf-pipelinek) | Version manager plugin for `asdf` and `mise`: resolves the newest stable release and verifies its SHA-256 | Preview | Resolves 0.95.0 |
+| [asdf-pipelinek](https://github.com/Rubentxu/asdf-pipelinek) | Version manager plugin for `asdf` and `mise`: resolves the newest stable release and verifies its SHA-256 | Preview | Resolves 0.96.0 |
 
 **Maturity scale:** *Available* — shipped and supported in the release. *Preview* — works end to end, still moving. *In development* — real code, incomplete contract. *Exploratory* — an idea with a spike.
 
@@ -792,8 +792,8 @@ Each boundary has one owner. The runner owns the write authority over a run; the
 ```bash
 curl -fL -o install-pipelinek.sh \
   "https://raw.githubusercontent.com/Rubentxu/pipeline-kotlin/main/scripts/install-pipelinek.sh"
-./install-pipelinek.sh install 0.95.0   # download, verify, install
-./install-pipelinek.sh use 0.95.0       # switch the active release
+./install-pipelinek.sh install 0.96.0   # download, verify, install
+./install-pipelinek.sh use 0.96.0       # switch the active release
 export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
 ```
 
@@ -801,10 +801,10 @@ export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
 
 ```bash
 asdf plugin add pipelinek https://github.com/Rubentxu/asdf-pipelinek
-asdf install pipelinek 0.95.0
+asdf install pipelinek 0.96.0
 
 mise plugins add pipelinek https://github.com/Rubentxu/asdf-pipelinek
-mise install pipelinek@0.95.0
+mise install pipelinek@0.96.0
 ```
 
 **Explore.** [`examples/`](examples/) holds the four example plugins and an observability example — a local Collector configuration, PromQL and TraceQL queries, and a Grafana dashboard that runs them. The [catalogue of examples](examples/catalogue/) holds the worked examples of the capabilities above: each one is a pipeline you can run, with a README that explains its stages, its steps and what it expects. The release harness is what runs them. `pipelinek capabilities` and `pipelinek sdk-info` print what this build admits and what a plugin builds against.

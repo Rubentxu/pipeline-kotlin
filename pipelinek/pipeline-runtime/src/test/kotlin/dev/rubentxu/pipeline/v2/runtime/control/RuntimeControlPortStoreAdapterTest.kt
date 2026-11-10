@@ -244,6 +244,77 @@ class RuntimeControlPortStoreAdapterTest {
     }
 
     /**
+     * El hecho terminal es DURABLE antes de que la respuesta viaje.
+     *
+     * El lane escribe por un hilo escritor: un hecho recién añadido todavía
+     * no lo ve nadie. Un cancel que respondiera "cancelled" sobre un hecho
+     * que todavía estaba en cola dejaría abierta la ventana en la que el
+     * cancel siguiente no encuentra terminal y escribe un segundo.
+     */
+    @Test
+    fun `el hecho terminal del cancel es durable antes de la respuesta`() {
+        val fixture = fixture()
+
+        fixture.adapter.cancel(runId, CancelReason.UserRequested)
+
+        assertEquals(
+            listOf("durable"),
+            fixture.durability.calls,
+            "el cancel confirma su hecho terminal antes de responder",
+        )
+        assertEquals(
+            1,
+            fixture.lane.bookendsOf(runId).size,
+            "el hecho terminal es visible para un lector en cuanto la respuesta viaja",
+        )
+    }
+
+    /**
+     * Un hecho terminal que no puede ser durable NO cierra el run.
+     *
+     * El run queda con el recibo de la intención y sin estado terminal, que
+     * es el estado que el cancel siguiente termina: un solo hecho terminal y
+     * un solo estado.
+     */
+    @Test
+    fun `un hecho terminal que no puede ser durable deja el run sin cerrar`() {
+        val fixture = fixture()
+        fixture.durability.failNext()
+
+        val refused = assertInstanceOf(
+            CancelOutcome.Refused::class.java,
+            fixture.adapter.cancel(runId, CancelReason.UserRequested),
+        )
+        assertInstanceOf(
+            CancelRefusal.StorageError::class.java,
+            refused.refusal,
+            "el store no pudo confirmar el hecho terminal, y eso es un fallo del almacenamiento",
+        )
+        assertEquals(
+            0,
+            fixture.lane.bookendsOf(runId).size,
+            "el run NO está cerrado: un hecho que nadie puede leer no es un estado terminal",
+        )
+        assertEquals(
+            1,
+            fixture.journal.listForRun(runId).size,
+            "la intención SÍ queda registrada, para que el cancel siguiente termine el trabajo",
+        )
+
+        val retried = fixture.adapter.cancel(runId, CancelReason.UserRequested)
+        assertInstanceOf(
+            CancelOutcome.Cancelled::class.java,
+            retried,
+            "el cancel siguiente termina el trabajo que el anterior dejó a medias",
+        )
+        assertEquals(
+            1,
+            fixture.lane.bookendsOf(runId).size,
+            "N cancels dejan un solo estado terminal",
+        )
+    }
+
+    /**
      * La lease se toma y se devuelve, también en el camino que falla.
      *
      * Un cancel que se niega debe devolver la lease igual: si no, el run queda
@@ -281,6 +352,7 @@ class RuntimeControlPortStoreAdapterTest {
         val lane: FakeEventLane,
         val lease: FakeLease,
         val seals: SealPlan,
+        val durability: DurabilityPlan,
     )
 
     /**
@@ -298,6 +370,7 @@ class RuntimeControlPortStoreAdapterTest {
         val lane = FakeEventLane()
         val lease = FakeLease()
         val seals = SealPlan(stream)
+        val durability = DurabilityPlan(lane)
         val adapter = RuntimeControlPortStoreAdapter(
             journal = journal,
             lease = lease,
@@ -308,8 +381,9 @@ class RuntimeControlPortStoreAdapterTest {
             sealStream = seals::seal,
             clock = clock,
             ownerId = RunOwnerId.of("operator")!!,
+            makeTerminalDurable = durability::makeDurable,
         )
-        return Fixture(adapter, journal, lane, lease, seals)
+        return Fixture(adapter, journal, lane, lease, seals, durability)
     }
 
     /**
@@ -345,8 +419,19 @@ class RuntimeControlPortStoreAdapterTest {
      * producción, así que el bookend que el cancel escribe con secuencia cero
      * sale con la secuencia que el lane le da.
      */
+    /**
+     * El lane, con la MISMA forma que el store de verdad: los hechos se
+     * escriben en cola y sólo son visibles cuando son durables.
+     *
+     * El lane real escribe por un hilo escritor y confirma por lotes, así que
+     * un hecho recién añadido todavía no lo ve nadie. Un fake que publica al
+     * instante no puede distinguir "el cancel escribió el hecho terminal" de
+     * "el cancel dejó el run cerrado", y esa es exactamente la diferencia que
+     * esta fila persigue.
+     */
     private class FakeEventLane : EventSink, EventRecordReadPort {
-        private val events = mutableListOf<DomainEvent>()
+        private val pending = mutableListOf<DomainEvent>()
+        private val committed = mutableListOf<DomainEvent>()
         private var nextSequence = 1L
 
         override fun append(event: DomainEvent) {
@@ -355,11 +440,22 @@ class RuntimeControlPortStoreAdapterTest {
             } else {
                 event
             }
-            events += sequenced
+            pending += sequenced
+        }
+
+        /** Los hechos en cola se vuelven durables: ahora sí los ve un lector. */
+        fun commit() {
+            committed += pending
+            pending.clear()
+        }
+
+        /** Los hechos en cola se pierden: el store no los pudo guardar. */
+        fun discardPending() {
+            pending.clear()
         }
 
         override fun eventsFor(runId: String): Sequence<DomainEvent> =
-            events.asSequence().filter { it.runId == runId }
+            committed.asSequence().filter { it.runId == runId }
 
         override fun readRecords(
             runId: String,
@@ -368,7 +464,7 @@ class RuntimeControlPortStoreAdapterTest {
             limit: Int,
         ): EventRecordReadResult {
             val afterSequence = after?.lastSequence ?: 0L
-            val page = events
+            val page = committed
                 .filter { it.runId == runId && it.sequence > afterSequence }
                 .take(limit)
             return EventRecordReadResult.Page(
@@ -382,7 +478,33 @@ class RuntimeControlPortStoreAdapterTest {
 
         /** Los hechos terminales que el lane guarda de este run. */
         fun bookendsOf(runId: String): List<RunFinished> =
-            events.filterIsInstance<RunFinished>().filter { it.runId == runId }
+            committed.filterIsInstance<RunFinished>().filter { it.runId == runId }
+    }
+
+    /**
+     * La durabilidad, como función inyectada: es donde cabe el fallo que estas
+     * filas necesitan provocar, y por eso el adaptador la recibe como
+     * parámetro y no la busca por cuenta propia.
+     */
+    private class DurabilityPlan(private val lane: FakeEventLane) {
+        val calls = mutableListOf<String>()
+        private var failing = false
+
+        /** La próxima durabilidad falla, como un disco que no puede confirmar. */
+        fun failNext() {
+            failing = true
+        }
+
+        /** Confirma lo que el lane tenía en cola. */
+        fun makeDurable() {
+            calls += "durable"
+            if (failing) {
+                failing = false
+                lane.discardPending()
+                throw IOException("the store could not confirm the fact")
+            }
+            lane.commit()
+        }
     }
 
     /**

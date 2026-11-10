@@ -98,6 +98,16 @@ import java.util.UUID
  * @param clock the time source. The cancel records when it closed the run.
  * @param ownerId the identity this process writes under. It becomes the run's
  *   owner for as long as the cancel holds the lease.
+ * @param makeTerminalDurable makes the run's terminal fact DURABLE, and says
+ *   so by returning. The event lane writes through a writer thread, so an
+ *   appended fact is not yet a durable one, and a cancel that answered
+ *   "cancelled" before the fact was durable would be a claim about a run that
+ *   no reader could see closed yet — and a second cancel, arriving in that
+ *   window, would find no terminal and write a SECOND one. The port's
+ *   promise is that N calls leave ONE terminal state, so the fact has to be
+ *   durable before the answer travels. A failure here is a failure to close
+ *   the run: the cancel refuses, and the run stays open for the next cancel
+ *   to finish.
  */
 class RuntimeControlPortStoreAdapter(
     private val journal: OperationJournal,
@@ -109,6 +119,7 @@ class RuntimeControlPortStoreAdapter(
     private val sealStream: (OutputStreamId) -> SealOutcome,
     private val clock: Clock,
     private val ownerId: RunOwnerId,
+    private val makeTerminalDurable: () -> Unit,
 ) : RuntimeControlPort {
 
     override fun cancel(runId: String, reason: CancelReason): CancelOutcome {
@@ -243,6 +254,16 @@ class RuntimeControlPortStoreAdapter(
      * stream", and the cancel holds the run's lease while it says it: nobody
      * else can be publishing this run, so the statement is true at the moment
      * it is made — and it stays true whether or not the bookend lands.
+     *
+     * ## Why the bookend is made durable before the answer
+     *
+     * Because the answer of this call is the claim that the run is closed, and
+     * the lane writes through a writer thread: an appended fact is not yet a
+     * durable one. A cancel that answered "cancelled" over a fact that was
+     * still in the writer's queue would let the NEXT cancel find no terminal
+     * at all, and write a second one. The promise that N calls leave one
+     * terminal state is only kept if the fact is durable before the answer
+     * travels.
      */
     private fun closeRun(runId: String, reason: CancelReason): CancelOutcome {
         val now = clock.now()
@@ -280,7 +301,10 @@ class RuntimeControlPortStoreAdapter(
         }
 
         // 3. The terminal fact: the run is closed. It goes last, so that a
-        //    run is never closed and unsealed at the same time.
+        //    run is never closed and unsealed at the same time. And it is
+        //    made DURABLE before the answer travels, because the answer
+        //    says the run is closed and a fact that no reader can see yet
+        //    is not a closed run.
         try {
             events.append(
                 RunFinished(
@@ -294,6 +318,7 @@ class RuntimeControlPortStoreAdapter(
                     diagnostics = listOf(cancelDiagnostic(reason)),
                 ),
             )
+            makeTerminalDurable()
         } catch (failure: Exception) {
             return CancelOutcome.Refused(
                 CancelRefusal.StorageError(failure.shortDiagnostic()),

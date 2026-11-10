@@ -198,27 +198,7 @@ private fun compileEagerDefinition(host: ScriptingHost, definition: ScriptDefini
         dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
     }
 
-    val pipelineSpec: PipelineSpec? = if (result.isSuccess) {
-        val scriptInstance = result.scriptInstance
-        scriptInstance?.let { inst ->
-            try {
-                val resultMethod = inst.javaClass.getMethod("get\$\$result")
-                @Suppress("UNCHECKED_CAST")
-                resultMethod.invoke(inst) as? PipelineSpec
-            } catch (invocationError: java.lang.reflect.InvocationTargetException) {
-                // `get$$result` runs the script BODY, so this is where a fail-closed DSL
-                // guard fires (e.g. the Pure Builder Consumption gate rejecting an
-                // unconsumed MUST_CONSUME carrier). Swallowing it into `null` turned a
-                // construction rejection into "no pipeline", which the runner then
-                // reported downstream as a runtime step failure — the author's discarded
-                // value disappeared and a StepFailed appeared instead.
-                //
-                // Unwrap the reflective wrapper so the real, actionable message reaches
-                // the author verbatim.
-                throw (invocationError.targetException ?: invocationError)
-            }
-        }
-    } else null
+    val pipelineSpec: PipelineSpec? = pipelineSpecOf(result)
 
     return ScriptCompilation(
         result = result,
@@ -226,6 +206,39 @@ private fun compileEagerDefinition(host: ScriptingHost, definition: ScriptDefini
         entryPoint = null,
         failure = failureOf(result),
     )
+}
+
+/**
+ * The pipeline the compiled script declares, or null when it declares none.
+ *
+ * ## Why the reflective unwrapping lives here
+ *
+ * Because the eager DSL builds its pipeline WHILE the script's body runs, and the body is
+ * only reachable through the script instance. Every reader of the declaration —the runner
+ * and the verb that describes the parameters— asks this question the same way, and two
+ * unwrappings could answer it differently.
+ *
+ * ## Why the failure is not swallowed
+ *
+ * Because `get$$result` runs the script BODY, so this is where a fail-closed DSL guard
+ * fires (e.g. the Pure Builder Consumption gate rejecting an unconsumed MUST_CONSUME
+ * carrier). Swallowing it into `null` turned a construction rejection into "no pipeline",
+ * which the runner then reported downstream as a runtime step failure — the author's
+ * discarded value disappeared and a StepFailed appeared instead.
+ *
+ * The reflective wrapper is unwrapped so that the real, actionable message reaches the
+ * author verbatim.
+ */
+internal fun pipelineSpecOf(result: ScriptCompilationResult): PipelineSpec? {
+    if (!result.isSuccess) return null
+    val scriptInstance = result.scriptInstance ?: return null
+    return try {
+        val resultMethod = scriptInstance.javaClass.getMethod("get\$\$result")
+        @Suppress("UNCHECKED_CAST")
+        resultMethod.invoke(scriptInstance) as? PipelineSpec
+    } catch (invocationError: java.lang.reflect.InvocationTargetException) {
+        throw (invocationError.targetException ?: invocationError)
+    }
 }
 
 /**

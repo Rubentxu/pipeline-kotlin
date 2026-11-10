@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.service
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -195,6 +196,24 @@ sealed interface ServiceRequest {
      * The RULES (how many entries, what a name may look like, which names
      * are refused) are the service's, and it refuses them by name: see
      * [ServiceRefusal.RunConfigurationRefused].
+     *
+     * ## What the parameters are
+     *
+     * The values the caller delivered for the parameters the pipeline
+     * DECLARES, together with the declaration the caller knows.
+     *
+     * The declaration travels with the values because the service does not
+     * compile the script: describing a script's parameters is compiling
+     * it, and compiling it is running the author's code inside the
+     * service. The contract the service checks the values against is
+     * therefore the one the client carries, and it is DATA and not
+     * authority — the authority is the declaration of the script, and the
+     * child verifies the values against it before any STEP of the run runs.
+     * The child's check cannot happen earlier: the declaration is built
+     * while the author's own body runs.
+     *
+     * The values are text, and they are not a secret: a value is a text,
+     * and there is no oracle that says whether a text is a secret.
      */
     data class StartRun(
         override val schema: String,
@@ -211,6 +230,23 @@ sealed interface ServiceRequest {
          * there is none to carry.
          */
         val configuration: Map<String, String> = emptyMap(),
+        /**
+         * The values the caller delivered for the parameters the pipeline declares.
+         *
+         * EMPTY means the request asks for no parameters, which is not the same as "the
+         * pipeline declares none": the first is a statement about the request and the second
+         * is a statement about the script, and the wire carries the first.
+         */
+        val parameters: Map<String, String> = emptyMap(),
+        /**
+         * The declaration the caller knows the pipeline has.
+         *
+         * It travels because the service cannot read the script's own declaration, and it is
+         * DATA and not authority: the rules that check a value against it are the product's
+         * (see [dev.rubentxu.pipeline.v2.dsl.RunInputs]), and the child checks the same
+         * values against the script itself before any STEP of the run runs.
+         */
+        val parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
     ) : ServiceRequest {
 
         /**
@@ -220,10 +256,13 @@ sealed interface ServiceRequest {
          * carried them would publish them to whoever reads the log. The
          * channel is public, and public is not the same as printed: the
          * values belong to the steps of the run, not to a diagnostic.
+         *
+         * The same is true of the parameters' values, and for the same reason.
          */
         override fun toString(): String =
             "StartRun(schema=$schema, script=$script, workspace=$workspace, " +
-                "idempotencyKey=$idempotencyKey, configuration=${configuration.size} entries)"
+                "idempotencyKey=$idempotencyKey, configuration=${configuration.size} entries, " +
+                "parameters=${parameters.size} values)"
     }
 
     /**
@@ -253,6 +292,40 @@ sealed interface ServiceRequest {
         override val schema: String,
         val runId: String,
         val reason: String?,
+    ) : ServiceRequest
+
+    /**
+     * The request to DESCRIBE the parameters of a script.
+     *
+     * ## What the request carries
+     *
+     * The NAME of the script, and nothing else. A description is a read of the script's
+     * own declaration, so it asks about one script by name.
+     *
+     * ## Why the service REFUSES this request
+     *
+     * Because describing the parameters of a script means COMPILING it, and compiling it
+     * means running the author's code inside the service. A socket on a machine that
+     * compiled whatever it was asked about would run untrusted code by answering a
+     * question, and a question is easier to ask than a start.
+     *
+     * The service therefore answers this request with a NAMED refusal —see
+     * [ServiceRefusal.DescribeParametersRefused]— that says what it cannot do and why. The
+     * name is reserved in the vocabulary on purpose: a build that can describe a script
+     * because it admits an artifact that was authorized beforehand answers this same
+     * request, and a client written against the name works with both.
+     *
+     * The name is NOT the one the VALUES are refused with: the values of a request that
+     * break a rule are fixed and sent again, and a description this service cannot produce
+     * is asked of somebody else.
+     *
+     * A client that needs the description before it starts a run gets it from the
+     * compiler —the command line compiles the script it is about to run— or from the
+     * contract it already carries.
+     */
+    data class DescribeParameters(
+        override val schema: String,
+        val script: String,
     ) : ServiceRequest
 }
 
@@ -708,6 +781,68 @@ sealed interface ServiceRefusal {
     }
 
     /**
+     * The parameters of the request break a rule, or the service cannot check them.
+     *
+     * ## Why the reason travels inside
+     *
+     * Because the rules are many and a client acts differently on each one: a value of the
+     * wrong type is fixed by delivering another value, a name the pipeline does not declare
+     * is fixed by declaring it or by not sending it, and a missing value is fixed by
+     * delivering it. One word for every rule would say only "no", and the client would have
+     * to guess. The [reason] says WHICH rule, and the [detail] says which one in prose.
+     *
+     * ## Why it is NOT a shape refusal
+     *
+     * Because a shape is a property of the LINE and the codec owns the shape of a line
+     * ([MalformedRequest]). The rules of the parameters are a decision of the service, and
+     * the service decides them.
+     *
+     * ## Why it is NOT the refusal of a request to DESCRIBE
+     *
+     * Because the two facts are not the same for the client: this refusal says that the
+     * values the client sent break a rule, and the client has to fix a value and send it
+     * again. A refusal that says that the service cannot DESCRIBE the parameters of a script
+     * says that there is nothing to fix: the client has to ask somebody else for the
+     * contract. One word for both would make the client read the reason to tell them apart,
+     * and the reason is read by a machine far more often than by a person.
+     *
+     * The refusal of a description is [DescribeParametersRefused].
+     */
+    data class ParametersRefused(val reason: String, val detail: String) : ServiceRefusal {
+        override val kind: String = "parameters-refused"
+        override val payload: JsonObject = buildJsonObject {
+            put("reason", JsonPrimitive(reason))
+            put("detail", JsonPrimitive(detail))
+        }
+    }
+
+    /**
+     * The request to DESCRIBE the parameters of a script was refused.
+     *
+     * ## What it says
+     *
+     * That this service does not serve the description, and why: describing the parameters of
+     * a script means compiling it, and compiling it means running the author's code inside
+     * the service.
+     *
+     * ## Why it is a word of its own
+     *
+     * Because the client's two actions are different and neither of them is a retry: the
+     * values of a request that break a rule are fixed and sent again, and a description this
+     * service cannot produce is asked of somebody else —the compiler, or the contract the
+     * client already carries. A word that covered both would leave the client reading the
+     * reason to learn which of the two happened, and the reason is a field of the refusal
+     * that a machine reads before a person does.
+     */
+    data class DescribeParametersRefused(val reason: String, val detail: String) : ServiceRefusal {
+        override val kind: String = "describe-parameters-refused"
+        override val payload: JsonObject = buildJsonObject {
+            put("reason", JsonPrimitive(reason))
+            put("detail", JsonPrimitive(detail))
+        }
+    }
+
+    /**
      * The authorization is one this service knows, and its scope does not
      * cover CANCELLING a run.
      *
@@ -906,6 +1041,7 @@ object ServiceCodec {
             "output.follow" -> decodeOutputFollow(request, schema, credential)
             "run.start" -> decodeStartRun(request, schema, credential)
             "run.cancel" -> decodeCancelRun(request, schema, credential)
+            "describe.parameters" -> decodeDescribeParameters(request, schema, credential)
             else -> ServiceDecoding.Refused(ServiceRefusal.UnknownOp)
         }
     }
@@ -1021,11 +1157,37 @@ object ServiceCodec {
                             },
                         )
                     }
+                    if (request.parameters.isNotEmpty()) {
+                        put(
+                            "parameters",
+                            buildJsonObject {
+                                request.parameters.forEach { (name, value) ->
+                                    put(name, JsonPrimitive(value))
+                                }
+                            },
+                        )
+                    }
+                    if (request.parameterContract.isNotEmpty()) {
+                        put("parameterContract", JsonArray(request.parameterContract.map { spec ->
+                            buildJsonObject {
+                                put("name", JsonPrimitive(spec.name))
+                                put("type", JsonPrimitive(spec.type))
+                                spec.defaultValue?.let { put("defaultValue", JsonPrimitive(it)) }
+                                if (spec.choices.isNotEmpty()) {
+                                    put("choices", JsonArray(spec.choices.map { JsonPrimitive(it) }))
+                                }
+                            }
+                        }))
+                    }
                 }
                 is ServiceRequest.CancelRun -> {
                     put("op", JsonPrimitive("run.cancel"))
                     put("runId", JsonPrimitive(request.runId))
                     request.reason?.let { put("reason", JsonPrimitive(it)) }
+                }
+                is ServiceRequest.DescribeParameters -> {
+                    put("op", JsonPrimitive("describe.parameters"))
+                    put("script", JsonPrimitive(request.script))
                 }
             }
         }
@@ -1165,10 +1327,110 @@ private fun decodeStartRun(request: JsonObject, schema: String, credential: Stri
     }
     val configuration = request.configuration()
         ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    val parameters = request.parameters()
+        ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    val parameterContract = request.parameterContract()
+        ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
     return ServiceDecoding.Decoded(
-        ServiceRequest.StartRun(schema, script, workspace, key, configuration),
+        ServiceRequest.StartRun(
+            schema = schema,
+            script = script,
+            workspace = workspace,
+            idempotencyKey = key,
+            configuration = configuration,
+            parameters = parameters,
+            parameterContract = parameterContract,
+        ),
         credential,
     )
+}
+
+/**
+ * The description this line asks for.
+ *
+ * The script is read with the same rule the start reads it with: the name is bounded and it
+ * is not blank, because a request about no script is not a request.
+ */
+private fun decodeDescribeParameters(
+    request: JsonObject,
+    schema: String,
+    credential: String?,
+): ServiceDecoding {
+    val script = request.text("script") ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    if (script.isEmpty() || script.length > ServiceProtocol.MAX_SCRIPT_NAME_LENGTH) {
+        return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    }
+    return ServiceDecoding.Decoded(
+        ServiceRequest.DescribeParameters(schema, script),
+        credential,
+    )
+}
+
+/**
+ * The parameters this line carries, or null when it carries a shape the protocol does not
+ * admit.
+ *
+ * The shape is the one of the configuration: an OBJECT whose entries are all PRIMITIVES, and
+ * a value is read as its text. What the values may BE is not decided here: the rules of the
+ * parameters are the service's decision, and the service refuses them by name.
+ */
+private fun JsonObject.parameters(): Map<String, String>? {
+    val element = this["parameters"] ?: return emptyMap()
+    val entries = element as? JsonObject ?: return null
+    val values = LinkedHashMap<String, String>()
+    for ((name, value) in entries) {
+        val text = (value as? JsonPrimitive)?.contentOrNull ?: return null
+        values[name] = text
+    }
+    return values
+}
+
+/**
+ * The declaration this line carries, or null when it carries a shape the protocol does not
+ * admit.
+ *
+ * ## What the shape is
+ *
+ * An ARRAY of objects, each one a parameter: a name, a type, an optional default and an
+ * optional set of choices. Every field is read as a TEXT, and a field that is not a text is
+ * a shape the protocol does not admit.
+ *
+ * ## What is NOT decided here
+ *
+ * Whether the declaration is one the product can check a value against. That is a RULE, and
+ * the rules are the service's decision: it refuses them by name — `parameters-refused` —
+ * and not here.
+ */
+private fun JsonObject.parameterContract(): List<dev.rubentxu.pipeline.v2.domain.ParameterSpec>? {
+    val element = this["parameterContract"] ?: return emptyList()
+    val entries = element as? JsonArray ?: return null
+    val specs = mutableListOf<dev.rubentxu.pipeline.v2.domain.ParameterSpec>()
+    for (entry in entries) {
+        val spec = entry as? JsonObject ?: return null
+        val name = spec.text("name") ?: return null
+        val type = spec.text("type") ?: return null
+        val defaultValue = spec.text("defaultValue")
+        val choicesElement = spec["choices"]
+        val choices = if (choicesElement == null) {
+            emptyList()
+        } else {
+            val choiceEntries = choicesElement as? JsonArray ?: return null
+            val texts = mutableListOf<String>()
+            for (choice in choiceEntries) {
+                texts.add((choice as? JsonPrimitive)?.contentOrNull ?: return null)
+            }
+            texts
+        }
+        specs.add(
+            dev.rubentxu.pipeline.v2.domain.ParameterSpec(
+                name = name,
+                type = type,
+                defaultValue = defaultValue,
+                choices = choices,
+            ),
+        )
+    }
+    return specs
 }
 
 /**
@@ -1348,7 +1610,7 @@ private fun decodeRefusal(document: JsonObject): ServiceRefusal? {
 
         "start-not-authorized", "script-not-admitted", "workspace-not-admitted",
         "idempotency-conflict", "too-many-supervised-runs", "run-start-refused",
-        "run-configuration-refused" ->
+        "run-configuration-refused", "parameters-refused" ->
             decodeStartRefusal(kind, document)
 
         "cancel-not-authorized", "run-cancel-refused" ->
@@ -1421,6 +1683,10 @@ private fun decodeStartRefusal(kind: String, document: JsonObject): ServiceRefus
         document.str("reason") ?: return null,
         document.str("detail") ?: return null,
     )
+    "parameters-refused" -> ServiceRefusal.ParametersRefused(
+        document.str("reason") ?: return null,
+        document.str("detail") ?: return null,
+    )
         else -> null
     }
 }
@@ -1445,6 +1711,10 @@ private fun decodeServiceRefusal(kind: String, document: JsonObject): ServiceRef
     )
     "not-authorized" -> ServiceRefusal.NotAuthorized
     "too-many-subscriptions" -> ServiceRefusal.TooManySubscriptions
+    "describe-parameters-refused" -> ServiceRefusal.DescribeParametersRefused(
+        document.str("reason") ?: return null,
+        document.str("detail") ?: return null,
+    )
         else -> null
     }
 }

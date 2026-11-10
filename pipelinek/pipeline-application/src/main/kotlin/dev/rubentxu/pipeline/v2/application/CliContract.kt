@@ -176,6 +176,31 @@ data class CliFlags(
      */
     val runConfigPath: String? = null,
     /**
+     * The snapshot of the parameters of the run.
+     *
+     * The service writes it, in the supervision's own directory, and hands the PATH to the
+     * child through the command line. An operator may name a file as well, and then the file
+     * is read under the SAME rules the service applies: a file that cannot be read refuses
+     * the run.
+     *
+     * Absent means the run was given no parameters, and that is the historical behaviour.
+     */
+    val runInputsPath: String? = null,
+    /**
+     * The values the caller delivers for the parameters the pipeline declares.
+     *
+     * They are RAW here: the rules that decide whether a value fits the declaration are the
+     * product's, and they are applied against the declaration the compilation produced.
+     */
+    val parameters: Map<String, String> = emptyMap(),
+    /**
+     * Whether the operator asked for the DESCRIPTION of the parameters instead of a run.
+     *
+     * The description is a product of the compilation, and `validate` is the verb that
+     * compiles.
+     */
+    val describeParameters: Boolean = false,
+    /**
      * Which families of observation reach the reader. Orthogonal to
      * [format]; neither changes execution.
 */

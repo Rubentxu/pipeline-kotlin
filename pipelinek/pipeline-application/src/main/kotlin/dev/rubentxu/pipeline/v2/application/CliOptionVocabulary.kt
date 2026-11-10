@@ -117,6 +117,40 @@ internal class ParseState(
      */
     var runConfigPath: String? = null
     /**
+     * `--run-inputs <path>`. The snapshot of the parameters of the run.
+     *
+     * It is a PATH and not a set of name/value pairs on the command line, for the same
+     * reason the configuration is: the argv of a process is readable by any user of the
+     * machine. The values of the parameters are the caller's own text and they travel in the
+     * file the run reads.
+     */
+    var runInputsPath: String? = null
+    /**
+     * `--param <name>=<value>`. The values the caller delivers for the parameters the
+     * pipeline declares.
+     *
+     * The option is REPEATABLE: a pipeline declares several parameters and each one is
+     * delivered with its own option. The values are RAW here: the rules that decide whether
+     * a value fits the declaration are the product's, and they are applied against the
+     * declaration the compilation produced.
+     */
+    /**
+     * The values the caller delivered, by name.
+     *
+     * The map is FILLED by the parser, one option at a time, and it is READ as the snapshot
+     * the flags carry: a reader that could also write it would be a second writer of the
+     * same thing.
+     */
+    val parameterValues: MutableMap<String, String> = LinkedHashMap()
+    /**
+     * `--describe-parameters`. Print the description of the parameters the script declares
+     * and do not run it.
+     *
+     * A BOOLEAN with no value: the only question is whether the operator wants the contract
+     * or the run.
+     */
+    var describeParameters: Boolean = false
+    /**
      * Every `--output-protocol`
      * token the operator supplied. The last one wins. Validation
      * against [dev.rubentxu.pipeline.v2.application.OutputProtocol.SUPPORTED_IDS]
@@ -321,6 +355,13 @@ private val EXECUTION_ONLY_VALUED: List<ValuedOption> =
         // a verb that runs may carry it. A reader that accepted it would be promising an
         // environment it never has.
         ValuedOption.RUN_CONFIG,
+        // The snapshot of the parameters of the run is a file the RUN reads, so only a verb
+        // that runs may carry it. A reader that accepted it would be promising values it
+        // never has.
+        ValuedOption.RUN_INPUTS,
+        // The values of the parameters are delivered to a RUN, so only a verb that runs may
+        // carry them.
+        ValuedOption.PARAM,
     )
 
 internal val EXECUTION_ONLY_OPTIONS: Set<String> =
@@ -338,7 +379,12 @@ internal val EXECUTION_ONLY_OPTIONS: Set<String> =
  * that name says what it is: the options only a verb that RUNS may carry, and
  * this one belongs to the verb that VALIDATES.
  */
-private val VALIDATION_ONLY_FLAGS: List<FlagOption> = listOf(FlagOption.COMPILE_ONLY)
+private val VALIDATION_ONLY_FLAGS: List<FlagOption> = listOf(
+    FlagOption.COMPILE_ONLY,
+    // The description of the parameters is something a COMPILATION produces, and `validate`
+    // is the verb that compiles. A verb that runs would have to run the script to answer it.
+    FlagOption.DESCRIBE_PARAMETERS,
+)
 
 internal val VALIDATION_ONLY_OPTIONS: Set<String> =
     VALIDATION_ONLY_FLAGS.map { it.token }.toSet()
@@ -385,6 +431,15 @@ private enum class FlagOption(val token: String) {
      * invite a per-plugin policy this runtime does not implement.
      */
     REQUIRE_PLUGIN_TRUST("--require-plugin-trust"),
+
+    /**
+     * Print the description of the parameters the script declares.
+     *
+     * A BOOLEAN with no value: the only question is whether the operator wants the contract
+     * or the run, and a spelling that took a value would invite a format this runtime does
+     * not implement.
+     */
+    DESCRIBE_PARAMETERS("--describe-parameters"),
     ;
 
     companion object {
@@ -426,6 +481,12 @@ private enum class ValuedOption(val token: String) {
     // The snapshot of the configuration of the run. It is a file the RUN reads, and it
     // is the only way a configuration reaches the environment of the steps.
     RUN_CONFIG("--run-config"),
+    // The snapshot of the parameters of the run. It is a file the RUN reads, and it is the
+    // only way the values of the parameters reach the run.
+    RUN_INPUTS("--run-inputs"),
+    // The values the caller delivers for the parameters the pipeline declares. Repeating the
+    // flag delivers one value per parameter.
+    PARAM("--param"),
     // Opt-in versioned
     // output protocol. Repeating the flag collects the tokens;
     // Main.kt validates the last-supplied id against
@@ -493,6 +554,7 @@ private object FlagOptions {
         FlagOption.FOLLOW -> flag(index) { state.follow = true }
         FlagOption.COMPILE_ONLY -> flag(index) { state.compileOnly = true }
         FlagOption.REQUIRE_PLUGIN_TRUST -> flag(index) { state.requirePluginTrust = true }
+        FlagOption.DESCRIBE_PARAMETERS -> flag(index) { state.describeParameters = true }
     }
 
     /** A flag occupies exactly one position, so its outcome never depends on what follows it. */
@@ -515,6 +577,53 @@ private object FlagOptions {
  * The three groups are not decoration: each has a different failure mode, and collapsing them is how
  * a parser ends up with one error vocabulary for three unrelated mistakes.
 */
+/**
+ * The value of a parameter, spelled `name=value`.
+ *
+ * ## Why the SPLIT happens here
+ *
+ * Because the parser is the one place that knows which options carry a value, and the shape
+ * of that value is part of the option: `--param` carries a name and a value, and the name is
+ * separated from the value by the FIRST `=`, so a value may contain one.
+ *
+ * ## What is refused
+ *
+ * A spelling with no `=` at all, a name that is empty, and a name delivered TWICE. All three
+ * are facts about the REQUEST, and refusing them here lands before anything is compiled.
+ *
+ * ## Why a repeated name is refused
+ *
+ * Because the last one winning would be a silent decision: the operator wrote two values for
+ * one parameter and the run would take one of them without saying which.
+ *
+ * ## What is NOT decided here
+ *
+ * Whether the name is one the pipeline declares, and whether the value fits the type it
+ * declares. Those are the product's rules, and they are applied against the declaration the
+ * compilation produced.
+ */
+private fun applyParameter(value: String, index: Int, state: ParseState): ApplyOutcome {
+    val separator = value.indexOf('=')
+    if (separator < 0) {
+        return ApplyOutcome.Rejected(
+            CliError.InvalidOptionValue("--param", "a parameter is spelled name=value"),
+        )
+    }
+    val name = value.substring(0, separator)
+    if (name.isBlank()) {
+        return ApplyOutcome.Rejected(
+            CliError.InvalidOptionValue("--param", "a parameter needs a name"),
+        )
+    }
+    if (state.parameterValues.containsKey(name)) {
+        return ApplyOutcome.Rejected(
+            CliError.InvalidOptionValue("--param", "the parameter '$name' was delivered twice"),
+        )
+    }
+    state.parameterValues[name] = value.substring(separator + 1)
+    return ApplyOutcome.Applied(index + 2)
+}
+
 private object ValuedOptions {
     fun apply(
         option: ValuedOption,
@@ -544,6 +653,14 @@ private object ValuedOptions {
         // that cannot be read refuses the run THERE, where the refusal can
         // name the file that could not be read.
         ValuedOption.RUN_CONFIG -> nonBlank(value, "--run-config", index) { state.runConfigPath = value }
+
+        // A path to the snapshot of the parameters. Existence is NOT checked here either: the
+        // file is read at the start of the run, and a file that cannot be read refuses the
+        // run THERE, where the refusal can name the file that could not be read.
+        ValuedOption.RUN_INPUTS -> nonBlank(value, "--run-inputs", index) { state.runInputsPath = value }
+
+        // The value of a parameter, spelled `name=value`.
+        ValuedOption.PARAM -> applyParameter(value, index, state)
 
         // Collect every supplied
         // --output-protocol token in the order the operator passed them.

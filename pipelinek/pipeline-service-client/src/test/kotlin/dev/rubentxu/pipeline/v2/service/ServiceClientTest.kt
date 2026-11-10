@@ -204,6 +204,51 @@ class ServiceClientTest {
         assertTrue(channel.closed, "the connection of a closed street is closed")
     }
 
+    @Test
+    fun `an answer that carries other parameter values than the ones sent is not a success`() {
+        // The echo: a service that does not know the field starts the run WITHOUT the values
+        // and answers a well formed question, and a client that cannot tell the two apart
+        // believes in values that are not there. The client compares, and a difference is
+        // never a successful start.
+        val channel = FakeChannel(
+            listOf(
+                """{"schema":"pipelinek.service/2","kind":"answer","result":{""" +
+                    """"runId":"run-1","correlationId":"corr-1","ownerId":"owner-1",""" +
+                    """"startedAtMs":1700,"configuration":{},"parameters":{"dryRun":"true"}}}""",
+            ),
+        )
+
+        val answer = client(channel).startRun(
+            script = "build.kts",
+            parameters = mapOf("dryRun" to "false"),
+        )
+
+        val unreadable = assertInstanceOf(ServiceAnswer.Unreadable::class.java, answer)
+        assertTrue(
+            unreadable.detail.contains("parameter values"),
+            "the negative says what did not match",
+        )
+    }
+
+    @Test
+    fun `an answer that carries the parameter values that were sent is a success`() {
+        val channel = FakeChannel(
+            listOf(
+                """{"schema":"pipelinek.service/2","kind":"answer","result":{""" +
+                    """"runId":"run-1","correlationId":"corr-1","ownerId":"owner-1",""" +
+                    """"startedAtMs":1700,"configuration":{},"parameters":{"dryRun":"false"}}}""",
+            ),
+        )
+
+        val answer = client(channel).startRun(
+            script = "build.kts",
+            parameters = mapOf("dryRun" to "false"),
+        )
+
+        val started = answer.value<ServiceRunStart>()
+        assertEquals(mapOf("dryRun" to "false"), started.parameters)
+    }
+
     /**
      * The value of an answer, when the answer carried one.
      *

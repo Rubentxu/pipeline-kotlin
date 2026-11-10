@@ -185,6 +185,16 @@ private fun runDurablePipelineOwned(
         telemetry = telemetry,
     )
 
+    // The PARAMETERS of the run, checked against the declaration the compilation just
+    // produced. The check is HERE because this is the first moment at which the product
+    // knows what the script declares, and the values are checked against the SCRIPT and
+    // not against a contract a client may have carried.
+    //
+    // A compilation that produced NO pipeline declares nothing, and a value cannot be
+    // unknown in a script that says nothing: the refusal of that compilation is the one
+    // the operator has to read, and it is read further down.
+    compiledPipeline?.let { RunParameters.of(config, it.parameters) }
+
     // Build orchestrator with all durable dependencies
     // SAGA / durable run: the durable Saga obligations live in the SAME database as the journal and
     // the event log, through the same connection factory. One authority for the run's durable

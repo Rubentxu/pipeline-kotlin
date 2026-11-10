@@ -85,7 +85,32 @@ internal class ServiceOperations(
         is ServiceRequest.RunState -> stateOf(request.runId)
         is ServiceRequest.StartRun -> startOf(request, credentialDigest)
         is ServiceRequest.CancelRun -> cancelOf(request)
+        is ServiceRequest.DescribeParameters -> describeParametersOf()
     }
+
+    /**
+     * The answer to a request to DESCRIBE the parameters of a script.
+     *
+     * The answer is a REFUSAL, and it is the same refusal for every script: this service
+     * does not compile the scripts it is asked about, and describing the parameters of a
+     * script is compiling it.
+     *
+     * ## Why the name is not the one the VALUES are refused with
+     *
+     * Because the client's two actions are different and neither of them is a retry: the
+     * values of a request that break a rule are fixed and sent again, and a description this
+     * service cannot produce is asked of somebody else. A word that covered both would make
+     * the client read the reason to tell them apart.
+     */
+    private fun describeParametersOf(): ServiceResponse = ServiceResponse.Refused(
+        ServiceProtocol.SCHEMA,
+        ServiceRefusal.DescribeParametersRefused(
+            "the-service-does-not-describe-parameters",
+            "describing the parameters of a script means compiling it, and this service does " +
+                "not compile the scripts it is asked about; the description comes from the " +
+                "compiler, or from the contract the client already carries",
+        ),
+    )
 
     /**
      * The version of the product and the version of the protocol.
@@ -164,6 +189,8 @@ internal class ServiceOperations(
                     idempotencyKey = request.idempotencyKey,
                     credentialDigest = credentialDigest.orEmpty(),
                     configuration = request.configuration,
+                    parameters = request.parameters,
+                    parameterContract = request.parameterContract,
                 ),
             )
         } catch (failure: Exception) {
@@ -192,6 +219,22 @@ internal class ServiceOperations(
                         "configuration",
                         buildJsonObject {
                             outcome.configuration.values.forEach { (name, value) ->
+                                put(name, JsonPrimitive(value))
+                            }
+                        },
+                    )
+                    // The PARAMETERS come back for the same reason the
+                    // configuration does: a service that does not know the
+                    // field ignores it in silence and starts the run without
+                    // the values, and the client that sent them has to be
+                    // able to tell the two apart. The echo carries the
+                    // DELIVERED values, because those are the ones the
+                    // service knows; the defaults of the script's own
+                    // declaration are the child's business.
+                    put(
+                        "parameters",
+                        buildJsonObject {
+                            outcome.parameters.forEach { (name, value) ->
                                 put(name, JsonPrimitive(value))
                             }
                         },

@@ -11,6 +11,8 @@ import dev.rubentxu.pipeline.v2.runtime.SystemRuntimeConfig
 import dev.rubentxu.pipeline.v2.runtime.withPipelineTelemetry
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import java.nio.file.Paths
 import java.nio.file.Files
 
@@ -288,6 +290,24 @@ fun main(args: Array<String>) {
             if (config.compileOnly) host.compileOnly(definition) else host.compile(definition)
         } finally {
             dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
+        }
+        // The DESCRIPTION of the parameters the script declares.
+        //
+        // It is a projection of the declaration the compilation just produced, and it is
+        // printed INSTEAD of the run's events: the operator asked for the contract, not
+        // for what a run did.
+        //
+        // A script that did not compile is NOT described here: the diagnostics of the
+        // failure are what the operator has to read, and they are printed below.
+        if (config.describeParameters && compileResult.isSuccess) {
+            val declaration = pipelineSpecOf(compileResult)?.parameters.orEmpty()
+            System.out.println(
+                Json.encodeToString(
+                    JsonObject.serializer(),
+                    dev.rubentxu.pipeline.v2.dsl.ParameterDescription.of(declaration),
+                ),
+            )
+            return
         }
         val events = store.eventsFor(validateRunId).toList()
         writeEventDocument(

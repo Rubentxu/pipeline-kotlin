@@ -19,7 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
 fun pipeline(block: PipelineScope.() -> Unit): PipelineSpec {
     val scope = PipelineScope(currentRuntimeConfig())
     scope.block()
-    return PipelineSpec(stages = scope.buildStages())
+    return PipelineSpec(stages = scope.buildStages(), parameters = scope.buildParameters())
 }
 
 /**
@@ -68,7 +68,7 @@ fun pipeline(
 ): PipelineSpec {
     val scope = PipelineScope(runtimeConfig)
     scope.block()
-    return PipelineSpec(stages = scope.buildStages())
+    return PipelineSpec(stages = scope.buildStages(), parameters = scope.buildParameters())
 }
 
 /**
@@ -136,6 +136,7 @@ class PipelineScope(
         currentRuntimeConfig(),
 ) {
     private val stageBuilders = mutableListOf<StageBuilder>()
+    private val parameterSpecs = mutableListOf<dev.rubentxu.pipeline.v2.domain.ParameterSpec>()
 
     fun stages(block: StagesScope.() -> Unit) {
         val scope = StagesScope(runtimeConfig)
@@ -143,7 +144,102 @@ class PipelineScope(
         scope.buildStageBuilders().forEach { stageBuilders.add(it) }
     }
 
+    /**
+     * The parameters the pipeline declares it accepts.
+     *
+     * The block is the author's declaration, and it is carried as data: nothing here decides
+     * what a caller may send, and nothing here reads a value. The rules that decide that
+     * live in [RunInputs], so the DSL and the checker cannot disagree about what a
+     * declaration means.
+     */
+    fun parameters(block: ParametersScope.() -> Unit) {
+        val scope = ParametersScope()
+        scope.block()
+        parameterSpecs.addAll(scope.build())
+    }
+
     fun buildStages(): List<StageSpec> = stageBuilders.map { it.build() }
+
+    fun buildParameters(): List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> =
+        parameterSpecs.toList()
+}
+
+/**
+ * The marker of the parameters layer: the scope a `parameters { }` block opens.
+ *
+ * It separates the parameters from the pipeline around it, so a declaration cannot reach
+ * the pipeline's own calls and a pipeline cannot reach a declaration's.
+ */
+@DslMarker
+annotation class ParametersDslMarker
+
+/**
+ * Receiver scope for the `parameters { }` block inside `pipeline { }`.
+ *
+ * The scope offers one function per type the product knows, and no other way to declare a
+ * parameter: a type the product cannot check a value against is a type a caller could never
+ * satisfy, so it is not expressible here.
+ *
+ * A parameter that declares no default is a parameter a caller has to deliver. That rule is
+ * the ONLY one about obligatoriedad, and it is written once, in the absence of the default:
+ * there is no flag that says "required" and no flag that says "optional", so the two can
+ * never say different things about the same parameter.
+ */
+@ParametersDslMarker
+class ParametersScope {
+    private val specs = mutableListOf<dev.rubentxu.pipeline.v2.domain.ParameterSpec>()
+
+    /**
+     * A parameter that accepts any text.
+     *
+     * The [default] is the text a caller receives when it delivers nothing.
+     */
+    fun string(name: String, default: String? = null) {
+        specs.add(
+            dev.rubentxu.pipeline.v2.domain.ParameterSpec(
+                name = name,
+                type = RunInputs.TYPE_STRING,
+                defaultValue = default,
+            ),
+        )
+    }
+
+    /**
+     * A parameter that accepts `true` or `false`.
+     *
+     * The [default] is written as the boolean it is, and the text that reaches the contract
+     * is the spelling of that boolean: a declaration that carried a free text here would let
+     * an author write a default the type cannot hold.
+     */
+    fun boolean(name: String, default: Boolean? = null) {
+        specs.add(
+            dev.rubentxu.pipeline.v2.domain.ParameterSpec(
+                name = name,
+                type = RunInputs.TYPE_BOOLEAN,
+                defaultValue = default?.toString(),
+            ),
+        )
+    }
+
+    /**
+     * A parameter that accepts one of the [values].
+     *
+     * The set is closed: a caller that delivers a text outside it is refused, and the
+     * refusal names the parameter. The [default] has to be one of the texts of the set, and
+     * the checker that decides it is the one that checks every value.
+     */
+    fun choice(name: String, values: List<String>, default: String? = null) {
+        specs.add(
+            dev.rubentxu.pipeline.v2.domain.ParameterSpec(
+                name = name,
+                type = RunInputs.TYPE_CHOICE,
+                defaultValue = default,
+                choices = values.toList(),
+            ),
+        )
+    }
+
+    fun build(): List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = specs.toList()
 }
 
 /**

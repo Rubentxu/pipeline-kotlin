@@ -511,7 +511,8 @@ internal class ServiceServer(
                 authorizations.decideCancel(decoded.credential, request.runId)
             is ServiceRequest.RunState ->
                 authorizations.decide(decoded.credential, request.runId)
-            is ServiceRequest.Version, is ServiceRequest.Health ->
+            is ServiceRequest.Version, is ServiceRequest.Health,
+            is ServiceRequest.DescribeParameters ->
                 authorizations.decide(decoded.credential, null)
         }
 

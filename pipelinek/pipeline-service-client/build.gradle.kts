@@ -28,6 +28,20 @@ dependencies {
     // about what a run looks like. `api`, because the type is in this module's
     // public surface.
     api(project(":pipeline-runtime-api"))
+    // The domain's published contract, for `ParameterSpec`: the DECLARATION of
+    // the parameters a pipeline accepts travels in this module's public
+    // signature —`ServiceRequest.StartRun` carries the contract the client
+    // knows— and a consumer that names the contract compiles against the
+    // domain's own types. `api`, because the type is in this module's public
+    // surface.
+    //
+    // It ARRIVED transitively through `:pipeline-events`, which declares the
+    // domain as `api`. That is not enough: a module that uses a type of
+    // another artifact has to DECLARE that artifact, because the published
+    // POM is what tells a consumer where to resolve the type from, and a
+    // dependency that is only there by accident of another module's graph is
+    // one dependency away from disappearing.
+    api(project(":pipeline-domain"))
     // The JSON runtime is NOT declared here, and that is deliberate.
     //
     // `ServiceResponse.Answered` carries a `JsonObject` in its public

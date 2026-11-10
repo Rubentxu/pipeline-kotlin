@@ -184,6 +184,9 @@ internal object CliExecutionParser {
                 correlationId = state.correlationId,
                 receiptPath = state.receiptPath,
                 runConfigPath = state.runConfigPath,
+                runInputsPath = state.runInputsPath,
+                parameters = state.parameterValues.toMap(),
+                describeParameters = state.describeParameters,
                 view = state.view,
                 format = state.format,
                 outputProtocolTokens = state.outputProtocolTokens,
@@ -209,6 +212,10 @@ internal object CliExecutionParser {
             CliError.OptionBelongsToVerb("--receipt", "run", RECEIPT_BELONGS_TO_RUN)
         state.runConfigPath != null && command == CliCommand.VALIDATE ->
             CliError.OptionBelongsToVerb("--run-config", "run", RUN_CONFIG_BELONGS_TO_RUN)
+        state.runInputsPath != null && command == CliCommand.VALIDATE ->
+            CliError.OptionBelongsToVerb("--run-inputs", "run", RUN_INPUTS_BELONGS_TO_RUN)
+        state.parameterValues.isNotEmpty() && command == CliCommand.VALIDATE ->
+            CliError.OptionBelongsToVerb("--param", "run", PARAM_BELONGS_TO_RUN)
         state.compileOnly && command == CliCommand.RUN ->
             CliError.OptionBelongsToVerb("--compile-only", "validate", COMPILE_ONLY_BELONGS_TO_VALIDATE)
         else -> null
@@ -228,6 +235,25 @@ internal object CliExecutionParser {
      */
     private const val RUN_CONFIG_BELONGS_TO_RUN =
         "'validate' compiles a script and runs no step, so it has no configuration to apply."
+
+    /**
+     * Why `--run-inputs` is refused by the verb that never runs anything.
+     *
+     * The snapshot of the parameters is read by the RUN, and its values are the inputs of the
+     * run. A validation has no steps, so accepting the option would promise values that
+     * never exist.
+     */
+    private const val RUN_INPUTS_BELONGS_TO_RUN =
+        "'validate' compiles a script and runs no step, so it has no parameters to apply."
+
+    /**
+     * Why `--param` is refused by the verb that never runs anything.
+     *
+     * The values of the parameters are delivered to a RUN, and the run is the thing that
+     * checks them against the declaration the script carries.
+     */
+    private const val PARAM_BELONGS_TO_RUN =
+        "'validate' compiles a script and runs no step, so it has no parameters to deliver."
 
     /** Why `--compile-only` is refused by the verb that runs the author's body. */
     private const val COMPILE_ONLY_BELONGS_TO_VALIDATE =

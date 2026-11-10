@@ -87,4 +87,38 @@ class FollowDecisionTest {
         assertEquals(FollowDecision.ReadAgain, unknown, "an unknown stream state is not a sealed one")
         assertEquals(FollowDecision.ReadAgain, sealedThenOpen, "one open stream among sealed ones is enough")
     }
+
+    @Test
+    fun `the plane's answer changes the decision exactly when the street asks for it`() {
+        // The condition a follower uses to decide whether to ask the run plane at all. It has to
+        // be EXACTLY the condition under which the plane's answer changes the decision, because a
+        // follower that asks when the answer cannot matter pays for an answer nobody reads, and a
+        // follower that does not ask when it can matter decides on a stale answer.
+        //
+        // The whole space is small enough to walk: two frame states, five tail lists and three
+        // plane answers. The row is exhaustive on purpose — a condition that is right for the
+        // cases somebody thought of is not a rule.
+        val tailStates = listOf(
+            emptyList(),
+            listOf(OutputTailState.Sealed(finalEnd = 1L)),
+            listOf(OutputTailState.Open(committedEnd = 1L)),
+            listOf(null),
+            listOf(OutputTailState.Sealed(finalEnd = 1L), OutputTailState.Open(committedEnd = 2L)),
+        )
+
+        for (moreFrames in listOf(false, true)) {
+            for (tails in tailStates) {
+                val decisions = listOf(RunPlane.Completed, RunPlane.Live, RunPlane.Unavailable)
+                    .map { plane -> followDecision(moreFrames, tails, plane) }
+                val answerMatters = decisions.toSet().size > 1
+
+                assertEquals(
+                    answerMatters,
+                    planeAnswerMatters(moreFrames, tails),
+                    "moreFrames=$moreFrames tails=$tails: the plane's answer $decisions " +
+                        "changes the decision exactly when the street has to ask for it",
+                )
+            }
+        }
+    }
 }

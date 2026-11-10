@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.observation.ObservationRecord
 import dev.rubentxu.pipeline.v2.application.observation.RunPlane
 import dev.rubentxu.pipeline.v2.application.observation.FollowDecision
 import dev.rubentxu.pipeline.v2.application.observation.followDecision
+import dev.rubentxu.pipeline.v2.application.observation.planeAnswerMatters
 import dev.rubentxu.pipeline.v2.events.EventRecordRead
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.follow.EventFollowRefusal
@@ -231,6 +232,21 @@ internal class ServiceSubscription(
      * refused by name, and a run plane that refused to answer at all is
      * refused by name too. It never closes in silence, and it never waits
      * for a console that is not going to arrive.
+     *
+     * ## How the street reads the run plane
+     *
+     * The run plane answers ONE question —has the run ended?— and the street asks
+     * it only when the answer can change what the street does. In the rounds where
+     * the answer cannot change it, the street is either delivering frames or waiting
+     * for bytes, and asking would be work whose result nobody reads. The FIRST round
+     * always asks, because the first answer is the one that proves the plane can
+     * answer at all.
+     *
+     * The answer is read a PAGE at a time, from the position the last page stopped
+     * at, so the run's history is read once per street and not once per round, and a
+     * round's cost is bounded by the page. The terminal fact, once observed, is
+     * remembered: the reading continues past it, so a street that forgot it would read
+     * the rest of the history and conclude that the run is still going.
      */
     private fun serveOutput(
         connection: ServiceConnection,
@@ -247,6 +263,26 @@ internal class ServiceSubscription(
         // reason is a proof, not an economy: a run nobody declared and that holds no rows is not
         // going to declare itself later, and a run that exists keeps existing.
         var askedAboutTheRun = false
+        // Where the reading of the run plane stands. The plane is read a PAGE at a time, so this
+        // position is what makes the reading a reading and not a sweep: the next page starts
+        // where the last one stopped, and the run's history is read once, not once per round.
+        var planeCursor: EventCursor? = null
+        // The last answer the plane gave. The plane is asked when its answer can change the
+        // decision, so in the rounds where it is not asked this is the answer the decision sees —
+        // and there the decision is ReadAgain whatever it says, which is what makes it safe to
+        // keep.
+        var plane: RunPlane = RunPlane.Live
+        // Whether the plane has ever answered. Until it does, the street asks it in EVERY round:
+        // the first answer is the one that proves the plane can answer at all, so a plane that
+        // cannot answer is named in the FIRST round—and not in the first round whose answer
+        // happens to matter.
+        var askedThePlane = false
+        // Whether the run's terminal fact was OBSERVED. The fact is a fact: once the street has
+        // seen the terminal row it has seen it—and the reading continues from where it stopped,
+        // so the terminal row is BEHIND the cursor by the time the street asks again. A street
+        // that forgot it would read the rest of the history and conclude that the run is still
+        // going, and would wait for a terminal it had already seen.
+        var terminalObserved = false
         while (true) {
             var moreFrames = false
             when (val read = lanes.outputOf(request.runId, afterOrdinal, FRAMES_PER_READ)) {
@@ -284,40 +320,55 @@ internal class ServiceSubscription(
             // reason — but the socket does not DEGRADE a plane it cannot ask: it refuses, because
             // a street that cannot decide cannot wait for ever.
             val tails = lanes.outputTailsOf(request.runId).orEmpty()
-            when (val execution = executionOf(request.runId)) {
-                is Execution.Failed -> {
-                    connection.writeLine(refusedLine(execution.refusal))
-                    return
-                }
-                is Execution.Answered -> when (
-                    followDecision(moreFrames, tails, execution.plane)
-                ) {
-                    FollowDecision.ReadAgain -> {
-                        // The street is about to WAIT, and waiting for the console of a run that
-                        // does not exist is the hole this street closes. The question is asked
-                        // only while the street has delivered NOTHING: a frame is the proof
-                        // that the run exists, and a street that already served the console
-                        // cannot be told that the run does not exist.
-                        if (!deliveredAnything && !askedAboutTheRun) {
-                            askedAboutTheRun = true
-                            when (val existence = existenceOf(request.runId)) {
-                                is Existence.Refused -> {
-                                    connection.writeLine(refusedLine(existence.refusal))
-                                    return
-                                }
-                                Existence.Known -> Unit
-                            }
-                        }
-                        if (!moreFrames && !idle()) return
-                    }
-                    // The decision can only be FINISHED when the plane says the run is over, so
-                    // the terminal fact was observed and the street ends saying so.
-                    FollowDecision.Finished -> {
-                        connection.writeLine(
-                            ServiceCodec.encodeEnd(ServiceEndReason.TerminalObserved, cursor),
-                        )
+            // The plane is asked when its answer can change the decision, and it is asked ALWAYS
+            // until it has answered once. In the other rounds the decision is ReadAgain whatever
+            // the plane says, and asking would be work whose result nobody reads —and the plane
+            // is read from the run's history, so asking it is not free.
+            //
+            // And once the terminal fact has been OBSERVED the plane is not asked again: the
+            // answer is known, and asking could only cost a page per round —or kill the street
+            // with a row that the sweep never reached, because the reading has gone past the
+            // terminal fact.
+            if (!askedThePlane || (!terminalObserved && planeAnswerMatters(moreFrames, tails))) {
+                when (val execution = executionOfPage(request.runId, planeCursor)) {
+                    is Execution.Failed -> {
+                        connection.writeLine(refusedLine(execution.refusal))
                         return
                     }
+                    is Execution.Answered -> {
+                        if (execution is Execution.Answered.Over) terminalObserved = true
+                        plane = if (terminalObserved) RunPlane.Completed else execution.plane
+                        planeCursor = execution.cursor
+                        askedThePlane = true
+                    }
+                }
+            }
+            when (followDecision(moreFrames, tails, plane)) {
+                FollowDecision.ReadAgain -> {
+                    // The street is about to WAIT, and waiting for the console of a run that
+                    // does not exist is the hole this street closes. The question is asked
+                    // only while the street has delivered NOTHING: a frame is the proof
+                    // that the run exists, and a street that already served the console
+                    // cannot be told that the run does not exist.
+                    if (!deliveredAnything && !askedAboutTheRun) {
+                        askedAboutTheRun = true
+                        when (val existence = existenceOf(request.runId)) {
+                            is Existence.Refused -> {
+                                connection.writeLine(refusedLine(existence.refusal))
+                                return
+                            }
+                            Existence.Known -> Unit
+                        }
+                    }
+                    if (!moreFrames && !idle()) return
+                }
+                // The decision can only be FINISHED when the plane says the run is over, so
+                // the terminal fact was observed and the street ends saying so.
+                FollowDecision.Finished -> {
+                    connection.writeLine(
+                        ServiceCodec.encodeEnd(ServiceEndReason.TerminalObserved, cursor),
+                    )
+                    return
                 }
             }
         }
@@ -357,7 +408,7 @@ internal class ServiceSubscription(
     }
 
     /**
-     * What the execution authority says about [runId].
+     * What the execution authority says about [runId], read as ONE PAGE of the run's history.
      *
      * The plane has three answers and can throw a fourth fact on top of
      * them, and the street turns them into two: an answer it can act on, or
@@ -365,11 +416,55 @@ internal class ServiceSubscription(
      * says "no": a street that ended on an unanswered question would be
      * claiming a terminal fact nobody observed, and a street that kept
      * reading on it would wait for ever.
+     *
+     * ## Why the answer comes from a PAGE and not from a sweep
+     *
+     * The plane's answer is a fact about the run's rows: the run ended when the store holds its
+     * terminal fact. Reading it as a sweep —every row of the run's history, decoded, on every
+     * round— makes the cost of a round proportional to the size of the run's history, and the
+     * street repeats that cost on every round it asks.
+     *
+     * So the street reads the history a page at a time, from the position the last page stopped
+     * at, and asks the SAME question the sweep asked: does the run hold a terminal fact? The
+     * answer is the same fact either way, and the cost of an answer is a page.
+     *
+     * The reading keeps the tree's own rule about the terminal —[RunTerminal]— which judges it on
+     * the KINDS of the rows the store returned, not on the rows the client was handed.
+     *
+     * A page that carries a row this binary cannot decode is the store failing closed, and the
+     * street refuses with the store's word. The page is decoded WHOLE before it is handed over,
+     * so the street fails closed on the rows of the page —including the rows behind the terminal
+     * fact, which the sweep never reached because it stopped at the terminal fact.
+     */
+    private fun executionOfPage(runId: String, after: EventCursor?): Execution = try {
+        when (val page = lanes.eventSliceOf(runId, after, EVENTS_PER_READ)) {
+            null -> Execution.Failed(ServiceRefusal.NotConfiguredEventPlane)
+            else -> {
+                val ended = RunTerminal.hasEnded(page.events.asSequence().map { it.kind })
+                val next = page.nextCursor
+                if (ended) Execution.Answered.Over(next) else Execution.Answered.Going(next)
+            }
+        }
+    } catch (failure: Exception) {
+        Execution.Failed(ServiceRefusal.StorageFailed(failure.shortDiagnostic()))
+    }
+
+    /**
+     * What the execution authority says about [runId], read as a SWEEP of the run's history.
+     *
+     * This is the reading of the EVENTS street, and it is the one that can afford to be a sweep:
+     * the events street asks the plane ONCE, at its first quiet page, and the reason is a proof
+     * rather than an economy —a terminal row written after that page will be DELIVERED, so the
+     * street does not have to ask for it again.
+     *
+     * The two readings ask the SAME question and answer it the same way, and they differ only in
+     * what they pay for it: the events street pays for the whole history once, and the console
+     * street pays for a page at a time.
      */
     private fun executionOf(runId: String): Execution = try {
         when (lanes.runPlaneOf(runId)) {
-            RunPlane.Completed -> Execution.Answered.Over
-            RunPlane.Live -> Execution.Answered.Going
+            RunPlane.Completed -> Execution.Answered.Over(null)
+            RunPlane.Live -> Execution.Answered.Going(null)
             RunPlane.Unavailable -> Execution.Failed(ServiceRefusal.NotConfiguredEventPlane)
         }
     } catch (failure: Exception) {
@@ -397,13 +492,21 @@ internal class ServiceSubscription(
             /** The plane this answer means for the shared decision. */
             val plane: RunPlane
 
+            /**
+             * Where the reading of the plane stands.
+             *
+             * The next page of the run's history starts here, so the street reads the history
+             * once instead of once per round.
+             */
+            val cursor: EventCursor?
+
             /** The run reached a terminal state. */
-            data object Over : Answered {
+            data class Over(override val cursor: EventCursor?) : Answered {
                 override val plane: RunPlane = RunPlane.Completed
             }
 
             /** The run is still going. */
-            data object Going : Answered {
+            data class Going(override val cursor: EventCursor?) : Answered {
                 override val plane: RunPlane = RunPlane.Live
             }
         }
@@ -553,6 +656,15 @@ internal class ServiceSubscription(
 
         /** How many frames one round of the output street reads. */
         private const val FRAMES_PER_READ: Int = 256
+
+        /**
+         * How many rows one reading of the run plane reads.
+         *
+         * A read-side bound, not a result size: the street asks the plane again in the next round
+         * and the reading continues where it stopped, so this bounds what ONE answer costs and
+         * never what the run's history holds.
+         */
+        private const val EVENTS_PER_READ: Int = MainObserveCli.EVENTS_PER_READ
 
         /** How long a street waits when a round brought nothing. */
         private const val POLL_INTERVAL_MILLIS: Long = 25L

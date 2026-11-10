@@ -89,10 +89,20 @@ import kotlin.coroutines.cancellation.CancellationException
  * the tree is destroyed before the re-`waitFor`; on cancellation the
  * `finally` runs before the scope joins the pumps; on normal exit the
  * `finally` is a no-op.
+ * ## The child comes from a seam
+ * The child is obtained from [newProcess] and not from `builder.start()`
+ * directly, because the DEATH of a child is a fact nobody can observe
+ * against a child that dies at once: a child that was told to die is dead
+ * before anybody looks at it, so the order between the kill and the return
+ * cannot be measured. A seam that hands the caller a child it owns is what
+ * makes that order observable — a child that only dies when somebody waits
+ * for its death is dead exactly when the runtime waited for it, and a
+ * runtime that returns without waiting leaves it alive.
 */
 class ProcessDurableTaskRuntime(
     private val controlRoot: Path,
     private val clock: Clock,
+    private val newProcess: (ProcessBuilder) -> Process = { it.start() },
 ) : DurableTaskRuntime {
 
     override suspend fun execute(
@@ -124,7 +134,7 @@ class ProcessDurableTaskRuntime(
         CONTROLLER_SECRET_VARIABLES.forEach { builder.environment().remove(it) }
         request.env.forEach { (key, handle) -> builder.environment()[key] = handle.materialize() }
 
-        val process = builder.start()
+        val process = newProcess(builder)
         var timedOut = false
         var cancelled = false
 

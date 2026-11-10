@@ -292,6 +292,7 @@ class ServiceStartIntegrationTest {
                 )
             },
             starts = supervisor,
+            cancellations = null,
         )
         val stores = DurableStores.open(store, control, clock)
         val streets = ServiceSubscription(
@@ -316,7 +317,7 @@ class ServiceStartIntegrationTest {
     private fun authorizations(): ServiceAuthorizations = ServiceAuthorizations.of(
         listOf(
             ServiceAuthorization(READER_TOKEN, "reader", ServiceScope.All),
-            ServiceAuthorization(STARTER_TOKEN, "starter", ServiceScope.MayStart(ServiceScope.All)),
+            ServiceAuthorization(STARTER_TOKEN, "starter", ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Start))),
         ),
     )
 

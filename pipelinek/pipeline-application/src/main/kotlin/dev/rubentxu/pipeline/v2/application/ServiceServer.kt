@@ -161,7 +161,11 @@ internal data class ServiceLimits(
  *    different streams do not get in each other's way — within this
  *    process; the writer of a run usually lives in another one, and what
  *    fences two processes is the run's lease, not this;
- *  - the WRITE door is never touched: the socket is read-only.
+ *  - the WRITE door is touched by ONE operation only: the cancellation of a
+ *    run, which writes that run's terminal fact. It is the operation that
+ *    ends a run, and the terminal of an ended run is a fact and not an
+ *    absence — a socket that killed a process and wrote nothing would leave
+ *    the client reading an EOF where the product guarantees a fact.
  *
  * So the service has a thread per connection, bounded by the same limit that
  * bounds the connections. The limit stops meaning "the limit of clients
@@ -207,25 +211,27 @@ internal class ServiceServer(
     }
 
     /**
-     * The workers of the STARTS, and a pool of their own.
+     * The workers of the operations that CHANGE something, and a pool of
+     * their own.
      *
-     * ## Why a start does not run in the pool of the questions
+     * ## Why they do not run in the pool of the questions
      *
-     * Because a start is not an instant: the service waits for the child
-     * to take its ownership, and that wait is as long as the launch takes.
-     * A start that ran in the pool of the questions would hold a thread of
-     * it for that whole time, and sixteen clients that ask for a run at
-     * once would leave the service with no thread to answer `version` and
-     * `health` —the two questions that say whether the service is alive—.
+     * Because neither of them is an instant: a start waits for the child to
+     * take its ownership, and a cancellation waits for the child to be gone
+     * before the terminal may be written. An operation that ran in the pool
+     * of the questions would hold a thread of it for that whole time, and
+     * sixteen clients that ask for a run at once would leave the service
+     * with no thread to answer `version` and `health`, the two questions
+     * that say whether the service is alive.
      *
-     * The budget of the connections still bounds the starts: a start holds
-     * its connection open while it waits, so the same limit that refuses
-     * the seventeenth client refuses it here too.
+     * The budget of the connections still bounds them: both hold their
+     * connection open while they wait, so the same limit that refuses the
+     * seventeenth client refuses them here too.
      */
-    private val startWorker: ExecutorService = Executors.newFixedThreadPool(
+    private val mutatingWorker: ExecutorService = Executors.newFixedThreadPool(
         limits.maxConnections,
     ) { runnable ->
-        Thread(runnable, "pipelinek-service-start").apply { isDaemon = true }
+        Thread(runnable, "pipelinek-service-mutation").apply { isDaemon = true }
     }
 
     /**
@@ -342,8 +348,10 @@ internal class ServiceServer(
             is ServiceDecoding.Decoded -> {
                 when (val decision = decide(decoded)) {
                     is ServiceAuthorizationOutcome.Authorized -> {
-                        if (decoded.request is ServiceRequest.StartRun) {
-                            return serveStart(connection, decoded)
+                        if (decoded.request is ServiceRequest.StartRun ||
+                            decoded.request is ServiceRequest.CancelRun
+                        ) {
+                            return serveMutating(connection, decoded)
                         }
                         connection.writeLine(
                             ServiceCodec.encode(
@@ -363,6 +371,9 @@ internal class ServiceServer(
 
                     is ServiceAuthorizationOutcome.StartNotAuthorized ->
                         connection.writeLine(answerOfRefusal(ServiceRefusal.StartNotAuthorized))
+
+                    is ServiceAuthorizationOutcome.CancelNotAuthorized ->
+                        connection.writeLine(answerOfRefusal(ServiceRefusal.CancelNotAuthorized))
                 }
             }
 
@@ -374,20 +385,21 @@ internal class ServiceServer(
     }
 
     /**
-     * Serves a request to START a run, in the pool of the starts.
+     * Serves a request that CHANGES something, in the pool of the changes.
      *
      * The connection is handed over to the worker that answers it, and the
      * worker closes it when it is done: the answer of a start is written
-     * after the wait for the ownership, and the connection has to stay open
-     * until then.
+     * after the wait for the ownership, and the answer of a cancellation is
+     * written after the wait for the child to be gone. The connection has to
+     * stay open until then.
      *
      * It says whether the connection was handed over: a service that is
-     * stopping has nobody to answer the start, and the connection is closed
-     * by the worker that could not take it.
+     * stopping has nobody to answer the request, and the connection is
+     * closed by the worker that could not take it.
      */
-    private fun serveStart(connection: ServiceConnection, decoded: ServiceDecoding.Decoded): Boolean {
+    private fun serveMutating(connection: ServiceConnection, decoded: ServiceDecoding.Decoded): Boolean {
         try {
-            startWorker.execute {
+            mutatingWorker.execute {
                 try {
                     connection.writeLine(
                         ServiceCodec.encode(
@@ -443,6 +455,11 @@ internal class ServiceServer(
                 return
             }
 
+            is ServiceAuthorizationOutcome.CancelNotAuthorized -> {
+                connection.writeLine(answerOfRefusal(ServiceRefusal.CancelNotAuthorized))
+                return
+            }
+
             is ServiceAuthorizationOutcome.Authorized -> Unit
         }
 
@@ -477,32 +494,27 @@ internal class ServiceServer(
      * asks it, and the answer is a fact about the authorizations the service
      * was given, not about the socket or the clock.
      *
-     * ## Why starting is a DIFFERENT question
+     * ## Why starting and cancelling are DIFFERENT questions
      *
      * Because asking about a run is about a run IN PARTICULAR, and the scope
      * says which runs may be asked about. Starting a run is about a RIGHT,
      * and no run is out of scope of it: the scope of a client that may
-     * start says so in its own words.
+     * start says so in its own words. Cancelling a run is about a right AND
+     * about a run: the right to cancel, and the run the cancel names. A
+     * client that may cancel every run and may read none has no run to
+     * cancel, and one that may read a run and may cancel none may not
+     * touch it.
      */
     private fun decide(decoded: ServiceDecoding.Decoded): ServiceAuthorizationOutcome =
         when (val request = decoded.request) {
             is ServiceRequest.StartRun -> authorizations.decideStart(decoded.credential)
-            else -> authorizations.decide(decoded.credential, runIdOf(request))
+            is ServiceRequest.CancelRun ->
+                authorizations.decideCancel(decoded.credential, request.runId)
+            is ServiceRequest.RunState ->
+                authorizations.decide(decoded.credential, request.runId)
+            is ServiceRequest.Version, is ServiceRequest.Health ->
+                authorizations.decide(decoded.credential, null)
         }
-
-    /**
-     * The run [request] is about, or null when it is about the service itself.
-     *
-     * A question about the version or the health of the service names no
-     * run, so only the authorization decides it. A request to START a run
-     * names no run either: the run it starts does not exist yet.
-     */
-    private fun runIdOf(request: ServiceRequest): String? = when (request) {
-        is ServiceRequest.Version -> null
-        is ServiceRequest.Health -> null
-        is ServiceRequest.RunState -> request.runId
-        is ServiceRequest.StartRun -> null
-    }
 
     /**
      * The refusal of a client that arrived when the service was full.
@@ -529,6 +541,6 @@ internal class ServiceServer(
     override fun close() {
         transport.close()
         worker.shutdownNow()
-        startWorker.shutdownNow()
+        mutatingWorker.shutdownNow()
     }
 }

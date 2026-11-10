@@ -120,6 +120,17 @@ object ServiceProtocol {
      * file a human can read.
      */
     const val MAX_IDEMPOTENCY_KEY_LENGTH: Int = 128
+
+    /**
+     * The longest reason a cancellation may carry.
+     *
+     * The reason is the operator's own words, and they are recorded
+     * VERBATIM in the run's history: a reason longer than this is not a
+     * reason but a document, and a document in a terminal fact is a thing
+     * every reader of the run has to carry. The bound is the one the
+     * product already imposes on its own annotated cancellations.
+     */
+    const val MAX_CANCEL_REASON_LENGTH: Int = 256
 }
 
 /**
@@ -174,6 +185,35 @@ sealed interface ServiceRequest {
         val script: String,
         val workspace: String?,
         val idempotencyKey: String?,
+    ) : ServiceRequest
+
+    /**
+     * The request to CANCEL a run.
+     *
+     * ## What the request carries
+     *
+     * The [runId] of the run to cancel, and optionally the [reason] —the
+     * operator's own words for why, recorded verbatim in the run's own
+     * history. Everything else is the service's decision.
+     *
+     * ## Why the runId is the RUN's and not the supervision's
+     *
+     * Because the client only ever learns the run's own identity: it is
+     * what the answer of a start carries, and it is what the substrate
+     * knows. The supervision is the service's own business and the client
+     * never sees it.
+     *
+     * ## Why the reason is optional
+     *
+     * Because a cancellation does not need a cause to be a cancellation, and
+     * because the product already substitutes one when the caller states
+     * none: every cancelled run names a reason instead of carrying an empty
+     * field.
+     */
+    data class CancelRun(
+        override val schema: String,
+        val runId: String,
+        val reason: String?,
     ) : ServiceRequest
 }
 
@@ -595,6 +635,44 @@ sealed interface ServiceRefusal {
             put("detail", JsonPrimitive(detail))
         }
     }
+
+    /**
+     * The authorization is one this service knows, and its scope does not
+     * cover CANCELLING a run.
+     *
+     * The same contract as [StartNotAuthorized], for the same reason: the
+     * token was accepted and what it lacks is the RIGHT, and a client that
+     * could not tell the two apart would learn which authorizations exist
+     * by presenting tokens until one is accepted.
+     */
+    data object CancelNotAuthorized : ServiceRefusal {
+        override val kind: String = "cancel-not-authorized"
+        override val payload: JsonObject = buildJsonObject { }
+    }
+
+    /**
+     * The run was not cancelled.
+     *
+     * ## What the reason is
+     *
+     * A word that says WHICH fact stopped it: the run is not known to the
+     * service, it already reached a terminal of its own, another process
+     * is still publishing it, or its journal could not be written. The
+     * [detail] is the service's own sentence about it.
+     *
+     * ## Why it is ONE refusal and not six
+     *
+     * Because the reason is what a client reads to decide what to do next,
+     * and six sealed cases would freeze six names into a published artifact
+     * for a vocabulary that is still growing. The reason travels inside.
+     */
+    data class RunCancelRefused(val reason: String, val detail: String) : ServiceRefusal {
+        override val kind: String = "run-cancel-refused"
+        override val payload: JsonObject = buildJsonObject {
+            put("reason", JsonPrimitive(reason))
+            put("detail", JsonPrimitive(detail))
+        }
+    }
 }
 
 /**
@@ -756,6 +834,7 @@ object ServiceCodec {
             "events.follow" -> decodeEventsFollow(request, schema, credential)
             "output.follow" -> decodeOutputFollow(request, schema, credential)
             "run.start" -> decodeStartRun(request, schema, credential)
+            "run.cancel" -> decodeCancelRun(request, schema, credential)
             else -> ServiceDecoding.Refused(ServiceRefusal.UnknownOp)
         }
     }
@@ -861,6 +940,11 @@ object ServiceCodec {
                     put("script", JsonPrimitive(request.script))
                     request.workspace?.let { put("workspace", JsonPrimitive(it)) }
                     request.idempotencyKey?.let { put("idempotencyKey", JsonPrimitive(it)) }
+                }
+                is ServiceRequest.CancelRun -> {
+                    put("op", JsonPrimitive("run.cancel"))
+                    put("runId", JsonPrimitive(request.runId))
+                    request.reason?.let { put("reason", JsonPrimitive(it)) }
                 }
             }
         }
@@ -1002,6 +1086,32 @@ private fun decodeStartRun(request: JsonObject, schema: String, credential: Stri
 }
 
 /**
+ * The cancellation this line asks for.
+ *
+ * ## The run id is read BEFORE the reason
+ *
+ * Because a request without a run id is not a request: there is nothing
+ * to cancel. The reason is optional and is read after, because a request
+ * with a run id and no reason is a perfectly good cancellation.
+ *
+ * ## Why the reason is bounded here
+ *
+ * Because the bound is about the LINE, and the line is what arrives: a
+ * reason of a megabyte is refused before it reaches the run's history,
+ * where every reader of the run would have to carry it.
+ */
+private fun decodeCancelRun(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
+    val runId = request.runId() ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    val reason = request.text("reason")
+    if (reason != null &&
+        (reason.isEmpty() || reason.length > ServiceProtocol.MAX_CANCEL_REASON_LENGTH || '\n' in reason)
+    ) {
+        return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    }
+    return ServiceDecoding.Decoded(ServiceRequest.CancelRun(schema, runId, reason), credential)
+}
+
+/**
  * The text [key] holds, or null when it holds none.
  *
  * A field that is not a string is a field that holds no text: the
@@ -1112,7 +1222,24 @@ private fun decodeRefusal(document: JsonObject): ServiceRefusal? {
         "idempotency-conflict", "too-many-supervised-runs", "run-start-refused" ->
             decodeStartRefusal(kind, document)
 
+        "cancel-not-authorized", "run-cancel-refused" ->
+            decodeCancelRefusal(kind, document)
+
         else -> decodeServiceRefusal(kind, document)
+    }
+}
+
+/**
+ * The refusal about the CANCELLATION of a run, or null when [kind] is not one.
+ */
+private fun decodeCancelRefusal(kind: String, document: JsonObject): ServiceRefusal? {
+    return when (kind) {
+    "cancel-not-authorized" -> ServiceRefusal.CancelNotAuthorized
+    "run-cancel-refused" -> ServiceRefusal.RunCancelRefused(
+        document.str("reason") ?: return null,
+        document.str("detail") ?: return null,
+    )
+        else -> null
     }
 }
 

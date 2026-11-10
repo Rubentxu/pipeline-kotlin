@@ -55,6 +55,20 @@ internal sealed interface ServiceStartClaim {
     /** The key was used before with a different request. */
     data object Conflict : ServiceStartClaim
 
+    /**
+     * The key was claimed by a start whose OUTCOME is unknown.
+     *
+     * The claim was written to the file before the child was launched, and
+     * the service died before that start could say what it became: the run
+     * may be alive, and the key may not be used again, because a second run
+     * for the same key is exactly what the key promises there is not.
+     *
+     * The [correlationId] is the token the service gave to the lost run, and
+     * it is what lets the operator FIND it: the child wrote it in its own
+     * correlated fact.
+     */
+    data class EffectUnknown(val correlationId: String) : ServiceStartClaim
+
     /** The key is free, and this caller owns the start. */
     data class Owner(val future: CompletableFuture<ServiceStartRecord>) : ServiceStartClaim
 }
@@ -85,6 +99,20 @@ internal sealed interface ServiceStartClaim {
  * what the second one finds, and it is released when the start fails, so a
  * request that failed can be tried again.
  *
+ * ## Why the claim is PERSISTED before the child is launched
+ *
+ * Because a claim that lives only in memory is a claim that a crash
+ * erases, and a claim that a crash erased is a key that names two runs: the
+ * one that survived the crash, alive and writing, and the one the retry
+ * starts. The claim is written to the file with the fingerprint of the
+ * request and with the correlation the service gave to the run, and a
+ * service that finds one at startup knows that the effect of that key is
+ * UNKNOWN: the run may be alive, and the key is not free.
+ *
+ * The promise it makes is the same one the record makes, with a different
+ * answer: a record says "this key started this run", and a claim says
+ * "this key MAY have started a run, and the service cannot tell".
+ *
  * ## What it costs, and what it does not promise
  *
  * The records are KEPT: one entry per key that started a run, for the life
@@ -94,6 +122,11 @@ internal sealed interface ServiceStartClaim {
  * record that was forgotten is a key that names two runs. A service of long
  * life that sees many keys accumulates them, and that is a cost the
  * operator takes on when he lets the service start runs.
+ *
+ * What the service does NOT promise is that the file is always writable:
+ * a claim that could not be written keeps its promise for the life of this
+ * service and not beyond it, and the degradation is said out loud instead
+ * of being hidden.
  */
 internal class ServiceStartRegistry private constructor(
     private val path: Path?,
@@ -105,6 +138,15 @@ internal class ServiceStartRegistry private constructor(
     /** The starts that are DONE. */
     private val records = LinkedHashMap<String, ServiceStartRecord>()
 
+    /**
+     * The starts whose EFFECT is unknown, by key.
+     *
+     * A claim is here from the moment it is taken until the start is
+     * answered —done or failed— and it is here FOREVER when the service
+     * died in between: that is the whole point of writing it down.
+     */
+    private val claims = LinkedHashMap<String, ServiceStartClaimRecord>()
+
     /** The starts that are IN FLIGHT, by key. */
     private val pending = LinkedHashMap<String, PendingStart>()
 
@@ -115,28 +157,47 @@ internal class ServiceStartRegistry private constructor(
 
     /**
      * The claim on [key] for the request whose fingerprint is [digest].
+     *
+     * The [correlationId] is the token the service chose for the run, and it
+     * is written with the claim: a claim whose run is lost is found by the
+     * correlation the child wrote in its own correlated fact.
      */
-    fun claim(key: String, digest: String): ServiceStartClaim = synchronized(lock) {
-        val known = records[key]
-        if (known != null) {
-            return if (known.digest == digest) {
-                ServiceStartClaim.Known(known)
-            } else {
-                ServiceStartClaim.Conflict
+    fun claim(key: String, digest: String, correlationId: String): ServiceStartClaim =
+        synchronized(lock) {
+            val known = records[key]
+            if (known != null) {
+                return if (known.digest == digest) {
+                    ServiceStartClaim.Known(known)
+                } else {
+                    ServiceStartClaim.Conflict
+                }
             }
-        }
-        val inFlight = pending[key]
-        if (inFlight != null) {
-            return if (inFlight.digest == digest) {
-                ServiceStartClaim.Awaiting(inFlight.future)
-            } else {
-                ServiceStartClaim.Conflict
+            val inFlight = pending[key]
+            if (inFlight != null) {
+                return if (inFlight.digest == digest) {
+                    ServiceStartClaim.Awaiting(inFlight.future)
+                } else {
+                    ServiceStartClaim.Conflict
+                }
             }
+            val persisted = claims[key]
+            if (persisted != null) {
+                // The effect of this key is UNKNOWN: the service claimed it
+                // and died before the start could say what it became. The
+                // key is not free, because the run it may have started may
+                // still be alive.
+                return if (persisted.digest == digest) {
+                    ServiceStartClaim.EffectUnknown(persisted.correlationId)
+                } else {
+                    ServiceStartClaim.Conflict
+                }
+            }
+            val future = CompletableFuture<ServiceStartRecord>()
+            pending[key] = PendingStart(digest, future)
+            claims[key] = ServiceStartClaimRecord(digest, correlationId)
+            persistQuietly()
+            ServiceStartClaim.Owner(future)
         }
-        val future = CompletableFuture<ServiceStartRecord>()
-        pending[key] = PendingStart(digest, future)
-        ServiceStartClaim.Owner(future)
-    }
 
     /**
      * The start of [key] is DONE, and this is what it was.
@@ -148,23 +209,9 @@ internal class ServiceStartRegistry private constructor(
     fun complete(key: String, record: ServiceStartRecord) {
         synchronized(lock) {
             records[key] = record
+            claims.remove(key)
             val inFlight = pending.remove(key)
-            try {
-                persist()
-            } catch (_: Exception) {
-                // The record STAYS in memory and the promise holds for the
-                // lifetime of this service. The file that carries it
-                // across restarts could not be written, and that is a
-                // fault of the machine, not of the run: the run started,
-                // the client has to be answered, and a client that is
-                // left without an answer would read the closed connection
-                // as a failure of the start.
-                //
-                // What the failure costs is stated rather than hidden: the
-                // promise degrades to the lifetime of this service, so a
-                // client that retries AFTER a restart may get a second run
-                // for the same key.
-            }
+            persistQuietly()
             inFlight?.future?.complete(record)
         }
     }
@@ -186,7 +233,32 @@ internal class ServiceStartRegistry private constructor(
     fun fail(key: String, refusal: ServiceRefusal) {
         synchronized(lock) {
             val inFlight = pending.remove(key)
+            claims.remove(key)
+            persistQuietly()
             inFlight?.future?.completeExceptionally(ServiceStartFailed(refusal))
+        }
+    }
+
+    /**
+     * Writes the record, and says nothing when it cannot.
+     *
+     * The record STAYS in memory and the promise holds for the lifetime of
+     * this service. The file that carries it across restarts could not be
+     * written, and that is a fault of the machine, not of the run: the run
+     * started, the client has to be answered, and a client that is left
+     * without an answer would read the closed connection as a failure of
+     * the start.
+     *
+     * What the failure costs is stated rather than hidden: the promise
+     * degrades to the lifetime of this service, so a client that retries
+     * AFTER a restart may get a second run for the same key.
+     */
+    private fun persistQuietly() {
+        try {
+            persist()
+        } catch (_: Exception) {
+            // The promise degrades to the life of this service, and the
+            // degradation is declared in the KDoc of this class.
         }
     }
 
@@ -196,11 +268,21 @@ internal class ServiceStartRegistry private constructor(
      * The file is the service's own, next to its socket, and it is `0600`:
      * it says which runs the operator started, and the operator's own
      * processes are the only ones that read it.
+     *
+     * The CLAIMS are written too, and they are written FIRST: a key that is
+     * both claimed and started is a key whose run is known, and the record
+     * is the stronger fact of the two.
      */
     private fun persist() {
         val target = path ?: return
         val directory = target.parent ?: return
         val document = buildJsonObject {
+            claims.forEach { (key, claim) ->
+                put(key, buildJsonObject {
+                    put("digest", JsonPrimitive(claim.digest))
+                    put("correlationId", JsonPrimitive(claim.correlationId))
+                })
+            }
             records.forEach { (key, record) ->
                 put(key, buildJsonObject {
                     put("digest", JsonPrimitive(record.digest))
@@ -234,6 +316,18 @@ internal class ServiceStartRegistry private constructor(
     private data class PendingStart(
         val digest: String,
         val future: CompletableFuture<ServiceStartRecord>,
+    )
+
+    /**
+     * A start that was CLAIMED and never answered.
+     *
+     * The fingerprint of the request and the correlation the service gave to
+     * the run: enough to tell a retry of the SAME request from a conflict,
+     * and enough to FIND the run the service lost.
+     */
+    private data class ServiceStartClaimRecord(
+        val digest: String,
+        val correlationId: String,
     )
 
     companion object {
@@ -275,19 +369,26 @@ internal class ServiceStartRegistry private constructor(
                     ?: return ServiceStartRegistryReading.Refused(
                         "the record of the starts holds something that is not a start: $path",
                     )
+                val digest = entry.string("digest")
+                    ?: return ServiceStartRegistryReading.Refused(
+                        "the record of the starts holds a start without a fingerprint: $path",
+                    )
+                val correlationId = entry.string("correlationId")
+                    ?: return ServiceStartRegistryReading.Refused(
+                        "the record of the starts holds a start without a correlation: $path",
+                    )
+                val runId = entry.string("runId")
+                if (runId == null) {
+                    // A start with no run is a CLAIM: the service wrote it
+                    // before it launched the child, and it never learned
+                    // what that child became.
+                    registry.claims[key] = ServiceStartClaimRecord(digest, correlationId)
+                    return@forEach
+                }
                 val record = ServiceStartRecord(
-                    digest = entry.string("digest")
-                        ?: return ServiceStartRegistryReading.Refused(
-                            "the record of the starts holds a start without a fingerprint: $path",
-                        ),
-                    runId = entry.string("runId")
-                        ?: return ServiceStartRegistryReading.Refused(
-                            "the record of the starts holds a start without a run: $path",
-                        ),
-                    correlationId = entry.string("correlationId")
-                        ?: return ServiceStartRegistryReading.Refused(
-                            "the record of the starts holds a start without a correlation: $path",
-                        ),
+                    digest = digest,
+                    runId = runId,
+                    correlationId = correlationId,
                     ownerId = entry.string("ownerId")
                         ?: return ServiceStartRegistryReading.Refused(
                             "the record of the starts holds a start without an owner: $path",

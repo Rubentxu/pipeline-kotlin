@@ -114,6 +114,30 @@ data class ServiceRunStart(
 )
 
 /**
+ * The answer of a cancellation.
+ *
+ * ## What the three facts are
+ *
+ * The [runId] is the run that was closed. The [outcome] says whether THIS
+ * call closed it (`cancelled`) or found it already closed
+ * (`already-cancelled`). The [terminalAtMs] is when the run reached its
+ * terminal, read from the durable facts and not from the moment the answer
+ * was written.
+ *
+ * ## Why `already-cancelled` is an answer and not a refusal
+ *
+ * Because a cancellation repeated is not an error: the run is closed, once,
+ * and the second call says so. A client that retries a cancel it already
+ * sent —because the answer was lost— must not read the closed connection as
+ * a failure of the cancellation.
+ */
+data class ServiceRunCancel(
+    val runId: String,
+    val outcome: String,
+    val terminalAtMs: Long,
+)
+
+/**
  * One item of a street.
  *
  * A record, the end of the street, or a refusal: three facts, and a client
@@ -355,6 +379,42 @@ class ServiceClient internal constructor(
             val startedAtMs = result.long("startedAtMs")
                 ?: return@narrow ServiceAnswer.Unreadable("no startedAtMs")
             ServiceAnswer.Answered(ServiceRunStart(runId, correlationId, ownerId, startedAtMs))
+        }
+
+    /**
+     * Cancels the run [runId] and returns its terminal.
+     *
+     * ## What the call does
+     *
+     * It asks the service to close the run: the service ends the process
+     * that runs it —if it is one of the runs the service supervises— and
+     * the run's own durable facts record the terminal. The answer is the
+     * terminal, read from those facts.
+     *
+     * ## The idempotency of a repeated call
+     *
+     * Cancelling twice is not an error: the second call answers
+     * `already-cancelled` with the SAME terminal. A client that retries a
+     * cancel whose answer was lost reads a closed run, not a failure.
+     *
+     * ## The reason
+     *
+     * The [reason] is the operator's own words for why, and they are
+     * recorded verbatim in the run's history. It is optional: a
+     * cancellation without one carries the product's own word for it.
+     */
+    fun cancelRun(
+        runId: String,
+        reason: String? = null,
+    ): ServiceAnswer<ServiceRunCancel> =
+        ask(ServiceRequest.CancelRun(schema, runId, reason)).narrow { result ->
+            val answered = result.string("runId")
+                ?: return@narrow ServiceAnswer.Unreadable("no runId")
+            val outcome = result.string("outcome")
+                ?: return@narrow ServiceAnswer.Unreadable("no outcome")
+            val terminalAtMs = result.long("terminalAtMs")
+                ?: return@narrow ServiceAnswer.Unreadable("no terminalAtMs")
+            ServiceAnswer.Answered(ServiceRunCancel(answered, outcome, terminalAtMs))
         }
 
     /**

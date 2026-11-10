@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.AttemptId
+import dev.rubentxu.pipeline.v2.runtime.control.CancelOutcome
+import dev.rubentxu.pipeline.v2.runtime.control.CancelRefusal
 import dev.rubentxu.pipeline.v2.runtime.inspect.IntrospectionFailure
 import dev.rubentxu.pipeline.v2.runtime.inspect.IntrospectionRefusal
 import dev.rubentxu.pipeline.v2.runtime.inspect.OperationInspectionResult
@@ -238,6 +240,96 @@ class ServiceOperationsTest {
         }
     }
 
+    @Test
+    fun `a cancellation is answered with the terminal of the run`() {
+        val response = operations(
+            observation = terminalRun(),
+            cancellations = cancellationOf(CancelOutcome.Cancelled(AttemptId(1), 1700L, 0)),
+        ).answer(ServiceRequest.CancelRun(ServiceProtocol.SCHEMA, "run-1", null))
+
+        val result = resultOf(response)
+        assertEquals("run-1", result["runId"]?.jsonPrimitive?.content)
+        assertEquals(
+            "cancelled",
+            result["outcome"]?.jsonPrimitive?.content,
+            "the answer says that THIS call closed the run",
+        )
+        assertEquals(1700L, result["terminalAtMs"]?.jsonPrimitive?.content?.toLong())
+    }
+
+    @Test
+    fun `a cancellation that was already made is answered with the terminal that is there`() {
+        val response = operations(
+            observation = terminalRun(),
+            cancellations = cancellationOf(CancelOutcome.AlreadyCancelled(AttemptId(1), 1700L)),
+        ).answer(ServiceRequest.CancelRun(ServiceProtocol.SCHEMA, "run-1", null))
+
+        val result = resultOf(response)
+        assertEquals(
+            "already-cancelled",
+            result["outcome"]?.jsonPrimitive?.content,
+            "a cancellation repeated is an answer and not an error",
+        )
+        assertEquals(1700L, result["terminalAtMs"]?.jsonPrimitive?.content?.toLong())
+    }
+
+    @Test
+    fun `a cancellation that was refused is refused with the name of the refusal`() {
+        val response = operations(
+            observation = terminalRun(),
+            cancellations = cancellationOf(
+                CancelOutcome.Refused(CancelRefusal.UnknownRun("run-1")),
+            ),
+        ).answer(ServiceRequest.CancelRun(ServiceProtocol.SCHEMA, "run-1", null))
+
+        val refused = assertInstanceOf(ServiceResponse.Refused::class.java, response)
+        assertEquals(
+            ServiceRefusal.RunCancelRefused(
+                "the-run-is-unknown",
+                "the service does not know the run run-1",
+            ),
+            refused.refusal,
+            "the reason travels inside the refusal, and a client reads it to decide what to do",
+        )
+    }
+
+    @Test
+    fun `a service that may not cancel refuses the cancellation by name`() {
+        val response = operations(
+            observation = terminalRun(),
+            cancellations = null,
+        ).answer(ServiceRequest.CancelRun(ServiceProtocol.SCHEMA, "run-1", null))
+
+        val refused = assertInstanceOf(ServiceResponse.Refused::class.java, response)
+        assertEquals(
+            "the-service-may-not-cancel",
+            (refused.refusal as ServiceRefusal.RunCancelRefused).reason,
+            "a service without the right to cancel says so by name",
+        )
+    }
+
+    @Test
+    fun `a cancellation that fails in an unforeseen way is refused by name`() {
+        val response = operations(
+            observation = terminalRun(),
+            cancellations = ServiceRunCancellation(
+                ender = object : ServiceRunEnder {
+                    override fun end(runId: String): Boolean = true
+                },
+                control = { _, _ ->
+                    throw IllegalStateException("the machine is on fire")
+                },
+            ),
+        ).answer(ServiceRequest.CancelRun(ServiceProtocol.SCHEMA, "run-1", null))
+
+        val refused = assertInstanceOf(ServiceResponse.Refused::class.java, response)
+        assertEquals(
+            "the-cancel-failed",
+            (refused.refusal as ServiceRefusal.RunCancelRefused).reason,
+            "a cancellation that fails is a refusal with a name and not a closed connection",
+        )
+    }
+
     /**
      * The result of an answer, read as a document.
      */
@@ -257,6 +349,7 @@ class ServiceOperationsTest {
     private fun operations(
         observation: RuntimeObservation,
         refusal: IntrospectionRefusal? = null,
+        cancellations: ServiceRunCancellation? = null,
     ): ServiceOperations = ServiceOperations(
         introspection = AnsweringPort(
             if (refusal != null) {
@@ -274,7 +367,19 @@ class ServiceOperationsTest {
             )
         },
         starts = ServiceTestStarter(),
+        cancellations = cancellations,
     )
+
+    /**
+     * A cancellation whose port answers [outcome] to every request.
+     */
+    private fun cancellationOf(outcome: CancelOutcome): ServiceRunCancellation =
+        ServiceRunCancellation(
+            ender = object : ServiceRunEnder {
+                override fun end(runId: String): Boolean = true
+            },
+            control = { _, _ -> outcome },
+        )
 
     /**
      * A port that answers the same result every time, and refuses the two

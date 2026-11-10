@@ -12,8 +12,9 @@ import java.security.MessageDigest
  * [All] names no run in particular: it may ask about every run the service
  * knows. [None] may ask about no run at all: it may ask the service about
  * ITSELF —its version and its health— and about nothing else. [Runs] may ask
- * about the runs it names, and about no other. [MayStart] adds the right to
- * START a run, and keeps the reading rights of the scope it wraps.
+ * about the runs it names, and about no other. [WithRights] adds the rights
+ * it carries —to start a run, to cancel one— and keeps the reading rights
+ * of the scope it wraps.
  *
  * ## Why a scope is a TYPE and not a flag
  *
@@ -22,21 +23,23 @@ import java.security.MessageDigest
  * authorized at all", and those are different facts: the first is a client
  * that may still ask `version`, the second is a client that may ask nothing.
  *
- * ## Why starting is a WRAPPER and not a flag of its own
+ * ## Why the rights are a SET and not a wrapper each
  *
- * Because "may read these runs" and "may start runs" are two independent
- * rights, and a scope that could only say one of them would force the
- * operator to give up one to get the other. [MayStart] wraps the reading
- * scope, so `all+start` and `none+start` are both expressible and neither
- * of them is a special case of the other.
+ * Because the rights are INDEPENDENT of each other and all of them combine
+ * with the reading. "May read these runs", "may start runs" and "may cancel
+ * runs" are three facts, and a scope that could only say one of them would
+ * force the operator to give up one to get the other. One wrapper that
+ * carries a SET says all of them at once: `all+start+cancel` is one case
+ * and not a nest of wrappers, and the next right does not add a case to a
+ * sealed interface.
  *
  * ## What a scope does NOT promise
  *
- * A scope says what a client may ASK about over the socket, and what it may
- * START. It does not make a run private: the same substrate is readable
- * from the command line, with no authorization at all. The scope is a
- * boundary over the SERVICE, not over the DATA, and a consumer that needs
- * the second has to ask for it there.
+ * A scope says what a client may ASK about over the socket, what it may
+ * START and what it may CANCEL. It does not make a run private: the same
+ * substrate is readable from the command line, with no authorization at all.
+ * The scope is a boundary over the SERVICE, not over the DATA, and a
+ * consumer that needs the second has to ask for it there.
  */
 internal sealed interface ServiceScope {
 
@@ -50,17 +53,41 @@ internal sealed interface ServiceScope {
     data class Runs(val runIds: Set<String>) : ServiceScope
 
     /**
-     * May start a run, and may read what [over] allows.
+     * May do what [granted] says, and may read what [over] allows.
      *
-     * The wrapper exists so that the reading rights and the right to start
-     * are independent: a client that may start runs and read nothing is
-     * [MayStart] over [None], and one that may start and read everything is
-     * [MayStart] over [All].
+     * The wrapper exists so that the reading rights and the rights over the
+     * runs are independent: a client that may cancel runs and read nothing
+     * is [WithRights] over [None], and one that may cancel and read
+     * everything is [WithRights] over [All].
      */
-    data class MayStart(val over: ServiceScope) : ServiceScope
+    data class WithRights(val over: ServiceScope, val granted: Set<Right>) : ServiceScope
+
+    /**
+     * The rights a client may have over the runs.
+     *
+     * They are rights of the SERVICE, not of the data: they say what a
+     * client may ask the service to DO, and the substrate they reach is the
+     * one the operator named.
+     */
+    enum class Right {
+        /** May ask the service to start a run. */
+        Start,
+
+        /** May ask the service to cancel a run. */
+        Cancel,
+    }
+
+    /** The rights this scope grants, over the reading scope it wraps. */
+    val grantedRights: Set<Right> get() = when (this) {
+        is WithRights -> granted
+        All, None, is Runs -> emptySet()
+    }
 
     /** Whether this scope lets a client START a run. */
-    val mayStartRuns: Boolean get() = this is MayStart
+    val mayStartRuns: Boolean get() = Right.Start in grantedRights
+
+    /** Whether this scope lets a client CANCEL a run. */
+    val mayCancelRuns: Boolean get() = Right.Cancel in grantedRights
 
     /**
      * Whether this scope covers [runId].
@@ -73,7 +100,7 @@ internal sealed interface ServiceScope {
         All -> true
         None -> false
         is Runs -> runId in runIds
-        is MayStart -> over.covers(runId)
+        is WithRights -> over.covers(runId)
     }
 }
 
@@ -138,6 +165,15 @@ internal sealed interface ServiceAuthorizationOutcome {
      * is accepted.
      */
     data object StartNotAuthorized : ServiceAuthorizationOutcome
+
+    /**
+     * The authorization is one the service knows, and its scope does not let
+     * it cancel a run.
+     *
+     * It is NOT [NotAuthorized], for the same reason [StartNotAuthorized]
+     * is not: the token was accepted, and what it lacks is the right.
+     */
+    data object CancelNotAuthorized : ServiceAuthorizationOutcome
 }
 
 /**
@@ -256,6 +292,44 @@ internal class ServiceAuthorizations private constructor(
         }
     }
 
+    /**
+     * Whether [presentedToken] may CANCEL the run [runId].
+     *
+     * ## Why the right AND the run are asked
+     *
+     * Because cancelling is about a RIGHT and about a RUN, and both have to
+     * hold. The right is the one the operator granted, and the run is the
+     * one the scope covers: a client that may cancel every run and may read
+     * none has no run to cancel, and one that may read a run and may cancel
+     * none may not touch it.
+     *
+     * ## Why the right is asked FIRST
+     *
+     * Because the right is a fact about the CREDENTIAL and the coverage is
+     * a fact about a RUN, and a client that lacks the right must not learn
+     * anything about the runs from the answer: a client that may cancel
+     * nothing hears that, whatever run it names.
+     */
+    fun decideCancel(presentedToken: String?, runId: String): ServiceAuthorizationOutcome {
+        if (presentedToken == null) return ServiceAuthorizationOutcome.NotAuthorized
+        val scope = scopesByDigest[digestOf(presentedToken)]
+            ?: return ServiceAuthorizationOutcome.NotAuthorized
+        if (!scope.mayCancelRuns) return ServiceAuthorizationOutcome.CancelNotAuthorized
+        if (!scope.covers(runId)) return ServiceAuthorizationOutcome.RunNotAuthorized(runId)
+        return ServiceAuthorizationOutcome.Authorized
+    }
+
+    /**
+     * Whether ANY authorization may cancel a run.
+     *
+     * The service reads this BEFORE it opens the substrate, because a
+     * cancellation makes the service WRITE to it: a service that cannot
+     * cancel anything opens the store in read-only mode, and one that can
+     * opens it in read-write. The decision is about the store, not about
+     * any run.
+     */
+    val mayCancelAnyRun: Boolean get() = scopesByDigest.values.any { it.mayCancelRuns }
+
     companion object {
 
         /**
@@ -330,8 +404,11 @@ internal class ServiceAuthorizations private constructor(
                 }
                 val parsed = parseScope(scope) ?: return ServiceAuthorizationsReading.Refused(
                     "line $number: the scope is 'all', 'none' or a list of run ids, " +
-                        "optionally with '+start' to let the client start runs; " +
-                        "a run id may hold only letters, digits, '.', '_' and '-'",
+                        "optionally with '+start' and '+cancel' to let the client start " +
+                        "and cancel runs; " +
+                        "a run id may hold only letters, digits, '.', '_' and '-'; " +
+                        "'+cancel' needs a scope that covers a run, so 'none+cancel' " +
+                        "is refused",
                 )
                 val digest = digestOf(token)
                 if (!digests.add(digest)) {
@@ -382,20 +459,38 @@ internal class ServiceAuthorizations private constructor(
          * names such a run would be a scope that could never cover anything,
          * and a file that says it is wrong is refused rather than read.
          *
-         * ## The `+start` suffix
+         * ## The `+start` and `+cancel` suffixes
          *
-         * The scope may end with `+start`, which adds the right to start a
-         * run. The separator cannot be part of a run id —the alphabet is
+         * The scope may carry the rights it grants, each of them named after
+         * a `+`. The separator cannot be part of a run id —the alphabet is
          * `[a-z0-9._-]`— so the word is read one way and not two, and a
-         * file that says `all` still says `all`.
+         * file that says `all` still says `all`. A right named twice is a
+         * file with a mistake, and it is refused rather than read as one.
+         *
+         * ## Why `none+cancel` is refused and `none+start` is not
+         *
+         * Because the right to START is not about any run —the run it
+         * starts does not exist yet— and the right to CANCEL is about a run
+         * that does exist. A scope that names no run covers no run, so a
+         * right to cancel could never be exercised: a line that says
+         * `none+cancel` is a file with a mistake, and the file is refused
+         * rather than read as a promise the service cannot keep.
          */
         private fun parseScope(text: String): ServiceScope? {
             val parts = text.split('+')
-            if (parts.size > 2) return null
             val reading = parseReadingScope(parts[0]) ?: return null
             if (parts.size == 1) return reading
-            if (parts[1] != START_CAPABILITY) return null
-            return ServiceScope.MayStart(reading)
+            val rights = mutableSetOf<ServiceScope.Right>()
+            for (capability in parts.drop(1)) {
+                val right = when (capability) {
+                    START_CAPABILITY -> ServiceScope.Right.Start
+                    CANCEL_CAPABILITY -> ServiceScope.Right.Cancel
+                    else -> return null
+                }
+                if (!rights.add(right)) return null
+            }
+            if (ServiceScope.Right.Cancel in rights && reading is ServiceScope.None) return null
+            return ServiceScope.WithRights(reading, rights)
         }
 
         /**
@@ -421,7 +516,14 @@ internal class ServiceAuthorizations private constructor(
             ServiceScope.All -> ALL_SCOPE
             ServiceScope.None -> NO_SCOPE
             is ServiceScope.Runs -> scope.runIds.joinToString(",")
-            is ServiceScope.MayStart -> "${scopeText(scope.over)}$START_SUFFIX"
+            is ServiceScope.WithRights ->
+                scopeText(scope.over) +
+                    scope.granted.sortedBy { it.ordinal }.joinToString("") { capability ->
+                        when (capability) {
+                            ServiceScope.Right.Start -> START_SUFFIX
+                            ServiceScope.Right.Cancel -> CANCEL_SUFFIX
+                        }
+                    }
         }
 
         /** The scope that names every run. */
@@ -433,8 +535,14 @@ internal class ServiceAuthorizations private constructor(
         /** The capability that lets a client start a run. */
         private const val START_CAPABILITY: String = "start"
 
+        /** The capability that lets a client cancel a run. */
+        private const val CANCEL_CAPABILITY: String = "cancel"
+
         /** The suffix that carries [START_CAPABILITY]. */
         private const val START_SUFFIX: String = "+start"
+
+        /** The suffix that carries [CANCEL_CAPABILITY]. */
+        private const val CANCEL_SUFFIX: String = "+cancel"
 
         /** The characters a label may hold. */
         private val LABEL: Regex = Regex("[A-Za-z0-9._-]+")

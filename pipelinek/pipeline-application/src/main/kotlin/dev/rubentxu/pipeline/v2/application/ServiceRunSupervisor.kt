@@ -91,6 +91,31 @@ internal interface ServiceRunStarter {
 }
 
 /**
+ * The door the service opens to END a run.
+ *
+ * ## Why this is a separate door
+ *
+ * Because a cancellation has TWO owners and they are not the same one: the
+ * supervisor owns the PROCESS —it launched the child and only it can end
+ * it— and the control port owns the durable FACT. The one that ends a
+ * process is not the one that writes a terminal, so it is its own port, and
+ * the cancellation asks both.
+ *
+ * ## What the answer means
+ *
+ * Whether there WAS a child to end. A run this service does not supervise
+ * has no process here, and the closing of such a run is the port's business
+ * alone.
+ */
+internal interface ServiceRunEnder {
+
+    /**
+     * Ends the child that runs [runId], and says whether there was one.
+     */
+    fun end(runId: String): Boolean
+}
+
+/**
  * What the operator declared about the runs this service supervises.
  *
  * @property eventStore the path of the store the service reads, and the run writes.
@@ -133,6 +158,20 @@ internal data class ServiceRunCommand(
      * Because a script that reads a file next to itself has to find it
      * wherever the script is. The directory of the script is the one place
      * that is the same for every operator of the same script.
+     *
+     * ## Why the child is told to start a FRESH run
+     *
+     * Because a start over the socket is a request for a NEW run, and the
+     * command line's default is the opposite: `run` reuses the last run of
+     * the same definition, so that a second `run` continues the first one.
+     * Two clients that ask the service for the same script are asking for
+     * two runs, and the run that owns itself is the one that holds the
+     * lease: a child that reused the identity of a live run found the run
+     * already owned and died before it owned itself.
+     *
+     * The promise that a key means ONE run is the service's own, and it is
+     * kept here in the file of the starts, not in the reuse rule of the
+     * command line.
      */
     fun argvFor(
         script: Path,
@@ -152,6 +191,7 @@ internal data class ServiceRunCommand(
             policy.controlRoot,
             "--format",
             "jsonl",
+            "--rerun",
             "--correlation-id",
             correlationId,
         )
@@ -214,7 +254,7 @@ internal class ServiceRunSupervisor(
     private val registry: ServiceStartRegistry,
     private val limits: ServiceStartLimits,
     private val supervisionRoot: Path,
-) : ServiceRunStarter, AutoCloseable {
+) : ServiceRunStarter, ServiceRunEnder, AutoCloseable {
 
     /** The children this service is watching right now. */
     private val liveRuns = AtomicInteger(0)
@@ -224,6 +264,19 @@ internal class ServiceRunSupervisor(
 
     /** The threads of the children, so that a stop can WAIT for them. */
     private val liveThreads = ConcurrentHashMap.newKeySet<Thread>()
+
+    /**
+     * The children this service watches, by the RUN's own id.
+     *
+     * The index is by the id the CHILD minted, and not by the id of the
+     * supervision, because the id the client knows is the run's: a client
+     * that asks to cancel a run names the run, and the service has to be
+     * able to find the child that runs it.
+     *
+     * The index is filled when the receipt arrives —that is the moment the
+     * service learns the run's id— and it is emptied when the child ends.
+     */
+    private val supervised = ConcurrentHashMap<String, Supervision>()
 
     /**
      * How many supervised runs are alive right now.
@@ -257,13 +310,25 @@ internal class ServiceRunSupervisor(
     override fun start(request: ServiceStartRequest): ServiceStartOutcome {
         val digest = digestOf(request.script, request.workspace)
         val key = request.idempotencyKey?.let { registryKeyOf(request.credentialDigest, it) }
+        // The correlation is chosen BEFORE the claim, because the claim is
+        // written to the file: a claim that does not say which run it may
+        // have started cannot be reconciled by anybody.
+        val correlationId = UuidCorrelationIdGenerator().next().value
 
         if (key != null) {
-            when (val claim = registry.claim(key, digest)) {
+            when (val claim = registry.claim(key, digest, correlationId)) {
                 is ServiceStartClaim.Known -> return acceptedOf(claim.record)
 
                 is ServiceStartClaim.Conflict -> return ServiceStartOutcome.Refused(
                     ServiceRefusal.IdempotencyConflict(request.idempotencyKey),
+                )
+
+                is ServiceStartClaim.EffectUnknown -> return ServiceStartOutcome.Refused(
+                    ServiceRefusal.RunStartRefused(
+                        "the-effect-of-this-key-is-unknown",
+                        "a start of this key was claimed and the service cannot tell whether " +
+                            "it started a run; that run may still be alive",
+                    ),
                 )
 
                 is ServiceStartClaim.Awaiting -> return awaitOf(claim.future)
@@ -284,7 +349,7 @@ internal class ServiceRunSupervisor(
             return ServiceStartOutcome.Refused(ServiceRefusal.TooManySupervisedRuns)
         }
 
-        return launchRun(paths, key, digest)
+        return launchRun(paths, key, digest, correlationId)
     }
 
     /**
@@ -301,13 +366,14 @@ internal class ServiceRunSupervisor(
      * @param paths the names the admission resolved.
      * @param key the key of the claim, or null when the client chose none.
      * @param digest the fingerprint of the request that was made.
+     * @param correlationId the token the child will carry and answer with.
      */
     private fun launchRun(
         paths: ServiceStartAdmissionOutcome.Admitted,
         key: String?,
         digest: String,
+        correlationId: String,
     ): ServiceStartOutcome {
-        val correlationId = UuidCorrelationIdGenerator().next().value
         val supervisionId = "sup-" + UUID.randomUUID().toString()
         val argv = command.argvFor(paths.script, paths.workspace, correlationId, runPolicy)
         // The supervision's own directory: the port writes the child's
@@ -323,6 +389,7 @@ internal class ServiceRunSupervisor(
         }
         val watcher = LaunchWatcher(supervisionDir.resolve(CHILD_LOG_NAME))
         val job = Job()
+        val supervision = Supervision(job)
         val taskRequest = TaskExecutionRequest(
             task = TaskSpec.ExecTask(argv),
             runId = RunId(supervisionId),
@@ -349,11 +416,17 @@ internal class ServiceRunSupervisor(
                     liveRuns.decrementAndGet()
                     liveJobs.remove(job)
                     liveThreads.remove(Thread.currentThread())
+                    // The child is over, so it is no longer a run this
+                    // service may end: the index has to say so before the
+                    // watcher says that the child is over, or a cancellation
+                    // could find a child that is already dead.
+                    supervision.over(supervised)
                     watcher.signalFinished()
                 }
             },
             "pipelinek-supervisor-$supervisionId",
         )
+        supervision.thread = thread
         thread.isDaemon = true
         liveJobs.add(job)
         liveThreads.add(thread)
@@ -423,6 +496,11 @@ internal class ServiceRunSupervisor(
                     ownerId = launched.ownerId,
                     startedAtMs = launched.startedAtMs,
                 )
+                // The run is now the one a client may ask to cancel, and
+                // this is the only moment the service learns the id it has
+                // to answer that ask with: the receipt carries the id the
+                // CHILD minted.
+                supervision.launched(supervised, launched.runId)
                 if (key != null) registry.complete(key, record)
                 acceptedOf(record)
             }
@@ -507,6 +585,43 @@ internal class ServiceRunSupervisor(
     }
 
     /**
+     * Ends the child that runs [runId], and says whether there was one.
+     *
+     * ## Why the wait is here
+     *
+     * Because the durable terminal is written AFTER the child is gone, and
+     * the port writes it only when the run's lease is free: the lease is
+     * held by the child while the child lives, so a cancellation that did
+     * not wait would be refused with "the lease is held by another" —the
+     * truth, and a truth that would make the cancellation useless.
+     *
+     * The wait is BOUNDED: a child that does not die in time does not hold
+     * the caller for ever, and the port says what it finds.
+     *
+     * ## Why the answer is a boolean and not a refusal
+     *
+     * Because there is nothing to refuse: a run this service does not
+     * supervise has no child here, and the closing of such a run is the
+     * port's business alone. The two halves of a cancellation are separate
+     * facts, and this half says whether there was anything to end.
+     */
+    override fun end(runId: String): Boolean {
+        val supervision = supervised[runId] ?: return false
+        // The child is ended through the PORT, which kills the tree it can
+        // see: a run nobody waits for any more must not keep running.
+        supervision.job.cancel()
+        val thread = supervision.thread
+        if (thread != null) {
+            try {
+                thread.join(CANCEL_WAIT_MILLIS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+        }
+        return true
+    }
+
+    /**
      * Ends the runs this service supervises.
      *
      * A supervisor that leaves children behind when it stops is not a
@@ -525,11 +640,31 @@ internal class ServiceRunSupervisor(
         }
         liveJobs.clear()
         liveThreads.clear()
+        supervised.clear()
     }
 
-    private companion object {
+    /**
+     * The derivations the supervisor owns.
+     *
+     * They are visible to the module because a test has to be able to
+     * reproduce the record of the starts that a service that DIED leaves
+     * behind: the key a client chose, derived the way the service derives
+     * it, and the fingerprint of the request it made.
+     */
+    internal companion object {
         /** How long a stop waits for each child to be ended. */
         const val SHUTDOWN_WAIT_MILLIS: Long = 2_000L
+
+        /**
+         * How long a cancellation waits for the child to be gone.
+         *
+         * It is the wait of the ORDER of §4.1: the terminal durable is
+         * written after the child dies, and the port writes it only when the
+         * lease is free. Ten seconds is long enough for a process that is
+         * being destroyed for it to die, and short enough that a caller is
+         * not left waiting for a child that does not want to die.
+         */
+        const val CANCEL_WAIT_MILLIS: Long = 10_000L
 
         /** The name of the file the child's error output goes to. */
         const val CHILD_LOG_NAME: String = "child.err.log"
@@ -568,6 +703,72 @@ internal class ServiceRunSupervisor(
          */
         fun registryKeyOf(credentialDigest: String, key: String): String =
             credentialDigest + ":" + key
+    }
+}
+
+/**
+ * One child the service watches.
+ *
+ * ## What it holds
+ *
+ * The [job] that ends the child —through the port, which kills the tree it
+ * can see— and the [thread] that waits for it, so that a cancellation can
+ * WAIT for the child to be really gone.
+ *
+ * ## Why the run id is filled LATE
+ *
+ * Because the id a client names is the one the CHILD minted, and the child
+ * mints it when it takes its lease: before the receipt arrives there is no
+ * id to index by. The [launched] call is the moment the service learns it.
+ *
+ * ## Why the ending is a FLAG and not only a removal
+ *
+ * Because the two events race: a child can die before its receipt is read,
+ * and a receipt that arrives after the child died would put a dead child
+ * back into the index. The flag makes the removal and the registration
+ * agree, whichever comes first.
+ */
+private class Supervision(
+    /** The job that ends the child. */
+    val job: Job,
+) {
+
+    /** The thread that waits for the child. */
+    @Volatile
+    var thread: Thread? = null
+
+    /** The lock that guards [ended] and [runId]. */
+    private val lock = Any()
+
+    /** Whether the child is already over. */
+    private var ended = false
+
+    /** The id the child minted, when it has minted one. */
+    private var runId: String? = null
+
+    /**
+     * Records the id the child minted, and indexes the supervision by it.
+     *
+     * A child that is already over is NOT indexed: the receipt can arrive
+     * after the death of the child, and a dead child in the index would be a
+     * run the service would wait for.
+     */
+    fun launched(index: ConcurrentHashMap<String, Supervision>, childRunId: String) {
+        synchronized(lock) {
+            if (ended) return
+            runId = childRunId
+            index[childRunId] = this
+        }
+    }
+
+    /**
+     * Says that the child is over, and takes the supervision out of the index.
+     */
+    fun over(index: ConcurrentHashMap<String, Supervision>) {
+        synchronized(lock) {
+            ended = true
+            runId?.let { index.remove(it, this) }
+        }
     }
 }
 

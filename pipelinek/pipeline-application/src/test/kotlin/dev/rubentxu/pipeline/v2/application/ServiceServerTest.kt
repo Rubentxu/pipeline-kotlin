@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.AttemptId
+import dev.rubentxu.pipeline.v2.runtime.control.CancelOutcome
 import dev.rubentxu.pipeline.v2.runtime.inspect.OperationInspectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
@@ -480,7 +482,7 @@ class ServiceServerTest {
             ScriptedTransport(listOf(connection)),
             operations(starter),
             streets(),
-            authorizations(ServiceScope.MayStart(ServiceScope.All)),
+            authorizations(ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Start))),
         )
         try {
             server.serve()
@@ -498,6 +500,87 @@ class ServiceServerTest {
         )
         assertEquals(1, starter.asked.size, "the door of the starts was opened once")
         assertEquals("build.kts", starter.asked.single().script)
+    }
+
+    @Test
+    fun `a client that may not cancel runs is refused with a name`() {
+        val connection = ScriptedConnection(ServiceRead.Line(CANCEL_REQUEST))
+
+        serve(connection)
+
+        assertEquals(
+            "cancel-not-authorized",
+            refusalKindOf(connection),
+            "a client that may read but not cancel is told which right it lacks",
+        )
+    }
+
+    @Test
+    fun `a client that presents nothing may not cancel runs`() {
+        val connection = ScriptedConnection(ServiceRead.Line(ANONYMOUS_CANCEL_REQUEST))
+
+        serve(connection)
+
+        assertEquals(
+            "not-authorized",
+            refusalKindOf(connection),
+            "no token is no authorization",
+        )
+    }
+
+    @Test
+    fun `a client that may cancel a run it does not cover is refused with a name`() {
+        val connection = ScriptedConnection(ServiceRead.Line(CANCEL_REQUEST))
+        val server = ServiceServer(
+            ScriptedTransport(listOf(connection)),
+            operations(),
+            streets(),
+            authorizations(
+                ServiceScope.WithRights(
+                    ServiceScope.Runs(setOf("another-run")),
+                    setOf(ServiceScope.Right.Cancel),
+                ),
+            ),
+        )
+        try {
+            server.serve()
+            connection.awaitAnswered()
+        } finally {
+            server.close()
+        }
+
+        assertEquals(
+            "run-not-authorized",
+            refusalKindOf(connection),
+            "a run the scope does not cover may not be cancelled",
+        )
+    }
+
+    @Test
+    fun `a client that may cancel the runs it covers reaches the door of the cancellations`() {
+        val connection = ScriptedConnection(ServiceRead.Line(CANCEL_REQUEST))
+        val server = ServiceServer(
+            ScriptedTransport(listOf(connection)),
+            operations(cancellations = cancellationOf(CancelOutcome.Cancelled(AttemptId(1), 1700L, 0))),
+            streets(),
+            authorizations(
+                ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Cancel)),
+            ),
+        )
+        try {
+            server.serve()
+            connection.awaitAnswered()
+        } finally {
+            server.close()
+        }
+
+        val answer = answerOf(connection)
+        assertEquals("answer", answer["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "run-1",
+            answer["result"]?.jsonObject?.get("runId")?.jsonPrimitive?.content,
+            "the answer of a cancellation is the run that was closed",
+        )
     }
 
     /**
@@ -542,7 +625,10 @@ class ServiceServerTest {
      * health, and the shape of a refusal — and not about a run, so the port
      * behind them is never asked.
      */
-    private fun operations(starter: ServiceRunStarter = ServiceTestStarter()): ServiceOperations =
+    private fun operations(
+        starter: ServiceRunStarter = ServiceTestStarter(),
+        cancellations: ServiceRunCancellation? = null,
+    ): ServiceOperations =
         ServiceOperations(
             introspection = UnusedPort(),
             substrate = {
@@ -554,6 +640,18 @@ class ServiceServerTest {
                 )
             },
             starts = starter,
+            cancellations = cancellations,
+        )
+
+    /**
+     * A cancellation whose port answers [outcome] to every request.
+     */
+    private fun cancellationOf(outcome: CancelOutcome): ServiceRunCancellation =
+        ServiceRunCancellation(
+            ender = object : ServiceRunEnder {
+                override fun end(runId: String): Boolean = true
+            },
+            control = { _, _ -> outcome },
         )
 
     /**
@@ -720,5 +818,13 @@ class ServiceServerTest {
         /** A request to start a run, with the credential. */
         private const val START_REQUEST: String =
             """{"schema":"pipelinek.service/2","op":"run.start","script":"build.kts","auth":"token-1"}"""
+
+        /** A request to cancel a run, with the credential. */
+        private const val CANCEL_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"run.cancel","runId":"run-1","auth":"token-1"}"""
+
+        /** A request to cancel a run, with NO credential. */
+        private const val ANONYMOUS_CANCEL_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"run.cancel","runId":"run-1"}"""
     }
 }

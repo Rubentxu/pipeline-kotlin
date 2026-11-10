@@ -205,6 +205,75 @@ class ServiceServerTest {
         )
     }
 
+    /**
+     * Every line the service writes carries the write deadline of its limits.
+     *
+     * A peer that stops reading stalls whatever is writing to it, so the
+     * deadline cannot belong to one path: the answer, the street and the
+     * refusal of a full service are three writers and each one is measured.
+     */
+    @Test
+    fun `an answer is written with the write deadline of the limits`() {
+        val connection = ScriptedConnection(ServiceRead.Line(VERSION_REQUEST))
+
+        serve(connection, limits = ServiceLimits(writeDeadlineMillis = WRITE_DEADLINE))
+
+        assertEquals(
+            listOf(WRITE_DEADLINE),
+            connection.deadlines,
+            "the answer was written with the deadline, and not without one",
+        )
+    }
+
+    @Test
+    fun `a line of a street is written with the write deadline of the limits`() {
+        val connection = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
+        val server = ServiceServer(
+            ScriptedTransport(listOf(connection)),
+            operations(),
+            streets(),
+            authorizations(),
+            ServiceLimits(writeDeadlineMillis = WRITE_DEADLINE),
+        )
+        try {
+            server.serve()
+            connection.awaitAnswered()
+
+            assertEquals(
+                listOf(WRITE_DEADLINE),
+                connection.deadlines,
+                "the street writes through a connection that has a deadline",
+            )
+        } finally {
+            server.close()
+        }
+    }
+
+    @Test
+    fun `the refusal of a full service is written with the write deadline of the limits`() {
+        val holding = ScriptedConnection(ServiceRead.Line(VERSION_REQUEST), gate = CountDownLatch(1))
+        val arriving = ScriptedConnection(ServiceRead.Line(VERSION_REQUEST))
+        val server = ServiceServer(
+            ScriptedTransport(listOf(holding, arriving)),
+            operations(),
+            streets(),
+            authorizations(),
+            ServiceLimits(maxConnections = 1, writeDeadlineMillis = WRITE_DEADLINE),
+        )
+        try {
+            server.serve()
+
+            assertEquals(
+                listOf(WRITE_DEADLINE),
+                arriving.deadlines,
+                "the accept loop writes the refusal, and a client that does not read must not hold it",
+            )
+        } finally {
+            holding.release()
+            server.close()
+        }
+    }
+
     @Test
     fun `a subscription is served by the street and the connection closes when it ends`() {
         val connection = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
@@ -767,8 +836,14 @@ class ServiceServerTest {
     /**
      * Serves the scripted connections and waits for the answers.
      */
-    private fun serve(vararg connections: ScriptedConnection) {
-        val server = ServiceServer(ScriptedTransport(connections.toList()), operations(), streets(), authorizations())
+    private fun serve(vararg connections: ScriptedConnection, limits: ServiceLimits = ServiceLimits()) {
+        val server = ServiceServer(
+            ScriptedTransport(connections.toList()),
+            operations(),
+            streets(),
+            authorizations(),
+            limits,
+        )
         try {
             server.serve()
             connections.forEach { it.awaitAnswered() }
@@ -906,6 +981,9 @@ class ServiceServerTest {
         /** The lines the service wrote. */
         val written: MutableList<String> = mutableListOf()
 
+        /** The deadline of every write the service made, in order. */
+        val deadlines: MutableList<Long> = mutableListOf()
+
         /** Whether the connection was closed. */
         var closed: Boolean = false
             private set
@@ -920,6 +998,11 @@ class ServiceServerTest {
         override fun writeLine(line: String) {
             written.add(line)
             answered.countDown()
+        }
+
+        override fun writeLine(line: String, deadlineMillis: Long) {
+            deadlines.add(deadlineMillis)
+            writeLine(line)
         }
 
         override fun close() {
@@ -965,6 +1048,9 @@ class ServiceServerTest {
     private companion object {
         /** The token this service knows. */
         private const val TOKEN: String = "token-1"
+
+        /** A write deadline no default shares, so a row can tell the limit's own from a default. */
+        private const val WRITE_DEADLINE: Long = 1_234L
 
         /** A question about the version of the product, with the credential. */
         private const val VERSION_REQUEST: String =

@@ -56,6 +56,28 @@ internal interface ServiceConnection : AutoCloseable {
      * Writes [line] as the answer of this connection.
      */
     fun writeLine(line: String)
+
+    /**
+     * Writes [line], and gives the connection up when the peer has not taken
+     * it within [deadlineMillis].
+     *
+     * A peer that stops reading would otherwise hold the thread that writes
+     * to it for as long as it stays connected. The default writes without a
+     * deadline, which is right for a connection that cannot stall.
+     */
+    fun writeLine(line: String, deadlineMillis: Long) {
+        writeLine(line)
+    }
+
+    /**
+     * Whether the peer has closed its end of the connection.
+     *
+     * A street that is waiting for something to say asks it, because a
+     * street writes only when it has a frame and a client that left while
+     * the street was quiet would otherwise keep its slot until the run ends.
+     * The default says no, which is right for a connection that cannot tell.
+     */
+    fun peerGone(): Boolean = false
 }
 
 /**
@@ -120,6 +142,15 @@ internal sealed interface ServiceRead {
  * tell a busy service from a broken one. The two budgets are separate, so
  * the slots a subscription may take are always fewer than the slots a
  * question may take.
+ *
+ * ## Why a write has a deadline too
+ *
+ * A client that connects, asks to follow a run and never reads fills the
+ * socket buffer, and the thread that writes to it blocks for as long as the
+ * client lives. The read deadline protects the service from a client that
+ * does not talk; the write deadline protects it from a client that does not
+ * listen. Without it, eight such clients would hold every subscription slot
+ * for ever.
  */
 internal data class ServiceLimits(
     /** How many connections the service holds open at once. */
@@ -128,9 +159,44 @@ internal data class ServiceLimits(
     val maxSubscriptions: Int = 8,
     /** How long a client has to send its line, in milliseconds. */
     val readDeadlineMillis: Long = 5_000L,
+    /** How long a client has to take a line the service writes, in milliseconds. */
+    val writeDeadlineMillis: Long = 10_000L,
     /** The biggest line the service reads, in bytes. */
     val maxLineBytes: Int = ServiceProtocol.MAX_LINE_BYTES,
 )
+
+/**
+ * A connection whose every write has a deadline.
+ *
+ * ## Why it wraps the connection
+ *
+ * An answer, a refusal and a street are written by different code, and a
+ * peer that stops reading stalls any of them. Giving the deadline here, once,
+ * means no path that writes has to remember to ask for it: the server hands
+ * out only connections that cannot hold a thread longer than the limit says.
+ */
+private class BoundedConnection(
+    private val inner: ServiceConnection,
+    private val writeDeadlineMillis: Long,
+) : ServiceConnection {
+
+    override fun readLine(maxBytes: Int, deadlineMillis: Long): ServiceRead =
+        inner.readLine(maxBytes, deadlineMillis)
+
+    override fun writeLine(line: String) {
+        inner.writeLine(line, writeDeadlineMillis)
+    }
+
+    override fun writeLine(line: String, deadlineMillis: Long) {
+        inner.writeLine(line, deadlineMillis)
+    }
+
+    override fun peerGone(): Boolean = inner.peerGone()
+
+    override fun close() {
+        inner.close()
+    }
+}
 
 /**
  * The service: it accepts connections and answers them.
@@ -175,6 +241,16 @@ internal data class ServiceLimits(
  * A client that cannot connect gets a refusal it can read, and it learns that
  * the service is busy rather than that something went wrong. Refusing it
  * silently would make a busy service look like a broken one.
+ *
+ * ## Why a client that leaves gives back what it held
+ *
+ * A connection holds a slot, a descriptor and, for a street, a worker. They
+ * are returned when the work on the connection ends, and the work ends in
+ * three ways a client can force: it closes (the next write fails), it stops
+ * reading (the write deadline of the limits closes the connection) or it goes
+ * quiet on a street with nothing to say (the street asks the connection
+ * whether the peer is still there). Stopping the service closes the
+ * transport and interrupts the workers, so nothing outlives it.
  */
 internal class ServiceServer(
     private val transport: ServiceTransport,
@@ -242,11 +318,12 @@ internal class ServiceServer(
      */
     fun serve() {
         while (true) {
-            val connection = try {
+            val accepted = try {
                 transport.accept()
             } catch (_: Exception) {
                 null
             } ?: return
+            val connection = BoundedConnection(accepted, limits.writeDeadlineMillis)
 
             if (openConnections.get() >= limits.maxConnections) {
                 refuseOverTheLimit(connection)

@@ -483,6 +483,10 @@ internal class UnixSocketTransport private constructor(
  * blocking cannot be interrupted, so closing the channel is what turns a
  * silent client into a finished read: the read fails, and the read knows why
  * it failed because the watchdog said so before closing.
+ *
+ * The write works the same way: a client that stops reading leaves the write
+ * blocked, and closing the channel when the deadline passes is what frees the
+ * thread, the slot and the descriptor.
  */
 internal class UnixSocketConnection(
     private val channel: SocketChannel,
@@ -542,6 +546,51 @@ internal class UnixSocketConnection(
     }
 
     override fun writeLine(line: String) {
+        writeAll(line)
+    }
+
+    override fun writeLine(line: String, deadlineMillis: Long) {
+        val alarm = watchdog.schedule(
+            { closeQuietly() },
+            deadlineMillis,
+            TimeUnit.MILLISECONDS,
+        )
+        try {
+            writeAll(line)
+        } finally {
+            alarm.cancel(false)
+        }
+    }
+
+    /**
+     * Whether the peer has closed its end.
+     *
+     * The probe reads one byte without blocking: an end of stream is the
+     * peer leaving, no data is a peer that is still there, and a failure is
+     * a connection that is gone. A byte that was waiting is dropped, because
+     * after its request line a client has nothing else the service reads.
+     * A client that closes only its writing side after the request counts
+     * as gone, and the protocol says so.
+     */
+    override fun peerGone(): Boolean {
+        synchronized(channel.blockingLock()) {
+            return try {
+                channel.configureBlocking(false)
+                try {
+                    channel.read(ByteBuffer.allocate(1)) < 0
+                } finally {
+                    channel.configureBlocking(true)
+                }
+            } catch (_: IOException) {
+                true
+            }
+        }
+    }
+
+    /**
+     * Writes the whole of [line] and its newline, blocking until the peer has taken them.
+     */
+    private fun writeAll(line: String) {
         val bytes = (line + "\n").toByteArray(Charsets.UTF_8)
         val buffer = ByteBuffer.wrap(bytes)
         while (buffer.hasRemaining()) {

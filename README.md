@@ -565,6 +565,61 @@ mkdir -p ./state/socket && chmod 700 ./state/socket
 
 **The token of the installation.** The service writes the file of authorizations it serves next to its socket when that file is not there, and tightens it to `0600` when it is. The token a client presents is the first word of its first line. The command line reads the token from `PIPELINEK_SERVICE_TOKEN`, from the file next to the socket or from the file `--authorization-file` names, and it never prints it.
 
+### The OCI profile
+
+The distribution is also a container, and the container is a PACKAGING of it: `pipelinek/pipeline-application/oci/Containerfile` holds the ZIP an operator downloads, unpacked, and `scripts/build-oci-image.sh` asks a container runtime to build it. Nothing in the ordinary build calls that script, and the product runs without a container runtime.
+
+| | |
+|---|---|
+| user | `1000:1000` (`pipelinek`), never root |
+| home | `/var/lib/pipelinek`, the owner of the state |
+| socket | `/var/lib/pipelinek/socket/pipelinek.sock`, `rw-------` |
+| tokens | `/var/lib/pipelinek/socket/authorizations`, `0600` |
+| control root | `/var/lib/pipelinek/control` |
+| substrate | `/var/lib/pipelinek/state/store.db` |
+
+**Why the client runs as the same uid.** The service tightens its socket to `rw-------`, and the JVM does not expose the credentials of the peer of a Unix socket: the mode of the socket and the token are the two halves of one boundary, and neither is enough alone. A client of the same environment runs as the SAME uid and presents the token it reads from the file beside the socket. Measured on this machine with rootless podman: a client container with the same uid read the state of a run over the socket, and a client container with another uid was refused — it could neither open the socket nor read the token. A client that runs as root inside the container is not stopped by the mode, because root holds the capabilities that ignore it.
+
+**The volumes are named, and that is what makes them rootless.** A rootless runtime maps the host's directories into the container through a user namespace, and a directory the host owns arrives owned by an id the service cannot write as. A NAMED volume is created by the runtime FROM the image, so it arrives with the ownership and the modes declared above.
+
+```bash
+podman volume create pipelinek-socket
+podman volume create pipelinek-control
+podman volume create pipelinek-state
+
+podman run -d --name pipelinek-service \
+  -v pipelinek-socket:/var/lib/pipelinek/socket \
+  -v pipelinek-control:/var/lib/pipelinek/control \
+  -v pipelinek-state:/var/lib/pipelinek/state \
+  localhost/pipelinek:0.95.0
+```
+
+**The service serves a substrate; it does not create one.** On a volume that is still empty the service refuses to start and says so —`the substrate cannot be served: the store is not there`— because the producer's lane owns that file. A run creates it, and the run's data then lives in the volume:
+
+```bash
+podman run --rm \
+  -v pipelinek-state:/var/lib/pipelinek/state \
+  -v pipelinek-control:/var/lib/pipelinek/control \
+  -v "$PWD":/scripts:ro,z \
+  localhost/pipelinek:0.95.0 \
+  run --db /var/lib/pipelinek/state/store.db \
+       --control-root /var/lib/pipelinek/control \
+       /scripts/my.pipeline.kts
+```
+
+**The client of the same environment** asks over the socket, and the token is the one the service wrote beside it:
+
+```bash
+podman run --rm \
+  -v pipelinek-socket:/var/lib/pipelinek/socket \
+  localhost/pipelinek:0.95.0 \
+  inspect <runId> --state --endpoint /var/lib/pipelinek/socket/pipelinek.sock
+```
+
+**Stopping it** sends SIGTERM, and the container behaves like the installation does: the socket is deleted, the authorizations stay, and the next start binds it again and answers about the same runs, because their data is in the volume. Measured on this machine: the run read by the client before the restart was the run read after it.
+
+**On a system with SELinux enforcing**, a directory bound into the container needs the label (`:z` or `:Z`), or the container reads nothing: a named volume needs no label, because the runtime creates it. **What the profile does not do**: it mounts no Docker socket, asks for no privileged container and no host network, and starts no orchestrator. The image is a packaging, and the service inside it is the same process an installation runs.
+
 ### Telemetry
 
 Telemetry is optional, and what it carries is **timing, counts and buckets — never payloads**. No script text, no command and no transcript travel in a signal: that content lives in the output plane and in the journal, and a second copy of it in telemetry would be a second place a secret could hide.

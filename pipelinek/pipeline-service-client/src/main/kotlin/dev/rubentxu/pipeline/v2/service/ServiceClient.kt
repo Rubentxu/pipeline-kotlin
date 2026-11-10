@@ -95,6 +95,16 @@ data class ServiceHealth(
  * with the run's outcome: the run is still going when the answer is
  * written, and its outcome is another authority's answer — the one the
  * client's `runState` asks for.
+ *
+ * ## When the runId cannot be asked about
+ *
+ * The [runId] is the run's identity, and whether the SAME credential may
+ * ask about it is a question of the SCOPE the operator gave that credential,
+ * and not of this answer. A credential that may start runs and read none
+ * receives a [runId] it cannot ask about with that same credential: the
+ * scope that governs reading is the operator's, and the service does not
+ * widen it because a run was started. A client that has to follow the run
+ * it starts needs a scope that reads runs as well.
  */
 data class ServiceRunStart(
     val runId: String,

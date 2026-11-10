@@ -357,6 +357,13 @@ internal fun composeServiceToServe(
         }
     }
 
+    // The sessions of the configuration providers. They are in memory and they
+    // belong to this process: the supervisor asks them for the values of a
+    // start, and the operations are the door a controller registers and
+    // answers through. Only a credential that may start runs can open a
+    // session, so a service that grants no such right exposes none.
+    val providers = ConfigurationProviderSessions()
+
     // The supervisor of the runs this service starts. It is composed with
     // the SAME store and the SAME control root the questions are answered
     // from, so a run started by a client is a run the service can answer
@@ -369,6 +376,7 @@ internal fun composeServiceToServe(
         registry = policy.registry,
         clock = clock,
         brokers = brokers.factory,
+        configurations = providers,
     )
 
     // The cancellation of a run, and the control port that writes its
@@ -395,12 +403,11 @@ internal fun composeServiceToServe(
     val composition = when (
         val composed = composeService(
             store = store,
-            dbPath = substrate.dbPath,
-            controlRoot = substrate.controlRoot,
-            controlRootPath = substrate.controlRootPath,
+            substrate = substrate,
             clock = clock,
             supervisor = supervisor,
             cancellations = cancellations,
+            providers = providers,
             inputs = if (authorizations.mayAnswerAnyInput) {
                 ServiceInputsBinding(
                     root = substrate.controlAbsolute.resolve(InputQuestionLayout.INPUTS_DIRECTORY),
@@ -764,6 +771,7 @@ private fun composeSupervisor(
     registry: ServiceStartRegistry,
     clock: dev.rubentxu.pipeline.v2.domain.durable.Clock,
     brokers: RunBrokerFactory?,
+    configurations: ConfigurationResolver?,
 ): ServiceRunSupervisor {
     val supervisionRoot = requireNotNull(socketAbsolute.parent)
         .resolve(SUPERVISION_DIRECTORY)
@@ -788,6 +796,7 @@ private fun composeSupervisor(
         ),
         supervisionRoot = supervisionRoot,
         brokers = brokers,
+        configurations = configurations,
     )
 }
 
@@ -835,14 +844,16 @@ private class ServiceInputsBinding(
  */
 private fun composeService(
     store: dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore,
-    dbPath: String,
-    controlRoot: String,
-    controlRootPath: Path,
+    substrate: ServeSubstrate,
     clock: SystemClock,
     supervisor: ServiceRunSupervisor,
     cancellations: ServiceRunCancellation?,
+    providers: ConfigurationProviderSessions,
     inputs: ServiceInputsBinding?,
 ): ServiceComposition = try {
+    val dbPath = substrate.dbPath
+    val controlRoot = substrate.controlRoot
+    val controlRootPath = substrate.controlRootPath
     val introspection = composeRuntimeIntrospectionPort(
         eventStore = store,
         controlRoot = controlRootPath,
@@ -860,6 +871,8 @@ private fun composeService(
         },
         starts = supervisor,
         cancellations = cancellations,
+        providers = providers,
+        configurations = supervisor,
         inputs = inputs?.let {
             ServiceInputAnswers(
                 inputsRoot = it.root,

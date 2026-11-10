@@ -126,13 +126,24 @@ internal fun serviceOutcomeOf(response: ServiceResponse): ServiceOutcome = when 
     }
 }
 
-/** The kind of [request]: the three that change something are mutations, every other one is a question. */
+/**
+ * The kind of [request]: the three that change a run are mutations, every other one is a question.
+ *
+ * The operations of a configuration provider session are questions on purpose, although they
+ * change the session. A start that asks a provider for values waits INSIDE a mutating worker
+ * for the provider's answer; if the poll and the answer the provider needs to give it were
+ * mutations too, enough pending starts would occupy the whole mutating pool and the answers
+ * that would release them could never be served. The session operations are bounded by the
+ * session limits instead, so the question pool cannot be occupied by them either.
+ */
 internal fun kindOf(request: ServiceRequest): ServiceRequestKind = when (request) {
     is ServiceRequest.StartRun, is ServiceRequest.CancelRun, is ServiceRequest.AnswerInput ->
         ServiceRequestKind.Mutation
 
     is ServiceRequest.Version, is ServiceRequest.Health, is ServiceRequest.DescribeParameters,
-    is ServiceRequest.RunState, is ServiceRequest.ListInputs,
+    is ServiceRequest.RunState, is ServiceRequest.ListInputs, is ServiceRequest.RunConfigurationQuery,
+    is ServiceRequest.ProviderRegister, is ServiceRequest.ProviderPoll, is ServiceRequest.ProviderAnswer,
+    is ServiceRequest.ProviderClose,
     -> ServiceRequestKind.Query
 }
 
@@ -142,8 +153,10 @@ internal fun runOf(request: ServiceRequest): String? = when (request) {
     is ServiceRequest.CancelRun -> request.runId
     is ServiceRequest.ListInputs -> request.runId
     is ServiceRequest.AnswerInput -> request.runId
+    is ServiceRequest.RunConfigurationQuery -> request.runId
     is ServiceRequest.StartRun, is ServiceRequest.Version, is ServiceRequest.Health,
-    is ServiceRequest.DescribeParameters,
+    is ServiceRequest.DescribeParameters, is ServiceRequest.ProviderRegister,
+    is ServiceRequest.ProviderPoll, is ServiceRequest.ProviderAnswer, is ServiceRequest.ProviderClose,
     -> null
 }
 

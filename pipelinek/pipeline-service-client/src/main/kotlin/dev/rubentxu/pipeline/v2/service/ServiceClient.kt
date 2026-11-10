@@ -244,6 +244,83 @@ data class ServiceInputAnswer(
 )
 
 /**
+ * The lease of a configuration provider session the service registered.
+ *
+ * The [sessionId] is what every later call about the session names, and the [leaseMillis] is how
+ * long the service keeps the session without hearing from it: each poll renews the lease, and a
+ * session that is not polled for longer than that lapses.
+ */
+data class ServiceProviderSession(
+    val sessionId: String,
+    val leaseMillis: Long,
+)
+
+/**
+ * What a poll of a provider session found.
+ *
+ * Either nothing was asked while the service held the poll ([Idle]) or a run is waiting for the
+ * values of some keys ([Asked]).
+ */
+sealed interface ServiceProviderPoll {
+
+    /** No run asked for anything while the poll was held; the lease was renewed. */
+    data object Idle : ServiceProviderPoll
+
+    /**
+     * A run is waiting for the values of [keys].
+     *
+     * The [requestId] is what the answer names. The keys are exactly the ones the run asked for,
+     * and the answer carries those and no others.
+     */
+    data class Asked(val requestId: String, val keys: List<String>) : ServiceProviderPoll
+}
+
+/**
+ * The acknowledgement of an answer or of a close of a provider session.
+ *
+ * The [outcome] is `answered` when the service delivered the values to the run that was waiting
+ * for them, and `closed` when the session was closed.
+ */
+data class ServiceProviderAck(
+    val sessionId: String,
+    val outcome: String,
+)
+
+/**
+ * Where one key of a run's configuration came from.
+ *
+ * The [origin] is `request` when the start request set the key itself and `provider` when the
+ * provider supplied it; the [type] is the type the value was validated as.
+ */
+data class ServiceConfigurationEntry(
+    val name: String,
+    val origin: String,
+    val type: String,
+)
+
+/**
+ * The provenance of the configuration a run was started with. It never carries a value.
+ *
+ * ## What the facts are
+ *
+ * The [entries] say where each key came from and which type it has. The [precedence] lists the
+ * origins from the strongest to the weakest, so a reader sees which one wins when two set the
+ * same key: a key the request set itself is never asked of the provider. The [provider] and its
+ * [revision] are present only when a provider took part, and so is the [sourceDigest] of what the
+ * provider answered. The [digest] is the hash of the snapshot the run was given, which is the
+ * snapshot the run keeps.
+ */
+data class ServiceRunConfiguration(
+    val runId: String,
+    val digest: String,
+    val precedence: List<String>,
+    val entries: List<ServiceConfigurationEntry>,
+    val provider: String? = null,
+    val revision: String? = null,
+    val sourceDigest: String? = null,
+)
+
+/**
  * One item of a street.
  *
  * A record, the end of the street, or a refusal: three facts, and a client
@@ -499,6 +576,7 @@ class ServiceClient internal constructor(
         configuration: Map<String, String> = emptyMap(),
         parameters: Map<String, String> = emptyMap(),
         parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
+        configurationProvider: ServiceProviderReference? = null,
     ): ServiceAnswer<ServiceRunStart> =
         ask(
             ServiceRequest.StartRun(
@@ -509,6 +587,7 @@ class ServiceClient internal constructor(
                 configuration = configuration,
                 parameters = parameters,
                 parameterContract = parameterContract,
+                configurationProvider = configurationProvider,
             ),
         ).narrow { result ->
             val runId = result.string("runId")
@@ -562,6 +641,136 @@ class ServiceClient internal constructor(
             val description = result["description"] as? JsonObject
                 ?: return@narrow ServiceAnswer.Unreadable("no description")
             ServiceAnswer.Answered(ServiceParameterDescription(schema, description))
+        }
+
+    /**
+     * Registers a configuration provider session named [provider] that can supply [keys].
+     *
+     * ## What a session is
+     *
+     * A lease the service holds for as long as the client keeps polling it. The service never
+     * opens a connection to the client: the client asks [pollProvider] and the service answers
+     * with the keys a run is waiting for. A session is registered under the credential of this
+     * client, and only a run started with the SAME credential can ask it for values.
+     *
+     * ## What is refused
+     *
+     * A name that is not legal, a key labelled as a secret —the channel carries configuration
+     * and a secret is not configuration—, a type the service does not know, a repeated key and a
+     * name that a live session of the same credential already holds.
+     */
+    fun registerProvider(
+        provider: String,
+        keys: List<ServiceProviderKey>,
+    ): ServiceAnswer<ServiceProviderSession> =
+        ask(ServiceRequest.ProviderRegister(schema, provider, keys)).narrow { result ->
+            val sessionId = result.text("sessionId")
+                ?: return@narrow ServiceAnswer.Unreadable("no sessionId")
+            val leaseMillis = result.number("leaseMillis")
+                ?: return@narrow ServiceAnswer.Unreadable("no leaseMillis")
+            ServiceAnswer.Answered(ServiceProviderSession(sessionId, leaseMillis))
+        }
+
+    /**
+     * Asks the session [sessionId] whether a run is waiting for values, holding the call for at
+     * most [waitMillis].
+     *
+     * The service caps the wait with its own limit, and the call renews the lease of the session.
+     * The deadline this client was built with has to be longer than the wait, or the call reports
+     * `timed-out` while the service still holds the poll.
+     */
+    fun pollProvider(sessionId: String, waitMillis: Long): ServiceAnswer<ServiceProviderPoll> =
+        ask(ServiceRequest.ProviderPoll(schema, sessionId, waitMillis)).narrow { result ->
+            when (result.text("state")) {
+                "idle" -> ServiceAnswer.Answered(ServiceProviderPoll.Idle)
+                "asked" -> {
+                    val requestId = result.text("requestId")
+                        ?: return@narrow ServiceAnswer.Unreadable("no requestId")
+                    val names = result["keys"] as? JsonArray
+                        ?: return@narrow ServiceAnswer.Unreadable("no keys")
+                    val keys = names.map { name ->
+                        (name as? JsonPrimitive)?.contentOrNull
+                            ?: return@narrow ServiceAnswer.Unreadable("a key that cannot be read")
+                    }
+                    ServiceAnswer.Answered(ServiceProviderPoll.Asked(requestId, keys))
+                }
+                else -> ServiceAnswer.Unreadable("no state")
+            }
+        }
+
+    /**
+     * Answers what the poll asked: the [values] of exactly the asked keys, read from the source at
+     * [revision].
+     *
+     * The values are text and are checked against the type each key was registered with. They
+     * never travel in a log line: the request renders no values.
+     */
+    fun answerProvider(
+        sessionId: String,
+        requestId: String,
+        revision: String,
+        values: Map<String, String>,
+    ): ServiceAnswer<ServiceProviderAck> =
+        ask(ServiceRequest.ProviderAnswer(schema, sessionId, requestId, revision, values)).narrow { result ->
+            val answeredSession = result.text("sessionId")
+                ?: return@narrow ServiceAnswer.Unreadable("no sessionId")
+            val outcome = result.text("outcome")
+                ?: return@narrow ServiceAnswer.Unreadable("no outcome")
+            ServiceAnswer.Answered(ServiceProviderAck(answeredSession, outcome))
+        }
+
+    /**
+     * Closes the session [sessionId] instead of letting its lease lapse.
+     *
+     * A run that is waiting for the session is refused at once, with the reason that the provider
+     * is gone.
+     */
+    fun closeProvider(sessionId: String): ServiceAnswer<ServiceProviderAck> =
+        ask(ServiceRequest.ProviderClose(schema, sessionId)).narrow { result ->
+            val closedSession = result.text("sessionId")
+                ?: return@narrow ServiceAnswer.Unreadable("no sessionId")
+            val outcome = result.text("outcome")
+                ?: return@narrow ServiceAnswer.Unreadable("no outcome")
+            ServiceAnswer.Answered(ServiceProviderAck(closedSession, outcome))
+        }
+
+    /**
+     * Where the configuration of the run [runId] came from: the origin and the type of each key,
+     * the provider and its revision, and the digests of the snapshot. It never carries a value.
+     */
+    fun runConfiguration(runId: String): ServiceAnswer<ServiceRunConfiguration> =
+        ask(ServiceRequest.RunConfigurationQuery(schema, runId)).narrow { result ->
+            val answeredRun = result.text("runId")
+                ?: return@narrow ServiceAnswer.Unreadable("no runId")
+            val digest = result.text("digest")
+                ?: return@narrow ServiceAnswer.Unreadable("no digest")
+            val precedence = (result["precedence"] as? JsonArray)?.map { origin ->
+                (origin as? JsonPrimitive)?.contentOrNull
+                    ?: return@narrow ServiceAnswer.Unreadable("an origin that cannot be read")
+            } ?: return@narrow ServiceAnswer.Unreadable("no precedence")
+            val entries = (result["entries"] as? JsonArray)?.map { entry ->
+                val item = entry as? JsonObject
+                    ?: return@narrow ServiceAnswer.Unreadable("an entry that cannot be read")
+                ServiceConfigurationEntry(
+                    name = item.text("name")
+                        ?: return@narrow ServiceAnswer.Unreadable("an entry with no name"),
+                    origin = item.text("origin")
+                        ?: return@narrow ServiceAnswer.Unreadable("an entry with no origin"),
+                    type = item.text("type")
+                        ?: return@narrow ServiceAnswer.Unreadable("an entry with no type"),
+                )
+            } ?: return@narrow ServiceAnswer.Unreadable("no entries")
+            ServiceAnswer.Answered(
+                ServiceRunConfiguration(
+                    runId = answeredRun,
+                    digest = digest,
+                    precedence = precedence,
+                    entries = entries,
+                    provider = result.text("provider"),
+                    revision = result.text("revision"),
+                    sourceDigest = result.text("sourceDigest"),
+                ),
+            )
         }
 
     /**

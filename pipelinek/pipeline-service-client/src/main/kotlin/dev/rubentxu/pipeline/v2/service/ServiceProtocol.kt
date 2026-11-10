@@ -4,7 +4,9 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -153,7 +155,67 @@ object ServiceProtocol {
      * would have to carry it.
      */
     const val MAX_INPUT_ANSWER_MESSAGE_LENGTH: Int = 256
+
+    /**
+     * The longest name, id or revision a configuration provider request may carry in one field.
+     *
+     * The provider's name, the id of its session, the id of what a poll asked and the
+     * revision of the source are all LABELS: a key and never a path or a document. The
+     * bound is about the line, which is what arrives; the rules of what a name may BE
+     * —its alphabet, its length in the registry— are the service's decision and it
+     * refuses them by name.
+     */
+    const val MAX_PROVIDER_FIELD_LENGTH: Int = 256
+
+    /**
+     * The longest wait a poll may ask for, in milliseconds.
+     *
+     * A poll is a question the service holds open; a number bigger than this is not a wait
+     * but a way to keep a connection for ever. The service also caps the wait by its own
+     * limit, which is smaller, and this bound is only what keeps the number a number.
+     */
+    const val MAX_PROVIDER_POLL_WAIT_MILLIS: Long = 60_000L
 }
+
+/**
+ * A key a configuration provider declares it can supply.
+ *
+ * The declaration carries the three facts the service checks BEFORE any value travels: the
+ * [name] of the key, the [type] its value has and the [sensitivity] the provider gives it.
+ * A key that is not labelled `non-secret` is refused when the provider registers, because
+ * the channel carries configuration and configuration is not where a secret belongs.
+ *
+ * @property name The name of the key, with the same alphabet as the configuration's names.
+ * @property type The type of the value: `string`, `integer` or `boolean`.
+ * @property sensitivity The label the provider gives the key; only `non-secret` is accepted.
+ */
+data class ServiceProviderKey(
+    val name: String,
+    val type: String,
+    val sensitivity: String,
+)
+
+/**
+ * The provider a run start asks for the keys the request did not set itself.
+ *
+ * ## What it is
+ *
+ * The NAME of a provider session the same credential registered and the [keys] to resolve
+ * through it. The values are never in the request: the service asks the provider for them
+ * at the start, before the run exists, and the run keeps exactly the snapshot it validated.
+ *
+ * ## What it is not
+ *
+ * A lookup by name across credentials. A provider of that name registered under another
+ * credential is not this provider, and the service never falls back to it.
+ *
+ * @property provider The name the session registered with.
+ * @property keys The keys to resolve, in the order the request lists them.
+ */
+data class ServiceProviderReference(
+    val provider: String,
+    val keys: List<String>,
+)
 
 /**
  * What a client decides about a question a run asked.
@@ -297,6 +359,15 @@ sealed interface ServiceRequest {
          * values against the script itself before any STEP of the run runs.
          */
         val parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
+        /**
+         * The provider the service asks for the keys the request did not set itself.
+         *
+         * `null` means the request asks no provider, which is the request that always was.
+         * A reference names a provider session that the SAME credential registered and the
+         * keys to resolve through it; the service never looks for a provider of that name
+         * under another credential.
+         */
+        val configurationProvider: ServiceProviderReference? = null,
     ) : ServiceRequest {
 
         /**
@@ -312,8 +383,88 @@ sealed interface ServiceRequest {
         override fun toString(): String =
             "StartRun(schema=$schema, script=$script, workspace=$workspace, " +
                 "idempotencyKey=$idempotencyKey, configuration=${configuration.size} entries, " +
-                "parameters=${parameters.size} values)"
+                "parameters=${parameters.size} values, " +
+                "configurationProvider=${configurationProvider?.provider})"
     }
+
+    /**
+     * The request to REGISTER a configuration provider session.
+     *
+     * ## What the request carries
+     *
+     * The [provider] name the session answers to and the [keys] it declares it can supply,
+     * each with the type of its value and the sensitivity label the provider gives it.
+     *
+     * ## What a session is
+     *
+     * A lease the controller holds by polling. The service never opens a connection to the
+     * controller: the controller asks `config.provider.poll` and the service answers with
+     * the keys a run is waiting for. A controller that stops polling lets its lease lapse,
+     * and a run that asked it for values is refused instead of waiting for ever.
+     *
+     * ## Why a secret key is refused here
+     *
+     * Because the channel carries configuration, and configuration is public to whoever can
+     * read the run's environment. A key the provider labels secret is refused by name when
+     * it is declared, before any value travels.
+     */
+    data class ProviderRegister(
+        override val schema: String,
+        val provider: String,
+        val keys: List<ServiceProviderKey>,
+    ) : ServiceRequest
+
+    /**
+     * The request to POLL a provider session: "has a run asked for something?".
+     *
+     * The service holds the request for at most [waitMillis] —bounded by its own limit— and
+     * answers either with the keys a run is waiting for or with an idle answer. The poll
+     * renews the lease of the session.
+     */
+    data class ProviderPoll(
+        override val schema: String,
+        val sessionId: String,
+        val waitMillis: Long,
+    ) : ServiceRequest
+
+    /**
+     * The request to ANSWER what a poll asked for.
+     *
+     * Carries the [requestId] the poll returned, the [revision] of the source the values
+     * come from and the [values] of exactly the keys that were asked. The values are text,
+     * checked against the type the provider declared, and they are never rendered by
+     * [toString].
+     */
+    data class ProviderAnswer(
+        override val schema: String,
+        val sessionId: String,
+        val requestId: String,
+        val revision: String,
+        val values: Map<String, String>,
+    ) : ServiceRequest {
+
+        /** The request WITHOUT its values: a diagnostic is not where configuration belongs. */
+        override fun toString(): String =
+            "ProviderAnswer(schema=$schema, sessionId=$sessionId, requestId=$requestId, " +
+                "revision=$revision, values=${values.size} values)"
+    }
+
+    /** The request to CLOSE a provider session instead of letting its lease lapse. */
+    data class ProviderClose(
+        override val schema: String,
+        val sessionId: String,
+    ) : ServiceRequest
+
+    /**
+     * The request to ask where the configuration of a run came from.
+     *
+     * The answer carries the provenance of every key —its origin and its type— and the
+     * revision and the digests of the snapshot, and never a value.
+     */
+    data class RunConfigurationQuery(
+        override val schema: String,
+        val runId: String,
+    ) : ServiceRequest
 
     /**
      * The request to CANCEL a run.
@@ -944,6 +1095,31 @@ sealed interface ServiceRefusal {
     }
 
     /**
+     * A request about a configuration provider session was refused.
+     *
+     * ## What it says
+     *
+     * Which rule the request broke —the name is not legal, a key is labelled as a secret, the
+     * session is unknown or has lapsed, the answer carries a key nobody asked— in the [reason],
+     * and the same fact in prose in the [detail]. The [detail] never carries a value of the
+     * configuration.
+     *
+     * ## Why it is NOT [RunConfigurationRefused]
+     *
+     * Because the client's action is different: a refused run start fixes the configuration of
+     * THAT run, and a refused provider request fixes the provider session. A start that fails
+     * because the provider did not answer is still a [RunConfigurationRefused], since the run
+     * is what was refused.
+     */
+    data class ConfigurationProviderRefused(val reason: String, val detail: String) : ServiceRefusal {
+        override val kind: String = "configuration-provider-refused"
+        override val payload: JsonObject = buildJsonObject {
+            put("reason", JsonPrimitive(reason))
+            put("detail", JsonPrimitive(detail))
+        }
+    }
+
+    /**
      * The authorization is one this service knows, and its scope does not
      * cover CANCELLING a run.
      *
@@ -1185,7 +1361,7 @@ object ServiceCodec {
             }
             "input.answer" -> decodeAnswerInput(request, schema, credential)
             "describe.parameters" -> decodeDescribeParameters(request, schema, credential)
-            else -> ServiceDecoding.Refused(ServiceRefusal.UnknownOp)
+            else -> ProviderWire.decode(op, request, schema, credential)
         }
     }
 
@@ -1285,44 +1461,7 @@ object ServiceCodec {
                     put("op", JsonPrimitive("run.state"))
                     put("runId", JsonPrimitive(request.runId))
                 }
-                is ServiceRequest.StartRun -> {
-                    put("op", JsonPrimitive("run.start"))
-                    put("script", JsonPrimitive(request.script))
-                    request.workspace?.let { put("workspace", JsonPrimitive(it)) }
-                    request.idempotencyKey?.let { put("idempotencyKey", JsonPrimitive(it)) }
-                    if (request.configuration.isNotEmpty()) {
-                        put(
-                            "configuration",
-                            buildJsonObject {
-                                request.configuration.forEach { (name, value) ->
-                                    put(name, JsonPrimitive(value))
-                                }
-                            },
-                        )
-                    }
-                    if (request.parameters.isNotEmpty()) {
-                        put(
-                            "parameters",
-                            buildJsonObject {
-                                request.parameters.forEach { (name, value) ->
-                                    put(name, JsonPrimitive(value))
-                                }
-                            },
-                        )
-                    }
-                    if (request.parameterContract.isNotEmpty()) {
-                        put("parameterContract", JsonArray(request.parameterContract.map { spec ->
-                            buildJsonObject {
-                                put("name", JsonPrimitive(spec.name))
-                                put("type", JsonPrimitive(spec.type))
-                                spec.defaultValue?.let { put("defaultValue", JsonPrimitive(it)) }
-                                if (spec.choices.isNotEmpty()) {
-                                    put("choices", JsonArray(spec.choices.map { JsonPrimitive(it) }))
-                                }
-                            }
-                        }))
-                    }
-                }
+                is ServiceRequest.StartRun -> putStartRun(request)
                 is ServiceRequest.CancelRun -> {
                     put("op", JsonPrimitive("run.cancel"))
                     put("runId", JsonPrimitive(request.runId))
@@ -1342,6 +1481,21 @@ object ServiceCodec {
                 is ServiceRequest.DescribeParameters -> {
                     put("op", JsonPrimitive("describe.parameters"))
                     put("script", JsonPrimitive(request.script))
+                }
+                is ServiceRequest.ProviderRegister -> putProviderRegister(request)
+                is ServiceRequest.ProviderPoll -> {
+                    put("op", JsonPrimitive("config.provider.poll"))
+                    put("sessionId", JsonPrimitive(request.sessionId))
+                    put("waitMillis", JsonPrimitive(request.waitMillis))
+                }
+                is ServiceRequest.ProviderAnswer -> putProviderAnswer(request)
+                is ServiceRequest.ProviderClose -> {
+                    put("op", JsonPrimitive("config.provider.close"))
+                    put("sessionId", JsonPrimitive(request.sessionId))
+                }
+                is ServiceRequest.RunConfigurationQuery -> {
+                    put("op", JsonPrimitive("run.configuration"))
+                    put("runId", JsonPrimitive(request.runId))
                 }
             }
         }
@@ -1485,6 +1639,13 @@ private fun decodeStartRun(request: JsonObject, schema: String, credential: Stri
         ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
     val parameterContract = request.parameterContract()
         ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    val providerElement = request["configurationProvider"]
+    val configurationProvider = if (providerElement == null) {
+        null
+    } else {
+        ProviderWire.reference(providerElement)
+            ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+    }
     return ServiceDecoding.Decoded(
         ServiceRequest.StartRun(
             schema = schema,
@@ -1494,6 +1655,7 @@ private fun decodeStartRun(request: JsonObject, schema: String, credential: Stri
             configuration = configuration,
             parameters = parameters,
             parameterContract = parameterContract,
+            configurationProvider = configurationProvider,
         ),
         credential,
     )
@@ -1518,6 +1680,241 @@ private fun decodeDescribeParameters(
         ServiceRequest.DescribeParameters(schema, script),
         credential,
     )
+}
+
+/** Writes the `run.start` fields of [request] into this document. */
+private fun JsonObjectBuilder.putStartRun(request: ServiceRequest.StartRun) {
+    put("op", JsonPrimitive("run.start"))
+    put("script", JsonPrimitive(request.script))
+    request.workspace?.let { put("workspace", JsonPrimitive(it)) }
+    request.idempotencyKey?.let { put("idempotencyKey", JsonPrimitive(it)) }
+    if (request.configuration.isNotEmpty()) {
+        put(
+            "configuration",
+            buildJsonObject {
+                request.configuration.forEach { (name, value) ->
+                    put(name, JsonPrimitive(value))
+                }
+            },
+        )
+    }
+    if (request.parameters.isNotEmpty()) {
+        put(
+            "parameters",
+            buildJsonObject {
+                request.parameters.forEach { (name, value) ->
+                    put(name, JsonPrimitive(value))
+                }
+            },
+        )
+    }
+    request.configurationProvider?.let { reference ->
+        put(
+            "configurationProvider",
+            buildJsonObject {
+                put("provider", JsonPrimitive(reference.provider))
+                put("keys", JsonArray(reference.keys.map { JsonPrimitive(it) }))
+            },
+        )
+    }
+    if (request.parameterContract.isNotEmpty()) {
+        put("parameterContract", JsonArray(request.parameterContract.map { spec ->
+            buildJsonObject {
+                put("name", JsonPrimitive(spec.name))
+                put("type", JsonPrimitive(spec.type))
+                spec.defaultValue?.let { put("defaultValue", JsonPrimitive(it)) }
+                if (spec.choices.isNotEmpty()) {
+                    put("choices", JsonArray(spec.choices.map { JsonPrimitive(it) }))
+                }
+            }
+        }))
+    }
+}
+
+/** Writes the `config.provider.register` fields of [request] into this document. */
+private fun JsonObjectBuilder.putProviderRegister(request: ServiceRequest.ProviderRegister) {
+    put("op", JsonPrimitive("config.provider.register"))
+    put("provider", JsonPrimitive(request.provider))
+    put(
+        "keys",
+        JsonArray(
+            request.keys.map { key ->
+                buildJsonObject {
+                    put("name", JsonPrimitive(key.name))
+                    put("type", JsonPrimitive(key.type))
+                    put("sensitivity", JsonPrimitive(key.sensitivity))
+                }
+            },
+        ),
+    )
+}
+
+/** Writes the `config.provider.answer` fields of [request] into this document. */
+private fun JsonObjectBuilder.putProviderAnswer(request: ServiceRequest.ProviderAnswer) {
+    put("op", JsonPrimitive("config.provider.answer"))
+    put("sessionId", JsonPrimitive(request.sessionId))
+    put("requestId", JsonPrimitive(request.requestId))
+    put("revision", JsonPrimitive(request.revision))
+    put(
+        "values",
+        buildJsonObject {
+            request.values.forEach { (name, value) -> put(name, JsonPrimitive(value)) }
+        },
+    )
+}
+
+/**
+ * The decoding of the operations of a provider session and of the question about the
+ * configuration of a run.
+ *
+ * They are kept together because they share one rule: only the SHAPE of a line is decided here,
+ * and what a legal name, type or label is belongs to the service.
+ */
+private object ProviderWire {
+
+    /**
+     * Decodes the operations that belong to the controller-supplied
+     * configuration, or refuses [op] as unknown when it is none of them.
+     */
+    fun decode(
+        op: String,
+        request: JsonObject,
+        schema: String,
+        credential: String?,
+    ): ServiceDecoding = when (op) {
+        "config.provider.register" -> decodeProviderRegister(request, schema, credential)
+        "config.provider.poll" -> decodeProviderPoll(request, schema, credential)
+        "config.provider.answer" -> decodeProviderAnswer(request, schema, credential)
+        "config.provider.close" -> {
+            val sessionId = request.providerField("sessionId")
+            if (sessionId == null) {
+                ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+            } else {
+                ServiceDecoding.Decoded(ServiceRequest.ProviderClose(schema, sessionId), credential)
+            }
+        }
+        "run.configuration" -> {
+            val runId = request.runId()
+            if (runId == null) {
+                ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+            } else {
+                ServiceDecoding.Decoded(ServiceRequest.RunConfigurationQuery(schema, runId), credential)
+            }
+        }
+        else -> ServiceDecoding.Refused(ServiceRefusal.UnknownOp)
+    }
+
+    /**
+     * The label [key] holds, or null when it holds none, is empty or is longer than the bound.
+     *
+     * Used for the names, the ids and the revision of the provider requests: they are keys of the
+     * registry and never paths, and what a legal one looks like is the service's decision.
+     */
+    private fun JsonObject.providerField(key: String): String? {
+        val value = text(key) ?: return null
+        if (value.isEmpty() || value.length > ServiceProtocol.MAX_PROVIDER_FIELD_LENGTH) return null
+        return value
+    }
+
+    /**
+     * The registration this line asks for.
+     *
+     * Only the SHAPE is decided here: a provider name, and an array of objects each one with a
+     * name, a type and a sensitivity read as texts. Whether the name is legal, whether the types
+     * are known and whether a key is labelled as a secret are rules, and the service refuses them
+     * by name.
+     */
+    private fun decodeProviderRegister(
+        request: JsonObject,
+        schema: String,
+        credential: String?,
+    ): ServiceDecoding {
+        val provider = request.providerField("provider")
+            ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        val entries = request["keys"] as? JsonArray
+            ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        val keys = mutableListOf<ServiceProviderKey>()
+        for (entry in entries) {
+            val declaration = entry as? JsonObject
+                ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+            keys.add(
+                ServiceProviderKey(
+                    name = declaration.text("name")
+                        ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest),
+                    type = declaration.text("type")
+                        ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest),
+                    sensitivity = declaration.text("sensitivity")
+                        ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest),
+                ),
+            )
+        }
+        return ServiceDecoding.Decoded(ServiceRequest.ProviderRegister(schema, provider, keys), credential)
+    }
+
+    /**
+     * The poll this line asks for.
+     *
+     * The wait is a non-negative number of milliseconds no bigger than the protocol's bound; an
+     * absent wait is a poll that does not wait. The service caps it again with its own limit.
+     */
+    private fun decodeProviderPoll(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
+        val sessionId = request.providerField("sessionId")
+            ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        val waitMillis = if (request["waitMillis"] == null) {
+            0L
+        } else {
+            (request["waitMillis"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()
+                ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        }
+        if (waitMillis < 0L || waitMillis > ServiceProtocol.MAX_PROVIDER_POLL_WAIT_MILLIS) {
+            return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        }
+        return ServiceDecoding.Decoded(ServiceRequest.ProviderPoll(schema, sessionId, waitMillis), credential)
+    }
+
+    /**
+     * The answer this line carries.
+     *
+     * The values have the shape of the configuration's: an OBJECT whose entries are all PRIMITIVES,
+     * each read as its text. The type of each value is checked by the service against the type the
+     * provider declared.
+     */
+    private fun decodeProviderAnswer(request: JsonObject, schema: String, credential: String?): ServiceDecoding {
+        val sessionId = request.providerField("sessionId")
+            ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        val requestId = request.providerField("requestId")
+            ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        val revision = request.providerField("revision")
+            ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        val entries = request["values"] as? JsonObject
+            ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        val values = LinkedHashMap<String, String>()
+        for ((name, value) in entries) {
+            values[name] = (value as? JsonPrimitive)?.contentOrNull
+                ?: return ServiceDecoding.Refused(ServiceRefusal.MalformedRequest)
+        }
+        return ServiceDecoding.Decoded(
+            ServiceRequest.ProviderAnswer(schema, sessionId, requestId, revision, values),
+            credential,
+        )
+    }
+
+    /**
+     * The provider reference [element] carries, or null when it is not one.
+     *
+     * The shape is an object with the provider's name and an ARRAY of key names. The keys are read
+     * as texts; which names are legal and how many there may be are the service's decision.
+     */
+    fun reference(element: JsonElement): ServiceProviderReference? {
+        val entry = element as? JsonObject ?: return null
+        val provider = entry.providerField("provider") ?: return null
+        val names = entry["keys"] as? JsonArray ?: return null
+        val keys = mutableListOf<String>()
+        for (name in names) {
+            keys.add((name as? JsonPrimitive)?.contentOrNull ?: return null)
+        }
+        return ServiceProviderReference(provider, keys)
+    }
 }
 
 /**
@@ -1917,6 +2314,10 @@ private fun decodeServiceRefusal(kind: String, document: JsonObject): ServiceRef
     "not-authorized" -> ServiceRefusal.NotAuthorized
     "too-many-subscriptions" -> ServiceRefusal.TooManySubscriptions
     "describe-parameters-refused" -> ServiceRefusal.DescribeParametersRefused(
+        document.str("reason") ?: return null,
+        document.str("detail") ?: return null,
+    )
+    "configuration-provider-refused" -> ServiceRefusal.ConfigurationProviderRefused(
         document.str("reason") ?: return null,
         document.str("detail") ?: return null,
     )

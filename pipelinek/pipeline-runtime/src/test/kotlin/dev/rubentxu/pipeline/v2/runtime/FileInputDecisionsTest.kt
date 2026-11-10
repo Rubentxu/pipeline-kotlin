@@ -107,6 +107,22 @@ class FileInputDecisionsTest {
     }
 
     @Test
+    fun `an answer whose fields hold a structure is not an answer and does not end the wait`() {
+        listOf(
+            """{"decision":{}}""",
+            """{"decision":["PROCEED"]}""",
+            """{"decision":"PROCEED","submitter":{"name":"alice"}}""",
+            """{"decision":"ABORT","message":["go"]}""",
+        ).forEach { body ->
+            answerFile("run-1-s0-2", body)
+
+            val resolution = ask(operation("run-1-s0-2"), waitMillis = 5_000L)
+
+            assertInstanceOf(InputResolution.Denied::class.java, resolution, body)
+        }
+    }
+
+    @Test
     fun `the answer to one operation is not the answer to another of the same step index`() {
         val sameStepOtherStage = OpId("run-1", stageIndex = 1, stepIndex = 2).format()
         val sameStepOtherBranch = OpId("run-1", stageIndex = 0, stepIndex = 2, branchIndex = 1).format()

@@ -139,23 +139,26 @@ class ServiceInputAnswersTest {
 
     @Test
     fun `a question larger than the bound or reached through a link is invisible`() {
-        val big = tmp.resolve(InputQuestionLayout.directoryName("run-1:big"))
+        publish("run-1", op(0))
+        val big = tmp.resolve(InputQuestionLayout.directoryName(op(1)))
         Files.createDirectories(big)
         Files.writeString(
             big.resolve(InputQuestionLayout.REQUEST_FILE),
-            InputQuestionCodec.encode(question("run-1", "run-1:big", message = "x".repeat(ServiceInputAnswers.MAX_FILE_BYTES))),
+            InputQuestionCodec.encode(
+                question("run-1", op(1), message = "x".repeat(ServiceInputAnswers.MAX_FILE_BYTES)),
+            ),
         )
         val real = tmp.resolve("elsewhere")
         Files.createDirectories(real)
         Files.writeString(
             real.resolve(InputQuestionLayout.REQUEST_FILE),
-            InputQuestionCodec.encode(question("run-1", "run-1:linked")),
+            InputQuestionCodec.encode(question("run-1", op(2))),
         )
-        Files.createSymbolicLink(tmp.resolve(InputQuestionLayout.directoryName("run-1:linked")), real)
+        Files.createSymbolicLink(tmp.resolve(InputQuestionLayout.directoryName(op(2))), real)
 
         assertEquals(
-            emptyList<PublishedInputQuestion>(),
-            listedBy(answers(), "run-1"),
+            listOf(op(0)),
+            listedBy(answers(), "run-1").map { it.opId },
             "a file larger than the bound is not read and a directory that is a link is not followed",
         )
     }
@@ -507,7 +510,7 @@ class ServiceInputAnswersTest {
     @Test
     fun `a run with more questions on disk than the service lists is refused by name`() {
         repeat(ServiceInputAnswers.MAX_CANDIDATES + 1) { index ->
-            Files.createDirectories(tmp.resolve(InputQuestionLayout.directoryName("run-1:$index")))
+            Files.createDirectories(tmp.resolve(InputQuestionLayout.directoryName(op(index))))
         }
 
         assertEquals(
@@ -519,15 +522,57 @@ class ServiceInputAnswersTest {
     @Test
     fun `the questions of other runs on the same root do not count against this run`() {
         repeat(ServiceInputAnswers.MAX_CANDIDATES + 1) { index ->
-            Files.createDirectories(tmp.resolve(InputQuestionLayout.directoryName("run-2:$index")))
+            Files.createDirectories(tmp.resolve(InputQuestionLayout.directoryName(op(index, runId = "run-2"))))
         }
-        publish("run-1", "run-1:0")
+        publish("run-1", op(0))
 
         assertEquals(
-            listOf("run-1:0"),
+            listOf(op(0)),
             listedBy(answers(), "run-1").map { it.opId },
             "the name prefix keeps a busy neighbour from hiding this run",
         )
+    }
+
+    @Test
+    fun `the questions of a run whose id begins with this one do not count against this run`() {
+        repeat(ServiceInputAnswers.MAX_CANDIDATES + 1) { index ->
+            Files.createDirectories(tmp.resolve(InputQuestionLayout.directoryName(op(index, runId = "run-1-b"))))
+        }
+        publish("run-1", op(0))
+
+        assertEquals(
+            listOf(op(0)),
+            listedBy(answers(), "run-1").map { it.opId },
+            "a neighbour whose id merely starts with this one neither hides this run nor shows how busy it is",
+        )
+    }
+
+    @Test
+    fun `an answer file whose fields hold a structure is unreadable and never ends in a failure`() {
+        listOf(
+            """{"decision":{}}""",
+            """{"decision":["PROCEED"]}""",
+            """{"decision":"PROCEED","submitter":{"name":"alice"}}""",
+        ).forEachIndexed { index, body ->
+            val opId = op(index)
+            publish("run-1", opId)
+            Files.writeString(responseOf(opId), body)
+
+            val service = answers()
+            val outcome = service.answer("run-1", opId, ServiceInputDecision.PROCEED, null, DIGEST)
+
+            assertEquals(
+                ServiceInputAnswers.REASON_UNREADABLE_ANSWER,
+                assertInstanceOf(ServiceInputAnswerOutcome.Refused::class.java, outcome).reason,
+                body,
+            )
+            assertEquals(body, Files.readString(responseOf(opId)), "the file is not replaced: $body")
+            assertEquals(
+                emptyList<PublishedInputQuestion>(),
+                listedBy(service, "run-1").filter { it.opId == opId },
+                "a question with a response file is not offered as pending: $body",
+            )
+        }
     }
 
     @Test

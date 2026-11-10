@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.runtime
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -104,6 +105,7 @@ object InputAnswerCodec {
         } catch (_: Exception) {
             return null
         }
+        if (ANSWER_FIELDS.any { obj[it] is JsonObject || obj[it] is JsonArray }) return null
         val kind = obj.stringOrNull("decision") ?: return null
         val submitter = obj.stringOrNull("submitter")
         val message = obj.stringOrNull("message")
@@ -116,4 +118,7 @@ object InputAnswerCodec {
 
     private fun JsonObject.stringOrNull(name: String): String? =
         get(name)?.jsonPrimitive?.contentOrNull
+
+    /** The fields of an answer that must be plain values: a structure in one of them is not an answer. */
+    private val ANSWER_FIELDS = listOf("decision", "submitter", "message")
 }

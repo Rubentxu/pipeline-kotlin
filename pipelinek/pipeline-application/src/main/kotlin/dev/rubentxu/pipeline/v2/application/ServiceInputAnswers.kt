@@ -138,6 +138,10 @@ internal class ServiceInputAnswers(
      * The responder is the authorization behind [credentialDigest]; a digest that names none
      * records nothing. The question must belong to [runId], be pending and not have expired,
      * and the run must not have reached its terminal.
+     *
+     * The state of the run and the deadline of the question are read before the answer is
+     * written, so an answer accepted in the last instant may reach a run that has just stopped
+     * waiting: the file it leaves is inert, and the answer still reads as recorded.
      */
     fun answer(
         runId: String,
@@ -251,12 +255,14 @@ internal class ServiceInputAnswers(
      * The directories that may hold a question of [runId], or null when there are too many.
      *
      * The control directory of questions is shared by every run, so the names are filtered by
-     * the escaped run id the operation id begins with. A name that is too long to keep that
-     * beginning is not filtered at all: the question inside is validated either way.
+     * the escaped run id and the stage marker an operation id begins with: the marker keeps the
+     * questions of a run whose id merely starts with this one from counting against it. A name
+     * that is too long to keep that beginning is not filtered at all: the question inside is
+     * validated either way.
      */
     private fun candidatesOf(runId: String): List<Path>? {
         if (!Files.isDirectory(inputsRoot, LinkOption.NOFOLLOW_LINKS)) return emptyList()
-        val prefix = InputQuestionLayout.directoryName(runId)
+        val prefix = InputQuestionLayout.directoryName(runId + OP_ID_STAGE_MARKER)
             .takeIf { it.length <= PREFIX_FILTER_MAX && TRUNCATION_MARK !in it }
         val found = mutableListOf<Path>()
         try {
@@ -379,6 +385,9 @@ internal class ServiceInputAnswers(
         const val REASON_FAILED: String = "the-answer-failed"
 
         private const val PREFIX_FILTER_MAX: Int = 100
+
+        /** What an operation id writes right after the run id it begins with. */
+        private const val OP_ID_STAGE_MARKER: String = "-s"
         private const val TRUNCATION_MARK: String = "~~"
 
         /**

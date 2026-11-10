@@ -416,19 +416,27 @@ internal class ServiceRunSupervisor(
                     // service's: the service keeps serving, and the run's
                     // own facts say what happened to it.
                 } finally {
+                    // The child is over, so it is no longer a run this
+                    // service may end: the index says so FIRST, before the
+                    // budget says there is no run in flight.
+                    //
+                    // The order is the contract, because the two facts are
+                    // read by different hands: the budget answers "may the
+                    // service start another run?", and the index answers
+                    // "is there a child to end?". A budget that said "no
+                    // run in flight" while the index still held the child
+                    // would let a second run start while the first one is
+                    // still in the index, and a cancellation arriving in
+                    // that window would find a child that is already dead.
+                    supervision.over(supervised)
+                    liveJobs.remove(job)
+                    liveThreads.remove(Thread.currentThread())
                     // The slot the budget gave to this run is given back
                     // HERE and nowhere else: one run, one slot, one
                     // decrement. A counter that is incremented twice and
                     // decremented once is a budget that leaks, and a budget
                     // that leaks refuses every run after the fourth.
                     liveRuns.decrementAndGet()
-                    liveJobs.remove(job)
-                    liveThreads.remove(Thread.currentThread())
-                    // The child is over, so it is no longer a run this
-                    // service may end: the index has to say so before the
-                    // watcher says that the child is over, or a cancellation
-                    // could find a child that is already dead.
-                    supervision.over(supervised)
                     watcher.signalFinished()
                 }
             },

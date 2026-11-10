@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionResult
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import kotlinx.coroutines.delay
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -75,6 +76,31 @@ class ServiceRunSupervisorTest {
         assertEquals(correlationOf(port.requests.single()), accepted.correlationId)
         assertEquals(OWNER_ID, accepted.ownerId)
         assertEquals(1700L, accepted.startedAtMs)
+    }
+
+    @Test
+    fun `a start whose claim cannot be written is refused and no process is launched`(@TempDir root: Path) {
+        val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
+        // The record of the starts lives in a directory that is NOT there: the
+        // claim of the key cannot be written, and a start that cannot be
+        // remembered is a start that cannot be promised.
+        val reading = ServiceStartRegistry.read(root.resolve("absent").resolve(ServiceStartRegistry.FILE_NAME))
+        val registry = assertInstanceOf(ServiceStartRegistryReading.Read::class.java, reading).registry
+        val supervisor = supervisor(root, port, registry = registry)
+
+        val outcome = supervisor.start(request("build.kts", key = "key-1"))
+
+        val refused = assertInstanceOf(ServiceStartOutcome.Refused::class.java, outcome)
+        assertEquals(
+            "the-start-cannot-be-recorded",
+            (refused.refusal as ServiceRefusal.RunStartRefused).reason,
+            "the refusal names the fact: the key could not be claimed, so nothing was started",
+        )
+        assertEquals(
+            0,
+            port.requests.size,
+            "no child was launched for a start that could not be remembered",
+        )
     }
 
     @Test
@@ -279,8 +305,63 @@ class ServiceRunSupervisorTest {
         )
         assertInstanceOf(
             ServiceStartClaim.Owner::class.java,
-            registry.claim("key-1", DIGEST),
+            registry.claim("key-1", DIGEST, CORRELATION),
             "a key whose start was interrupted is free again: nothing was started",
+        )
+    }
+
+    @Test
+    fun `the child of a run is ended when the run is cancelled`(@TempDir root: Path) {
+        val ended = CountDownLatch(1)
+        val port = FakePort { request, sink ->
+            sink.append(receiptOf(request))
+            try {
+                delay(30_000L)
+            } finally {
+                ended.countDown()
+            }
+        }
+        val supervisor = supervisor(root, port)
+
+        val accepted = assertInstanceOf(
+            ServiceStartOutcome.Accepted::class.java,
+            supervisor.start(request("build.kts")),
+        )
+
+        val wasThere = supervisor.end(accepted.runId)
+
+        assertTrue(wasThere, "the service watches the child it launched")
+        assertTrue(
+            ended.await(5, TimeUnit.SECONDS),
+            "the child was ended through the port, which is what kills it",
+        )
+    }
+
+    @Test
+    fun `a run this service does not supervise has no child to end`(@TempDir root: Path) {
+        val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
+        val supervisor = supervisor(root, port)
+
+        assertFalse(
+            supervisor.end("a-run-this-service-never-started"),
+            "there is no child here, and the answer says so",
+        )
+    }
+
+    @Test
+    fun `a child that ended on its own is not there to be ended`(@TempDir root: Path) {
+        val port = FakePort { request, sink -> sink.append(receiptOf(request)) }
+        val supervisor = supervisor(root, port)
+        val accepted = assertInstanceOf(
+            ServiceStartOutcome.Accepted::class.java,
+            supervisor.start(request("build.kts")),
+        )
+
+        awaitNoRunInFlight(supervisor)
+
+        assertFalse(
+            supervisor.end(accepted.runId),
+            "a child that is over is not a child to end: the index is emptied when it dies",
         )
     }
 
@@ -531,5 +612,8 @@ class ServiceRunSupervisorTest {
 
         /** The digest of the credential of another client. */
         private const val OTHER_DIGEST: String = "digest-of-another-client"
+
+        /** The correlation the service gives to a run. */
+        private const val CORRELATION: String = "correlation-1"
     }
 }

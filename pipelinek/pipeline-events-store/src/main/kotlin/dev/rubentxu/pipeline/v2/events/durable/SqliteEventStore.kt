@@ -150,6 +150,53 @@ class SqliteEventStore(
         writer?.flush()
     }
 
+    /**
+     * Makes the event [eventId] durable, and says so by returning.
+     *
+     * ## Why the barrier is asked about ONE fact
+     *
+     * Because the barrier reports EVERY refusal this store has accumulated,
+     * and a store that shares its lane with other producers accumulates
+     * refusals that are not its own. A producer that asked the lane in
+     * general would learn that somebody else's fact is missing, and would
+     * conclude that its own fact is missing too — when it is durable, and a
+     * reader can see it.
+     *
+     * So the store asks the only question the producer has: is MY fact among
+     * the refused? A refusal of another fact is not this fact's failure, and
+     * the store says nothing about it: the lane still reports it at the next
+     * barrier, and the producer that owns it hears it there.
+     *
+     * ## Why a DEAD lane is asked about the fact too
+     *
+     * Because a lane that dies on a LATER fact leaves the facts it committed
+     * before it there, durable and visible. A barrier that answered "the lane
+     * is dead" about a fact a reader can see would say "your fact is missing"
+     * about a fact that is in the log, and the producer would answer its
+     * caller that the write failed — while the run it closed is closed. The
+     * two answers would contradict each other about the same fact, which is
+     * the one thing a barrier may not do.
+     *
+     * So when the lane is dead, the store asks the READER whether the fact
+     * is there. A fact a reader can see is durable, and the barrier says so.
+     *
+     * ## What a failure means
+     *
+     * That THIS fact is not in the log. The caller that asked for the fact to
+     * be durable did not get it, and the honest answer is to say so.
+     */
+    fun makeDurable(eventId: String) {
+        try {
+            flush()
+        } catch (refused: EventAppendRefusedException) {
+            if (refused.refusals.any { it.event.eventId == eventId }) throw refused
+        } catch (dead: IllegalStateException) {
+            // The lane is dead and it may have died on a later fact. The
+            // reader decides whether THIS fact survived it.
+            if (!reader.containsEvent(eventId)) throw dead
+        }
+    }
+
     override fun eventsFor(runId: String): Sequence<DomainEvent> = reader.eventsFor(runId)
 
     override fun readRecords(
@@ -175,10 +222,23 @@ class SqliteEventStore(
     /**
      * Closes the store: flush barrier, then stops the writer and releases
      * the persistent connection, then closes the durable lane's connections. Close is idempotent.
+     *
+     * ## Why the durable lane closes even when the writer does not
+     *
+     * Because the writer's close can REPORT something —an append the
+     * database refused and that no barrier had reported yet— and a report
+     * that stopped the closing would leave the durable lane's connections
+     * open. The store that owns a file has to release it, and the refusal
+     * that travels out of the close is about a fact of the log, not about
+     * the file: the file is released either way, and the refusal is still
+     * said.
     */
     override fun close() {
-        writer?.close()
-        durableConnections.close()
+        try {
+            writer?.close()
+        } finally {
+            durableConnections.close()
+        }
     }
 
     /**

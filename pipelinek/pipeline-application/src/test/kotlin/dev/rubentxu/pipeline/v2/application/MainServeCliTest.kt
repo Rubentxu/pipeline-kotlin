@@ -5,8 +5,10 @@ import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 
 /**
@@ -251,6 +253,30 @@ class MainServeCliTest {
         )
     }
 
+    @Test
+    @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.SECONDS)
+    fun `a store that is not there is refused by name in the lane that writes`(@TempDir root: Path) {
+        // A scope that may CANCEL puts the service in the lane that writes:
+        // that lane creates the file it does not find, and a service that
+        // creates the substrate it is about to read answers about runs in a
+        // store that holds none.
+        //
+        // The row carries a timeout because the verb SERVES when it does not
+        // refuse, and serving blocks: a row that hangs is a row that failed,
+        // and the timeout says so instead of leaving the build waiting.
+        val answer = askOver(root, "all+cancel")
+
+        assertEquals(4, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("the substrate cannot be served"),
+            "a service reads the substrate it is given and does not create one: ${answer.stderr}",
+        )
+        assertFalse(
+            Files.exists(root.resolve("store.db")),
+            "the refusal must not leave an empty store where the operator kept their facts",
+        )
+    }
+
     /**
      * The decision of the verb, and what it printed.
      */
@@ -259,10 +285,20 @@ class MainServeCliTest {
     /**
      * Asks the verb with [words] — the arguments that follow the verb's own
      * words — and reads its answer.
+     *
+     * The [scope] is the one the authorization of the operator carries, and
+     * it decides the lane the service is composed in: a scope that may
+     * cancel opens the store to write.
      */
-    private fun ask(root: Path, vararg words: String): Answer {
+    private fun ask(root: Path, vararg words: String): Answer = askOver(root, "all", *words)
+
+    /**
+     * Asks the verb over a substrate in [root], with the operator's
+     * authorization carrying [scope], and reads its answer.
+     */
+    private fun askOver(root: Path, scope: String, vararg words: String): Answer {
         val authorizations = root.resolve("authorizations")
-        Files.writeString(authorizations, "token-of-the-operator operator all\n")
+        Files.writeString(authorizations, "token-of-the-operator operator $scope\n")
         Files.setPosixFilePermissions(
             authorizations,
             setOf(

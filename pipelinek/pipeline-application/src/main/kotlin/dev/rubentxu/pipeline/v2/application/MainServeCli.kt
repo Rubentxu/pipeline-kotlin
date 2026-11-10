@@ -181,30 +181,117 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
         is RunPolicyReading.Read -> reading.declaration
         is RunPolicyReading.Refused -> return reading.exit
     }
-    val scriptsRoot = policy.scriptsRoot
-    val workspacesRoot = policy.workspacesRoot
-    val runDeadlineMillis = policy.deadlineMillis
-    val startDeadlineMillis = policy.startDeadlineMillis
-    val maxSupervisedRuns = policy.maxSupervisedRuns
-    val allowNetwork = policy.allowNetwork
-    val registry = policy.registry
 
-    // The substrate is composed ONCE, before the socket exists: a service
-    // that cannot read its substrate would only know how to say that it is
-    // alive, and a client would read that as an answer about a run.
-    val storeAdmission = admitEventStore(dbPath, EventStorePurpose.Read)
+    val substrate = ServeSubstrate(
+        dbPath = dbPath,
+        dbAbsolute = dbAbsolute,
+        controlRoot = controlRoot,
+        controlAbsolute = controlAbsolute,
+        controlRootPath = Paths.get(controlRoot),
+        socketAbsolute = socketAbsolute,
+        socketPath = socketPath,
+    )
+    val composed = composeServiceToServe(substrate, policy, authorizations, SystemClock(), err)
+    val service = when (composed) {
+        is ServeComposition.Composed -> composed
+        is ServeComposition.Refused -> return composed.exit
+    }
+    return serveUntilStopped(service, substrate, profile, authorizationPath, policy, out)
+}
+
+/**
+ * The substrate the service was told to use.
+ *
+ * The paths come in PAIRS because the service uses two of each: the name the
+ * operator gave, which is what it prints and what it hands to the child, and
+ * the absolute one, which is what it composes the stores with.
+ */
+private data class ServeSubstrate(
+    val dbPath: String,
+    val dbAbsolute: Path,
+    val controlRoot: String,
+    val controlAbsolute: Path,
+    val controlRootPath: Path,
+    val socketAbsolute: Path,
+    val socketPath: String,
+)
+
+/**
+ * What the composition of the service produced before it could serve.
+ */
+private sealed interface ServeComposition {
+
+    /** The service is composed and it can serve. */
+    data class Composed(
+        val server: ServiceServer,
+        val supervisor: ServiceRunSupervisor,
+        val store: dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore,
+        val storePurpose: EventStorePurpose,
+        val authorizationCount: Int,
+    ) : ServeComposition
+
+    /** The service cannot be composed, and this says why. */
+    data class Refused(val exit: CliExit) : ServeComposition
+}
+
+/**
+ * Composes the substrate, the doors and the socket of the service.
+ *
+ * ## Why the substrate is composed BEFORE the socket exists
+ *
+ * Because a service that cannot read its substrate would only know how to
+ * say that it is alive, and a client would read that as an answer about a
+ * run.
+ *
+ * ## Why the LANE of the store is the lane the service needs
+ *
+ * Because a service that may cancel runs WRITES to it: the terminal of a
+ * cancelled run is a fact and the service is the one that writes it. A
+ * service that may not cancel anything opens the same file read-only, and
+ * says so when it starts.
+ *
+ * ## Why every refusal CLOSES the store
+ *
+ * Because a refusal that leaves the store open leaves a writer thread
+ * holding the operator's file, and the process that goes on serving would
+ * hold a lock nobody asked it to hold.
+ */
+private fun composeServiceToServe(
+    substrate: ServeSubstrate,
+    policy: ServiceRunDeclaration,
+    authorizations: ServiceAuthorizations,
+    clock: SystemClock,
+    err: PrintStream,
+): ServeComposition {
+    val storePurpose = if (authorizations.mayCancelAnyRun) {
+        EventStorePurpose.Write
+    } else {
+        EventStorePurpose.Read
+    }
+    // The store the operator named has to BE there, also in the lane that
+    // writes: that lane CREATES the file it does not find, and a service that
+    // creates the substrate it is about to read answers "the run is unknown"
+    // about EVERY run, in a store that holds no run at all. A mistyped
+    // `--db` has to say that it is not there, and not leave an empty file
+    // where the operator kept their facts.
+    if (storePurpose == EventStorePurpose.Write && !Files.exists(substrate.dbAbsolute)) {
+        val error = CliError.SubstrateUnavailable(
+            describeRefusal(EventStoreRefusal.Absent(substrate.dbPath)),
+        )
+        err.println(error.refusalLines("serve").joinToString("\n"))
+        err.println(SERVE_USAGE)
+        return ServeComposition.Refused(error.toCliExit())
+    }
+    val storeAdmission = admitEventStore(substrate.dbPath, storePurpose)
     val store = when (storeAdmission) {
         is EventStoreAdmission.Admitted -> storeAdmission.store
         is EventStoreAdmission.Refused -> {
             val error = CliError.SubstrateUnavailable(describeRefusal(storeAdmission.refusal))
             err.println(error.refusalLines("serve").joinToString("\n"))
             err.println(SERVE_USAGE)
-            return error.toCliExit()
+            return ServeComposition.Refused(error.toCliExit())
         }
     }
-
-    val controlRootPath = Paths.get(controlRoot)
-    val clock = SystemClock()
 
     // The supervisor of the runs this service starts. It is composed with
     // the SAME store and the SAME control root the questions are answered
@@ -212,12 +299,30 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
     // about.
     val supervisor = composeSupervisor(
         policy = policy,
-        dbAbsolute = dbAbsolute,
-        controlAbsolute = controlAbsolute,
-        socketAbsolute = socketAbsolute,
-        registry = registry,
+        dbAbsolute = substrate.dbAbsolute,
+        controlAbsolute = substrate.controlAbsolute,
+        socketAbsolute = substrate.socketAbsolute,
+        registry = policy.registry,
         clock = clock,
     )
+
+    // The cancellation of a run, and the control port that writes its
+    // terminal. They are composed ONLY when some authorization carries the
+    // right to cancel: the port writes to the substrate, and a service that
+    // may not cancel anything does not open that door.
+    val cancellations = if (authorizations.mayCancelAnyRun) {
+        ServiceRunCancellation(
+            ender = supervisor,
+            control = composeRuntimeControlPort(
+                eventStore = store,
+                controlRoot = substrate.controlAbsolute,
+                clock = clock,
+                ownerLabel = "service-cancel",
+            ),
+        )
+    } else {
+        null
+    }
 
     // The operations and the streets are composed over the SAME substrate and
     // the SAME authorities the questions are answered from, so a run cannot
@@ -225,11 +330,12 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
     val composition = when (
         val composed = composeService(
             store = store,
-            dbPath = dbPath,
-            controlRoot = controlRoot,
-            controlRootPath = controlRootPath,
+            dbPath = substrate.dbPath,
+            controlRoot = substrate.controlRoot,
+            controlRootPath = substrate.controlRootPath,
             clock = clock,
             supervisor = supervisor,
+            cancellations = cancellations,
         )
     ) {
         is ServiceComposition.Composed -> composed
@@ -238,30 +344,45 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
             val error = CliError.SubstrateUnavailable(composed.detail)
             err.println(error.refusalLines("serve").joinToString("\n"))
             err.println(SERVE_USAGE)
-            return error.toCliExit()
+            return ServeComposition.Refused(error.toCliExit())
         }
     }
-    val operations = composition.operations
-    val streets = composition.streets
 
     val transport = try {
-        UnixSocketTransport.bind(Path.of(socketPath))
+        UnixSocketTransport.bind(Path.of(substrate.socketPath))
     } catch (e: ServiceStartupException) {
         store.close()
         val error = CliError.ServiceUnavailable(e.refusal.reason, e.detail)
         err.println(error.refusalLines("serve").joinToString("\n"))
         err.println(SERVE_USAGE)
-        return error.toCliExit()
+        return ServeComposition.Refused(error.toCliExit())
     }
+    val server = ServiceServer(transport, composition.operations, composition.streets, authorizations)
+    return ServeComposition.Composed(server, supervisor, store, storePurpose, authorizations.size)
+}
 
-    val server = ServiceServer(transport, operations, streets, authorizations)
-
-    // The hook closes EVERYTHING the service opened: the server, the
-    // children it supervises and the store it reads. A signal does not
-    // run the `finally` below —the JVM leaves through the hook and the
-    // process ends— so a hook that only closed the server would leave the
-    // children of the supervised runs behind, and a run that outlives the
-    // service that started it is a run nobody is watching.
+/**
+ * Serves until the operator stops the process.
+ *
+ * ## Why the hook closes EVERYTHING the service opened
+ *
+ * The server, the children it supervises and the store it reads. A signal
+ * does not run the `finally` below —the JVM leaves through the hook and the
+ * process ends— so a hook that only closed the server would leave the
+ * children of the supervised runs behind, and a run that outlives the
+ * service that started it is a run nobody is watching.
+ */
+private fun serveUntilStopped(
+    service: ServeComposition.Composed,
+    substrate: ServeSubstrate,
+    profile: ServiceTrustProfile,
+    authorizationPath: Path,
+    policy: ServiceRunDeclaration,
+    out: PrintStream,
+): CliExit {
+    val server = service.server
+    val supervisor = service.supervisor
+    val store = service.store
     val shutdown = Thread(
         {
             server.close()
@@ -272,9 +393,10 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
     )
     Runtime.getRuntime().addShutdownHook(shutdown)
     try {
-        out.println("pipelinek service listening on $socketPath")
-        describeBoundary(out, profile, authorizationPath, authorizations.size)
+        out.println("pipelinek service listening on ${substrate.socketPath}")
+        describeBoundary(out, profile, authorizationPath, service.authorizationCount)
         describeRuns(out, policy)
+        describeSubstrate(out, service.storePurpose)
         server.serve()
     } finally {
         try {
@@ -615,6 +737,7 @@ private fun composeService(
     controlRootPath: Path,
     clock: SystemClock,
     supervisor: ServiceRunSupervisor,
+    cancellations: ServiceRunCancellation?,
 ): ServiceComposition = try {
     val operations = ServiceOperations(
         introspection = composeRuntimeIntrospectionPort(
@@ -631,6 +754,7 @@ private fun composeService(
             )
         },
         starts = supervisor,
+        cancellations = cancellations,
     )
     val stores = DurableStores.open(store, controlRootPath, clock)
     val streets = ServiceSubscription(
@@ -754,6 +878,36 @@ private fun describeRuns(
     out.println("start-deadline-ms ${policy.startDeadlineMillis}")
     out.println("max-supervised-runs ${policy.maxSupervisedRuns}")
     out.println("run-network ${if (policy.allowNetwork) "allowed" else "denied"}")
+}
+
+/**
+ * The lane the substrate was opened in, printed when the service starts.
+ *
+ * ## Why this is printed at all
+ *
+ * Because a service that WRITES to the substrate is a different thing from
+ * one that only reads it, and the operator is the one who has to know: the
+ * file is the operator's, and a service that writes into it does so
+ * because somebody granted the right to cancel runs.
+ *
+ * The declaration is about the SERVICE, not about the file's permissions:
+ * a file that cannot be written is refused at startup, and a service that
+ * says it writes is a service that did open the write door.
+ */
+private fun describeSubstrate(out: PrintStream, purpose: EventStorePurpose) {
+    when (purpose) {
+        EventStorePurpose.Write -> out.println(
+            "substrate read-write: this service writes the terminal of a cancelled run",
+        )
+
+        EventStorePurpose.Read -> out.println(
+            "substrate read-only: this service reads the store it was given",
+        )
+
+        EventStorePurpose.Produce -> out.println(
+            "substrate read-write: this service writes the events of the runs it starts",
+        )
+    }
 }
 
 /**

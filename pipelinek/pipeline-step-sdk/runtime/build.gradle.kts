@@ -11,7 +11,7 @@ pitest {
         "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy",
     )
     targetTests = listOf(
-        "dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy*Test",
+        "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicyTest",
     )
     threads = System.getenv("PIT_THREADS")?.toInt() ?: 4
     timeoutConstInMillis = 10000

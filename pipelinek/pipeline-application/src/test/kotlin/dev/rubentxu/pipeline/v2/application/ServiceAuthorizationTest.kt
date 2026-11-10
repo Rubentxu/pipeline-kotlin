@@ -273,7 +273,7 @@ class ServiceAuthorizationTest {
             "the scope may end with the right to start a run",
         )
         assertEquals(
-            ServiceScope.MayStart(ServiceScope.All),
+            ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Start)),
             authorizations.authorizations.first().scope,
             "the right to start wraps the reading scope it adds to",
         )
@@ -289,7 +289,7 @@ class ServiceAuthorizationTest {
             "the right to start and the right to read are two rights",
         )
         assertEquals(
-            ServiceScope.MayStart(ServiceScope.None),
+            ServiceScope.WithRights(ServiceScope.None, setOf(ServiceScope.Right.Start)),
             authorizations.authorizations.first().scope,
             "a client that may start and read nothing is expressible",
         )
@@ -297,12 +297,135 @@ class ServiceAuthorizationTest {
 
     @Test
     fun `a scope with a capability this build does not know is refused`() {
-        val reading = ServiceAuthorizations.parse("$TOKEN operator all+cancel")
+        val reading = ServiceAuthorizations.parse("$TOKEN operator all+stop")
 
         assertInstanceOf(
             ServiceAuthorizationsReading.Refused::class.java,
             reading,
             "a capability nobody serves is refused rather than taken for the default",
+        )
+    }
+
+    @Test
+    fun `a scope with the suffix cancel lets the client cancel the runs it covers`() {
+        val reading = ServiceAuthorizations.parse("$TOKEN operator all+cancel")
+
+        val authorizations = assertInstanceOf(
+            ServiceAuthorizationsReading.Read::class.java,
+            reading,
+            "the scope may end with the right to cancel a run",
+        )
+        assertEquals(
+            ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Cancel)),
+            authorizations.authorizations.first().scope,
+            "the right to cancel wraps the reading scope it adds to",
+        )
+    }
+
+    @Test
+    fun `a scope that names no run may not carry the right to cancel`() {
+        val reading = ServiceAuthorizations.parse("$TOKEN operator none+cancel")
+
+        assertInstanceOf(
+            ServiceAuthorizationsReading.Refused::class.java,
+            reading,
+            "a scope that covers no run cannot exercise a right about a run",
+        )
+    }
+
+    @Test
+    fun `a client that may not cancel runs is refused by name`() {
+        val outcome = authorizations(ServiceScope.All).decideCancel(TOKEN, "run-1")
+
+        assertEquals(
+            ServiceAuthorizationOutcome.CancelNotAuthorized,
+            outcome,
+            "the token was accepted and what it lacks is the right to cancel",
+        )
+    }
+
+    @Test
+    fun `a client that may cancel a run it does not cover is refused by name`() {
+        val scoped = authorizations(
+            ServiceScope.WithRights(ServiceScope.Runs(setOf("run-1")), setOf(ServiceScope.Right.Cancel)),
+        )
+
+        assertEquals(
+            ServiceAuthorizationOutcome.RunNotAuthorized("run-2"),
+            scoped.decideCancel(TOKEN, "run-2"),
+            "a run the scope does not cover may not be cancelled, and the refusal names it",
+        )
+    }
+
+    @Test
+    fun `a client that may cancel the runs it covers is authorized`() {
+        val scoped = authorizations(
+            ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Cancel)),
+        )
+
+        assertEquals(
+            ServiceAuthorizationOutcome.Authorized,
+            scoped.decideCancel(TOKEN, "run-1"),
+            "the right to cancel and the scope of the run are both asked",
+        )
+    }
+
+    @Test
+    fun `a client that presents nothing may not cancel runs`() {
+        val scoped = authorizations(
+            ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Cancel)),
+        )
+
+        assertEquals(
+            ServiceAuthorizationOutcome.NotAuthorized,
+            scoped.decideCancel(null, "run-1"),
+            "no token is no authorization, and the cancel is not one of them",
+        )
+    }
+
+    @Test
+    fun `the right to start and the right to cancel are independent`() {
+        val scope = ServiceScope.WithRights(
+            ServiceScope.All,
+            setOf(ServiceScope.Right.Start, ServiceScope.Right.Cancel),
+        )
+        val authorizations = authorizations(scope)
+
+        assertEquals(
+            ServiceAuthorizationOutcome.Authorized,
+            authorizations.decideStart(TOKEN),
+            "a client that may cancel may also start",
+        )
+        assertEquals(
+            ServiceAuthorizationOutcome.Authorized,
+            authorizations.decideCancel(TOKEN, "run-1"),
+            "and one that may start may also cancel",
+        )
+    }
+
+    @Test
+    fun `the scope of a cancel survives the round trip`() {
+        val written = ServiceAuthorizations.format(
+            listOf(
+                ServiceAuthorization(
+                    TOKEN,
+                    "operator",
+                    ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Cancel)),
+                ),
+            ),
+        )
+
+        val reading = ServiceAuthorizations.parse(written)
+
+        val authorizations = assertInstanceOf(
+            ServiceAuthorizationsReading.Read::class.java,
+            reading,
+            "the file the service writes is a file it can read",
+        )
+        assertEquals(
+            ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Cancel)),
+            authorizations.authorizations.first().scope,
+            "the right to cancel survives the round trip",
         )
     }
 
@@ -319,7 +442,7 @@ class ServiceAuthorizationTest {
 
     @Test
     fun `a client that may start runs is authorized to start them`() {
-        val outcome = authorizations(ServiceScope.MayStart(ServiceScope.All)).decideStart(TOKEN)
+        val outcome = authorizations(ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Start))).decideStart(TOKEN)
 
         assertEquals(
             ServiceAuthorizationOutcome.Authorized,
@@ -330,7 +453,7 @@ class ServiceAuthorizationTest {
 
     @Test
     fun `a client that presents nothing may not start runs`() {
-        val outcome = authorizations(ServiceScope.MayStart(ServiceScope.All)).decideStart(null)
+        val outcome = authorizations(ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Start))).decideStart(null)
 
         assertEquals(
             ServiceAuthorizationOutcome.NotAuthorized,
@@ -341,7 +464,9 @@ class ServiceAuthorizationTest {
 
     @Test
     fun `the scope of a start keeps the reading rights it wraps`() {
-        val scoped = authorizations(ServiceScope.MayStart(ServiceScope.Runs(setOf("run-1"))))
+        val scoped = authorizations(
+            ServiceScope.WithRights(ServiceScope.Runs(setOf("run-1")), setOf(ServiceScope.Right.Start)),
+        )
 
         assertEquals(
             ServiceAuthorizationOutcome.Authorized,
@@ -358,7 +483,7 @@ class ServiceAuthorizationTest {
     @Test
     fun `the scope of a start survives the round trip`() {
         val written = ServiceAuthorizations.format(
-            listOf(ServiceAuthorization(TOKEN, "operator", ServiceScope.MayStart(ServiceScope.All))),
+            listOf(ServiceAuthorization(TOKEN, "operator", ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Start)))),
         )
 
         val reading = ServiceAuthorizations.parse(written)
@@ -369,7 +494,7 @@ class ServiceAuthorizationTest {
             "the file the service writes is a file it can read",
         )
         assertEquals(
-            ServiceScope.MayStart(ServiceScope.All),
+            ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Start)),
             authorizations.authorizations.first().scope,
             "the right to start survives the round trip",
         )

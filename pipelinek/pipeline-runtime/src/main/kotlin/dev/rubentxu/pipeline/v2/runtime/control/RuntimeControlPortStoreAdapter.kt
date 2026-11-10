@@ -98,6 +98,18 @@ import java.util.UUID
  * @param clock the time source. The cancel records when it closed the run.
  * @param ownerId the identity this process writes under. It becomes the run's
  *   owner for as long as the cancel holds the lease.
+ * @param makeTerminalDurable makes the run's terminal fact DURABLE, and says
+ *   so by returning. It is asked about the fact it has to make durable, and
+ *   not about the lane in general: a lane that refused somebody else's fact
+ *   has not refused this one. The event lane writes through a writer thread,
+ *   so an appended fact is not yet a durable one, and a cancel that answered
+ *   "cancelled" before the fact was durable would be a claim about a run that
+ *   no reader could see closed yet — and a second cancel, arriving in that
+ *   window, would find no terminal and write a SECOND one. The port's
+ *   promise is that N calls leave ONE terminal state, so the fact has to be
+ *   durable before the answer travels. A failure here is a failure to close
+ *   the run: the cancel refuses, and the run stays open for the next cancel
+ *   to finish.
  */
 class RuntimeControlPortStoreAdapter(
     private val journal: OperationJournal,
@@ -109,6 +121,7 @@ class RuntimeControlPortStoreAdapter(
     private val sealStream: (OutputStreamId) -> SealOutcome,
     private val clock: Clock,
     private val ownerId: RunOwnerId,
+    private val makeTerminalDurable: (eventId: String) -> Unit,
 ) : RuntimeControlPort {
 
     override fun cancel(runId: String, reason: CancelReason): CancelOutcome {
@@ -116,9 +129,14 @@ class RuntimeControlPortStoreAdapter(
         //    acquisition, because the acquisition would otherwise create a
         //    lease record for a run that never existed, and a cancel may not
         //    invent a run.
-        val terminal = readTerminal(runId)
-        if (terminal is TerminalRead.Unreadable) {
-            return CancelOutcome.Refused(CancelRefusal.StorageError(terminal.cause))
+        //
+        //    This read answers only THAT question. It is not the fact the
+        //    decision is made of: the run's terminal is read again under the
+        //    lease, because the lease is the exclusion and a fact read
+        //    before it was taken may already be stale.
+        val known = readTerminal(runId)
+        if (known is TerminalRead.Unreadable) {
+            return CancelOutcome.Refused(CancelRefusal.StorageError(known.cause))
         }
         val journalRows = try {
             journal.listForRun(runId)
@@ -134,7 +152,7 @@ class RuntimeControlPortStoreAdapter(
         val identity: RunId? = RunId.of(runId)
         val runKnown = (identity != null && lease.isKnown(identity)) ||
             journalRows.isNotEmpty() ||
-            terminal is TerminalRead.Read
+            known is TerminalRead.Read
         if (!runKnown) {
             return CancelOutcome.Refused(CancelRefusal.UnknownRun(runId))
         }
@@ -175,6 +193,18 @@ class RuntimeControlPortStoreAdapter(
         try {
             // 3. The rule, and then the write. The rule is pure; the stores
             //    only supply its facts and carry out its verdict.
+            //
+            //    The facts are read HERE, under the lease, and not before:
+            //    the lease is the exclusion over the run, and the run's
+            //    terminal is the fact that decides. A run that reached its
+            //    own terminal while this call was acquiring the lease would
+            //    be closed a second time if the decision were made of the
+            //    terminal read before the acquisition — and two terminals
+            //    for one run are the ambiguity this port exists to remove.
+            val terminal = readTerminal(runId)
+            if (terminal is TerminalRead.Unreadable) {
+                return CancelOutcome.Refused(CancelRefusal.StorageError(terminal.cause))
+            }
             val decision = RunCancellationDecision.decide(
                 RunCancellationDecision.Facts(
                     runKnown = true,
@@ -243,6 +273,24 @@ class RuntimeControlPortStoreAdapter(
      * stream", and the cancel holds the run's lease while it says it: nobody
      * else can be publishing this run, so the statement is true at the moment
      * it is made — and it stays true whether or not the bookend lands.
+     *
+     * ## Why the bookend is made durable before the answer
+     *
+     * Because the answer of this call is the claim that the run is closed, and
+     * the lane writes through a writer thread: an appended fact is not yet a
+     * durable one. A cancel that answered "cancelled" over a fact that was
+     * still in the writer's queue would let the NEXT cancel find no terminal
+     * at all, and write a second one. The promise that N calls leave one
+     * terminal state is only kept if the fact is durable before the answer
+     * travels.
+     *
+     * ## Why the barrier is asked about THIS fact
+     *
+     * Because the lane reports the refusals it has accumulated, and a lane
+     * that refused another producer's fact has not refused this one. Asking
+     * the lane in general would make a cancel fail —and say "the storage
+     * failed" about a run it had just closed— because of a refusal that had
+     * nothing to do with it.
      */
     private fun closeRun(runId: String, reason: CancelReason): CancelOutcome {
         val now = clock.now()
@@ -280,11 +328,20 @@ class RuntimeControlPortStoreAdapter(
         }
 
         // 3. The terminal fact: the run is closed. It goes last, so that a
-        //    run is never closed and unsealed at the same time.
+        //    run is never closed and unsealed at the same time. And it is
+        //    made DURABLE before the answer travels, because the answer
+        //    says the run is closed and a fact that no reader can see yet
+        //    is not a closed run.
+        //
+        //    The barrier is asked about THIS fact: a lane that refused
+        //    somebody else's fact has not refused this one, and a cancel
+        //    that failed because of another producer's refusal would answer
+        //    "the storage failed" about a run it had just closed.
+        val eventId = UUID.randomUUID().toString()
         try {
             events.append(
                 RunFinished(
-                    eventId = UUID.randomUUID().toString(),
+                    eventId = eventId,
                     runId = runId,
                     // Zero asks the store for the next per-run sequence; it is
                     // not a value, it is a request.
@@ -294,6 +351,7 @@ class RuntimeControlPortStoreAdapter(
                     diagnostics = listOf(cancelDiagnostic(reason)),
                 ),
             )
+            makeTerminalDurable(eventId)
         } catch (failure: Exception) {
             return CancelOutcome.Refused(
                 CancelRefusal.StorageError(failure.shortDiagnostic()),

@@ -296,7 +296,8 @@ class ServiceEndpointIntegrationTest {
                     controlRootPresent = Files.exists(root),
                 )
             },
-        starts = ServiceIntegrationStarter(),
+            starts = ServiceIntegrationStarter(),
+            cancellations = null,
         )
         val stores = DurableStores.open(store, root, clock)
         val streets = ServiceSubscription(

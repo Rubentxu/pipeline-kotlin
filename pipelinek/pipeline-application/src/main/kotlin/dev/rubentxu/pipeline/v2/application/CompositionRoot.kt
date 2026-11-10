@@ -178,6 +178,10 @@ internal fun runCanonical(request: RunRequest): RunOutcome = runBlocking {
  *    path as the writer's;
  *  - the **output plane** is the writing side of the control root, because a
  *    cancel seals streams and a reader may not reconcile them.
+ *  - the **durability barrier** is the store's own flush, because the lane
+ *    writes through a writer thread and a cancel that answered "cancelled"
+ *    over a fact that was still in the queue would let the next cancel write a
+ *    second terminal fact.
  *
  * The redaction registry is empty on purpose: the control verb does not open
  * the credentials store, so it has no credential pattern to register, and the
@@ -188,6 +192,7 @@ internal fun composeRuntimeControlPort(
     eventStore: SqliteEventStore,
     controlRoot: Path,
     clock: Clock,
+    ownerLabel: String = "cli-cancel",
 ): RuntimeControlPort {
     val stores = DurableStores.open(eventStore, controlRoot, clock)
     val journal = stores.journal
@@ -202,7 +207,7 @@ internal fun composeRuntimeControlPort(
         },
     )
     val owner = RunOwnerId.of(
-        "cli-cancel-" + ProcessHandle.current().pid() + "-" +
+        ownerLabel + "-" + ProcessHandle.current().pid() + "-" +
             java.util.UUID.randomUUID().toString().take(8),
     )
     return RuntimeControlPortStoreAdapter(
@@ -215,6 +220,7 @@ internal fun composeRuntimeControlPort(
         sealStream = { stream -> output.seal(stream) },
         clock = clock,
         ownerId = requireNotNull(owner) { "the cancel owner id is always well formed" },
+        makeTerminalDurable = { eventId -> eventStore.makeDurable(eventId) },
     )
 }
 

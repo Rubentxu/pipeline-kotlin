@@ -69,6 +69,7 @@ internal class ServiceOperations(
     private val introspection: RuntimeIntrospectionPort,
     private val substrate: () -> ServiceSubstrate,
     private val starts: ServiceRunStarter,
+    private val cancellations: ServiceRunCancellation?,
 ) {
 
     /**
@@ -83,6 +84,7 @@ internal class ServiceOperations(
         is ServiceRequest.Health -> answered(healthResult())
         is ServiceRequest.RunState -> stateOf(request.runId)
         is ServiceRequest.StartRun -> startOf(request, credentialDigest)
+        is ServiceRequest.CancelRun -> cancelOf(request)
     }
 
     /**
@@ -185,6 +187,73 @@ internal class ServiceOperations(
             is ServiceStartOutcome.Refused -> ServiceResponse.Refused(
                 ServiceProtocol.SCHEMA,
                 outcome.refusal,
+            )
+        }
+    }
+
+    /**
+     * The answer to a request to CANCEL a run.
+     *
+     * The answer is the TERMINAL of the run, read from the durable facts and
+     * not from the moment the answer was written: a client that asks twice
+     * reads the same terminal, and a client that asks once knows when the
+     * run really ended.
+     *
+     * The two successful answers differ in a WORD —`cancelled` and
+     * `already-cancelled`— because a cancellation repeated is not an error:
+     * the run is closed, once, and the second call says so.
+     *
+     * It NEVER throws, for the same reason [answer] never throws: a
+     * cancellation that fails in an unforeseen way is a refusal with a name
+     * and not a closed connection.
+     */
+    private fun cancelOf(request: ServiceRequest.CancelRun): ServiceResponse {
+        val cancellation = cancellations
+        if (cancellation == null) {
+            // The service was composed without the ability to cancel: no
+            // authorization carries the right, so the substrate was not
+            // opened for writing and there is no port to write the terminal
+            // with. The server refuses such a request before it arrives
+            // here, and this is the safety net under it.
+            return ServiceResponse.Refused(
+                ServiceProtocol.SCHEMA,
+                ServiceRefusal.RunCancelRefused(
+                    "the-service-may-not-cancel",
+                    "this service was not composed to cancel runs",
+                ),
+            )
+        }
+        val outcome = try {
+            cancellation.cancel(request.runId, request.reason)
+        } catch (failure: Exception) {
+            return ServiceResponse.Refused(
+                ServiceProtocol.SCHEMA,
+                ServiceRefusal.RunCancelRefused(
+                    "the-cancel-failed",
+                    failure.message ?: "the cancellation of the run failed",
+                ),
+            )
+        }
+        return when (outcome) {
+            is ServiceCancelOutcome.Cancelled -> answered(
+                buildJsonObject {
+                    put("runId", JsonPrimitive(request.runId))
+                    put("outcome", JsonPrimitive(ServiceRunCancellation.OUTCOME_CANCELLED))
+                    put("terminalAtMs", JsonPrimitive(outcome.terminalAtMs))
+                },
+            )
+
+            is ServiceCancelOutcome.AlreadyCancelled -> answered(
+                buildJsonObject {
+                    put("runId", JsonPrimitive(request.runId))
+                    put("outcome", JsonPrimitive(ServiceRunCancellation.OUTCOME_ALREADY_CANCELLED))
+                    put("terminalAtMs", JsonPrimitive(outcome.terminalAtMs))
+                },
+            )
+
+            is ServiceCancelOutcome.Refused -> ServiceResponse.Refused(
+                ServiceProtocol.SCHEMA,
+                ServiceRefusal.RunCancelRefused(outcome.reason, outcome.detail),
             )
         }
     }

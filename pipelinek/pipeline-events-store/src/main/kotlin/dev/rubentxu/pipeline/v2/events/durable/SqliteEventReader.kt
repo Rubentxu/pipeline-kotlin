@@ -75,6 +75,41 @@ internal class SqliteEventReader(
         }
     }
 
+    /**
+     * Whether the event [eventId] is in the log, as a READER sees it.
+     *
+     * ## Why the reader is the one that answers
+     *
+     * Because a fact a reader can see is a fact that is COMMITTED, whatever
+     * the lane that wrote it did afterwards. The lane that writes can die —
+     * a disk error, a page it cannot read — and a lane that dies on a LATER
+     * fact leaves the facts it committed before it there, durable and
+     * visible. The reader asks on a connection of its own, so the answer
+     * does not depend on the health of the writer.
+     *
+     * ## What a store without a history answers
+     *
+     * `false`, and not a failure: a store that holds no events table holds
+     * no events, and the question of the caller — "is my fact there?" — is
+     * answered "no".
+     */
+    fun containsEvent(eventId: String): Boolean {
+        if (!holdsEventHistory) return false
+        val conn = connections()
+        return try {
+            conn.prepareStatement("SELECT 1 FROM events WHERE event_id = ?").use { stmt ->
+                stmt.setString(1, eventId)
+                stmt.executeQuery().use { rs -> rs.next() }
+            }
+        } catch (_: java.sql.SQLException) {
+            // The file cannot be read: the fact is not there as far as this
+            // reader is concerned, and the caller fails closed.
+            false
+        } finally {
+            conn.close()
+        }
+    }
+
     fun eventsFor(runId: String): Sequence<DomainEvent> {
         // This CANNOT report a refusal — `Sequence<DomainEvent>` has no case for one —
         // so it FAILS CLOSED at the unreadable row instead of skipping it. See the KDoc on

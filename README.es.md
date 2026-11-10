@@ -132,7 +132,7 @@ La última fila es la honesta: las capacidades `runtime.inspect.v1`, `runtime.ca
 pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock
 ```
 
-Las tres rutas son obligatorias y ninguna tiene valor por defecto: el servicio lee el sustrato que nombras y escucha donde dices, de modo que lo que el socket dice de una ejecución es comparable con lo que dice `inspect --state` sobre las mismas entradas. El servicio nunca escribe en el sustrato que sirve —las ejecuciones que arranca sí, en el almacén que nombraste— y no crea el control root que va a leer. Lo que el servicio escribe es suyo, junto al socket: el fichero de las autorizaciones que posee, el registro de los arranques (`starts`) y el directorio de las ejecuciones supervisadas (`supervisions`).
+Las tres rutas son obligatorias y ninguna tiene valor por defecto: el servicio lee el sustrato que nombras y escucha donde dices, de modo que lo que el socket dice de una ejecución es comparable con lo que dice `inspect --state` sobre las mismas entradas. El servicio no crea el sustrato que sirve ni el control root que va a leer: un `--db` que no está se rechaza por nombre, en vez de dejar un fichero vacío donde el operador guardaba sus hechos. En el sustrato el servicio escribe UN hecho, y sólo cuando puede cancelar: el terminal de una ejecución que cierra —las ejecuciones que arranca escriben el resto, en el almacén que nombraste—. Abrir ese almacén en lectura-escritura también lo PREPARA: el esquema se crea cuando falta y los ficheros del log aparecen en cada arranque, así que un fichero existente y vacío se convierte en un almacén. Lo que el servicio nunca hace es crear el sustrato que no está. Lo que el servicio escribe aparte es suyo, junto al socket: el fichero de las autorizaciones que posee, el registro de los arranques (`starts`) y el directorio de las ejecuciones supervisadas (`supervisions`).
 
 El socket es un fichero del sistema de ficheros, y su modo es la frontera. El socket queda en `rw-------`, y su directorio tiene que ser privado (`rwx------` cuando el servicio lo crea): si el directorio concede algo al grupo o a otros, el servicio no arranca en vez de publicar un socket que esos usuarios podrían abrir.
 
@@ -146,7 +146,7 @@ Una petición por línea, una respuesta por línea, en JSON, con la versión del
 {"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
-El servicio lee tres cosas: `version` (la versión del producto y la del protocolo), `health` (el servicio y el sustrato con el que se compuso) y `run.state` (el estado de una ejecución, la misma respuesta que imprime `inspect --state` sobre el mismo almacén). También puede ARRANCAR una ejecución, que es una cuarta puerta con un derecho propio. Cada rechazo lleva un nombre — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused` — para que el cliente lea una palabra y no una frase.
+El servicio lee tres cosas: `version` (la versión del producto y la del protocolo), `health` (el servicio y el sustrato con el que se compuso) y `run.state` (el estado de una ejecución, la misma respuesta que imprime `inspect --state` sobre el mismo almacén). También puede ARRANCAR una ejecución y CANCELAR una, que son una cuarta y una quinta puerta, cada una con un derecho propio. Cada rechazo lleva un nombre — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `cancel-not-authorized`, `run-cancel-refused` — para que el cliente lea una palabra y no una frase.
 
 La respuesta de `run.state` lleva la observación ENTERA: el intento, la continuidad y su token de fencing, la posición del journal, las colas de la salida y el terminal con su desenlace. Un cliente que la reconstruye obtiene el mismo `RuntimeObservation` que la línea de órdenes renderiza, y no hay una segunda forma del mismo hecho.
 
@@ -177,9 +177,32 @@ La petición nombra un guion y, quizá, un espacio de trabajo y una clave de ide
 
 La respuesta es la identidad de una ejecución y NO su desenlace: la ejecución sigue viva cuando se escribe la respuesta, y lo que concluya es la respuesta de otra pregunta (`run.state`). La respuesta se escribe solo después de que el hijo tomara su continuidad (su lease) y imprimiera su propio recibo del arranque, así que "arrancada" significa "esta ejecución existe y es dueña de sí misma".
 
-La clave es lo que hace segura un reintento: la misma clave con la misma petición responde con la MISMA ejecución, y la misma clave con otra petición es un conflicto (`idempotency-conflict`). La promesa es duradera mientras el servicio pueda escribir su fichero —el servicio guarda el registro de los arranques en el fichero que posee junto al socket, `starts`—, así que un cliente que reintenta después de un reinicio recibe la ejecución que ya había arrancado. Si el disco se niega a escribir, la promesa degrada a la vida del servicio: el registro se queda en memoria, al cliente se le contesta igualmente, y un reintento DESPUÉS de un reinicio puede arrancar una segunda ejecución con la misma clave.
+La clave es lo que hace segura un reintento: la misma clave con la misma petición responde con la MISMA ejecución, y la misma clave con otra petición es un conflicto (`idempotency-conflict`). La promesa es duradera mientras el servicio pueda escribir su fichero —el servicio guarda el registro de los arranques en el fichero que posee junto al socket, `starts`—, así que un cliente que reintenta después de un reinicio recibe la ejecución que ya había arrancado. La RECLAMACIÓN de una clave se escribe ANTES de lanzar al hijo, y una reclamación que no se puede escribir no es una reclamación: el arranque se rechaza por nombre (`run-start-refused`, con el motivo `the-start-cannot-be-recorded`) y no se lanza ningún hijo, porque un arranque que no se puede recordar es un arranque que no se puede prometer. Lo que degrada cuando el disco se niega a escribir es el REGISTRO de una ejecución que ya arrancó: el registro se queda en memoria, al cliente se le contesta igualmente, y un reintento DESPUÉS de un reinicio puede arrancar una segunda ejecución con la misma clave.
 
 El hijo es un proceso, lanzado por el puerto que ya existe para lanzar procesos, y es el mismo `pipelinek run` que el operador escribiría en la línea de órdenes. La ejecución escribe en el mismo almacén y el mismo control root que el servicio lee, así que una ejecución arrancada por el socket es una ejecución sobre la que `run.state`, `events.follow` y `output.follow` pueden responder — y sobrevive a la conexión que la pidió.
+
+Una caída es la otra cara de la misma promesa. La reclamación de una clave está en el disco ANTES de lanzar al hijo, así que un servicio que murió en esa ventana deja una clave cuyo efecto es DESCONOCIDO: la ejecución puede seguir viva, y el servicio no puede decir cuál. Un reintento con esa clave se rechaza por nombre (`run-start-refused`, con el motivo `the-effect-of-this-key-is-unknown`) y no se arranca una segunda ejecución —la clave promete una petición, y el servicio no adivina cuál de las dos sería—. Reconciliar esa ejecución es cosa del operador, sobre el sustrato y con los verbos que el producto ya tiene (`runs cancel`, `runs recover`); el servicio guarda la correlación del arranque perdido, que es lo que permite encontrarla. La CLAVE queda reclamada mientras el servicio viva, y ningún verbo la libera: soltarla es cosa del operador, sobre el registro de los arranques que el servicio posee.
+
+#### Cancelar una ejecución
+
+El servicio también puede CANCELAR una ejecución. Es una quinta puerta con un derecho propio, porque cerrar una ejecución no es una pregunta sobre una ejecución: el ámbito de un cliente que puede cancelar lo dice con sus propias palabras.
+
+El derecho crece con el sufijo `+cancel`, y se compone con `+start`: `all+start+cancel` puede leer todas las ejecuciones, arrancar ejecuciones y cancelarlas. Un ámbito que no nombra ninguna ejecución no puede llevar el derecho a cancelar —no hay nada que cancelar— y el servicio se niega a leer un ámbito así. Un cliente sin derecho a cancelar se rechaza por su nombre (`cancel-not-authorized`), y el derecho se pregunta ANTES que el ámbito, así que un cliente que no puede cancelar nada no aprende nada de las ejecuciones que existen.
+
+```json
+{"schema":"pipelinek.service/2","op":"run.cancel","runId":"34b28ddc-…","reason":"the operator changed their mind","auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"runId":"34b28ddc-…","outcome":"cancelled","terminalAtMs":1730000000000}}
+```
+
+Cancelar CIERRA la ejecución: el hijo acaba, el hecho terminal de la ejecución se escribe en los hechos durables, y la ejecución queda terminal para todo lector posterior. El orden es el contrato —el hijo ya está muerto ANTES de que se escriba el terminal, porque solo el dueño de una ejecución puede escribir su terminal, y el dueño de una ejecución viva es su hijo—.
+
+La respuesta es el terminal de la ejecución, y es DURABLE cuando la respuesta viaja: el hecho está confirmado antes de que el servicio conteste, así que un cliente que lee la respuesta y después pregunta por la ejecución lee el mismo terminal, y nunca un EOF donde el producto prometió un hecho.
+
+Cancelar dos veces no es un error. La segunda llamada contesta `already-cancelled` con el MISMO terminal, porque una ejecución se cierra una vez y no dos. Una ejecución que ya alcanzó un terminal propio no se cancela otra vez, y una ejecución que nadie conoce se rechaza por su nombre: ambas son `run-cancel-refused`, y llevan el motivo (`the-run-is-already-terminal`, `the-run-is-unknown`).
+
+Una cancelación nunca cruza una continuidad VIVA: el servicio no toma la continuidad de una ejecución que otro proceso está publicando, y el rechazo nombra a quien la tiene (`the-lease-is-held-by-another`). Por eso el hijo se acaba primero —el hijo ES quien la tiene, y quien está muerto se releva—, y eso es lo que hace que la cancelación sea la RECONCILIACIÓN de una ejecución cuyo escritor murió sin decir nunca cómo terminó. Un escritor que sigue VIVO no lo reconcilia el verbo: tiene el cerrojo, el rechazo lo nombra, y la ejecución se libera sólo cuando ese proceso termina.
+
+Un servicio que no puede cancelar ejecuciones abre el sustrato en SOLO LECTURA y lo dice al arrancar (`substrate read-only`). Un servicio que sí puede las abre en lectura-escritura, porque el terminal de una ejecución cancelada es un hecho y el servicio es quien lo escribe.
 
 El fichero del socket se borra cuando el servicio para. Un socket que dejó una caída se reconoce por lo que es y se reemplaza en el siguiente arranque; un socket en el que ya escucha otro servicio no se desplaza nunca, y una ruta que no sea un socket no se borra nunca.
 
@@ -191,7 +214,7 @@ El servicio emite una credencial la primera vez que arranca y la guarda en el fi
 <token> <etiqueta> <ámbito>
 ```
 
-El ámbito es `all`, `none`, o las ejecuciones que cubre, y puede llevar el sufijo `+start` cuando el cliente además puede arrancar ejecuciones. La etiqueta es para el operador y **nunca viaja**: una etiqueta que viaja se puede enumerar con un cliente que va probando tokens hasta que uno pasa.
+El ámbito es `all`, `none`, o las ejecuciones que cubre, y puede llevar los sufijos `+start` y `+cancel` cuando el cliente además puede arrancar y cancelar ejecuciones. La etiqueta es para el operador y **nunca viaja**: una etiqueta que viaja se puede enumerar con un cliente que va probando tokens hasta que uno pasa.
 
 Dos perfiles, y cada uno dice en voz alta, al arrancar el servicio, qué promete:
 

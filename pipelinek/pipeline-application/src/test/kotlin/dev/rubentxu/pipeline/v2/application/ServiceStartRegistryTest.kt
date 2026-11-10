@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -34,6 +35,14 @@ import java.nio.file.Path
  * claim is what it finds, and it is released when the start fails, so a
  * request that could not start a run has to be able to ask again.
  *
+ * ## The claim that was never answered
+ *
+ * The claim is WRITTEN DOWN before the child is launched, and that is what
+ * makes the promise survive a crash: a claim that lived only in memory was a
+ * claim that a crash erased, and a claim that a crash erased is a key that
+ * names two runs. A claim the service never answered is a claim whose effect
+ * is UNKNOWN, and the key is not free.
+ *
  * ## What this does not freeze
  *
  * The shape of the file: the file is the service's own and it is read back
@@ -46,7 +55,7 @@ class ServiceStartRegistryTest {
     fun `a key that was never used is free`(@TempDir root: Path) {
         val registry = registry(root)
 
-        val claim = registry.claim("key-1", DIGEST)
+        val claim = registry.claim("key-1", DIGEST, CORRELATION)
 
         assertInstanceOf(ServiceStartClaim.Owner::class.java, claim)
         assertNull(registry.find("key-1"), "nothing has started yet")
@@ -55,10 +64,10 @@ class ServiceStartRegistryTest {
     @Test
     fun `the same key with the same request answers with the run that started`(@TempDir root: Path) {
         val registry = registry(root)
-        registry.claim("key-1", DIGEST)
+        registry.claim("key-1", DIGEST, CORRELATION)
         registry.complete("key-1", RECORD)
 
-        val claim = registry.claim("key-1", DIGEST)
+        val claim = registry.claim("key-1", DIGEST, CORRELATION)
 
         val known = assertInstanceOf(ServiceStartClaim.Known::class.java, claim)
         assertEquals(RECORD, known.record, "the record of the start is the one that started")
@@ -67,10 +76,10 @@ class ServiceStartRegistryTest {
     @Test
     fun `the same key with another request is a conflict`(@TempDir root: Path) {
         val registry = registry(root)
-        registry.claim("key-1", DIGEST)
+        registry.claim("key-1", DIGEST, CORRELATION)
         registry.complete("key-1", RECORD)
 
-        val claim = registry.claim("key-1", "another-digest")
+        val claim = registry.claim("key-1", "another-digest", CORRELATION)
 
         assertEquals(
             ServiceStartClaim.Conflict,
@@ -82,9 +91,9 @@ class ServiceStartRegistryTest {
     @Test
     fun `a key that is being started is awaited and not started twice`(@TempDir root: Path) {
         val registry = registry(root)
-        registry.claim("key-1", DIGEST)
+        registry.claim("key-1", DIGEST, CORRELATION)
 
-        val claim = registry.claim("key-1", DIGEST)
+        val claim = registry.claim("key-1", DIGEST, CORRELATION)
 
         val awaiting = assertInstanceOf(ServiceStartClaim.Awaiting::class.java, claim)
         registry.complete("key-1", RECORD)
@@ -98,13 +107,13 @@ class ServiceStartRegistryTest {
     @Test
     fun `a start that failed releases the key`(@TempDir root: Path) {
         val registry = registry(root)
-        registry.claim("key-1", DIGEST)
+        registry.claim("key-1", DIGEST, CORRELATION)
 
         registry.fail("key-1", REFUSAL)
 
         assertInstanceOf(
             ServiceStartClaim.Owner::class.java,
-            registry.claim("key-1", DIGEST),
+            registry.claim("key-1", DIGEST, CORRELATION),
             "a request that could not start a run has to be able to ask again",
         )
     }
@@ -112,10 +121,10 @@ class ServiceStartRegistryTest {
     @Test
     fun `a caller that waits for a failed start is answered with the failure`(@TempDir root: Path) {
         val registry = registry(root)
-        registry.claim("key-1", DIGEST)
+        registry.claim("key-1", DIGEST, CORRELATION)
         val awaiting = assertInstanceOf(
             ServiceStartClaim.Awaiting::class.java,
-            registry.claim("key-1", DIGEST),
+            registry.claim("key-1", DIGEST, CORRELATION),
         )
 
         registry.fail("key-1", REFUSAL)
@@ -144,7 +153,7 @@ class ServiceStartRegistryTest {
             ServiceStartRegistryReading.Read::class.java,
             ServiceStartRegistry.read(unreachable),
         ).registry
-        registry.claim("key-1", DIGEST)
+        registry.claim("key-1", DIGEST, CORRELATION)
 
         registry.complete("key-1", RECORD)
 
@@ -156,7 +165,7 @@ class ServiceStartRegistryTest {
     }
 
     @Test
-    fun `a caller that waits for a start whose file cannot be written is answered`(
+    fun `a start whose file cannot be written is refused and leaves nobody waiting`(
         @TempDir root: Path,
     ) {
         val unreachable = root.resolve("not-there").resolve(ServiceStartRegistry.FILE_NAME)
@@ -164,18 +173,19 @@ class ServiceStartRegistryTest {
             ServiceStartRegistryReading.Read::class.java,
             ServiceStartRegistry.read(unreachable),
         ).registry
-        registry.claim("key-1", DIGEST)
-        val awaiting = assertInstanceOf(
-            ServiceStartClaim.Awaiting::class.java,
-            registry.claim("key-1", DIGEST),
+
+        val first = registry.claim("key-1", DIGEST, CORRELATION)
+
+        val refused = assertInstanceOf(ServiceStartClaim.Refused::class.java, first)
+        assertTrue(
+            refused.cause.isNotBlank(),
+            "the refusal says why the claim could not be written",
         )
-
-        registry.complete("key-1", RECORD)
-
-        assertEquals(
-            RECORD,
-            awaiting.future.get(),
-            "a file that cannot be written must not leave the callers waiting for ever",
+        assertInstanceOf(
+            ServiceStartClaim.Refused::class.java,
+            registry.claim("key-1", DIGEST, CORRELATION),
+            "the second caller is refused too: a file that cannot be written must not leave the " +
+                "callers waiting for ever, and a key that was not claimed grants nothing",
         )
     }
 
@@ -183,7 +193,7 @@ class ServiceStartRegistryTest {
     fun `the record of the starts survives the service`(@TempDir root: Path) {
         val path = root.resolve(ServiceStartRegistry.FILE_NAME)
         val registry = registry(root)
-        registry.claim("key-1", DIGEST)
+        registry.claim("key-1", DIGEST, CORRELATION)
         registry.complete("key-1", RECORD)
 
         val read = ServiceStartRegistry.read(path)
@@ -197,10 +207,84 @@ class ServiceStartRegistryTest {
     }
 
     @Test
+    fun `a claim that was never answered survives the service`(@TempDir root: Path) {
+        val path = root.resolve(ServiceStartRegistry.FILE_NAME)
+        val registry = registry(root)
+        registry.claim("key-1", DIGEST, CORRELATION)
+
+        val read = ServiceStartRegistry.read(path)
+
+        val reread = assertInstanceOf(ServiceStartRegistryReading.Read::class.java, read).registry
+        assertNull(
+            reread.find("key-1"),
+            "the claim was never answered, so there is no run to remember",
+        )
+    }
+
+    @Test
+    fun `a claim that was never answered is not started twice after the service dies`(
+        @TempDir root: Path,
+    ) {
+        val path = root.resolve(ServiceStartRegistry.FILE_NAME)
+        val registry = registry(root)
+        registry.claim("key-1", DIGEST, CORRELATION)
+
+        val reread = assertInstanceOf(
+            ServiceStartRegistryReading.Read::class.java,
+            ServiceStartRegistry.read(path),
+        ).registry
+        val claim = reread.claim("key-1", DIGEST, CORRELATION)
+
+        val unknown = assertInstanceOf(ServiceStartClaim.EffectUnknown::class.java, claim)
+        assertEquals(
+            CORRELATION,
+            unknown.correlationId,
+            "the correlation is what lets the operator find the run the service lost",
+        )
+    }
+
+    @Test
+    fun `a claim that was never answered is a conflict with another request`(@TempDir root: Path) {
+        val path = root.resolve(ServiceStartRegistry.FILE_NAME)
+        val registry = registry(root)
+        registry.claim("key-1", DIGEST, CORRELATION)
+
+        val reread = assertInstanceOf(
+            ServiceStartRegistryReading.Read::class.java,
+            ServiceStartRegistry.read(path),
+        ).registry
+
+        assertEquals(
+            ServiceStartClaim.Conflict,
+            reread.claim("key-1", "another-digest", CORRELATION),
+            "a key names a request, and the request of the lost start is not this one",
+        )
+    }
+
+    @Test
+    fun `a start that failed leaves no claim behind`(@TempDir root: Path) {
+        val path = root.resolve(ServiceStartRegistry.FILE_NAME)
+        val registry = registry(root)
+        registry.claim("key-1", DIGEST, CORRELATION)
+
+        registry.fail("key-1", REFUSAL)
+
+        val reread = assertInstanceOf(
+            ServiceStartRegistryReading.Read::class.java,
+            ServiceStartRegistry.read(path),
+        ).registry
+        assertInstanceOf(
+            ServiceStartClaim.Owner::class.java,
+            reread.claim("key-1", DIGEST, CORRELATION),
+            "a start that failed started nothing, so the key is free after a restart too",
+        )
+    }
+
+    @Test
     fun `the record of the starts is private`(@TempDir root: Path) {
         val path = root.resolve(ServiceStartRegistry.FILE_NAME)
         val registry = registry(root)
-        registry.claim("key-1", DIGEST)
+        registry.claim("key-1", DIGEST, CORRELATION)
         registry.complete("key-1", RECORD)
 
         val permissions = Files.getPosixFilePermissions(path)
@@ -230,7 +314,21 @@ class ServiceStartRegistryTest {
     }
 
     @Test
-    fun `a record that holds a start without a run is refused`(@TempDir root: Path) {
+    fun `a record that holds a start without a fingerprint is refused`(@TempDir root: Path) {
+        val path = root.resolve(ServiceStartRegistry.FILE_NAME)
+        Files.writeString(path, """{"key-1":{"correlationId":"c"}}""")
+
+        val read = ServiceStartRegistry.read(path)
+
+        assertInstanceOf(
+            ServiceStartRegistryReading.Refused::class.java,
+            read,
+            "a start without a fingerprint names no request",
+        )
+    }
+
+    @Test
+    fun `a record that holds a claim without a correlation is refused`(@TempDir root: Path) {
         val path = root.resolve(ServiceStartRegistry.FILE_NAME)
         Files.writeString(path, """{"key-1":{"digest":"d"}}""")
 
@@ -239,7 +337,7 @@ class ServiceStartRegistryTest {
         assertInstanceOf(
             ServiceStartRegistryReading.Refused::class.java,
             read,
-            "a start without a run names no run",
+            "a claim without a correlation cannot be reconciled by anybody",
         )
     }
 
@@ -262,6 +360,9 @@ class ServiceStartRegistryTest {
     private companion object {
         /** The fingerprint of the request that is made. */
         private const val DIGEST: String = "digest-1"
+
+        /** The correlation the service gave to the run. */
+        private const val CORRELATION: String = "correlation-1"
 
         /** The refusal a failed start is answered with. */
         private val REFUSAL: ServiceRefusal = ServiceRefusal.RunStartRefused(

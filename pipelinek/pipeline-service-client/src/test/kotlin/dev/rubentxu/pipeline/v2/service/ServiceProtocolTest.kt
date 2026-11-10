@@ -136,7 +136,7 @@ class ServiceProtocolTest {
 
     @Test
     fun `a request for an operation the service does not have is refused as an unknown op`() {
-        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/2","op":"run.cancel"}""")
+        val decoded = ServiceCodec.decode("""{"schema":"pipelinek.service/2","op":"run.destroy"}""")
 
         assertEquals(
             ServiceRefusal.UnknownOp,

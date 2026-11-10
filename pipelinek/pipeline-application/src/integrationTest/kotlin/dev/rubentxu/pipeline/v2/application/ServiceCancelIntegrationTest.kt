@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
+import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.service.ServiceAnswer
 import dev.rubentxu.pipeline.v2.service.ServiceClient
@@ -154,6 +155,17 @@ class ServiceCancelIntegrationTest {
                 observation.terminalAtMs > 0L,
                 "the terminal the reader sees is the one the facts carry",
             )
+            assertInstanceOf(
+                TerminalObservation.Aborted::class.java,
+                observation.terminal,
+                "the run's own vocabulary says 'aborted' for a run that was cancelled: $observation",
+            )
+            val finished = service.eventsOf(run.runId).filterIsInstance<RunFinished>().single()
+            assertEquals(
+                "aborted",
+                finished.outcome,
+                "the durable fact carries the word the product gives to a cancelled run",
+            )
         } finally {
             service.stop()
         }
@@ -191,9 +203,7 @@ class ServiceCancelIntegrationTest {
             val run = startRun(CANCELLER_TOKEN, "sleeper.pipeline.kts")
 
             val first = client(CANCELLER_TOKEN).cancelRun(run.runId)
-            System.err.println("DIAG events after first cancel: " + service.eventsOf(run.runId).toList())
             val second = client(CANCELLER_TOKEN).cancelRun(run.runId)
-            System.err.println("DIAG events after second cancel: " + service.eventsOf(run.runId).toList())
 
             val one = assertInstanceOf(ServiceRunCancel::class.java, assertInstanceOf(
                 ServiceAnswer.Answered::class.java,
@@ -299,7 +309,7 @@ class ServiceCancelIntegrationTest {
     }
 
     @Test
-    fun `dos cancelaciones simultaneas de la misma ejecucion dejan un solo terminal`() {
+    fun `two cancellations at the same time on the same run leave one terminal`() {
         val service = start()
         try {
             val run = startRun(CANCELLER_TOKEN, "sleeper.pipeline.kts")
@@ -310,19 +320,19 @@ class ServiceCancelIntegrationTest {
             assertEquals(
                 1,
                 terminals.size,
-                "una cancelacion repetida escribe UN terminal y no dos: ${service.eventsOf(run.runId)}",
+                "a cancellation repeated writes ONE terminal and not two: ${service.eventsOf(run.runId)}",
             )
             assertEquals(
                 setOf("cancelled", "already-cancelled"),
                 answers.map { outcomeOf(it) }.toSet(),
-                "la segunda cancelacion ve el terminal que la primera hizo durable, y contesta " +
-                    "lo mismo que contesta una cancelacion repetida: $answers",
+                "the second cancellation sees the terminal the first one made durable, and " +
+                    "answers what a repeated cancellation answers: $answers",
             )
             assertEquals(
                 1,
                 answers.map { terminalOf(it) }.toSet().size,
-                "las dos cancelaciones leen el MISMO terminal: una ejecucion se cierra una vez " +
-                    "y no dos, y las dos respuestas lo dicen: $answers",
+                "the two cancellations read the SAME terminal: a run is closed once and not " +
+                    "twice, and the two answers say so: $answers",
             )
         } finally {
             service.stop()
@@ -330,7 +340,7 @@ class ServiceCancelIntegrationTest {
     }
 
     @Test
-    fun `dos cancelaciones simultaneas de ejecuciones distintas cierran las dos`() {
+    fun `two cancellations at the same time on two runs close both of them`() {
         val service = start()
         try {
             val first = startRun(CANCELLER_TOKEN, "sleeper.pipeline.kts")
@@ -341,19 +351,20 @@ class ServiceCancelIntegrationTest {
             assertEquals(
                 listOf("cancelled", "cancelled"),
                 answers.map { outcomeOf(it) }.sorted(),
-                "las dos ejecuciones se cierran: $answers",
+                "both runs are closed: $answers",
             )
             listOf(first.runId, second.runId).forEach { runId ->
                 assertEquals(
                     1,
                     service.eventsOf(runId).filterIsInstance<RunFinished>().size,
-                    "cada ejecucion lleva su propio terminal y solo uno: $runId",
+                    "each run carries its own terminal and only one: $runId",
                 )
                 assertEquals(
                     "already-cancelled",
                     outcomeOf(client(CANCELLER_TOKEN).cancelRun(runId)),
-                    "una ejecucion cerrada sigue cerrable: la lease de la que se cerro vuelve " +
-                        "a dar, y la cancelacion repetida contesta el terminal que ya hay",
+                    "a closed run stays closable: the lease of the run that was closed is " +
+                        "given again, and the repeated cancellation answers the terminal that " +
+                        "is already there",
                 )
             }
         } finally {

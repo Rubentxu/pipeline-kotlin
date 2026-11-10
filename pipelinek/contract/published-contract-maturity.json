@@ -82,7 +82,16 @@
       "previous constructor when a field with a default value is added — and the break is",
       "deliberate and recorded in the sibling ledger with its exact keys. What it does NOT",
       "authorize: the interpretation of a type in this module, a second way of declaring the",
-      "texts a parameter accepts, or a change of the meaning of the `type` field."
+      "texts a parameter accepts, or a change of the meaning of the `type` field.",
+      "",
+      "THE SURFACE THIS ARTIFACT PUBLISHES NOW ALSO CARRIES THE RULES OF A NAME THAT A CLIENT",
+      "SUPPLIES. `ClientInputRules` holds the legal shape of the name of a configuration entry or",
+      "of a parameter and the three prefixes the product reserves, and it is the ONE place where",
+      "they are written: the runtime that validates a configuration and the scripting API that",
+      "validates a parameter read them from here, because two copies of a rule are two answers",
+      "and the day they drift a name would be legal for one door and illegal for the other. It",
+      "is an addition and breaks nothing that was published. What it does NOT authorize: the",
+      "interpretation of a value in this module, or a second list of reserved prefixes."
     ],
     "pipeline-scripting-api": [
       "EXPERIMENTAL: the DSL is the authored authoring surface and several of its constructs",
@@ -101,7 +110,17 @@
       "break is deliberate and recorded in the sibling ledger with its exact keys. What it does",
       "NOT authorize: a second way of declaring the parameters of a pipeline, the",
       "interpretation of a type in this module, or a change of the meaning of the `stages`",
-      "field."
+      "field.",
+      "",
+      "THE VALIDATOR OF THE PARAMETERS NOW SEPARATES TWO FACTS THAT HAD ONE NAME. The refusal",
+      "`TheNameIsNotLegal` says that the name of a parameter does not have the shape the product",
+      "accepts, and `TheNameIsReserved` says that it belongs to the vocabulary of the product:",
+      "the first is fixed by renaming, the second by choosing a name that is not the product's,",
+      "and a client that read one word for both would have to parse the detail to tell them",
+      "apart. The shape and the prefixes are read from the domain, so the validator and the",
+      "other door that accepts a client's name cannot disagree. The new case is an addition to a",
+      "sealed interface of the validator, and consumers that match on it exhaustively see a new",
+      "branch, which is why the surface is still EXPERIMENTAL."
     ],
     "pipeline-events": [
       "EXPERIMENTAL: the wire vocabulary is published and load-bearing, and this block is",
@@ -248,13 +267,24 @@
       "and the CHILD checks the values against the declaration of the script, which is the",
       "truth. The values are a PUBLIC CHANNEL and the artifact says so: there is no oracle",
       "that tells a secret from a plain text.",
-      "The vocabulary of the refusals grew by ONE word, `parameters-refused`, and the rules of a",
-      "parameter travel as reasons INSIDE it, because a vocabulary that grew with the rules",
-      "would multiply the published words without giving the client more power. The operation",
-      "`describe.parameters` is IN the vocabulary and this service REFUSES it, because",
-      "describing a script is compiling it; a build that admits an artifact that was authorized",
-      "beforehand answers the same request, and a client written against the name works with",
-      "both."
+      "The vocabulary of the refusals grew by ONE word for the start of a run, `parameters-refused`,",
+      "and the rules of a parameter travel as reasons INSIDE it, because a vocabulary that grew with",
+      "the rules would multiply the published words without giving the client more power. The",
+      "operation `describe.parameters` is IN the vocabulary and this service REFUSES it, with a",
+      "word of its own, `describe-parameters-refused`, because describing a script is compiling it",
+      "and the client's action is not the same as for a value that broke a rule; a build that",
+      "admits an artifact that was authorized beforehand answers the same request, and a client",
+      "written against the name works with both.",
+      "",
+      "THE ANSWER OF A START NOW ECHOES THE PARAMETERS IT DELIVERED, as it already echoed the",
+      "configuration, and for the same reason: an operation that gains a field does not change",
+      "the schema, so a service that does not know the field ignores it in silence and a client",
+      "that sent values believes in values that are not there. The typed client compares the echo",
+      "with what it sent and answers a named negative of the wire's own shape when they differ.",
+      "The echo carries the DELIVERED values and not the defaults of the declaration, which are",
+      "the business of the child that compiles the script. The value that carries the answer",
+      "gained the field, so a consumer that constructs it with the previous number of arguments",
+      "breaks, and no published consumer exists to break: the artifact has never been published."
     ]
   },
   "surfaces": {

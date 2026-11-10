@@ -81,7 +81,7 @@ Give the run a journal and a control root, and every step, event and output stay
 
 ```bash
 "$PIPELINEK" run --db state/pipelinek.db --control-root state/ctl hello.pipeline.kts
-# {"schema":"pipelinek.launch/1","runId":"34b28ddc-…","status":"Launched"}
+# {"schema":"pipelinek.launch/1","runId":"34b28ddc-…","correlationId":"…","ownerId":"…","startedAtMs":1730000000000,"status":"Launched"}
 
 "$PIPELINEK" inspect <runId> --db state/pipelinek.db --control-root state/ctl
 "$PIPELINEK" events  --db state/pipelinek.db <runId>          # typed events, one JSON per line
@@ -256,7 +256,7 @@ The last row is the honest one: the capabilities `runtime.inspect.v1`, `runtime.
 pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock
 ```
 
-All three paths are required and none of them has a default: the service reads the substrate you name and listens where you say, so what the socket says about a run is comparable with what `inspect --state` says over the same inputs. The service never writes to the substrate it serves, and it does not create the control root it is about to read.
+All three paths are required and none of them has a default: the service reads the substrate you name and listens where you say, so what the socket says about a run is comparable with what `inspect --state` says over the same inputs. The service never writes to the substrate it serves — the runs it starts do, in the store you named — and it does not create the control root it is about to read. What the service writes is its own, next to the socket: the file of the authorizations it owns, the record of the starts (`starts`) and the directory of the supervised runs (`supervisions`).
 
 The socket is a file of the filesystem, and its mode is the boundary. The socket is `rw-------`, and its directory has to be private (`rwx------` when the service creates it) — if the directory grants anything to the group or to others, the service refuses to start rather than publish a socket those users could open.
 
@@ -270,7 +270,7 @@ One request per line, one answer per line, in JSON, with the version of the prot
 {"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
-The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions` — so a client reads a word and not a sentence.
+The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). It can also START a run, which is a fourth door with a right of its own. Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused` — so a client reads a word and not a sentence.
 
 #### Who may ask, and what the boundary really is
 
@@ -280,7 +280,7 @@ The service issues one credential itself the first time it starts and keeps it i
 <token> <label> <scope>
 ```
 
-The scope is `all`, `none`, or the run ids it covers. The label is for the operator and **never travels**: a label that travels can be enumerated by a client that presents tokens until one is accepted.
+The scope is `all`, `none`, or the run ids it covers, and it may carry the suffix `+start` when the client may also start runs. The label is for the operator and **never travels**: a label that travels can be enumerated by a client that presents tokens until one is accepted.
 
 Two profiles, and each one says out loud, when the service starts, what it promises:
 
@@ -292,6 +292,35 @@ Neither profile separates two processes of the same user, and the service says t
 The service holds sixteen connections at once and serves eight subscriptions at once, and the two budgets are separate on purpose: a subscription occupies its connection while it lasts, while a question occupies it for a line. With one budget, sixteen subscribers could take every slot and deny `version` and `health` — the two questions that say whether the service is alive. A subscription over the budget is refused by name (`too-many-subscriptions`).
 
 The `run.state` answer carries the WHOLE observation: the attempt, the lease and its fencing token, the journal position, the tails of the output and the terminal with its outcome. A client that rebuilds it gets the same `RuntimeObservation` the command line renders, and there is no second shape of the same fact.
+
+#### Starting a run
+
+The service can also START a run. It is a separate door with a right of its own, because starting a run is not a question about a run: the scope of a client that may start says so in its own words.
+
+The scope of an authorization grows with the suffix `+start`: `all+start` may read every run AND start runs, `none+start` may start runs and read nothing. A scope without the suffix starts nothing, and the refusal is a name of its own (`start-not-authorized`) — not `not-authorized`, because the token was accepted and what it lacks is the right.
+
+The operator declares what the service may start, and the declaration is part of the command:
+
+```bash
+pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock \
+  --scripts ./pipelines --workspaces ./scratch \
+  --run-deadline-ms 900000 --max-supervised-runs 4
+```
+
+`--scripts` is the directory of the scripts a client may name and `--workspaces` the directory of the workspaces. A client names a script RELATIVE TO that directory —`sub/build.kts` is a name, `/etc/passwd` and `../secret` are not— and a name that leaves the directory —absolute, walking up, or a link that points out of it— is refused by name (`script-not-admitted`, `workspace-not-admitted`). Without `--scripts` the service starts and starts nothing: a service that could run whatever it is asked to run would be a command line with a socket in front of it. `--run-deadline-ms` is how long a supervised run may live, `--max-supervised-runs` how many the service watches at once (`too-many-supervised-runs`), and `--run-allow-network` says whether a supervised run may reach the network.
+
+The request names a script and, maybe, a workspace and an idempotency key:
+
+```json
+{"schema":"pipelinek.service/2","op":"run.start","script":"build.kts","workspace":"scratch","idempotencyKey":"order-42","auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"runId":"34b28ddc-…","correlationId":"…","ownerId":"…","startedAtMs":0}}
+```
+
+The answer is the identity of a run and NOT its outcome: the run is still going when the answer is written, and what it concludes is another question's answer (`run.state`). The answer is written only after the child took its lease and printed its own receipt of the launch, so "started" means "this run exists and owns itself".
+
+The key is what makes a retry safe: the same key with the same request answers with the SAME run, and the same key with another request is a conflict (`idempotency-conflict`). The promise is durable — the service keeps the record of the starts in the file it owns next to the socket, `starts` — so a client that retries after a restart gets the run that already started.
+
+The child is a process, launched through the port that already exists for launching processes, and it is the same `pipelinek run` the operator would write on the command line. The run writes in the same store and the same control root the service reads, so a run started over the socket is a run that `run.state`, `events.follow` and `output.follow` can answer about — and it outlives the connection that asked for it.
 
 #### Subscriptions
 
@@ -335,6 +364,14 @@ The token is REQUIRED: a client that could be built without one would connect, w
 
 `runState` returns the same `RuntimeObservation` the command line renders, so the answer a client reads and the line an operator sees are the same fact.
 
+`startRun` asks the service to start a run and returns its identity — the run id, the correlation, the owner and the moment it took its ownership — as a `ServiceRunStart`:
+
+```kotlin
+val started = client.startRun("build.kts", workspace = "scratch", idempotencyKey = "order-42")
+```
+
+The key makes the retry safe: the same key with the same request answers with the same run, and the same key with another request is refused with `idempotency-conflict`. The client does not own the run: the answer is the identity of a run that keeps going after the connection closes.
+
 The command line can speak to a service too, with `--endpoint`:
 
 ```bash
@@ -345,7 +382,7 @@ pipelinek inspect --state --endpoint ./state/pipelinek.sock 34b28ddc-…
 
 The command line reads the token from the `PIPELINEK_SERVICE_TOKEN` variable, or from the file the service owns next to its socket, or from the file `--authorization-file` names. It never prints it: a secret this CLI prints ends up in a scrollback, in a log and in a shell history.
 
-The client's deadline closes the connection it opened and touches nothing else: the service is read-only, so a client that goes away leaves the run exactly as it was.
+The client's deadline closes the connection it opened and touches nothing else: the questions the service answers are read-only, so a client that goes away leaves a run exactly as it was. A run the client STARTED keeps going: the answer is the identity of a run, not its owner.
 
 ### Telemetry
 

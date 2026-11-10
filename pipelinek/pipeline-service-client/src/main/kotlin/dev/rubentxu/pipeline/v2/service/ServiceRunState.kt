@@ -197,26 +197,8 @@ object ServiceRunState {
                 latestTerminalAtMs = positionDocument.long("latestTerminalAtMs"),
             )
         } ?: return unreadable("journalPosition")
-        val tails = document["outputTails"]?.let { value ->
-            val array = value as? JsonArray
-                ?: return unreadable("outputTails")
-            val tails = mutableListOf<OutputTailView>()
-            for (element in array) {
-                val tailDocument = element as? JsonObject ?: return unreadable("outputTails")
-                val stream = tailDocument.string("stream") ?: return unreadable("outputTails.stream")
-                val tailState = when (tailDocument.string("state")) {
-                    "open" -> TailState.Open(tailDocument.long("end") ?: return unreadable("outputTails.end"))
-                    "sealed" -> TailState.Sealed(tailDocument.long("end") ?: return unreadable("outputTails.end"))
-                    else -> return unreadable("outputTails.state")
-                }
-                tails += OutputTailView(
-                    stream = OutputStreamId(stream),
-                    state = tailState,
-                    lastOrdinal = tailDocument.long("lastOrdinal"),
-                )
-            }
-            tails
-        } ?: return unreadable("outputTails")
+        val readTails = readOutputTails(document)
+        val tails = readTails.tails ?: return unreadable(readTails.detail ?: "outputTails")
         val process = document["process"]?.let { value ->
             val processDocument = value as? JsonObject ?: return unreadable("process")
             val host = processDocument.string("host") ?: return unreadable("process.host")
@@ -286,56 +268,97 @@ object ServiceRunState {
         return ServiceRunStateDecoding.Observed(RuntimeObservation.Unobservable(reason))
     }
 
-    /** The refusal of a document that does not carry an observation. */
-    private fun unreadable(field: String): ServiceRunStateDecoding =
-        ServiceRunStateDecoding.Unreadable("missing or unreadable '$field'")
-
-    /** The extent a tail's state carries. */
-    private fun tailExtent(state: TailState): Long = when (state) {
-        is TailState.Open -> state.committedEnd
-        is TailState.Sealed -> state.finalEnd
-    }
-
-    /** The word a terminal carries. */
-    private fun outcomeWord(terminal: TerminalObservation): String = when (terminal) {
-        is TerminalObservation.Succeeded -> "succeeded"
-        is TerminalObservation.Failed -> "failed"
-        is TerminalObservation.Unstable -> "unstable"
-        is TerminalObservation.Aborted -> "aborted"
-        is TerminalObservation.Cancelled -> "cancelled"
-        is TerminalObservation.Other -> "other"
-    }
-
-    /** The moment a terminal carries. */
-    private fun terminalAt(terminal: TerminalObservation): Long = when (terminal) {
-        is TerminalObservation.Succeeded -> terminal.terminalAtMs
-        is TerminalObservation.Failed -> terminal.terminalAtMs
-        is TerminalObservation.Unstable -> terminal.terminalAtMs
-        is TerminalObservation.Aborted -> terminal.terminalAtMs
-        is TerminalObservation.Cancelled -> terminal.terminalAtMs
-        is TerminalObservation.Other -> terminal.terminalAtMs
-    }
-
-    /** The word a failure of the substrate carries. */
-    private fun failureWord(failure: IntrospectionFailure): String = when (failure) {
-        IntrospectionFailure.NoControlRoot -> "no-control-root"
-        IntrospectionFailure.NoEventStore -> "no-event-store"
-        IntrospectionFailure.NoOutputPlane -> "no-output-plane"
-        IntrospectionFailure.NoJournal -> "no-journal"
-        is IntrospectionFailure.StorageError -> "storage-error"
-    }
-
-    /** The string [key] holds, or null when it does not hold a string. */
-    private fun JsonObject.string(key: String): String? =
-        this[key]?.jsonPrimitive?.contentOrNull
-
-    /** The int [key] holds, or null when it does not hold one. */
-    private fun JsonObject.int(key: String): Int? = this[key]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
-
-    /** The long [key] holds, or null when it does not hold one. */
-    private fun JsonObject.long(key: String): Long? =
-        this[key]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
 }
+
+/** The refusal of a document that does not carry an observation. */
+private fun unreadable(field: String): ServiceRunStateDecoding =
+    ServiceRunStateDecoding.Unreadable("missing or unreadable '$field'")
+
+/** The extent a tail's state carries. */
+private fun tailExtent(state: TailState): Long = when (state) {
+    is TailState.Open -> state.committedEnd
+    is TailState.Sealed -> state.finalEnd
+}
+
+/** The word a terminal carries. */
+private fun outcomeWord(terminal: TerminalObservation): String = when (terminal) {
+    is TerminalObservation.Succeeded -> "succeeded"
+    is TerminalObservation.Failed -> "failed"
+    is TerminalObservation.Unstable -> "unstable"
+    is TerminalObservation.Aborted -> "aborted"
+    is TerminalObservation.Cancelled -> "cancelled"
+    is TerminalObservation.Other -> "other"
+}
+
+/** The moment a terminal carries. */
+private fun terminalAt(terminal: TerminalObservation): Long = when (terminal) {
+    is TerminalObservation.Succeeded -> terminal.terminalAtMs
+    is TerminalObservation.Failed -> terminal.terminalAtMs
+    is TerminalObservation.Unstable -> terminal.terminalAtMs
+    is TerminalObservation.Aborted -> terminal.terminalAtMs
+    is TerminalObservation.Cancelled -> terminal.terminalAtMs
+    is TerminalObservation.Other -> terminal.terminalAtMs
+}
+
+/** The word a failure of the substrate carries. */
+private fun failureWord(failure: IntrospectionFailure): String = when (failure) {
+    IntrospectionFailure.NoControlRoot -> "no-control-root"
+    IntrospectionFailure.NoEventStore -> "no-event-store"
+    IntrospectionFailure.NoOutputPlane -> "no-output-plane"
+    IntrospectionFailure.NoJournal -> "no-journal"
+    is IntrospectionFailure.StorageError -> "storage-error"
+}
+
+/** The string [key] holds, or null when it does not hold a string. */
+private fun JsonObject.string(key: String): String? =
+    this[key]?.jsonPrimitive?.contentOrNull
+
+/** The int [key] holds, or null when it does not hold one. */
+private fun JsonObject.int(key: String): Int? = this[key]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+
+/** The long [key] holds, or null when it does not hold one. */
+private fun JsonObject.long(key: String): Long? =
+    this[key]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+/**
+ * The output tails of [document], or the detail of the field that does not
+ * hold them.
+ *
+ * ## Why the reading is apart from the observation
+ *
+ * Because the tails are a LIST of things, each with its own fields, and
+ * reading them inside the observation made the reading of a running run
+ * unreadable: the observation says what a run is, and the reading of the
+ * tails says what the document does or does not carry.
+ */
+private fun readOutputTails(document: JsonObject): OutputTailsRead {
+    val value = document["outputTails"] ?: return OutputTailsRead(null, "outputTails")
+    val array = value as? JsonArray ?: return OutputTailsRead(null, "outputTails")
+    val tails = mutableListOf<OutputTailView>()
+    for (element in array) {
+        val tailDocument = element as? JsonObject ?: return OutputTailsRead(null, "outputTails")
+        val stream = tailDocument.string("stream") ?: return OutputTailsRead(null, "outputTails.stream")
+        val tailState = when (tailDocument.string("state")) {
+            "open" -> TailState.Open(tailDocument.long("end") ?: return OutputTailsRead(null, "outputTails.end"))
+            "sealed" -> TailState.Sealed(tailDocument.long("end") ?: return OutputTailsRead(null, "outputTails.end"))
+            else -> return OutputTailsRead(null, "outputTails.state")
+        }
+        tails += OutputTailView(
+            stream = OutputStreamId(stream),
+            state = tailState,
+            lastOrdinal = tailDocument.long("lastOrdinal"),
+        )
+    }
+    return OutputTailsRead(tails, null)
+}
+
+/**
+ * The output tails a document carries, or the detail of the field that does
+ * not hold them.
+ */
+private data class OutputTailsRead(
+    val tails: List<OutputTailView>?,
+    val detail: String?,
+)
 
 /**
  * What the `run.state` document turned out to be.

@@ -35,6 +35,10 @@ object FrameOrdinalToken {
      * the wire's vocabulary. Read through a getter, the value travels with the
      * artifact, and a consumer that upgrades picks the new one up.
      */
+    // The rule is wrong HERE, and the KDoc above says why: a `const` would be
+    // inlined into every consumer, and the ABI check would not see the change
+    // of the wire's vocabulary.
+    @Suppress("MayBeConstant")
     val PREFIX: String = "out-frame-ord-v1"
 
     /**

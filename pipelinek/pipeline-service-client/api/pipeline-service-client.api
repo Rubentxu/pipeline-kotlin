@@ -70,6 +70,8 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceClient {
 	public final fun output (Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public static synthetic fun output$default (Ldev/rubentxu/pipeline/v2/service/ServiceClient;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun runState (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public final fun startRun (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
+	public static synthetic fun startRun$default (Ldev/rubentxu/pipeline/v2/service/ServiceClient;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 	public final fun version ()Ldev/rubentxu/pipeline/v2/service/ServiceAnswer;
 }
 
@@ -214,9 +216,12 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceLine$Refused : dev/ru
 
 public final class dev/rubentxu/pipeline/v2/service/ServiceProtocol {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceProtocol;
+	public static final field MAX_IDEMPOTENCY_KEY_LENGTH I
 	public static final field MAX_LINE_BYTES I
 	public static final field MAX_RUN_ID_LENGTH I
+	public static final field MAX_SCRIPT_NAME_LENGTH I
 	public static final field MAX_TOKEN_LENGTH I
+	public static final field MAX_WORKSPACE_NAME_LENGTH I
 	public static final field SCHEMA Ljava/lang/String;
 }
 
@@ -251,6 +256,19 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$HeldByAnother
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getFencingToken ()J
 	public final fun getHeldBy ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$IdempotencyConflict : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$IdempotencyConflict;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$IdempotencyConflict;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$IdempotencyConflict;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKey ()Ljava/lang/String;
 	public fun getKind ()Ljava/lang/String;
 	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
 	public fun hashCode ()I
@@ -376,6 +394,43 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$RunNotAuthori
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$RunStartRefused : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$RunStartRefused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$RunStartRefused;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$RunStartRefused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetail ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$ScriptNotAdmitted : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$ScriptNotAdmitted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$ScriptNotAdmitted;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$ScriptNotAdmitted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getScript ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$StartNotAuthorized : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$StartNotAuthorized;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$StorageFailed : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
 	public fun <init> (Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -400,6 +455,15 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$TooManyConnec
 
 public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$TooManySubscriptions : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$TooManySubscriptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$TooManySupervisedRuns : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$TooManySupervisedRuns;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getKind ()Ljava/lang/String;
 	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
@@ -444,6 +508,19 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$UnknownRunOpe
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/service/ServiceRefusal$WorkspaceNotAdmitted : dev/rubentxu/pipeline/v2/service/ServiceRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$WorkspaceNotAdmitted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$WorkspaceNotAdmitted;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRefusal$WorkspaceNotAdmitted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKind ()Ljava/lang/String;
+	public fun getPayload ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getWorkspace ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/service/ServiceRequest {
 	public abstract fun getSchema ()Ljava/lang/String;
 }
@@ -468,6 +545,23 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$RunState : de
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getRunId ()Ljava/lang/String;
 	public fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun : dev/rubentxu/pipeline/v2/service/ServiceRequest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRequest$StartRun;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIdempotencyKey ()Ljava/lang/String;
+	public fun getSchema ()Ljava/lang/String;
+	public final fun getScript ()Ljava/lang/String;
+	public final fun getWorkspace ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -509,6 +603,23 @@ public final class dev/rubentxu/pipeline/v2/service/ServiceResponse$Refused : de
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/service/ServiceRefusal;
 	public fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/service/ServiceRunStart {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/service/ServiceRunStart;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/service/ServiceRunStart;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceRunStart;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCorrelationId ()Ljava/lang/String;
+	public final fun getOwnerId ()Ljava/lang/String;
+	public final fun getRunId ()Ljava/lang/String;
+	public final fun getStartedAtMs ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

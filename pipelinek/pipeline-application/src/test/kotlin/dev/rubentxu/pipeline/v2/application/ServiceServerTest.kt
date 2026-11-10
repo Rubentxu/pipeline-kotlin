@@ -449,6 +449,58 @@ class ServiceServerTest {
     }
 
     /**
+     * A client that may not start runs is told so by name.
+     *
+     * The refusal is NOT `not-authorized`: the token was accepted, and what
+     * it lacks is the right to start. A client that could not tell the two
+     * apart would learn which authorizations exist by presenting tokens
+     * until one is accepted.
+     */
+    @Test
+    fun `a client that may not start runs is refused with a name`() {
+        val connection = ScriptedConnection(ServiceRead.Line(START_REQUEST))
+
+        serve(connection)
+
+        assertEquals(
+            "start-not-authorized",
+            refusalKindOf(connection),
+            "a client that may read but not start is told which right it lacks",
+        )
+    }
+
+    @Test
+    fun `a client that may start runs reaches the door of the starts`() {
+        val connection = ScriptedConnection(ServiceRead.Line(START_REQUEST))
+        val starter = ServiceTestStarter(
+            ServiceStartOutcome.Accepted("run-1", "corr-1", "owner-1", 1700L),
+        )
+
+        val server = ServiceServer(
+            ScriptedTransport(listOf(connection)),
+            operations(starter),
+            streets(),
+            authorizations(ServiceScope.MayStart(ServiceScope.All)),
+        )
+        try {
+            server.serve()
+            connection.awaitAnswered()
+        } finally {
+            server.close()
+        }
+
+        val answer = answerOf(connection)
+        assertEquals("answer", answer["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "run-1",
+            answer["result"]?.jsonObject?.get("runId")?.jsonPrimitive?.content,
+            "the answer of a start is the identity of the run that started",
+        )
+        assertEquals(1, starter.asked.size, "the door of the starts was opened once")
+        assertEquals("build.kts", starter.asked.single().script)
+    }
+
+    /**
      * Serves the scripted connections and waits for the answers.
      */
     private fun serve(vararg connections: ScriptedConnection) {
@@ -490,17 +542,19 @@ class ServiceServerTest {
      * health, and the shape of a refusal — and not about a run, so the port
      * behind them is never asked.
      */
-    private fun operations(): ServiceOperations = ServiceOperations(
-        introspection = UnusedPort(),
-        substrate = {
-            ServiceSubstrate(
-                eventStore = "/tmp/state/pipelinek.db",
-                controlRoot = "/tmp/state/ctl",
-                eventStorePresent = true,
-                controlRootPresent = true,
-            )
-        },
-    )
+    private fun operations(starter: ServiceRunStarter = ServiceTestStarter()): ServiceOperations =
+        ServiceOperations(
+            introspection = UnusedPort(),
+            substrate = {
+                ServiceSubstrate(
+                    eventStore = "/tmp/state/pipelinek.db",
+                    controlRoot = "/tmp/state/ctl",
+                    eventStorePresent = true,
+                    controlRootPresent = true,
+                )
+            },
+            starts = starter,
+        )
 
     /**
      * The streets, faked.
@@ -662,5 +716,9 @@ class ServiceServerTest {
         /** A subscription whose run id is a path and not a run id. */
         private const val SPOOFED_OUTPUT_REQUEST: String =
             """{"schema":"pipelinek.service/2","op":"output.follow","runId":"../../etc/passwd","auth":"token-1"}"""
+
+        /** A request to start a run, with the credential. */
+        private const val START_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"run.start","script":"build.kts","auth":"token-1"}"""
     }
 }

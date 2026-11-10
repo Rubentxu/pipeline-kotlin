@@ -196,14 +196,36 @@ internal class ServiceServer(
     private val liveSubscriptions = AtomicInteger(0)
 
     /**
-     * The workers. One per connection in flight, and no more: the pool is
-     * sized by the same limit that bounds the connections, so a client over
-     * the limit is refused rather than queued.
+     * The workers of the QUESTIONS. One per connection in flight, and no
+     * more: the pool is sized by the same limit that bounds the
+     * connections, so a client over the limit is refused rather than queued.
      */
     private val worker: ExecutorService = Executors.newFixedThreadPool(
         limits.maxConnections,
     ) { runnable ->
         Thread(runnable, "pipelinek-service").apply { isDaemon = true }
+    }
+
+    /**
+     * The workers of the STARTS, and a pool of their own.
+     *
+     * ## Why a start does not run in the pool of the questions
+     *
+     * Because a start is not an instant: the service waits for the child
+     * to take its ownership, and that wait is as long as the launch takes.
+     * A start that ran in the pool of the questions would hold a thread of
+     * it for that whole time, and sixteen clients that ask for a run at
+     * once would leave the service with no thread to answer `version` and
+     * `health` —the two questions that say whether the service is alive—.
+     *
+     * The budget of the connections still bounds the starts: a start holds
+     * its connection open while it waits, so the same limit that refuses
+     * the seventeenth client refuses it here too.
+     */
+    private val startWorker: ExecutorService = Executors.newFixedThreadPool(
+        limits.maxConnections,
+    ) { runnable ->
+        Thread(runnable, "pipelinek-service-start").apply { isDaemon = true }
     }
 
     /**
@@ -251,9 +273,10 @@ internal class ServiceServer(
      * there is one place that closes a connection.
      */
     private fun serveConnection(connection: ServiceConnection) {
+        var handedOver = false
         try {
             when (val read = connection.readLine(limits.maxLineBytes, limits.readDeadlineMillis)) {
-                is ServiceRead.Line -> serveLine(connection, read.text)
+                is ServiceRead.Line -> handedOver = serveLine(connection, read.text)
                 is ServiceRead.TooLarge ->
                     connection.writeLine(answerOfRefusal(ServiceRefusal.RequestTooLarge))
                 is ServiceRead.TimedOut -> Unit
@@ -264,7 +287,22 @@ internal class ServiceServer(
             // ends. The service keeps serving the others: one broken client
             // is not a reason to stop.
         } finally {
+            if (!handedOver) closeConnection(connection)
+        }
+    }
+
+    /**
+     * Closes [connection] and gives back the slot it held.
+     *
+     * The connection of a START is closed by the worker that answers it,
+     * and not here: the answer of a start is written after the wait, and a
+     * connection closed before its answer would close the mouth of the
+     * client that is waiting for it.
+     */
+    private fun closeConnection(connection: ServiceConnection) {
+        try {
             connection.close()
+        } finally {
             openConnections.decrementAndGet()
         }
     }
@@ -274,6 +312,14 @@ internal class ServiceServer(
      *
      * A question is answered with one line; a subscription is served by the
      * street, which writes as many lines as the street has.
+     *
+     * ## What the answer says about the connection
+     *
+     * Whether the connection was HANDED OVER to another worker: a start is
+     * answered by the worker of the starts, and the connection is closed by
+     * that worker, because the answer of a start is written after the wait
+     * for the ownership. A connection closed before its answer would close
+     * the mouth of the client that is waiting for it.
      *
      * ## Where the authorization happens
      *
@@ -291,24 +337,80 @@ internal class ServiceServer(
      * nothing it did not already know, and it keeps the codec's refusals
      * about the line and the server's refusals about the client.
      */
-    private fun serveLine(connection: ServiceConnection, text: String) {
+    private fun serveLine(connection: ServiceConnection, text: String): Boolean {
         when (val decoded = ServiceCodec.decode(text)) {
             is ServiceDecoding.Decoded -> {
-                when (val decision = decide(decoded.credential, runIdOf(decoded.request))) {
-                    is ServiceAuthorizationOutcome.Authorized ->
-                        connection.writeLine(ServiceCodec.encode(operations.answer(decoded.request)))
+                when (val decision = decide(decoded)) {
+                    is ServiceAuthorizationOutcome.Authorized -> {
+                        if (decoded.request is ServiceRequest.StartRun) {
+                            return serveStart(connection, decoded)
+                        }
+                        connection.writeLine(
+                            ServiceCodec.encode(
+                                operations.answer(
+                                    decoded.request,
+                                    authorizations.digestOfAuthorized(decoded.credential),
+                                ),
+                            ),
+                        )
+                    }
 
                     is ServiceAuthorizationOutcome.NotAuthorized ->
                         connection.writeLine(answerOfRefusal(ServiceRefusal.NotAuthorized))
 
                     is ServiceAuthorizationOutcome.RunNotAuthorized ->
                         connection.writeLine(answerOfRefusal(ServiceRefusal.RunNotAuthorized(decision.runId)))
+
+                    is ServiceAuthorizationOutcome.StartNotAuthorized ->
+                        connection.writeLine(answerOfRefusal(ServiceRefusal.StartNotAuthorized))
                 }
             }
 
             is ServiceDecoding.Subscribed -> serveSubscription(connection, decoded)
 
             is ServiceDecoding.Refused -> connection.writeLine(answerOfRefusal(decoded.refusal))
+        }
+        return false
+    }
+
+    /**
+     * Serves a request to START a run, in the pool of the starts.
+     *
+     * The connection is handed over to the worker that answers it, and the
+     * worker closes it when it is done: the answer of a start is written
+     * after the wait for the ownership, and the connection has to stay open
+     * until then.
+     *
+     * It says whether the connection was handed over: a service that is
+     * stopping has nobody to answer the start, and the connection is closed
+     * by the worker that could not take it.
+     */
+    private fun serveStart(connection: ServiceConnection, decoded: ServiceDecoding.Decoded): Boolean {
+        try {
+            startWorker.execute {
+                try {
+                    connection.writeLine(
+                        ServiceCodec.encode(
+                            operations.answer(
+                                decoded.request,
+                                authorizations.digestOfAuthorized(decoded.credential),
+                            ),
+                        ),
+                    )
+                } catch (_: Exception) {
+                    // A connection that fails while it is answered is a
+                    // connection that ends, and the client reads it as a
+                    // service that closed the connection without answering.
+                } finally {
+                    closeConnection(connection)
+                }
+            }
+            return true
+        } catch (_: RejectedExecutionException) {
+            // The service is stopping and the worker is already closed:
+            // this request has nobody to answer it, and the connection is
+            // closed by the worker that owns it.
+            return false
         }
     }
 
@@ -325,7 +427,7 @@ internal class ServiceServer(
      * did not happen would leak the budget of a street that ended.
      */
     private fun serveSubscription(connection: ServiceConnection, decoded: ServiceDecoding.Subscribed) {
-        when (val decision = decide(decoded.credential, decoded.request.runId)) {
+        when (val decision = authorizations.decide(decoded.credential, decoded.request.runId)) {
             is ServiceAuthorizationOutcome.NotAuthorized -> {
                 connection.writeLine(answerOfRefusal(ServiceRefusal.NotAuthorized))
                 return
@@ -333,6 +435,11 @@ internal class ServiceServer(
 
             is ServiceAuthorizationOutcome.RunNotAuthorized -> {
                 connection.writeLine(answerOfRefusal(ServiceRefusal.RunNotAuthorized(decision.runId)))
+                return
+            }
+
+            is ServiceAuthorizationOutcome.StartNotAuthorized -> {
+                connection.writeLine(answerOfRefusal(ServiceRefusal.StartNotAuthorized))
                 return
             }
 
@@ -364,25 +471,37 @@ internal class ServiceServer(
     }
 
     /**
-     * What the client that presented [credential] may ask about [runId].
+     * What the client that presented the credential of [decoded] may ask.
      *
      * The decision belongs to the authorization core and it is pure: this only
      * asks it, and the answer is a fact about the authorizations the service
      * was given, not about the socket or the clock.
+     *
+     * ## Why starting is a DIFFERENT question
+     *
+     * Because asking about a run is about a run IN PARTICULAR, and the scope
+     * says which runs may be asked about. Starting a run is about a RIGHT,
+     * and no run is out of scope of it: the scope of a client that may
+     * start says so in its own words.
      */
-    private fun decide(credential: String?, runId: String?): ServiceAuthorizationOutcome =
-        authorizations.decide(credential, runId)
+    private fun decide(decoded: ServiceDecoding.Decoded): ServiceAuthorizationOutcome =
+        when (val request = decoded.request) {
+            is ServiceRequest.StartRun -> authorizations.decideStart(decoded.credential)
+            else -> authorizations.decide(decoded.credential, runIdOf(request))
+        }
 
     /**
      * The run [request] is about, or null when it is about the service itself.
      *
      * A question about the version or the health of the service names no
-     * run, so only the authorization decides it.
+     * run, so only the authorization decides it. A request to START a run
+     * names no run either: the run it starts does not exist yet.
      */
     private fun runIdOf(request: ServiceRequest): String? = when (request) {
         is ServiceRequest.Version -> null
         is ServiceRequest.Health -> null
         is ServiceRequest.RunState -> request.runId
+        is ServiceRequest.StartRun -> null
     }
 
     /**
@@ -410,5 +529,6 @@ internal class ServiceServer(
     override fun close() {
         transport.close()
         worker.shutdownNow()
+        startWorker.shutdownNow()
     }
 }

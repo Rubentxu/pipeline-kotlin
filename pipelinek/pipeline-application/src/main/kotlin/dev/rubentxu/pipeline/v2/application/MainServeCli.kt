@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
@@ -15,7 +16,9 @@ import java.nio.file.Paths
  */
 internal const val SERVE_USAGE: String =
     "Usage: pipelinek serve --db <path> --control-root <path> --socket <path> " +
-        "[--trust-profile <name>] [--authorization-file <path>]"
+        "[--trust-profile <name>] [--authorization-file <path>] " +
+        "[--scripts <dir>] [--workspaces <dir>] " +
+        "[--run-deadline-ms <n>] [--run-allow-network] [--max-supervised-runs <n>]"
 
 /**
  * The requests `serve` accepts.
@@ -35,6 +38,14 @@ internal const val SERVE_USAGE: String =
  * service declares, and the file names where the authorizations are read
  * from. They are OPTIONAL, and the defaults are the ones the profile says:
  * `trusted-local`, and the file the service owns next to its socket.
+ *
+ * The last five are the DECLARATION of what the service may start: the
+ * directory of the scripts it may run, the directory of the workspaces it
+ * may name, the deadline of a supervised run, whether a supervised run may
+ * reach the network, and how many of them the service watches at once.
+ * Without `--scripts` the service starts and cannot start runs: a service
+ * that could run whatever it is asked to run would not be a service with a
+ * boundary, it would be a command line with a socket in front of it.
  */
 internal val SERVE_REQUEST: CliRequest = CliRequest(
     options = listOf(
@@ -43,8 +54,44 @@ internal val SERVE_REQUEST: CliRequest = CliRequest(
         CliOption("--socket", takesValue = true),
         CliOption("--trust-profile", takesValue = true),
         CliOption("--authorization-file", takesValue = true),
+        CliOption("--scripts", takesValue = true),
+        CliOption("--workspaces", takesValue = true),
+        CliOption("--run-deadline-ms", takesValue = true),
+        CliOption("--run-allow-network", takesValue = false),
+        CliOption("--max-supervised-runs", takesValue = true),
     ),
 )
+
+/**
+ * How long a supervised run may live, when the operator does not say.
+ *
+ * One hour: long enough for a build, short enough that a run that hangs
+ * does not hold a slot of the budget for ever.
+ */
+internal const val DEFAULT_RUN_DEADLINE_MILLIS: Long = 3_600_000L
+
+/**
+ * How many runs the service watches at once, when the operator does not say.
+ */
+internal const val DEFAULT_MAX_SUPERVISED_RUNS: Int = 4
+
+/**
+ * The directory, next to the socket, where the supervised runs are watched.
+ *
+ * It is the operator's: the port writes each child's result there, and the
+ * child's error output goes next to it. The service does not read those
+ * files for its answers — it reads the run's own facts from the store.
+ */
+internal const val SUPERVISION_DIRECTORY: String = "supervisions"
+
+/**
+ * The class the child process is launched with.
+ *
+ * The same class the operator launches: a run started over the socket is a
+ * run of the same product, run the same way, and not a second entry point
+ * that could drift from it.
+ */
+internal const val SERVICE_MAIN_CLASS: String = "dev.rubentxu.pipeline.v2.application.MainKt"
 
 /**
  * `serve` — the local service over a Unix domain socket.
@@ -91,92 +138,34 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
     val socketPath = accepted.values["--socket"]
         ?: return refuseMissing(err, "--socket <path>", "to name the socket the service listens on")
 
-    // The profile is a closed vocabulary: the word says what the operator
-    // ASKS for, and an unknown word is refused instead of being taken for
-    // the default. A profile the operator misspelled is a boundary nobody
-    // chose, and a boundary nobody chose is not a boundary.
-    val profile = accepted.values["--trust-profile"]?.let { word ->
-        ServiceTrustProfile.parse(word)
-            ?: return refuseStartup(
-                err,
-                ServiceStartupRefusal.TrustProfileUnknown,
-                "the trust profile is not one this build serves: '$word'",
-            )
-    } ?: ServiceTrustProfile.TrustedLocal
-
-    // The socket may not BE a file the service reads or writes. A socket that
-    // IS the store would make the store not a store, and a socket that IS
-    // the file of the authorizations would put the secret and the door in
-    // the same inode.
-    //
-    // What is NOT refused is the socket living NEXT TO the material: the
-    // natural layout of an operator —the store, the control root and the
-    // socket in one directory— is the one this rule has to let through.
     val socketAbsolute = Path.of(socketPath).toAbsolutePath().normalize()
     val dbAbsolute = Path.of(dbPath).toAbsolutePath().normalize()
     val controlAbsolute = Path.of(controlRoot).toAbsolutePath().normalize()
-    if (socketAbsolute == dbAbsolute || socketAbsolute == controlAbsolute) {
-        return refuseStartup(
-            err,
-            ServiceStartupRefusal.SocketPathIsReserved,
-            "the socket would be a file the service reads: $socketAbsolute",
-        )
-    }
 
-    // The authorizations come from the place the profile names: the file the
-    // operator named, the file the service owns next to its socket, or the
-    // standard input. The two profiles do not mix: a profile that keeps the
-    // authorization off the disk cannot read it from the disk.
-    val namedFile = accepted.values["--authorization-file"]
-    if (namedFile != null && profile == ServiceTrustProfile.Isolated) {
-        return refuseStartup(
-            err,
-            ServiceStartupRefusal.AuthorizationFileRefusedByTheProfile,
-            "the isolated profile reads the authorizations from the standard input, " +
-                "and --authorization-file names a file",
-        )
+    val boundary = when (
+        val reading = readBoundary(accepted, socketAbsolute, dbAbsolute, controlAbsolute, err)
+    ) {
+        is BoundaryReading.Read -> reading.boundary
+        is BoundaryReading.Refused -> return reading.exit
     }
-    val authorizationPath = namedFile?.let { Path.of(it) }
-        ?: socketAbsolute.parent?.resolve(ServiceAuthorizationStore.OWNED_FILE_NAME)
-        ?: return refuseStartup(
-            err,
-            ServiceStartupRefusal.SocketPathUnavailable,
-            "the socket has no directory: $socketPath",
-        )
+    val profile = boundary.profile
+    val authorizationPath = boundary.authorizationPath
+    val authorizations = boundary.authorizations
 
-    // The socket may not BE the file of the authorizations: the service
-    // writes that file and then binds the socket, and two things on one
-    // inode is one of them broken.
-    if (socketAbsolute == authorizationPath.toAbsolutePath().normalize()) {
-        return refuseStartup(
-            err,
-            ServiceStartupRefusal.SocketPathIsReserved,
-            "the socket would be the file of the authorizations: $socketAbsolute",
-        )
+    // The DECLARATION of what this service may start, and the record of the
+    // starts that backs the promise a key makes. Both are read before the
+    // substrate, because a policy that is not a policy has to be refused
+    // before anything is opened.
+    val policy = when (val reading = readRunPolicy(accepted, socketAbsolute, err)) {
+        is RunPolicyReading.Read -> reading.declaration
+        is RunPolicyReading.Refused -> return reading.exit
     }
-
-    val reading = when (profile) {
-        ServiceTrustProfile.TrustedLocal ->
-            ServiceAuthorizationStore.ofFile(authorizationPath, owned = namedFile == null)
-
-        ServiceTrustProfile.Isolated ->
-            ServiceAuthorizationStore.readStandardInput(System.`in`)
-    }
-    val authorizations = when (reading) {
-        is ServiceAuthorizationsReading.Read -> {
-            if (reading.authorizations.isEmpty() && profile == ServiceTrustProfile.Isolated) {
-                return refuseStartup(
-                    err,
-                    ServiceStartupRefusal.IsolationUnavailable,
-                    "the isolated profile needs at least one authorization on the standard input",
-                )
-            }
-            ServiceAuthorizations.of(reading.authorizations)
-        }
-
-        is ServiceAuthorizationsReading.Refused ->
-            return refuseStartup(err, ServiceStartupRefusal.AuthorizationsRefused, reading.detail)
-    }
+    val scriptsRoot = policy.scriptsRoot
+    val workspacesRoot = policy.workspacesRoot
+    val runDeadlineMillis = policy.deadlineMillis
+    val maxSupervisedRuns = policy.maxSupervisedRuns
+    val allowNetwork = policy.allowNetwork
+    val registry = policy.registry
 
     // The substrate is composed ONCE, before the socket exists: a service
     // that cannot read its substrate would only know how to say that it is
@@ -194,50 +183,44 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
 
     val controlRootPath = Paths.get(controlRoot)
     val clock = SystemClock()
-    val operations = try {
-        ServiceOperations(
-            introspection = composeRuntimeIntrospectionPort(
-                eventStore = store,
-                controlRoot = controlRootPath,
-                clock = clock,
-            ),
-            substrate = {
-                ServiceSubstrate(
-                    eventStore = dbPath,
-                    controlRoot = controlRoot,
-                    eventStorePresent = Files.exists(Path.of(dbPath)),
-                    controlRootPresent = Files.exists(controlRootPath),
-                )
-            },
-        )
-    } catch (e: Exception) {
-        store.close()
-        val error = CliError.SubstrateUnavailable(
-            e.message ?: "the control root cannot be read",
-        )
-        err.println(error.refusalLines("serve").joinToString("\n"))
-        err.println(SERVE_USAGE)
-        return error.toCliExit()
-    }
 
-    // The streets are composed over the SAME substrate and the SAME authorities the
-    // questions are answered from, so a run cannot be "unknown" to one door of the
-    // service and "known" to the other.
-    val streets = try {
-        val stores = DurableStores.open(store, controlRootPath, clock)
-        ServiceSubscription(
-            lanes = ComposeLanes.forService(store, controlRootPath),
-            events = composeEventRecordReadPort(store, stores.lease),
+    // The supervisor of the runs this service starts. It is composed with
+    // the SAME store and the SAME control root the questions are answered
+    // from, so a run started by a client is a run the service can answer
+    // about.
+    val supervisor = composeSupervisor(
+        policy = policy,
+        dbAbsolute = dbAbsolute,
+        controlAbsolute = controlAbsolute,
+        socketAbsolute = socketAbsolute,
+        registry = registry,
+        clock = clock,
+    )
+
+    // The operations and the streets are composed over the SAME substrate and
+    // the SAME authorities the questions are answered from, so a run cannot
+    // be "unknown" to one door of the service and "known" to the other.
+    val composition = when (
+        val composed = composeService(
+            store = store,
+            dbPath = dbPath,
+            controlRoot = controlRoot,
+            controlRootPath = controlRootPath,
+            clock = clock,
+            supervisor = supervisor,
         )
-    } catch (e: Exception) {
-        store.close()
-        val error = CliError.SubstrateUnavailable(
-            e.message ?: "the control root cannot be read",
-        )
-        err.println(error.refusalLines("serve").joinToString("\n"))
-        err.println(SERVE_USAGE)
-        return error.toCliExit()
+    ) {
+        is ServiceComposition.Composed -> composed
+        is ServiceComposition.Refused -> {
+            store.close()
+            val error = CliError.SubstrateUnavailable(composed.detail)
+            err.println(error.refusalLines("serve").joinToString("\n"))
+            err.println(SERVE_USAGE)
+            return error.toCliExit()
+        }
     }
+    val operations = composition.operations
+    val streets = composition.streets
 
     val transport = try {
         UnixSocketTransport.bind(Path.of(socketPath))
@@ -250,11 +233,26 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
     }
 
     val server = ServiceServer(transport, operations, streets, authorizations)
-    val shutdown = Thread({ server.close() }, "pipelinek-service-shutdown")
+
+    // The hook closes EVERYTHING the service opened: the server, the
+    // children it supervises and the store it reads. A signal does not
+    // run the `finally` below —the JVM leaves through the hook and the
+    // process ends— so a hook that only closed the server would leave the
+    // children of the supervised runs behind, and a run that outlives the
+    // service that started it is a run nobody is watching.
+    val shutdown = Thread(
+        {
+            server.close()
+            supervisor.close()
+            store.close()
+        },
+        "pipelinek-service-shutdown",
+    )
     Runtime.getRuntime().addShutdownHook(shutdown)
     try {
         out.println("pipelinek service listening on $socketPath")
         describeBoundary(out, profile, authorizationPath, authorizations.size)
+        describeRuns(out, scriptsRoot, workspacesRoot, runDeadlineMillis, maxSupervisedRuns, allowNetwork)
         server.serve()
     } finally {
         try {
@@ -264,9 +262,348 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
             // has run. Removing it is a courtesy, not a requirement.
         }
         server.close()
+        supervisor.close()
         store.close()
     }
     return CliExit.Success("the service stopped")
+}
+
+/**
+ * What the boundary of the service is: the profile, the file of the
+ * authorizations and the authorizations themselves.
+ */
+internal data class ServiceBoundary(
+    val profile: ServiceTrustProfile,
+    val authorizationPath: Path,
+    val authorizations: ServiceAuthorizations,
+)
+
+/**
+ * What the reading of the boundary produced.
+ */
+internal sealed interface BoundaryReading {
+
+    /** The boundary was read. */
+    data class Read(val boundary: ServiceBoundary) : BoundaryReading
+
+    /** The boundary could not be read, and the service does not start. */
+    data class Refused(val exit: CliExit) : BoundaryReading
+}
+
+/**
+ * The boundary of the service, read from the request.
+ *
+ * ## What it decides
+ *
+ * The profile the operator asked for, the file the authorizations come from,
+ * and the authorizations themselves. Every refusal it can produce is about
+ * the BOUNDARY and not about the substrate, and it is produced before a
+ * single file of the substrate is opened.
+ *
+ * ## Why the socket may not BE a file the service reads
+ *
+ * Because a socket that IS the store would make the store not a store, and a
+ * socket that IS the file of the authorizations would put the secret and the
+ * door in the same inode. What is NOT refused is the socket living NEXT TO
+ * the material: the natural layout of an operator —the store, the control
+ * root and the socket in one directory— is the one this rule lets through.
+ */
+private fun readBoundary(
+    accepted: CliAdmission.Admitted,
+    socketAbsolute: Path,
+    dbAbsolute: Path,
+    controlAbsolute: Path,
+    err: PrintStream,
+): BoundaryReading {
+    // The profile is a closed vocabulary: the word says what the operator
+    // ASKS for, and an unknown word is refused instead of being taken for
+    // the default. A profile the operator misspelled is a boundary nobody
+    // chose, and a boundary nobody chose is not a boundary.
+    val profile = accepted.values["--trust-profile"]?.let { word ->
+        ServiceTrustProfile.parse(word)
+            ?: return BoundaryReading.Refused(
+                refuseStartup(
+                    err,
+                    ServiceStartupRefusal.TrustProfileUnknown,
+                    "the trust profile is not one this build serves: '$word'",
+                ),
+            )
+    } ?: ServiceTrustProfile.TrustedLocal
+
+    if (socketAbsolute == dbAbsolute || socketAbsolute == controlAbsolute) {
+        return BoundaryReading.Refused(
+            refuseStartup(
+                err,
+                ServiceStartupRefusal.SocketPathIsReserved,
+                "the socket would be a file the service reads: $socketAbsolute",
+            ),
+        )
+    }
+
+    // The authorizations come from the place the profile names: the file the
+    // operator named, the file the service owns next to its socket, or the
+    // standard input. The two profiles do not mix: a profile that keeps the
+    // authorization off the disk cannot read it from the disk.
+    val namedFile = accepted.values["--authorization-file"]
+    if (namedFile != null && profile == ServiceTrustProfile.Isolated) {
+        return BoundaryReading.Refused(
+            refuseStartup(
+                err,
+                ServiceStartupRefusal.AuthorizationFileRefusedByTheProfile,
+                "the isolated profile reads the authorizations from the standard input, " +
+                    "and --authorization-file names a file",
+            ),
+        )
+    }
+    val authorizationPath = namedFile?.let { Path.of(it) }
+        ?: socketAbsolute.parent?.resolve(ServiceAuthorizationStore.OWNED_FILE_NAME)
+        ?: return BoundaryReading.Refused(
+            refuseStartup(
+                err,
+                ServiceStartupRefusal.SocketPathUnavailable,
+                "the socket has no directory: $socketAbsolute",
+            ),
+        )
+
+    // The socket may not BE the file of the authorizations: the service
+    // writes that file and then binds the socket, and two things on one
+    // inode is one of them broken.
+    if (socketAbsolute == authorizationPath.toAbsolutePath().normalize()) {
+        return BoundaryReading.Refused(
+            refuseStartup(
+                err,
+                ServiceStartupRefusal.SocketPathIsReserved,
+                "the socket would be the file of the authorizations: $socketAbsolute",
+            ),
+        )
+    }
+
+    val reading = when (profile) {
+        ServiceTrustProfile.TrustedLocal ->
+            ServiceAuthorizationStore.ofFile(authorizationPath, owned = namedFile == null)
+
+        ServiceTrustProfile.Isolated ->
+            ServiceAuthorizationStore.readStandardInput(System.`in`)
+    }
+    return when (reading) {
+        is ServiceAuthorizationsReading.Read -> {
+            if (reading.authorizations.isEmpty() && profile == ServiceTrustProfile.Isolated) {
+                BoundaryReading.Refused(
+                    refuseStartup(
+                        err,
+                        ServiceStartupRefusal.IsolationUnavailable,
+                        "the isolated profile needs at least one authorization on the standard input",
+                    ),
+                )
+            } else {
+                BoundaryReading.Read(
+                    ServiceBoundary(
+                        profile = profile,
+                        authorizationPath = authorizationPath,
+                        authorizations = ServiceAuthorizations.of(reading.authorizations),
+                    ),
+                )
+            }
+        }
+
+        is ServiceAuthorizationsReading.Refused -> BoundaryReading.Refused(
+            refuseStartup(err, ServiceStartupRefusal.AuthorizationsRefused, reading.detail),
+        )
+    }
+}
+
+/**
+ * What this service may start, and the record that backs the promise a key
+ * makes.
+ */
+internal data class ServiceRunDeclaration(
+    val scriptsRoot: Path?,
+    val workspacesRoot: Path?,
+    val deadlineMillis: Long,
+    val maxSupervisedRuns: Int,
+    val allowNetwork: Boolean,
+    val registry: ServiceStartRegistry,
+)
+
+/**
+ * What the reading of the declaration produced.
+ */
+internal sealed interface RunPolicyReading {
+
+    /** The declaration was read. */
+    data class Read(val declaration: ServiceRunDeclaration) : RunPolicyReading
+
+    /** The declaration is not one the service can honour, and the service does not start. */
+    data class Refused(val exit: CliExit) : RunPolicyReading
+}
+
+/**
+ * The DECLARATION of what this service may start, and the record of the
+ * starts.
+ *
+ * ## Why it is read before the substrate
+ *
+ * Because a policy that is not a policy has to be refused before anything is
+ * opened, and because a record of the starts that cannot be read is a
+ * promise that cannot be kept: a service that forgot its promises would start
+ * a second run for a key it already answered.
+ */
+private fun readRunPolicy(
+    accepted: CliAdmission.Admitted,
+    socketAbsolute: Path,
+    err: PrintStream,
+): RunPolicyReading {
+    val scriptsRoot = accepted.values["--scripts"]?.let { Path.of(it).toAbsolutePath().normalize() }
+    val workspacesRoot = accepted.values["--workspaces"]?.let { Path.of(it).toAbsolutePath().normalize() }
+    val deadlineMillis = accepted.values["--run-deadline-ms"]?.let { text ->
+        text.toLongOrNull()?.takeIf { it > 0L } ?: return RunPolicyReading.Refused(
+            refuseStartup(
+                err,
+                ServiceStartupRefusal.RunPolicyRefused,
+                "the deadline of a supervised run is a positive number of milliseconds: '$text'",
+            ),
+        )
+    } ?: DEFAULT_RUN_DEADLINE_MILLIS
+    val maxSupervisedRuns = accepted.values["--max-supervised-runs"]?.let { text ->
+        text.toIntOrNull()?.takeIf { it > 0 } ?: return RunPolicyReading.Refused(
+            refuseStartup(
+                err,
+                ServiceStartupRefusal.RunPolicyRefused,
+                "the budget of supervised runs is a positive number: '$text'",
+            ),
+        )
+    } ?: DEFAULT_MAX_SUPERVISED_RUNS
+    val allowNetwork = accepted.flags.contains("--run-allow-network")
+
+    val directory = socketAbsolute.parent
+        ?: return RunPolicyReading.Refused(
+            refuseStartup(
+                err,
+                ServiceStartupRefusal.SocketPathUnavailable,
+                "the socket has no directory: $socketAbsolute",
+            ),
+        )
+    val registry = when (
+        val read = ServiceStartRegistry.read(directory.resolve(ServiceStartRegistry.FILE_NAME))
+    ) {
+        is ServiceStartRegistryReading.Read -> read.registry
+        is ServiceStartRegistryReading.Refused -> return RunPolicyReading.Refused(
+            refuseStartup(err, ServiceStartupRefusal.StartsRecordRefused, read.detail),
+        )
+    }
+
+    return RunPolicyReading.Read(
+        ServiceRunDeclaration(
+            scriptsRoot = scriptsRoot,
+            workspacesRoot = workspacesRoot,
+            deadlineMillis = deadlineMillis,
+            maxSupervisedRuns = maxSupervisedRuns,
+            allowNetwork = allowNetwork,
+            registry = registry,
+        ),
+    )
+}
+
+/**
+ * The supervisor of the runs this service starts.
+ *
+ * ## Why the paths it hands to the child are ABSOLUTE
+ *
+ * Because the child works in the directory of its script: a relative path
+ * would mean something else there, and the run would write in a place the
+ * operator never named.
+ */
+private fun composeSupervisor(
+    policy: ServiceRunDeclaration,
+    dbAbsolute: Path,
+    controlAbsolute: Path,
+    socketAbsolute: Path,
+    registry: ServiceStartRegistry,
+    clock: dev.rubentxu.pipeline.v2.domain.durable.Clock,
+): ServiceRunSupervisor {
+    val supervisionRoot = requireNotNull(socketAbsolute.parent)
+        .resolve(SUPERVISION_DIRECTORY)
+    return ServiceRunSupervisor(
+        admission = ServiceStartAdmission(policy.scriptsRoot, policy.workspacesRoot),
+        runPolicy = ServiceRunPolicy(
+            eventStore = dbAbsolute.toString(),
+            controlRoot = controlAbsolute.toString(),
+            deadlineMillis = policy.deadlineMillis,
+            allowNetwork = policy.allowNetwork,
+        ),
+        command = ServiceRunCommand(
+            javaBinary = Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+            classpath = System.getProperty("java.class.path"),
+            mainClass = SERVICE_MAIN_CLASS,
+        ),
+        port = ProcessDurableTaskRuntime(supervisionRoot, clock),
+        registry = registry,
+        limits = ServiceStartLimits(maxSupervisedRuns = policy.maxSupervisedRuns),
+        supervisionRoot = supervisionRoot,
+    )
+}
+
+/**
+ * What the composition of the service produced.
+ */
+private sealed interface ServiceComposition {
+
+    /** The service is composed and it can answer. */
+    data class Composed(
+        val operations: ServiceOperations,
+        val streets: ServiceStreets,
+    ) : ServiceComposition
+
+    /** The service cannot be composed, and this says why. */
+    data class Refused(val detail: String) : ServiceComposition
+}
+
+/**
+ * Composes the operations and the streets of the service over [store].
+ *
+ * ## Why the two are composed together
+ *
+ * Because they answer about the SAME substrate: a run that the streets
+ * publish and the operations do not know would be a run the service
+ * contradicts itself about.
+ *
+ * ## Why a failure is a value and not an exception
+ *
+ * Because the verb has to REFUSE it by name and close the store it opened,
+ * and a failure that flies out of the composition would skip both.
+ */
+private fun composeService(
+    store: dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore,
+    dbPath: String,
+    controlRoot: String,
+    controlRootPath: Path,
+    clock: SystemClock,
+    supervisor: ServiceRunSupervisor,
+): ServiceComposition = try {
+    val operations = ServiceOperations(
+        introspection = composeRuntimeIntrospectionPort(
+            eventStore = store,
+            controlRoot = controlRootPath,
+            clock = clock,
+        ),
+        substrate = {
+            ServiceSubstrate(
+                eventStore = dbPath,
+                controlRoot = controlRoot,
+                eventStorePresent = Files.exists(Path.of(dbPath)),
+                controlRootPresent = Files.exists(controlRootPath),
+            )
+        },
+        starts = supervisor,
+    )
+    val stores = DurableStores.open(store, controlRootPath, clock)
+    val streets = ServiceSubscription(
+        lanes = ComposeLanes.forService(store, controlRootPath),
+        events = composeEventRecordReadPort(store, stores.lease),
+    )
+    ServiceComposition.Composed(operations, streets)
+} catch (e: Exception) {
+    ServiceComposition.Refused(e.message ?: "the control root cannot be read")
 }
 
 /**
@@ -348,6 +685,41 @@ private fun describeBoundary(
                 "a client presents the token of one of them",
         )
     }
+}
+
+/**
+ * What this service may start, printed when it starts.
+ *
+ * ## Why this is printed at all
+ *
+ * Because a service that may start runs has to say WHICH runs it may start,
+ * and the operator is the one who has to know it: the directories, the
+ * deadline, the budget and the network are the whole promise, and a promise
+ * nobody reads is a promise nobody knows.
+ *
+ * ## Why a service without `--scripts` says so
+ *
+ * Because a service that could start nothing has to be told apart from a
+ * service that could start everything: the first one answers questions and
+ * refuses starts, and the operator has to know which of the two is running.
+ */
+private fun describeRuns(
+    out: PrintStream,
+    scriptsRoot: Path?,
+    workspacesRoot: Path?,
+    deadlineMillis: Long,
+    maxSupervisedRuns: Int,
+    allowNetwork: Boolean,
+) {
+    if (scriptsRoot == null) {
+        out.println("runs none: this service answers questions and starts no run")
+        return
+    }
+    out.println("scripts $scriptsRoot")
+    out.println("workspaces ${workspacesRoot ?: "the product's own scratch"}")
+    out.println("run-deadline-ms $deadlineMillis")
+    out.println("max-supervised-runs $maxSupervisedRuns")
+    out.println("run-network ${if (allowNetwork) "allowed" else "denied"}")
 }
 
 /**

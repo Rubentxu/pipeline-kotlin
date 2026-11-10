@@ -184,6 +184,11 @@ DECLARED_EXECUTABLES = {
         "digests and verifies its signatures, and it starts nothing of the "
         "product"
     ),
+    "scripts/bench-service-cost.py": (
+        "a measurement of what the local service costs: it times an installed "
+        "distribution against a table of figures with no threshold, asserts "
+        "nothing and certifies nothing about the tree"
+    ),
     "scripts/install-pipelinek.sh": (
         "the installer of a published release: it installs the archive for a "
         "user and asks the installed command for its version"

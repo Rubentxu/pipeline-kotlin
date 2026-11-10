@@ -639,6 +639,114 @@ class ServiceServerTest {
     }
 
     @Test
+    fun `a client that may not start runs cannot open or use a provider session either`() {
+        val sessions = ConfigurationProviderSessions()
+        val requests = listOf(PROVIDER_REGISTER_REQUEST) + PROVIDER_SESSION_REQUESTS
+        val connections = requests.map { ScriptedConnection(ServiceRead.Line(it)) }
+
+        val server = ServiceServer(
+            ScriptedTransport(connections),
+            operations(providers = sessions),
+            streets(),
+            authorizations(),
+        )
+        try {
+            server.serve()
+            connections.forEach { it.awaitAnswered() }
+        } finally {
+            server.close()
+        }
+
+        connections.forEachIndexed { index, connection ->
+            assertEquals(
+                "start-not-authorized",
+                refusalKindOf(connection),
+                "the provider operation ${requests[index].substringAfter("\"op\":\"").substringBefore('"')} " +
+                    "is the right to start, not a right a read token carries",
+            )
+        }
+        assertEquals(0, sessions.liveSessions(), "no session was opened by a client that may not start")
+    }
+
+    @Test
+    fun `a client that may start runs reaches the sessions of the providers`() {
+        val sessions = ConfigurationProviderSessions()
+        val connection = ScriptedConnection(ServiceRead.Line(PROVIDER_REGISTER_REQUEST))
+
+        val server = ServiceServer(
+            ScriptedTransport(listOf(connection)),
+            operations(providers = sessions),
+            streets(),
+            authorizations(ServiceScope.WithRights(ServiceScope.All, setOf(ServiceScope.Right.Start))),
+        )
+        try {
+            server.serve()
+            connection.awaitAnswered()
+        } finally {
+            server.close()
+        }
+
+        val answer = answerOf(connection)
+        assertEquals("answer", answer["kind"]?.jsonPrimitive?.content)
+        assertTrue(
+            answer["result"]?.jsonObject?.get("sessionId")?.jsonPrimitive?.content?.isNotBlank() == true,
+            "the answer of a registration is the session the controller polls",
+        )
+        assertEquals(1, sessions.liveSessions(), "the registration reached the sessions of the providers")
+    }
+
+    @Test
+    fun `the configuration of a run is a read of that run and follows the scope`() {
+        val description = RunConfigurationDescription(
+            digest = "digest-of-values",
+            entries = listOf(RunConfigurationEntry("REGION", RunConfigurationReader.ORIGIN_REQUEST, "string")),
+            provider = null,
+            revision = null,
+            sourceDigest = null,
+        )
+        val asked = mutableListOf<String>()
+        val source = object : ServiceRunConfigurations {
+            override fun describe(runId: String): RunConfigurationLookup {
+                asked.add(runId)
+                return RunConfigurationLookup.Found(description)
+            }
+        }
+
+        val outside = ScriptedConnection(ServiceRead.Line(RUN_CONFIGURATION_REQUEST))
+        ServiceServer(
+            ScriptedTransport(listOf(outside)),
+            operations(configurations = source),
+            streets(),
+            authorizations(ServiceScope.Runs(setOf("run-2"))),
+        ).use {
+            it.serve()
+            outside.awaitAnswered()
+        }
+        val inside = ScriptedConnection(ServiceRead.Line(RUN_CONFIGURATION_REQUEST))
+        ServiceServer(
+            ScriptedTransport(listOf(inside)),
+            operations(configurations = source),
+            streets(),
+            authorizations(ServiceScope.Runs(setOf("run-1"))),
+        ).use {
+            it.serve()
+            inside.awaitAnswered()
+        }
+
+        assertEquals(
+            "run-not-authorized",
+            refusalKindOf(outside),
+            "the configuration of a run the scope does not cover is refused with the name of every other read",
+        )
+        assertEquals("answer", answerOf(inside)["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            listOf("run-1"),
+            asked,
+            "only the request the scope covers reached the source of the configurations",
+        )
+    }
+
+    @Test
     fun `a client that may not cancel runs is refused with a name`() {
         val connection = ScriptedConnection(ServiceRead.Line(CANCEL_REQUEST))
 
@@ -885,6 +993,8 @@ class ServiceServerTest {
         starter: ServiceRunStarter = ServiceTestStarter(),
         cancellations: ServiceRunCancellation? = null,
         inputs: ServiceInputAnswers? = null,
+        providers: ConfigurationProviderSessions? = null,
+        configurations: ServiceRunConfigurations? = null,
     ): ServiceOperations =
         ServiceOperations(
             introspection = UnusedPort(),
@@ -899,6 +1009,8 @@ class ServiceServerTest {
             starts = starter,
             cancellations = cancellations,
             inputs = inputs,
+            providers = providers,
+            configurations = configurations,
         )
 
     /**
@@ -1099,6 +1211,22 @@ class ServiceServerTest {
         /** A request to list the questions of a run, with the credential. */
         private const val LIST_INPUTS_REQUEST: String =
             """{"schema":"pipelinek.service/2","op":"inputs.list","runId":"run-1","auth":"token-1"}"""
+
+        /** A request to register a configuration provider, with the credential. */
+        private const val PROVIDER_REGISTER_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"config.provider.register","provider":"vault","keys":[{"name":"REGION","type":"string","sensitivity":"non-secret"}],"auth":"token-1"}"""
+
+        /** The other three operations of a provider session, with the credential. */
+        private val PROVIDER_SESSION_REQUESTS: List<String> = listOf(
+            """{"schema":"pipelinek.service/2","op":"config.provider.poll","sessionId":"session-1","waitMillis":0,"auth":"token-1"}""",
+            "{\"schema\":\"pipelinek.service/2\",\"op\":\"config.provider.answer\",\"sessionId\":\"session-1\"," +
+                "\"requestId\":\"request-1\",\"revision\":\"r1\",\"values\":{\"REGION\":\"eu\"},\"auth\":\"token-1\"}",
+            """{"schema":"pipelinek.service/2","op":"config.provider.close","sessionId":"session-1","auth":"token-1"}""",
+        )
+
+        /** A question about the configuration of a run, with the credential. */
+        private const val RUN_CONFIGURATION_REQUEST: String =
+            """{"schema":"pipelinek.service/2","op":"run.configuration","runId":"run-1","auth":"token-1"}"""
 
         /** A request to answer a question of a run, with the credential. */
         private const val ANSWER_INPUT_REQUEST: String =

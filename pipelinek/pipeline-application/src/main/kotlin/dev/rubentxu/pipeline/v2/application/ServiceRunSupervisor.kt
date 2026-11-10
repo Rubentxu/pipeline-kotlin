@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream
 import dev.rubentxu.pipeline.v2.runtime.RunConfiguration
 import dev.rubentxu.pipeline.v2.runtime.RunConfigurationOutcome
+import dev.rubentxu.pipeline.v2.service.ServiceProviderReference
 import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
@@ -47,6 +48,9 @@ import java.util.concurrent.atomic.AtomicReference
  * @property parameterContract the declaration the client knows the pipeline has. It travels
  *   because the service does not compile the script: describing it is compiling it, and
  *   compiling it is running the author's code inside the service.
+ * @property configurationProvider the provider session the keys the request did not set itself
+ *   are resolved through, or null when the request asks none. The values are never in the
+ *   request: the service asks the provider for them at the start.
  */
 internal data class ServiceStartRequest(
     val script: String,
@@ -66,6 +70,7 @@ internal data class ServiceStartRequest(
     val configuration: Map<String, String> = emptyMap(),
     val parameters: Map<String, String> = emptyMap(),
     val parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
+    val configurationProvider: ServiceProviderReference? = null,
 ) {
 
     /**
@@ -80,7 +85,7 @@ internal data class ServiceStartRequest(
     override fun toString(): String =
         "ServiceStartRequest(script=$script, workspace=$workspace, idempotencyKey=$idempotencyKey, " +
             "credentialDigest=$credentialDigest, configuration=${configuration.size} entries, " +
-            "parameters=${parameters.size} values)"
+            "parameters=${parameters.size} values, provider=${configurationProvider?.provider})"
 }
 
 /**
@@ -298,10 +303,13 @@ internal data class ServiceRunCommand(
  *
  * @property maxSupervisedRuns how many children the service watches at once.
  * @property startDeadlineMillis how long the service waits for a child to own itself.
+ * @property maxDescribedRuns how many runs the service can still say where the configuration
+ *   came from; the oldest are forgotten first.
  */
 internal data class ServiceStartLimits(
     val maxSupervisedRuns: Int = 4,
     val startDeadlineMillis: Long = 30_000L,
+    val maxDescribedRuns: Int = ServiceRunSupervisor.MAX_DESCRIBED_RUNS,
 )
 
 /**
@@ -349,7 +357,8 @@ internal class ServiceRunSupervisor(
     private val limits: ServiceStartLimits,
     private val supervisionRoot: Path,
     private val brokers: RunBrokerFactory? = null,
-) : ServiceRunStarter, ServiceRunEnder, AutoCloseable {
+    private val configurations: ConfigurationResolver? = null,
+) : ServiceRunStarter, ServiceRunEnder, ServiceRunConfigurations, AutoCloseable {
 
     /** The children this service is watching right now. */
     private val liveRuns = AtomicInteger(0)
@@ -372,6 +381,23 @@ internal class ServiceRunSupervisor(
      * service learns the run's id— and it is emptied when the child ends.
      */
     private val supervised = ConcurrentHashMap<String, Supervision>()
+
+    /**
+     * Where the snapshot of the configuration of a run is, by the run's own id.
+     *
+     * It is NOT a second store of the configuration: it holds a path, and the description a
+     * client asks for is read from the snapshot the run itself reads. It is filled when the run
+     * is launched and it is NOT emptied when the child ends, because the question "where did
+     * this configuration come from" is asked about finished runs too. It is bounded, and the
+     * oldest entries are forgotten first: a run that has been forgotten is an unknown run.
+     */
+    private val snapshotIndex: MutableMap<String, SnapshotRef> =
+        java.util.Collections.synchronizedMap(
+            object : LinkedHashMap<String, SnapshotRef>() {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SnapshotRef>): Boolean =
+                    size > limits.maxDescribedRuns
+            },
+        )
 
     /**
      * How many supervised runs are alive right now.
@@ -450,12 +476,20 @@ internal class ServiceRunSupervisor(
                 ),
             )
         }
+        // The provider reference is checked next, and for the same reason: the check is pure.
+        // What it decides is which keys the PROVIDER is asked for — the ones the request did not
+        // set itself — and whether the merged configuration can possibly be legal.
+        val plan = when (val outcome = planProvider(request.configurationProvider, configuration)) {
+            is ProviderPlan.Refused -> return ServiceStartOutcome.Refused(outcome.refusal)
+            else -> outcome
+        }
         val digest = digestOf(
             request.script,
             request.workspace,
             configuration,
             request.parameterContract,
             request.parameters,
+            request.configurationProvider,
         )
         val key = request.idempotencyKey?.let { registryKeyOf(request.credentialDigest, it) }
         // The correlation is chosen BEFORE the claim, because the claim is
@@ -508,6 +542,19 @@ internal class ServiceRunSupervisor(
         }
         val paths = admitted as ServiceStartAdmissionOutcome.Admitted
 
+        // The provider is asked AFTER the claim and the admission and BEFORE a slot is taken:
+        // a start that is already answered, or that names a script which is not there, must not
+        // wake a controller, and a start that waits for a controller must not hold a slot of the
+        // budget while it waits. A resolution that fails releases the key, so the client can
+        // repeat the request with the same key once the provider is back.
+        val effective = when (val outcome = resolveEffective(plan, request, configuration)) {
+            is EffectiveOutcome.Resolved -> outcome.effective
+            is EffectiveOutcome.Refused -> {
+                if (key != null) registry.fail(key, outcome.refusal)
+                return ServiceStartOutcome.Refused(outcome.refusal)
+            }
+        }
+
         if (!takeSlot()) {
             if (key != null) registry.fail(key, ServiceRefusal.TooManySupervisedRuns)
             return ServiceStartOutcome.Refused(ServiceRefusal.TooManySupervisedRuns)
@@ -519,9 +566,143 @@ internal class ServiceRunSupervisor(
             digest,
             correlationId,
             configuration,
+            effective,
             request.parameters,
             request.credentialDigest,
         )
+    }
+
+    /**
+     * Which keys the provider is asked for, decided without any effect.
+     *
+     * A key the request set itself is never asked: the explicit value has precedence and the
+     * provider is not told it exists. The merged shape —the explicit entries plus the keys to
+     * ask, with an empty value standing for the one the provider will give— goes through the
+     * rules of the configuration, so a name that could never be legal, or a merge that would
+     * exceed the limit of entries, is refused before the idempotency key is claimed.
+     */
+    private fun planProvider(reference: ServiceProviderReference?, explicit: RunConfiguration): ProviderPlan {
+        if (reference == null) return ProviderPlan.Nothing
+        if (reference.keys.isEmpty()) {
+            return ProviderPlan.Refused(
+                ServiceRefusal.RunConfigurationRefused(
+                    "provider-has-no-keys",
+                    "a provider reference must name at least one key to resolve",
+                ),
+            )
+        }
+        val toAsk = reference.keys.distinct().filter { it !in explicit.values }
+        when (val outcome = RunConfiguration.of(explicit.values + toAsk.associateWith { "" })) {
+            is RunConfigurationOutcome.Accepted -> Unit
+            is RunConfigurationOutcome.Refused -> return ProviderPlan.Refused(
+                ServiceRefusal.RunConfigurationRefused(outcome.refusal.reason, outcome.refusal.detail),
+            )
+        }
+        return if (toAsk.isEmpty()) ProviderPlan.Nothing else ProviderPlan.Ask(toAsk)
+    }
+
+    /**
+     * The configuration the run will be given: the explicit one, completed by the provider.
+     *
+     * ## What the provider can and cannot do
+     *
+     * It is asked for exactly the keys of the plan, through the session the SAME credential
+     * registered under the name the request gave: there is no lookup by name across
+     * credentials and no fallback to another provider, and a resolution that fails stops the
+     * start. What it answers is merged under the explicit entries and goes through the rules of
+     * the configuration again, so the snapshot the run keeps is the one that was validated.
+     */
+    private fun resolveEffective(
+        plan: ProviderPlan,
+        request: ServiceStartRequest,
+        explicit: RunConfiguration,
+    ): EffectiveOutcome {
+        if (plan !is ProviderPlan.Ask) return EffectiveOutcome.Resolved(EffectiveConfiguration(explicit, null))
+        val provider = checkNotNull(request.configurationProvider).provider
+        val resolver = configurations
+        if (resolver == null || request.credentialDigest.isBlank()) {
+            return EffectiveOutcome.Refused(
+                ServiceRefusal.RunConfigurationRefused(
+                    "provider-not-registered",
+                    "no live session of the provider '$provider' exists for this credential",
+                ),
+            )
+        }
+        val resolution = try {
+            resolver.resolve(request.credentialDigest, provider, plan.keys)
+        } catch (_: Exception) {
+            return EffectiveOutcome.Refused(
+                ServiceRefusal.RunConfigurationRefused(
+                    "provider-resolution-failed",
+                    "the provider '$provider' could not be asked for its values",
+                ),
+            )
+        }
+        return when (resolution) {
+            is ProviderResolution.Refused -> EffectiveOutcome.Refused(
+                ServiceRefusal.RunConfigurationRefused(resolution.reason, resolution.detail),
+            )
+
+            is ProviderResolution.Resolved -> mergeResolved(explicit, plan, resolution)
+        }
+    }
+
+    private fun mergeResolved(
+        explicit: RunConfiguration,
+        plan: ProviderPlan.Ask,
+        resolution: ProviderResolution.Resolved,
+    ): EffectiveOutcome {
+        if (resolution.values.keys != plan.keys.toSet()) {
+            // The resolver promises exactly the keys it was asked: a value for a key nobody
+            // asked is not configuration the request delivered, and it is not applied.
+            return EffectiveOutcome.Refused(
+                ServiceRefusal.RunConfigurationRefused(
+                    "provider-answer-unexpected",
+                    "the provider answered keys other than the ones it was asked",
+                ),
+            )
+        }
+        val merged = when (val outcome = RunConfiguration.of(explicit.values + resolution.values)) {
+            is RunConfigurationOutcome.Accepted -> outcome.configuration
+            is RunConfigurationOutcome.Refused -> return EffectiveOutcome.Refused(
+                ServiceRefusal.RunConfigurationRefused(outcome.refusal.reason, outcome.refusal.detail),
+            )
+        }
+        val origins = LinkedHashMap<String, RunConfigurationOrigin>()
+        explicit.values.keys.sorted().forEach { name ->
+            origins[name] = RunConfigurationOrigin(RunConfigurationReader.ORIGIN_REQUEST, RunConfigurationReader.TYPE_TEXT)
+        }
+        plan.keys.sorted().forEach { name ->
+            origins[name] = RunConfigurationOrigin(
+                RunConfigurationReader.ORIGIN_PROVIDER,
+                resolution.provenance.types[name] ?: RunConfigurationReader.TYPE_TEXT,
+            )
+        }
+        val provenance = RunConfigurationProvenance(
+            provider = resolution.provenance.provider,
+            revision = resolution.provenance.revision,
+            sourceDigest = resolution.provenance.digest,
+            origins = origins,
+        )
+        return EffectiveOutcome.Resolved(EffectiveConfiguration(merged, provenance))
+    }
+
+    /**
+     * Where the configuration of [runId] came from, read from the snapshot the run itself reads.
+     *
+     * Never throws. A run the service does not remember is [RunConfigurationLookup.Unknown], and
+     * a snapshot that cannot be read says so with a fixed text: the message of a failure over
+     * the file system names paths, and a path does not travel.
+     */
+    override fun describe(runId: String): RunConfigurationLookup {
+        val reference = snapshotIndex[runId] ?: return RunConfigurationLookup.Unknown
+        val path = reference.path
+            ?: return RunConfigurationLookup.Found(RunConfigurationReader.describeNothing())
+        return try {
+            RunConfigurationLookup.Found(RunConfigurationReader.describe(path))
+        } catch (_: Exception) {
+            RunConfigurationLookup.Unreadable("the snapshot of the configuration of the run cannot be read")
+        }
     }
 
     /**
@@ -568,6 +749,9 @@ internal class ServiceRunSupervisor(
      * @param key the key of the claim, or null when the client chose none.
      * @param digest the fingerprint of the request that was made.
      * @param correlationId the token the child will carry and answer with.
+     * @param configuration the configuration of the REQUEST, the one the answer echoes.
+     * @param effective the configuration the child is given: the request's, completed by the
+     *   provider when the request named one.
      * @param clientDigest the digest of the token of the client that asked, or null when the
      *   request came from nobody the service knows; it decides what the broker of the run grants.
      */
@@ -577,6 +761,7 @@ internal class ServiceRunSupervisor(
         digest: String,
         correlationId: String,
         configuration: RunConfiguration,
+        effective: EffectiveConfiguration,
         delivered: Map<String, String>,
         clientDigest: String?,
     ): ServiceStartOutcome {
@@ -594,7 +779,7 @@ internal class ServiceRunSupervisor(
         }
 
         // The snapshots the child reads, written BEFORE the child is launched.
-        val snapshots = when (val outcome = snapshotsOf(supervisionDir, key, configuration, delivered)) {
+        val snapshots = when (val outcome = snapshotsOf(supervisionDir, key, effective, delivered)) {
             is SnapshotsOutcome.Written -> outcome
             is SnapshotsOutcome.Refused -> return ServiceStartOutcome.Refused(outcome.refusal)
         }
@@ -703,6 +888,7 @@ internal class ServiceRunSupervisor(
                 // to answer that ask with: the receipt carries the id the
                 // CHILD minted.
                 supervision.launched(supervised, launched.runId)
+                snapshotIndex[launched.runId] = SnapshotRef(snapshots.configuration)
                 if (key != null) registry.complete(key, record)
                 acceptedOf(record, configuration, delivered)
             }
@@ -856,10 +1042,10 @@ internal class ServiceRunSupervisor(
     private fun snapshotsOf(
         supervisionDir: Path,
         key: String?,
-        configuration: RunConfiguration,
+        effective: EffectiveConfiguration,
         delivered: Map<String, String>,
     ): SnapshotsOutcome {
-        val configurationSnapshot = when (val outcome = writeSnapshot(supervisionDir, key, configuration)) {
+        val configurationSnapshot = when (val outcome = writeSnapshot(supervisionDir, key, effective)) {
             is SnapshotOutcome.None -> null
             is SnapshotOutcome.Written -> outcome.path
             is SnapshotOutcome.Refused -> return SnapshotsOutcome.Refused(outcome.refusal)
@@ -888,12 +1074,12 @@ internal class ServiceRunSupervisor(
     private fun writeSnapshot(
         supervisionDir: Path,
         key: String?,
-        configuration: RunConfiguration,
+        effective: EffectiveConfiguration,
     ): SnapshotOutcome {
-        if (configuration.isEmpty) return SnapshotOutcome.None
+        if (effective.configuration.isEmpty) return SnapshotOutcome.None
         val path = supervisionDir.resolve(RUN_CONFIG_NAME)
         return try {
-            writeRunConfiguration(path, configuration)
+            writeRunConfiguration(path, effective)
             SnapshotOutcome.Written(path)
         } catch (failure: Exception) {
             // The slot the budget gave to this run is given back: the run is
@@ -994,7 +1180,7 @@ internal class ServiceRunSupervisor(
     }
 
     /**
-     * Writes the snapshot of [configuration] at [path].
+     * Writes the snapshot of the [effective] configuration at [path].
      *
      * ## Why the file is written the way the registry writes its own
      *
@@ -1008,13 +1194,14 @@ internal class ServiceRunSupervisor(
      *
      * ## What the file holds
      *
-     * The schema of the document and the values. It is a document the CHILD
-     * reads, and the child re-validates it: the disk is not an authority,
-     * and a file that the service wrote is still a file on the disk.
+     * The schema of the document and the values, and —only when a provider took part— the
+     * provenance of every key. It is a document the CHILD reads, and the child re-validates
+     * it: the disk is not an authority, and a file that the service wrote is still a file on
+     * the disk.
      */
-    private fun writeRunConfiguration(path: Path, configuration: RunConfiguration) {
+    private fun writeRunConfiguration(path: Path, effective: EffectiveConfiguration) {
         val directory = checkNotNull(path.parent) { "the snapshot has no directory" }
-        val document = runConfigurationDocument(configuration.values)
+        val document = runConfigurationDocument(effective.configuration.values, effective.provenance)
         val temporary = Files.createTempFile(directory, RUN_CONFIG_NAME, ".tmp")
         try {
             Files.setPosixFilePermissions(
@@ -1254,6 +1441,7 @@ internal class ServiceRunSupervisor(
             configuration: RunConfiguration = RunConfiguration.EMPTY,
             parameterContract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
             parameters: Map<String, String> = emptyMap(),
+            provider: ServiceProviderReference? = null,
         ): String {
             val base = workspace?.let { workspaceText ->
                 script.length.toString() + ":" + script + "|" +
@@ -1272,11 +1460,29 @@ internal class ServiceRunSupervisor(
             // fingerprint that could not tell them apart would answer the
             // second one with the run of the first.
             val parametersText = RunInputs.canonicalText(parameterContract, parameters)
-            if (parametersText.isEmpty()) return ServiceAuthorizations.digestOf(withConfiguration)
+            val withParameters = if (parametersText.isEmpty()) {
+                withConfiguration
+            } else {
+                withConfiguration + "@p:" + parametersText.length.toString() + ":" + parametersText
+            }
+            // The provider reference travels in a carrier of ITS OWN, appended only when the
+            // request names one, so that the fingerprint of every request that names none is
+            // the fingerprint it had. The keys are sorted and distinct: the order a request
+            // lists them in does not make it another request.
+            val providerText = provider?.let(::providerCanonicalText).orEmpty()
+            if (providerText.isEmpty()) return ServiceAuthorizations.digestOf(withParameters)
             return ServiceAuthorizations.digestOf(
-                withConfiguration + "@p:" + parametersText.length.toString() + ":" + parametersText,
+                withParameters + "@c:" + providerText.length.toString() + ":" + providerText,
             )
         }
+
+        /** The canonical text of [provider]: the name and the keys, length-prefixed. */
+        private fun providerCanonicalText(provider: ServiceProviderReference): String =
+            (listOf(provider.provider) + provider.keys.distinct().sorted())
+                .joinToString("|") { it.length.toString() + ":" + it }
+
+        /** How many runs the service describes the configuration of unless it is told otherwise. */
+        const val MAX_DESCRIBED_RUNS: Int = 256
 
         /**
          * The key a client stores its starts under.
@@ -1346,6 +1552,30 @@ private sealed interface SnapshotsOutcome {
     /** One of the files could not be written, and the refusal says why. */
     data class Refused(val refusal: ServiceRefusal) : SnapshotsOutcome
 }
+
+/** What a start asks of the provider, decided before anything is claimed. */
+private sealed interface ProviderPlan {
+
+    /** The provider is not asked anything: the request named none, or set every key itself. */
+    data object Nothing : ProviderPlan
+
+    /** The provider is asked for [keys], the ones the request did not set itself. */
+    data class Ask(val keys: List<String>) : ProviderPlan
+
+    /** The reference breaks a rule; the start is refused before the key is claimed. */
+    data class Refused(val refusal: ServiceRefusal) : ProviderPlan
+}
+
+/** The configuration a run is given and, when a provider took part, where it came from. */
+private class EffectiveConfiguration(val configuration: RunConfiguration, val provenance: RunConfigurationProvenance?)
+
+private sealed interface EffectiveOutcome {
+    data class Resolved(val effective: EffectiveConfiguration) : EffectiveOutcome
+    data class Refused(val refusal: ServiceRefusal) : EffectiveOutcome
+}
+
+/** Where the snapshot of a run is, or null when the run was given no configuration. */
+private class SnapshotRef(val path: Path?)
 
 private sealed interface SnapshotOutcome {
 

@@ -270,7 +270,7 @@ One request per line, one answer per line, in JSON, with the version of the prot
 {"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
-The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). It can also START a run, CANCEL one and ANSWER the question of one, which are a fourth, a fifth and a sixth door, each with a right of its own. Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `cancel-not-authorized`, `run-cancel-refused`, `answer-not-authorized`, `input-answer-refused` — so a client reads a word and not a sentence.
+The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). It can also START a run, CANCEL one and ANSWER the question of one, which are a fourth, a fifth and a sixth door, each with a right of its own. Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `configuration-provider-refused`, `cancel-not-authorized`, `run-cancel-refused`, `answer-not-authorized`, `input-answer-refused` — so a client reads a word and not a sentence.
 
 #### Who may ask, and what the boundary really is
 
@@ -338,6 +338,37 @@ The request may also carry a **configuration**: the NAME/VALUE pairs that the st
 The answer **echoes** the configuration, and that is the point: the schema of the wire does not change when an operation gains a field, so a service that does not know the field ignores it in silence and starts the run WITHOUT the configuration — and the client, which sent it and saw a well formed answer, believes in a configuration that is not there. The echo turns that silence into a fact, and the typed client that compares the echo with what it sent turns the fact into a named negative (`unreadable`: the run EXISTS, so the operator has to be able to cancel it).
 
 The configuration is a **public channel, and it says so**. There is no oracle that tells a secret from a plain text, so the service cannot promise to keep a secret: the values are written in the snapshot the service owns (mode `0600`, in its own supervision directory), they are in the environment of the steps, and if a step prints them they are in the output of the run. What the service refuses is the vocabulary of the product — `PIPELINE_*`, `PIPELINEK_*` and `DURABLE_SH_*`, the names the sandbox removes from an environment, and `JAVA_HOME`/`M2_HOME`/`PATH`, which the launcher consumes to build the PATH of a step — by name, with `run-configuration-refused` and a reason (`the-configuration-name-is-reserved`, `the-configuration-name-is-denied`, `the-configuration-name-is-a-path-anchor`, …). A configuration that breaks a rule does not take the client's key: the client can fix it and repeat with the same key.
+
+#### A run whose configuration a controller supplies
+
+The values do not have to travel in the request: the run may name a **provider** and the keys it wants, and the service asks the controller that registered that provider for them BEFORE it launches anything. The controller is a client of the same socket, and its session is made of four operations, each one a line, each one on a connection of its own:
+
+```json
+{"schema":"pipelinek.service/2","op":"config.provider.register","provider":"vault","keys":[{"name":"BUILD_PROFILE","type":"string","sensitivity":"non-secret"}],"auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"sessionId":"8c3f…","leaseMillis":15000}}
+{"schema":"pipelinek.service/2","op":"config.provider.poll","sessionId":"8c3f…","waitMillis":5000,"auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"state":"asked","requestId":"b71d…","keys":["BUILD_PROFILE"]}}
+{"schema":"pipelinek.service/2","op":"config.provider.answer","sessionId":"8c3f…","requestId":"b71d…","revision":"r7","values":{"BUILD_PROFILE":"release"},"auth":"…"}
+{"schema":"pipelinek.service/2","op":"run.start","script":"build.kts","idempotencyKey":"order-42","configurationProvider":{"provider":"vault","keys":["BUILD_PROFILE"]},"auth":"…"}
+```
+
+`config.provider.close` ends the session. Every one of them needs the right to START runs, because a session is how a start gets its values. The service never calls the controller: the controller **polls**, holding a call for at most `waitMillis` (the service caps it), and the poll is also what renews the lease of the session. A session that is not renewed lapses, and a run that was waiting for it is refused.
+
+A refusal of any operation of the session has the kind `configuration-provider-refused` and a reason; a start that could not get its values is refused with `run-configuration-refused` and a reason, and it releases the key, so the client can repeat the request with the same key once the controller is back. What the service promises about the answer:
+
+- **Exactly the asked keys, with the declared type.** An answer with a key nobody asked for, or without one that was asked, or with a value that is not a `string`, an `integer` or a `boolean` as declared, is refused to the controller (`answer-key-unexpected`, `answer-key-missing`, `answer-value-wrong-type`) AND fails the run that asked (`provider-answer-refused`): a controller is not given a second try with another value.
+- **No secret is configuration.** A key declares a sensitivity, and the only one the service accepts is `non-secret`: a key labelled as a secret is refused when the session registers (`a-secret-is-not-configuration`), and a label the service does not know is not read as `non-secret` (`sensitivity-label-unknown`). The label is a declaration and not a detector — the same warning as before applies to what the controller chooses to send.
+- **No fallback.** A provider name belongs to the credential that registered it, and a live duplicate is refused (`provider-name-taken`). A run asks the session of ITS credential and nobody else's: if that session is not there, the run is refused (`provider-not-registered`), and if it closes while the run waits, the refusal is at once (`provider-gone`). A controller that is silent is a `provider-timeout` after a deadline of 10 seconds, and no run was started.
+- **One snapshot per run.** The answer is merged under the explicit `configuration` of the request, goes through the same rules, and the run keeps exactly that snapshot. The snapshot gains a `provenance` — the provider, its revision, the digest of what the source gave and the origin and type of each key — and the run re-checks that the digest it carries is the digest of its values.
+
+All of it is askable afterwards, without a value:
+
+```json
+{"schema":"pipelinek.service/2","op":"run.configuration","runId":"34b28ddc-…","auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"runId":"34b28ddc-…","digest":"…","precedence":["request","provider"],"entries":[{"name":"BUILD_PROFILE","origin":"provider","type":"string"}],"provider":"vault","revision":"r7","sourceDigest":"…"}}
+```
+
+`run.configuration` is a read of the run, with the same authorization as `run.state`, and it answers from the snapshot the run itself reads — there is no second store to drift. A provider that took no part leaves `provider`, `revision` and `sourceDigest` out. The service keeps at most four sessions, so the polls that wait cannot fill the threads that answer questions; a fifth registration is refused (`too-many-provider-sessions`). The typed client has one method for each operation (`registerProvider`, `pollProvider`, `answerProvider`, `closeProvider`, `runConfiguration`) and `startRun` takes the reference to the provider.
 
 The configuration is the **lowest** layer of the environment: the `environment { }` of a stage is composed on top of it and the `withEnv` scope on top of that, and the more specific scope wins. The values reach the steps through the environment the run already composes, so there is no new precedence rule to learn.
 

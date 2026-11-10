@@ -120,6 +120,11 @@ class ServiceObservationTest {
             ServiceRequest.RunState(schema, "run-1"),
             ServiceRequest.ListInputs(schema, "run-1"),
             ServiceRequest.DescribeParameters(schema, "build.kts"),
+            ServiceRequest.ProviderRegister(schema, "vault", emptyList()),
+            ServiceRequest.ProviderPoll(schema, "session-1", 0L),
+            ServiceRequest.ProviderAnswer(schema, "session-1", "request-1", "r1", emptyMap()),
+            ServiceRequest.ProviderClose(schema, "session-1"),
+            ServiceRequest.RunConfigurationQuery(schema, "run-1"),
         )
 
         mutations.forEach { assertEquals(ServiceRequestKind.Mutation, kindOf(it), "$it changes something") }
@@ -145,6 +150,18 @@ class ServiceObservationTest {
         assertEquals(null, runOf(ServiceRequest.Version(schema)))
         assertEquals(null, runOf(ServiceRequest.Health(schema)))
         assertEquals(null, runOf(ServiceRequest.DescribeParameters(schema, "build.kts")))
+        assertEquals("run-5", runOf(ServiceRequest.RunConfigurationQuery(schema, "run-5")))
+        assertEquals(
+            null,
+            runOf(ServiceRequest.ProviderRegister(schema, "vault", emptyList())),
+            "a provider session belongs to no run: a run asks for it, not the other way round",
+        )
+        assertEquals(null, runOf(ServiceRequest.ProviderPoll(schema, "session-1", 0L)))
+        assertEquals(
+            null,
+            runOf(ServiceRequest.ProviderAnswer(schema, "session-1", "request-1", "r1", emptyMap())),
+        )
+        assertEquals(null, runOf(ServiceRequest.ProviderClose(schema, "session-1")))
     }
 
     @Test

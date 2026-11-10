@@ -41,6 +41,18 @@ internal object RunConfigurationReader {
     /** The schema the snapshot carries. */
     const val SCHEMA: String = "pipelinek.runconfig/1"
 
+    /** The origin of a key the start request set itself. */
+    const val ORIGIN_REQUEST: String = "request"
+
+    /** The origin of a key a configuration provider supplied. */
+    const val ORIGIN_PROVIDER: String = "provider"
+
+    /** The type of a key nobody typed: the request carries text. */
+    const val TYPE_TEXT: String = "string"
+
+    /** The origins from the strongest to the weakest: a key the request sets is never asked of a provider. */
+    val PRECEDENCE: List<String> = listOf(ORIGIN_REQUEST, ORIGIN_PROVIDER)
+
     /**
      * The configuration of [path], or the refusal that there is none.
      *
@@ -50,7 +62,62 @@ internal object RunConfigurationReader {
      */
     fun read(path: String?): RunConfiguration {
         if (path == null) return RunConfiguration.EMPTY
-        val file = Path.of(path)
+        return load(Path.of(path)).configuration
+    }
+
+    /**
+     * Where the configuration the snapshot at [path] holds came from, WITHOUT the values.
+     *
+     * The snapshot is the one store of the configuration of a run, so the description is read from
+     * it and not kept anywhere else: what a client is told about a run is what the run was given.
+     * A snapshot written without a provider has no provenance, and every key of it is one the
+     * request set itself, typed as text.
+     *
+     * It validates the snapshot as [read] does and refuses the same way.
+     */
+    fun describe(path: Path): RunConfigurationDescription {
+        val snapshot = load(path)
+        val values = snapshot.configuration.values
+        val provenance = snapshot.provenance
+        val entries = values.keys.sorted().map { name ->
+            val origin = provenance?.origins?.get(name)
+            RunConfigurationEntry(
+                name = name,
+                origin = origin?.origin ?: ORIGIN_REQUEST,
+                type = origin?.type ?: TYPE_TEXT,
+            )
+        }
+        return RunConfigurationDescription(
+            digest = configurationDigest(values),
+            entries = entries,
+            provider = provenance?.provider,
+            revision = provenance?.revision,
+            sourceDigest = provenance?.sourceDigest,
+        )
+    }
+
+    /** The description of a run that was given no configuration at all. */
+    fun describeNothing(): RunConfigurationDescription =
+        RunConfigurationDescription(
+            digest = configurationDigest(emptyMap()),
+            entries = emptyList(),
+            provider = null,
+            revision = null,
+            sourceDigest = null,
+        )
+
+    /** What a snapshot turned out to hold once it was validated. */
+    private class Snapshot(val configuration: RunConfiguration, val provenance: RunConfigurationProvenance?)
+
+    /**
+     * The snapshot at [file], validated.
+     *
+     * The values are checked by the rules of the configuration, and when the snapshot says a
+     * provider took part, its digest must be the digest of the values it carries: a snapshot whose
+     * values were changed after the service wrote it is refused, and so is one whose provenance
+     * cannot be read.
+     */
+    private fun load(file: Path): Snapshot {
         val document = readDocument(file)
         val schema = document.text("schema")
         if (schema != SCHEMA) {
@@ -67,7 +134,7 @@ internal object RunConfigurationReader {
                     message = "the snapshot of the configuration does not carry a set of values",
                 ),
             )
-        return when (val outcome = RunConfiguration.of(values)) {
+        val configuration = when (val outcome = RunConfiguration.of(values)) {
             is RunConfigurationOutcome.Accepted -> outcome.configuration
             is RunConfigurationOutcome.Refused -> throw CommandRefused(
                 CliExit.InvalidArgument(
@@ -76,6 +143,43 @@ internal object RunConfigurationReader {
                 ),
             )
         }
+        val provenance = document.provenance(configuration.values)
+        return Snapshot(configuration, provenance)
+    }
+
+    /**
+     * The provenance the document carries, null when it carries none.
+     *
+     * A document that carries a `provenance` it cannot read, or whose digest is not the digest of
+     * its values, is refused: provenance that does not describe the values is worse than none.
+     */
+    private fun JsonObject.provenance(values: Map<String, String>): RunConfigurationProvenance? {
+        val element = this["provenance"] ?: return null
+        val refusal = {
+            CommandRefused(
+                CliExit.InvalidArgument(
+                    message = "the provenance of the snapshot of the configuration is not one this " +
+                        "build reads or does not describe its values",
+                ),
+            )
+        }
+        val provenance = element as? JsonObject ?: throw refusal()
+        if (provenance.text("digest") != configurationDigest(values)) throw refusal()
+        val origins = LinkedHashMap<String, RunConfigurationOrigin>()
+        val raw = provenance["origins"] as? JsonObject ?: throw refusal()
+        for ((name, entry) in raw) {
+            val item = entry as? JsonObject ?: throw refusal()
+            origins[name] = RunConfigurationOrigin(
+                origin = item.text("origin") ?: throw refusal(),
+                type = item.text("type") ?: throw refusal(),
+            )
+        }
+        return RunConfigurationProvenance(
+            provider = provenance.text("provider") ?: throw refusal(),
+            revision = provenance.text("revision") ?: throw refusal(),
+            sourceDigest = provenance.text("sourceDigest") ?: throw refusal(),
+            origins = origins,
+        )
     }
 
     /**
@@ -142,8 +246,15 @@ internal object RunConfigurationReader {
  * It is here so that the WRITER and the READER agree on the shape without
  * sharing a mutable thing: the writer is the service, the reader is the
  * child, and they are two processes that never meet.
+ *
+ * A [provenance] is written only when a provider took part, so the snapshot of a run that
+ * asked none is the one it always was. It carries the digest of the values, which the reader
+ * checks, and it never carries a value of its own.
  */
-internal fun runConfigurationDocument(values: Map<String, String>): JsonObject = buildJsonObject {
+internal fun runConfigurationDocument(
+    values: Map<String, String>,
+    provenance: RunConfigurationProvenance? = null,
+): JsonObject = buildJsonObject {
     put("schema", JsonPrimitive(RunConfigurationReader.SCHEMA))
     put(
         "values",
@@ -151,4 +262,78 @@ internal fun runConfigurationDocument(values: Map<String, String>): JsonObject =
             values.forEach { (name, value) -> put(name, JsonPrimitive(value)) }
         },
     )
+    if (provenance != null) {
+        put(
+            "provenance",
+            buildJsonObject {
+                put("digest", JsonPrimitive(configurationDigest(values)))
+                put("provider", JsonPrimitive(provenance.provider))
+                put("revision", JsonPrimitive(provenance.revision))
+                put("sourceDigest", JsonPrimitive(provenance.sourceDigest))
+                put(
+                    "origins",
+                    buildJsonObject {
+                        provenance.origins.forEach { (name, origin) ->
+                            put(
+                                name,
+                                buildJsonObject {
+                                    put("origin", JsonPrimitive(origin.origin))
+                                    put("type", JsonPrimitive(origin.type))
+                                },
+                            )
+                        }
+                    },
+                )
+            },
+        )
+    }
+}
+
+/** Where one key of a snapshot came from and the type it was validated as. */
+internal data class RunConfigurationOrigin(val origin: String, val type: String)
+
+/**
+ * Where the values of a snapshot came from when a configuration provider took part.
+ *
+ * The [sourceDigest] is the digest of what the provider answered, and the [origins] say, key by
+ * key, whether the request set it or the provider did. It holds no value.
+ */
+internal data class RunConfigurationProvenance(
+    val provider: String,
+    val revision: String,
+    val sourceDigest: String,
+    val origins: Map<String, RunConfigurationOrigin>,
+)
+
+/** One key of a described configuration. */
+internal data class RunConfigurationEntry(val name: String, val origin: String, val type: String)
+
+/**
+ * What a client may know about the configuration of a run: where each key came from, and the
+ * digests that make the snapshot comparable. It holds no value, so it can be shown and logged.
+ */
+internal data class RunConfigurationDescription(
+    val digest: String,
+    val entries: List<RunConfigurationEntry>,
+    val provider: String?,
+    val revision: String?,
+    val sourceDigest: String?,
+)
+
+/** What looking for the description of the configuration of a run came to. */
+internal sealed interface RunConfigurationLookup {
+    /** The run is one this service started and its snapshot was read. */
+    data class Found(val description: RunConfigurationDescription) : RunConfigurationLookup
+
+    /** The service does not know the run: it did not start it, or it started it before it restarted. */
+    data object Unknown : RunConfigurationLookup
+
+    /** The run is known but its snapshot could not be read; [detail] says why. */
+    data class Unreadable(val detail: String) : RunConfigurationLookup
+}
+
+/** The door the service asks how the configuration of a run came to be. */
+internal interface ServiceRunConfigurations {
+    /** The description of the configuration [runId] was started with. Never throws. */
+    fun describe(runId: String): RunConfigurationLookup
 }

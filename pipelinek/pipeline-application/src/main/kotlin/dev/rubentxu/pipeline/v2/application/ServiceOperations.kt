@@ -73,6 +73,8 @@ internal class ServiceOperations(
     private val starts: ServiceRunStarter,
     private val cancellations: ServiceRunCancellation?,
     private val inputs: ServiceInputAnswers? = null,
+    private val providers: ConfigurationProviderSessions? = null,
+    private val configurations: ServiceRunConfigurations? = null,
 ) {
 
     /**
@@ -91,6 +93,11 @@ internal class ServiceOperations(
         is ServiceRequest.ListInputs -> listInputsOf(request)
         is ServiceRequest.AnswerInput -> answerInputOf(request, credentialDigest)
         is ServiceRequest.DescribeParameters -> describeParametersOf()
+        is ServiceRequest.ProviderRegister -> providerRegisterOf(request, credentialDigest)
+        is ServiceRequest.ProviderPoll -> providerPollOf(request, credentialDigest)
+        is ServiceRequest.ProviderAnswer -> providerAnswerOf(request, credentialDigest)
+        is ServiceRequest.ProviderClose -> providerCloseOf(request, credentialDigest)
+        is ServiceRequest.RunConfigurationQuery -> runConfigurationOf(request)
     }
 
     /**
@@ -196,6 +203,7 @@ internal class ServiceOperations(
                     configuration = request.configuration,
                     parameters = request.parameters,
                     parameterContract = request.parameterContract,
+                    configurationProvider = request.configurationProvider,
                 ),
             )
         } catch (failure: Exception) {
@@ -403,6 +411,155 @@ internal class ServiceOperations(
     private fun inputRefused(reason: String, detail: String): ServiceResponse =
         ServiceResponse.Refused(ServiceProtocol.SCHEMA, ServiceRefusal.InputAnswerRefused(reason, detail))
 
+    // ------------------------------------------------------------ configuration providers
+
+    /**
+     * The answer to a request to REGISTER a configuration provider session.
+     *
+     * The session belongs to the credential that registered it: the credential is the owner the
+     * resolution of a start is matched against, so a provider of the same name under another
+     * credential is never reached. It NEVER throws, for the reason [answer] never throws.
+     */
+    private fun providerRegisterOf(request: ServiceRequest.ProviderRegister, credentialDigest: String?): ServiceResponse =
+        withProviders(credentialDigest) { sessions, owner ->
+            val keys = request.keys.map { ProviderKeyDeclaration(it.name, it.type, it.sensitivity) }
+            when (val outcome = sessions.register(owner, request.provider, keys)) {
+                is ProviderRegistrationOutcome.Registered -> answered(
+                    buildJsonObject {
+                        put("sessionId", JsonPrimitive(outcome.sessionId))
+                        put("leaseMillis", JsonPrimitive(outcome.leaseMillis))
+                    },
+                )
+
+                is ProviderRegistrationOutcome.Refused -> providerRefused(outcome.reason, outcome.detail)
+            }
+        }
+
+    /** The answer to a POLL of a provider session: the keys a run waits for, or an idle answer. */
+    private fun providerPollOf(request: ServiceRequest.ProviderPoll, credentialDigest: String?): ServiceResponse =
+        withProviders(credentialDigest) { sessions, owner ->
+            when (val outcome = sessions.poll(owner, request.sessionId, request.waitMillis)) {
+                is ProviderPollOutcome.Request -> answered(
+                    buildJsonObject {
+                        put("state", JsonPrimitive(POLL_ASKED))
+                        put("requestId", JsonPrimitive(outcome.requestId))
+                        put("keys", JsonArray(outcome.keys.map(::JsonPrimitive)))
+                    },
+                )
+
+                is ProviderPollOutcome.Idle -> answered(buildJsonObject { put("state", JsonPrimitive(POLL_IDLE)) })
+                is ProviderPollOutcome.Refused -> providerRefused(outcome.reason, outcome.detail)
+            }
+        }
+
+    /** The answer to the ANSWER of a provider: the values of the keys a poll asked for. */
+    private fun providerAnswerOf(request: ServiceRequest.ProviderAnswer, credentialDigest: String?): ServiceResponse =
+        withProviders(credentialDigest) { sessions, owner ->
+            val outcome = sessions.answer(owner, request.sessionId, request.requestId, request.revision, request.values)
+            providerAcknowledged(request.sessionId, outcome, OUTCOME_ANSWERED)
+        }
+
+    /** The answer to the CLOSE of a provider session. */
+    private fun providerCloseOf(request: ServiceRequest.ProviderClose, credentialDigest: String?): ServiceResponse =
+        withProviders(credentialDigest) { sessions, owner ->
+            providerAcknowledged(request.sessionId, sessions.close(owner, request.sessionId), OUTCOME_CLOSED)
+        }
+
+    private fun providerAcknowledged(
+        sessionId: String,
+        outcome: ProviderSessionOutcome,
+        word: String,
+    ): ServiceResponse = when (outcome) {
+        is ProviderSessionOutcome.Accepted -> answered(
+            buildJsonObject {
+                put("sessionId", JsonPrimitive(sessionId))
+                put("outcome", JsonPrimitive(word))
+            },
+        )
+
+        is ProviderSessionOutcome.Refused -> providerRefused(outcome.reason, outcome.detail)
+    }
+
+    /**
+     * Runs [action] for the credential that sent the request, or refuses.
+     *
+     * A service composed without provider sessions refuses, and so does a request that arrives
+     * without a credential: a session with no owner would be one every anonymous start could
+     * reach. A failure inside the action is a refusal with a fixed text — the message of a
+     * failure may name paths and it does not travel.
+     */
+    private fun withProviders(
+        credentialDigest: String?,
+        action: (ConfigurationProviderSessions, String) -> ServiceResponse,
+    ): ServiceResponse {
+        val sessions = providers
+            ?: return providerRefused(REASON_PROVIDERS_NOT_COMPOSED, "this service was not composed with configuration providers")
+        val owner = credentialDigest?.takeIf { it.isNotBlank() }
+            ?: return providerRefused(REASON_PROVIDER_CREDENTIAL_MISSING, "a provider session belongs to a credential")
+        return try {
+            action(sessions, owner)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            providerRefused(REASON_PROVIDER_FAILED, "the operation on the provider session failed")
+        } catch (_: Exception) {
+            providerRefused(REASON_PROVIDER_FAILED, "the operation on the provider session failed")
+        }
+    }
+
+    private fun providerRefused(reason: String, detail: String): ServiceResponse =
+        ServiceResponse.Refused(ServiceProtocol.SCHEMA, ServiceRefusal.ConfigurationProviderRefused(reason, detail))
+
+    /**
+     * The answer to the question of where the configuration of a run came from.
+     *
+     * The answer says, key by key, which origin set it and which type it was validated as, and
+     * it carries the digest of the snapshot and, when a provider took part, its name, revision
+     * and the digest of what it answered. It carries NO value: the values are the run's, and a
+     * client that needs to know whether two runs were given the same configuration compares
+     * digests. It NEVER throws, for the reason [answer] never throws.
+     */
+    private fun runConfigurationOf(request: ServiceRequest.RunConfigurationQuery): ServiceResponse {
+        val source = configurations
+            ?: return configurationRefused("run-configuration-unavailable", "this service does not describe the configuration of runs")
+        val lookup = try {
+            source.describe(request.runId)
+        } catch (_: Exception) {
+            return configurationRefused("run-configuration-unreadable", "the configuration of the run could not be read")
+        }
+        return when (lookup) {
+            is RunConfigurationLookup.Unknown ->
+                configurationRefused("run-configuration-unknown", "this service did not start a run with that identity")
+
+            is RunConfigurationLookup.Unreadable -> configurationRefused("run-configuration-unreadable", lookup.detail)
+            is RunConfigurationLookup.Found -> answered(describedConfiguration(request.runId, lookup.description))
+        }
+    }
+
+    private fun describedConfiguration(runId: String, description: RunConfigurationDescription): JsonObject =
+        buildJsonObject {
+            put("runId", JsonPrimitive(runId))
+            put("digest", JsonPrimitive(description.digest))
+            put("precedence", JsonArray(RunConfigurationReader.PRECEDENCE.map(::JsonPrimitive)))
+            put(
+                "entries",
+                JsonArray(
+                    description.entries.map { entry ->
+                        buildJsonObject {
+                            put("name", JsonPrimitive(entry.name))
+                            put("origin", JsonPrimitive(entry.origin))
+                            put("type", JsonPrimitive(entry.type))
+                        }
+                    },
+                ),
+            )
+            description.provider?.let { put("provider", JsonPrimitive(it)) }
+            description.revision?.let { put("revision", JsonPrimitive(it)) }
+            description.sourceDigest?.let { put("sourceDigest", JsonPrimitive(it)) }
+        }
+
+    private fun configurationRefused(reason: String, detail: String): ServiceResponse =
+        ServiceResponse.Refused(ServiceProtocol.SCHEMA, ServiceRefusal.RunConfigurationRefused(reason, detail))
+
     /**
      * An answer, with the schema this build speaks.
      */
@@ -423,6 +580,27 @@ internal class ServiceOperations(
         ServiceRunState.encode(observation)
 
     companion object {
+
+        /** The state word of a poll that found a run waiting for values. */
+        const val POLL_ASKED: String = "asked"
+
+        /** The state word of a poll that found nothing to ask before its wait ended. */
+        const val POLL_IDLE: String = "idle"
+
+        /** The outcome word of an answer a provider gave. */
+        const val OUTCOME_ANSWERED: String = "answered"
+
+        /** The outcome word of a session its provider closed. */
+        const val OUTCOME_CLOSED: String = "closed"
+
+        /** The service was composed without configuration provider sessions. */
+        const val REASON_PROVIDERS_NOT_COMPOSED: String = "provider-sessions-not-composed"
+
+        /** A provider operation arrived without the credential that would own the session. */
+        const val REASON_PROVIDER_CREDENTIAL_MISSING: String = "provider-credential-missing"
+
+        /** An operation on a provider session failed in a way nobody foresaw. */
+        const val REASON_PROVIDER_FAILED: String = "provider-operation-failed"
 
         /**
          * The refusal of the wire that [refusal] becomes.

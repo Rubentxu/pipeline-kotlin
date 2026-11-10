@@ -641,10 +641,20 @@ internal class ServiceServer(
      * Listing the questions of a run and answering one are the same question
      * as cancelling: the right to answer AND the run. Reading a question is
      * the right of whoever may answer it.
+     *
+     * A configuration provider is the controller that starts runs and asks nothing
+     * about any run in particular, so its session operations are the same question as
+     * starting: the right to start. What a run was started with is read like the rest of
+     * the run, with the right to read it.
      */
     private fun decide(decoded: ServiceDecoding.Decoded): ServiceAuthorizationOutcome =
         when (val request = decoded.request) {
-            is ServiceRequest.StartRun -> authorizations.decideStart(decoded.credential)
+            is ServiceRequest.StartRun, is ServiceRequest.ProviderRegister,
+            is ServiceRequest.ProviderPoll, is ServiceRequest.ProviderAnswer,
+            is ServiceRequest.ProviderClose,
+            -> authorizations.decideStart(decoded.credential)
+            is ServiceRequest.RunConfigurationQuery ->
+                authorizations.decide(decoded.credential, request.runId)
             is ServiceRequest.CancelRun ->
                 authorizations.decideCancel(decoded.credential, request.runId)
             is ServiceRequest.ListInputs ->

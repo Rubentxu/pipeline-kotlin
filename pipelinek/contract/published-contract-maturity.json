@@ -187,7 +187,27 @@
       "and with the names of the refusals it can be answered with. The right grew as a SET inside",
       "the application - `WithRights(over, granted)` - precisely so that adding a right did not",
       "add a case to a published sealed interface: the next right will arrive the same way, and",
-      "publishing the scope would freeze a vocabulary whose next case is already known."
+      "publishing the scope would freeze a vocabulary whose next case is already known.",
+      "",
+      "THE SURFACE THIS ARTIFACT PUBLISHES NOW ALSO CARRIES A CONFIGURATION. The wire can ask",
+      "for a run WITH the environment its steps will see: the operation `run.start` gained the",
+      "optional field `configuration`, a map of names to plain texts, and the answer returns the",
+      "same map back. The ECHO is the reason and not a courtesy: the schema of the protocol does",
+      "not change when an operation gains a field, so a service that does not know the field",
+      "ignores it in silence and starts the run without the configuration, and a client that sent",
+      "it believes in a configuration that is not there. The echo turns that silence into a fact,",
+      "and the typed client that compares the echo with what it sent turns the fact into a named",
+      "negative - a refusal of the wire's own shape, not an exception.",
+      "THE CONFIGURATION IS A PUBLIC CHANNEL AND THE ARTIFACT SAYS SO, in the refusal as much as",
+      "in the documentation: there is no oracle that tells a secret from a plain text, so the wire",
+      "cannot promise to keep one. What it refuses, BY NAME, is the vocabulary of the product: the",
+      "three prefixes the service and the launcher own, the names the sandbox removes from an",
+      "environment, and the two names the launcher consumes to build the PATH of a step. Those",
+      "are refused with the single new word `run-configuration-refused` and the reason inside it,",
+      "because a vocabulary that grew with the rules would multiply the published words without",
+      "giving the client more power. The right to start still governs it, and no new right was",
+      "published for it: the configuration travels inside a start request, so it is part of",
+      "starting."
     ]
   },
   "surfaces": {

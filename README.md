@@ -250,7 +250,7 @@ The last row is the honest one: the capabilities `runtime.inspect.v1`, `runtime.
 
 ### The local service
 
-`pipelinek serve` runs a local service on a Unix domain socket, so a client can ask about the runs of a machine —and, with the right scope, start one of them. It is opt-in in the literal sense: nothing starts it for you, and it serves until you stop it. What it leaves behind when it stops is nothing that RUNS — the socket goes — and what it WROTE stays: the authorizations, the record of the starts and the directory of the supervised runs are the operator's files, next to the socket, and they are not deleted.
+`pipelinek serve` runs a local service on a Unix domain socket, so a client can ask about the runs of a machine —and, with the right scope, start one of them or cancel one that is going. It is opt-in in the literal sense: nothing starts it for you, and it serves until you stop it. What it leaves behind when it stops is nothing that RUNS — the socket goes — and what it WROTE stays: the authorizations, the record of the starts and the directory of the supervised runs are the operator's files, next to the socket, and they are not deleted.
 
 ```bash
 pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock
@@ -270,7 +270,7 @@ One request per line, one answer per line, in JSON, with the version of the prot
 {"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
-The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). It can also START a run, which is a fourth door with a right of its own. Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused` — so a client reads a word and not a sentence.
+The service reads three things: `version` (the version of the product and of the protocol), `health` (the service and the substrate it was composed with) and `run.state` (the state of one run, the same answer `inspect --state` prints over the same store). It can also START a run and CANCEL one, which are a fourth and a fifth door, each with a right of its own. Every refusal carries a name — `unknown-run`, `incompatible-protocol`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `cancel-not-authorized`, `run-cancel-refused` — so a client reads a word and not a sentence.
 
 #### Who may ask, and what the boundary really is
 
@@ -280,7 +280,7 @@ The service issues one credential itself the first time it starts and keeps it i
 <token> <label> <scope>
 ```
 
-The scope is `all`, `none`, or the run ids it covers, and it may carry the suffix `+start` when the client may also start runs. The label is for the operator and **never travels**: a label that travels can be enumerated by a client that presents tokens until one is accepted.
+The scope is `all`, `none`, or the run ids it covers, and it may carry the suffixes `+start` and `+cancel` when the client may also start and cancel runs. The label is for the operator and **never travels**: a label that travels can be enumerated by a client that presents tokens until one is accepted.
 
 Two profiles, and each one says out loud, when the service starts, what it promises:
 
@@ -323,6 +323,27 @@ The answer is the identity of a run and NOT its outcome: the run is still going 
 The key is what makes a retry safe: the same key with the same request answers with the SAME run, and the same key with another request is a conflict (`idempotency-conflict`). The promise is durable while the service can write its file — the service keeps the record of the starts in the file it owns next to the socket, `starts` — so a client that retries after a restart gets the run that already started. If the disk refuses the write, the promise degrades to the life of the service: the record stays in memory, the client is still answered, and a retry AFTER a restart may start a second run for the same key.
 
 The child is a process, launched through the port that already exists for launching processes, and it is the same `pipelinek run` the operator would write on the command line. The run writes in the same store and the same control root the service reads, so a run started over the socket is a run that `run.state`, `events.follow` and `output.follow` can answer about — and it outlives the connection that asked for it.
+
+#### Cancelling a run
+
+The service can also CANCEL a run. It is a fifth door with a right of its own, because closing a run is not a question about a run: the scope of a client that may cancel says so in its own words.
+
+The right grows with the suffix `+cancel`, and it composes with `+start`: `all+start+cancel` may read every run, start runs and cancel them. A scope that names no run may not carry the right to cancel — there is nothing for it to cancel — and the service refuses to read such a scope. A client with no right to cancel is refused by name (`cancel-not-authorized`), and the right is asked BEFORE the scope, so a client that may cancel nothing learns nothing about the runs that exist.
+
+```json
+{"schema":"pipelinek.service/2","op":"run.cancel","runId":"34b28ddc-…","reason":"the operator changed their mind","auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"runId":"34b28ddc-…","outcome":"cancelled","terminalAtMs":1730000000000}}
+```
+
+Cancelling CLOSES the run: the child is ended, the run's terminal fact is written in the durable facts, and the run is terminal for every reader afterwards. The order is the contract — the child is gone BEFORE the terminal is written, because only the owner of a run may write its terminal, and the owner of a live run is its child.
+
+The answer is the terminal of the run, and it is DURABLE when the answer travels: the fact is committed before the service answers, so a client that reads the answer and then asks about the run reads the same terminal, and never an EOF where the product promised a fact.
+
+Cancelling twice is not an error. The second call answers `already-cancelled` with the SAME terminal, because a run is closed once and not twice. A run that reached a terminal of its own is not cancelled again, and a run nobody knows is refused by name: both are `run-cancel-refused`, carrying the reason (`the-run-is-already-terminal`, `the-run-is-unknown`).
+
+A cancel never crosses a LIVE lease: the service does not take the lease of a run another process is publishing, and the refusal names the holder (`the-lease-is-held-by-another`). That is why the child is ended first — the child IS the holder, and a holder that is dead is taken over, which is what makes the cancel the RECONCILIATION of a run whose writer died without ever saying how it ended.
+
+A service that may not cancel runs opens the substrate READ-ONLY and says so when it starts (`substrate read-only`). A service that may cancel them opens it read-write, because the terminal of a cancelled run is a fact and the service is the one that writes it.
 
 #### Subscriptions
 

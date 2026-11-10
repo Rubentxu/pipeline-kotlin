@@ -116,6 +116,35 @@ class FileBackedRunExecutionLeaseStore internal constructor(
         val lockFile = leaseDir.resolve(lockFileName(key))
         val recordFile = leaseDir.resolve(recordFileName(key))
 
+        // This store holds ONE lease at a time, and the reason is in the
+        // fields it keeps: the lock it took and the record it wrote, both
+        // in ONE place, because they are the two halves of the same
+        // ownership and a release has to give both back together.
+        //
+        // A second acquisition of ANOTHER run would have to overwrite
+        // them, and overwriting is what loses them: the lock of the first
+        // run stays open in this JVM —the kernel keeps the exclusivity
+        // until the file is closed— while the record that says who owns
+        // it is replaced by the record of the second run. The first run
+        // then has a lock nobody can take and a record that names a live
+        // owner, and a run in that state can never be closed nor
+        // recovered.
+        //
+        // So the store refuses it, and it refuses it BEFORE the machine
+        // is touched: the second run gets nothing, and the first run
+        // keeps everything it had. The refusal is UNVERIFIABLE and not
+        // ALREADY OWNED, because "somebody else has it" is a fact about
+        // another process and this is a fact about this store: the
+        // caller cannot prove it is the authority of the second run, so
+        // it must not publish as if it were.
+        val heldRecord = heldRecordFile
+        if (held != null && heldRecord != null && heldRecord != recordFile) {
+            return LeaseAcquisition.Unverifiable(
+                "this lease store already holds the lease of another run, and it holds " +
+                    "one at a time: the run it holds would lose its lock and its record",
+            )
+        }
+
         // What this call took and did not hand over. The `finally` below is the
         // single exit of the window: while `committed` is false, whatever was
         // taken goes back.

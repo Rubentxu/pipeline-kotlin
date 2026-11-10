@@ -40,6 +40,7 @@ class SagaPromiseOwnershipStoreTest {
         SqliteSagaObligationStore(
             connections = connections(),
             dbPath = dbPath(),
+            mayWrite = true,
         )
 
     /**

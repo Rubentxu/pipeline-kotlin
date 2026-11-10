@@ -41,6 +41,7 @@ class SagaPromisedBodyStoreTest {
         SqliteSagaObligationStore(
             connections = connections(),
             dbPath = dbPath(),
+            mayWrite = true,
         )
 
     /**

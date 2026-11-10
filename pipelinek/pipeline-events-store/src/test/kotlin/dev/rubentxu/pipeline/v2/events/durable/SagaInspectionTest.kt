@@ -68,6 +68,7 @@ class SagaInspectionTest {
         SqliteSagaObligationStore(
             connections = connections(),
             dbPath = dbPath(),
+            mayWrite = true,
         )
 
     /**

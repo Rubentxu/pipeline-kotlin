@@ -42,6 +42,7 @@ class SqliteSagaObligationStoreTest {
         SqliteSagaObligationStore(
             connections = connections(),
             dbPath = dbPath(),
+            mayWrite = true,
         )
 
     /**

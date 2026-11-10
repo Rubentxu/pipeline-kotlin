@@ -67,11 +67,31 @@ import kotlin.concurrent.withLock
  * A borrowed connection belongs to ONE operation at a time and comes back when the operation
  * ends, so the cost of the door is paid once per connection instead of once per promise.
  *
+ * ## The lane, and why a reader creates nothing
+ *
+ * The store is built in one of two lanes, and the lane decides whether the schema may be
+ * created: a WRITER creates it — and adds the columns a database written by an older build is
+ * missing — while a READER only ASKS the file what is there.
+ *
+ * The reader's lane asks because a reader has no business writing to a file it was only asked to
+ * look at. The engine refuses that write anyway, since the connection the reader borrows is one
+ * it refuses to write through, and the refusal arrives in the engine's own words ("attempt to
+ * write a readonly database"): words that name the ENGINE and not the table that is missing. A
+ * store that created its schema on construction turned that engine refusal into the answer the
+ * service gave to its operator, and the operator was sent to look at the database engine instead
+ * of at the table.
+ *
+ * So the reader asks, and what it acts on is the table's answer: a database with no
+ * `saga_obligation` table holds no promises, because the table is created before the first
+ * promise is armed and a promise cannot be armed without it.
+ *
  * @param connections the pools the store borrows its connections from.
+ * @param mayWrite whether this store may change the database it was opened on.
  */
 internal class SqliteSagaObligationStore(
     private val connections: DurableConnections,
     private val dbPath: String,
+    private val mayWrite: Boolean,
 ) : SagaObligationStore {
 
     init {
@@ -79,6 +99,7 @@ internal class SqliteSagaObligationStore(
     }
 
     override fun arm(row: SagaObligationRow): SagaArmPersistence {
+        refuseWhenReadOnly()
         require(row.runId.isNotBlank()) { "runId must not be blank" }
         require(row.leaseEpoch >= 0) { "leaseEpoch must not be negative, got ${row.leaseEpoch}" }
         SagaIntentContract.requireSupported(row.intentVersion)
@@ -153,6 +174,7 @@ internal class SqliteSagaObligationStore(
     }
 
     override fun updateOutcome(update: SagaObligationUpdate): SagaUpdatePersistence {
+        refuseWhenReadOnly()
         require(update.runId.isNotBlank()) { "runId must not be blank" }
         require(update.leaseEpoch >= 0) {
             "leaseEpoch must not be negative, got ${update.leaseEpoch}"
@@ -235,6 +257,7 @@ internal class SqliteSagaObligationStore(
         leaseEpoch: Long,
         ownerPluginId: String?,
     ): SagaBulkMove {
+        refuseWhenReadOnly()
         require(runId.isNotBlank()) { "runId must not be blank" }
         require(leaseEpoch >= 0) { "leaseEpoch must not be negative, got $leaseEpoch" }
 
@@ -291,11 +314,13 @@ internal class SqliteSagaObligationStore(
 
     override fun find(runId: String, key: CompensationKey): SagaObligationRow? =
         connections.reads.withConnection { connection ->
+            if (!obligationsAreThere(connection)) return@withConnection null
             selectByKey(connection, runId, key.sagaId, key.actionId, key.compensationId)
         }
 
     override fun listForRun(runId: String): List<SagaObligationRow> =
         connections.reads.withConnection { connection ->
+            if (!obligationsAreThere(connection)) return@withConnection emptyList()
             connection.prepareStatement(SELECT_RUN_OBLIGATIONS).use { statement ->
                 statement.setString(1, runId)
                 statement.executeQuery().use { rs ->
@@ -309,13 +334,18 @@ internal class SqliteSagaObligationStore(
         }
 
     /**
-     * Creates the table if it is not there yet.
+     * Creates the table if it is not there yet — in the lane that MAY write.
      *
      * Additive and idempotent: a database written by an older build does not have the table,
      * and one written by this build already does. The statement never touches an existing
      * table, so it cannot disturb a run that is already in flight.
+     *
+     * The reader's lane does not come here. It asks the file what is there (see
+     * [obligationsAreThere]) instead of writing, because a store that created its schema on
+     * construction made every reader of a substrate a writer of it.
      */
     private fun ensureSchema() {
+        if (!mayWrite) return
         DbLock.forPath(dbPath).withLock {
             connections.writes.withConnection { connection ->
                 connection.createStatement().use { statement ->
@@ -325,6 +355,37 @@ internal class SqliteSagaObligationStore(
                 addOwnerColumnIfMissing(connection)
                 addBodyDigestColumnIfMissing(connection)
             }
+        }
+    }
+
+    /**
+     * Whether the table of the obligations is there, asked through the reading door.
+     *
+     * The answer decides what this store can say, and it is asked EVERY time instead of once at
+     * construction: the database is not the store's, and a writer may create the table after
+     * this store was opened. A store that remembered "no table" for its whole life would answer
+     * "nothing owed" about a run that owes something.
+     *
+     * A writer never asks: it created the table a moment ago.
+     */
+    private fun obligationsAreThere(connection: Connection): Boolean {
+        if (mayWrite) return true
+        return connection.prepareStatement(SELECT_TABLE).use { statement ->
+            statement.setString(1, OBLIGATION_TABLE)
+            statement.executeQuery().use { rs -> rs.next() }
+        }
+    }
+
+    /**
+     * Refuses a write in the lane that cannot write, naming the table it would have written.
+     *
+     * The engine's own refusal names the DATABASE and not the table, and the table is what the
+     * operator has to look at.
+     */
+    private fun refuseWhenReadOnly() {
+        check(mayWrite) {
+            "this saga obligation store is read-only and cannot write the table " +
+                "$OBLIGATION_TABLE in $dbPath"
         }
     }
 
@@ -449,6 +510,24 @@ internal class SqliteSagaObligationStore(
     }
 
     private companion object {
+
+        /**
+         * The name of the table the obligations live in.
+         *
+         * It is named here because the reader asks the file for a table BY NAME, and the name
+         * it asks for is the name the refusal gives the operator.
+         */
+        const val OBLIGATION_TABLE = "saga_obligation"
+
+        /**
+         * Whether a table of that name is in the database.
+         *
+         * The question is asked through the reading door, which is a door the engine refuses to
+         * write through: asking costs nothing and changes nothing.
+         */
+        const val SELECT_TABLE = """
+            SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?
+        """
 
         const val CREATE_OBLIGATION_TABLE = """
             CREATE TABLE IF NOT EXISTS saga_obligation (

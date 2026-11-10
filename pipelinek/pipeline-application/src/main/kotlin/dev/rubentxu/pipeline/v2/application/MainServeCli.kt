@@ -1128,5 +1128,6 @@ private fun describeRefusal(refusal: EventStoreRefusal): String = when (refusal)
     is EventStoreRefusal.Absent -> "the store is not there: ${refusal.path}"
     is EventStoreRefusal.NoDirectory -> "the directory of the store is not there: ${refusal.path}"
     is EventStoreRefusal.NotReadable -> "the store cannot be read: ${refusal.detail}"
-    is EventStoreRefusal.NoEventHistory -> "the store holds no event history: ${refusal.path}"
+    is EventStoreRefusal.NoEventHistory ->
+        "the store holds no event history: the table events is not there: ${refusal.path}"
 }

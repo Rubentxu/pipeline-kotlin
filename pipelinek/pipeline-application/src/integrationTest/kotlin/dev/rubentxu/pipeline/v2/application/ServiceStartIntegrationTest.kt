@@ -94,11 +94,11 @@ class ServiceStartIntegrationTest {
                 "        }\n    }\n}\n",
         )
         // The store has to EXIST before the service opens it: the service
-        // reads a substrate it was given and never creates one. It also has
-        // to be COMPLETE: the service opens its doors read-only, and a door
-        // that cannot create what is missing refuses to open. Opening it for
-        // writing and closing it again leaves the whole schema in place, and
-        // the run that starts later writes into the very same file.
+        // reads a substrate it was given and never creates one. The PRODUCER
+        // is the one that creates the schema, and it does it here, by opening
+        // the file for writing and closing it again: the reader's door of the
+        // service creates nothing, and the run that starts later writes into
+        // the very same file.
         val admission = admitEventStore(db.toString(), EventStorePurpose.Produce)
         val writable = (admission as EventStoreAdmission.Admitted).store
         DurableStores.open(writable, control, clock)

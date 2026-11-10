@@ -30,6 +30,15 @@ package dev.rubentxu.pipeline.v2.runtime.control
  * A cancel call made N times produces one terminal state, not N. The second call
  * returns [CancelOutcome.AlreadyCancelled], NOT a refusal. A refusal under race
  * is a bug.
+ * ## The durability obligation
+ * The invariant above is kept by the ORDER of two facts, and the order is part
+ * of this contract: the terminal bookend must be DURABLE —committed, and
+ * visible to every reader— BEFORE the answer travels. A cancel that answered
+ * "cancelled" over a bookend that is still in a writer's queue breaks the
+ * invariant in the window that matters, because a second call in that window
+ * finds no terminal and writes a second one. So an implementation that appends
+ * the bookend and answers without making it durable does NOT satisfy this
+ * contract, however well it satisfies the rest of it.
  * ## Lease boundary
  * A cancel never crosses a LIVE boundary. It takes the run's lease, and the
  * lease store's acquisition is what proves that no live process is publishing

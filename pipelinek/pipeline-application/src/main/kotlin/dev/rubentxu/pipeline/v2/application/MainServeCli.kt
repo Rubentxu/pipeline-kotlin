@@ -268,6 +268,20 @@ private fun composeServiceToServe(
     } else {
         EventStorePurpose.Read
     }
+    // The store the operator named has to BE there, also in the lane that
+    // writes: that lane CREATES the file it does not find, and a service that
+    // creates the substrate it is about to read answers "the run is unknown"
+    // about EVERY run, in a store that holds no run at all. A mistyped
+    // `--db` has to say that it is not there, and not leave an empty file
+    // where the operator kept their facts.
+    if (storePurpose == EventStorePurpose.Write && !Files.exists(substrate.dbAbsolute)) {
+        val error = CliError.SubstrateUnavailable(
+            describeRefusal(EventStoreRefusal.Absent(substrate.dbPath)),
+        )
+        err.println(error.refusalLines("serve").joinToString("\n"))
+        err.println(SERVE_USAGE)
+        return ServeComposition.Refused(error.toCliExit())
+    }
     val storeAdmission = admitEventStore(substrate.dbPath, storePurpose)
     val store = when (storeAdmission) {
         is EventStoreAdmission.Admitted -> storeAdmission.store

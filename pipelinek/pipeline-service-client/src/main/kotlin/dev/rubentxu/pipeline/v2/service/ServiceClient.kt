@@ -530,7 +530,7 @@ class ServiceClient internal constructor(
         val channel = open() ?: return ServiceAnswer.Unreachable(endpoint.toString(), "no service at the endpoint")
         return try {
             channel.write(ServiceCodec.encode(request, credential))
-            ServiceAnswer.Answered(SocketServiceStreet(channel, deadlineMillis()))
+            ServiceAnswer.Answered(SocketServiceStreet(channel))
         } catch (failure: IOException) {
             channel.close()
             ServiceAnswer.Unreachable(endpoint.toString(), failure.message ?: failure.javaClass.simpleName)
@@ -576,7 +576,6 @@ class ServiceClient internal constructor(
  */
 private class SocketServiceStreet(
     private val channel: ServiceChannel,
-    private val deadlineMillis: Long?,
 ) : ServiceStreet {
 
     private var ended = false
@@ -741,9 +740,9 @@ private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.
  */
 private fun JsonObject.configuration(): Map<String, String>? {
     val element = this["configuration"] ?: return emptyMap()
-    val object_ = element as? JsonObject ?: return null
+    val entries = element as? JsonObject ?: return null
     val values = LinkedHashMap<String, String>()
-    for ((name, value) in object_) {
+    for ((name, value) in entries) {
         val text = (value as? JsonPrimitive)?.contentOrNull ?: return null
         values[name] = text
     }

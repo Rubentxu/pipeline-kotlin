@@ -12,7 +12,6 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.TailState
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive

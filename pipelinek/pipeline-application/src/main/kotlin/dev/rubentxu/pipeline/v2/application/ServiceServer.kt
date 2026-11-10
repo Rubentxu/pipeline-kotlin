@@ -6,7 +6,6 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 import dev.rubentxu.pipeline.v2.service.ServiceCodec
 import dev.rubentxu.pipeline.v2.service.ServiceDecoding
-import dev.rubentxu.pipeline.v2.service.ServiceEndReason
 import dev.rubentxu.pipeline.v2.service.ServiceProtocol
 import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import dev.rubentxu.pipeline.v2.service.ServiceRequest

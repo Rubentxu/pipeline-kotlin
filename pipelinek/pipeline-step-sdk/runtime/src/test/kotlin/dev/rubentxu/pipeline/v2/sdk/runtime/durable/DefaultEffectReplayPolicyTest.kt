@@ -214,7 +214,8 @@ class DefaultEffectReplayPolicyTest {
     }
 
     @Test
-    fun `MEMOIZED re-executes when the step declared NO effect at all`() {        // An executor that declared no effect has said nothing about purity. Treating the empty set
+    fun `MEMOIZED re-executes when the step declared NO effect at all`() {
+        // An executor that declared no effect has said nothing about purity. Treating the empty set
         // as read-only would silently memoise the most under-declared steps in the system.
         assertEquals(ReplayDecision.RERUN, decide(ReplayPolicy.MEMOIZED, emptySet(), true, OperationStatus.SUCCEEDED))
     }

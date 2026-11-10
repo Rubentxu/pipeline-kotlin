@@ -187,7 +187,7 @@ class ServiceStartAdmissionTest {
     }
 
     @Test
-    fun `a service without a directory of scripts starts no run`(@TempDir root: Path) {
+    fun `a service without a directory of scripts starts no run`() {
         val outcome = ServiceStartAdmission(null, null).admit("build.kts", null)
 
         val refused = assertInstanceOf(ServiceStartAdmissionOutcome.Refused::class.java, outcome)

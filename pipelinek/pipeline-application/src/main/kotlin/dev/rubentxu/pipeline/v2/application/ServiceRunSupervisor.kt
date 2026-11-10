@@ -15,7 +15,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -454,29 +453,10 @@ internal class ServiceRunSupervisor(
         // option in its argv: the argv of a plain run is the argv it always
         // was, and the behaviour of a run that was given nothing is the
         // behaviour it always had.
-        val snapshot = if (configuration.isEmpty) {
-            null
-        } else {
-            val path = supervisionDir.resolve(RUN_CONFIG_NAME)
-            try {
-                writeRunConfiguration(path, configuration)
-            } catch (failure: Exception) {
-                // The slot the budget gave to this run is given back: the
-                // run is NOT going to happen, and a budget that keeps the
-                // slot of a run that never started is a budget that leaks.
-                liveRuns.decrementAndGet()
-                val refusal = ServiceRefusal.RunConfigurationRefused(
-                    "the-configuration-cannot-be-written",
-                    "the snapshot of the configuration could not be written, and a run whose " +
-                        "configuration does not exist is a run that cannot be promised: " +
-                        (failure.message ?: failure.javaClass.simpleName),
-                )
-                // The key is released: the request produced no run, so the
-                // client is free to repeat it with the same key.
-                if (key != null) registry.fail(key, refusal)
-                return ServiceStartOutcome.Refused(refusal)
-            }
-            path
+        val snapshot = when (val outcome = writeSnapshot(supervisionDir, key, configuration)) {
+            is SnapshotOutcome.None -> null
+            is SnapshotOutcome.Written -> outcome.path
+            is SnapshotOutcome.Refused -> return ServiceStartOutcome.Refused(outcome.refusal)
         }
 
         val argv = command.argvFor(paths.script, paths.workspace, correlationId, runPolicy, snapshot)
@@ -493,38 +473,7 @@ internal class ServiceRunSupervisor(
             workspaceRoot = paths.script.parent?.toString(),
         )
         val thread = Thread(
-            {
-                try {
-                    runBlocking(job) { port.execute(taskRequest, watcher) }
-                } catch (_: Exception) {
-                    // The child's failure is the RUN's failure and not the
-                    // service's: the service keeps serving, and the run's
-                    // own facts say what happened to it.
-                } finally {
-                    // The child is over, so it is no longer a run this
-                    // service may end: the index says so FIRST, before the
-                    // budget says there is no run in flight.
-                    //
-                    // The order is the contract, because the two facts are
-                    // read by different hands: the budget answers "may the
-                    // service start another run?", and the index answers
-                    // "is there a child to end?". A budget that said "no
-                    // run in flight" while the index still held the child
-                    // would let a second run start while the first one is
-                    // still in the index, and a cancellation arriving in
-                    // that window would find a child that is already dead.
-                    supervision.over(supervised)
-                    liveJobs.remove(job)
-                    liveThreads.remove(Thread.currentThread())
-                    // The slot the budget gave to this run is given back
-                    // HERE and nowhere else: one run, one slot, one
-                    // decrement. A counter that is incremented twice and
-                    // decremented once is a budget that leaks, and a budget
-                    // that leaks refuses every run after the fourth.
-                    liveRuns.decrementAndGet()
-                    watcher.signalFinished()
-                }
-            },
+            { superviseChild(job, watcher, supervision, taskRequest) },
             "pipelinek-supervisor-$supervisionId",
         )
         supervision.thread = thread
@@ -631,6 +580,87 @@ internal class ServiceRunSupervisor(
     }
 
     /**
+     * The thread that waits for the child and keeps the service's own facts
+     * true while the run is alive.
+     *
+     * The child's failure is the RUN's failure and not the service's: the
+     * service keeps serving, and the run's own facts say what happened to
+     * it. What the thread does NOT do is swallow the run's end: when the
+     * child is over, the run is no longer one this service may end, and the
+     * slot the budget gave to it goes back.
+     *
+     * The order inside the `finally` is the contract, because the two facts
+     * are read by different hands: the budget answers "may the service start
+     * another run?", and the index answers "is there a child to end?". A
+     * budget that said "no run in flight" while the index still held the
+     * child would let a second run start while the first one is still in the
+     * index, and a cancellation arriving in that window would find a child
+     * that is already dead.
+     */
+    private fun superviseChild(
+        job: Job,
+        watcher: LaunchWatcher,
+        supervision: Supervision,
+        taskRequest: TaskExecutionRequest,
+    ) {
+        try {
+            runBlocking(job) { port.execute(taskRequest, watcher) }
+        } catch (_: Exception) {
+            // The child's failure is the RUN's failure and not the service's.
+        } finally {
+            supervision.over(supervised)
+            liveJobs.remove(job)
+            liveThreads.remove(Thread.currentThread())
+            // The slot the budget gave to this run is given back HERE and
+            // nowhere else: one run, one slot, one decrement. A counter that
+            // is incremented twice and decremented once is a budget that
+            // leaks, and a budget that leaks refuses every run after the
+            // fourth.
+            liveRuns.decrementAndGet()
+            watcher.signalFinished()
+        }
+    }
+
+    /**
+     * The snapshot of the configuration, written BEFORE the child is launched.
+     *
+     * A run without a configuration has no snapshot and no option in its
+     * argv: the argv of a plain run is the argv it always was, and the
+     * behaviour of a run that was given nothing is the behaviour it always
+     * had.
+     *
+     * A snapshot that cannot be written stops the run, because a run whose
+     * configuration does not exist is a run that cannot be promised. The
+     * slot the budget gave to it goes back and the key is released, so the
+     * client is free to repeat the request with the same key.
+     */
+    private fun writeSnapshot(
+        supervisionDir: Path,
+        key: String?,
+        configuration: RunConfiguration,
+    ): SnapshotOutcome {
+        if (configuration.isEmpty) return SnapshotOutcome.None
+        val path = supervisionDir.resolve(RUN_CONFIG_NAME)
+        return try {
+            writeRunConfiguration(path, configuration)
+            SnapshotOutcome.Written(path)
+        } catch (failure: Exception) {
+            // The slot the budget gave to this run is given back: the run is
+            // NOT going to happen, and a budget that keeps the slot of a run
+            // that never started is a budget that leaks.
+            liveRuns.decrementAndGet()
+            val refusal = ServiceRefusal.RunConfigurationRefused(
+                "the-configuration-cannot-be-written",
+                "the snapshot of the configuration could not be written, and a run whose " +
+                    "configuration does not exist is a run that cannot be promised: " +
+                    (failure.message ?: failure.javaClass.simpleName),
+            )
+            if (key != null) registry.fail(key, refusal)
+            SnapshotOutcome.Refused(refusal)
+        }
+    }
+
+    /**
      * Writes the snapshot of [configuration] at [path].
      *
      * ## Why the file is written the way the registry writes its own
@@ -650,7 +680,7 @@ internal class ServiceRunSupervisor(
      * and a file that the service wrote is still a file on the disk.
      */
     private fun writeRunConfiguration(path: Path, configuration: RunConfiguration) {
-        val directory = path.parent ?: throw IllegalStateException("the snapshot has no directory")
+        val directory = checkNotNull(path.parent) { "the snapshot has no directory" }
         val document = runConfigurationDocument(configuration.values)
         val temporary = Files.createTempFile(directory, RUN_CONFIG_NAME, ".tmp")
         try {
@@ -677,9 +707,6 @@ internal class ServiceRunSupervisor(
         }
     }
 
-    /**
-     * The answer of a run that started.
-     */
     /**
      * The answer of a request whose run is already known.
      *
@@ -923,6 +950,25 @@ internal class ServiceRunSupervisor(
  * back into the index. The flag makes the removal and the registration
  * agree, whichever comes first.
  */
+/**
+ * What the snapshot of the configuration turned out to be.
+ *
+ * A run with no configuration has no snapshot, a run with one has the file
+ * the child reads, and a run whose snapshot could not be written has a
+ * refusal and no run at all.
+ */
+private sealed interface SnapshotOutcome {
+
+    /** The run was given no configuration, so it has no snapshot. */
+    data object None : SnapshotOutcome
+
+    /** The snapshot is at [path]. */
+    data class Written(val path: Path) : SnapshotOutcome
+
+    /** The snapshot could not be written, and the refusal says why. */
+    data class Refused(val refusal: ServiceRefusal.RunConfigurationRefused) : SnapshotOutcome
+}
+
 private class Supervision(
     /** The job that ends the child. */
     val job: Job,

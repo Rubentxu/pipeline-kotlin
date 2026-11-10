@@ -103,7 +103,7 @@ object ServiceRunState {
                                 put(
                                     "state",
                                     JsonPrimitive(
-                                        when (val state = tail.state) {
+                                        when (tail.state) {
                                             is TailState.Open -> "open"
                                             is TailState.Sealed -> "sealed"
                                         },

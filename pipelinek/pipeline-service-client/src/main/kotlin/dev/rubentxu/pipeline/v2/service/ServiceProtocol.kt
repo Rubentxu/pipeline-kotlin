@@ -1186,9 +1186,9 @@ private fun decodeStartRun(request: JsonObject, schema: String, credential: Stri
  */
 private fun JsonObject.configuration(): Map<String, String>? {
     val element = this["configuration"] ?: return emptyMap()
-    val object_ = element as? JsonObject ?: return null
+    val entries = element as? JsonObject ?: return null
     val values = LinkedHashMap<String, String>()
-    for ((name, value) in object_) {
+    for ((name, value) in entries) {
         val text = (value as? JsonPrimitive)?.contentOrNull ?: return null
         values[name] = text
     }

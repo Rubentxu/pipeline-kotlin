@@ -17,7 +17,6 @@ import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import dev.rubentxu.pipeline.v2.service.ServiceRequest
 import dev.rubentxu.pipeline.v2.service.ServiceResponse
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse

@@ -250,7 +250,7 @@ The last row is the honest one: the capabilities `runtime.inspect.v1`, `runtime.
 
 ### The local service
 
-`pipelinek serve` runs a local service on a Unix domain socket, so a supervisor can ask about the runs of a machine without starting a run of its own. It is opt-in in the literal sense: nothing starts it for you, it serves until you stop it, and it leaves nothing behind when it stops.
+`pipelinek serve` runs a local service on a Unix domain socket, so a client can ask about the runs of a machine —and, with the right scope, start one of them. It is opt-in in the literal sense: nothing starts it for you, it serves until you stop it, and it leaves nothing behind when it stops.
 
 ```bash
 pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock

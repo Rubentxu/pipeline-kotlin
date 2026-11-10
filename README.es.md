@@ -126,7 +126,7 @@ La última fila es la honesta: las capacidades `runtime.inspect.v1`, `runtime.ca
 
 ### El servicio local
 
-`pipelinek serve` levanta un servicio local sobre un socket de Unix, para que un supervisor pueda preguntar por las ejecuciones de una máquina sin arrancar una ejecución propia. Es opt-in en el sentido literal: nadie lo arranca por ti, sirve hasta que lo paras, y no deja nada detrás cuando para.
+`pipelinek serve` levanta un servicio local sobre un socket de Unix, para que un cliente pueda preguntar por las ejecuciones de una máquina —y, con el ámbito adecuado, arrancar una. Es opt-in en el sentido literal: nadie lo arranca por ti, sirve hasta que lo paras, y no deja nada detrás cuando para.
 
 ```bash
 pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock
@@ -173,7 +173,7 @@ La petición nombra un guion y, quizá, un espacio de trabajo y una clave de ide
 {"schema":"pipelinek.service/2","kind":"answer","result":{"runId":"34b28ddc-…","correlationId":"…","ownerId":"…","startedAtMs":0}}
 ```
 
-La respuesta es la identidad de una ejecución y NO su desenlace: la ejecución sigue viva cuando se escribe la respuesta, y lo que concluya es la respuesta de otra pregunta (`run.state`). La respuesta se escribe solo después de que el hijo tomara su continuidad y imprimiera su propio recibo del arranque, así que "arrancada" significa "esta ejecución existe y se posee a sí misma".
+La respuesta es la identidad de una ejecución y NO su desenlace: la ejecución sigue viva cuando se escribe la respuesta, y lo que concluya es la respuesta de otra pregunta (`run.state`). La respuesta se escribe solo después de que el hijo tomara su continuidad (su lease) y imprimiera su propio recibo del arranque, así que "arrancada" significa "esta ejecución existe y es dueña de sí misma".
 
 La clave es lo que hace segura un reintento: la misma clave con la misma petición responde con la MISMA ejecución, y la misma clave con otra petición es un conflicto (`idempotency-conflict`). La promesa es duradera —el servicio guarda el registro de los arranques en el fichero que posee junto al socket, `starts`—, así que un cliente que reintenta después de un reinicio recibe la ejecución que ya había arrancado.
 

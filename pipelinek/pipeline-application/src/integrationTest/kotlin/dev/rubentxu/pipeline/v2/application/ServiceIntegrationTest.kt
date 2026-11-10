@@ -30,15 +30,7 @@ import org.junit.jupiter.api.io.TempDir
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import dev.rubentxu.pipeline.v2.service.FrameOrdinalToken
-import dev.rubentxu.pipeline.v2.service.ServiceCodec
-import dev.rubentxu.pipeline.v2.service.ServiceDecoding
-import dev.rubentxu.pipeline.v2.service.ServiceEndReason
 import dev.rubentxu.pipeline.v2.service.ServiceProtocol
-import dev.rubentxu.pipeline.v2.service.ServiceRefusal
-import dev.rubentxu.pipeline.v2.service.ServiceRequest
-import dev.rubentxu.pipeline.v2.service.ServiceResponse
-import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
 
 /**
  * The local service, over a real Unix domain socket, over a real store.
@@ -91,9 +83,6 @@ class ServiceIntegrationTest {
     private lateinit var socket: Path
 
     private val runId = "run-service-1"
-
-    /** A run whose terminal fact was never written. */
-    private val liveRunId = LIVE_RUN_ID
 
     private val clock: Clock = FixedClock
 

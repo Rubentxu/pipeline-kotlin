@@ -155,7 +155,24 @@
       "cancelling a run, answering a question a run is waiting for - and every one of those would",
       "add a case to a SEALED interface that a published artifact already carries. Publishing the",
       "scope now would freeze a vocabulary whose next case is already known, and a frozen scope",
-      "would make those slices versioned breaks of an ABI that consumers already resolve."
+      "would make those slices versioned breaks of an ABI that consumers already resolve.",
+      "",
+      "THE SURFACE THIS ARTIFACT PUBLISHES NOW ALSO CARRIES A START. The wire can ask for a run",
+      "and not only ask about one: the operation `run.start` and the six negatives with name",
+      "that answer it (`start-not-authorized`, `script-not-admitted`,",
+      "`workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs` and",
+      "`run-start-refused`). A supervisor that could only ask would have to launch the run",
+      "itself, over a path the service does not own, and the authority over the process would",
+      "leave the service that owns the runs. The answer is an IDENTITY and not a result",
+      "(`runId`, `correlationId`, `ownerId`, `startedAtMs`): the child prints them after it takes",
+      "its lease, so a client that is told 'started' is told about a run that exists.",
+      "",
+      "The right to START is still NOT in this surface, and this slice is the reason it was worth",
+      "keeping it out: the vocabulary of WHAT a client may do lives in the application and grew",
+      "there (`all+start`, `none+start`), while the published artifact grew only with the",
+      "operation and with the names of the refusals it can be answered with. The next right will",
+      "arrive the same way, and publishing the scope would freeze a vocabulary whose next case is",
+      "already known."
     ]
   },
   "surfaces": {

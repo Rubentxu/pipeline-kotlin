@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import java.io.IOException
 import java.nio.file.Files
-import java.nio.file.LinkOption
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
 /**
@@ -80,11 +80,16 @@ internal object ServiceCredential {
         // different facts, and the sentence says which one it is: the
         // message of a missing file is the path itself, and repeating the
         // path in a sentence that already names it says nothing.
-        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
-            return ServiceCredentialReading.Refused("the file is not there: $path")
-        }
+        //
+        // The READ is what tells them apart, and not a question asked before
+        // it: `Files.exists` answers false when the file IS there and the
+        // directory that holds it cannot be walked, and a client that is
+        // refused for the wrong reason is sent to look for a file that was
+        // never missing.
         val text = try {
             Files.readString(path)
+        } catch (failure: NoSuchFileException) {
+            return ServiceCredentialReading.Refused("the file is not there: $path")
         } catch (failure: IOException) {
             return ServiceCredentialReading.Refused(
                 "the file could not be read: $path (${failure.javaClass.simpleName})",

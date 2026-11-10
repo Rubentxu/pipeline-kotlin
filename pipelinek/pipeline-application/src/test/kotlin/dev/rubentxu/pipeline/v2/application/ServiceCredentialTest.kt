@@ -137,4 +137,27 @@ class ServiceCredentialTest {
             "a file with no authorization holds no token",
         )
     }
+
+    @Test
+    fun `a file the client cannot read is refused for the permission and not for the absence`() {
+        val socket = root.resolve("service.sock")
+        // The parent of the token is a FILE, so the path cannot be walked:
+        // the file is not there and the client cannot read it either, and
+        // only the read tells which of the two it is.
+        val notADirectory = root.resolve("not-a-directory")
+        Files.writeString(notADirectory, "this file is the parent of the token\n")
+        val unreachable = notADirectory.resolve(ServiceAuthorizationStore.OWNED_FILE_NAME)
+
+        val reading = ServiceCredential.read(emptyMap(), socket, namedFile = unreachable.toString())
+
+        val refused = assertInstanceOf(
+            ServiceCredentialReading.Refused::class.java,
+            reading,
+            "a file the client cannot read is refused",
+        )
+        assertTrue(
+            refused.detail.contains("could not be read"),
+            "the refusal names the permission and not the absence: ${refused.detail}",
+        )
+    }
 }

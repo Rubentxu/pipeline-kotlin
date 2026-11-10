@@ -108,6 +108,33 @@ class RunConfigurationDeliveryTest {
     }
 
     @Test
+    fun `the record of the starts carries the fingerprint of the configuration and not its values`(
+        @TempDir root: Path,
+    ) {
+        val supervisor = supervisor(root, FakePort { request, sink -> sink.append(receiptOf(request)) })
+
+        val accepted = supervisor.start(
+            request(key = "order-42", configuration = mapOf("BUILD_PROFILE" to "release")),
+        )
+        assertInstanceOf(ServiceStartOutcome.Accepted::class.java, accepted)
+
+        val recorded = Files.readString(root.resolve(ServiceStartRegistry.FILE_NAME))
+
+        assertFalse(
+            recorded.contains("release"),
+            "the values of the configuration are not written in the record of the starts",
+        )
+        assertFalse(
+            recorded.contains("BUILD_PROFILE"),
+            "the names of the configuration are not written in the record of the starts",
+        )
+        assertTrue(
+            recorded.contains("\"digest\""),
+            "what the record carries is the fingerprint of the request",
+        )
+    }
+
+    @Test
     fun `the snapshot of the configuration reaches the child as a private file`(
         @TempDir root: Path,
     ) {

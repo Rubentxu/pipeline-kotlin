@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
@@ -296,6 +297,106 @@ class ServiceCancelIntegrationTest {
             service.stop()
         }
     }
+
+    @Test
+    fun `dos cancelaciones simultaneas de la misma ejecucion dejan un solo terminal`() {
+        val service = start()
+        try {
+            val run = startRun(CANCELLER_TOKEN, "sleeper.pipeline.kts")
+
+            val answers = cancelAtOnce(List(2) { run.runId })
+
+            val terminals = service.eventsOf(run.runId).filterIsInstance<RunFinished>()
+            assertEquals(
+                1,
+                terminals.size,
+                "una cancelacion repetida escribe UN terminal y no dos: ${service.eventsOf(run.runId)}",
+            )
+            assertEquals(
+                setOf("cancelled", "already-cancelled"),
+                answers.map { outcomeOf(it) }.toSet(),
+                "la segunda cancelacion ve el terminal que la primera hizo durable, y contesta " +
+                    "lo mismo que contesta una cancelacion repetida: $answers",
+            )
+            assertEquals(
+                1,
+                answers.map { terminalOf(it) }.toSet().size,
+                "las dos cancelaciones leen el MISMO terminal: una ejecucion se cierra una vez " +
+                    "y no dos, y las dos respuestas lo dicen: $answers",
+            )
+        } finally {
+            service.stop()
+        }
+    }
+
+    @Test
+    fun `dos cancelaciones simultaneas de ejecuciones distintas cierran las dos`() {
+        val service = start()
+        try {
+            val first = startRun(CANCELLER_TOKEN, "sleeper.pipeline.kts")
+            val second = startRun(CANCELLER_TOKEN, "sleeper.pipeline.kts")
+
+            val answers = cancelAtOnce(listOf(first.runId, second.runId))
+
+            assertEquals(
+                listOf("cancelled", "cancelled"),
+                answers.map { outcomeOf(it) }.sorted(),
+                "las dos ejecuciones se cierran: $answers",
+            )
+            listOf(first.runId, second.runId).forEach { runId ->
+                assertEquals(
+                    1,
+                    service.eventsOf(runId).filterIsInstance<RunFinished>().size,
+                    "cada ejecucion lleva su propio terminal y solo uno: $runId",
+                )
+                assertEquals(
+                    "already-cancelled",
+                    outcomeOf(client(CANCELLER_TOKEN).cancelRun(runId)),
+                    "una ejecucion cerrada sigue cerrable: la lease de la que se cerro vuelve " +
+                        "a dar, y la cancelacion repetida contesta el terminal que ya hay",
+                )
+            }
+        } finally {
+            service.stop()
+        }
+    }
+
+    /**
+     * Cancels each of the [runIds] from its own client at the same time, and
+     * answers what each of them was told.
+     */
+    private fun cancelAtOnce(runIds: List<String>): List<ServiceAnswer<*>> {
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val answers = java.util.concurrent.ConcurrentLinkedQueue<ServiceAnswer<*>>()
+        val threads = runIds.map { runId ->
+            Thread {
+                gate.await()
+                answers.add(client(CANCELLER_TOKEN).cancelRun(runId))
+            }.apply { start() }
+        }
+        gate.countDown()
+        threads.forEach { it.join(60_000L) }
+        return answers.toList()
+    }
+
+    /**
+     * The word the answer carries: the outcome of the cancellation, or the
+     * name of the refusal.
+     */
+    private fun outcomeOf(answer: ServiceAnswer<*>): String = when (answer) {
+        is ServiceAnswer.Answered -> (answer.value as ServiceRunCancel).outcome
+
+        is ServiceAnswer.Refused -> (answer.refusal as? ServiceRefusal.RunCancelRefused)?.reason
+            ?: answer.refusal.toString()
+
+        else -> answer.toString()
+    }
+
+    /**
+     * The terminal the answer names.
+     */
+    private fun terminalOf(answer: ServiceAnswer<*>): Long? =
+        (answer as? ServiceAnswer.Answered)?.value?.let { (it as ServiceRunCancel).terminalAtMs }
 
     /**
      * The service, over a real socket, and the way to stop it.

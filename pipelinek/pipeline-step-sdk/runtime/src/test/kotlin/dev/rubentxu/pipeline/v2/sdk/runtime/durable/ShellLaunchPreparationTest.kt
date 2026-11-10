@@ -146,6 +146,36 @@ class ShellLaunchPreparationTest {
     }
 
     @Test
+    fun `a declared variable adds its own entry and changes nothing else in the child's environment`() {
+        // The ambient is the LAUNCHER'S OWN snapshot, because that is the one the launcher
+        // composes from. It matters: a declared environment that is not empty makes the
+        // composition seed the PATH from the controller's process, and that seed is the
+        // controller's PATH only because the ambient IS the controller's environment. With
+        // a hand-made ambient the two would differ, and the difference would be the PATH
+        // and not the declared variable.
+        val real = ProcessBuilder().environment().toMap()
+        val marker = "PKS008_DECLARED_MARKER"
+
+        val without = preparation().composeEnvironment(real, SandboxConfig.LOCAL, emptyMap())
+        val with = preparation().composeEnvironment(real, SandboxConfig.LOCAL, env(marker to "release"))
+
+        assertFalse(
+            without.containsKey(marker),
+            "the declared variable was already in the environment of the controller",
+        )
+        assertEquals(
+            mapOf(marker to "release"),
+            with.filterKeys { it !in without },
+            "the declared variable is the only thing the child sees that it did not see before",
+        )
+        assertEquals(
+            without,
+            with.filterKeys { it != marker },
+            "a declared variable changes nothing else in the environment of the child",
+        )
+    }
+
+    @Test
     fun `a deny-listed variable named in the allow set reaches the child`() {
         val child = preparation().composeEnvironment(
             ambient = ambient,

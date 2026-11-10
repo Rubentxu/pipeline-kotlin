@@ -77,9 +77,17 @@ internal sealed interface ServiceScope {
         Cancel,
     }
 
-    /** The rights this scope grants, over the reading scope it wraps. */
+    /**
+     * The rights this scope grants, over the reading scope it wraps.
+     *
+     * The rights of a wrapper are its OWN and the rights of what it wraps:
+     * a scope that wraps another scope that grants a right grants it too.
+     * The parser never nests today, and this says so —the KDoc of
+     * [WithRights]— but a scope that lost a right on the way would lose it
+     * silently, and the reading scope right below already recurses.
+     */
     val grantedRights: Set<Right> get() = when (this) {
-        is WithRights -> granted
+        is WithRights -> over.grantedRights + granted
         All, None, is Runs -> emptySet()
     }
 

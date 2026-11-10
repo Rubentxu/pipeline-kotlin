@@ -658,11 +658,11 @@ internal class ServiceRunSupervisor(
         /**
          * How long a cancellation waits for the child to be gone.
          *
-         * It is the wait of the ORDER of §4.1: the terminal durable is
-         * written after the child dies, and the port writes it only when the
-         * lease is free. Ten seconds is long enough for a process that is
-         * being destroyed for it to die, and short enough that a caller is
-         * not left waiting for a child that does not want to die.
+         * The terminal durable is written after the child dies, and the port
+         * writes it only when the lease is free. Ten seconds is long enough
+         * for a process that is being destroyed for it to die, and short
+         * enough that a caller is not left waiting for a child that does not
+         * want to die.
          */
         const val CANCEL_WAIT_MILLIS: Long = 10_000L
 

@@ -312,6 +312,22 @@ class RunConfigurationTest {
     }
 
     @Test
+    fun `the canonical text tells apart a value that carries the separator`() {
+        // The entries are joined with a "|", and a VALUE may carry one: the
+        // length in front of each field is what says where the field ends,
+        // so the separator inside a value cannot be mistaken for the one
+        // between entries. A plain join would make these two the same text.
+        val twoEntries = RunConfiguration.canonicalText(mapOf("A" to "1", "B" to "2"))
+        val oneEntry = RunConfiguration.canonicalText(mapOf("A" to "1|B=2"))
+
+        assertNotEquals(
+            twoEntries,
+            oneEntry,
+            "a value that carries the separator may not become the text of two entries",
+        )
+    }
+
+    @Test
     fun `the canonical text of nothing is empty`() {
         assertEquals("", RunConfiguration.canonicalText(emptyMap()))
     }

@@ -314,6 +314,16 @@ La línea de órdenes lee el token de la variable `PIPELINEK_SERVICE_TOKEN`, o d
 
 El plazo del cliente cierra la conexión que abrió y no toca nada más: las preguntas que el servicio responde son de solo lectura, así que un cliente que se va deja la ejecución exactamente como estaba. Una ejecución que el cliente ARRANCÓ sigue viva: la respuesta es la identidad de una ejecución, no su dueño.
 
+#### Lo que cuesta
+
+El servicio ahorra el coste de PREGUNTAR, no el de EJECUTAR. Una pregunta por el socket la responde un proceso que ya está en marcha, así que paga una conexión y una línea; un verbo de la línea de órdenes paga el arranque de una JVM cada vez. Una ejecución que el servicio arranca sigue costando una JVM, porque el servicio lanza el mismo `pipelinek run` que escribirías tú: el socket abarata las preguntas sobre las ejecuciones y evita que quien pregunta sea dueño de la ejecución, pero no la hace más rápida.
+
+Los huecos de `--max-supervised-runs` vuelven cuando el hijo ha SALIDO, un instante después de que su terminal pueda leerse. Un cliente que arranca la siguiente ejecución en cuanto ve el terminal de la anterior puede recibir `too-many-supervised-runs`: ese rechazo significa «lleno por ahora», y volver a preguntar es la respuesta.
+
+Lo que el servicio retiene no crece con el número de peticiones ni de ejecuciones que ha atendido, y cada techo tiene su razón. Los hilos de trabajo son dos pools fijos, uno para las preguntas y otro para los arranques y las cancelaciones, cada uno tan grande como las conexiones que el servicio admite a la vez (`too-many-connections` más allá). La memoria residente de la JVM sube mientras se tocan por primera vez las páginas de su generación joven, y hasta dónde llega depende del heap que la JVM dimensiona a partir de la memoria de la máquina; lo que sigue vivo tras una recolección es plano. Los descriptores sobre el almacén de eventos son las conexiones del pool más las lecturas servidas en el mismo instante: SQLite conserva el descriptor de una conexión que se cerró mientras otra conexión del mismo proceso mantiene el fichero abierto en modo WAL, lo reutiliza para la siguiente y los suelta todos cuando el servicio se para. El techo lo fija, por tanto, el máximo de lecturas que llegaron a ser concurrentes, no cuántas se hicieron.
+
+`scripts/bench-service-cost.py` mide ambos costes en la máquina que tiene delante —el arranque de la línea de órdenes frente a una petición por el socket, `run.start` y una ejecución hasta su terminal, y la memoria, los hilos y los descriptores del servicio antes y después de las ejecuciones, y lo que queda al pararlo— y escribe cada muestra en un informe JSON junto al hardware, el JDK y la revisión en que corrió. Es una medición y no una puerta: no fija ningún umbral, y las cifras son las de la máquina que las produjo.
+
 ### Telemetría
 
 La telemetría es opcional, y lo que transporta son **tiempos, recuentos y buckets: nunca cargas útiles**. Ni el texto del script, ni la orden, ni la transcripción viajan en una señal: ese contenido vive en el plano de salida y en el journal, y una segunda copia en la telemetría sería un segundo sitio donde esconderse un secreto.

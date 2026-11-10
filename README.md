@@ -464,6 +464,16 @@ The command line reads the token from the `PIPELINEK_SERVICE_TOKEN` variable, or
 
 The client's deadline closes the connection it opened and touches nothing else: the questions the service answers are read-only, so a client that goes away leaves a run exactly as it was. A run the client STARTED keeps going: the answer is the identity of a run, not its owner.
 
+#### What it costs
+
+The service saves the cost of ASKING, not the cost of RUNNING. A question over the socket is answered by a process that is already up, so it pays a connection and a line; a verb of the command line pays a JVM start every time. A run the service starts still costs a JVM, because the service launches the same `pipelinek run` you would type: the socket makes the questions about runs cheap and keeps the asker from owning the run, and it does not make the run faster.
+
+The slots of `--max-supervised-runs` go back when the child has EXITED, which is a moment after its terminal can be read. A client that starts the next run the instant it sees the terminal of the last one can be refused with `too-many-supervised-runs`: that refusal means "full for now", and asking again is the answer.
+
+What the service holds does not grow with the number of requests or runs it has served, and each ceiling has a reason. The worker threads are two fixed pools, one for questions and one for starts and cancels, each as big as the connections the service admits at once (`too-many-connections` beyond it). The resident memory of the JVM rises while the pages of its young generation are touched for the first time, and how far it goes depends on the heap the JVM sizes from the memory of the machine; what stays alive after a collection is flat. The descriptors on the event store are the pooled connections plus the reads served at the same moment: SQLite keeps the descriptor of a connection that closed while another connection of the same process holds the file open in WAL mode, reuses it for the next one, and lets all of them go when the service stops. The ceiling is therefore set by the most reads that were ever concurrent, not by how many were made.
+
+`scripts/bench-service-cost.py` measures both costs on the machine in front of it —the start of the command line against a request over the socket, `run.start` and a run to its terminal, and the memory, threads and descriptors of the service before and after the runs, and what is left when it stops— and writes every sample to a JSON report next to the hardware, the JDK and the revision it ran on. It is a measurement and not a gate: it states no threshold, and the figures belong to the machine that produced them.
+
 ### Telemetry
 
 Telemetry is optional, and what it carries is **timing, counts and buckets — never payloads**. No script text, no command and no transcript travel in a signal: that content lives in the output plane and in the journal, and a second copy of it in telemetry would be a second place a secret could hide.

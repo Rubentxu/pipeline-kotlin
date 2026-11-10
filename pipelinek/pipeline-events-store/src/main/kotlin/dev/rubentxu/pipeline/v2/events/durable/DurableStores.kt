@@ -91,6 +91,10 @@ data class DurableStores(
                 sagaObligations = SqliteSagaObligationStore(
                     connections = connections,
                     dbPath = dbPath,
+                    // The LANE of the substrate decides whether the schema may be created: a
+                    // reader of a run's durable state asks the file what is there instead of
+                    // writing what is missing.
+                    mayWrite = eventStore.mayWrite,
                 ),
                 lease = FileBackedRunExecutionLeaseStore(controlRoot.resolve(LEASE_DIRECTORY)),
             )

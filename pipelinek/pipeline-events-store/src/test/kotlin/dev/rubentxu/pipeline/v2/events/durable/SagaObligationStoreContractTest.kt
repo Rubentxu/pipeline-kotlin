@@ -90,6 +90,7 @@ class SagaObligationStoreContractTest {
                 readDoor = { SqliteConnectionFactory.openReadOnly(path) },
             ),
             dbPath = path,
+            mayWrite = true,
         )
     }
 

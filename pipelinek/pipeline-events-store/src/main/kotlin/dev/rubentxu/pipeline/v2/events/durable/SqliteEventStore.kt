@@ -124,6 +124,16 @@ class SqliteEventStore(
      */
     val holdsEventHistory: Boolean get() = reader.holdsEventHistory
 
+    /**
+     * Whether this store may change the database file.
+     *
+     * The durable stores built over this one are told, because a store that creates its schema
+     * on construction turns a reader of the substrate into a writer of it: the engine refuses
+     * the write, and the refusal arrives in the engine's words, which name the engine and not
+     * the table that is missing.
+     */
+    internal val mayWrite: Boolean get() = mode.mayWrite()
+
     override fun append(event: DomainEvent) {
         appendAssigned(event)
     }

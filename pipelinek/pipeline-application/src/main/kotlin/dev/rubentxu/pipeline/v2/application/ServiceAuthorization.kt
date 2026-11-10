@@ -142,6 +142,15 @@ internal data class ServiceAuthorization(
     val label: String,
     /** What this authorization may ask about. */
     val scope: ServiceScope,
+    /**
+     * The credentials the runs this authorization starts may request from
+     * the broker, each with the kind it may be requested as.
+     *
+     * Empty means none: a credential is granted by being named, never by
+     * being absent from a list. The grants are names and kinds, so this
+     * value carries no secret and may be printed.
+     */
+    val credentialGrants: Set<CredentialGrant> = emptySet(),
 )
 
 /**
@@ -237,11 +246,33 @@ internal sealed interface ServiceAuthorizationOutcome {
  */
 internal class ServiceAuthorizations private constructor(
     private val scopesByDigest: Map<String, ServiceScope>,
+    private val grantsByDigest: Map<String, Set<CredentialGrant>>,
     private val knownLabels: List<String>,
 ) {
 
     /** How many authorizations the service knows. */
     val size: Int get() = scopesByDigest.size
+
+    /**
+     * Whether any authorization lets its runs request a credential.
+     *
+     * It is the fact that decides whether the service has to open a store
+     * at all: a service nobody granted a credential to has no reason to
+     * hold the means of reading one.
+     */
+    val grantsAnyCredential: Boolean get() = grantsByDigest.values.any { it.isNotEmpty() }
+
+    /**
+     * The credentials the authorization whose token has [digest] grants.
+     *
+     * Looked up by the digest and by nothing else: a null digest —a run no
+     * client started— and a digest the service does not know both hold
+     * nothing, and nothing is the answer for every client that was not
+     * granted a credential. The grants of one authorization are never
+     * reachable from another's digest.
+     */
+    fun grantsOfDigest(digest: String?): Set<CredentialGrant> =
+        if (digest == null) emptySet() else grantsByDigest[digest] ?: emptySet()
 
     /** The labels of the authorizations the service knows, for the operator. */
     val labels: List<String> get() = knownLabels
@@ -371,12 +402,15 @@ internal class ServiceAuthorizations private constructor(
          */
         fun of(authorizations: List<ServiceAuthorization>): ServiceAuthorizations {
             val scopes = LinkedHashMap<String, ServiceScope>()
+            val grants = LinkedHashMap<String, Set<CredentialGrant>>()
             val labels = mutableListOf<String>()
             for (authorization in authorizations) {
-                scopes[digestOf(authorization.token)] = authorization.scope
+                val digest = digestOf(authorization.token)
+                scopes[digest] = authorization.scope
+                grants[digest] = authorization.credentialGrants
                 labels += authorization.label
             }
-            return ServiceAuthorizations(scopes, labels.sorted())
+            return ServiceAuthorizations(scopes, grants, labels.sorted())
         }
 
         /**
@@ -394,12 +428,15 @@ internal class ServiceAuthorizations private constructor(
                 if (line.isEmpty() || line.startsWith("#")) return@forEachIndexed
                 val number = index + 1
                 val fields = line.split(Regex("\\s+"))
-                if (fields.size != 3) {
+                if (fields.size != 3 && fields.size != 4) {
                     return ServiceAuthorizationsReading.Refused(
-                        "line $number: an authorization is a token, a label and a scope",
+                        "line $number: an authorization is a token, a label and a scope, " +
+                            "and optionally the credentials it grants",
                     )
                 }
-                val (token, label, scope) = fields
+                val token = fields[0]
+                val label = fields[1]
+                val scope = fields[2]
                 if (token.length > MAX_TOKEN_LENGTH) {
                     return ServiceAuthorizationsReading.Refused(
                         "line $number: the token is longer than $MAX_TOKEN_LENGTH characters",
@@ -424,7 +461,17 @@ internal class ServiceAuthorizations private constructor(
                         "line $number: this token is already on line ${authorizations.size + 1}",
                     )
                 }
-                authorizations += ServiceAuthorization(token, label, parsed)
+                val grants = if (fields.size == 4) {
+                    parseGrants(fields[3]) ?: return ServiceAuthorizationsReading.Refused(
+                        "line $number: the fourth field is '$GRANTS_PREFIX' and a comma-separated list " +
+                            "of '<credential-id>:<kind>', each id holding only letters, digits, '.', '_' " +
+                            "and '-' (up to ${CredentialGrant.MAX_CREDENTIAL_ID_LENGTH} characters) " +
+                            "and named once; the kind is one of ${BrokeredCredentialKind.words.joinToString(", ")}",
+                    )
+                } else {
+                    emptySet()
+                }
+                authorizations += ServiceAuthorization(token, label, parsed, grants)
             }
             return ServiceAuthorizationsReading.Read(authorizations)
         }
@@ -438,7 +485,44 @@ internal class ServiceAuthorizations private constructor(
          */
         fun format(authorizations: List<ServiceAuthorization>): String =
             authorizations.joinToString("\n") { authorization ->
-                "${authorization.token} ${authorization.label} ${scopeText(authorization.scope)}"
+                "${authorization.token} ${authorization.label} ${scopeText(authorization.scope)}" +
+                    grantsText(authorization.credentialGrants)
+            }
+
+        /**
+         * The grants [text] names, or null when it names none that the file may carry.
+         *
+         * The field is `credentials=` and a list of `<id>:<kind>`. A credential
+         * named twice is refused even when both mentions agree: a line that
+         * repeats itself is a line the operator did not read back. An empty
+         * list is refused too, because a grant that is not there cannot be
+         * told from a mistake.
+         */
+        private fun parseGrants(text: String): Set<CredentialGrant>? {
+            if (!text.startsWith(GRANTS_PREFIX)) return null
+            val entries = text.removePrefix(GRANTS_PREFIX).split(',')
+            val grants = LinkedHashSet<CredentialGrant>()
+            val ids = mutableSetOf<String>()
+            for (entry in entries) {
+                val parts = entry.split(':')
+                if (parts.size != 2) return null
+                val (id, word) = parts
+                if (!CredentialGrant.isNameable(id)) return null
+                val kind = BrokeredCredentialKind.ofWord(word) ?: return null
+                if (!ids.add(id)) return null
+                grants += CredentialGrant(id, kind)
+            }
+            return grants
+        }
+
+        /** The field that carries [grants], with its leading space, or nothing when there are none. */
+        private fun grantsText(grants: Set<CredentialGrant>): String =
+            if (grants.isEmpty()) {
+                ""
+            } else {
+                " " + GRANTS_PREFIX + grants
+                    .sortedBy { it.credentialId }
+                    .joinToString(",") { "${it.credentialId}:${it.kind.word}" }
             }
 
         /**
@@ -551,6 +635,9 @@ internal class ServiceAuthorizations private constructor(
 
         /** The suffix that carries [CANCEL_CAPABILITY]. */
         private const val CANCEL_SUFFIX: String = "+cancel"
+
+        /** The prefix of the fourth field, the one that grants credentials. */
+        private const val GRANTS_PREFIX: String = "credentials="
 
         /** The characters a label may hold. */
         private val LABEL: Regex = Regex("[A-Za-z0-9._-]+")

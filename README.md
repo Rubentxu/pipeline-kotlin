@@ -250,7 +250,7 @@ The last row is the honest one: the capabilities `runtime.inspect.v1`, `runtime.
 
 ### The local service
 
-`pipelinek serve` runs a local service on a Unix domain socket, so a client can ask about the runs of a machine —and, with the right scope, start one of them. It is opt-in in the literal sense: nothing starts it for you, it serves until you stop it, and it leaves nothing behind when it stops.
+`pipelinek serve` runs a local service on a Unix domain socket, so a client can ask about the runs of a machine —and, with the right scope, start one of them. It is opt-in in the literal sense: nothing starts it for you, and it serves until you stop it. What it leaves behind when it stops is nothing that RUNS — the socket goes — and what it WROTE stays: the authorizations, the record of the starts and the directory of the supervised runs are the operator's files, next to the socket, and they are not deleted.
 
 ```bash
 pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock
@@ -299,6 +299,8 @@ The service can also START a run. It is a separate door with a right of its own,
 
 The scope of an authorization grows with the suffix `+start`: `all+start` may read every run AND start runs, `none+start` may start runs and read nothing. A scope without the suffix starts nothing, and the refusal is a name of its own (`start-not-authorized`) — not `not-authorized`, because the token was accepted and what it lacks is the right.
 
+The scope governs READING, and the service does not widen it because a run was started: a `none+start` client receives the `runId` of the run it started, and that identifier is one it cannot ask about with the same credential. A client that has to follow the run it starts needs a scope that reads runs as well (`all+start`).
+
 The operator declares what the service may start, and the declaration is part of the command:
 
 ```bash
@@ -307,7 +309,7 @@ pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socke
   --run-deadline-ms 900000 --max-supervised-runs 4
 ```
 
-`--scripts` is the directory of the scripts a client may name and `--workspaces` the directory of the workspaces. A client names a script RELATIVE TO that directory —`sub/build.kts` is a name, `/etc/passwd` and `../secret` are not— and a name that leaves the directory —absolute, walking up, or a link that points out of it— is refused by name (`script-not-admitted`, `workspace-not-admitted`). Without `--scripts` the service starts and starts nothing: a service that could run whatever it is asked to run would be a command line with a socket in front of it. `--run-deadline-ms` is how long a supervised run may live, `--max-supervised-runs` how many the service watches at once (`too-many-supervised-runs`), and `--run-allow-network` says whether a supervised run may reach the network.
+`--scripts` is the directory of the scripts a client may name and `--workspaces` the directory of the workspaces. A client names a script RELATIVE TO that directory —`sub/build.kts` is a name, `/etc/passwd` and `../secret` are not— and a name that leaves the directory —absolute, walking up, or a link that points out of it— is refused by name (`script-not-admitted`, `workspace-not-admitted`). Without `--scripts` the service starts and starts nothing: a service that could run whatever it is asked to run would be a command line with a socket in front of it. `--run-deadline-ms` is how long a supervised run may live, `--start-deadline-ms` how long the service waits for a child to take its lease (30 s by default — raise it on a machine where starting a JVM and compiling a script takes longer, or the service refuses a run that was about to start), `--max-supervised-runs` how many the service watches at once (`too-many-supervised-runs`), and `--run-allow-network` says whether a supervised run may reach the network.
 
 The request names a script and, maybe, a workspace and an idempotency key:
 
@@ -318,7 +320,7 @@ The request names a script and, maybe, a workspace and an idempotency key:
 
 The answer is the identity of a run and NOT its outcome: the run is still going when the answer is written, and what it concludes is another question's answer (`run.state`). The answer is written only after the child took its lease and printed its own receipt of the launch, so "started" means "this run exists and owns itself".
 
-The key is what makes a retry safe: the same key with the same request answers with the SAME run, and the same key with another request is a conflict (`idempotency-conflict`). The promise is durable — the service keeps the record of the starts in the file it owns next to the socket, `starts` — so a client that retries after a restart gets the run that already started.
+The key is what makes a retry safe: the same key with the same request answers with the SAME run, and the same key with another request is a conflict (`idempotency-conflict`). The promise is durable while the service can write its file — the service keeps the record of the starts in the file it owns next to the socket, `starts` — so a client that retries after a restart gets the run that already started. If the disk refuses the write, the promise degrades to the life of the service: the record stays in memory, the client is still answered, and a retry AFTER a restart may start a second run for the same key.
 
 The child is a process, launched through the port that already exists for launching processes, and it is the same `pipelinek run` the operator would write on the command line. The run writes in the same store and the same control root the service reads, so a run started over the socket is a run that `run.state`, `events.follow` and `output.follow` can answer about — and it outlives the connection that asked for it.
 

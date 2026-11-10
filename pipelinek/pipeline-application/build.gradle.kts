@@ -528,8 +528,23 @@ tasks.test {
 // document that is not an input is a document the lane does not look at, and
 // the report it leaves behind is the report of a README that is no longer
 // there.
+//
+// The lane also measures the DISTRIBUTION: the ZIP the installer publishes is
+// an input of the lane, and the lane is what builds it. A lane that read a
+// ZIP that another build wrote is a lane that measures a build nobody ran,
+// and a distribution measured from a stale ZIP is a distribution nobody holds.
+//
+// The three facts the lane needs are handed over as system properties, and
+// they are handed over as VALUES: a path that the lane composed itself would
+// be a second derivation of a fact the build already knows.
+val distributionArchive = tasks.named<Zip>("distZip").flatMap { it.archiveFile }
+
 tasks.named<Test>("integrationTest") {
     inputs.file(rootProject.file("../README.md"))
+    dependsOn(tasks.named("distZip"))
+    systemProperty("pipelinek.distribution.zip", distributionArchive.get().asFile.absolutePath)
+    systemProperty("pipelinek.distribution.version", project.version.toString())
+    systemProperty("pipelinek.repository.root", rootProject.projectDir.parentFile.absolutePath)
 }
 
 // TEST LANES REMOVED. Five separate registrations were deleted

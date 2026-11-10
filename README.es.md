@@ -387,6 +387,36 @@ Lo que el servicio retiene no crece con el número de peticiones ni de ejecucion
 
 `scripts/bench-service-cost.py` mide ambos costes en la máquina que tiene delante —el arranque de la línea de órdenes frente a una petición por el socket, `run.start` y una ejecución hasta su terminal, y la memoria, los hilos y los descriptores del servicio antes y después de las ejecuciones, y lo que queda al pararlo— y escribe cada muestra en un informe JSON junto al hardware, el JDK y la revisión en que corrió. Es una medición y no una puerta: no fija ningún umbral, y las cifras son las de la máquina que las produjo.
 
+### Arrancar el servicio desde una instalación
+
+Una instalación es un directorio con el lanzador en `bin/` y los jars en `lib/`. `scripts/install-pipelinek.sh` deja cada release bajo `$PIPELINEK_HOME/versions/<release>` (por defecto `~/.local/share/pipelinek`) y apunta `current` a la que está en uso, así que el lanzador de la instalación en uso es `~/.local/share/pipelinek/current/bin/pipelinek`. El ZIP no lleva el bit de ejecución —un ZIP es un contenedor de nombres y bytes, no de modos— y el instalador lo pone en el fichero que instala.
+
+El servicio necesita tres rutas y no tiene ninguna por defecto. Dale al socket un directorio propio, y deja el estado fuera de la instalación:
+
+```bash
+mkdir -p ./state/socket && chmod 700 ./state/socket
+~/.local/share/pipelinek/current/bin/pipelinek serve \
+  --db           ./state/pipelinek.db \
+  --control-root ./state/durable \
+  --socket       ./state/socket/pipelinek.sock
+```
+
+| Ruta | Qué es | Modo |
+|---|---|---|
+| `./state/socket/pipelinek.sock` | el socket al que preguntan los clientes | `rw-------` |
+| `./state/socket/authorizations` | los tokens que sirve el servicio, uno por línea | `0600` |
+| `./state/socket/brokers/<lease>/broker.sock` | el socket del broker de UNA ejecución | `rw-------` |
+
+**El directorio del socket es la frontera, y el modo del socket no es toda la frontera.** La JVM enlaza un socket de Unix con el modo del proceso —medido en esta máquina, `0755`— y el servicio lo estrecha a `rw-------` justo después del enlace. La ventana entre los dos la cruza nadie, porque el directorio no se puede recorrer: el servicio lo crea `rwx------` cuando no está, y se niega a arrancar cuando está y concede algo al grupo o a los demás. Un socket que no se puede estrechar es un fallo al arrancar y no un aviso.
+
+**Lo que el servicio no crea.** No crea el sustrato: un `--db` que no está se rechaza por su nombre, en vez de dejar un fichero vacío donde el operador guardaba sus hechos. Tampoco crea el directorio de control: lee el estado durable de las ejecuciones donde el operador le dice.
+
+**Pararlo.** SIGINT (Ctrl-C) y SIGTERM lo paran limpiamente: el socket desaparece, y las autorizaciones y el resto del estado se quedan, porque son ficheros del operador. Medido: un SIGKILL deja el fichero del socket detrás, y el siguiente arranque lo encuentra, ve que nadie contesta en él y lo borra. Una salvedad, que conviene saber antes de dejar el servicio en segundo plano: un shell que ignora SIGINT —un shell no interactivo lo ignora para los trabajos que arranca en segundo plano— transmite esa disposición a la JVM, y una JVM no captura una señal que ya venía ignorada al arrancar. En ese caso Ctrl-C no hace nada, y la señal que lo para es SIGTERM.
+
+**Los dos sockets.** El socket del servicio responde a las preguntas de los clientes. El socket del broker responde a UNA ejecución: se crea cuando una ejecución entra en `withCredentials`, bajo `brokers/` junto al socket del servicio, en un directorio propio que es `rwx------`, con el token de la sesión en un fichero propio que es `0600`. Los dos son sockets que enlaza la JVM —`0755` al nacer, estrechos por el producto— y los dos son la misma clase de frontera: el token separa las identidades que el operador NOMBRA, y no dos procesos del mismo usuario, porque la JVM no expone las credenciales del par de un socket de Unix.
+
+**El token de la instalación.** El servicio escribe el fichero de autorizaciones que sirve junto a su socket cuando ese fichero no está, y lo estrecha a `0600` cuando está. El token que presenta un cliente es la primera palabra de su primera línea. La línea de órdenes lee el token de `PIPELINEK_SERVICE_TOKEN`, del fichero junto al socket o del fichero que nombra `--authorization-file`, y nunca lo imprime.
+
 ### Telemetría
 
 La telemetría es opcional, y lo que transporta son **tiempos, recuentos y buckets: nunca cargas útiles**. Ni el texto del script, ni la orden, ni la transcripción viajan en una señal: ese contenido vive en el plano de salida y en el journal, y una segunda copia en la telemetría sería un segundo sitio donde esconderse un secreto.

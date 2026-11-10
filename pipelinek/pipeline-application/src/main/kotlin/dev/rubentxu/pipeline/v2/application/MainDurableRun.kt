@@ -215,7 +215,7 @@ private fun runDurablePipelineOwned(
     // secret it cannot mask is a secret written to disk in the clear. The operator may accept that
     // fact explicitly with PIPELINE_CREDENTIALS_MASKING=best-effort.
     val seams = composeRunSeams(
-        credentials = { composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec, SecretMaskingStrictness.STRICT) },
+        credentials = { composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec, SecretMaskingStrictness.STRICT, config.brokerDir()) },
         // The legacy PipelineOrchestrator was constructed here but
         // never invoked. The CLI reaches the durable runtime ONLY through the canonical
         // RunCoordinator (fail-closed exit 2 otherwise). The legacy orchestrator class has been deleted.

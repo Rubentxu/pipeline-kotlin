@@ -282,6 +282,10 @@ The service issues one credential itself the first time it starts and keeps it i
 
 The scope is `all`, `none`, or the run ids it covers, and it may carry the suffixes `+start` and `+cancel` when the client may also start and cancel runs. The label is for the operator and **never travels**: a label that travels can be enumerated by a client that presents tokens until one is accepted.
 
+A line may end with a fourth field, `credentials=<id>:<kind>,...`, that names the credentials the runs started by that token may ask for (`string` is the only kind today). The field is the allowlist of the broker each run gets: a run receives no secret when it starts and asks for one only when it enters `withCredentials`, over a private socket below `brokers/` next to the service socket. A credential the line does not name is refused by name (`credential-not-granted`) even when the local store holds it, and a run that was started with the broker never falls back to the local store.
+
+A service whose authorizations grant no credential never opens the store and never asks for its passphrase. A service that grants one opens the local store when it starts and **does not start** if the store is missing, cannot be made private to its owner, fails its integrity check or does not unlock with `PIPELINE_STORE_PASSPHRASE` (exit code `4`): a service that waited for the first request would be alive and would refuse every credential of every run. It never asks at a terminal. The limit of the section below applies to the broker too: the token of the run and the socket separate runs from each other, not two live processes of the same user.
+
 Two profiles, and each one says out loud, when the service starts, what it promises:
 
 - **`trusted-local`** (the default) keeps the authorization in that file, and the file is readable by every process of the same user. The boundary is the file system, and the profile says so.

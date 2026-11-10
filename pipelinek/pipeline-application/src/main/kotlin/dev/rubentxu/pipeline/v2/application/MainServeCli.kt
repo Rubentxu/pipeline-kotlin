@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
@@ -106,6 +107,12 @@ internal const val DEFAULT_START_DEADLINE_MILLIS: Long = 30_000L
 internal const val SUPERVISION_DIRECTORY: String = "supervisions"
 
 /**
+ * The directory, next to the socket of the service, below which every supervised run gets the
+ * directory of its credential broker.
+ */
+internal const val BROKERS_DIRECTORY: String = "brokers"
+
+/**
  * The class the child process is launched with.
  *
  * The same class the operator launches: a run started over the socket is a
@@ -206,7 +213,7 @@ internal fun runServeVerb(args: Array<String>, out: PrintStream, err: PrintStrea
  * operator gave, which is what it prints and what it hands to the child, and
  * the absolute one, which is what it composes the stores with.
  */
-private data class ServeSubstrate(
+internal data class ServeSubstrate(
     val dbPath: String,
     val dbAbsolute: Path,
     val controlRoot: String,
@@ -219,16 +226,35 @@ private data class ServeSubstrate(
 /**
  * What the composition of the service produced before it could serve.
  */
-private sealed interface ServeComposition {
+internal sealed interface ServeComposition {
 
-    /** The service is composed and it can serve. */
+    /**
+     * The service is composed and it can serve.
+     *
+     * It owns everything it opened: [close] gives it back, in the order that lets the last
+     * reader finish before what it reads from is closed.
+     */
     data class Composed(
         val server: ServiceServer,
         val supervisor: ServiceRunSupervisor,
         val store: dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore,
         val storePurpose: EventStorePurpose,
         val authorizationCount: Int,
-    ) : ServeComposition
+        val credentials: CredentialProvider?,
+    ) : ServeComposition {
+
+        /**
+         * Stops the server, then the children it supervises, then the store, and the credential
+         * provider LAST: the children and the brokers that read from it are already gone.
+         * Idempotent in every piece it closes.
+         */
+        fun close() {
+            server.close()
+            supervisor.close()
+            store.close()
+            closeServiceCredentials(credentials)
+        }
+    }
 
     /** The service cannot be composed, and this says why. */
     data class Refused(val exit: CliExit) : ServeComposition
@@ -256,12 +282,14 @@ private sealed interface ServeComposition {
  * holding the operator's file, and the process that goes on serving would
  * hold a lock nobody asked it to hold.
  */
-private fun composeServiceToServe(
+internal fun composeServiceToServe(
     substrate: ServeSubstrate,
     policy: ServiceRunDeclaration,
     authorizations: ServiceAuthorizations,
     clock: SystemClock,
     err: PrintStream,
+    environment: Map<String, String> = System.getenv(),
+    brokerOpening: (Map<String, String>) -> ServiceCredentialAccess = ::openServiceCredentialProvider,
 ): ServeComposition {
     val storePurpose = if (authorizations.mayCancelAnyRun) {
         EventStorePurpose.Write
@@ -285,11 +313,27 @@ private fun composeServiceToServe(
     val storeAdmission = admitEventStore(substrate.dbPath, storePurpose)
     val store = when (storeAdmission) {
         is EventStoreAdmission.Admitted -> storeAdmission.store
-        is EventStoreAdmission.Refused -> {
-            val error = CliError.SubstrateUnavailable(describeRefusal(storeAdmission.refusal))
-            err.println(error.refusalLines("serve").joinToString("\n"))
-            err.println(SERVE_USAGE)
-            return ServeComposition.Refused(error.toCliExit())
+        is EventStoreAdmission.Refused ->
+            return refuseServe(CliError.SubstrateUnavailable(describeRefusal(storeAdmission.refusal)), err)
+    }
+
+    // The brokers the runs ask their credentials from. They exist ONLY when some
+    // authorization grants a credential, because opening the local store needs the
+    // passphrase of the operator and a service that grants nothing has no use for it.
+    // A service that cannot open the store it was told to hand credentials from does
+    // not start: it would refuse every credential of every run instead.
+    val brokers = when (
+        val composed = composeServiceBrokers(
+            authorizations = authorizations,
+            brokersRoot = requireNotNull(substrate.socketAbsolute.parent).resolve(BROKERS_DIRECTORY),
+            environment = environment,
+            opening = brokerOpening,
+        )
+    ) {
+        is ServiceBrokers.Composed -> composed
+        is ServiceBrokers.Refused -> {
+            store.close()
+            return refuseServe(CliError.SubstrateUnavailable(composed.detail), err)
         }
     }
 
@@ -304,6 +348,7 @@ private fun composeServiceToServe(
         socketAbsolute = substrate.socketAbsolute,
         registry = policy.registry,
         clock = clock,
+        brokers = brokers.factory,
     )
 
     // The cancellation of a run, and the control port that writes its
@@ -341,10 +386,8 @@ private fun composeServiceToServe(
         is ServiceComposition.Composed -> composed
         is ServiceComposition.Refused -> {
             store.close()
-            val error = CliError.SubstrateUnavailable(composed.detail)
-            err.println(error.refusalLines("serve").joinToString("\n"))
-            err.println(SERVE_USAGE)
-            return ServeComposition.Refused(error.toCliExit())
+            closeServiceCredentials(brokers.provider)
+            return refuseServe(CliError.SubstrateUnavailable(composed.detail), err)
         }
     }
 
@@ -352,13 +395,22 @@ private fun composeServiceToServe(
         UnixSocketTransport.bind(Path.of(substrate.socketPath))
     } catch (e: ServiceStartupException) {
         store.close()
-        val error = CliError.ServiceUnavailable(e.refusal.reason, e.detail)
-        err.println(error.refusalLines("serve").joinToString("\n"))
-        err.println(SERVE_USAGE)
-        return ServeComposition.Refused(error.toCliExit())
+        closeServiceCredentials(brokers.provider)
+        return refuseServe(CliError.ServiceUnavailable(e.refusal.reason, e.detail), err)
     }
+    // The leftovers of an earlier process are swept ONLY once this one holds the socket: a second
+    // service on the same directory fails to bind above, and it must not remove the brokers of the
+    // runs of the service that is alive.
+    brokers.factory?.sweep()
     val server = ServiceServer(transport, composition.operations, composition.streets, authorizations)
-    return ServeComposition.Composed(server, supervisor, store, storePurpose, authorizations.size)
+    return ServeComposition.Composed(server, supervisor, store, storePurpose, authorizations.size, brokers.provider)
+}
+
+/** Prints why the service does not start and gives the exit that says so. */
+private fun refuseServe(error: CliError, err: PrintStream): ServeComposition.Refused {
+    err.println(error.refusalLines("serve").joinToString("\n"))
+    err.println(SERVE_USAGE)
+    return ServeComposition.Refused(error.toCliExit())
 }
 
 /**
@@ -381,16 +433,7 @@ private fun serveUntilStopped(
     out: PrintStream,
 ): CliExit {
     val server = service.server
-    val supervisor = service.supervisor
-    val store = service.store
-    val shutdown = Thread(
-        {
-            server.close()
-            supervisor.close()
-            store.close()
-        },
-        "pipelinek-service-shutdown",
-    )
+    val shutdown = Thread({ service.close() }, "pipelinek-service-shutdown")
     Runtime.getRuntime().addShutdownHook(shutdown)
     try {
         out.println("pipelinek service listening on ${substrate.socketPath}")
@@ -405,9 +448,7 @@ private fun serveUntilStopped(
             // The JVM is already shutting down, and the hook is running or
             // has run. Removing it is a courtesy, not a requirement.
         }
-        server.close()
-        supervisor.close()
-        store.close()
+        service.close()
     }
     return CliExit.Success("the service stopped")
 }
@@ -675,6 +716,7 @@ private fun composeSupervisor(
     socketAbsolute: Path,
     registry: ServiceStartRegistry,
     clock: dev.rubentxu.pipeline.v2.domain.durable.Clock,
+    brokers: RunBrokerFactory?,
 ): ServiceRunSupervisor {
     val supervisionRoot = requireNotNull(socketAbsolute.parent)
         .resolve(SUPERVISION_DIRECTORY)
@@ -698,6 +740,7 @@ private fun composeSupervisor(
             startDeadlineMillis = policy.startDeadlineMillis,
         ),
         supervisionRoot = supervisionRoot,
+        brokers = brokers,
     )
 }
 

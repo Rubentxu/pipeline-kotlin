@@ -245,6 +245,14 @@ internal data class ServiceRunCommand(
      * Because the argv of a run that was given nothing is the argv it
      * always was: no option, no snapshot, and the behaviour of the run is
      * the behaviour it always had.
+     *
+     * ## Why the credential broker travels as a DIRECTORY
+     *
+     * Because the directory holds the socket of the broker and the file with
+     * the token of the session, and the argv is readable through
+     * `/proc/<pid>/cmdline`: the argv names the place, the token stays in a
+     * file the child reads once and deletes. The option is absent when the
+     * service has no broker for the run, as for the snapshots.
      */
     fun argvFor(
         script: Path,
@@ -253,6 +261,7 @@ internal data class ServiceRunCommand(
         policy: ServiceRunPolicy,
         runConfig: Path? = null,
         runInputs: Path? = null,
+        credentialBroker: Path? = null,
     ): List<String> {
         val argv = mutableListOf(
             javaBinary,
@@ -273,6 +282,7 @@ internal data class ServiceRunCommand(
         if (policy.allowNetwork) argv += "--allow-network"
         runConfig?.let { argv += listOf("--run-config", it.toString()) }
         runInputs?.let { argv += listOf("--run-inputs", it.toString()) }
+        credentialBroker?.let { argv += listOf("--credential-broker", it.toString()) }
         if (workspace != null) {
             argv += listOf("--workspace", workspace.toString())
         } else {
@@ -322,6 +332,13 @@ internal data class ServiceStartLimits(
  * It does not decide the outcome of a run, and it does not keep the run's
  * facts: those live in the store and in the control root, and the service
  * reads them from there like it reads every other run.
+ *
+ * ## The broker of a run
+ *
+ * When the service holds credential [brokers], every run it starts gets its
+ * own broker BEFORE the child is launched, with the grants of the client that
+ * asked for the run, and loses it when the child is over, whatever way the run
+ * ended. A run that never started leaves no broker behind.
  */
 internal class ServiceRunSupervisor(
     private val admission: ServiceStartAdmission,
@@ -331,6 +348,7 @@ internal class ServiceRunSupervisor(
     private val registry: ServiceStartRegistry,
     private val limits: ServiceStartLimits,
     private val supervisionRoot: Path,
+    private val brokers: RunBrokerFactory? = null,
 ) : ServiceRunStarter, ServiceRunEnder, AutoCloseable {
 
     /** The children this service is watching right now. */
@@ -495,7 +513,15 @@ internal class ServiceRunSupervisor(
             return ServiceStartOutcome.Refused(ServiceRefusal.TooManySupervisedRuns)
         }
 
-        return launchRun(paths, key, digest, correlationId, configuration, request.parameters)
+        return launchRun(
+            paths,
+            key,
+            digest,
+            correlationId,
+            configuration,
+            request.parameters,
+            request.credentialDigest,
+        )
     }
 
     /**
@@ -542,6 +568,8 @@ internal class ServiceRunSupervisor(
      * @param key the key of the claim, or null when the client chose none.
      * @param digest the fingerprint of the request that was made.
      * @param correlationId the token the child will carry and answer with.
+     * @param clientDigest the digest of the token of the client that asked, or null when the
+     *   request came from nobody the service knows; it decides what the broker of the run grants.
      */
     private fun launchRun(
         paths: ServiceStartAdmissionOutcome.Admitted,
@@ -550,6 +578,7 @@ internal class ServiceRunSupervisor(
         correlationId: String,
         configuration: RunConfiguration,
         delivered: Map<String, String>,
+        clientDigest: String?,
     ): ServiceStartOutcome {
         val supervisionId = "sup-" + UUID.randomUUID().toString()
         // The supervision's own directory: the port writes the child's
@@ -570,6 +599,16 @@ internal class ServiceRunSupervisor(
             is SnapshotsOutcome.Refused -> return ServiceStartOutcome.Refused(outcome.refusal)
         }
 
+        // The broker of the run is opened AFTER the snapshots and BEFORE the
+        // argv, because the argv names its directory. A broker that cannot be
+        // opened stops the run: a run that was promised credentials it will
+        // never be given would only fail later, inside a step, with less to
+        // say about why.
+        val lease = when (val opening = openBroker(key, clientDigest)) {
+            is BrokerOpening.Opened -> opening.lease
+            is BrokerOpening.Refused -> return ServiceStartOutcome.Refused(opening.refusal)
+        }
+
         val argv = command.argvFor(
             paths.script,
             paths.workspace,
@@ -577,21 +616,14 @@ internal class ServiceRunSupervisor(
             runPolicy,
             snapshots.configuration,
             snapshots.parameters,
+            lease?.directory,
         )
         val watcher = LaunchWatcher(supervisionDir.resolve(CHILD_LOG_NAME))
         val job = Job()
         val supervision = Supervision(job)
-        val taskRequest = TaskExecutionRequest(
-            task = TaskSpec.ExecTask(argv),
-            runId = RunId(supervisionId),
-            opId = supervisionId,
-            attempt = 0,
-            timeoutMs = runPolicy.deadlineMillis,
-            env = emptyMap(),
-            workspaceRoot = paths.script.parent?.toString(),
-        )
+        val taskRequest = taskRequestOf(supervisionId, argv, paths.script)
         val thread = Thread(
-            { superviseChild(job, watcher, supervision, taskRequest) },
+            { superviseChild(job, watcher, supervision, taskRequest, lease) },
             "pipelinek-supervisor-$supervisionId",
         )
         supervision.thread = thread
@@ -601,6 +633,8 @@ internal class ServiceRunSupervisor(
         try {
             thread.start()
         } catch (failure: Exception) {
+            // The thread never ran, so nobody else will close the broker.
+            closeLease(lease)
             liveRuns.decrementAndGet()
             liveJobs.remove(job)
             liveThreads.remove(thread)
@@ -714,18 +748,23 @@ internal class ServiceRunSupervisor(
      * child would let a second run start while the first one is still in the
      * index, and a cancellation arriving in that window would find a child
      * that is already dead.
+     *
+     * The broker of the run goes FIRST: a token that outlives the child opens
+     * nothing, and a broker that cannot be closed must not keep the slot.
      */
     private fun superviseChild(
         job: Job,
         watcher: LaunchWatcher,
         supervision: Supervision,
         taskRequest: TaskExecutionRequest,
+        lease: RunBrokerLease?,
     ) {
         try {
             runBlocking(job) { port.execute(taskRequest, watcher) }
         } catch (_: Exception) {
             // The child's failure is the RUN's failure and not the service's.
         } finally {
+            closeLease(lease)
             supervision.over(supervised)
             liveJobs.remove(job)
             liveThreads.remove(Thread.currentThread())
@@ -736,6 +775,64 @@ internal class ServiceRunSupervisor(
             // fourth.
             liveRuns.decrementAndGet()
             watcher.signalFinished()
+        }
+    }
+
+    /**
+     * The broker of a run that is about to be launched.
+     *
+     * A service without brokers opens none and the run goes on without one. A broker that
+     * cannot be opened stops the run BEFORE its child exists: the slot the budget gave to the
+     * run goes back and the key of the claim is released, so the client may ask again once the
+     * operator has fixed the cause. The words of the refusal are the fixed ones of the failure.
+     */
+    private fun openBroker(key: String?, clientDigest: String?): BrokerOpening =
+        try {
+            BrokerOpening.Opened(brokers?.open(clientDigest))
+        } catch (failure: RunBrokerLeaseException) {
+            liveRuns.decrementAndGet()
+            val refusal = ServiceRefusal.RunStartRefused(
+                "the-credential-broker-could-not-start",
+                failure.message ?: "the credential broker of the run could not be started",
+            )
+            if (key != null) registry.fail(key, refusal)
+            BrokerOpening.Refused(refusal)
+        }
+
+    /** What opening the broker of a run came to. */
+    private sealed interface BrokerOpening {
+
+        /** The broker is open, or the service has none ([lease] is null). */
+        class Opened(val lease: RunBrokerLease?) : BrokerOpening
+
+        /** The broker could not be opened and the run does not start. */
+        class Refused(val refusal: ServiceRefusal.RunStartRefused) : BrokerOpening
+    }
+
+    /** The request to the port for the child of [script], supervised under [supervisionId]. */
+    private fun taskRequestOf(supervisionId: String, argv: List<String>, script: Path): TaskExecutionRequest =
+        TaskExecutionRequest(
+            task = TaskSpec.ExecTask(argv),
+            runId = RunId(supervisionId),
+            opId = supervisionId,
+            attempt = 0,
+            timeoutMs = runPolicy.deadlineMillis,
+            env = emptyMap(),
+            workspaceRoot = script.parent?.toString(),
+        )
+
+    /**
+     * Closes the broker of a run, if it had one.
+     *
+     * A broker that cannot be closed is not the run's failure: what it left on
+     * disk is swept when the service starts again, and the token it served is
+     * useless once the child is over.
+     */
+    private fun closeLease(lease: RunBrokerLease?) {
+        try {
+            lease?.close()
+        } catch (_: Exception) {
+            // Swept at the next start; failing here would skip the facts that must stay true.
         }
     }
 

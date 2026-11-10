@@ -187,6 +187,17 @@ data class CliFlags(
      */
     val runInputsPath: String? = null,
     /**
+     * The directory of the broker this run asks for its credentials.
+     *
+     * The service creates it, private to the run, and hands the PATH to the child through the
+     * command line. The run holds no secret at its start: it asks the broker for a credential
+     * only when it enters `withCredentials`.
+     *
+     * Absent means the run was given no broker, and that is the historical behaviour: the run
+     * opens the local store itself when it binds a credential.
+     */
+    val credentialBrokerPath: String? = null,
+    /**
      * The values the caller delivers for the parameters the pipeline declares.
      *
      * They are RAW here: the rules that decide whether a value fits the declaration are the

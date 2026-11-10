@@ -175,7 +175,7 @@ private fun runVolatilePipelineOwned(
     // is told, exactly as before. The operator may ask for the strict posture here too with
     // PIPELINE_CREDENTIALS_MASKING=required.
     val seams = composeRunSeams(
-        credentials = { composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec, SecretMaskingStrictness.ADVISORY) },
+        credentials = { composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec, SecretMaskingStrictness.ADVISORY, config.brokerDir()) },
         // compose registry BEFORE the gate so contributed keys are eligible.
         // the admission happens inside ONE function, so the in-memory and
         // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now

@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 internal const val SERVE_USAGE: String =
     "Usage: pipelinek serve --db <path> --control-root <path> --socket <path> " +
-        "[--trust-profile <name>] [--authorization-file <path>] " +
+        "[--trust-profile <trusted-local|private-auth>] [--authorization-file <path>] " +
         "[--scripts <dir>] [--workspaces <dir>] " +
         "[--run-deadline-ms <n>] [--start-deadline-ms <n>] " +
         "[--run-allow-network] [--max-supervised-runs <n>] [--credential-sessions]"
@@ -41,10 +41,14 @@ internal const val SERVE_USAGE: String =
  * socket.
  *
  * `--trust-profile` and `--authorization-file` also belong to this verb alone,
- * and their names say what they are: the profile names the boundary the
- * service declares, and the file names where the authorizations are read
- * from. They are OPTIONAL, and the defaults are the ones the profile says:
- * `trusted-local`, and the file the service owns next to its socket.
+ * and their names say what they are: the profile names WHERE the
+ * authorizations are read from, and the file names the file they are read
+ * from when the profile reads a file. They are OPTIONAL, and the defaults are
+ * the ones the profile says: `trusted-local`, and the file the service owns
+ * next to its socket. The profile is a closed vocabulary of TWO words —
+ * `trusted-local` and `private-auth` — and the usage line names them, so an
+ * operator who asks for a third one is told which ones this build serves
+ * instead of guessing which one he misspelled.
  *
  * The last five are the DECLARATION of what the service may start: the
  * directory of the scripts it may run, the directory of the workspaces it
@@ -649,12 +653,12 @@ private fun readBoundary(
     // standard input. The two profiles do not mix: a profile that keeps the
     // authorization off the disk cannot read it from the disk.
     val namedFile = accepted.values["--authorization-file"]
-    if (namedFile != null && profile == ServiceTrustProfile.Isolated) {
+    if (namedFile != null && profile == ServiceTrustProfile.PrivateAuth) {
         return BoundaryReading.Refused(
             refuseStartup(
                 err,
                 ServiceStartupRefusal.AuthorizationFileRefusedByTheProfile,
-                "the isolated profile reads the authorizations from the standard input, " +
+                "the private-auth profile reads the authorizations from the standard input, " +
                     "and --authorization-file names a file",
             ),
         )
@@ -686,17 +690,17 @@ private fun readBoundary(
         ServiceTrustProfile.TrustedLocal ->
             ServiceAuthorizationStore.ofFile(authorizationPath, owned = namedFile == null)
 
-        ServiceTrustProfile.Isolated ->
+        ServiceTrustProfile.PrivateAuth ->
             ServiceAuthorizationStore.readStandardInput(System.`in`)
     }
     return when (reading) {
         is ServiceAuthorizationsReading.Read -> {
-            if (reading.authorizations.isEmpty() && profile == ServiceTrustProfile.Isolated) {
+            if (reading.authorizations.isEmpty() && profile == ServiceTrustProfile.PrivateAuth) {
                 BoundaryReading.Refused(
                     refuseStartup(
                         err,
-                        ServiceStartupRefusal.IsolationUnavailable,
-                        "the isolated profile needs at least one authorization on the standard input",
+                        ServiceStartupRefusal.NoAuthorizationOnStandardInput,
+                        "the private-auth profile needs at least one authorization on the standard input",
                     ),
                 )
             } else {
@@ -1019,15 +1023,16 @@ private fun refuseStartup(err: PrintStream, refusal: ServiceStartupRefusal, deta
  * expose the credentials of the peer of a Unix socket, so nothing in this
  * build can.
  *
- * ## What the `isolated` promise says
+ * ## What the `private-auth` promise says
  *
  * That the authorization is NOT on the disk: it was read from the standard
  * input and the service wrote it nowhere, so there is no file for a process
  * of the same user to read. It does not isolate processes either: a process
  * of the same user that reads the service's standard input while it starts
- * takes the authorization.
+ * takes the authorization. The token separates the same identities the
+ * operator names, and it separates no two processes.
  */
-private fun describeBoundary(
+internal fun describeBoundary(
     out: PrintStream,
     profile: ServiceTrustProfile,
     authorizationPath: Path,
@@ -1038,14 +1043,16 @@ private fun describeBoundary(
     out.println(
         when (profile) {
             ServiceTrustProfile.TrustedLocal ->
-                "boundary file-system: any process of the same user may open this socket; " +
-                    "the token separates the identities the operator names, not two processes " +
-                    "of the same user"
+                "boundary file-system: any process of the same user may open this socket, and " +
+                    "the authorization is in a file that any of them may read; the token " +
+                    "separates the identities the operator names, not two processes of the " +
+                    "same user"
 
-            ServiceTrustProfile.Isolated ->
+            ServiceTrustProfile.PrivateAuth ->
                 "boundary not-on-disk: the authorization was read from the standard input and " +
-                    "was written nowhere; it separates the identities the operator names, not " +
-                    "two processes of the same user"
+                    "was written nowhere, and a process of the same user that reads the " +
+                    "standard input while the service starts takes it; the token separates " +
+                    "the identities the operator names, not two processes of the same user"
         },
     )
     if (profile == ServiceTrustProfile.TrustedLocal) {

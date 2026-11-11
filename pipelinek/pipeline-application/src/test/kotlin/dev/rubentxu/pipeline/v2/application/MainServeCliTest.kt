@@ -185,7 +185,7 @@ class MainServeCliTest {
     }
 
     @Test
-    fun `the isolated profile and a named file are refused by name`() {
+    fun `the private-auth profile and a named file are refused by name`() {
         val answer = ask(
             "--db",
             "/tmp/store.db",
@@ -194,7 +194,7 @@ class MainServeCliTest {
             "--socket",
             "/tmp/service.sock",
             "--trust-profile",
-            "isolated",
+            "private-auth",
             "--authorization-file",
             "/tmp/authorizations",
         )
@@ -204,6 +204,32 @@ class MainServeCliTest {
             answer.stderr.contains("authorization-file-refused-by-the-profile"),
             "the profile that keeps the authorization off the disk cannot read it from a file: " +
                 answer.stderr,
+        )
+    }
+
+    @Test
+    fun `the word of a profile this build withdrew is refused by name`() {
+        val answer = ask(
+            "--db",
+            "/tmp/store.db",
+            "--control-root",
+            "/tmp/control",
+            "--socket",
+            "/tmp/service.sock",
+            "--trust-profile",
+            "isolated",
+        )
+
+        assertEquals(4, answer.exit.code)
+        assertTrue(
+            answer.stderr.contains("trust-profile-unknown"),
+            "a profile that named a separation this build cannot demonstrate is not served: " +
+                answer.stderr,
+        )
+        assertTrue(
+            answer.stderr.contains("trusted-local|private-auth"),
+            "the usage names the two words this build serves, so the operator knows which one " +
+                "he misspelled: ${answer.stderr}",
         )
     }
 

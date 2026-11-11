@@ -47,8 +47,13 @@ internal enum class ServiceStartupRefusal(val reason: String) {
     /** The authorizations could not be read, or the file that holds them is not private. */
     AuthorizationsRefused("authorizations-refused"),
 
-    /** The isolated profile was asked for and the machine cannot provide it. */
-    IsolationUnavailable("isolation-unavailable"),
+    /**
+     * The standard input carried no authorization at all.
+     *
+     * It names the cause it really rejects —an empty standard input— and not
+     * a machine that cannot isolate anything.
+     */
+    NoAuthorizationOnStandardInput("no-authorization-on-standard-input"),
 
     /**
      * The operator asked for a profile that keeps the authorization off the

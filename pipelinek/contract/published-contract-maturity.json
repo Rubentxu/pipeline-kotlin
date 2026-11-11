@@ -53,7 +53,8 @@
     "pipeline-output": "EXPERIMENTAL",
     "pipeline-runtime-api": "EXPERIMENTAL",
     "pipeline-credentials-api": "EXPERIMENTAL",
-    "pipeline-service-client": "EXPERIMENTAL"
+    "pipeline-service-client": "EXPERIMENTAL",
+    "pipeline-application": "EXPERIMENTAL"
   },
   "rationale": {
     "pipeline-domain": [
@@ -294,6 +295,25 @@
       "of the sealed interfaces of the requests and of the refusals, so a consumer with an exhaustive",
       "`when` stops compiling, and no member of the dump was removed: the artifact has never been",
       "published, so no published consumer exists to break."
+    ],
+    "pipeline-application": [
+      "EXPERIMENTAL, and the reason is specific: this module resolves from NO Maven coordinate",
+      "and it is absent from the published SDK, but its bytes DO travel with every release,",
+      "inside the product's own distribution ZIP, as lib/pipeline-application-<version>.jar, and",
+      "that jar is the COMMAND LINE the operator types. The words it serves - the profile of",
+      "trust the verb `serve` accepts, the reason a refusal carries - are read by whoever runs",
+      "the product, so they are a published surface in the only sense that matters here: a",
+      "surface a person outside this repository depends on.",
+      "A module whose bytes are published is a published surface even when it is not a resolvable",
+      "coordinate, so the rule that decides a break of it is the same rule that decides a break of",
+      "a contract: EXPERIMENTAL, breaking allowed under a recorded decision with a stated",
+      "boundary. The receipt for such a break is an entry of published-contract-exceptions.json,",
+      "and it carries the census that shows who was reachable: the operators of the releases that",
+      "shipped the words.",
+      "What this classification does NOT do is publish the module: it does not add it to the SDK,",
+      "and it does not make its types a promise to a consumer that does not exist. It says that",
+      "the words travel, and therefore that changing one of them is a versioned break that has to",
+      "be recorded rather than a quiet edit."
     ]
   },
   "surfaces": {

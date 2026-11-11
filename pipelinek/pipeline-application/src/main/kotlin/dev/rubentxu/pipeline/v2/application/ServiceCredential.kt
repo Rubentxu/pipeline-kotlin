@@ -18,9 +18,9 @@ import java.nio.file.Path
  * ## The two sources, and why there are two
  *
  * The ENVIRONMENT VARIABLE comes first: it is the only source that works when
- * the service keeps its authorization off the disk —the `isolated` profile—,
- * and it is the only one that does not leave the secret in a file another
- * process of the same user may read.
+ * the service keeps its authorization off the disk —the `private-auth`
+ * profile—, and it is the only one that does not leave the secret in a file
+ * another process of the same user may read.
  *
  * The FILE comes second: the file the operator named, or the file the
  * service owns next to its socket. It is where the `trusted-local` profile

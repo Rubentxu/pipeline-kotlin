@@ -413,7 +413,17 @@ private enum class FlagOption(val token: String) {
     RESUME("--resume"),
     RERUN("--rerun"),
 
-    /** Managed scratch workspace. */
+    /**
+     * Managed scratch workspace.
+     *
+     * The word names an ALLOCATION of a workspace and not a boundary: what
+     * the run gets is a scratch directory of its own, and no separation of
+     * processes, files or sockets is demonstrated by it. The separation that
+     * has to be demonstrated is asked for with another word, `confined`, and
+     * it is admitted only against what the provider attests. The profiles of
+     * authentication of the service carry their own words — `trusted-local`
+     * and `private-auth` — and none of them is this one.
+     */
     ISOLATED("--isolated"),
 
     /**

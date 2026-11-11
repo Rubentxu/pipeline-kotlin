@@ -26,7 +26,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
-import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
@@ -310,13 +309,33 @@ internal data class ServiceRunCommand(
  *
  * @property maxSupervisedRuns how many children the service watches at once.
  * @property startDeadlineMillis how long the service waits for a child to own itself.
- * @property maxDescribedRuns how many runs the service can still say where the configuration
- *   came from; the oldest are forgotten first.
  */
 internal data class ServiceStartLimits(
     val maxSupervisedRuns: Int = 4,
     val startDeadlineMillis: Long = 30_000L,
-    val maxDescribedRuns: Int = ServiceRunSupervisor.MAX_DESCRIBED_RUNS,
+)
+
+/**
+ * The collaborators the service MAY have.
+ *
+ * ## Why they travel together
+ *
+ * Because they are the doors the service opens only when the operator's
+ * declaration asks for them: a service that grants no credential opens no
+ * broker, a service with no configuration provider asks no controller, and a
+ * service that was not started with credential sessions exposes none. Three
+ * parameters that are absent together are one thing that is present or
+ * absent.
+ *
+ * @property brokers the factory that opens the credential broker of a run.
+ * @property configurations the resolver that asks a controller for the values of a
+ *   configuration the request did not carry.
+ * @property credentialSessions the sessions a controller registers its credentials in.
+ */
+internal data class ServiceCollaborators(
+    val brokers: RunBrokerFactory? = null,
+    val configurations: ConfigurationResolver? = null,
+    val credentialSessions: CredentialProviderSessions? = null,
 )
 
 /**
@@ -363,9 +382,7 @@ internal class ServiceRunSupervisor(
     private val registry: ServiceStartRegistry,
     private val limits: ServiceStartLimits,
     private val supervisionRoot: Path,
-    private val brokers: RunBrokerFactory? = null,
-    private val configurations: ConfigurationResolver? = null,
-    private val credentialSessions: CredentialProviderSessions? = null,
+    private val collaborators: ServiceCollaborators = ServiceCollaborators(),
     /**
      * The door that closes a run whose child ended without a terminal.
      *
@@ -377,7 +394,7 @@ internal class ServiceRunSupervisor(
      */
     private val closer: SupervisedRunCloser =
         EventStoreSupervisedRunCloser(runPolicy.eventStore, SystemClock()),
-) : ServiceRunStarter, ServiceRunEnder, ServiceRunConfigurations, AutoCloseable {
+) : ServiceRunStarter, ServiceRunEnder, AutoCloseable {
 
     /** The children this service is watching right now. */
     private val liveRuns = AtomicInteger(0)
@@ -400,23 +417,6 @@ internal class ServiceRunSupervisor(
      * service learns the run's id— and it is emptied when the child ends.
      */
     private val supervised = ConcurrentHashMap<String, Supervision>()
-
-    /**
-     * Where the snapshot of the configuration of a run is, by the run's own id.
-     *
-     * It is NOT a second store of the configuration: it holds a path, and the description a
-     * client asks for is read from the snapshot the run itself reads. It is filled when the run
-     * is launched and it is NOT emptied when the child ends, because the question "where did
-     * this configuration come from" is asked about finished runs too. It is bounded, and the
-     * oldest entries are forgotten first: a run that has been forgotten is an unknown run.
-     */
-    private val snapshotIndex: MutableMap<String, SnapshotRef> =
-        java.util.Collections.synchronizedMap(
-            object : LinkedHashMap<String, SnapshotRef>() {
-                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SnapshotRef>): Boolean =
-                    size > limits.maxDescribedRuns
-            },
-        )
 
     /**
      * How many supervised runs are alive right now.
@@ -612,17 +612,18 @@ internal class ServiceRunSupervisor(
      */
     private fun checkCredentialProvider(request: ServiceStartRequest): ServiceRefusal? {
         val name = request.credentialProvider ?: return null
+        val sessions = collaborators.credentialSessions
         val refusal = when {
             !isLegalProviderName(name) -> "credential-provider-name-illegal" to
                 "the name of a credential provider matches $PROVIDER_NAME_SHAPE"
 
-            credentialSessions == null -> CredentialProviderOperations.REASON_NOT_COMPOSED to
+            sessions == null -> CredentialProviderOperations.REASON_NOT_COMPOSED to
                 "this service was not started to serve credential sessions"
 
-            brokers == null -> "credential-brokers-not-composed" to
+            collaborators.brokers == null -> "credential-brokers-not-composed" to
                 "no authorization of this service grants a credential, so its runs have no broker"
 
-            request.credentialDigest.isBlank() || !credentialSessions.hasSession(request.credentialDigest, name) ->
+            request.credentialDigest.isBlank() || !sessions.hasSession(request.credentialDigest, name) ->
                 "provider-not-registered" to
                     "no live session of the credential provider '$name' exists for this credential"
 
@@ -678,7 +679,7 @@ internal class ServiceRunSupervisor(
     ): EffectiveOutcome {
         if (plan !is ProviderPlan.Ask) return EffectiveOutcome.Resolved(EffectiveConfiguration(explicit, null))
         val provider = checkNotNull(request.configurationProvider).provider
-        val resolver = configurations
+        val resolver = collaborators.configurations
         if (resolver == null || request.credentialDigest.isBlank()) {
             return EffectiveOutcome.Refused(
                 ServiceRefusal.RunConfigurationRefused(
@@ -747,24 +748,6 @@ internal class ServiceRunSupervisor(
     }
 
     /**
-     * Where the configuration of [runId] came from, read from the snapshot the run itself reads.
-     *
-     * Never throws. A run the service does not remember is [RunConfigurationLookup.Unknown], and
-     * a snapshot that cannot be read says so with a fixed text: the message of a failure over
-     * the file system names paths, and a path does not travel.
-     */
-    override fun describe(runId: String): RunConfigurationLookup {
-        val reference = snapshotIndex[runId] ?: return RunConfigurationLookup.Unknown
-        val path = reference.path
-            ?: return RunConfigurationLookup.Found(RunConfigurationReader.describeNothing())
-        return try {
-            RunConfigurationLookup.Found(RunConfigurationReader.describe(path))
-        } catch (_: Exception) {
-            RunConfigurationLookup.Unreadable("the snapshot of the configuration of the run cannot be read")
-        }
-    }
-
-    /**
      * The check of the [values] of a request against the [contract] it carries.
      *
      * ## Why the check applies the contract's DEFAULTS
@@ -825,7 +808,13 @@ internal class ServiceRunSupervisor(
         delivered: Map<String, String>,
         binding: BrokerBinding,
     ): ServiceStartOutcome {
-        val supervisionId = "sup-" + UUID.randomUUID().toString()
+        // The supervision's own identity is the CORRELATION the request
+        // carries: the child publishes it in the run's own history, and a
+        // directory named after it can be found again after the service
+        // restarts. A name the service invented here would know only this
+        // process, and the facts inside the directory would be there with
+        // nobody able to name them.
+        val supervisionId = supervisionDirectoryName(correlationId)
         // The supervision's own directory: the port writes the child's
         // result there, and the child's error output goes next to it. It is
         // under the service's own directory, so it is the operator's.
@@ -859,7 +848,10 @@ internal class ServiceRunSupervisor(
             paths.workspace,
             correlationId,
             runPolicy,
-            snapshots.configuration,
+            // The snapshot is written for EVERY run, and the child is given it
+            // only when it carries values: the argv of a plain run is the argv
+            // it always was.
+            snapshots.configuration.takeIf { !effective.configuration.isEmpty },
             snapshots.parameters,
             lease?.directory,
         )
@@ -948,7 +940,6 @@ internal class ServiceRunSupervisor(
                 // to answer that ask with: the receipt carries the id the
                 // CHILD minted.
                 supervision.launched(supervised, launched.runId)
-                snapshotIndex[launched.runId] = SnapshotRef(snapshots.configuration)
                 if (key != null) registry.complete(key, record)
                 acceptedOf(record, configuration, delivered)
             }
@@ -1114,10 +1105,10 @@ internal class ServiceRunSupervisor(
      * cannot be opened, and never a run that goes on with another source.
      */
     private fun openLease(binding: BrokerBinding, correlationId: String): RunBrokerLease? {
-        val name = binding.credentialProvider ?: return brokers?.open(binding.clientDigest)
+        val factory = collaborators.brokers
+        val name = binding.credentialProvider ?: return factory?.open(binding.clientDigest)
         val owner = binding.clientDigest?.takeIf { it.isNotBlank() }
-        val sessions = credentialSessions
-        val factory = brokers
+        val sessions = collaborators.credentialSessions
         if (owner == null || sessions == null || factory == null) {
             throw RunBrokerLeaseException("the connected credential provider of the run is not available")
         }
@@ -1174,14 +1165,23 @@ internal class ServiceRunSupervisor(
      * pipeline DECLARES it accepts. The child checks the parameters against the declaration
      * of the script, and the declaration is a product of the child's own compilation.
      *
-     * A run that was given neither has no file and no option in its argv: the argv of a
-     * plain run is the argv it always was, and the behaviour of a run that was given nothing
-     * is the behaviour it always had.
+     * The configuration is recorded for EVERY run and the parameters only for a run that
+     * was given some: the configuration is what the door answers about, and a record that
+     * exists only when there is something to record cannot say that there was nothing.
+     * The argv of a plain run is the argv it always was either way: the option that names
+     * a snapshot is only there when the snapshot carries values.
      *
      * A snapshot that cannot be written stops the run, because a run whose values do not
      * exist is a run that cannot be promised: the child that does not receive them cannot
      * check them against the declaration. The slot the budget gave to it goes back and the
      * key is released, so the client is free to repeat the request with the same key.
+     *
+     * ## Which refusal the client sees
+     *
+     * The one that names what the client ASKED for: the configuration it gave comes first,
+     * the parameters it gave come second, and the record of a run that was given no
+     * configuration is written last. A client that sent only parameters is told that its
+     * parameters could not be written, not that a configuration it never sent could not.
      */
     private fun snapshotsOf(
         supervisionDir: Path,
@@ -1189,15 +1189,16 @@ internal class ServiceRunSupervisor(
         effective: EffectiveConfiguration,
         delivered: Map<String, String>,
     ): SnapshotsOutcome {
-        val configurationSnapshot = when (val outcome = writeSnapshot(supervisionDir, key, effective)) {
-            is SnapshotOutcome.None -> null
-            is SnapshotOutcome.Written -> outcome.path
-            is SnapshotOutcome.Refused -> return SnapshotsOutcome.Refused(outcome.refusal)
-        }
+        val given = if (effective.configuration.isEmpty) null else writeSnapshot(supervisionDir, key, effective)
+        if (given is ConfigurationSnapshotOutcome.Refused) return SnapshotsOutcome.Refused(given.refusal)
         val parametersSnapshot = when (val outcome = writeInputsSnapshot(supervisionDir, key, delivered)) {
             is SnapshotOutcome.None -> null
             is SnapshotOutcome.Written -> outcome.path
             is SnapshotOutcome.Refused -> return SnapshotsOutcome.Refused(outcome.refusal)
+        }
+        val configurationSnapshot = when (val outcome = given ?: writeSnapshot(supervisionDir, key, effective)) {
+            is ConfigurationSnapshotOutcome.Written -> outcome.path
+            is ConfigurationSnapshotOutcome.Refused -> return SnapshotsOutcome.Refused(outcome.refusal)
         }
         return SnapshotsOutcome.Written(configurationSnapshot, parametersSnapshot)
     }
@@ -1205,26 +1206,39 @@ internal class ServiceRunSupervisor(
     /**
      * The snapshot of the configuration, written BEFORE the child is launched.
      *
-     * A run without a configuration has no snapshot and no option in its
-     * argv: the argv of a plain run is the argv it always was, and the
-     * behaviour of a run that was given nothing is the behaviour it always
-     * had.
+     * ## Why EVERY run gets a snapshot
      *
-     * A snapshot that cannot be written stops the run, because a run whose
-     * configuration does not exist is a run that cannot be promised. The
-     * slot the budget gave to it goes back and the key is released, so the
-     * client is free to repeat the request with the same key.
+     * Because the snapshot is the RECORD of what the run was given, and a
+     * record that exists only when there is something to record cannot say
+     * that there was nothing: the door that answers where the configuration
+     * of a run came from would have to tell "the run was given nothing" from
+     * "the record is gone", and the first is a fact about the run while the
+     * second is an accident. A snapshot that says "no values" is the record
+     * of a run that was given nothing.
+     *
+     * ## Why the child is not given the snapshot of a plain run
+     *
+     * Because the argv of a plain run is the argv it always was, and the
+     * behaviour of a run that was given nothing is the behaviour it always
+     * had. The snapshot is written either way; the option that names it is
+     * only there when the snapshot carries values.
+     *
+     * ## Why a snapshot that cannot be written stops the run
+     *
+     * Because a run whose configuration does not exist is a run that cannot
+     * be promised. The slot the budget gave to it goes back and the key is
+     * released, so the client is free to repeat the request with the same
+     * key.
      */
     private fun writeSnapshot(
         supervisionDir: Path,
         key: String?,
         effective: EffectiveConfiguration,
-    ): SnapshotOutcome {
-        if (effective.configuration.isEmpty) return SnapshotOutcome.None
+    ): ConfigurationSnapshotOutcome {
         val path = supervisionDir.resolve(RUN_CONFIG_NAME)
         return try {
             writeRunConfiguration(path, effective)
-            SnapshotOutcome.Written(path)
+            ConfigurationSnapshotOutcome.Written(path)
         } catch (failure: Exception) {
             // The slot the budget gave to this run is given back: the run is
             // NOT going to happen, and a budget that keeps the slot of a run
@@ -1237,7 +1251,7 @@ internal class ServiceRunSupervisor(
                     (failure.message ?: failure.javaClass.simpleName),
             )
             if (key != null) registry.fail(key, refusal)
-            SnapshotOutcome.Refused(refusal)
+            ConfigurationSnapshotOutcome.Refused(refusal)
         }
     }
 
@@ -1639,9 +1653,6 @@ internal class ServiceRunSupervisor(
             (listOf(provider.provider) + provider.keys.distinct().sorted())
                 .joinToString("|") { it.length.toString() + ":" + it }
 
-        /** How many runs the service describes the configuration of unless it is told otherwise. */
-        const val MAX_DESCRIBED_RUNS: Int = 256
-
         /**
          * The key a client stores its starts under.
          *
@@ -1732,12 +1743,9 @@ private sealed interface EffectiveOutcome {
     data class Refused(val refusal: ServiceRefusal) : EffectiveOutcome
 }
 
-/** Where the snapshot of a run is, or null when the run was given no configuration. */
-private class SnapshotRef(val path: Path?)
-
 private sealed interface SnapshotOutcome {
 
-    /** The run was given no configuration, so it has no snapshot. */
+    /** The document was not written, because the run was given nothing to write. */
     data object None : SnapshotOutcome
 
     /** The snapshot is at [path]. */
@@ -1745,6 +1753,22 @@ private sealed interface SnapshotOutcome {
 
     /** The snapshot could not be written, and the refusal says why. */
     data class Refused(val refusal: ServiceRefusal) : SnapshotOutcome
+}
+
+/**
+ * The outcome of writing the snapshot of the CONFIGURATION of a run.
+ *
+ * It has no "nothing to write" case: the configuration of a run is recorded
+ * for every run, and a run that was given nothing is recorded as a run that
+ * was given nothing.
+ */
+private sealed interface ConfigurationSnapshotOutcome {
+
+    /** The snapshot is at [path]. */
+    data class Written(val path: Path) : ConfigurationSnapshotOutcome
+
+    /** The snapshot could not be written, and the refusal says why. */
+    data class Refused(val refusal: ServiceRefusal) : ConfigurationSnapshotOutcome
 }
 
 private class Supervision(

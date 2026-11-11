@@ -327,7 +327,7 @@ class RunConfigurationIntegrationTest {
     private fun describe(runId: String): String {
         val terminal = terminalFactOf(runId)
         val outcome = terminal?.outcome ?: "no terminal yet"
-        val reason = terminal?.diagnostics?.joinToString(" | ") { it.message } ?: ""
+        val reason = terminal?.diagnostics?.joinToString(" | ") { it.message }.orEmpty()
         val answer = client(STARTER_TOKEN).runState(runId)
         val state = when (answer) {
             is ServiceAnswer.Answered -> when (val last = answer.value) {

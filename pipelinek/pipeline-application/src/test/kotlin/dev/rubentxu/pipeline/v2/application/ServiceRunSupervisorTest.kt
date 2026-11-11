@@ -587,8 +587,7 @@ class ServiceRunSupervisorTest {
                 startDeadlineMillis = startDeadlineMillis,
             ),
             supervisionRoot = root.resolve("supervisions"),
-            brokers = brokers,
-            credentialSessions = credentialSessions,
+            collaborators = ServiceCollaborators(brokers = brokers, credentialSessions = credentialSessions),
         )
     }
 

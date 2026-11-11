@@ -891,12 +891,14 @@ class CredentialProviderIntegrationTest {
             registry = registry,
             limits = ServiceStartLimits(maxSupervisedRuns = 2, startDeadlineMillis = 120_000L),
             supervisionRoot = supervisionRoot,
-            brokers = RunBrokerFactory(
-                root.resolve("brokers"),
-                provider = null,
-                grantsOf = authorizations::grantsOfDigest,
+            collaborators = ServiceCollaborators(
+                brokers = RunBrokerFactory(
+                    root.resolve("brokers"),
+                    provider = null,
+                    grantsOf = authorizations::grantsOfDigest,
+                ),
+                credentialSessions = sessions,
             ),
-            credentialSessions = sessions,
         )
         val operations = ServiceOperations(
             introspection = composeRuntimeIntrospectionPort(
@@ -915,7 +917,7 @@ class CredentialProviderIntegrationTest {
             starts = supervisor,
             cancellations = null,
             providers = ConfigurationProviderSessions(),
-            configurations = supervisor,
+            configurations = RunConfigurationLocator(supervisionRoot, EventStoreRunCorrelationReader(db.toString())),
             credentialSessions = sessions,
         )
         val stores = DurableStores.open(store, control, clock)

@@ -479,6 +479,11 @@ DECLARED_TREE_BOOT_CHECKS = {
         "the rows that deliver a configuration to a run and check that each run "
         "sees its own and not the one next to it"
     ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/RunConfigurationRestartIntegrationTest.kt": (
+        "the rows that stop the service and start another over the same "
+        "substrate, and check that the configuration of a run is still "
+        "described from the run's own facts"
+    ),
     "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/RunParametersIntegrationTest.kt": (
         "the rows that deliver parameters to a run and check that the step "
         "reads the effective value"

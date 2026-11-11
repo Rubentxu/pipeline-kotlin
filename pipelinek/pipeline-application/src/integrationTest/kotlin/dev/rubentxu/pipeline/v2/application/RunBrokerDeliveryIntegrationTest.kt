@@ -277,7 +277,7 @@ class RunBrokerDeliveryIntegrationTest {
                 startDeadlineMillis = startDeadlineMillis,
             ),
             supervisionRoot = root.resolve("supervisions"),
-            brokers = brokers,
+            collaborators = ServiceCollaborators(brokers = brokers),
         ).also { supervisors += it }
     }
 

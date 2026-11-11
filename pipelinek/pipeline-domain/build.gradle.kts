@@ -52,25 +52,22 @@ plugins {
 //   `equals`, `size` and `isEmpty` all hold.
 //
 // THE MUTANTS THAT SURVIVE IN THE RETRY RECONCILER, AND WHY THEY CANNOT BE
-// KILLED — ten of them:
+// KILLED — nine of them:
 //
 // The reconciler is a PURE function and it had no row at all: the decision of
 // whether a durable failure is retried was measured by nobody, in any module.
 // Its rows now exist (`RetryReconcilerTest` and `RetryEvidenceTest`), and the
-// ten that survive are the ones no input can distinguish.
+// nine that survive are the ones no input can distinguish.
 //
 // - 1 at `RetryReconciler.kt:90` is the boundary of the comparison inside the
 //   INLINED `maxOfOrNull { it.attempt }`: changing `<` into `<=` only changes
 //   WHICH element of a tie is kept. The reconciler reads the VALUE (the
 //   ordinal) and never the element, and two rows with the same ordinal carry
 //   the same value, so the tie-break is not observable.
-// - 1 at `RetryReconciler.kt:112` is the `isPollFailure` half of
-//   `control.status.isPollFailure || control.status.isTerminal`. Every poll
-//   failure is terminal — `OperationStatus` decides it in the enum itself —
-//   so the condition says the same as `isTerminal` alone.
-// - 1 at `RetryReconciler.kt:143` is the `isTerminal` half of the same
-//   condition. At that line the status cannot be SUCCEEDED nor UNSTABLE (both
-//   returned earlier), so it IS a poll failure: the half is dead code.
+// - 1 at `RetryReconciler.kt:143` is the `isTerminal` half of
+//   `control.status.isPollFailure || control.status.isTerminal`. At that line
+//   the status cannot be SUCCEEDED nor UNSTABLE (both returned earlier), so it
+//   IS a poll failure: the half is dead code.
 // - 1 at `RetryReconciler.kt:145` is `if (realChildren.isEmpty())`. With no
 //   child evidence there is no in-flight child, no success and no unstable
 //   child, so the "no child evidence" path and the "every child is terminal
@@ -83,11 +80,18 @@ plugins {
 //   attempt is a poll failure, so its ordinal is counted by the filter at
 //   `:85` and the exhaustion at `:91` has already answered before the loop
 //   reaches those lines.
-// - 2 at `RetryReconciler.kt:350` are the two checks of the FAST PATH of the
-//   INLINED `Collection.any` of the legacy branch. The legacy bucket is
-//   never empty there (the `legacy.isEmpty()` guard at `:242` answered
-//   already) and the bucket is always a `Collection`, so the fast path and
-//   the loop answer the same thing.
+// - 2 reported at `RetryReconciler.kt:350` are the two checks (`instanceof
+//   Collection` and `isEmpty()`) of the FAST PATH of the INLINED
+//   `Collection.any` of `reconcileLegacyOrFresh`, the
+//   `children.any { !it.status.isTerminal }` at `RetryReconciler.kt:257`. The
+//   report attributes them to a line of the LIBRARY, which does not exist in
+//   this file: the `LineNumberTable` of the method maps the inlined offsets to
+//   the library. MEASURED: the same call written as
+//   `children.asSequence().any { ... }`, which has no fast path, leaves no
+//   survivor there. The fast path's ONLY distinct answer is the EMPTY
+//   collection, and an empty collection answers the same on the iterator path
+//   (false), so the two paths converge for every input and the shortcut has
+//   no observable.
 //
 // They are NOT excluded from the seam: a number that hides its survivors is a
 // number that cannot be read.

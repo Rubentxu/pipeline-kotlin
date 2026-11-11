@@ -1,7 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.sdk.files.BoundedFileReader
+import dev.rubentxu.pipeline.v2.sdk.files.BoundedRead
+import dev.rubentxu.pipeline.v2.sdk.files.ReadQuota
 import java.io.IOException
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -100,10 +105,24 @@ internal object ServiceAuthorizationStore {
      * A refusal, and not an exception: the file is the operator's, and a
      * file the operator wrote wrong has to be answered with a sentence about
      * the file.
+     *
+     * The file is read under [quotaBytes]: the limit the product reads every
+     * file under. A file that does not fit is refused with the size it has
+     * and with the limit, and none of its content is produced; the file is
+     * measured before it is read, so it is never held whole.
+     *
+     * @param path the file the operator named.
+     * @param quotaBytes the limit the read runs under.
      */
-    fun read(path: Path): ServiceAuthorizationsReading {
+    fun read(path: Path, quotaBytes: Long = ReadQuota.MAX_FILE_BYTES): ServiceAuthorizationsReading {
         val text = try {
-            Files.readString(path)
+            when (val read = BoundedFileReader.read(path, quotaBytes)) {
+                is BoundedRead.Fits -> decodeStrictly(read.bytes)
+                is BoundedRead.TooLarge -> return ServiceAuthorizationsReading.Refused(
+                    "the file at $path holds at least ${read.atLeastBytes} bytes, over the limit of " +
+                        "${read.limitBytes} bytes; the read was refused and no content was produced",
+                )
+            }
         } catch (failure: IOException) {
             return ServiceAuthorizationsReading.Refused("the file could not be read: ${failure.message}")
         }
@@ -113,16 +132,51 @@ internal object ServiceAuthorizationStore {
     /**
      * The authorizations the service's standard input carries.
      *
-     * The input is read to its end and closed: an authorization that stays
-     * in a stream nobody reads is a secret in a buffer.
+     * The input is read to its end, or until it holds more than the quota:
+     * an authorization that stays in a stream nobody reads is a secret in a
+     * buffer, and a stream that holds more than the quota is refused before
+     * it is read whole.
+     *
+     * @param input the stream the authorizations arrive in.
+     * @param quotaBytes the limit the read runs under.
      */
-    fun readStandardInput(input: InputStream): ServiceAuthorizationsReading {
+    fun readStandardInput(
+        input: InputStream,
+        quotaBytes: Long = ReadQuota.MAX_FILE_BYTES,
+    ): ServiceAuthorizationsReading {
+        require(quotaBytes in 0..Int.MAX_VALUE.toLong()) {
+            "the read limit is beyond what a byte array can hold: $quotaBytes"
+        }
         val text = try {
-            input.readBytes().toString(StandardCharsets.UTF_8)
+            // ONE byte more than the quota is asked for, so that a stream that
+            // holds more than the limit is told apart from one that fits.
+            val bytes = input.readNBytes(quotaBytes.toInt() + 1)
+            if (bytes.size > quotaBytes) {
+                return ServiceAuthorizationsReading.Refused(
+                    "the standard input holds at least ${bytes.size} bytes, over the limit of " +
+                        "$quotaBytes bytes; the read was refused and no content was produced",
+                )
+            }
+            decodeStrictly(bytes)
         } catch (failure: IOException) {
             return ServiceAuthorizationsReading.Refused("the standard input could not be read: ${failure.message}")
         }
         return ServiceAuthorizations.parse(text)
+    }
+
+    /**
+     * The text [bytes] carry, decoded strictly.
+     *
+     * Strict, because a file that is not UTF-8 is a file the operator wrote
+     * wrong: a text with the unreadable bytes replaced would be a file the
+     * operator did not write, and the service would answer about it as if it
+     * had.
+     */
+    private fun decodeStrictly(bytes: ByteArray): String {
+        val decoder = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        return decoder.decode(ByteBuffer.wrap(bytes)).toString()
     }
 
     /**
@@ -139,8 +193,16 @@ internal object ServiceAuthorizationStore {
      * The generated file is written ATOMICALLY —a temporary file in the same
      * directory, then a rename— so a client that reads it while the service
      * starts never reads half of it.
+     *
+     * @param path the file of the authorizations.
+     * @param owned whether the file is the one the service owns.
+     * @param quotaBytes the limit the read of the file runs under.
      */
-    fun ofFile(path: Path, owned: Boolean): ServiceAuthorizationsReading {
+    fun ofFile(
+        path: Path,
+        owned: Boolean,
+        quotaBytes: Long = ReadQuota.MAX_FILE_BYTES,
+    ): ServiceAuthorizationsReading {
         if (!owned) {
             if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
                 return ServiceAuthorizationsReading.Refused("the file is not there: $path")
@@ -154,7 +216,7 @@ internal object ServiceAuthorizationStore {
                         "$path (make it readable by its owner alone: chmod 600 $path)",
                 )
             }
-            return read(path)
+            return read(path, quotaBytes)
         }
         if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
             try {
@@ -167,7 +229,7 @@ internal object ServiceAuthorizationStore {
                     "the permissions of the file could not be tightened: ${failure.message}",
                 )
             }
-            return read(path)
+            return read(path, quotaBytes)
         }
         val authorization = ServiceAuthorization(
             token = generateToken(),

@@ -41,10 +41,9 @@ data class FileReadResult(
  * [DEFAULT_MAX_READ_BYTES] is the limit a read runs under, and it is the
  * limit of the SUBSTRATE rather than of the DSL: the Step that calls this
  * executor holds no filesystem of its own, and the published surface of the
- * DSL is not changed to carry a knob that nobody asked for. The value is the
- * one the product already reads a whole file under elsewhere — the JUnit
- * report's own limit, ten mebibytes — for a file the product reads end to
- * end.
+ * DSL is not changed to carry a knob that nobody asked for. The value is
+ * [ReadQuota]'s: the quota every reader of the product shares, so that a
+ * file the product refuses here is a file it refuses everywhere.
  *
  * ## What the compatibility impact is
  *
@@ -146,9 +145,11 @@ class FileReadExecutor(
         // The read is BOUNDED and the decision is taken HERE, where the limit
         // is: the port is asked for one byte more than the limit, so that a
         // file which grew while it was being read is told apart from a file
-        // that fits, and a file that does not fit never becomes whole.
+        // that fits, and a file that does not fit never becomes whole. The
+        // rule is [BoundedFileReader]'s, so that every reader of the product
+        // refuses a file that does not fit in the same way.
         val read = try {
-            fileSystem.readUpTo(realPath, maxBytes + 1)
+            BoundedFileReader.read(realPath, maxBytes, fileSystem)
         } catch (e: IOException) {
             // The file could not be read at all. That is not the user's
             // input: the storage layer refused us, and the failure says so.
@@ -163,24 +164,14 @@ class FileReadExecutor(
         }
         // The size the file had when it was measured. A file over the limit
         // is refused with that size, and nothing of it was read.
-        if (read.sizeBytes > maxBytes) {
-            throw FileReadTooLargeException(
+        val bytes = when (read) {
+            is BoundedRead.Fits -> read.bytes
+            is BoundedRead.TooLarge -> throw FileReadTooLargeException(
                 path = declaredPath,
-                atLeastBytes = read.sizeBytes,
+                atLeastBytes = read.atLeastBytes,
                 limitBytes = maxBytes,
             )
         }
-        // The file grew between the measurement and the read: the bytes that
-        // came back are one more than the limit allows, and publishing them
-        // would publish a prefix as if it were the whole file.
-        if (read.bytes.size > maxBytes) {
-            throw FileReadTooLargeException(
-                path = declaredPath,
-                atLeastBytes = read.bytes.size.toLong(),
-                limitBytes = maxBytes,
-            )
-        }
-        val bytes = read.bytes
 
         val sha256 = sha256(bytes)
         val size = bytes.size.toLong()
@@ -204,12 +195,13 @@ class FileReadExecutor(
         /**
          * The limit a read runs under when the caller does not name one.
          *
-         * Ten mebibytes, the size the product already reads a whole file
-         * under elsewhere. It bounds the memory a read may use and the size
-         * of the journal entry the content lands in; a file above it is
-         * refused rather than truncated.
+         * Ten mebibytes: the quota the product reads every file under, and it
+         * is [ReadQuota]'s number, so that a limit raised here is raised
+         * everywhere. It bounds the memory a read may use and the size of the
+         * journal entry the content lands in; a file above it is refused
+         * rather than truncated.
          */
-        const val DEFAULT_MAX_READ_BYTES: Long = 10L * 1024L * 1024L
+        const val DEFAULT_MAX_READ_BYTES: Long = ReadQuota.MAX_FILE_BYTES
 
         /**
          * SHA-256 hex of [bytes], routed through the shared utility.

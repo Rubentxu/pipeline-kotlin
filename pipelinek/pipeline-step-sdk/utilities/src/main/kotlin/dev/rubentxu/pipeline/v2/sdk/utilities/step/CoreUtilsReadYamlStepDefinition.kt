@@ -15,6 +15,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
 import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
+import dev.rubentxu.pipeline.v2.sdk.files.BoundedFileReader
+import dev.rubentxu.pipeline.v2.sdk.files.BoundedRead
+import dev.rubentxu.pipeline.v2.sdk.files.ReadQuota
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlOutput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlSource
@@ -22,7 +25,6 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
 import org.yaml.snakeyaml.Yaml
 import kotlin.io.path.exists
 import kotlin.io.path.isRegularFile
-import kotlin.io.path.readBytes
 
 /**
  * `core-utils.readYaml` OFFICIAL_PLUGIN Step (utilities).
@@ -41,9 +43,27 @@ import kotlin.io.path.readBytes
  * ReplayPolicy: `MEMOIZED` (input is deterministic modulo file content).
  * RecoveryPolicy: `None` (no transient failure modes — the only failures are
  *   typed USER-class errors for missing files, sources that are not UTF-8,
- *   unsafe tags, malformed input).
+ *   files that do not fit the read quota, unsafe tags, malformed input).
+ *
+ * ## The quota of the read
+ *
+ * A document read from a FILE is read under [ReadQuota.MAX_FILE_BYTES]: the
+ * limit the product reads every file under. A document that does not fit is
+ * refused with the size it has and with the limit, and none of its content is
+ * produced. The file is measured BEFORE it is read, so a document that does
+ * not fit is never held whole.
+ *
+ * A document handed over as TEXT is not a file read: the text arrives in the
+ * input of the Step, and the limit of the PARSE —eight mebibytes of code
+ * points, the cap of the safe loader— is the one that governs it.
+ *
+ * @param readQuotaBytes the limit the read of a file runs under. It is the
+ *   product's quota unless a caller names another one, and the tests name a
+ *   small one so that a refusal needs no large file.
 */
-class CoreUtilsReadYamlStepDefinition : StepDefinition<ReadYamlInput, ReadYamlOutput> {
+class CoreUtilsReadYamlStepDefinition(
+    private val readQuotaBytes: Long = ReadQuota.MAX_FILE_BYTES,
+) : StepDefinition<ReadYamlInput, ReadYamlOutput> {
 
     override val contract = StepContract(
         key = CoreUtilsReadYamlKey.VALUE,
@@ -85,13 +105,27 @@ class CoreUtilsReadYamlStepDefinition : StepDefinition<ReadYamlInput, ReadYamlOu
                         ),
                     )
                 }
-                rawBytes = try {
-                    target.readBytes()
+                // The read is held under the quota, and the file is measured
+                // before it is read: a document that does not fit never becomes
+                // whole, and the refusal names the limit and not the content.
+                val read = try {
+                    BoundedFileReader.read(target, readQuotaBytes)
                 } catch (e: java.io.IOException) {
                     throw PluginStepException(
                         failure = PipelineFailure(
                             kind = FailureKind.USER,
                             message = "core-utils.readYaml: failed to read file '$target': ${e.message}",
+                        ),
+                    )
+                }
+                rawBytes = when (read) {
+                    is BoundedRead.Fits -> read.bytes
+                    is BoundedRead.TooLarge -> throw PluginStepException(
+                        failure = PipelineFailure(
+                            kind = FailureKind.USER,
+                            message = "core-utils.readYaml: the file at $target holds at least " +
+                                "${read.atLeastBytes} bytes, over the limit of ${read.limitBytes} bytes; " +
+                                "the read was refused and no content was produced.",
                         ),
                     )
                 }

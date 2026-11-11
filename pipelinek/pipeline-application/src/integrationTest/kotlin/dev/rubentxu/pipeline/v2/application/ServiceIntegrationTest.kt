@@ -684,7 +684,8 @@ class ServiceIntegrationTest {
             // The refusal is the FIRST line: the client learns that the run is unknown
             // before the street ends, and it learns it from the street and not from a
             // socket that closed without a word.
-            val refusal = readLineOrNull(first)?.let { Json.parseToJsonElement(it).jsonObject }
+            val reader = LineReader(first)
+            val refusal = reader.next()?.let { Json.parseToJsonElement(it).jsonObject }
             assertNotNull(refusal, "the street wrote the refusal before it ended")
             assertEquals("refused", refusal?.get("kind")?.jsonPrimitive?.content)
             assertEquals(
@@ -693,7 +694,7 @@ class ServiceIntegrationTest {
             )
             // The street ended and the server closed the connection, but THIS client keeps
             // its channel open: the budget has to be free even so.
-            assertNull(readLineOrNull(first), "the street ended and the connection closed")
+            assertNull(reader.next(), "the street ended and the connection closed")
 
             val served = service.subscribe(
                 """{"schema":"pipelinek.service/2","op":"events.follow","runId":"$runId"}""",
@@ -753,8 +754,9 @@ class ServiceIntegrationTest {
                     ByteBuffer.wrap((withCredential(request) + "\n").toByteArray(Charsets.UTF_8)),
                 )
                 val frames = mutableListOf<kotlinx.serialization.json.JsonObject>()
+                val reader = LineReader(channel)
                 while (true) {
-                    val line = readLineOrNull(channel) ?: break
+                    val line = reader.next() ?: break
                     frames.add(Json.parseToJsonElement(line).jsonObject)
                 }
                 return frames
@@ -911,22 +913,7 @@ class ServiceIntegrationTest {
     /**
      * The line the service wrote, or null when the connection ended.
      */
-    private fun readLineOrNull(channel: SocketChannel): String? {
-        val buffer = ByteArray(8192)
-        val accumulated = ByteArrayOutputStream()
-        while (true) {
-            val read = channel.read(ByteBuffer.wrap(buffer))
-            if (read < 0) return null
-            val chunk = buffer.copyOf(read)
-            val newline = chunk.indexOf('\n'.code.toByte())
-            if (newline >= 0) {
-                accumulated.write(chunk, 0, newline)
-                break
-            }
-            accumulated.write(chunk, 0, read)
-        }
-        return accumulated.toString(Charsets.UTF_8)
-    }
+    private fun readLineOrNull(channel: SocketChannel): String? = LineReader(channel).next()
 
     /**
      * The tree of [root], with the size of every file in it.
@@ -948,6 +935,99 @@ class ServiceIntegrationTest {
     /** The clock this lane stamps its material with: it does not move. */
     private object FixedClock : Clock {
         override fun now(): Instant = Instant.EPOCH
+    }
+
+    /**
+     * The lines of a socket, one at a time.
+     *
+     * ## Why the reader keeps what is left of the chunk it read
+     *
+     * Because a socket carries BYTES and not lines: two lines written one
+     * after the other arrive in the same read, and a reader that takes the
+     * first line and drops the rest of the chunk loses the lines that came
+     * with it.
+     *
+     * ## Why that matters MORE on a busy machine
+     *
+     * Because the frames of a street arrive together when the service writes
+     * them together, and the service writes them together when the machine is
+     * BUSY. A reader that loses the remainder of the chunk therefore loses
+     * frames exactly when the machine is busy, and the row publishes a
+     * verdict about the machine under the name of a verdict about the tree.
+     *
+     * ## Why the buffer GROWS
+     *
+     * Because a line may be megabytes long —a street that floods a client
+     * writes one— and a reader that copies what it has every time it reads a
+     * chunk spends time quadratic in the length of the line. A row that then
+     * measures its own impatience calls it a defect of the tree.
+     */
+    private class LineReader(private val channel: SocketChannel) {
+
+        /** The bytes that arrived and are not a line yet. */
+        private var pending: ByteArray = ByteArray(INITIAL_BYTES)
+
+        /** How many of the pending bytes are bytes. */
+        private var length: Int = 0
+
+        /** How many of the pending bytes were already looked at. */
+        private var scanned: Int = 0
+
+        /**
+         * The next line, or null when the peer closed the connection.
+         */
+        fun next(): String? {
+            while (true) {
+                val newline = indexOfNewline()
+                if (newline >= 0) {
+                    val line = String(pending, 0, newline, Charsets.UTF_8)
+                    val rest = length - newline - 1
+                    System.arraycopy(pending, newline + 1, pending, 0, rest)
+                    length = rest
+                    scanned = 0
+                    return line
+                }
+                val read = fill()
+                if (read < 0) return null
+            }
+        }
+
+        /**
+         * The index of the first newline among the pending bytes, or -1.
+         *
+         * The bytes already looked at are not looked at again: a line of
+         * megabytes is scanned once, not once per chunk.
+         */
+        private fun indexOfNewline(): Int {
+            for (index in scanned until length) {
+                if (pending[index] == NEWLINE) return index
+            }
+            scanned = length
+            return -1
+        }
+
+        /**
+         * Reads what the socket has, into the pending bytes.
+         *
+         * @return how many bytes arrived, or -1 when the peer closed the
+         *   connection.
+         */
+        private fun fill(): Int {
+            if (length == pending.size) {
+                pending = pending.copyOf(pending.size * 2)
+            }
+            val read = channel.read(ByteBuffer.wrap(pending, length, pending.size - length))
+            if (read > 0) length += read
+            return read
+        }
+
+        private companion object {
+            /** The byte that ends a line. */
+            private val NEWLINE: Byte = '\n'.code.toByte()
+
+            /** How many bytes the reader starts with. */
+            private const val INITIAL_BYTES: Int = 8192
+        }
     }
 
     private companion object {

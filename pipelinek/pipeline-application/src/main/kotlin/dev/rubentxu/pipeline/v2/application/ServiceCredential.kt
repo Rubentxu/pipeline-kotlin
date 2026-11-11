@@ -120,7 +120,16 @@ internal object ServiceCredential {
 internal sealed interface ServiceCredentialReading {
 
     /** The token this client presents. */
-    data class Found(val token: String) : ServiceCredentialReading
+    data class Found(val token: String) : ServiceCredentialReading {
+        /**
+         * The text of this reading, without the token.
+         *
+         * The token is the secret the client presents, and a line of log that
+         * carried it would publish it to whoever reads the log. The reading
+         * has nothing else to say: what it found IS the token.
+         */
+        override fun toString(): String = "[SECRET ServiceCredentialReading.Found]"
+    }
 
     /** There is no token to present, and this says where it was looked for. */
     data class Refused(val detail: String) : ServiceCredentialReading

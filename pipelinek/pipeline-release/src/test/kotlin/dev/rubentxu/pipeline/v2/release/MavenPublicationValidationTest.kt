@@ -42,6 +42,20 @@ class MavenPublicationValidationTest {
         sha256 = "3".repeat(64),
     )
 
+    /**
+     * A file the bundle carries and the manifest does not declare: the module
+     * metadata of the same coordinate, under bytes of its own.
+     *
+     * It is the "unexpected" side of the comparison, and it is a REAL file of
+     * the bundle rather than a fiction, so the refusal that names it is the
+     * one a publisher would read.
+     */
+    private val extraModule = MavenArtifactDigest(
+        path = "dev/rubentxu/pipeline/v2/pipeline-domain/0.93.0/pipeline-domain-0.93.0.module",
+        kind = MavenArtifactKind.MODULE,
+        sha256 = "4".repeat(64),
+    )
+
     private fun manifest(
         candidateId: CandidateId = candidate,
         productVersion: ProductVersion = version,
@@ -120,6 +134,23 @@ class MavenPublicationValidationTest {
         )
         return verdict.violations
     }
+
+    /**
+     * The detail of ONE violation, so a row can read what the refusal SAYS
+     * and not only which fact it reports.
+     *
+     * The code is the fact and the detail is the diagnosis, and a channel
+     * whose diagnosis is empty is a channel that tells a publisher that
+     * something is wrong without telling it what.
+     */
+    private fun detailOf(
+        code: MavenPublicationViolationCode,
+        request: MavenPublicationRequest = request(),
+        manifest: MavenPublicationManifest = manifest(),
+        observed: MavenObservedPublication = observed(),
+    ): String = violationsOf(request = request, manifest = manifest, observed = observed)
+        .first { it.code == code }
+        .detail
 
     @Test
     fun `a request that matches every fact is admitted`() {
@@ -251,6 +282,13 @@ class MavenPublicationValidationTest {
         )
     }
 
+    // The message of this refusal is pinned CHARACTER BY CHARACTER, and that
+    // is deliberate: the message is the only thing this diagnostic produces,
+    // so a pin on the whole of it is what proves that a change in the way the
+    // message is built changes nothing a reader can see. The row that refuses
+    // a path of NO kind pins the other configuration of the same message, and
+    // between them the two configurations are the only ones that can reach
+    // it: a path of a kind the artifact declares never builds a message.
     @Test
     fun `an artifact whose kind contradicts its path is refused`() {
         val refusal = assertThrows(IllegalArgumentException::class.java) {
@@ -261,6 +299,17 @@ class MavenPublicationValidationTest {
             )
         }
         assertTrue(refusal.message?.contains("MODULE") == true, refusal.message)
+        assertTrue(
+            refusal.message?.contains("is a MODULE and the artifact declares JAR") == true,
+            refusal.message,
+        )
+        assertEquals(
+            "the path 'dev/rubentxu/pipeline/v2/pipeline-domain/0.93.0/pipeline-domain-0.93.0.module' " +
+                "is a MODULE and the artifact declares JAR. The kind of a file is what its name " +
+                "says it is, and a manifest that calls a file something else describes bytes that " +
+                "nobody can compare with the measurement of the bundle.",
+            refusal.message,
+        )
     }
 
     @Test
@@ -334,5 +383,214 @@ class MavenPublicationValidationTest {
         assertTrue(rendered.contains("REJECTED"), rendered)
         assertTrue(rendered.contains("MUST NOT publish"), rendered)
         assertEquals(7, verdict.violations.size)
+    }
+
+    // ── the invariants of the documents ───────────────────────────────────────
+    //
+    // A document that can be built in a shape the channel cannot honour is a
+    // hole in the channel: the decision that reads it would be deciding about
+    // bytes that cannot exist. Each row below fixes ONE invariant, and the
+    // refusal is checked by WHAT IT SAYS, because a refusal that does not name
+    // the broken invariant is a refusal the operator cannot act on.
+
+    @Test
+    fun `a manifest that publishes nothing is refused`() {
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            manifest(artifacts = emptyList())
+        }
+        assertTrue(refusal.message?.contains("artifacts is empty") == true, refusal.message)
+    }
+
+    @Test
+    fun `two artifacts of one manifest cannot carry the same path`() {
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            manifest(artifacts = listOf(pom, pom))
+        }
+        assertTrue(refusal.message?.contains("same path") == true, refusal.message)
+    }
+
+    @Test
+    fun `a bundle digest that is not a SHA-256 is refused`() {
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            manifest(bundleSha256 = "not-a-sha256")
+        }
+        assertTrue(refusal.message?.contains("bundle_sha256") == true, refusal.message)
+    }
+
+    @Test
+    fun `a request that names no manifest is refused`() {
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            MavenPublicationRequest(
+                candidateId = candidate,
+                productVersion = version,
+                manifestName = " ",
+                manifestSha256 = manifestDigest,
+            )
+        }
+        assertTrue(refusal.message?.contains("manifest_name is blank") == true, refusal.message)
+    }
+
+    @Test
+    fun `a request whose manifest digest is not a SHA-256 is refused`() {
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            MavenPublicationRequest(
+                candidateId = candidate,
+                productVersion = version,
+                manifestName = "maven-publication-manifest.json",
+                manifestSha256 = "not-a-sha256",
+            )
+        }
+        assertTrue(refusal.message?.contains("manifest_sha256") == true, refusal.message)
+    }
+
+    @Test
+    fun `an artifact without a path is refused`() {
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            MavenArtifactDigest(path = " ", kind = MavenArtifactKind.JAR, sha256 = "1".repeat(64))
+        }
+        assertTrue(refusal.message?.contains("path is blank") == true, refusal.message)
+    }
+
+    @Test
+    fun `an artifact whose digest is not a SHA-256 is refused`() {
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            MavenArtifactDigest(
+                path = "dev/rubentxu/pipeline/v2/pipeline-domain/0.93.0/pipeline-domain-0.93.0.jar",
+                kind = MavenArtifactKind.JAR,
+                sha256 = "not-a-sha256",
+            )
+        }
+        assertTrue(refusal.message?.contains("sha256 must be") == true, refusal.message)
+    }
+
+    @Test
+    fun `an artifact whose path is of no kind is refused by name`() {
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            MavenArtifactDigest(
+                path = "dev/rubentxu/pipeline/v2/pipeline-domain/0.93.0/pipeline-domain-0.93.0.txt",
+                kind = MavenArtifactKind.JAR,
+                sha256 = "1".repeat(64),
+            )
+        }
+        assertTrue(refusal.message?.contains("file of no kind") == true, refusal.message)
+        assertTrue(
+            refusal.message?.contains("is a file of no kind and the artifact declares JAR") == true,
+            refusal.message,
+        )
+        assertEquals(
+            "the path 'dev/rubentxu/pipeline/v2/pipeline-domain/0.93.0/pipeline-domain-0.93.0.txt' " +
+                "is a file of no kind and the artifact declares JAR. The kind of a file is what " +
+                "its name says it is, and a manifest that calls a file something else describes " +
+                "bytes that nobody can compare with the measurement of the bundle.",
+            refusal.message,
+        )
+    }
+
+    @Test
+    fun `a document says the shape it is`() {
+        assertEquals(MavenPublicationManifest.SCHEMA_VERSION, manifest().schemaVersion)
+        assertEquals(MavenPublicationRequest.SCHEMA_VERSION, request().schemaVersion)
+    }
+
+    // ── the diagnostic that names what differs ────────────────────────────────
+    //
+    // The comparison is by path and by digest, and it names what is missing,
+    // what is extra and what changed. Each row fixes ONE partition of that
+    // comparison: a diagnostic that names the missing file when nothing is
+    // missing is a diagnostic that sends the publisher to the wrong place.
+
+    @Test
+    fun `a difference that is only a missing file names it and nothing else`() {
+        val detail = detailOf(
+            MavenPublicationViolationCode.ARTIFACT_DISAGREES,
+            observed = observed(bundleArtifacts = listOf(pom)),
+        )
+        assertTrue(detail.contains("missing ${jar.path}"), detail)
+        assertTrue(!detail.contains("unexpected"), detail)
+        assertTrue(!detail.contains("changed"), detail)
+        assertTrue(!detail.contains(";"), detail)
+    }
+
+    @Test
+    fun `a difference that is only an unexpected file names it and nothing else`() {
+        val detail = detailOf(
+            MavenPublicationViolationCode.ARTIFACT_DISAGREES,
+            observed = observed(bundleArtifacts = listOf(pom, jar, extraModule)),
+        )
+        assertTrue(detail.contains("unexpected ${extraModule.path}"), detail)
+        assertTrue(!detail.contains("missing"), detail)
+        assertTrue(!detail.contains("changed"), detail)
+        assertTrue(!detail.contains(";"), detail)
+    }
+
+    @Test
+    fun `a difference that is a change names both digests`() {
+        val changed = pom.copy(sha256 = "7".repeat(64))
+        val detail = detailOf(
+            MavenPublicationViolationCode.ARTIFACT_DISAGREES,
+            observed = observed(bundleArtifacts = listOf(changed, jar)),
+        )
+        assertTrue(detail.contains("changed ${pom.path}"), detail)
+        assertTrue(detail.contains(pom.sha256), detail)
+        assertTrue(detail.contains(changed.sha256), detail)
+        assertTrue(!detail.contains("missing"), detail)
+        assertTrue(!detail.contains("unexpected"), detail)
+        assertTrue(!detail.contains(";"), detail)
+    }
+
+    @Test
+    fun `a difference with two parts separates them`() {
+        val detail = detailOf(
+            MavenPublicationViolationCode.ARTIFACT_DISAGREES,
+            observed = observed(bundleArtifacts = listOf(pom, extraModule)),
+        )
+        assertTrue(detail.contains("missing ${jar.path}"), detail)
+        assertTrue(detail.contains("unexpected ${extraModule.path}"), detail)
+        assertTrue(detail.contains("; "), detail)
+    }
+
+    @Test
+    fun `a difference that is missing and changed separates them`() {
+        val changed = pom.copy(sha256 = "7".repeat(64))
+        val detail = detailOf(
+            MavenPublicationViolationCode.ARTIFACT_DISAGREES,
+            observed = observed(bundleArtifacts = listOf(changed)),
+        )
+        assertTrue(detail.contains("missing ${jar.path}"), detail)
+        assertTrue(detail.contains("changed ${pom.path}"), detail)
+        assertTrue(detail.contains("; "), detail)
+    }
+
+    // ── the diagnostics of the decision ──────────────────────────────────────
+
+    @Test
+    fun `an admitted publication renders what it publishes`() {
+        val verdict = assertInstanceOf(
+            MavenPublicationVerdict.Admitted::class.java,
+            evaluateMavenPublication(request(), manifest(), certification(), observed()),
+        )
+        val rendered = verdict.render()
+        assertTrue(rendered.contains("ADMITTED"), rendered)
+        assertTrue(rendered.contains(candidate.canonical), rendered)
+        assertTrue(rendered.contains(version.value), rendered)
+        assertTrue(rendered.contains("2 artifact(s)"), rendered)
+        assertTrue(rendered.contains(bundleDigest), rendered)
+    }
+
+    @Test
+    fun `a certification of another candidate is told apart from one that does not admit`() {
+        val detail = violationsOf(certification = certification(candidateId = other))
+            .first { it.code == MavenPublicationViolationCode.CERTIFICATION_IS_ANOTHER }
+            .detail
+        assertTrue(detail.contains("names another candidate"), detail)
+    }
+
+    @Test
+    fun `a refusal that names a manifest names the one the request names`() {
+        val detail = detailOf(
+            MavenPublicationViolationCode.MANIFEST_DIGEST_DISAGREES,
+            observed = observed(manifestSha256 = "f".repeat(64)),
+        )
+        assertTrue(detail.contains("maven-publication-manifest.json"), detail)
     }
 }

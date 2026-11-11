@@ -289,7 +289,7 @@ internal sealed interface ServiceStartDegradation {
 
         override fun describe(): String = buildString {
             appendLine("the record of the starts could not be written: $detail")
-            val named = correlationId?.let { " of the correlation $it" } ?: ""
+            val named = correlationId?.let { " of the correlation $it" }.orEmpty()
             appendLine(
                 "the start$named failed and the service cannot release the key: " +
                     "no run was left behind",

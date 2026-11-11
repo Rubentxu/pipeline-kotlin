@@ -19,6 +19,7 @@ import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
 import java.security.DigestInputStream
 import java.security.MessageDigest
+import java.util.Locale
 import kotlin.reflect.KClass
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -223,7 +224,7 @@ class CoreUtilsSha256DigestTest {
 
     /** The digest of [content], by the JDK. */
     private fun referenceOf(content: ByteArray, algorithm: String): String =
-        MessageDigest.getInstance(algorithm).digest(content).joinToString("") { "%02x".format(it) }
+        MessageDigest.getInstance(algorithm).digest(content).joinToString("") { hex(it) }
 
     /**
      * The digest of the bytes of [file], by the JDK over a stream.
@@ -236,8 +237,17 @@ class CoreUtilsSha256DigestTest {
         DigestInputStream(Files.newInputStream(file), digest).use { stream ->
             stream.transferTo(OutputStream.nullOutputStream())
         }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        return digest.digest().joinToString("") { hex(it) }
     }
+
+    /**
+     * The byte [value], in hexadecimal.
+     *
+     * The locale is stated: a digest written in the locale of the machine
+     * would spell the digits differently, and a reference that changes with
+     * the machine cannot serve as a reference.
+     */
+    private fun hex(value: Byte): String = String.format(Locale.ROOT, "%02x", value)
 
     /** The context the Step runs in: one capability, and a workspace of the test's own. */
     private fun context(): StepHandlerContext = StepHandlerContext(

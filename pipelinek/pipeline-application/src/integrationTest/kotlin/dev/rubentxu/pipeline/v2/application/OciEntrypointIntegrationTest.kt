@@ -11,6 +11,7 @@ import java.util.zip.ZipFile
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -41,14 +42,20 @@ import org.junit.jupiter.api.io.TempDir
  * that is not there. So the lane reads the log the container writes and asks
  * which of the two lines came first.
  *
- * ## Why this instrument is an INTEGRATION test
+ * ## Why this instrument is an INTEGRATION test, and why the gate does not call it
  *
  * Every fact under trial is about PROCESSES and a FILE: a script that has to
  * find a launcher, a launcher that has to find a JVM, a SQLite file that has
  * to be created with two shapes in it and a service that has to bind a socket.
  * A double of any of them would fake the thing under trial.
+ *
+ * And because it STARTS the product, the gate does not call it: a row that
+ * starts a product can go red for a reason the code does not have. The rows
+ * stay in the tree, they are declared in
+ * `scripts/check-product-boot-layer.py`, and they are run on demand.
  */
 @Timeout(value = 5, unit = TimeUnit.MINUTES)
+@Tag("boot-check")
 class OciEntrypointIntegrationTest {
 
     /** Where the measurement happens: the distribution, the substrate and the socket. */

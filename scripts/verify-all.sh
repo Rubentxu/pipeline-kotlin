@@ -998,14 +998,18 @@ if want_stage 3; then
         # tasks have to run because their inputs changed, and forcing the rest
         # would spend the delivery's time to measure what it already knows.
         # The census says which reports this run wrote and which it read.
+        # The gate calls no row that starts the product: the property is how it
+        # says so, and the build excludes the rows that carry the tag. The rows
+        # are declared in `scripts/check-product-boot-layer.py`, and they are
+        # run on demand by whoever asks for them without the property.
         if [[ ${#test_filters[@]} -gt 0 ]]; then
-            gradle_args=("-I" "$filter_init_script")
+            gradle_args=("-Ppipelinek.excludeBootChecks" "-I" "$filter_init_script")
             for t in "${unit_tasks[@]}"; do
                 gradle_args+=("$t")
                 for p in "${test_filters[@]}"; do gradle_args+=(--tests "$p"); done
             done
         else
-            gradle_args=("${unit_tasks[@]}")
+            gradle_args=("-Ppipelinek.excludeBootChecks" "${unit_tasks[@]}")
         fi
 
         if ! ./pipelinek/gradlew -p pipelinek "${gradle_args[@]}" \
@@ -1124,14 +1128,16 @@ if want_stage 4; then
         # the affected test is as often an integration test as a unit one, and
         # a filter that reaches only the unit lane would send the operator
         # back to the whole gate to find the other half of the answer.
+        # The same door for the integration lane: the gate calls no row that
+        # starts the product, and the rows that do are the ones the tag names.
         if [[ ${#test_filters[@]} -gt 0 ]]; then
-            gradle_args=("-I" "$filter_init_script")
+            gradle_args=("-Ppipelinek.excludeBootChecks" "-I" "$filter_init_script")
             for t in "${integration_tasks[@]}"; do
                 gradle_args+=("$t")
                 for p in "${test_filters[@]}"; do gradle_args+=(--tests "$p"); done
             done
         else
-            gradle_args=("${integration_tasks[@]}")
+            gradle_args=("-Ppipelinek.excludeBootChecks" "${integration_tasks[@]}")
         fi
 
         if ! ./pipelinek/gradlew -p pipelinek "${gradle_args[@]}" \

@@ -159,6 +159,37 @@ object MainCredentialsCli {
 
                 SECRET_FILE, CERTIFICATE, ZIP -> CredentialFraming.WHOLE
             }
+
+        /**
+         * What the bytes of this kind are called when a refusal has to name
+         * them.
+         *
+         * The words are this module's own, and they never carry a name the
+         * operator wrote: a refusal about a credential says how much was too
+         * much, and not what the credential held.
+         */
+        internal val subject: String
+            get() = when (this) {
+                SECRET_TEXT -> "the secret"
+                USERNAME_PASSWORD, USERNAME_COLON_PASSWORD -> "the username and the password"
+                SSH_PRIVATE_KEY -> "the SSH private key"
+                SECRET_FILE -> "the secret file"
+                CERTIFICATE -> "the keystore"
+                ZIP -> "the ZIP archive"
+            }
+
+        /**
+         * How many bytes of this kind may arrive.
+         *
+         * A value that is a file is bounded by the store's own ceiling of the
+         * secret an entry may hold. An archive is bounded by the size of the
+         * archive as it is handed over, because that is what is read whole;
+         * the bytes it expands to are bounded by another rule.
+         */
+        internal fun ceilingOf(limits: CredentialImportLimits): Long = when (this) {
+            ZIP -> limits.maxArchiveBytes
+            else -> limits.maxContentBytes
+        }
     }
 
     /**

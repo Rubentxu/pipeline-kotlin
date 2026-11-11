@@ -253,6 +253,15 @@ internal object StoreCodec {
     const val HEADER_SIZE: Int = 4 + 2 + 4 + 4 + 4 + SALT_SIZE + CredentialCrypto.WRAPPED_DEK_SIZE
 
     /**
+     * The longest secret an entry may carry.
+     *
+     * It is the ceiling of the store's own reader, and the importer applies
+     * it before the bytes are paid for: a secret above it could never be
+     * given back, so refusing it at the boundary costs the operator nothing.
+     */
+    const val MAX_PLAINTEXT_LENGTH: Long = 1_000_000L
+
+    /**
      * The format of one version.
      *
      * @param version the version of the file
@@ -530,7 +539,7 @@ private fun readEntries(
             refuse(version, offset, "the length of its secret is cut short")
         }
         val plaintextLen = buf.int
-        if (plaintextLen <= 0 || plaintextLen > MAX_PLAINTEXT_LENGTH) {
+        if (plaintextLen <= 0 || plaintextLen > StoreCodec.MAX_PLAINTEXT_LENGTH) {
             refuse(version, offset, "the length of its secret ($plaintextLen) is not one a secret can have")
         }
         val blobLen = AeadCipher.NONCE_SIZE_BYTES + plaintextLen + AeadCipher.TAG_SIZE_BYTES
@@ -559,6 +568,3 @@ private fun refuse(version: Short, offset: Int, reason: String): Nothing =
 
 /** The longest credential ID an entry may carry. */
 private const val MAX_ID_LENGTH = 1024
-
-/** The longest secret an entry may carry. */
-private const val MAX_PLAINTEXT_LENGTH = 1_000_000

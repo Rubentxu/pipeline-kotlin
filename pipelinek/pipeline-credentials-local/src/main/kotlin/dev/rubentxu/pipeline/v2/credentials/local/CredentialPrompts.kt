@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
-import java.nio.file.Files
 import java.nio.file.Paths
 
 /**
@@ -18,7 +17,10 @@ import java.nio.file.Paths
 */
 internal object CredentialPrompts {
 
-    fun read(kind: MainCredentialsCli.CredentialKind): Credential = when (kind) {
+    fun read(
+        kind: MainCredentialsCli.CredentialKind,
+        limits: CredentialImportLimits = CredentialImportLimits.DEFAULT,
+    ): Credential = when (kind) {
         MainCredentialsCli.CredentialKind.SECRET_TEXT -> {
             print("Enter secret value: ")
             CredentialValues.secretText(consoleSecret())
@@ -54,19 +56,29 @@ internal object CredentialPrompts {
         MainCredentialsCli.CredentialKind.SECRET_FILE -> {
             print("Enter file path: ")
             val file = Paths.get(consoleLine())
-            CredentialValues.secretFile(Files.readAllBytes(file), file.fileName.toString())
+            CredentialValues.secretFile(
+                BoundedInput.read(file, kind.ceilingOf(limits), kind.subject),
+                file.fileName.toString(),
+            )
         }
 
         MainCredentialsCli.CredentialKind.CERTIFICATE -> {
             print("Enter keystore file path (PKCS#12): ")
-            val keystore = Files.readAllBytes(Paths.get(consoleLine()))
+            val keystore = BoundedInput.read(
+                Paths.get(consoleLine()),
+                kind.ceilingOf(limits),
+                kind.subject,
+            )
             print("Enter key alias (leave empty for default): ")
             CredentialValues.certificate(keystore, consoleLine())
         }
 
         MainCredentialsCli.CredentialKind.ZIP -> {
             print("Enter ZIP file path: ")
-            CredentialValues.zip(Files.readAllBytes(Paths.get(consoleLine())))
+            CredentialValues.zip(
+                BoundedInput.read(Paths.get(consoleLine()), kind.ceilingOf(limits), kind.subject),
+                limits,
+            )
         }
     }
 

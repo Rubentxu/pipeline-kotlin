@@ -244,13 +244,19 @@ artifact arrives with bytes nobody pinned. In a Maven build there is no built-in
 equivalent: the `.asc` that sits beside the artifact is what a consumer can
 check, with `gpg --verify`, before it trusts the bytes.
 
-**Version 0.94.2 is published in Maven Central.** It was published in the GitHub
-Packages registry too, under the coordinates that release carried, and this
-release withdraws its six packages from that registry: the two coordinate sets
-are the same contracts under two names, and a contract that answers to two
-names has no single name. The bytes a consumer resolves in Central are the bytes
-this repository signed, and the key that signed them is the one named above. The
-paragraph below is how a consumer verifies what arrives.
+**The Maven channel carries 0.96.0 today.** The release this tree declares is
+0.96.0 (`pipelinek/build.gradle.kts`), and it is published in Maven Central
+under the group `dev.rubentxu.pipelinek`, together with 0.95.0, which shares
+those coordinates. The release before it, 0.94.2, was published under the
+group `dev.rubentxu.pipeline.v2` and under the artifact names `pipeline-domain`
+and the rest of that set, and it is STILL SERVED: a published version is never
+replaced, and the coordinates of 0.94.2 answer today exactly as they answered
+when they were published. The measurement that says so, with the commands that
+produce it, is in "What the channel carries today" below.
+
+The bytes a consumer resolves in Central are the bytes this repository signed,
+and the key that signed them is the one named above. The paragraph below is how
+a consumer verifies what arrives.
 
 ## How the artifacts travel to the remote destination
 
@@ -298,16 +304,22 @@ does not admit the publication even when it is handed one. The bundle is
 packaged before the credentials are read, so a missing secret costs a ZIP and
 not a half-published deployment.
 
-**Version 0.94.2 was uploaded to the portal and is published.** The account, its
+**The 0.94.2 deployment of the portal is still in Central.** The account, its
 namespace, its token and the registration of the key on it are facts about
 somebody else's database, and nothing here depends on them: what depends on
 them is the upload, and the upload is the one thing this tree cannot do on its
 own. The deployment is named `pipelinek-0.94.2-r6` and the bytes it carried are
-the ones the signed bundle holds. This release withdraws that deployment BY
-HAND, in the portal, because the API of the publisher cannot drop a deployment
-that is already published: the packages of the GitHub Packages registry go with
-a DELETE that this release can make, and the deployment of the portal needs a
-person.
+the ones the signed bundle holds. It was NOT withdrawn: measured on 2026-11-11,
+the coordinates of 0.94.2 under `dev.rubentxu.pipeline.v2` answer 200 in
+Central. The API of the publisher cannot drop a deployment that is already
+published, so a withdrawal there needs a person, and it has not happened.
+
+What that means for a consumer is exact. The coordinates of 0.94.2 still
+resolve, with the bytes they were published with, and the coordinates of 0.96.0
+resolve beside them under the new group. A consumer that stays on the old
+coordinates keeps resolving a version that was certified; a consumer that moves
+to the new ones resolves the current release. Neither group is withdrawn, and
+the two groups are two names for contracts that were published under both.
 
 ## The channels the artifacts travel in
 
@@ -396,13 +408,55 @@ the operator as a `2`, and not as a `1`. It belongs beside the publication,
 never inside it: the decision to publish is taken from local documents, and
 this one only says what a consumer would find afterwards.
 
-**Version 0.94.2 is published in Maven Central**, under the coordinates that
-release was published with. Its six artifacts carry the same bytes the signed
-bundle carries, an independent consumer compiles against them, and every
-published file matches the digest of the signed artifact. The ZIP of the release
-is published as well. It was published in the GitHub Packages registry too, and
-this release withdraws its six packages from there: a coordinate that answers to
-two names is not one name.
+**0.94.2 is published in Maven Central**, under the coordinates that release was
+published with, and it is still served there: its six artifacts carry the same
+bytes the signed bundle carries, an independent consumer compiles against them,
+and every published file matches the digest of the signed artifact. The ZIP of
+the release is published as well. It was published in the GitHub Packages
+registry too, and whether its six packages are still there is NOT MEASURED
+today: that registry answers 401 to everything without a credential, including
+to coordinates that do not exist, so only a request WITH a credential tells an
+absent package from a private one.
+
+### What the channel carries today
+
+Measured on 2026-11-11, with the commands that produce it:
+
+```bash
+$ curl -s -o /dev/null -w '%{http_code}\n' \
+    https://repo1.maven.org/maven2/dev/rubentxu/pipeline/v2/pipeline-domain/0.94.2/pipeline-domain-0.94.2.jar
+200
+$ curl -s -o /dev/null -w '%{http_code}\n' \
+    https://repo1.maven.org/maven2/dev/rubentxu/pipelinek/pipelinek-domain/0.95.0/pipelinek-domain-0.95.0.jar
+200
+$ curl -s -o /dev/null -w '%{http_code}\n' \
+    https://repo1.maven.org/maven2/dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.jar
+200
+$ curl -s -o /dev/null -w '%{http_code}\n' \
+    https://maven.pkg.github.com/Rubentxu/pipeline-kotlin/dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.jar
+401
+$ curl -s -o /dev/null -w '%{http_code}\n' \
+    https://maven.pkg.github.com/Rubentxu/pipeline-kotlin/dev/rubentxu/pipelinek/pipelinek-domain/9.99.99/pipelinek-domain-9.99.99.jar
+401
+```
+
+The versions each group carries are the directories the registry serves:
+`dev/rubentxu/pipeline/v2/pipeline-domain/` holds `0.94.2` and nothing else,
+and `dev/rubentxu/pipelinek/pipelinek-domain/` holds `0.95.0` and `0.96.0`.
+
+The `401` of the mirror is neither an absence nor a presence: it is what that
+registry answers to EVERY path without a credential, including to a coordinate
+that does not exist. Only a request WITH a credential tells an absent package
+from a private one, and the measurement that does that is the one this
+repository runs with `scripts/release/verify-published-maven.sh` and a token in
+the environment.
+
+What this measurement does NOT say: that the bytes the mirror serves are the
+certified ones (that is the instrument's verdict, and it is a separate
+measurement), that the detached signatures of the artifacts served by Central
+verify (they travel with the artifacts and are verified when the bundle is
+staged), and that the metadata the registries generate beside the artifacts is
+present.
 
 ## The review of the published fingerprint
 

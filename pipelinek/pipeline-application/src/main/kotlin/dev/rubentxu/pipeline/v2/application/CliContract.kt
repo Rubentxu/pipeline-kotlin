@@ -547,15 +547,40 @@ sealed interface CliError {
     data class RunIdCannotNameADirectory(val runId: String) : CliError
 
     /**
+     * A refusal about the SUBSTRATE: the two moments of one fact.
+     *
+     * The substrate is either not there to be served, or it could not be
+     * prepared. Both of them are about the same file, and both of them send
+     * the reader to the step that prepares it — so they are one family, and
+     * the words they use say WHICH of the two happened.
+     */
+    sealed interface SubstrateRefusal : CliError {
+
+        /** What the substrate said, or what the engine said about it. */
+        val reason: String
+    }
+
+    /**
      * The substrate the service was asked to serve cannot be read.
      *
      * The service reads the store it is given, and it does not create one: a
      * service that creates the substrate it is about to read is a service that
      * writes, and what it would answer about is not what the operator named.
-     *
-     * @property reason what the substrate said when it was asked.
      */
-    data class SubstrateUnavailable(val reason: String) : CliError
+    data class SubstrateUnavailable(override val reason: String) : SubstrateRefusal
+
+    /**
+     * The substrate could not be PREPARED.
+     *
+     * A case of its own and not the refusal of the substrate that is not
+     * there, because the two are different facts about different moments: one
+     * is about a service that cannot serve what it was given, and this one is
+     * about a step that could not create it. The words of the first say "the
+     * service reads the substrate it is given; it does not create one", and
+     * those words would be a lie here: this step DOES create one, and it says
+     * why it could not.
+     */
+    data class SubstrateNotPrepared(override val reason: String) : SubstrateRefusal
 
     /**
      * The service could not start on the machine it was asked to run on.

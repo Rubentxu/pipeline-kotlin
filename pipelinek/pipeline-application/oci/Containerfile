@@ -53,10 +53,19 @@ RUN groupadd --gid 1000 pipelinek \
 # The distribution, unpacked from the ZIP the release published.
 COPY distribution/ /opt/pipelinek/
 
+# The entrypoint of the profile: it prepares the substrate and then serves it.
+#
+# The service reads the store it is given and never creates one, and a
+# container that starts against empty volumes has to take that step by
+# somebody who says so. The script is the one that says so, and it says it
+# BEFORE the service is asked to serve.
+COPY entrypoint.sh /opt/pipelinek/entrypoint.sh
+
 # The ZIP carries no executable bit -- a ZIP is a container of names and
 # bytes, not of modes -- and the installer sets it on the file it installs.
 # The image does the same thing to the file it unpacked.
-RUN chmod +x /opt/pipelinek/bin/pipelinek
+RUN chmod +x /opt/pipelinek/bin/pipelinek \
+    && chmod +x /opt/pipelinek/entrypoint.sh
 
 # The three places the service owns, and the home it writes under.
 #
@@ -83,9 +92,11 @@ USER 1000:1000
 
 WORKDIR /var/lib/pipelinek
 
-# The launcher of the distribution, and the service it serves. The command is
-# the one the README documents: the substrate to serve, the control root and
-# the socket to listen on. An operator who wants the service to START runs
-# adds --scripts and --workspaces, and the container is the same one.
-ENTRYPOINT ["/opt/pipelinek/bin/pipelinek"]
+# The entrypoint of the profile, and the service it serves. The entrypoint
+# prepares the substrate named by the command and then hands over to the
+# launcher of the distribution. The command is the one the README documents:
+# the substrate to serve, the control root and the socket to listen on. An
+# operator who wants the service to START runs adds --scripts and
+# --workspaces, and the container is the same one.
+ENTRYPOINT ["/opt/pipelinek/entrypoint.sh"]
 CMD ["serve", "--db", "/var/lib/pipelinek/state/store.db", "--control-root", "/var/lib/pipelinek/control", "--socket", "/var/lib/pipelinek/socket/pipelinek.sock"]

@@ -132,6 +132,11 @@ DECLARED_EXECUTABLES = {
         "the launcher of the distribution: product content shipped in the "
         "archive, not a layer that certifies the tree"
     ),
+    "pipelinek/pipeline-application/oci/entrypoint.sh": (
+        "the entrypoint of the OCI profile: product content that ships in the "
+        "image and prepares the substrate before the launcher serves it. The "
+        "gate does not build the image and does not run it"
+    ),
     "scripts/verify-all.sh": (
         "the gate of this repository: it reads the tree, builds it and runs "
         "its three legs"

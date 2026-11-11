@@ -164,6 +164,18 @@ internal val CLI_VERBS: List<CliVerb> = buildList {
             ::runServeVerb,
         ),
     )
+    // The preparation of the substrate is a step of its own and not an option
+    // of `serve`: the service reads the store it is given and never creates
+    // one, so the file has to be made by somebody who says so. The family word
+    // `substrate` owns its own usage, because it is a family and not a form.
+    add(
+        CliVerb(
+            "substrate init",
+            "prepare the durable substrate the service serves (--db)",
+            ::runSubstrateInitVerb,
+            SUBSTRATE_INIT_USAGE,
+        ),
+    )
 
     addAll(
         MainRunsCli.RunsVerb.entries.map {

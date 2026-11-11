@@ -8,6 +8,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.assertThrows
+import java.util.concurrent.TimeUnit
 
 /**
  * The identity material is the text that reaches the digest of a durable
@@ -65,6 +68,41 @@ class IdentityMaterialTest {
             )
             assertTrue(material.excludedFields.isEmpty())
         }
+
+        @Test
+        fun `a payload that parses into a JSON value that is not an object is kept whole`() {
+            // The third text of the contract: one that parses, and parses into
+            // something that is not an object. It declares no fields, so it
+            // cannot carry a fact of instant — and the row that covers the
+            // text which does not parse at all does not cover this one.
+            val declared = """["kind","sh"]"""
+            val material = IdentityMaterial.of(declared)
+            assertEquals(
+                declared,
+                material.identityText,
+                "a JSON value that is not an object was rewritten instead of being kept whole",
+            )
+            assertTrue(material.excludedFields.isEmpty())
+        }
+    }
+
+    /**
+     * The facts of instant are DECLARED, not guessed: a field is one because
+     * the domain says so, and the declaration is the list the projection
+     * intersects the payload with.
+     */
+    @Nested
+    @DisplayName("the facts of instant are declared")
+    inner class Declaration {
+
+        @Test
+        fun `the fact of instant that the projection excludes is among the declared ones`() {
+            assertTrue(
+                IdentityMaterial.instantFields.contains("enteredAt"),
+                "the fact of instant the projection excludes is not among the declared ones: " +
+                    "${IdentityMaterial.instantFields}",
+            )
+        }
     }
 
     @Nested
@@ -103,6 +141,63 @@ class IdentityMaterialTest {
                 forward,
                 reversed,
                 "two spellings of the same declaration projected to two identities",
+            )
+        }
+    }
+
+    /**
+     * The invariants of a projected material, exercised on the material itself.
+     *
+     * The projection is built by [IdentityMaterial.of], and that factory only
+     * ever builds a material that satisfies these three rules — so the rules
+     * were never observed doing their work. They are the invariants of a type
+     * that a caller can build directly, and a guard that no row reaches is a
+     * guard that nothing proves.
+     */
+    @Nested
+    @DisplayName("a projected material satisfies its own invariants")
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    inner class Invariants {
+
+        @Test
+        fun `a projection that excludes nothing is refused`() {
+            // A material that excludes nothing is not a projection: it is a
+            // whole material wearing the other name, and the two have to be
+            // told apart by their own construction.
+            val refusal = assertThrows<IllegalArgumentException> {
+                IdentityMaterial.Projected("""{"kind":"sh"}""", emptySet())
+            }
+            assertTrue(
+                refusal.message.orEmpty().contains("exclude"),
+                "the refusal did not name the rule it is about: ${refusal.message}",
+            )
+        }
+
+        @Test
+        fun `a projection that excludes a field that is not a fact of instant is refused`() {
+            // Only the DECLARED facts of instant may leave the identity. A
+            // projection that excluded anything else would drop a fact the
+            // program declared about itself.
+            val refusal = assertThrows<IllegalArgumentException> {
+                IdentityMaterial.Projected("""{"kind":"sh"}""", setOf("kind"))
+            }
+            assertTrue(
+                refusal.message.orEmpty().contains("facts of instant"),
+                "the refusal did not name the rule it is about: ${refusal.message}",
+            )
+        }
+
+        @Test
+        fun `a projection whose text still declares the excluded field is refused`() {
+            // The whole point of the projection is that the fact of instant
+            // does not reach the identity. A material that keeps the field it
+            // says it excluded is an identity that moves with the clock.
+            val refusal = assertThrows<IllegalArgumentException> {
+                IdentityMaterial.Projected("""{"enteredAt":"1700000000123"}""", setOf("enteredAt"))
+            }
+            assertTrue(
+                refusal.message.orEmpty().contains("still declares"),
+                "the refusal did not name the rule it is about: ${refusal.message}",
             )
         }
     }

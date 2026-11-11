@@ -212,6 +212,11 @@ DECLARED_EXECUTABLES = {
         "publication: it measures the staged Maven bundle and writes the manifest that "
         "describes it, and it starts nothing of the product"
     ),
+    "scripts/release/check-sdk-bundle-control.sh": (
+        "the negative control of the bundle checker: it proves that the checker refuses a "
+        "bundle whose Gradle module metadata resolves a file the bundle does not carry, "
+        "and it starts nothing of the product"
+    ),
     "scripts/release/emit-certification-requested.sh": (
         "the emitter of the certification request: it composes the event that crosses the "
         "boundary between the repositories and leaves it beside the publication, so what "

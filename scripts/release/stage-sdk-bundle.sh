@@ -14,6 +14,8 @@
 #   7. runs the checker, which recomputes every digest and verifies every signature
 #   8. compiles an INDEPENDENT consumer against the staging repository
 #   9. compiles that same consumer against a repository with no BOM, which must FAIL
+#  10. proves that the CHECKER refuses a bundle whose Gradle module metadata resolves a
+#      file the bundle does not carry, which it must
 #
 # The order is the guarantee. The bundle is published before it is signed, and it is
 # signed before it is checked, so a checker that passes has read the bytes that carry
@@ -29,7 +31,9 @@
 # The negative control is not decoration. A consumer that compiles proves that SOMETHING
 # resolved; the same consumer against a repository with no BOM proves that the resolution
 # is what made it compile. Without the second half, the first half cannot distinguish a
-# working bundle from a lucky one.
+# working bundle from a lucky one. The checker's control says the same about the
+# checker: a bundle that passes proves that the checker accepted it, and only a checker
+# that has refused something proves that its acceptance means anything.
 #
 # WHAT IT DOES NOT DO
 #
@@ -290,6 +294,26 @@ if [[ "$SKIP_CONSUMER" -eq 0 ]]; then
     printf 'negative control:    the same consumer failed against an empty repository, as it must\n'
 fi
 
+# ── 10. the checker's own negative control ─────────────────────────────────────
+#
+# The bundle the checker just accepted could be accepted just as well by a
+# checker that accepts everything, so the checker is run against a COPY of the
+# bundle in which one of the files that the Gradle module metadata resolves is
+# missing. It MUST refuse it, and the refusal MUST name the variant that
+# resolves the missing file. The copy is what is tampered: the bundle that will
+# be published stays exactly as the publication will carry it.
+control_args=(--repo "$STAGING_REPO")
+[[ -n "$VERSION" ]] && control_args+=(--version "$VERSION")
+[[ -n "$FINGERPRINT" ]] && control_args+=(--fingerprint "$FINGERPRINT")
+[[ -n "$MATURITY_CONTRACT" ]] && control_args+=(--maturity "$MATURITY_CONTRACT")
+[[ -n "$LANDING_REPO" ]] && control_args+=(--landing-repo "$LANDING_REPO")
+if [[ -f "$ASSETS_FILE" ]]; then
+    control_args+=(--assets "$ASSETS_FILE")
+fi
+if ! "$repo_root/scripts/release/check-sdk-bundle-control.sh" "${control_args[@]}"; then
+    fail "the checker could not refuse a bundle whose Gradle module metadata resolves a file it does not carry"
+fi
+
 # ── the receipt ────────────────────────────────────────────────────────────────
 if [[ -n "$OUT_FILE" ]]; then
     {
@@ -300,6 +324,7 @@ if [[ -n "$OUT_FILE" ]]; then
         printf 'signed_artifacts=%d\n' "$signed"
         printf 'consumer_compiled=%s\n' "$([[ "$consumer_ok" -eq 1 ]] && echo yes || echo not_run)"
         printf 'consumer_negative_control=refused\n'
+        printf 'checker_negative_control=refused\n'
     } > "$OUT_FILE"
 fi
 

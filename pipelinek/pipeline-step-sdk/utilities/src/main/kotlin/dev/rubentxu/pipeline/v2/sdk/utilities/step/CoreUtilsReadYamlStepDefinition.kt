@@ -40,7 +40,8 @@ import kotlin.io.path.readBytes
  * Effects: `READ_ONLY` (parse-only; no writes).
  * ReplayPolicy: `MEMOIZED` (input is deterministic modulo file content).
  * RecoveryPolicy: `None` (no transient failure modes — the only failures are
- *   typed USER-class errors for missing files, unsafe tags, malformed input).
+ *   typed USER-class errors for missing files, sources that are not UTF-8,
+ *   unsafe tags, malformed input).
 */
 class CoreUtilsReadYamlStepDefinition : StepDefinition<ReadYamlInput, ReadYamlOutput> {
 
@@ -101,13 +102,13 @@ class CoreUtilsReadYamlStepDefinition : StepDefinition<ReadYamlInput, ReadYamlOu
             }
         }
 
-        val rawText: String = try {
-            rawBytes.toString(Charsets.UTF_8)
-        } catch (e: Exception) {
-            throw PluginStepException(
+        val rawText: String = when (val decoding = StrictUtf8.decode(rawBytes)) {
+            is Utf8Decoding.Text -> decoding.value
+            is Utf8Decoding.Malformed -> throw PluginStepException(
                 failure = PipelineFailure(
                     kind = FailureKind.USER,
-                    message = "core-utils.readYaml: source is not valid UTF-8: ${e.message}",
+                    message = "core-utils.readYaml: source is not valid UTF-8: " +
+                        "the malformed sequence starts at the offset ${decoding.offset}",
                 ),
             )
         }

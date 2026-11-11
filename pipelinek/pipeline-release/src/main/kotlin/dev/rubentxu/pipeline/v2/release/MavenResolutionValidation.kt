@@ -130,7 +130,7 @@ enum class MavenResolutionViolationCode {
  *    bytes a consumer resolves are the bytes that were certified only when
  *    they are the same bytes.
  *
- * The comparison is ONE-DIRECTIONAL: it says what the repository must serve,
+ * The comparison goes in one direction only: it says what the repository must serve,
  * and it says nothing about the rest of what the repository holds. A registry
  * serves files of its own beside the artifacts (checksums and metadata), and
  * those files are the registry's business, not this decision's.

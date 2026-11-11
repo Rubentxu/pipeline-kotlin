@@ -123,8 +123,11 @@ enum class MavenPublicationViolationCode {
  *    A manifest that was swapped after the request was written is a request
  *    about something else.
  * 6. The contracts published must be the contracts the candidate was admitted
- *    with. The candidate's SDK ZIP carries the POMs of those contracts, so
- *    the comparison is between the manifest's POMs and the ZIP's.
+ *    with. The candidate's SDK ZIP carries the POMs and the Gradle module
+ *    metadata of those contracts, so the comparison is between the manifest's
+ *    contracts and the ZIP's. A bundle whose module metadata differs from the
+ *    candidate's publishes variants the candidate never had, and a comparison
+ *    that only looked at the POMs would call that bundle the candidate's.
  * 7. The bytes to publish must be the bytes the manifest describes, artifact
  *    by artifact and bundle by bundle. A path that rebuilds an artifact
  *    after the certification is a path that publishes something nobody
@@ -174,7 +177,7 @@ fun evaluateMavenPublication(
         )
     }
 
-    val contracts = manifest.artifacts.filter { it.kind == MavenArtifactKind.POM }
+    val contracts = manifest.artifacts.filter { it.kind.isContract }
     val contractDifference = difference(contracts, observed.certifiedContracts)
     if (contractDifference != null) {
         violations += MavenPublicationViolation(

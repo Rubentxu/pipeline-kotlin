@@ -42,6 +42,7 @@ class MavenResolutionAdmissionTest {
 
     private val pomBytes = "the pom of the contract".toByteArray()
     private val jarBytes = "the jar of the classes".toByteArray()
+    private val moduleBytes = "the module metadata of the variants".toByteArray()
 
     private val pom = MavenArtifactDigest(
         path = "dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.pom",
@@ -52,6 +53,11 @@ class MavenResolutionAdmissionTest {
         path = "dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.jar",
         kind = MavenArtifactKind.JAR,
         sha256 = Sha256.ofBytes(jarBytes),
+    )
+    private val module = MavenArtifactDigest(
+        path = "dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.module",
+        kind = MavenArtifactKind.MODULE,
+        sha256 = Sha256.ofBytes(moduleBytes),
     )
 
     @BeforeEach
@@ -276,6 +282,72 @@ class MavenResolutionAdmissionTest {
         assertTrue(requested.isEmpty(), "nothing must be asked of a manifest that is not a release")
     }
 
+    @Test
+    fun `the module metadata of a coordinate is asked for`() {
+        serveTheDeclaredBytes()
+        bodies[module.path] = moduleBytes
+
+        assertInstanceOf(
+            MavenResolutionOutcome.Verified::class.java,
+            admit(artifacts = listOf(pom, jar, module)),
+        )
+        assertTrue(
+            requested.contains(module.path),
+            "the module metadata must be asked for: $requested",
+        )
+    }
+
+    @Test
+    fun `a module metadata served with other bytes is refused by name`() {
+        serveTheDeclaredBytes()
+        bodies[module.path] = "the module metadata of other variants".toByteArray()
+
+        val outcome = assertInstanceOf(
+            MavenResolutionOutcome.Rejected::class.java,
+            admit(artifacts = listOf(pom, jar, module)),
+        )
+        assertTrue(outcome.summary.contains("ARTIFACT_DISAGREES"), outcome.summary)
+        assertTrue(outcome.summary.contains(module.path), outcome.summary)
+    }
+
+    @Test
+    fun `a manifest of another shape is not a verdict`() {
+        val text = MavenPublicationCodec.encode(manifestOf(listOf(pom, jar)))
+            .replace(
+                MavenPublicationManifest.SCHEMA_VERSION,
+                "pipelinek-maven-publication-manifest-1",
+            )
+
+        val outcome = assertInstanceOf(
+            MavenResolutionOutcome.Refused::class.java,
+            MavenResolutionAdmission.admit(
+                writeManifest(text),
+                HttpMavenRepositoryReader(baseUrl),
+            ),
+        )
+        assertTrue(
+            outcome.reason.contains("pipelinek-maven-publication-manifest-1"),
+            outcome.reason,
+        )
+        assertTrue(requested.isEmpty(), "a manifest this build cannot act on is not asked: $requested")
+    }
+
+    @Test
+    fun `a manifest that declares no shape is not a verdict`() {
+        val text = MavenPublicationCodec.encode(manifestOf(listOf(pom, jar)))
+            .replace(Regex("\"schema_version\"\\s*:\\s*\"[^\"]*\",\\s*"), "")
+
+        val outcome = assertInstanceOf(
+            MavenResolutionOutcome.Refused::class.java,
+            MavenResolutionAdmission.admit(
+                writeManifest(text),
+                HttpMavenRepositoryReader(baseUrl),
+            ),
+        )
+        assertTrue(outcome.reason.contains("schema_version"), outcome.reason)
+        assertTrue(requested.isEmpty(), "a manifest this build cannot act on is not asked: $requested")
+    }
+
     /** Put the declared bytes in the repository, under the paths of the manifest. */
     private fun serveTheDeclaredBytes() {
         bodies[pom.path] = pomBytes
@@ -285,23 +357,34 @@ class MavenResolutionAdmissionTest {
     /** The manifest of the artifacts, written where the admission reads it. */
     private fun manifestPath(
         artifacts: List<MavenArtifactDigest> = listOf(pom, jar),
-    ): Path {
-        val manifest = MavenPublicationManifest(
+    ): Path = writeManifest(MavenPublicationCodec.encode(manifestOf(artifacts)))
+
+    /** The manifest this build writes, over the artifacts. */
+    private fun manifestOf(artifacts: List<MavenArtifactDigest>): MavenPublicationManifest =
+        MavenPublicationManifest(
+            schemaVersion = MavenPublicationManifest.SCHEMA_VERSION,
             candidateId = CandidateId.fromDigest("a".repeat(64)),
             productVersion = ProductVersion.parseOrThrow("0.96.0"),
             sdkZip = MavenFileDigest("pipelinek-0.96.0.sdk.zip", "e".repeat(64)),
             artifacts = artifacts,
             bundleSha256 = "d".repeat(64),
         )
+
+    /** A manifest written by hand: the documents this build refuses to write. */
+    private fun writeManifest(text: String): Path {
         val path = directory.resolve("maven-publication-manifest.json")
-        Files.writeString(path, MavenPublicationCodec.encode(manifest))
+        Files.writeString(path, text)
         return path
     }
 
     /** The outcome of the check against the repository that is running. */
-    private fun admit(user: String? = null, token: String? = null): MavenResolutionOutcome =
+    private fun admit(
+        user: String? = null,
+        token: String? = null,
+        artifacts: List<MavenArtifactDigest> = listOf(pom, jar),
+    ): MavenResolutionOutcome =
         MavenResolutionAdmission.admit(
-            manifestPath(),
+            manifestPath(artifacts),
             HttpMavenRepositoryReader(baseUrl, user = user, token = token),
         )
 

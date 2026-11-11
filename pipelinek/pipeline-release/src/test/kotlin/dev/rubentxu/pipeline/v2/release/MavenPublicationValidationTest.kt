@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.release
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -35,13 +36,20 @@ class MavenPublicationValidationTest {
         kind = MavenArtifactKind.JAR,
         sha256 = "2".repeat(64),
     )
+    private val module = MavenArtifactDigest(
+        path = "dev/rubentxu/pipeline/v2/pipeline-domain/0.93.0/pipeline-domain-0.93.0.module",
+        kind = MavenArtifactKind.MODULE,
+        sha256 = "3".repeat(64),
+    )
 
     private fun manifest(
         candidateId: CandidateId = candidate,
         productVersion: ProductVersion = version,
         artifacts: List<MavenArtifactDigest> = listOf(pom, jar),
         bundleSha256: String = bundleDigest,
+        schemaVersion: String = MavenPublicationManifest.SCHEMA_VERSION,
     ): MavenPublicationManifest = MavenPublicationManifest(
+        schemaVersion = schemaVersion,
         candidateId = candidateId,
         productVersion = productVersion,
         sdkZip = MavenFileDigest("pipelinek-0.93.0.sdk.zip", sdkZipDigest),
@@ -180,6 +188,79 @@ class MavenPublicationValidationTest {
     fun `bytes that are not the ones the manifest describes are refused`() {
         val codes = violationsOf(observed = observed(bundleArtifacts = listOf(pom))).map { it.code }
         assertTrue(codes.contains(MavenPublicationViolationCode.ARTIFACT_DISAGREES), "got $codes")
+    }
+
+    @Test
+    fun `a bundle that carries the module metadata is published with it declared`() {
+        val verdict = evaluateMavenPublication(
+            request(),
+            manifest(artifacts = listOf(pom, jar, module)),
+            certification(),
+            observed(
+                bundleArtifacts = listOf(pom, jar, module),
+                certifiedContracts = listOf(pom, module),
+            ),
+        )
+        assertInstanceOf(MavenPublicationVerdict.Admitted::class.java, verdict)
+    }
+
+    @Test
+    fun `a bundle whose module metadata is not the candidate's is refused`() {
+        val codes = violationsOf(
+            manifest = manifest(artifacts = listOf(pom, jar, module)),
+            observed = observed(
+                bundleArtifacts = listOf(pom, jar, module),
+                certifiedContracts = listOf(pom, module.copy(sha256 = "4".repeat(64))),
+            ),
+        ).map { it.code }
+        assertTrue(codes.contains(MavenPublicationViolationCode.CONTRACT_DISAGREES), "got $codes")
+    }
+
+    @Test
+    fun `a manifest that declares a module metadata the candidate does not carry is refused`() {
+        val codes = violationsOf(
+            manifest = manifest(artifacts = listOf(pom, jar, module)),
+            observed = observed(
+                bundleArtifacts = listOf(pom, jar, module),
+                certifiedContracts = listOf(pom),
+            ),
+        ).map { it.code }
+        assertTrue(codes.contains(MavenPublicationViolationCode.CONTRACT_DISAGREES), "got $codes")
+    }
+
+    @Test
+    fun `a bundle that does not carry the declared module metadata is refused`() {
+        val codes = violationsOf(
+            manifest = manifest(artifacts = listOf(pom, jar, module)),
+            observed = observed(
+                bundleArtifacts = listOf(pom, jar),
+                certifiedContracts = listOf(pom, module),
+            ),
+        ).map { it.code }
+        assertTrue(codes.contains(MavenPublicationViolationCode.ARTIFACT_DISAGREES), "got $codes")
+    }
+
+    @Test
+    fun `a manifest of another shape is refused`() {
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            manifest(schemaVersion = "pipelinek-maven-publication-manifest-1")
+        }
+        assertTrue(
+            refusal.message?.contains("pipelinek-maven-publication-manifest-1") == true,
+            refusal.message,
+        )
+    }
+
+    @Test
+    fun `an artifact whose kind contradicts its path is refused`() {
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            MavenArtifactDigest(
+                path = "dev/rubentxu/pipeline/v2/pipeline-domain/0.93.0/pipeline-domain-0.93.0.module",
+                kind = MavenArtifactKind.JAR,
+                sha256 = "3".repeat(64),
+            )
+        }
+        assertTrue(refusal.message?.contains("MODULE") == true, refusal.message)
     }
 
     @Test

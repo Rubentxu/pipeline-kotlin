@@ -337,8 +337,8 @@ same contracts, and this one carries the name of the solution.
 
 | Channel | What it serves | What a consumer needs |
 |---|---|---|
-| the SDK ZIP of the release | the seven coordinates with their JARs and POMs | unzip it and point the build at the directory |
-| Maven Central, through its portal | the same coordinates with `sources.jar`, `javadoc.jar` and a detached signature for every artifact | nothing but the coordinates |
+| the SDK ZIP of the release | the seven coordinates with their JARs, POMs and Gradle module metadata | unzip it and point the build at the directory |
+| Maven Central, through its portal | the same coordinates with `sources.jar`, `javadoc.jar`, the Gradle module metadata and a detached signature for every artifact | nothing but the coordinates |
 | the Maven registry of GitHub Packages | the same coordinates and the same bytes | a token with `read:packages` |
 
 The two remote channels exist because they fail differently. Central needs a
@@ -374,6 +374,41 @@ about itself. A registry that answers with something that is neither a file nor
 its absence has NOT been measured, and the verdict says so instead of claiming
 that the version is absent.
 
+What the manifest declares is what the check measures, and the manifest
+declares the files a consumer resolves: the POM, the JAR, the sources, the
+javadoc and the Gradle module metadata. The last one is not a companion of the
+publication: a consumer of Gradle resolves the `.module` in preference to the
+POM, and the POM says so itself, so a manifest that left it out would certify
+the coordinate of a consumer of Maven and say nothing about the one of a
+consumer of Gradle.
+
+The kind of an artifact is not a free label: it is the kind its path says it
+is, so the manifest refuses an artifact that calls a file something else — a
+manifest that describes bytes nobody can compare with the measurement of the
+bundle describes nothing.
+
+The manifest carries a shape, and the instrument refuses a manifest of another
+shape: a check that cannot declare the files it certifies says nothing about
+them. The shape is also REQUIRED, so a document that declares no shape is
+refused rather than assumed to be this build's: the field that names the shape
+is the one a document of another shape would be missing. A refusal of this kind
+is not a verdict, and it says what to do: the manifest has to be reproduced with
+the producer of this build, over the staged bundle, with
+`scripts/release/build-maven-publication-manifest.sh`. The manifests of the
+previous shape — the one published for 0.96.0 — now come out of
+`scripts/release/verify-published-maven.sh` with exit 2 and the shape named,
+which is the instrument saying "I cannot read this", not "the channel is
+wrong".
+
+MEASURED on 2026-11-11 against `https://repo1.maven.org/maven2`: the manifest
+of the 0.96.0 candidate, measured again by the producer of this repository
+from the same staged bundle the publication used — its digest over the whole
+bundle is the one the published manifest carries — declares 32 artifacts, and
+the channel serves the 32 with their declared digests: the 6 JARs, the 6
+sources, the 6 javadocs, the 7 POMs and the 7 Gradle module metadata files.
+The same check with one of those digests altered is refused, and the refusal
+names the file.
+
 What it does NOT measure: the detached signatures, which travel with the
 artifacts and are verified when the bundle is staged
 (`scripts/check-sdk-bundle.py`), and the files the registry generates beside the
@@ -383,6 +418,31 @@ served with their digests, not that a resolver of any shape finds them. The
 authenticity of the manifest itself is the caller's assumption: the instrument
 reads the document it is given and measures the repository against it, so the
 manifest that reaches it must come from the publication that produced it.
+
+**The limit, named: what the manifest declares is what is measured.** The
+instrument does not enumerate what the repository holds. A file the manifest
+does not declare is not measured, not compared and not reported, so the verdict
+says "32 artifact(s) served with the declared digests" and never "the
+repository is complete". The manifest is the whole contract of this check: a
+manifest that declares less certifies less, and a manifest of another shape is
+refused rather than measured with the vocabulary of this one.
+
+And the fields this door measures are the artifacts, by path and by digest. The
+other fields of the manifest — the candidate, the version, the digest of the
+bundle and the SDK ZIP — are the contract of the PUBLICATION door
+(`scripts/release/verify-maven-publication.sh`), which is where they are
+compared with the bytes on disk. This door does not read them: a manifest whose
+bundle digest says nothing about the bundle is still a manifest whose artifacts
+are measured, and the verdict of this door says nothing about the bundle. A
+caller that needs the bundle certified asks the publication door, not this one.
+
+The publication door compares the bundle with the manifest, the manifest with
+the candidate, and both with the certification of that candidate. The contracts
+it compares are the POMs AND the Gradle module metadata, because the
+candidate's SDK ZIP carries both and a consumer of Gradle resolves the module
+metadata in preference to the POM. A bundle whose module metadata differs from
+the candidate's publishes variants the candidate never had, and a comparison
+that only looked at the POMs would call that bundle the candidate's.
 
 A repository that asks for a credential takes it from the environment
 (`PIPELINEK_REPOSITORY_USER` and `PIPELINEK_REPOSITORY_TOKEN`), never from an

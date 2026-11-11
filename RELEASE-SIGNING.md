@@ -382,7 +382,10 @@ POM, and the POM says so itself, so a manifest that left it out would certify
 the coordinate of a consumer of Maven and say nothing about the one of a
 consumer of Gradle. The manifest carries a shape, and the instrument refuses a
 manifest of another shape: a check that cannot declare the files it certifies
-says nothing about them.
+says nothing about them. And the kind of an artifact is not a free label: it is
+the kind its path says it is, so the manifest refuses an artifact that calls a
+file something else — a manifest that describes bytes nobody can compare with
+the measurement of the bundle describes nothing.
 
 MEASURED on 2026-11-11 against `https://repo1.maven.org/maven2`: the manifest
 of the 0.96.0 candidate, measured again by the producer of this repository

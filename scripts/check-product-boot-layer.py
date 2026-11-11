@@ -60,6 +60,34 @@ THE FIFTH SHAPE, AND WHY IT IS A SHAPE
   declaration whose file is gone, a declared file that does not carry the tag
   the build excludes, and a tag that only one of the three knows.
 
+THE SIXTH SHAPE, AND THE SPLIT BETWEEN THE TWO HALVES
+  A boot check of the TREE: a row that boots the product of THIS tree.
+
+  The fifth shape starts the PUBLISHED product: it unpacks the distribution,
+  starts its launcher and asks the service it starts. The sixth shape starts
+  the tree's own product: it composes the modules of this tree and starts a
+  real child of them. Both are rows that boot a product, and they are NOT the
+  same thing, because the two halves of the certification are about two
+  different subjects:
+
+    - the PUBLISHED product is certified by the harness, against the bytes it
+      published and by their digest. The gate calls none of those rows.
+    - the TREE is certified by the gate, at every change. The rows that boot
+      the tree's own product are the tree's third leg, so the gate calls them.
+
+  A row of the tree's own product is matched by what it IS too: a row of a
+  test source set that opens one of the doors of the production code that
+  boot it --the composition of the service that the product builds, or the
+  port that launches a real child process.
+
+  The declaration of these rows has the OPPOSITE rule of the other one: they
+  carry NO tag, because the gate calls them, and a row that carries it would
+  be a row the gate stops calling. What is a failure is a row that boots the
+  tree's product and the declaration does not name it, a declaration whose
+  file is gone, a declared file that does not boot the tree's product any
+  more, and a declared file that carries the tag of the published boot
+  checks.
+
 WHAT IS DECLARED, AND WHY IT IS DECLARED BY NAME
   A program is not forbidden by its kind: the repository's own gate, its own
   guards, the installer and the release tooling are programs, and they are
@@ -386,6 +414,88 @@ DECLARED_BOOT_CHECKS = {
     ),
 }
 
+# The signals that a row BOOTS THE TREE'S OWN PRODUCT.
+#
+# The tree's product is started in two ways, and both are doors of the
+# production code: the composition of the service that the product itself
+# builds, and the supervisor of the runs with the port that launches a real
+# child. A row that opens one of those doors boots the product of THIS tree.
+#
+# The second door is TWO signals and not one, because the port that launches
+# a real child is also used by the tests of that port itself, and a row that
+# opens the port is not the same as a row that boots the product: the first
+# tests a port, the second starts a run of the service.
+#
+# These are names of the tree's own production API, and the guard says what
+# happens when they change: a rename empties the census AND makes every
+# declared row fail its own check, so the guard goes red and the change is
+# noticed. What the guard does NOT do is follow a name: a row that boots the
+# product through a door that does not exist yet would not be seen, and the
+# declaration below is what says what the tree holds.
+TREE_BOOT_SIGNALS = (
+    ("composeServiceToServe",),
+    ("ServiceRunSupervisor", "ProcessDurableTaskRuntime"),
+)
+
+# The rows that boot the TREE'S OWN product, with the reason each one is here.
+#
+# These rows certify the TREE: they compose the modules of this tree and
+# check that the composition works with a REAL child, a REAL socket and a
+# REAL store. The gate certifies this tree, so the gate calls them: they are
+# the tree's own third leg, and the split says so.
+#
+# The other half of the split is the harness's: it certifies the PUBLISHED
+# bytes, identified by their digest. The tree's rows never touch the
+# published artefact and the harness's rows never run against the tree's
+# source, so neither half certifies what the other half certifies.
+DECLARED_TREE_BOOT_CHECKS = {
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ServiceStartIntegrationTest.kt": (
+        "the rows that start a run through the service and check that the run "
+        "EXISTS: the child took its lease, minted its own id and printed the "
+        "receipt that says so"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ServiceCancelIntegrationTest.kt": (
+        "the rows that cancel a run over the socket and check that the "
+        "cancellation CLOSES the run: the child is ended and the terminal is "
+        "durable for every reader afterwards"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ServiceInputIntegrationTest.kt": (
+        "the rows where a run asks a question and a client answers it over the "
+        "socket, and the body runs only after the answer"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ServiceCredentialBrokersIntegrationTest.kt": (
+        "the rows that hand a credential to a run through a broker and check "
+        "that the broker is gone when the run is"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ConfigurationProviderIntegrationTest.kt": (
+        "the rows where a controller supplies the configuration of a run over "
+        "the socket and the steps of that run see the values it answered"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/CredentialProviderIntegrationTest.kt": (
+        "the rows where a controller keeps the credentials of a run over the "
+        "socket and the step of that run receives the secret it answered"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/RunConfigurationIntegrationTest.kt": (
+        "the rows that deliver a configuration to a run and check that each run "
+        "sees its own and not the one next to it"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/RunParametersIntegrationTest.kt": (
+        "the rows that deliver parameters to a run and check that the step "
+        "reads the effective value"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ServiceSubstrateSchemaIntegrationTest.kt": (
+        "the rows that serve a substrate and check that a substrate whose table "
+        "of promises is missing is refused by name"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ServiceTelemetryIntegrationTest.kt": (
+        "the rows that serve and stop the service and check that the telemetry "
+        "closes once, after everything else it opened"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/SubstrateInitIntegrationTest.kt": (
+        "the rows that prepare a substrate and serve it"
+    ),
+}
+
 
 def tree_files(repo: Path) -> list[tuple[str, str]]:
     """Every file of the working tree, with the mode Git records for it.
@@ -512,6 +622,29 @@ def carries_the_tag(path: Path) -> bool:
     return f'@Tag("{BOOT_CHECK_TAG}")' in reads("", path)
 
 
+def boots_the_tree_product(name: str, path: Path) -> bool:
+    """Whether the file boots the product of THIS tree.
+
+    The tree's product is started in two ways, and both are doors of the
+    production code: the composition of the service that the product itself
+    builds, and the supervisor of the runs with the port that launches a real
+    child. A row that opens one of those doors boots the tree's product.
+
+    These rows certify the TREE, and the gate certifies the tree, so the gate
+    calls them. They are declared, and the declaration is what says that the
+    tree knows what it holds.
+    """
+    if not is_a_test_source(name):
+        return False
+    text = reads(name, path)
+    if not text:
+        return False
+    return any(
+        all(signal in text for signal in door)
+        for door in TREE_BOOT_SIGNALS
+    )
+
+
 def lane_of(name: str) -> int:
     """The stage of the gate that runs the rows of that source set.
 
@@ -575,6 +708,8 @@ def main() -> int:
     undeclared: list[tuple[str, str]] = []
     boot_checks: list[str] = []
     undeclared_boots: list[str] = []
+    tree_boots: list[str] = []
+    undeclared_tree_boots: list[str] = []
 
     for name, mode in files:
         if name.endswith(SCENARIO_SUFFIX):
@@ -599,6 +734,10 @@ def main() -> int:
             boot_checks.append(name)
             if name not in DECLARED_BOOT_CHECKS:
                 undeclared_boots.append(name)
+        if boots_the_tree_product(name, path):
+            tree_boots.append(name)
+            if name not in DECLARED_TREE_BOOT_CHECKS:
+                undeclared_tree_boots.append(name)
 
     # A declared program that is no longer on disk is a failure: the
     # declaration is the list of what this tree holds, and a name that no
@@ -631,6 +770,33 @@ def main() -> int:
         if (repo / name).is_file() and not carries_the_tag(repo / name)
     ]
 
+    # The rows that boot the TREE'S OWN product are declared too, and their
+    # declaration has the OPPOSITE rule: the gate calls them, because they
+    # certify the tree and the gate certifies the tree.
+    #
+    # Three things are failures here: a declared row that is gone, a declared
+    # row that does not boot the tree's product any more (the declaration
+    # governs nothing), and a declared row that carries the tag of the
+    # published boot checks (the gate would stop calling it, and the split
+    # says the gate calls the rows that boot the tree's product).
+    gone_tree_boots = [
+        name for name in sorted(DECLARED_TREE_BOOT_CHECKS)
+        if not (repo / name).is_file()
+    ]
+    no_longer_tree_boots = [
+        name for name in sorted(DECLARED_TREE_BOOT_CHECKS)
+        if (repo / name).is_file() and not boots_the_tree_product(name, repo / name)
+    ]
+    tagged_tree_boots = [
+        name for name in sorted(DECLARED_TREE_BOOT_CHECKS)
+        if (repo / name).is_file() and carries_the_tag(repo / name)
+    ]
+
+    # A row that boots the published product cannot also be a row that boots
+    # the tree's product: the two halves of the split say opposite things
+    # about it, and a row that is in both would be in neither.
+    both_boots = sorted(set(DECLARED_BOOT_CHECKS) & set(DECLARED_TREE_BOOT_CHECKS))
+
     # The chain that takes the boot checks out of the lanes: the gate asks,
     # the build honours the request and excludes the tag, and the rows carry
     # the tag. A link that is missing is a link that leaves the gate calling
@@ -646,10 +812,16 @@ def main() -> int:
     print(f"  family maps:            {len(family_maps)}")
     print(f"  init scripts:           {len(init_scripts)}")
     print(f"  boot checks:            {len(boot_checks)} found, {len(DECLARED_BOOT_CHECKS)} declared")
+    print(
+        "  boot checks of the tree: "
+        f"{len(tree_boots)} found, {len(DECLARED_TREE_BOOT_CHECKS)} declared"
+    )
 
     if (
         scenarios or family_maps or init_scripts or undeclared or gone or missing_roots
         or undeclared_boots or gone_boots or untagged_boots
+        or undeclared_tree_boots or gone_tree_boots or no_longer_tree_boots
+        or tagged_tree_boots or both_boots
         or build_problems or gate_problems
     ):
         for name in scenarios:
@@ -673,6 +845,32 @@ def main() -> int:
                 f"  {name}: declared as a check that starts the product and does not carry "
                 f"the tag '{BOOT_CHECK_TAG}', so the gate would call it"
             )
+        for name in undeclared_tree_boots:
+            print(
+                f"  {name}: a check that boots the product of this tree and this tree "
+                "does not declare"
+            )
+        for name in gone_tree_boots:
+            print(
+                f"  {name}: declared as a check that boots the product of this tree and "
+                "no longer there"
+            )
+        for name in no_longer_tree_boots:
+            print(
+                f"  {name}: declared as a check that boots the product of this tree and "
+                "does not boot it any more"
+            )
+        for name in tagged_tree_boots:
+            print(
+                f"  {name}: declared as a check that boots the product of this tree and "
+                f"carries the tag '{BOOT_CHECK_TAG}', so the gate would not call it"
+            )
+        for name in both_boots:
+            print(
+                f"  {name}: declared as a check that starts the published product and as "
+                "a check that boots the product of this tree, and the two halves of the "
+                "split say opposite things about it"
+            )
         for problem in build_problems:
             print(f"  the build: {problem}")
         for problem in gate_problems:
@@ -680,14 +878,14 @@ def main() -> int:
         print()
         print(
             "LAYER THAT BOOTS A PRODUCT: "
-            f"{len(scenarios) + len(family_maps) + len(init_scripts) + len(undeclared) + len(gone) + len(missing_roots) + len(undeclared_boots) + len(gone_boots) + len(untagged_boots) + len(build_problems) + len(gate_problems)}"
+            f"{len(scenarios) + len(family_maps) + len(init_scripts) + len(undeclared) + len(gone) + len(missing_roots) + len(undeclared_boots) + len(gone_boots) + len(untagged_boots) + len(undeclared_tree_boots) + len(gone_tree_boots) + len(no_longer_tree_boots) + len(tagged_tree_boots) + len(both_boots) + len(build_problems) + len(gate_problems)}"
         )
         print(
-            "  this tree certifies itself with unit tests, integration tests with "
-            "mocks and mutants."
+            "  this tree certifies itself with unit tests, integration tests and "
+            "mutants."
         )
         print(
-            "  a layer that boots the product belongs to a harness repository, "
+            "  a layer that boots the PUBLISHED product belongs to a harness repository, "
             "which keeps"
         )
         print(
@@ -708,16 +906,27 @@ def main() -> int:
         )
     if boot_checks:
         print(
-            f"  {len(boot_checks)} checks start the product and all of them are declared:"
+            f"  {len(boot_checks)} checks start the PUBLISHED product and all of them "
+            "are declared:"
         )
         for name in sorted(boot_checks):
             print(
-                f"    {name}: starts the product; the lane is {lane_of(name)} and the "
-                "gate calls none of it"
+                f"    {name}: starts the published product; the lane is {lane_of(name)} "
+                "and the gate calls none of it"
+            )
+    if tree_boots:
+        print(
+            f"  {len(tree_boots)} checks boot the product of this tree and all of them "
+            "are declared:"
+        )
+        for name in sorted(tree_boots):
+            print(
+                f"    {name}: boots the product of this tree; the lane is "
+                f"{lane_of(name)} and the gate calls it"
             )
     print(
         "  this tree holds no layer that boots a product that it does not declare, "
-        "and this gate calls none"
+        "and this gate calls none of the checks that start the published product"
     )
     return 0
 

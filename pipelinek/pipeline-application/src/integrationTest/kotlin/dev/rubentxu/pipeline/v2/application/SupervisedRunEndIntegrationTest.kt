@@ -6,12 +6,18 @@ import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
+import dev.rubentxu.pipeline.v2.output.OutputTailState
+import dev.rubentxu.pipeline.v2.runtime.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.service.ServiceAnswer
 import dev.rubentxu.pipeline.v2.service.ServiceClient
+import dev.rubentxu.pipeline.v2.service.ServiceEndReason
 import dev.rubentxu.pipeline.v2.service.ServiceRunStart
+import dev.rubentxu.pipeline.v2.service.ServiceStreet
+import dev.rubentxu.pipeline.v2.service.ServiceStreetItem
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -87,6 +93,14 @@ class SupervisedRunEndIntegrationTest {
             "pipeline {\n    stages {\n        stage(\"slow\") {\n" +
                 "            sh(\"sleep 60\")\n        }\n    }\n}\n",
         )
+        // The same step, but one that WRITES before it hangs: the stream of
+        // its output is open when the watchdog kills the child, and an open
+        // stream is what the follower of the output waits on.
+        Files.writeString(
+            scripts.resolve("chatty.pipeline.kts"),
+            "pipeline {\n    stages {\n        stage(\"chatty\") {\n" +
+                "            sh(\"echo $MARKER; sleep 60\")\n        }\n    }\n}\n",
+        )
         val admission = admitEventStore(db.toString(), EventStorePurpose.Produce)
         val writable = (admission as EventStoreAdmission.Admitted).store
         DurableStores.open(writable, control, clock)
@@ -129,6 +143,115 @@ class SupervisedRunEndIntegrationTest {
         } finally {
             service.stop()
         }
+    }
+
+    @Test
+    fun `the output of a run whose child was killed ends with the run and is sealed`() {
+        val service = start()
+        try {
+            val answer = client(STARTER_TOKEN).startRun(
+                script = "chatty.pipeline.kts",
+                idempotencyKey = "key-chatty",
+                configuration = emptyMap(),
+            )
+            val started = assertInstanceOf(ServiceRunStart::class.java, assertInstanceOf(
+                ServiceAnswer.Answered::class.java,
+                answer,
+            ).value)
+
+            val followed = followOutput(started.runId)
+
+            assertTrue(
+                followed.stdout.contains(MARKER),
+                "the child wrote '$MARKER' before the watchdog killed it, so the stream of its " +
+                    "output existed and was open: stdout=${followed.stdout}, ${describe(started.runId)}",
+            )
+            val end = assertInstanceOf(
+                ServiceStreetItem.End::class.java,
+                followed.last,
+                "the output of a run the watchdog stopped ENDS with the run; a street that is " +
+                    "cut instead is the follower waiting for a seal nobody writes: " +
+                    "${followed.last}, ${describe(started.runId)}",
+            )
+            assertEquals(ServiceEndReason.TerminalObserved, end.reason)
+
+            val terminal = terminalFactOf(started.runId)
+            assertEquals(
+                dev.rubentxu.pipeline.v2.domain.RunOutcome.ABORTED_TOKEN,
+                terminal?.outcome,
+                "the end of the street says the run ended, and the run's own terminal says how",
+            )
+
+            val seals = sealStatesOf(started.runId)
+            assertTrue(
+                seals.isNotEmpty(),
+                "the child wrote to stdout, so the plane holds a stream of this run; a row " +
+                    "that finds none is measuring nothing",
+            )
+            val open = seals.filterValues { sealed -> !sealed }.keys
+            assertTrue(
+                open.isEmpty(),
+                "a run that holds its terminal holds every stream of its output sealed too; " +
+                    "these are still open: $open",
+            )
+        } finally {
+            service.stop()
+        }
+    }
+
+    /**
+     * What the output street of a run carried, and how the street ended.
+     *
+     * @property stdout the lines of stdout the street carried.
+     * @property last the item the street ended on, or `null` when the street
+     *   was cut without an end.
+     */
+    private class FollowedOutput(val stdout: String, val last: ServiceStreetItem?)
+
+    /**
+     * Follows the output of [runId] until the street ends or is cut.
+     *
+     * The client's deadline is the room the street gets between two lines:
+     * the budget of the run plus the room its closing takes, so a street that
+     * is still open after that is a street nobody will close.
+     */
+    private fun followOutput(runId: String): FollowedOutput {
+        val answer = client(STARTER_TOKEN, STREET_DEADLINE).output(runId)
+        val street = assertInstanceOf(ServiceStreet::class.java, assertInstanceOf(
+            ServiceAnswer.Answered::class.java,
+            answer,
+        ).value)
+        val text = StringBuilder()
+        street.use {
+            while (true) {
+                val item = it.next()
+                if (item is ServiceStreetItem.Record) {
+                    val document = item.document
+                    val channel = document["channel"]?.jsonPrimitive?.content
+                    val line = document["text"]?.jsonPrimitive?.content
+                    if (channel == "stdout" && line != null) text.append(line).append('\n')
+                } else {
+                    return FollowedOutput(text.toString(), item)
+                }
+            }
+        }
+    }
+
+    /**
+     * Every stream of [runId], and whether the output plane holds it sealed.
+     *
+     * The plane is opened anew, as a second process would open it: a reader
+     * that already looked at this run keeps the list of streams it saw then,
+     * and the child of the run declares its streams from another process. A
+     * stream the plane cannot answer about counts as unsealed: the claim
+     * that the bytes are complete needs the seal, not the absence of a
+     * complaint.
+     */
+    private fun sealStatesOf(runId: String): Map<String, Boolean> {
+        OutputPlaneProvider.forget(control)
+        val plane = OutputPlaneProvider.storeForReading(control)
+        return plane.frameIndex().streamsOfRun(runId)
+            .associate { stream -> stream.toString() to (plane.tailState(stream) is OutputTailState.Sealed) }
     }
 
     /**
@@ -254,7 +377,11 @@ class SupervisedRunEndIntegrationTest {
             registry = registry,
             limits = ServiceStartLimits(maxSupervisedRuns = 2, startDeadlineMillis = START_DEADLINE_MILLIS),
             supervisionRoot = supervisionRoot,
-            closer = EventStoreSupervisedRunCloser(db.toAbsolutePath().toString(), clock),
+            closer = EventStoreSupervisedRunCloser(
+                db.toAbsolutePath().toString(),
+                clock,
+                OutputPlaneSupervisedRunOutputSealer(control),
+            ),
         )
         val operations = ServiceOperations(
             introspection = composeRuntimeIntrospectionPort(
@@ -307,10 +434,13 @@ class SupervisedRunEndIntegrationTest {
     /**
      * A client that presents [token].
      */
-    private fun client(token: String): ServiceClient = ServiceClient(
+    private fun client(
+        token: String,
+        deadline: java.time.Duration = java.time.Duration.ofSeconds(60),
+    ): ServiceClient = ServiceClient(
         endpoint = socket,
         credential = token,
-        deadline = java.time.Duration.ofSeconds(60),
+        deadline = deadline,
         schema = dev.rubentxu.pipeline.v2.service.ServiceProtocol.SCHEMA,
     )
 
@@ -344,5 +474,15 @@ class SupervisedRunEndIntegrationTest {
 
         /** How long the lane waits between two questions about the run. */
         private const val POLL_MILLIS: Long = 250L
+
+        /** What the chatty step writes before it hangs: the proof the stream was open. */
+        private const val MARKER: String = "marker-before-the-kill"
+
+        /**
+         * The room a street gets between two lines: the wait for the terminal
+         * plus a margin, so a street still open after it is one nobody closes.
+         */
+        private val STREET_DEADLINE: java.time.Duration =
+            java.time.Duration.ofMillis(TERMINAL_DEADLINE_MILLIS + 10_000L)
     }
 }

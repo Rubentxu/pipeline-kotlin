@@ -393,7 +393,11 @@ internal class ServiceRunSupervisor(
      * it right after the fact is durable.
      */
     private val closer: SupervisedRunCloser =
-        EventStoreSupervisedRunCloser(runPolicy.eventStore, SystemClock()),
+        EventStoreSupervisedRunCloser(
+            runPolicy.eventStore,
+            SystemClock(),
+            OutputPlaneSupervisedRunOutputSealer(Path.of(runPolicy.controlRoot)),
+        ),
 ) : ServiceRunStarter, ServiceRunEnder, AutoCloseable {
 
     /** The children this service is watching right now. */

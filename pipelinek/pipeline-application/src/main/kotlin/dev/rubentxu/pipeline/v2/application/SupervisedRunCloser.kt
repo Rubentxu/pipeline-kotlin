@@ -169,14 +169,18 @@ internal interface SupervisedRunCloser {
  * "closed" over a fact that was still in the queue would let the next closer
  * find no terminal and write a SECOND one. One run, one terminal.
  *
+ * ## Why the output is sealed BEFORE the terminal
+ *
+ * Because the terminal says the run is over, and a run whose streams are
+ * still open is not: the follower of its output waits for the seal that the
+ * killed child never wrote. The seal goes first, so that a run is never
+ * closed and unsealed at the same time; a seal that cannot be written leaves
+ * the run open, and the closer answers with the refusal.
+ *
  * ## What this closer does NOT do
  *
- * It does not SEAL the streams of the run's output. The seal is the statement
- * "no more bytes will be written to this stream", and the control port owns
- * it because the control port is the door that closes a run a client asked to
- * close. A run whose writer was KILLED keeps its streams open, and a consumer
- * that follows the OUTPUT of that run waits for the seal that never comes:
- * that wait is a hole of its own, and this door does not close it.
+ * It does not seal a run that already holds a terminal: that run was closed
+ * by whoever wrote the terminal, and the seal is theirs.
  *
  * It does not write the JOURNAL of the run either. The journal says what the
  * run DID, and the work a killed child left in it may still be recovered by
@@ -187,6 +191,7 @@ internal interface SupervisedRunCloser {
 internal class EventStoreSupervisedRunCloser(
     private val storePath: String,
     private val clock: Clock,
+    private val outputSealer: SupervisedRunOutputSealer,
 ) : SupervisedRunCloser {
 
     override fun closeWithoutTerminal(runId: String, end: SupervisedRunEnd): SupervisedRunClosure {
@@ -211,6 +216,17 @@ internal class EventStoreSupervisedRunCloser(
             // would be a second truth about the same run.
             if (store.eventsFor(runId).any { it is RunFinished }) {
                 return SupervisedRunClosure.AlreadyEnded
+            }
+            // The output is sealed BEFORE the terminal is written, so that a
+            // run is never closed and unsealed at the same time: a reader that
+            // sees the terminal sees streams that will not grow. A seal that
+            // fails leaves the run OPEN, and the refusal says why.
+            when (val sealed = outputSealer.sealOutputOf(runId)) {
+                is SupervisedRunSeal.Sealed -> Unit
+                is SupervisedRunSeal.Refused ->
+                    return SupervisedRunClosure.Refused(
+                        "the output of the run could not be sealed: ${sealed.detail}",
+                    )
             }
             val eventId = "e-supervised-" + UUID.randomUUID().toString()
             store.append(

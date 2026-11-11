@@ -244,11 +244,11 @@ artifact arrives with bytes nobody pinned. In a Maven build there is no built-in
 equivalent: the `.asc` that sits beside the artifact is what a consumer can
 check, with `gpg --verify`, before it trusts the bytes.
 
-**The Maven channel carries 0.96.0 today.** The release this tree declares is
-0.97.0 (`pipelinek/build.gradle.kts`), and it is not published yet; the newest
-release the channel serves is 0.96.0, in Maven Central under the group
-`dev.rubentxu.pipelinek`, together with 0.95.0, which shares those
-coordinates. The release before it, 0.94.2, was published under the
+**The Maven channel carries 0.97.0 today.** The release this tree declares is
+0.97.0 (`pipelinek/build.gradle.kts`), and it is published; the newest
+release the channel serves is 0.97.0, in Maven Central under the group
+`dev.rubentxu.pipelinek`, together with 0.95.0 and 0.96.0, which share those
+coordinates. The release before them, 0.94.2, was published under the
 group `dev.rubentxu.pipeline.v2` and under the artifact names `pipeline-domain`
 and the rest of that set, and it is STILL SERVED: a published version is never
 replaced, and the coordinates of 0.94.2 answer today exactly as they answered
@@ -409,13 +409,16 @@ which is the instrument saying "I cannot read this", not "the channel is
 wrong".
 
 MEASURED on 2026-11-11 against `https://repo1.maven.org/maven2`: the manifest
-of the 0.96.0 candidate, measured again by the producer of this repository
-from the same staged bundle the publication used — its digest over the whole
-bundle is the one the published manifest carries — declares 32 artifacts, and
-the channel serves the 32 with their declared digests: the 6 JARs, the 6
-sources, the 6 javadocs, the 7 POMs and the 7 Gradle module metadata files.
-The same check with one of those digests altered is refused, and the refusal
-names the file.
+of the 0.97.0 candidate, produced by this repository from the staged bundle the
+publication used (`pipelinek-maven-publication-manifest-2`, bundle digest
+`b174cd8f3991c47cf1eeddf8cf4ce9571d7598c4e85b3243a5fd2b876422adb3`), declares
+32 artifacts, and the channel serves the 32 with their declared digests: the 6
+JARs, the 6 sources, the 6 javadocs, the 7 POMs and the 7 Gradle module metadata
+files. The same check with one of those digests altered is refused with exit
+`1`, and the refusal names the file. The six library JARs were also checked with
+`gpg --verify` against the keys published in this document, imported into a
+throwaway keyring that held no other key: six *Good signature*, all of them made by
+`965464FFF6496FAFCC62F49644E527FF58783108`.
 
 What it does NOT measure: the detached signatures, which travel with the
 artifacts and are verified when the bundle is staged
@@ -501,30 +504,43 @@ $ curl -s -o /dev/null -w '%{http_code}\n' \
     https://repo1.maven.org/maven2/dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.jar
 200
 $ curl -s -o /dev/null -w '%{http_code}\n' \
-    https://maven.pkg.github.com/Rubentxu/pipeline-kotlin/dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.jar
+    https://repo1.maven.org/maven2/dev/rubentxu/pipelinek/pipelinek-domain/0.97.0/pipelinek-domain-0.97.0.jar
+200
+$ curl -s -o /dev/null -w '%{http_code}\n' \
+    https://maven.pkg.github.com/Rubentxu/pipeline-kotlin/dev/rubentxu/pipelinek/pipelinek-domain/0.97.0/pipelinek-domain-0.97.0.jar
 401
 $ curl -s -o /dev/null -w '%{http_code}\n' \
     https://maven.pkg.github.com/Rubentxu/pipeline-kotlin/dev/rubentxu/pipelinek/pipelinek-domain/9.99.99/pipelinek-domain-9.99.99.jar
 401
 ```
 
-The versions each group carries are the directories the registry serves:
+The versions each group carries are the ones its `maven-metadata.xml` lists:
 `dev/rubentxu/pipeline/v2/pipeline-domain/` holds `0.94.2` and nothing else,
-and `dev/rubentxu/pipelinek/pipelinek-domain/` holds `0.95.0` and `0.96.0`.
+and `dev/rubentxu/pipelinek/pipelinek-domain/maven-metadata.xml` lists `0.95.0`,
+`0.96.0` and `0.97.0`, with `0.97.0` as both `latest` and `release`. The HTML
+index of that directory is a page the registry caches, and for a while after a
+publication it still shows the versions it showed before: read the metadata
+file, not the index.
 
 The `401` of the mirror is neither an absence nor a presence: it is what that
 registry answers to EVERY path without a credential, including to a coordinate
 that does not exist. Only a request WITH a credential tells an absent package
-from a private one, and the measurement that does that is the one this
-repository runs with `scripts/release/verify-published-maven.sh` and a token in
-the environment.
+from a private one. With one, the registry answers `302` to its own storage, and
+`verify-published-maven.sh` does not follow a redirect on purpose: the bytes it
+certifies must be the bytes of the repository that was named. Run against the
+mirror it therefore ends in exit `2`, "NOT RUN", and the refusal says that the
+repository redirected, which is a statement about the instrument and not about
+the bytes. The 0.97.0 bytes of the mirror were measured with a different request:
+an authenticated download that follows the redirect, compared file by file with
+the same manifest, 32 of 32 byte-identical. That measurement is NOT an
+instrument of this repository, and it does not replace one.
 
 What this measurement does NOT say: that the bytes the mirror serves are the
 certified ones (that is the instrument's verdict, and it is a separate
 measurement), that the detached signatures of the artifacts served by Central
 verify (they travel with the artifacts and are verified when the bundle is
-staged), and that the metadata the registries generate beside the artifacts is
-present.
+staged; the six library JARs of 0.97.0 were also checked by hand, above), and
+that the metadata the registries generate beside the artifacts is present.
 
 ## The review of the published fingerprint
 

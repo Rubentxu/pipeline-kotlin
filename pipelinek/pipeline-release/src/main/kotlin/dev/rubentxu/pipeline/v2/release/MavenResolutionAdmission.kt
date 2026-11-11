@@ -45,6 +45,13 @@ object MavenResolutionAdmission {
         }
 
         val served = mutableListOf<MavenArtifactDigest>()
+        if (manifest.artifacts.size > MAX_ARTIFACTS) {
+            return MavenResolutionOutcome.Refused(
+                "the manifest declares ${manifest.artifacts.size} artifacts, and a check that asks " +
+                    "for all of them is not a check of a release. This check asks for at most " +
+                    "$MAX_ARTIFACTS, and it did not ask for the rest.",
+            )
+        }
         for (artifact in manifest.artifacts) {
             when (val file = reader.read(artifact.path)) {
                 is MavenServedFile.Absent -> Unit
@@ -80,6 +87,17 @@ object MavenResolutionAdmission {
     } catch (e: IOException) {
         null
     }
+
+    /**
+     * How many artifacts a manifest may declare for this check to ask for
+     * them.
+     *
+     * A release of this product publishes tens of files, and a manifest that
+     * declares thousands is not a release: it is a document that would turn
+     * a check into a request storm. The limit is named in the refusal, so
+     * the reader knows which of the two facts they are looking at.
+     */
+    private const val MAX_ARTIFACTS: Int = 500
 }
 
 /**

@@ -74,6 +74,20 @@ object Sha256 {
     }
 
     /**
+     * Lowercase hex of the SHA-256 of the bytes of [stream], streamed.
+     *
+     * The bytes are never resident: a body that is read from the network can
+     * be hashed while it arrives, and a caller that needs a digest of
+     * something it cannot hold (a file, an answer) has one spelling of it.
+     * The stream is read and NOT closed: the caller owns it.
+     */
+    fun ofStream(stream: InputStream): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        stream.update(digest)
+        return hex(digest.digest())
+    }
+
+    /**
      * The lowercase hex of the first [byteCount] digest bytes, as a short lock discriminator.
      * Exists because this caller needs a PREFIX of the digest, not the digest. It is a named
      * truncation rather than a caller-side `.take(n)` on a full hex string: a local

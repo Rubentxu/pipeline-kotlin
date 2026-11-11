@@ -18,10 +18,13 @@ sealed interface MavenResolvedVersion {
     /**
      * The repository serves the version, with these artifacts.
      *
-     * The artifacts are the ones of the recognised kinds, each with the digest
-     * of the bytes the repository served. The digest is MEASURED from those
-     * bytes by whoever read them; nothing here is a claim the repository made
-     * about itself.
+     * The artifacts carry the path they were served at and the digest of the
+     * bytes that arrived. The digest is MEASURED from those bytes by whoever
+     * read them; nothing here is a claim the repository made about itself.
+     *
+     * The kind is not compared: the path of a file already says what it is,
+     * and the publication side compares the same two facts for the same
+     * reason.
      */
     data class Resolved(val artifacts: List<MavenArtifactDigest>) : MavenResolvedVersion
 }
@@ -82,6 +85,17 @@ enum class MavenResolutionViolationCode {
     /** The repository serves none of the artifacts of the version. */
     VERSION_ABSENT,
 
+    /**
+     * The manifest declares a version its own coordinates do not carry.
+     *
+     * The verdict names the version the manifest declares, so a manifest whose
+     * paths carry another one would be measured in one version and reported
+     * in another. This is a defect of the document, not of the repository, and
+     * it is named apart from the other two so nobody goes looking in the
+     * wrong place.
+     */
+    VERSION_DISAGREES,
+
     /** The repository does not serve one of the artifacts the manifest declares. */
     ARTIFACT_ABSENT,
 
@@ -99,6 +113,11 @@ enum class MavenResolutionViolationCode {
  *
  * The rules, and what each one refuses:
  *
+ * 0. Every coordinate the manifest declares must carry the version the
+ *    manifest declares. The verdict names that version, so a manifest whose
+ *    paths carry another one would be measured in one version and reported in
+ *    another, and the reader of the verdict would look for coordinates that
+ *    were never asked for.
  * 1. A repository that serves none of the artifacts does not serve the
  *    version. A version that is not served is a version a consumer cannot
  *    resolve, and a repository in the middle of processing an upload is in
@@ -122,6 +141,21 @@ fun evaluateMavenResolution(
 ): MavenResolutionVerdict {
     val violations = mutableListOf<MavenResolutionViolation>()
 
+    val mismatched = manifest.artifacts.filter {
+        versionOf(it.path) != manifest.productVersion.value
+    }
+    if (mismatched.isNotEmpty()) {
+        violations += MavenResolutionViolation(
+            MavenResolutionViolationCode.VERSION_DISAGREES,
+            "the manifest declares version ${manifest.productVersion.value} and " +
+                "${mismatched.size} of its ${manifest.artifacts.size} coordinate(s) carry " +
+                "another version, starting with ${quoteForReport(mismatched.first().path)}. " +
+                "The check would " +
+                "measure the version of the coordinates and report the version of the " +
+                "document, and those are not the same version.",
+        )
+    }
+
     val served = when (resolved) {
         is MavenResolvedVersion.Absent -> {
             violations += MavenResolutionViolation(
@@ -142,18 +176,18 @@ fun evaluateMavenResolution(
             if (servedArtifact == null) {
                 violations += MavenResolutionViolation(
                     MavenResolutionViolationCode.ARTIFACT_ABSENT,
-                    "the repository does not serve ${artifact.path}, which the manifest declares " +
-                        "with digest ${artifact.sha256}. A consumer that resolves this " +
-                        "coordinate gets nothing.",
+                    "the repository does not serve ${quoteForReport(artifact.path)}, which the " +
+                        "manifest declares with digest ${artifact.sha256}. A consumer that " +
+                        "resolves this coordinate gets nothing.",
                 )
                 continue
             }
             if (servedArtifact.sha256 != artifact.sha256) {
                 violations += MavenResolutionViolation(
                     MavenResolutionViolationCode.ARTIFACT_DISAGREES,
-                    "the repository serves ${artifact.path} with digest ${servedArtifact.sha256} " +
-                        "and the manifest declares ${artifact.sha256}. The bytes a consumer " +
-                        "resolves are not the bytes the publication certified.",
+                    "the repository serves ${quoteForReport(artifact.path)} with digest " +
+                        "${servedArtifact.sha256} and the manifest declares ${artifact.sha256}. " +
+                        "The bytes a consumer resolves are not the bytes the manifest declares.",
                 )
             }
         }
@@ -164,6 +198,21 @@ fun evaluateMavenResolution(
     } else {
         MavenResolutionVerdict.Rejected(manifest, violations)
     }
+}
+
+/**
+ * The version the coordinate of [path] carries, or null when it carries none.
+ *
+ * The layout of a coordinate is `group/artifact/version/file`, and the group
+ * is written as path segments of its own, so the version is the segment
+ * before the file name. A path that does not carry one carries no version,
+ * and that is a fact the verdict has to be able to say.
+ */
+private fun versionOf(path: String): String? {
+    val directory = path.substringBeforeLast('/', missingDelimiterValue = "")
+    if (directory.isEmpty()) return null
+    return directory.substringAfterLast('/', missingDelimiterValue = "")
+        .takeIf { it.isNotEmpty() }
 }
 
 /**

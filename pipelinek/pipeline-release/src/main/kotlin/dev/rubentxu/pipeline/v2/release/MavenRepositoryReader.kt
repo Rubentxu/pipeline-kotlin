@@ -53,3 +53,18 @@ interface MavenRepositoryReader {
     /** What the repository holds at [path]. */
     fun read(path: String): MavenServedFile
 }
+
+/**
+ * [value] as it may be written in a report.
+ *
+ * A path that comes from a document this check did not write can carry a
+ * newline, and a report a newline can forge is a report nobody can read: the
+ * line the reader sees says one thing and the line the publisher quotes
+ * says another. The control characters are replaced by a dot and nothing
+ * else is changed, so the text still names the thing it names.
+ */
+internal fun quoteForReport(value: String): String = buildString(value.length) {
+    value.forEach { character ->
+        append(if (character.isISOControl()) '.' else character)
+    }
+}

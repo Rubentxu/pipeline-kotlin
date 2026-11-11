@@ -112,7 +112,7 @@ class MavenResolutionValidationTest {
         val verified = evaluateMavenResolution(manifest(), resolved()).render()
         assertTrue(verified.contains("VERIFIED"), verified)
         assertTrue(verified.contains("0.96.0"), verified)
-        assertTrue(verified.contains("2"), verified)
+        assertTrue(verified.contains("2 artifact(s)"), verified)
 
         val rejected = evaluateMavenResolution(
             manifest(),
@@ -129,5 +129,32 @@ class MavenResolutionValidationTest {
             resolved = MavenResolvedVersion.Resolved(emptyList()),
         ).map { it.code }
         assertEquals(2, codes.size, "got $codes")
+    }
+
+    @Test
+    fun `a manifest whose coordinates carry another version is refused by name`() {
+        val older = jar.copy(path = "dev/rubentxu/pipelinek/pipelinek-domain/0.95.0/pipelinek-domain-0.95.0.jar")
+        val violations = violationsOf(
+            manifest = manifest(artifacts = listOf(pom, older)),
+            resolved = resolved(artifacts = listOf(pom, older)),
+        )
+        val disagrees = violations.first {
+            it.code == MavenResolutionViolationCode.VERSION_DISAGREES
+        }
+        assertTrue(disagrees.detail.contains(older.path), "the refusal must name the path: ${disagrees.detail}")
+        assertTrue(disagrees.detail.contains("0.96.0"), "the refusal must name the declared version")
+    }
+
+    @Test
+    fun `a coordinate without a version cannot be verified`() {
+        val nameless = jar.copy(path = "dev/rubentxu/pipelinek/pipelinek-domain/pipelinek-domain.jar")
+        val codes = violationsOf(
+            manifest = manifest(artifacts = listOf(nameless)),
+            resolved = resolved(artifacts = listOf(nameless)),
+        ).map { it.code }
+        assertTrue(
+            codes.contains(MavenResolutionViolationCode.VERSION_DISAGREES),
+            "got $codes",
+        )
     }
 }

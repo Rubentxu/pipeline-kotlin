@@ -162,7 +162,7 @@ class MavenResolutionAdmissionTest {
         challenged += pom.path
         challenged += jar.path
 
-        val outcome = assertInstanceOf(
+        assertInstanceOf(
             MavenResolutionOutcome.Verified::class.java,
             admit(user = "the-user", token = "the-token"),
         )
@@ -173,7 +173,7 @@ class MavenResolutionAdmissionTest {
     fun `a credential is not sent to a repository that does not demand it`() {
         serveTheDeclaredBytes()
 
-        val outcome = assertInstanceOf(
+        assertInstanceOf(
             MavenResolutionOutcome.Verified::class.java,
             admit(user = "the-user", token = "the-token"),
         )
@@ -245,7 +245,7 @@ class MavenResolutionAdmissionTest {
                 "pipelinek-domain-0.96.0.jar",
         )
 
-        val outcome = assertInstanceOf(
+        assertInstanceOf(
             MavenResolutionOutcome.Refused::class.java,
             MavenResolutionAdmission.admit(
                 manifestPath(listOf(pom, escaped)),

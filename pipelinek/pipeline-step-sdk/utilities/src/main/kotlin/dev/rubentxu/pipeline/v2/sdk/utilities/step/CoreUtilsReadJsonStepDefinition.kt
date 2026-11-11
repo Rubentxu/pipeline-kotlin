@@ -15,10 +15,12 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
 import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
+import dev.rubentxu.pipeline.v2.sdk.files.BoundedFileReader
+import dev.rubentxu.pipeline.v2.sdk.files.BoundedRead
+import dev.rubentxu.pipeline.v2.sdk.files.ReadQuota
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadJsonInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadJsonOutput
 import kotlinx.serialization.json.Json
-import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.isRegularFile
@@ -32,12 +34,26 @@ import kotlin.io.path.isRegularFile
  * ReplayPolicy: `MEMOIZED` (file content is deterministic; replay may reuse
  *   the cached output when the durable fingerprint matches).
  * RecoveryPolicy: `None` (no transient failure modes — the only failures are
- *   typed USER-class errors for missing files, files that are not UTF-8, or
- *   invalid JSON).
+ *   typed USER-class errors for missing files, files that are not UTF-8, files
+ *   that do not fit the read quota, or invalid JSON).
  * Determinism: identical inputs always produce identical outputs (modulo the
  * file content changing on disk).
+ *
+ * ## The quota of the read
+ *
+ * The document is read under [ReadQuota.MAX_FILE_BYTES]: the limit the
+ * product reads every file under. A document that does not fit is refused
+ * with the size it has and with the limit, and none of its content is
+ * produced. The file is measured BEFORE it is read, so a document that does
+ * not fit is never held whole.
+ *
+ * @param readQuotaBytes the limit the read of the document runs under. It is
+ *   the product's quota unless a caller names another one, and the tests name
+ *   a small one so that a refusal needs no large file.
 */
-class CoreUtilsReadJsonStepDefinition : StepDefinition<ReadJsonInput, ReadJsonOutput> {
+class CoreUtilsReadJsonStepDefinition(
+    private val readQuotaBytes: Long = ReadQuota.MAX_FILE_BYTES,
+) : StepDefinition<ReadJsonInput, ReadJsonOutput> {
 
     override val contract = StepContract(
         key = CoreUtilsReadJsonKey.VALUE,
@@ -75,13 +91,27 @@ class CoreUtilsReadJsonStepDefinition : StepDefinition<ReadJsonInput, ReadJsonOu
             )
         }
 
-        val rawBytes: ByteArray = try {
-            Files.readAllBytes(target)
+        // The read is held under the quota, and the file is measured before it
+        // is read: a document that does not fit never becomes whole, and the
+        // refusal names the limit and not the content.
+        val read = try {
+            BoundedFileReader.read(target, readQuotaBytes)
         } catch (e: java.io.IOException) {
             throw PluginStepException(
                 failure = PipelineFailure(
                     kind = FailureKind.USER,
                     message = "core-utils.readJson: failed to read file '$target': ${e.message}",
+                ),
+            )
+        }
+        val rawBytes: ByteArray = when (read) {
+            is BoundedRead.Fits -> read.bytes
+            is BoundedRead.TooLarge -> throw PluginStepException(
+                failure = PipelineFailure(
+                    kind = FailureKind.USER,
+                    message = "core-utils.readJson: the file at $target holds at least " +
+                        "${read.atLeastBytes} bytes, over the limit of ${read.limitBytes} bytes; " +
+                        "the read was refused and no content was produced.",
                 ),
             )
         }

@@ -10,6 +10,13 @@ dependencies {
     implementation(project(":pipeline-events"))
     implementation(project(":pipeline-step-sdk:api"))
     implementation(project(":pipeline-step-sdk:runtime"))
+    // The module that owns the reading of files, and with it the QUOTA every
+    // read runs under: `readJson` and `readYaml` read a document the pipeline
+    // brought, and a document that does not fit is refused before it is held
+    // whole. The dependency is on the reader and not on the steps: the files
+    // module publishes no plugin of its own, and its classes are on the
+    // runtime classpath of the host that loads this one.
+    implementation(project(":pipeline-step-sdk:files"))
     implementation(project(":pipeline-scripting-api"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)

@@ -293,6 +293,8 @@ Two profiles, and each one says out loud, when the service starts, what it promi
 
 Neither profile separates two processes of the same user, and the service says that too: the JVM does not expose the credentials of the peer of a Unix socket, so nothing in this build can tell who connected. What a credential separates is the *identities the operator names* — a client that presents the token and a client that does not — and not two processes running as the same user. Read it as a boundary over the **service**, not over the **data**: the same substrate is readable from the command line, with no authorization at all.
 
+Both sources are read under a declared limit: **ten mebibytes** (10 485 760 bytes), the limit the product reads every file under. A file of authorizations that does not fit is refused by name, with the limit and the size it has, and none of its content is read into the memory of the service — the file is measured before it is read. The standard input is read one byte more than the limit and no further, so a stream that does not fit is refused in the same way and never read whole.
+
 The service holds sixteen connections at once and serves eight subscriptions at once, and the two budgets are separate on purpose: a subscription occupies its connection while it lasts, while a question occupies it for a line. With one budget, sixteen subscribers could take every slot and deny `version` and `health` — the two questions that say whether the service is alive. A subscription over the budget is refused by name (`too-many-subscriptions`).
 
 A slot is given back when its client is gone, and the service does not wait for the client to say so. Every line the service writes has a deadline (ten seconds): a client that stops reading is closed once one write has waited that long, and its connection and its subscription slot go back to the budget. A street whose run has nothing to say checks, between two rounds, that its client is still there, so a subscriber that leaves while the run is quiet is noticed within a few tens of milliseconds and not at the next frame. The check has one consequence worth knowing: a client that shuts down the sending half of its connection while it keeps reading is, for the service, a client that has left. A subscriber keeps its end open until it has read what it wants.
@@ -649,6 +651,8 @@ A span carries `run.id` only when the request was authorized and named a run. A 
 | **Utilities** | `core-utils.findFiles`, `core-utils.readJson`, `core-utils.readYaml`, `core-utils.sha256`, `core-utils.unzip`, `core-utils.zip`, `core-utils.writeJson`, `core-utils.writeYaml` | File and archive helpers for pipeline scripts |
 
 Four more plugins ship in the distribution as working examples of the contract: `example-uppercase-plugin`, `example-directive-plugin`, `example-block-plugin` and `example-saga-plugin`. Their sources live in [`examples/`](examples/).
+
+**The quota of a read.** `core-utils.readJson` and `core-utils.readYaml` read a document under a declared limit: **ten mebibytes** (10 485 760 bytes), the same limit the `readFile` step reads a file under and the limit the product reads every file under. A document over it is refused with a failure that names the limit and the size the file has, and none of its content is produced: the file is measured BEFORE it is read, so a document that does not fit is never held whole. A document that fits is read exactly as it was.
 
 ### Extended ecosystem
 

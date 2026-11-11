@@ -322,6 +322,8 @@ Dos perfiles, y cada uno dice en voz alta, al arrancar el servicio, qué promete
 
 Ninguno de los dos perfiles separa dos procesos del mismo usuario, y el servicio también lo dice: la JVM no expone las credenciales del par de un socket de Unix, así que nada en esta build puede saber quién se conectó. Lo que una credencial separa son las *identidades que el operador nombra* —un cliente que presenta el token y otro que no— y no dos procesos que corren con el mismo usuario. Léelo como una frontera sobre el **servicio**, no sobre los **datos**: el mismo sustrato se puede leer desde la línea de órdenes, sin ninguna autorización.
 
+Las dos fuentes se leen bajo un cupo declarado: **diez mebibytes** (10 485 760 bytes), el cupo con el que el producto lee cualquier fichero. Un fichero de autorizaciones que no cabe se rechaza por su nombre, con el cupo y el tamaño que tiene, y nada de su contenido se lee en la memoria del servicio —el fichero se mide antes de leerse—. La entrada estándar se lee un byte más allá del cupo y ni uno más, así que un flujo que no cabe se rechaza igual y nunca se lee entero.
+
 El servicio sostiene dieciséis conexiones a la vez y sirve ocho suscripciones a la vez, y los dos presupuestos son distintos a propósito: una suscripción ocupa su conexión mientras dura, mientras que una pregunta la ocupa por una línea. Con un solo presupuesto, dieciséis suscriptores podrían quedarse con todas las ranuras y dejar sin respuesta `version` y `health` —las dos preguntas que dicen si el servicio está vivo—. Una suscripción por encima del presupuesto se rechaza por su nombre (`too-many-subscriptions`).
 
 #### Hablar con el servicio desde un programa
@@ -497,6 +499,8 @@ Las convenciones son las de CI/CD de OpenTelemetry, fijadas en `1.44.0` y declar
 | **Utilities** | `core-utils.findFiles`, `core-utils.readJson`, `core-utils.readYaml`, `core-utils.sha256`, `core-utils.unzip`, `core-utils.zip`, `core-utils.writeJson`, `core-utils.writeYaml` | Ayudas de ficheros y de archivos para los scripts del pipeline |
 
 En la distribución viajan además cuatro plugins que son ejemplos de trabajo del contrato: `example-uppercase-plugin`, `example-directive-plugin`, `example-block-plugin` y `example-saga-plugin`. Sus fuentes están en [`examples/`](examples/).
+
+**El cupo de una lectura.** `core-utils.readJson` y `core-utils.readYaml` leen un documento bajo un cupo declarado: **diez mebibytes** (10 485 760 bytes), el mismo cupo con el que el paso `readFile` lee un fichero y el que el producto usa para cualquier fichero. Un documento que lo pase se rechaza con un fallo que nombra el cupo y el tamaño que tiene el fichero, y no se produce nada de su contenido: el fichero se mide ANTES de leerse, así que un documento que no cabe nunca llega a estar entero en memoria. Un documento que cabe se lee igual que antes.
 
 ### Ecosistema extendido
 

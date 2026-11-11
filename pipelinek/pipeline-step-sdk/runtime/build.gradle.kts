@@ -4,6 +4,47 @@ plugins {
     id("info.solidsoft.pitest")
 }
 
+// The mutation seam of the SDK runtime, and the mutants it cannot kill.
+//
+// WHAT IT MEASURES: the durable decision kernel of this module — the
+// `EffectReplayPolicy` contract and the `DefaultEffectReplayPolicy` that
+// implements it. That is the one place where a durable engine decides
+// whether to serve a journalled result instead of running the work again.
+//
+// WHAT IT DOES NOT MEASURE: the rest of the module. Its rows live in
+// `DefaultEffectReplayPolicyTest`, and pitest cannot use the tests of
+// another module from here, so the mutants of the code outside this seam
+// are NO_COVERAGE and not survivors. That is a hole of the HARNESS, not of
+// the product, and it is measured as such instead of being hidden.
+//
+// THE MUTANTS THAT SURVIVE HERE, AND WHY THEY CANNOT BE KILLED — two of them:
+//
+// They are NOT excluded from the seam: a number that hides its survivors is a
+// number that cannot be read. They are REGISTERED here, with the reason.
+//
+// Both are in `DefaultEffectReplayPolicy.memoisable`, and both are
+// `RemoveConditionalMutator_EQUAL_ELSE` ("removed conditional - replaced
+// equality check with false"). NEITHER is the `==` of the source: that
+// comparison is the `if_acmpne` at offset 92 of the method, and the mutation
+// does not touch it. The two jumps it DOES touch are the FAST PATH of the
+// INLINED `Collection.all` — offset 31 ("this is not a Collection") and
+// offset 43 ("this is not empty") — and the `LineNumberTable` of the method
+// attributes them to line 164 of the LIBRARY, not to a line of this source
+// (the file has 162 lines). MEASURED with `javap -p -c -l` over the
+// compiled class.
+//
+// - The one at offset 31 is the `instanceof Collection` check: the parameter
+//   of `memoisable` is a `Set<Effect>`, and a Set is ALWAYS a Collection, so
+//   the branch is dead code.
+// - The one at offset 43 is the `isEmpty` check: an empty collection
+//   answers true on the fast path AND on the iterator path, so the shortcut
+//   and the loop answer the same thing for every input and the shortcut has
+//   no observable.
+//
+// The module's own rows confirm it: the row that says a purely read-only
+// reusable completion is memoised, and the rows that say an effectful, a
+// mixed and an empty effect set are not, all stay green, because the two
+// paths agree on every input.
 pitest {
     junit5PluginVersion = "1.2.1"
     targetClasses = listOf(

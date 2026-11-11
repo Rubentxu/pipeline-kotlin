@@ -896,7 +896,11 @@ private fun composeSupervisor(
         // The door that closes a run whose child was killed: it stamps the
         // terminal with the SAME clock the service stamps everything else, so
         // a run that the service closed says when the service closed it.
-        closer = EventStoreSupervisedRunCloser(dbAbsolute.toString(), clock),
+        closer = EventStoreSupervisedRunCloser(
+            dbAbsolute.toString(),
+            clock,
+            OutputPlaneSupervisedRunOutputSealer(controlAbsolute),
+        ),
     )
 }
 

@@ -66,6 +66,15 @@ class SegmentFrameIndex(
     /** Declared streams per run, as an in-memory cache over the `.streams` file. */
     private val declaredByRun = HashMap<String, MutableSet<OutputStreamId>>()
 
+    /**
+     * The size of each run's `.streams` file at the moment its entry in [declaredByRun] was read.
+     *
+     * The file is append-only and another process may append to it, so a cache entry is only the
+     * answer while the file is still that size. A file that is absent is recorded as
+     * [ABSENT_DECLARATION].
+     */
+    private val declaredSizeByRun = HashMap<String, Long>()
+
     /** Highest ordinal written per run, so the counter survives a reopen without re-reading. */
     private val lastOrdinalByRun = HashMap<String, Long>()
 
@@ -173,7 +182,7 @@ class SegmentFrameIndex(
      * durable file, and a consumer in a fresh JVM has to get the same answer as one that stayed up.
 */
     override fun streamsOfRun(runId: String): List<OutputStreamId> = lock.withLock {
-        if (!declaredByRun.containsKey(runId)) loadDeclared(runId)
+        loadDeclared(runId)
         declaredByRun[runId]?.sortedBy { it.value } ?: emptyList()
     }
 
@@ -193,7 +202,7 @@ class SegmentFrameIndex(
     fun declaredDirOwners(): Map<String, String> = lock.withLock {
         val owners = HashMap<String, String>()
         for (runId in runsWithDeclaredStreams()) {
-            if (!declaredByRun.containsKey(runId)) loadDeclared(runId)
+            loadDeclared(runId)
             declaredByRun[runId].orEmpty().forEach { stream ->
                 owners.putIfAbsent(safeStreamName(stream.value), runId)
             }
@@ -328,9 +337,23 @@ class SegmentFrameIndex(
         return OutputStreamAddress.parse(OutputStreamId(parts[0]))?.runId
     }
 
+    /**
+     * Makes the cached declaration of [runId] the one the file holds now.
+     *
+     * A cache that is read once and kept is the answer of the moment it was read, and the writer
+     * of a run is often another process: it declares its streams after a service has already asked
+     * which streams the run has, and the service's follow would then wait on a run it believes has
+     * no output to wait for. The file's size is the question, so a run whose file did not change
+     * costs one stat and nothing else.
+     * The caller holds the lock.
+     */
     private fun loadDeclared(runId: String) {
-        if (declaredByRun.containsKey(runId)) return
         val file = streamsFile(runId)
+        // Taken BEFORE the read: a line appended while the file is being read leaves the file larger
+        // than the size recorded, and the next question reads it again. Taken after, that line
+        // would be recorded as seen without ever having been read.
+        val sizeBefore = sizeOrAbsent(file)
+        if (declaredByRun.containsKey(runId) && declaredSizeByRun[runId] == sizeBefore) return
         val declared = if (Files.isRegularFile(file)) {
             readLines(file).mapNotNull { line ->
                 val parts = line.split('\t')
@@ -342,6 +365,7 @@ class SegmentFrameIndex(
             mutableSetOf()
         }
         declaredByRun[runId] = declared
+        declaredSizeByRun[runId] = sizeBefore
     }
 
     private fun loadOrdinals(runId: String) {
@@ -703,6 +727,13 @@ class SegmentFrameIndex(
         const val FRAMES_DIR = "frames"
         const val FRAMES_SUFFIX = ".frames"
         const val STREAMS_SUFFIX = ".streams"
+
+        /** The size recorded for a run whose `.streams` file is not there: no real file is this small. */
+        const val ABSENT_DECLARATION = -1L
+
+        /** The size of [file], or [ABSENT_DECLARATION] when it is not a regular file. */
+        fun sizeOrAbsent(file: Path): Long =
+            if (Files.isRegularFile(file)) Files.size(file) else ABSENT_DECLARATION
 
         /** The per-run cross-process ordinal lock. See [ordinalAuthorityFile]. */
         const val AUTHORITY_SUFFIX = ".authority"

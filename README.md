@@ -288,10 +288,14 @@ A service whose authorizations grant no credential never opens the store and nev
 
 Two profiles, and each one says out loud, when the service starts, what it promises:
 
-- **`trusted-local`** (the default) keeps the authorization in that file, and the file is readable by every process of the same user. The boundary is the file system, and the profile says so.
-- **`isolated`** reads the authorization from the service's **standard input** and writes it nowhere, so there is no file for another process of the same user to read.
+- **`trusted-local`** (the default) keeps the authorization in that file, and the file is readable by every process of the same user. What it protects is the **file system**: nothing outside that user may read the authorization or open the socket. What it does **not** protect is the authorization from another process of the same user.
+- **`private-auth`** reads the authorization from the service's **standard input** and writes it nowhere, so there is no file for another process of the same user to read. What it protects is the **disk**: no file carries the authorization. What it does **not** protect is the authorization from a process of the same user that reads the service's standard input while it starts.
 
 Neither profile separates two processes of the same user, and the service says that too: the JVM does not expose the credentials of the peer of a Unix socket, so nothing in this build can tell who connected. What a credential separates is the *identities the operator names* — a client that presents the token and a client that does not — and not two processes running as the same user. Read it as a boundary over the **service**, not over the **data**: the same substrate is readable from the command line, with no authorization at all.
+
+Both profiles are profiles of **authentication**: they differ in where the authorization comes from and in nothing else. Neither of them is a profile of isolation, and neither one is named as if it were. The word `isolated` belongs to a separation a host has to **prove** — a run that asks for an isolated environment is admitted only against what the provider attests — and to the `--isolated` option of the run verb, which names a managed scratch workspace and no boundary at all. A profile that reads an authorization from a place proves no separation of processes, files or sockets.
+
+The profile that `0.96.0` named `isolated` is named **`private-auth`** now, and the withdrawal is a deliberate break of the words this product serves, recorded with its evidence in [`pipelinek/contract/published-contract-exceptions.json`](pipelinek/contract/published-contract-exceptions.json). A service that is asked for `--trust-profile isolated` is refused by name (`trust-profile-unknown`), and the usage line names the two words this build serves: `trusted-local` and `private-auth`.
 
 Both sources are read under a declared limit: **ten mebibytes** (10 485 760 bytes), the limit the product reads every file under. A file of authorizations that does not fit is refused by name, with the limit and the size it has, and none of its content is read into the memory of the service — the file is measured before it is read. The standard input is read one byte more than the limit and no further, so a stream that does not fit is refused in the same way and never read whole.
 

@@ -109,7 +109,16 @@ sealed interface WorkspaceRequest {
     /** `pipelinek run --workspace <path> p.kts` — attach an explicit directory. */
     data class AttachExplicit(val path: Path) : WorkspaceRequest
 
-    /** `pipelinek run --isolated p.kts` — PipelineK-managed scratch. */
+    /**
+     * `pipelinek run --isolated p.kts` — PipelineK-managed scratch.
+     *
+     * The name says an ALLOCATION of a workspace and not a separation: what
+     * the run receives is a scratch directory of its own, and nothing here
+     * proves that the processes, the files or the sockets of the run are
+     * separated from anything. A separation that has to be demonstrated is
+     * another request of this product —a confined filesystem and an isolated
+     * network— and it is admitted only against what the host attests.
+     */
     data object ManagedIsolated : WorkspaceRequest
 }
 

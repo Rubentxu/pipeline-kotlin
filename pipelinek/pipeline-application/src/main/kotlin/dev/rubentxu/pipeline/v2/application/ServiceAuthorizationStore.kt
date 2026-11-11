@@ -17,19 +17,35 @@ import java.nio.file.attribute.PosixFilePermission
 import java.security.SecureRandom
 
 /**
- * The trust profile of the service.
+ * The trust profile of the service: WHERE the authorization comes from, and
+ * what that keeps off the disk.
  *
  * ## What the two are
  *
- * [TrustedLocal] is the default and it names its boundary: the file system.
- * The socket is `rw-------` and its directory grants nothing to the group or
- * to others, so any process of the same user can open it, and the
- * authorization that travels on it is in a file that any of those processes
- * can read. The profile says so, out loud, when it starts.
+ * Both are AUTHENTICATION profiles, and they differ in one thing only: the
+ * place the authorization is read from. Neither of them is a profile of
+ * isolation, and neither one may be named as if it were.
  *
- * [Isolated] moves the authorization OFF the disk: it is read from the
+ * [TrustedLocal] is the default and it keeps the authorization in the FILE
+ * the service owns next to its socket. The socket is `rw-------` and its
+ * directory grants nothing to the group or to others, so any process of the
+ * same user can open it, and the authorization that travels on it is in a
+ * file that any of those processes can read.
+ *
+ * [PrivateAuth] keeps the authorization OFF the disk: it is read from the
  * service's standard input and the service writes it nowhere, so there is no
  * file for a process of the same user to read.
+ *
+ * ## What each one protects, and what each one does NOT
+ *
+ * [TrustedLocal] protects the FILE SYSTEM: nothing outside this user may
+ * read the authorization or open the socket. It does not protect the
+ * authorization from another process of the same user.
+ *
+ * [PrivateAuth] protects the DISK: no file carries the authorization, so
+ * there is nothing for a process to read. It does not protect the
+ * authorization from a process of the same user that reads the service's
+ * standard input while the service starts.
  *
  * ## What NEITHER profile promises
  *
@@ -38,19 +54,40 @@ import java.security.SecureRandom
  * and repeated on the JDK 21 the product is built with and on the JDK 25
  * installed here—, so a service cannot know who connected. What a profile
  * can do is say exactly what is on the disk and what is not.
+ *
+ * ## Why no profile of authentication wears the word `isolated`
+ *
+ * Because in this product that word belongs to a separation a host has to
+ * PROVE: a run that asks for an isolated environment is admitted only
+ * against what the provider attests, and refused when nothing proves it. A
+ * trust profile reads an authorization from a place, and reading from a place
+ * proves no separation of processes, files or sockets. A name that promised
+ * one would be a promise this product does not keep.
+ *
+ * The other place the word lives is the option `--isolated` of the run verb,
+ * and there it names a WORKSPACE ALLOCATION —a managed scratch directory— and
+ * not a boundary either.
  */
 internal enum class ServiceTrustProfile(val word: String) {
 
-    /** The boundary is the file system, and the profile declares it. */
+    /**
+     * The authorization is in the FILE the service owns next to its socket.
+     *
+     * It protects the file system —nothing outside this user may read the
+     * authorization or open the socket— and it does NOT separate two
+     * processes of the same user.
+     */
     TrustedLocal("trusted-local"),
 
     /**
      * The authorization is not on the disk: it comes from the standard input.
      *
-     * It does not isolate processes: a process of the same user that reads
-     * the service's standard input while it starts takes the authorization.
+     * It protects the disk —no file carries the authorization, so there is
+     * nothing for a process to read— and it does NOT separate two processes of
+     * the same user either: a process of the same user that reads the
+     * service's standard input while it starts takes the authorization.
      */
-    Isolated("isolated");
+    PrivateAuth("private-auth");
 
     companion object {
 
@@ -69,7 +106,7 @@ internal enum class ServiceTrustProfile(val word: String) {
  *
  * The FILE is the source of the `trusted-local` profile: the file the
  * operator names, or the one the service owns next to its socket. The
- * STANDARD INPUT is the source of the `isolated` profile, and the service
+ * STANDARD INPUT is the source of the `private-auth` profile, and the service
  * writes it nowhere.
  *
  * ## The rule about writing

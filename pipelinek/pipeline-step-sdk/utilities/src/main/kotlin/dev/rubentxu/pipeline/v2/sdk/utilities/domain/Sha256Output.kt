@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 /**
  * Typed output for [dev.rubentxu.pipeline.v2.sdk.utilities.step.CoreUtilsSha256StepDefinition].
  * - [hexDigest]: lowercase hex digest (64 chars for SHA-256, 40 for SHA-1).
- * - [byteSize]: file size read from disk.
+ * - [byteSize]: how many bytes the Step hashed, counted as it read them.
  * - [algorithm]: the algorithm that actually ran (mirrors [Sha256Input.algorithm]).
 */
 @Serializable

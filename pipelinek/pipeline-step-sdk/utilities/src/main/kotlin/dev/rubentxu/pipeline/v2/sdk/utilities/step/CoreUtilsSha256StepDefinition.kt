@@ -21,6 +21,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
+import java.util.Locale
 import kotlin.io.path.exists
 import kotlin.io.path.isRegularFile
 
@@ -29,6 +30,9 @@ import kotlin.io.path.isRegularFile
  * Capability discipline: declares `WORKSPACE_IDENTITY_CAPABILITY` and reads
  * the canonical workspace root from the typed capability seam.
  * Effects: `READ_ONLY` (read-only stream over the file).
+ * The file is read in BOUNDED CHUNKS: it is never held whole, so an
+ * artifact bigger than the heap of the controller still has a digest. The
+ * size the step publishes is the size of the bytes it hashed.
  * ReplayPolicy: `MEMOIZED` (file content is deterministic; replay may reuse
  *   the cached output when the durable fingerprint matches).
  * RecoveryPolicy: `None`.
@@ -89,17 +93,6 @@ class CoreUtilsSha256StepDefinition : StepDefinition<Sha256Input, Sha256Output> 
             )
         }
 
-        val bytes: ByteArray = try {
-            Files.readAllBytes(target)
-        } catch (e: java.io.IOException) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.INFRASTRUCTURE,
-                    message = "core-utils.sha256: failed to read file '$target': ${e.message}",
-                ),
-            )
-        }
-
         val md: MessageDigest = try {
             MessageDigest.getInstance(algo)
         } catch (e: NoSuchAlgorithmException) {
@@ -111,16 +104,55 @@ class CoreUtilsSha256StepDefinition : StepDefinition<Sha256Input, Sha256Output> 
                 ),
             )
         }
-        val hex: String = md.digest(bytes).joinToString(separator = "") { "%02x".format(it) }
+
+        // The file is read in BOUNDED CHUNKS and never held whole: this step
+        // runs on the controller, and an artifact bigger than the heap of the
+        // controller still has to have a digest.
+        //
+        // The SIZE is counted while the bytes go in, and not asked to the
+        // filesystem: the size the step publishes is the size of what it
+        // hashed, and a file that grows while it is read does not make the
+        // two disagree.
+        var byteSize = 0L
+        val hex: String = try {
+            Files.newInputStream(target).use { stream ->
+                val buffer = ByteArray(BUFFER_BYTES)
+                while (true) {
+                    val read = stream.read(buffer)
+                    if (read <= 0) break
+                    md.update(buffer, 0, read)
+                    byteSize += read
+                }
+            }
+            // The hex is written in ROOT: the digits of a locale that writes
+            // them otherwise would be a digest that matches nothing.
+            md.digest().joinToString(separator = "") { String.format(Locale.ROOT, "%02x", it) }
+        } catch (e: java.io.IOException) {
+            throw PluginStepException(
+                failure = PipelineFailure(
+                    kind = FailureKind.INFRASTRUCTURE,
+                    message = "core-utils.sha256: failed to read file '$target': ${e.message}",
+                ),
+            )
+        }
 
         Sha256Output(
             hexDigest = hex,
-            byteSize = bytes.size.toLong(),
+            byteSize = byteSize,
             algorithm = algo,
         )
     }
 
     companion object {
         internal val ALLOWED_ALGORITHMS: Set<String> = setOf("SHA-256", "SHA-1")
+
+        /**
+         * How many bytes of the file are held at once.
+         *
+         * The same size the domain's streaming digest uses, so the two read a
+         * file the same way and neither of them decides the size of the
+         * window on its own.
+         */
+        private const val BUFFER_BYTES: Int = 8192
     }
 }

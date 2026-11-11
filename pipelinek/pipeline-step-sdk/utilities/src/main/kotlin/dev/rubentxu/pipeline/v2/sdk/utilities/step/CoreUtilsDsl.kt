@@ -117,8 +117,8 @@ fun StageScope.writeJsonRaw(
 
 /**
  * `core-utils.sha256` DSL façade.
- * Streams the file content through `MessageDigest` and returns a lowercase
- * hex digest.
+ * Reads the file in bounded chunks and feeds them to `MessageDigest`, so the
+ * file is never held whole; the digest is a lowercase hex.
  * @param path workspace-relative or absolute target file path.
  * @param algorithm the message-digest algorithm to use; allowed values are
  *   `SHA-256` (default) and `SHA-1`. Anything else is rejected at runtime

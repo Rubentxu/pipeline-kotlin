@@ -100,6 +100,7 @@ fun main(args: Array<String>) {
     }
 
     val manifest = MavenPublicationManifest(
+        schemaVersion = MavenPublicationManifest.SCHEMA_VERSION,
         candidateId = handoff.candidateId,
         productVersion = handoff.productVersion,
         sdkZip = MavenFileDigest(sdk.name, sdk.sha256),

@@ -196,16 +196,46 @@ class MavenPublicationValidationTest {
             request(),
             manifest(artifacts = listOf(pom, jar, module)),
             certification(),
-            observed(bundleArtifacts = listOf(pom, jar, module)),
+            observed(
+                bundleArtifacts = listOf(pom, jar, module),
+                certifiedContracts = listOf(pom, module),
+            ),
         )
         assertInstanceOf(MavenPublicationVerdict.Admitted::class.java, verdict)
+    }
+
+    @Test
+    fun `a bundle whose module metadata is not the candidate's is refused`() {
+        val codes = violationsOf(
+            manifest = manifest(artifacts = listOf(pom, jar, module)),
+            observed = observed(
+                bundleArtifacts = listOf(pom, jar, module),
+                certifiedContracts = listOf(pom, module.copy(sha256 = "4".repeat(64))),
+            ),
+        ).map { it.code }
+        assertTrue(codes.contains(MavenPublicationViolationCode.CONTRACT_DISAGREES), "got $codes")
+    }
+
+    @Test
+    fun `a manifest that declares a module metadata the candidate does not carry is refused`() {
+        val codes = violationsOf(
+            manifest = manifest(artifacts = listOf(pom, jar, module)),
+            observed = observed(
+                bundleArtifacts = listOf(pom, jar, module),
+                certifiedContracts = listOf(pom),
+            ),
+        ).map { it.code }
+        assertTrue(codes.contains(MavenPublicationViolationCode.CONTRACT_DISAGREES), "got $codes")
     }
 
     @Test
     fun `a bundle that does not carry the declared module metadata is refused`() {
         val codes = violationsOf(
             manifest = manifest(artifacts = listOf(pom, jar, module)),
-            observed = observed(bundleArtifacts = listOf(pom, jar)),
+            observed = observed(
+                bundleArtifacts = listOf(pom, jar),
+                certifiedContracts = listOf(pom, module),
+            ),
         ).map { it.code }
         assertTrue(codes.contains(MavenPublicationViolationCode.ARTIFACT_DISAGREES), "got $codes")
     }

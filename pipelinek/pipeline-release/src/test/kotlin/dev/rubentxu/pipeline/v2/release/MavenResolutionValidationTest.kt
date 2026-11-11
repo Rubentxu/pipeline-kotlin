@@ -34,6 +34,7 @@ class MavenResolutionValidationTest {
     private fun manifest(
         artifacts: List<MavenArtifactDigest> = listOf(pom, jar),
     ): MavenPublicationManifest = MavenPublicationManifest(
+        schemaVersion = MavenPublicationManifest.SCHEMA_VERSION,
         candidateId = candidate,
         productVersion = version,
         sdkZip = MavenFileDigest("pipelinek-0.96.0.sdk.zip", sdkZipDigest),

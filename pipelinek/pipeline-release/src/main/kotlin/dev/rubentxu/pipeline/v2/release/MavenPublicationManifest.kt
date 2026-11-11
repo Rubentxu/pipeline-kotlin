@@ -45,8 +45,15 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class MavenPublicationManifest internal constructor(
-    /** The shape this document claims to follow. */
-    @SerialName("schema_version") val schemaVersion: String = SCHEMA_VERSION,
+    /**
+     * The shape this document claims to follow.
+     *
+     * It is REQUIRED and it has no default: a document that does not declare
+     * its shape is not a document of this build's shape, and assuming one
+     * would let a manifest of another shape in through the very field that
+     * names the shape.
+     */
+    @SerialName("schema_version") val schemaVersion: String,
     /** The candidate these artifacts belong to: the digest of the candidate's bytes. */
     @SerialName("candidate_id") val candidateId: CandidateId,
     /** The exact version these artifacts carry. */
@@ -223,7 +230,23 @@ enum class MavenArtifactKind {
      * preference to the POM, and the POM says so itself. A file of no kind
      * here is a file a consumer resolves and nobody has to agree about.
      */
-    MODULE,
+    MODULE;
+
+    /**
+     * Whether this kind is a CONTRACT of the coordinate: the document a
+     * consumer resolves to learn what the coordinate is and what it depends
+     * on.
+     *
+     * The POM is that document for a consumer of Maven and the Gradle module
+     * metadata is that document for a consumer of Gradle, which resolves it
+     * in preference to the POM. They are the same contract of the same
+     * coordinate in two languages, so the two are compared against the
+     * candidate together: a bundle that publishes one of them and not the
+     * other publishes a coordinate that only half of the consumers can
+     * resolve.
+     */
+    val isContract: Boolean
+        get() = this == POM || this == MODULE
 }
 
 /**
@@ -263,7 +286,10 @@ data class MavenObservedPublication(
     val bundleSha256: String,
     /** What the target repository already holds at the version. */
     val published: MavenPublishedVersion,
-    /** The POMs carried by the candidate's SDK ZIP: the contracts it was admitted with. */
+    /**
+     * The contracts carried by the candidate's SDK ZIP: the POMs and the
+     * Gradle module metadata it was admitted with.
+     */
     val certifiedContracts: List<MavenArtifactDigest>,
     /** The digest of the manifest document as it was read. */
     val manifestSha256: String,

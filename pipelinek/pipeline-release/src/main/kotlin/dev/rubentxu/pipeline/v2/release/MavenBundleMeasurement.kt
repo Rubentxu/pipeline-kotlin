@@ -91,12 +91,18 @@ object MavenBundleMeasurement {
     }
 
     /**
-     * The contracts the candidate's SDK ZIP carries: its POM entries, with
-     * the digest of each one.
+     * The contracts the candidate's SDK ZIP carries: its POM entries and its
+     * Gradle module metadata, with the digest of each one.
      *
      * These are the contracts the candidate was admitted with, and the
-     * comparison between them and the manifest's POMs is what proves that
-     * the bundle publishes the candidate's contracts and not others.
+     * comparison between them and the manifest's contracts is what proves
+     * that the bundle publishes the candidate's contracts and not others.
+     *
+     * The module metadata is here for the same reason the POM is: it is the
+     * document a consumer of Gradle resolves IN PREFERENCE to the POM, so a
+     * bundle whose module metadata differs from the candidate's publishes
+     * variants the candidate never had, and a comparison that only looked
+     * at the POMs would call that bundle the candidate's.
      */
     fun contractsIn(sdkZip: Path): List<MavenArtifactDigest> {
         val contracts = mutableListOf<MavenArtifactDigest>()
@@ -105,9 +111,10 @@ object MavenBundleMeasurement {
             for (entry in entries) {
                 if (entry.isDirectory) continue
                 val name = entry.name
-                if (!name.endsWith(".pom")) continue
+                val kind = kindOf(name) ?: continue
+                if (!kind.isContract) continue
                 val digest = archive.getInputStream(entry).use { digestOf(it) }
-                contracts += MavenArtifactDigest(name, MavenArtifactKind.POM, digest)
+                contracts += MavenArtifactDigest(name, kind, digest)
             }
         }
         return contracts.sortedBy { it.path }

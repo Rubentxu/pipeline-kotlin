@@ -3,6 +3,8 @@ package dev.rubentxu.pipeline.v2.release
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -115,10 +117,56 @@ class MavenBundleMeasurementTest {
         )
     }
 
+    @Test
+    fun `the contracts of a candidate are its POMs and its module metadata`() {
+        val zip = writeZip(
+            mapOf(
+                "dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.pom" to pomBytes,
+                "dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.module" to moduleBytes,
+                "dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.jar" to jarBytes,
+            ),
+        )
+
+        val contracts = MavenBundleMeasurement.contractsIn(zip)
+
+        assertEquals(
+            listOf(MavenArtifactKind.MODULE, MavenArtifactKind.POM),
+            contracts.map { it.kind },
+            "the JAR is not a contract: $contracts",
+        )
+    }
+
+    @Test
+    fun `a contract carries the digest of the bytes the candidate carries`() {
+        val zip = writeZip(
+            mapOf(
+                "dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.module" to moduleBytes,
+            ),
+        )
+
+        val contract = MavenBundleMeasurement.contractsIn(zip).single()
+
+        assertEquals(MavenArtifactKind.MODULE, contract.kind)
+        assertEquals(Sha256.ofBytes(moduleBytes), contract.sha256)
+    }
+
     /** Write [bytes] at [relative] under the bundle. */
     private fun write(relative: String, bytes: ByteArray) {
         val path = bundle.resolve(relative)
         Files.createDirectories(path.parent)
         Files.write(path, bytes)
+    }
+
+    /** Write a ZIP that carries [entries], and return where it is. */
+    private fun writeZip(entries: Map<String, ByteArray>): Path {
+        val path = bundle.resolve("the-sdk.zip")
+        ZipOutputStream(Files.newOutputStream(path)).use { zip ->
+            entries.forEach { (name, bytes) ->
+                zip.putNextEntry(ZipEntry(name))
+                zip.write(bytes)
+                zip.closeEntry()
+            }
+        }
+        return path
     }
 }

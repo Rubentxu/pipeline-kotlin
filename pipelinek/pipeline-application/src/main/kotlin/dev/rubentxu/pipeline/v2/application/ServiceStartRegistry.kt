@@ -6,11 +6,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.PosixFilePermission
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -29,6 +29,81 @@ internal data class ServiceStartRecord(
     val ownerId: String,
     val startedAtMs: Long,
 )
+
+/**
+ * Where the record of the starts is kept between two lives of the service.
+ *
+ * ## Why a port
+ *
+ * Because the failure of a write has to be producible ON DEMAND: a
+ * degradation that cannot be provoked cannot be tested, and a degradation that
+ * is not tested is a promise nobody keeps.
+ *
+ * ## What the port says about itself
+ *
+ * The [location] is where the record lives, in the words the refusals use: a
+ * refusal that does not say which file it is about leaves the operator
+ * looking for it.
+ *
+ * ## What the record holds
+ *
+ * The fingerprint of a request and the identity of a run. NEVER a credential:
+ * the file says which runs the operator started, and it does not say how any
+ * client proved who it was.
+ */
+internal interface ServiceStartStore {
+
+    /** Where the record lives, in the words the refusals use. */
+    val location: String
+
+    /** The record as it stands, or null when there is none. */
+    fun read(): String?
+
+    /** Writes the record whole, replacing what was there. */
+    fun write(document: String)
+}
+
+/**
+ * The record of the starts, in a file next to the socket of the service.
+ *
+ * ## Why the file is private and the write is atomic
+ *
+ * The file says which runs the operator started, so it is `0600`: the
+ * operator's own processes are the only ones that read it. The write is
+ * ATOMIC: the document is written beside the target and moved over it, so a
+ * reader sees either the previous record or this one, and a machine that
+ * dies in the middle of a write leaves the previous record and not a broken
+ * one.
+ */
+internal class FileServiceStartStore(private val path: Path) : ServiceStartStore {
+
+    /** Where the record lives, in the words the refusals use. */
+    override val location: String = path.toString()
+
+    /** The record as it stands, or null when the file is not there. */
+    override fun read(): String? =
+        if (Files.exists(path)) Files.readString(path) else null
+
+    /** Writes the record whole, replacing what was there. */
+    override fun write(document: String) {
+        val directory = path.parent ?: return
+        val temporary = Files.createTempFile(directory, ServiceStartRegistry.FILE_NAME, ".tmp")
+        try {
+            Files.setPosixFilePermissions(
+                temporary,
+                setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+            )
+            Files.writeString(temporary, document)
+            try {
+                Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            Files.deleteIfExists(temporary)
+        }
+    }
+}
 
 /**
  * The claim a caller gets on an idempotency key.
@@ -65,8 +140,17 @@ internal sealed interface ServiceStartClaim {
      * The [correlationId] is the token the service gave to the lost run, and
      * it is what lets the operator FIND it: the child wrote it in its own
      * correlated fact.
+     *
+     * The [reconciliation] is what the operator does with that run once it
+     * is found. A state that names the problem and not the remedy sends the
+     * operator to look for one, and the answer to that search is written
+     * down here: the operations the product already has over the substrate,
+     * and the condition that tells which one applies.
      */
-    data class EffectUnknown(val correlationId: String) : ServiceStartClaim
+    data class EffectUnknown(
+        val correlationId: String,
+        val reconciliation: String = ServiceStartReconciliation.guide(correlationId),
+    ) : ServiceStartClaim
 
     /** The key is free, and this caller owns the start. */
     data class Owner(val future: CompletableFuture<ServiceStartRecord>) : ServiceStartClaim
@@ -85,6 +169,170 @@ internal sealed interface ServiceStartClaim {
      * So the start does not happen, and the refusal says so by name.
      */
     data class Refused(val cause: String) : ServiceStartClaim
+}
+
+/**
+ * How a start whose effect is unknown is reconciled.
+ *
+ * ## What it names
+ *
+ * The two operations the product already has over the substrate, and the
+ * condition that tells which one applies:
+ *
+ * - `runs recover` when the run's work finished and its terminal was never
+ *   recorded;
+ * - `runs cancel` when the run is still there and no live process works on it.
+ *
+ * The names are read from the CLI that offers them, so a guide that names an
+ * operation that does not exist cannot be written.
+ *
+ * ## Why the correlation travels with the guide
+ *
+ * Because the correlation is what finds the run: the child wrote it in its
+ * own correlated fact, and the operator reads the substrate to find the run
+ * that wrote it. A guide that names the operations without naming the run
+ * sends the operator looking for a run they cannot identify.
+ *
+ * ## What it does not promise
+ *
+ * That the run exists. The effect is unknown, and the run may never have
+ * started: reconciling a run that is not there is a refusal of the substrate,
+ * and freeing the key is the operator's decision.
+ */
+internal object ServiceStartReconciliation {
+
+    /** The operation that reconciles a run whose work finished without a terminal. */
+    val recover: String = "runs ${MainRunsCli.RunsVerb.Recover.spelling}"
+
+    /** The operation that closes a run that no live process works on. */
+    val cancel: String = "runs ${MainRunsCli.RunsVerb.Cancel.spelling}"
+
+    /**
+     * The line that tells the operator how to reconcile the run of [correlationId].
+     */
+    fun guide(correlationId: String): String =
+        "the correlation of the lost start is $correlationId; find the run that wrote it in the " +
+            "substrate and reconcile it with '$recover' when its work finished without a terminal, " +
+            "or with '$cancel' when it is still there"
+}
+
+/**
+ * A start whose result the service knows and could not write down.
+ *
+ * ## What it says
+ *
+ * - the correlation the service gave to the run: it is what finds the run;
+ * - the run, when the result is that the run started;
+ * - the reason the machine gave for refusing the write;
+ * - what the operator has to do about it.
+ *
+ * ## What it does not say
+ *
+ * The credential of the client, and not even the fingerprint of it. The
+ * degradation is said out loud, and a line that names a credential is a line
+ * that ends up in a log somebody else reads. The key of the start is not said
+ * either: the correlation finds the run, and the run finds the key in the
+ * record of the starts.
+ */
+internal sealed interface ServiceStartDegradation {
+
+    /** The correlation the service gave to the run of this start, when it gave one. */
+    val correlationId: String?
+
+    /** What the machine said when it refused the write. */
+    val detail: String
+
+    /** The lines the operator reads. */
+    fun describe(): String
+
+    /**
+     * The run started, and the service cannot write it down.
+     *
+     * The record of the start stays in memory, so the client is answered
+     * with the run that started and a retry in the life of this service gets
+     * that same run. What is lost is the promise ACROSS a restart: the file
+     * still holds the claim, and a service that starts again finds a key
+     * whose effect is unknown.
+     */
+    data class Started(
+        override val correlationId: String,
+        val runId: String,
+        override val detail: String,
+    ) : ServiceStartDegradation {
+
+        override fun describe(): String = buildString {
+            appendLine("the record of the starts could not be written: $detail")
+            appendLine(
+                "the start of the correlation $correlationId started the run $runId and the " +
+                    "service cannot write it down",
+            )
+            appendLine(
+                "the next write of the record repairs the file; a service that stops before that " +
+                    "recovers the key as claimed, with an unknown effect: reconcile the run with " +
+                    "'${ServiceStartReconciliation.recover}' when its work finished without a " +
+                    "terminal, or with '${ServiceStartReconciliation.cancel}' when it is still " +
+                    "there",
+            )
+        }
+    }
+
+    /**
+     * The start failed, and the service cannot release the key.
+     *
+     * Nothing was started, so there is no run to reconcile: the key is stuck
+     * in the record of the starts and the operator frees it there.
+     */
+    data class Failed(
+        override val correlationId: String?,
+        override val detail: String,
+    ) : ServiceStartDegradation {
+
+        override fun describe(): String = buildString {
+            appendLine("the record of the starts could not be written: $detail")
+            val named = correlationId?.let { " of the correlation $it" } ?: ""
+            appendLine(
+                "the start$named failed and the service cannot release the key: " +
+                    "no run was left behind",
+            )
+            appendLine(
+                "the next write of the record repairs the file; a service that stops before that " +
+                    "recovers the key as claimed, with an unknown effect, and there is no run to " +
+                    "reconcile: the operator frees the key in the record of the starts",
+            )
+        }
+    }
+}
+
+/**
+ * Where the record of the starts says what it could not do.
+ *
+ * ## Why a port
+ *
+ * Because the degradation has to reach the OPERATOR, and the operator reads
+ * the channel the composition gives it: the log of the service. A record that
+ * degraded in silence would leave a promise broken with nobody noticing, and
+ * a broken promise that nobody notices is the one that costs the most.
+ *
+ * ## What it never does
+ *
+ * It never fails a start, and it never starts anything: the run is what the
+ * client asked for, and the diagnostic is a word about it. Whatever the
+ * channel does, the answer the client reads is the answer the start produced.
+ */
+internal fun interface ServiceStartDiagnostics {
+
+    /** Says that the result of a start could not be written down. */
+    fun degraded(degradation: ServiceStartDegradation)
+}
+
+/**
+ * The diagnostics of a record that says nothing.
+ *
+ * It is the default of the registry, so that a registry built outside the
+ * service does not have to invent a channel in order to stay quiet.
+ */
+internal object NoServiceStartDiagnostics : ServiceStartDiagnostics {
+    override fun degraded(degradation: ServiceStartDegradation) = Unit
 }
 
 /**
@@ -143,10 +391,25 @@ internal sealed interface ServiceStartClaim {
  * launched (see [ServiceStartClaim.Refused]). The RECORD of a start that
  * already happened cannot be un-written, and a record that could not be
  * persisted keeps its promise for the life of this service and not beyond
- * it: the degradation is said out loud instead of being hidden.
+ * it. The degradation is said out loud: the [diagnostics] are told which
+ * start could not be written down, which run is at stake, and what the
+ * operator has to do about it. A promise that degrades in silence is a
+ * promise nobody is looking after, and the operator is the one who can.
+ *
+ * ## What the file holds when a write fails
+ *
+ * The claim that was written before the child was launched. The service
+ * knows more than that —it knows the run, or it knows that the start
+ * failed— and the file does not, until a later write succeeds: the file is
+ * written whole, so the next write repairs it. A service that dies in that
+ * window recovers a key whose effect is unknown, which is the safe answer:
+ * the run may be alive, and the key is not free. The degradation is named
+ * when it happens, so the operator knows whether a run is at stake or
+ * nothing was left behind.
  */
 internal class ServiceStartRegistry private constructor(
-    private val path: Path?,
+    private val store: ServiceStartStore,
+    private val diagnostics: ServiceStartDiagnostics,
 ) {
 
     /** The lock that guards both tables and the file. */
@@ -232,13 +495,24 @@ internal class ServiceStartRegistry private constructor(
      * The record is written to the file BEFORE the future is completed, so
      * a caller that is woken up by the future reads a file that already
      * says what the answer says.
+     *
+     * When the file refuses the write, the record STAYS in memory and the
+     * degradation is named: the client is answered with the run that
+     * started, and the operator is told that the record of that start is
+     * not on the disk.
      */
     fun complete(key: String, record: ServiceStartRecord) {
         synchronized(lock) {
             records[key] = record
             claims.remove(key)
             val inFlight = pending.remove(key)
-            persistQuietly()
+            persistOutcome { detail ->
+                ServiceStartDegradation.Started(
+                    correlationId = record.correlationId,
+                    runId = record.runId,
+                    detail = detail,
+                )
+            }
             inFlight?.future?.complete(record)
         }
     }
@@ -256,12 +530,21 @@ internal class ServiceStartRegistry private constructor(
      * of the start read, and a client that decides whether to try again by
      * the NAME of the refusal is not told one thing by the owner and
      * another by the waiter.
+     *
+     * When the file refuses the release, the key stays claimed ON THE DISK
+     * and the degradation is named: the service knows that no run was left
+     * behind, and the operator is told that the key has to be freed by hand.
      */
     fun fail(key: String, refusal: ServiceRefusal) {
         synchronized(lock) {
             val inFlight = pending.remove(key)
-            claims.remove(key)
-            persistQuietly()
+            val claimed = claims.remove(key)
+            persistOutcome { detail ->
+                ServiceStartDegradation.Failed(
+                    correlationId = claimed?.correlationId,
+                    detail = detail,
+                )
+            }
             inFlight?.future?.completeExceptionally(ServiceStartFailed(refusal))
         }
     }
@@ -280,25 +563,23 @@ internal class ServiceStartRegistry private constructor(
     }
 
     /**
-     * Writes the record, and says nothing when it cannot.
+     * Writes the record, and NAMES the degradation when it cannot.
      *
-     * The record STAYS in memory and the promise holds for the lifetime of
-     * this service. The file that carries it across restarts could not be
-     * written, and that is a fault of the machine, not of the run: the run
-     * started, the client has to be answered, and a client that is left
-     * without an answer would read the closed connection as a failure of
-     * the start.
+     * The failure of a write is not swallowed: a start whose result the
+     * service knows and could not write down is a promise degraded, and a
+     * degraded promise that nobody is told about is a broken promise. The
+     * degradation says which start it was, which run is at stake and what the
+     * operator has to do about it.
      *
-     * What the failure costs is stated rather than hidden: the promise
-     * degrades to the lifetime of this service, so a client that retries
-     * AFTER a restart may get a second run for the same key.
+     * What it does not do is fail the start: the run started, the client has
+     * to be answered, and a client left without an answer would read the
+     * closed connection as a failure of the start.
      */
-    private fun persistQuietly() {
+    private fun persistOutcome(degradation: (String) -> ServiceStartDegradation) {
         try {
             persist()
-        } catch (_: Exception) {
-            // The promise degrades to the life of this service, and the
-            // degradation is declared in the KDoc of this class.
+        } catch (failure: Exception) {
+            diagnostics.degraded(degradation(failure.shortDiagnostic()))
         }
     }
 
@@ -314,8 +595,6 @@ internal class ServiceStartRegistry private constructor(
      * is the stronger fact of the two.
      */
     private fun persist() {
-        val target = path ?: return
-        val directory = target.parent ?: return
         val document = buildJsonObject {
             claims.forEach { (key, claim) ->
                 put(key, buildJsonObject {
@@ -333,21 +612,7 @@ internal class ServiceStartRegistry private constructor(
                 })
             }
         }
-        val temporary = Files.createTempFile(directory, FILE_NAME, ".tmp")
-        try {
-            Files.setPosixFilePermissions(
-                temporary,
-                setOf(java.nio.file.attribute.PosixFilePermission.OWNER_READ, java.nio.file.attribute.PosixFilePermission.OWNER_WRITE),
-            )
-            Files.writeString(temporary, document.toString())
-            try {
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING)
-            }
-        } finally {
-            Files.deleteIfExists(temporary)
-        }
+        store.write(document.toString())
     }
 
     /**
@@ -385,37 +650,56 @@ internal class ServiceStartRegistry private constructor(
          * a REFUSAL, because a record that cannot be read is a promise that
          * cannot be kept, and a service that silently forgets its promises
          * would start a second run for a key it already answered.
+         *
+         * The [diagnostics] are told about the degradations this record
+         * suffers from now on.
          */
-        fun read(path: Path): ServiceStartRegistryReading {
-            val registry = ServiceStartRegistry(path)
-            if (!Files.exists(path)) return ServiceStartRegistryReading.Read(registry)
+        fun read(
+            path: Path,
+            diagnostics: ServiceStartDiagnostics = NoServiceStartDiagnostics,
+        ): ServiceStartRegistryReading = read(FileServiceStartStore(path), diagnostics)
+
+        /**
+         * The record of the starts in [store].
+         *
+         * A store that holds nothing is an EMPTY record: the service has not
+         * started anything yet. A store that IS there and cannot be read is
+         * a REFUSAL, because a record that cannot be read is a promise that
+         * cannot be kept, and a service that silently forgets its promises
+         * would start a second run for a key it already answered.
+         */
+        fun read(
+            store: ServiceStartStore,
+            diagnostics: ServiceStartDiagnostics = NoServiceStartDiagnostics,
+        ): ServiceStartRegistryReading {
+            val registry = ServiceStartRegistry(store, diagnostics)
             val text = try {
-                Files.readString(path)
-            } catch (failure: IOException) {
+                store.read()
+            } catch (failure: Exception) {
                 return ServiceStartRegistryReading.Refused(
                     "the record of the starts could not be read: ${failure.message}",
                 )
-            }
+            } ?: return ServiceStartRegistryReading.Read(registry)
             if (text.isBlank()) return ServiceStartRegistryReading.Read(registry)
             val parsed = try {
                 Json.parseToJsonElement(text) as? JsonObject
             } catch (_: Exception) {
                 null
             } ?: return ServiceStartRegistryReading.Refused(
-                "the record of the starts is not a document: $path",
+                "the record of the starts is not a document: ${store.location}",
             )
             parsed.forEach { (key, value) ->
                 val entry = value as? JsonObject
                     ?: return ServiceStartRegistryReading.Refused(
-                        "the record of the starts holds something that is not a start: $path",
+                        "the record of the starts holds something that is not a start: ${store.location}",
                     )
                 val digest = entry.string("digest")
                     ?: return ServiceStartRegistryReading.Refused(
-                        "the record of the starts holds a start without a fingerprint: $path",
+                        "the record of the starts holds a start without a fingerprint: ${store.location}",
                     )
                 val correlationId = entry.string("correlationId")
                     ?: return ServiceStartRegistryReading.Refused(
-                        "the record of the starts holds a start without a correlation: $path",
+                        "the record of the starts holds a start without a correlation: ${store.location}",
                     )
                 val runId = entry.string("runId")
                 if (runId == null) {
@@ -431,11 +715,11 @@ internal class ServiceStartRegistry private constructor(
                     correlationId = correlationId,
                     ownerId = entry.string("ownerId")
                         ?: return ServiceStartRegistryReading.Refused(
-                            "the record of the starts holds a start without an owner: $path",
+                            "the record of the starts holds a start without an owner: ${store.location}",
                         ),
                     startedAtMs = entry.long("startedAtMs")
                         ?: return ServiceStartRegistryReading.Refused(
-                            "the record of the starts holds a start without a moment: $path",
+                            "the record of the starts holds a start without a moment: ${store.location}",
                         ),
                 )
                 registry.records[key] = record

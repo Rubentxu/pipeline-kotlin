@@ -519,11 +519,18 @@ internal class ServiceRunSupervisor(
                     ServiceRefusal.IdempotencyConflict(request.idempotencyKey),
                 )
 
+                // The refusal says what the operator has to do with the run
+                // this key may have started: the correlation that finds it
+                // and the operations that reconcile it. A client that is
+                // told that the effect is unknown and nothing else has to
+                // ask the operator what to do, and the operator has to look
+                // for an answer the service already knows.
                 is ServiceStartClaim.EffectUnknown -> return ServiceStartOutcome.Refused(
                     ServiceRefusal.RunStartRefused(
                         "the-effect-of-this-key-is-unknown",
                         "a start of this key was claimed and the service cannot tell whether " +
-                            "it started a run; that run may still be alive",
+                            "it started a run; that run may still be alive; " +
+                            claim.reconciliation,
                     ),
                 )
 

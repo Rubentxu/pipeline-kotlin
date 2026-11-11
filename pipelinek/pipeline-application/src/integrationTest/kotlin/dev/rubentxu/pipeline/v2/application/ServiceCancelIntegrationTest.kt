@@ -297,11 +297,22 @@ class ServiceCancelIntegrationTest {
             val answer = client(CANCELLER_TOKEN).startRun("sleeper.pipeline.kts", idempotencyKey = "key-1")
 
             val refusal = assertInstanceOf(ServiceAnswer.Refused::class.java, answer).refusal
+            val refused = refusal as ServiceRefusal.RunStartRefused
             assertEquals(
                 "the-effect-of-this-key-is-unknown",
-                (refusal as ServiceRefusal.RunStartRefused).reason,
+                refused.reason,
                 "the run may still be alive, and a second run for the same key is exactly " +
                     "what the key promises there is not",
+            )
+            assertTrue(
+                refused.detail.contains(LOST_CORRELATION),
+                "the refusal names the correlation of the lost start, because that is what " +
+                    "finds the run: ${refused.detail}",
+            )
+            assertTrue(
+                refused.detail.contains("runs recover") && refused.detail.contains("runs cancel"),
+                "the refusal names the operations that reconcile the run, so the client does " +
+                    "not have to ask the operator what to do: ${refused.detail}",
             )
         } finally {
             service.stop()
@@ -571,7 +582,7 @@ class ServiceCancelIntegrationTest {
         val claim = registry.claim(
             key = ServiceRunSupervisor.registryKeyOf(credentialDigest, key),
             digest = ServiceRunSupervisor.digestOf(SLEEPER, null),
-            correlationId = "the-correlation-of-the-lost-start",
+            correlationId = LOST_CORRELATION,
         )
         assertInstanceOf(
             ServiceStartClaim.Owner::class.java,
@@ -624,5 +635,8 @@ class ServiceCancelIntegrationTest {
 
         /** The script of the run that sleeps. */
         private const val SLEEPER: String = "sleeper.pipeline.kts"
+
+        /** The correlation the service gave to the run that was lost. */
+        private const val LOST_CORRELATION: String = "the-correlation-of-the-lost-start"
     }
 }

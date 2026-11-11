@@ -1108,6 +1108,7 @@ tasks.register<JavaExec>("mavenResolution") {
     val manifest = providers.gradleProperty("maven.manifest").orElse("").get()
     val repository = providers.gradleProperty("maven.repository").orElse("").get()
     val verdict = providers.gradleProperty("maven.verdict").orElse("").get()
+    val exitFile = providers.gradleProperty("maven.exitFile").orElse("").get()
 
     listOf(manifest).filter { it.isNotBlank() }.forEach { path ->
         inputs.file(project.file(path))
@@ -1115,6 +1116,7 @@ tasks.register<JavaExec>("mavenResolution") {
     inputs.property("maven.manifest", manifest)
     inputs.property("maven.repository", repository)
     inputs.property("maven.verdict", verdict)
+    inputs.property("maven.exitFile", exitFile)
 
     // The decision is NEVER up to date, and that is not a workaround. What it
     // decides depends on the state of a remote repository, and that state is
@@ -1127,6 +1129,7 @@ tasks.register<JavaExec>("mavenResolution") {
         val missing = listOf(
             "maven.manifest" to manifest,
             "maven.repository" to repository,
+            "maven.exitFile" to exitFile,
         ).filter { (_, value) -> value.isBlank() }.map { (name, _) -> name }
         if (missing.isNotEmpty()) {
             throw GradleException(
@@ -1139,11 +1142,24 @@ tasks.register<JavaExec>("mavenResolution") {
 
     args = listOf(manifest, repository, verdict)
 
-    // Any non-zero exit means the repository does not serve what the manifest
-    // declares, or that the state could not be measured. Both stop the
-    // caller: the first is a channel that does not carry the release, and the
-    // second is an instrument that measured nothing.
-    isIgnoreExitValue = false
+    // The exit code of the interpreter is the decision, and the BUILD does not
+    // carry it: Gradle turns every non-zero exit into the same build failure,
+    // and the two refusals of this check are not the same fact. The code is
+    // written where the caller can read it, and the build failure is raised
+    // afterwards.
+    isIgnoreExitValue = true
+    doLast {
+        val code = executionResult.get().exitValue
+        val file = project.file(exitFile)
+        file.parentFile?.mkdirs()
+        file.writeText("$code\n")
+        if (code != 0) {
+            throw GradleException(
+                "mavenResolution exited with $code: 1 means the repository does not serve the " +
+                    "bytes the manifest declares, and 2 means the state could not be measured.",
+            )
+        }
+    }
 }
 
 /**

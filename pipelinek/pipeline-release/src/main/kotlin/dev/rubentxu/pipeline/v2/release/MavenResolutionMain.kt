@@ -52,7 +52,24 @@ fun main(args: Array<String>) {
         token = credentialFromEnvironment("PIPELINEK_REPOSITORY_TOKEN"),
     )
 
-    when (val outcome = MavenResolutionAdmission.admit(manifestPath, reader)) {
+    val outcome = try {
+        MavenResolutionAdmission.admit(manifestPath, reader)
+    } catch (e: Exception) {
+        // The instrument broke, so the state was not measured. That is NOT a
+        // channel that does not carry the bytes, and the exit code says so:
+        // the two facts have different fixes and a reader must not confuse
+        // them.
+        val verdict = buildString {
+            appendLine("[release] maven resolution NOT RUN")
+            appendLine("[release]   repository: $repositoryUrl")
+            append("the check could not conclude: ${e.message ?: e::class.java.simpleName}")
+        }
+        System.err.print(verdict)
+        writeVerdict(verdictFile, verdict)
+        exitProcess(2)
+    }
+
+    when (outcome) {
         is MavenResolutionOutcome.Verified -> {
             val verdict = buildString {
                 appendLine("[release] maven resolution PASSED")

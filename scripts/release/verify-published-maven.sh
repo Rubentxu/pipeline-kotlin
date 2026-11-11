@@ -93,13 +93,15 @@ if [[ -n "$OUT_FILE" ]]; then
 fi
 
 LOG_FILE="$(mktemp "${TMPDIR:-/tmp}/verify-published-maven.XXXXXX")"
+EXIT_FILE="$(mktemp "${TMPDIR:-/tmp}/verify-published-maven-exit.XXXXXX")"
 
 set +e
 "${repo_root}/pipelinek/gradlew" --no-daemon --quiet -p "${repo_root}/pipelinek" \
     :pipeline-release:mavenResolution \
     -Pmaven.manifest="$MANIFEST" \
     -Pmaven.repository="$REPOSITORY" \
-    -Pmaven.verdict="$OUT_FILE" > "$LOG_FILE" 2>&1
+    -Pmaven.verdict="$OUT_FILE" \
+    -Pmaven.exitFile="$EXIT_FILE" > "$LOG_FILE" 2>&1
 STATUS=$?
 set -e
 
@@ -111,6 +113,26 @@ else
     cat "$LOG_FILE" >&2
 fi
 
-rm -f -- "$LOG_FILE"
+# The exit code of the check is the decision, and the BUILD does not carry it:
+# Gradle turns every non-zero exit into the same build failure, and the two
+# refusals are not the same fact. The code is read from the file the task
+# wrote. A file that is missing or unreadable leaves the code at 1, which is
+# the refusal of a channel that does not carry the bytes: a check that could
+# not conclude is not a pass.
+CODE=1
+if [[ -f "$EXIT_FILE" ]]; then
+    READ="$(tr -d '[:space:]' < "$EXIT_FILE")"
+    if [[ "$READ" =~ ^[0-9]+$ ]]; then
+        CODE="$READ"
+    fi
+fi
 
-exit "$STATUS"
+rm -f -- "$LOG_FILE" "$EXIT_FILE"
+
+if [[ "$CODE" -eq 0 && "$STATUS" -ne 0 ]]; then
+    printf 'verify-published-maven: the check reported success and the build failed.\n' >&2
+    printf '           what the build said is below.\n' >&2
+    exit 1
+fi
+
+exit "$CODE"

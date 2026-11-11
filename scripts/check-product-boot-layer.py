@@ -483,6 +483,11 @@ DECLARED_TREE_BOOT_CHECKS = {
         "the rows that deliver parameters to a run and check that the step "
         "reads the effective value"
     ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/SupervisedRunEndIntegrationTest.kt": (
+        "the row where the watchdog kills the child of a run and the run has "
+        "to END with a terminal that says why: a run whose writer is gone "
+        "cannot write its own bookend"
+    ),
     "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ServiceSubstrateSchemaIntegrationTest.kt": (
         "the rows that serve a substrate and check that a substrate whose table "
         "of promises is missing is refused by name"

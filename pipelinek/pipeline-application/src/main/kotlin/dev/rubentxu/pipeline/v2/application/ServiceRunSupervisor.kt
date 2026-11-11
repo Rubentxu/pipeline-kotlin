@@ -7,12 +7,14 @@ import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskRuntime
 import dev.rubentxu.pipeline.v2.domain.durable.ExecutionOutputSink
 import dev.rubentxu.pipeline.v2.domain.durable.OutputChunk
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
+import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionResult
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream
 import dev.rubentxu.pipeline.v2.runtime.RunConfiguration
 import dev.rubentxu.pipeline.v2.runtime.RunConfigurationOutcome
 import dev.rubentxu.pipeline.v2.service.ServiceProviderReference
 import dev.rubentxu.pipeline.v2.service.ServiceRefusal
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -364,6 +366,17 @@ internal class ServiceRunSupervisor(
     private val brokers: RunBrokerFactory? = null,
     private val configurations: ConfigurationResolver? = null,
     private val credentialSessions: CredentialProviderSessions? = null,
+    /**
+     * The door that closes a run whose child ended without a terminal.
+     *
+     * It is a VALUE and not a call into the store, because the store the run
+     * writes is the store of the SUBSTRATE, and a supervisor that opened it
+     * for itself would hold a writer against every run that starts next. The
+     * door opens the writing lane only when a child has just died, and closes
+     * it right after the fact is durable.
+     */
+    private val closer: SupervisedRunCloser =
+        EventStoreSupervisedRunCloser(runPolicy.eventStore, SystemClock()),
 ) : ServiceRunStarter, ServiceRunEnder, ServiceRunConfigurations, AutoCloseable {
 
     /** The children this service is watching right now. */
@@ -992,12 +1005,21 @@ internal class ServiceRunSupervisor(
         taskRequest: TaskExecutionRequest,
         lease: RunBrokerLease?,
     ) {
+        var end: SupervisedRunEnd? = null
         try {
-            runBlocking(job) { port.execute(taskRequest, watcher) }
+            val result = runBlocking(job) { port.execute(taskRequest, watcher) }
+            end = endOf(result)
+        } catch (_: CancellationException) {
+            // The child was stopped from the outside: the job that watches it
+            // was cancelled. The run's own terminal is written by whoever
+            // asked for the stop, and NOT here.
+            end = SupervisedRunEnd.Cancelled
         } catch (_: Exception) {
             // The child's failure is the RUN's failure and not the service's.
+            end = SupervisedRunEnd.Failed
         } finally {
             closeLease(lease)
+            closeRunWithoutTerminal(supervision, end)
             supervision.over(supervised)
             liveJobs.remove(job)
             liveThreads.remove(Thread.currentThread())
@@ -1008,6 +1030,56 @@ internal class ServiceRunSupervisor(
             // fourth.
             liveRuns.decrementAndGet()
             watcher.signalFinished()
+        }
+    }
+
+    /**
+     * How the child ended, as the port says it.
+     *
+     * The port answers with a result and not with an exception when the child
+     * ended on its own, and the result says WHICH of the three it was: the
+     * watchdog killed it, somebody cancelled it, or it exited.
+     */
+    private fun endOf(result: TaskExecutionResult): SupervisedRunEnd = when {
+        result.timedOut -> SupervisedRunEnd.TimedOut
+        result.cancelled -> SupervisedRunEnd.Cancelled
+        else -> SupervisedRunEnd.Ended(result.exitCode)
+    }
+
+    /**
+     * Closes the run whose child ended WITHOUT a terminal.
+     *
+     * ## Why the run is closed HERE and not by the child
+     *
+     * Because the child that could not write its terminal is DEAD: the
+     * watchdog kills it with a signal that gives the JVM no chance to write
+     * anything, and a run whose writer is gone can never write its own
+     * bookend. Such a run stays open for ever, and a client that waits for
+     * its terminal waits for ever.
+     *
+     * ## Why the run that somebody asked to close is NOT closed here
+     *
+     * Because the cancel lane writes the terminal of the run it cancels,
+     * through the control port and under the lease of the run. A supervisor
+     * that wrote a second terminal for the same run would give the run two
+     * truths about its own end, and the reader would take the last one it
+     * sees. The flag is raised BEFORE the child is stopped, so the thread
+     * that watches the child always sees it before it can close the run.
+     *
+     * ## Why a failure to close is not the service's failure
+     *
+     * Because the run is the one that is broken, not the service: a store
+     * that refuses the write leaves the run open, and the operator sees that
+     * in the store itself. The service keeps serving the other runs.
+     */
+    private fun closeRunWithoutTerminal(supervision: Supervision, end: SupervisedRunEnd?) {
+        val runId = supervision.runId() ?: return
+        if (end == null || supervision.isClosedByRequest()) return
+        try {
+            closer.closeWithoutTerminal(runId, end)
+        } catch (_: Exception) {
+            // The run stays open, and the store says so. The service keeps
+            // serving: a run that cannot be closed is not a reason to stop.
         }
     }
 
@@ -1398,6 +1470,11 @@ internal class ServiceRunSupervisor(
      */
     override fun end(runId: String): Boolean {
         val supervision = supervised[runId] ?: return false
+        // The run is being closed by the caller of this door, and that caller
+        // writes the terminal of the run: the flag is raised BEFORE the child
+        // is stopped, so the thread that watches the child does not write a
+        // second terminal for a run that is being closed elsewhere.
+        supervision.markClosedByRequest()
         // The child is ended through the PORT, which kills the tree it can
         // see: a run nobody waits for any more must not keep running.
         supervision.job.cancel()
@@ -1688,6 +1765,9 @@ private class Supervision(
     /** The id the child minted, when it has minted one. */
     private var runId: String? = null
 
+    /** Whether somebody asked for this run to be closed. */
+    private var closedByRequest = false
+
     /**
      * Records the id the child minted, and indexes the supervision by it.
      *
@@ -1711,6 +1791,29 @@ private class Supervision(
             ended = true
             runId?.let { index.remove(it, this) }
         }
+    }
+
+    /**
+     * The id the child minted, when it has minted one.
+     *
+     * It is the id the CLIENT knows, and not the id of the supervision: the
+     * run's own facts are under the id the child minted.
+     */
+    fun runId(): String? = synchronized(lock) { runId }
+
+    /** Whether somebody asked for this run to be closed. */
+    fun isClosedByRequest(): Boolean = synchronized(lock) { closedByRequest }
+
+    /**
+     * Says that somebody asked for this run to be closed.
+     *
+     * The flag is raised BEFORE the child is stopped, because the thread that
+     * watches the child reads it AFTER the child is over: a flag raised
+     * afterwards would arrive too late to keep the supervisor from writing a
+     * second terminal for a run the cancel lane is closing.
+     */
+    fun markClosedByRequest() {
+        synchronized(lock) { closedByRequest = true }
     }
 }
 

@@ -49,6 +49,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BODY_CONTINUATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.BODY_SLOT_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.RUN_PARAMETERS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
@@ -195,6 +196,7 @@ class RuntimeCapabilityAccess internal constructor(
         egressPermission(context, builder)
         bindContributedCapabilities(builder)
         bindProcessAndStageCapabilities(context, builder)
+        bindRunParameters(context, builder)
         bindDurableChannelCapabilities(context, builder)
         bindWorkspaceObservationCapabilities(context, builder)
         bindWorkspaceDestructionCapabilities(context, builder)
@@ -307,6 +309,26 @@ class RuntimeCapabilityAccess internal constructor(
                 branchLineage = context.opId.parallelLineage,
             ),
         )
+    }
+
+    /**
+     * What the run was GIVEN as PARAMETERS: the effective values of the parameters its
+     * pipeline declares.
+     *
+     * It is exposed ONLY when the context carries them — a canonical run always does, empty
+     * when the run declares no parameter — so the capability stays unexposed for a context
+     * composed without them and a Step that declares it is refused at admission instead of
+     * reaching a handler with nothing to read.
+     *
+     * The carrier is the run's own, immutable and copied: a handler that reads it sees the
+     * values the run was started with, and cannot change what the next handler reads.
+     */
+    private fun bindRunParameters(
+        context: RuntimeContext,
+        builder: MutableMap<StepCapability, CapabilitySlot>,
+    ) {
+        val parameters = context.runParameters ?: return
+        builder[RUN_PARAMETERS_CAPABILITY] = CapabilitySlot.of(parameters)
     }
 
     /**

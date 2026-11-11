@@ -154,7 +154,24 @@ plugins {
 // number that cannot be read.
 pitest {
     junit5PluginVersion = "1.2.1"
-    targetClasses = listOf("dev.rubentxu.pipeline.v2.domain.durable.*")
+    // The carrier of the parameters of a run is the second seam of this module,
+    // and it is named for the same reason the first one is: it HOLDS a rule —
+    // the values of a run are copied on the way in, they answer for the name
+    // they belong to and for no other, and their printed shape does not carry
+    // them — and a lane that mutated one of those rules would leave the others
+    // unmeasured.
+    //
+    // ONE mutant of this seam SURVIVES and is recorded here instead of being
+    // killed: the `hashCode` of the carrier, changed into a constant. The
+    // equality contract of a value says that equal carriers hash alike, and a
+    // constant hash code honours it; what it costs is the speed of a map that
+    // HOLDS these carriers, and nothing in the tree holds them in a map. A row
+    // that pinned the distribution of the hash code would be pinning an
+    // implementation and not a contract.
+    targetClasses = listOf(
+        "dev.rubentxu.pipeline.v2.domain.durable.*",
+        "dev.rubentxu.pipeline.v2.domain.step.RunParameterValues*",
+    )
     // Follow-up: kotlinx-generated $$serializer classes are compiler
     // output, not hand-written logic - mutating their default-value branches
     // only inflates the NO_COVERAGE denominator (they were 200+ of the 322).
@@ -163,6 +180,7 @@ pitest {
     )
     targetTests = listOf(
         "dev.rubentxu.pipeline.v2.domain.durable.*Test",
+        "dev.rubentxu.pipeline.v2.domain.step.RunParameterValuesTest",
     )
     threads = System.getenv("PIT_THREADS")?.toInt() ?: 4
     timeoutConstInMillis = 10000

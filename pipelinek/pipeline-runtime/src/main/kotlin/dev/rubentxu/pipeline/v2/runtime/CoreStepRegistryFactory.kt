@@ -51,6 +51,11 @@ object CoreStepRegistryFactory {
         // at the composition root).
         CoreArtifactQueryStep.registerInto(this)
         CoreEmitEventStep.registerInto(this)
+        // `core.param`: reads the EFFECTIVE value of a parameter the run's pipeline
+        // declares, through the RUN_PARAMETERS_CAPABILITY the bridge populates from
+        // the run's own policy. The value is the step's runtime value and nothing
+        // else: it does not become a variable of the step's process.
+        CoreParamStep.registerInto(this)
         // `core.isUnix`: exposes TYPED_RUNTIME_OUTPUT and classifies with PATH_B
         // verbatim.
         CoreIsUnixStep.registerInto(this)

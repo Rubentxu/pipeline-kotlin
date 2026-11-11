@@ -13,6 +13,8 @@ import dev.rubentxu.pipeline.v2.domain.step.DenyAll
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.CapabilityRefusedException
 import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressGate
+import dev.rubentxu.pipeline.v2.domain.step.RUN_PARAMETERS_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.RunParameterValues
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.NullEventSink
@@ -27,6 +29,7 @@ import java.time.Instant
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
@@ -75,6 +78,9 @@ import kotlin.reflect.KClass
  * a capability of another shape is refused with the named incompatibility
  * a seam the context carries is delivered as the very instance it carries
  * a seam the context does not carry is refused, never invented
+ * the parameters of the run are delivered as the very instance the context carries
+ * a context that carries no parameters exposes no parameters capability
+ * a run that declares no parameter carries an empty carrier and not an absence
  * ```
  *
  * The focal mutation removes ONE capability from the provision. It turns the first row red and
@@ -89,6 +95,16 @@ import kotlin.reflect.KClass
  * INVENTS a seam when the context carries none: the fifth row goes red, and the fourth row goes
  * red with it — that row then receives a seam the context never carried — and the KDoc says so
  * rather than pretending the two failures are independent.
+ *
+ * The last three rows are the run's PARAMETERS, and they are the same decision seen from the
+ * other side: a carrier that is exposed is the carrier the context carries, and a context that
+ * carries none exposes nothing. The mutation that reddens the sixth row DROPS the binding of the
+ * parameters: the sixth row goes red and the seventh stays green, because the seventh row reads a
+ * context that carries none. The mutation that reddens the seventh row INVENTS a carrier when
+ * the context carries none: the seventh row goes red, and the sixth row goes red with it. The
+ * eighth row is the one that tells the two apart: a run that declares no parameter carries an
+ * EMPTY carrier and still exposes the capability, so a step learns that from the value it reads
+ * and not from a missing capability.
  *
  * ## What this instrument cannot see
  *
@@ -202,6 +218,64 @@ class RuntimeCapabilityAccessTest {
         )
     }
 
+    @Test
+    @DisplayName("the parameters of the run are delivered as the very instance the context carries")
+    fun theParametersOfTheRunAreDeliveredAsTheVeryInstanceTheContextCarries() {
+        val parameters = RunParameterValues.of(mapOf("target" to "prod"))
+
+        val delivered = access(context(runParameters = parameters))
+            .get(RUN_PARAMETERS_CAPABILITY, RunParameterValues::class)
+
+        assertSame(
+            parameters,
+            delivered,
+            "the carrier handed over must be the very instance the runtime context carries",
+        )
+        assertEquals(
+            "prod",
+            delivered.valueOf("target"),
+            "the carrier that reaches the handler is the one the run was started with",
+        )
+    }
+
+    @Test
+    @DisplayName("a context that carries no parameters exposes no parameters capability")
+    fun aContextThatCarriesNoParametersExposesNoParametersCapability() {
+        val provided = access(context())
+
+        assertFalse(
+            provided.available().contains(RUN_PARAMETERS_CAPABILITY),
+            "a context composed without the run's parameters still exposes the capability, so a " +
+                "step that reads a parameter is admitted into a run that carries none",
+        )
+        val refusal = refusalFor(
+            key = RUN_PARAMETERS_CAPABILITY,
+            type = RunParameterValues::class,
+        )
+        assertInstanceOf(
+            CapabilityRefusal.Absent::class.java,
+            refusal,
+            "a context that carries no parameters exposes no parameters: the bridge hands over " +
+                "what it has",
+        )
+    }
+
+    @Test
+    @DisplayName("a run that declares no parameter carries an empty carrier and not an absence")
+    fun aRunThatDeclaresNoParameterCarriesAnEmptyCarrierAndNotAnAbsence() {
+        val provided = access(context(runParameters = RunParameterValues.EMPTY))
+
+        assertTrue(
+            provided.available().contains(RUN_PARAMETERS_CAPABILITY),
+            "a run that declares no parameter still has a carrier, and the step learns that from " +
+                "the value it reads and not from a missing capability",
+        )
+        assertNull(
+            provided.get(RUN_PARAMETERS_CAPABILITY, RunParameterValues::class).valueOf("target"),
+            "the empty carrier answers no value at all",
+        )
+    }
+
     // --- the fixtures ------------------------------------------------------
     /**
      * The refusal the access raises, read back off the exception that carries it.
@@ -241,6 +315,7 @@ class RuntimeCapabilityAccessTest {
     private fun context(
         stepObservability: StepObservability? = null,
         pluginEgress: NetworkEgressGate = DenyAll,
+        runParameters: RunParameterValues? = null,
     ): RuntimeContext =
         RuntimeContext(
             opId = OpId(RUN_ID, 0, 0),
@@ -260,6 +335,7 @@ class RuntimeCapabilityAccessTest {
             clock = FixedClock,
             idGenerator = SequentialIdGenerator(),
             stepObservability = stepObservability,
+            runParameters = runParameters,
         )
 
     /**

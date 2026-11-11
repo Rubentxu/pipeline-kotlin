@@ -459,6 +459,41 @@ open class StageScopeTopSteps(
         )
     }
 
+    /**
+     * Reads the EFFECTIVE value of a parameter the pipeline declares.
+     *
+     * The value is the one the run was started with: the one a caller delivered, or the
+     * default the declaration itself carries when nobody delivered anything. A name the
+     * pipeline does not declare is not a value anybody can read — the step fails by name
+     * instead of answering one.
+     *
+     * This builder lowers to the registry Step `core.param`, which reads the run's
+     * parameters through the run's own capability. The value is that step's runtime value
+     * and NOTHING ELSE: it does not become a variable of the step's process and it does not
+     * reach the shell. A pipeline that wants the value in a command asks for it there.
+     *
+     * The call returns nothing on purpose. A value returned here would be a text the author
+     * could put in a command, and no text is knowable while the pipeline is being built —
+     * the effective value depends on what the run is given, which is not known until the run
+     * starts. Returning a placeholder would be a trap: the value that matters is the one the
+     * step reads, and only the step reads it.
+     *
+     * @param name the name of the declared parameter the step reads
+     */
+    fun param(name: String) {
+        require(name.isNotBlank()) {
+            "a parameter read needs the name of the parameter it reads"
+        }
+        val encoded = "{\"kind\":\"param\",\"name\":\"${escapeJsonString(name)}\"}"
+        steps.add(
+            StepSpec.RegistryStepSpec(
+                stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.param"),
+                schemaVersion = "dsl-v1",
+                encodedInput = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(encoded),
+            ),
+        )
+    }
+
     fun dir(path: String, block: StageScope.() -> Unit) {
         val inner = nestedScope()
         inner.block()

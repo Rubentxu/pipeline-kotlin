@@ -23,6 +23,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Files
 import java.nio.file.Path
@@ -39,6 +41,12 @@ import java.util.concurrent.TimeUnit
  * body of the pipeline runs. The unit lane proves that the validator refuses what it must
  * refuse; this lane proves that the values TRAVEL, and that the refusal the client reads
  * names the rule that broke.
+ *
+ * And that a STEP reads the effective value: the one the client delivered, or the one the
+ * declaration carries when nobody delivered anything. The value is read back from the
+ * JOURNAL, because that is where the run persisted what the step answered, and the run
+ * printed nothing about it — a printed value would publish the caller's own text to whoever
+ * reads the log.
  *
  * ## Why this instrument is an INTEGRATION test
  *
@@ -108,6 +116,24 @@ class RunParametersIntegrationTest {
                 "    stages {\n" +
                 "        stage(\"eager\") {\n" +
                 "            sh(\"printenv BUILD_TARGET || echo the-value-is-absent\")\n" +
+                "        }\n" +
+                "    }\n" +
+                "}\n",
+        )
+        // A third script, whose step READS a parameter of the run and whose shell asks the
+        // ENVIRONMENT for the same value. The two answers have to differ: the step reads
+        // the value the run was started with, and the shell finds nothing, because the
+        // value travels through its own seam and through no other.
+        Files.writeString(
+            scripts.resolve("read-parameter.pipeline.kts"),
+            "pipeline {\n" +
+                "    parameters {\n" +
+                "        string(\"target\", default = \"staging\")\n" +
+                "    }\n" +
+                "    stages {\n" +
+                "        stage(\"eager\") {\n" +
+                "            param(\"target\")\n" +
+                "            sh(\"printenv TARGET_ENV || echo the-value-is-absent\")\n" +
                 "        }\n" +
                 "    }\n" +
                 "}\n",
@@ -278,6 +304,128 @@ class RunParametersIntegrationTest {
             )
         } finally {
             service.stop()
+        }
+    }
+
+    @Test
+    fun `a step reads the value the client delivered`() {
+        val service = start()
+        try {
+            val answer = client(STARTER_TOKEN).startRun(
+                script = "read-parameter.pipeline.kts",
+                idempotencyKey = "key-read-delivered",
+                parameters = mapOf("target" to "prod"),
+                parameterContract = READ_CONTRACT,
+            )
+
+            val started = assertInstanceOf(ServiceRunStart::class.java, assertInstanceOf(
+                ServiceAnswer.Answered::class.java,
+                answer,
+            ).value)
+            assertInstanceOf(
+                TerminalObservation.Succeeded::class.java,
+                awaitTerminal(started.runId),
+                "the run read a parameter the client delivered and carried on",
+            )
+
+            assertEquals(
+                "prod",
+                parameterReadBy(started.runId),
+                "the step read the value the client delivered",
+            )
+        } finally {
+            service.stop()
+        }
+    }
+
+    @Test
+    fun `a step reads the default of the declaration when nobody delivered a value`() {
+        val service = start()
+        try {
+            val answer = client(STARTER_TOKEN).startRun(
+                script = "read-parameter.pipeline.kts",
+                idempotencyKey = "key-read-default",
+            )
+
+            val started = assertInstanceOf(ServiceRunStart::class.java, assertInstanceOf(
+                ServiceAnswer.Answered::class.java,
+                answer,
+            ).value)
+            assertInstanceOf(
+                TerminalObservation.Succeeded::class.java,
+                awaitTerminal(started.runId),
+                "a parameter that declares a default does not need a delivered value",
+            )
+
+            assertEquals(
+                "staging",
+                parameterReadBy(started.runId),
+                "the step read the default the declaration carries, and not a value it invented",
+            )
+        } finally {
+            service.stop()
+        }
+    }
+
+    @Test
+    fun `the value a step read does not become the environment of the steps`() {
+        val service = start()
+        try {
+            val answer = client(STARTER_TOKEN).startRun(
+                script = "read-parameter.pipeline.kts",
+                idempotencyKey = "key-read-not-exported",
+                parameters = mapOf("target" to "prod"),
+                parameterContract = READ_CONTRACT,
+            )
+
+            val started = assertInstanceOf(ServiceRunStart::class.java, assertInstanceOf(
+                ServiceAnswer.Answered::class.java,
+                answer,
+            ).value)
+            awaitTerminal(started.runId)
+
+            val output = outputOf(started.runId)
+            assertTrue(
+                output.contains("the-value-is-absent"),
+                "the shell asked the environment for the value and found none: $output",
+            )
+            assertFalse(
+                output.contains("prod"),
+                "the value of a parameter reached the environment of the step: $output",
+            )
+            assertEquals(
+                "prod",
+                parameterReadBy(started.runId),
+                "and the step that read it on purpose did read it: the value has its own seam",
+            )
+        } finally {
+            service.stop()
+        }
+    }
+
+    /**
+     * The value the step of [runId] read, read back from the journal of the run.
+     *
+     * The journal is where the value is observable: the step's own output is what the run
+     * persisted, and the run printed nothing about it — a printed value would publish the
+     * caller's own text to whoever reads the log.
+     */
+    private fun parameterReadBy(runId: String): String? {
+        val admission = admitEventStore(db.toString(), EventStorePurpose.Read)
+        val store = (admission as EventStoreAdmission.Admitted).store
+        try {
+            val rows = DurableStores.open(store, control, clock).journal.listForRun(runId)
+                .filter { it.input.stepId == "core.param" }
+            assertEquals(
+                1,
+                rows.size,
+                "the run read the parameter exactly once: ${rows.map { it.input.stepId }}",
+            )
+            val encoded = rows.single().output?.result?.jsonPrimitive?.content
+                ?: throw AssertionError("the read of the parameter produced no output")
+            return Json.parseToJsonElement(encoded).jsonObject["value"]?.jsonPrimitive?.content
+        } finally {
+            store.close()
         }
     }
 
@@ -459,6 +607,16 @@ class RunParametersIntegrationTest {
         private val CONTRACT: List<ParameterSpec> = listOf(
             ParameterSpec(name = "target", type = "string", defaultValue = "staging"),
             ParameterSpec(name = "dryRun", type = "boolean"),
+        )
+
+        /**
+         * The declaration the client carries for the script that READS a parameter.
+         *
+         * It is the declaration of the script, and it is DATA: the child checks the values
+         * against the declaration of the SCRIPT, which is the truth.
+         */
+        private val READ_CONTRACT: List<ParameterSpec> = listOf(
+            ParameterSpec(name = "target", type = "string", defaultValue = "staging"),
         )
     }
 }

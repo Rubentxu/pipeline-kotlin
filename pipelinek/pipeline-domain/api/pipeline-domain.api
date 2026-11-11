@@ -8699,6 +8699,27 @@ public final class dev/rubentxu/pipeline/v2/domain/step/RetryPolicy$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/RunParameterValues {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/step/RunParameterValues$Companion;
+	public synthetic fun <init> (Ljava/util/Map;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSize ()I
+	public final fun getValues ()Ljava/util/Map;
+	public fun hashCode ()I
+	public final fun isEmpty ()Z
+	public fun toString ()Ljava/lang/String;
+	public final fun valueOf (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/RunParameterValues$Companion {
+	public final fun getEMPTY ()Ldev/rubentxu/pipeline/v2/domain/step/RunParameterValues;
+	public final fun of (Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/domain/step/RunParameterValues;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/RunParameterValuesKt {
+	public static final fun getRUN_PARAMETERS_CAPABILITY ()Ljava/lang/String;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/domain/step/RuntimeCapabilityContributor {
 	public abstract fun capabilities ()Ljava/util/Map;
 }

@@ -798,7 +798,14 @@ private fun readRunPolicy(
             ),
         )
     val registry = when (
-        val read = ServiceStartRegistry.read(directory.resolve(ServiceStartRegistry.FILE_NAME))
+        val read = ServiceStartRegistry.read(
+            directory.resolve(ServiceStartRegistry.FILE_NAME),
+            // The degradation of the promise a key makes is said to the
+            // OPERATOR, in the channel the operator already reads: the log
+            // of the service. A record that degraded in silence would leave a
+            // broken promise with nobody looking after it.
+            ServiceStartDiagnostics { degradation -> err.println(degradation.describe()) },
+        )
     ) {
         is ServiceStartRegistryReading.Read -> read.registry
         is ServiceStartRegistryReading.Refused -> return RunPolicyReading.Refused(

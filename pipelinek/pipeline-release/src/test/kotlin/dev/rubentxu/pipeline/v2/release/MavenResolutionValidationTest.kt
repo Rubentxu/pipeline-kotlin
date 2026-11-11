@@ -157,4 +157,38 @@ class MavenResolutionValidationTest {
             "got $codes",
         )
     }
+
+    @Test
+    fun `a coordinate that carries no version at all says so`() {
+        val bare = jar.copy(path = "pipelinek-domain-0.96.0.jar")
+        val violations = violationsOf(
+            manifest = manifest(artifacts = listOf(bare)),
+            resolved = resolved(artifacts = listOf(bare)),
+        )
+        val disagrees = violations.first {
+            it.code == MavenResolutionViolationCode.VERSION_DISAGREES
+        }
+        assertTrue(
+            disagrees.detail.contains("no version at all"),
+            "the refusal must say that the coordinate carries none: ${disagrees.detail}",
+        )
+    }
+
+    @Test
+    fun `a coordinate that carries another version names it`() {
+        val older = jar.copy(
+            path = "dev/rubentxu/pipelinek/pipelinek-domain/0.95.0/pipelinek-domain-0.95.0.jar",
+        )
+        val violations = violationsOf(
+            manifest = manifest(artifacts = listOf(older)),
+            resolved = resolved(artifacts = listOf(older)),
+        )
+        val disagrees = violations.first {
+            it.code == MavenResolutionViolationCode.VERSION_DISAGREES
+        }
+        assertTrue(
+            disagrees.detail.contains("version 0.95.0"),
+            "the refusal must name the version the coordinate carries: ${disagrees.detail}",
+        )
+    }
 }

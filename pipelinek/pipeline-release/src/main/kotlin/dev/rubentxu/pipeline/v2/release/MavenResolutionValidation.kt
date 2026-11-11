@@ -145,14 +145,16 @@ fun evaluateMavenResolution(
         versionOf(it.path) != manifest.productVersion.value
     }
     if (mismatched.isNotEmpty()) {
+        val first = mismatched.first()
+        val carried = versionOf(first.path)
         violations += MavenResolutionViolation(
             MavenResolutionViolationCode.VERSION_DISAGREES,
             "the manifest declares version ${manifest.productVersion.value} and " +
                 "${mismatched.size} of its ${manifest.artifacts.size} coordinate(s) carry " +
-                "another version, starting with ${quoteForReport(mismatched.first().path)}. " +
-                "The check would " +
-                "measure the version of the coordinates and report the version of the " +
-                "document, and those are not the same version.",
+                "another version, starting with ${quoteForReport(first.path)}, which carries " +
+                (if (carried == null) "no version at all" else "version $carried") +
+                ". The check would measure the version of the coordinates and report the " +
+                "version of the document, and those are not the same version.",
         )
     }
 
@@ -208,12 +210,10 @@ fun evaluateMavenResolution(
  * before the file name. A path that does not carry one carries no version,
  * and that is a fact the verdict has to be able to say.
  */
-private fun versionOf(path: String): String? {
-    val directory = path.substringBeforeLast('/', missingDelimiterValue = "")
-    if (directory.isEmpty()) return null
-    return directory.substringAfterLast('/', missingDelimiterValue = "")
+private fun versionOf(path: String): String? =
+    path.substringBeforeLast('/', missingDelimiterValue = "")
+        .substringAfterLast('/', missingDelimiterValue = "")
         .takeIf { it.isNotEmpty() }
-}
 
 /**
  * Operator-facing diagnostic for a resolution verdict.

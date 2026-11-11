@@ -7,6 +7,32 @@ plugins {
     // runtime version. The catalog alias `libs.plugins.kotlin.serialization`
     // binds to the runtime version and does not resolve as a Gradle plugin id.
     kotlin("plugin.serialization")
+    // Selective mutation (ReplayPolicy core). Run explicitly::pipeline-release:pitest
+    id("info.solidsoft.pitest")
+}
+
+// The seam of the mutation lane of this module.
+//
+// It covers the DECISION of the consumer-side check of the Maven channel: the
+// pure model that says what the repository served against what the manifest
+// declares. That model is the part whose rules can be wrong without anything
+// crashing, so it is the part where a surviving mutant is a hole in a test.
+//
+// The adapter over HTTP is NOT in this seam: its rules (the credential that
+// only travels to the repository that asks for it, the redirect that is not
+// followed, the address that has to be TLS) are effects, and they are
+// measured by the integration lane, which talks to a real server over a real
+// socket.
+pitest {
+    junit5PluginVersion = "1.2.1"
+    targetClasses = listOf("dev.rubentxu.pipeline.v2.release.MavenResolutionValidation*")
+    targetTests = listOf(
+        "dev.rubentxu.pipeline.v2.release.MavenResolutionValidationTest",
+    )
+    threads = System.getenv("PIT_THREADS")?.toInt() ?: 4
+    timeoutConstInMillis = 10000
+    outputFormats = listOf("XML", "HTML")
+    mutators = listOf("DEFAULTS")
 }
 
 group = "dev.rubentxu.pipeline.v2"

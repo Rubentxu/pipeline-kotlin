@@ -521,6 +521,26 @@ class RetryReconcilerTest {
     }
 
     @Test
+    @DisplayName("a running attempt with a successor row is not skipped")
+    fun aRunningAttemptWithASuccessorRowIsNotSkipped() {
+        // Only a TERMINAL attempt is "advanced past": the skip rule reads the
+        // status of the attempt, not just the presence of a later row. A
+        // non-terminal attempt keeps its own answer (here: no child evidence,
+        // so it is scheduled) even when a successor row exists.
+        assertEquals(
+            ScheduleAttempt(1),
+            reconcile(
+                input(
+                    controlRows = listOf(
+                        control(1, OperationStatus.RUNNING),
+                        control(2, OperationStatus.FAILED),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
     @DisplayName("a history whose last attempt failed answers with the last attempt")
     fun aHistoryWhoseLastAttemptFailedAnswersWithTheLastAttempt() {
         // The exhaustion is decided by the LAST terminal ordinal, not by the

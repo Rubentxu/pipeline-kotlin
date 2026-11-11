@@ -67,8 +67,19 @@ fi
 if [[ ! -f "$MANIFEST" ]]; then
     printf 'verify-published-maven: the manifest %s does not exist\n' "$MANIFEST" >&2
     printf '           a manifest that names nothing says nothing about what the\n' >&2
-    printf '           repository must serve\n' >&2
-    exit 1
+    printf '           repository must serve, so nothing was measured\n' >&2
+    exit 2
+fi
+
+# A repository address that carries a credential in it would carry it into
+# the argument list of this script, of the build it starts and of the report
+# it writes. The credential of this check travels in the environment, so the
+# address is checked BEFORE it reaches any command line.
+if [[ "$REPOSITORY" =~ ^([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@]*@ ]]; then
+    printf 'verify-published-maven: the repository address carries a credential in it.\n' >&2
+    printf '           the credential of this check travels in the environment:\n' >&2
+    printf '           PIPELINEK_REPOSITORY_USER and PIPELINEK_REPOSITORY_TOKEN.\n' >&2
+    exit 2
 fi
 
 # Every path handed to the build is absolute. The build resolves a relative
@@ -95,6 +106,13 @@ fi
 LOG_FILE="$(mktemp "${TMPDIR:-/tmp}/verify-published-maven.XXXXXX")"
 EXIT_FILE="$(mktemp "${TMPDIR:-/tmp}/verify-published-maven-exit.XXXXXX")"
 
+# A verdict left behind by an earlier run is not this run's verdict. It is
+# removed BEFORE the check starts, so a run that never reaches the
+# interpreter leaves no verdict behind for a reader to mistake for one.
+if [[ -n "$OUT_FILE" ]]; then
+    rm -f -- "$OUT_FILE"
+fi
+
 set +e
 "${repo_root}/pipelinek/gradlew" --no-daemon --quiet -p "${repo_root}/pipelinek" \
     :pipeline-release:mavenResolution \
@@ -116,10 +134,11 @@ fi
 # The exit code of the check is the decision, and the BUILD does not carry it:
 # Gradle turns every non-zero exit into the same build failure, and the two
 # refusals are not the same fact. The code is read from the file the task
-# wrote. A file that is missing or unreadable leaves the code at 1, which is
-# the refusal of a channel that does not carry the bytes: a check that could
-# not conclude is not a pass.
-CODE=1
+# wrote. A file that is missing or unreadable leaves the code at 2, which is
+# the refusal of a check that could not conclude: the two facts have
+# different fixes, and a build that died before the interpreter ran has not
+# said anything about the repository.
+CODE=2
 if [[ -f "$EXIT_FILE" ]]; then
     READ="$(tr -d '[:space:]' < "$EXIT_FILE")"
     if [[ "$READ" =~ ^[0-9]+$ ]]; then

@@ -365,10 +365,36 @@ that the version is absent.
 What it does NOT measure: the detached signatures, which travel with the
 artifacts and are verified when the bundle is staged
 (`scripts/check-sdk-bundle.py`), and the files the registry generates beside the
-artifacts, which are its own checksums and its own metadata. A repository that
-asks for a credential takes it from the environment
+artifacts, which are its own checksums and its own metadata. It does not read
+`maven-metadata.xml` either: the verdict says that the files of the version are
+served with their digests, not that a resolver of any shape finds them. The
+authenticity of the manifest itself is the caller's assumption: the instrument
+reads the document it is given and measures the repository against it, so the
+manifest that reaches it must come from the publication that produced it.
+
+A repository that asks for a credential takes it from the environment
 (`PIPELINEK_REPOSITORY_USER` and `PIPELINEK_REPOSITORY_TOKEN`), never from an
-argument and never from a file of this repository.
+argument and never from a file of this repository, and it takes it only after
+the repository has asked for one: a registry that never demands a credential
+never sees it. The credential lives in the environment of the build that runs
+the check, and in the environment of the processes that build starts, which is
+the price of not writing it to a file. The repository is reached over TLS,
+and the only address the instrument accepts without it is the loopback, where
+there is no wire to read.
+
+The exit code is the decision, and the three codes are three different facts:
+`0` the repository serves what the manifest declares, `1` it does not, `2` the
+state could not be measured. The code that the door reads is the one the
+model wrote, not the exit code of the process that ran it, because a JVM that
+cannot start its own main class also exits with `1` and that `1` is not a
+statement about the repository. A check that could not conclude is a check
+that has to be run again, and it is not a channel that is broken.
+
+This door asks a third party, so its answer depends on that third party: a
+registry that is down, that rate-limits or whose token has expired reaches
+the operator as a `2`, and not as a `1`. It belongs beside the publication,
+never inside it: the decision to publish is taken from local documents, and
+this one only says what a consumer would find afterwards.
 
 **Version 0.94.2 is published in Maven Central**, under the coordinates that
 release was published with. Its six artifacts carry the same bytes the signed

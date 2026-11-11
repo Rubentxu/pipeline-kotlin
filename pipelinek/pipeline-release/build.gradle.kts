@@ -1108,13 +1108,21 @@ tasks.register<JavaExec>("mavenResolution") {
     val manifest = providers.gradleProperty("maven.manifest").orElse("").get()
     val repository = providers.gradleProperty("maven.repository").orElse("").get()
     val verdict = providers.gradleProperty("maven.verdict").orElse("").get()
-    val exitFile = providers.gradleProperty("maven.exitFile").orElse("").get()
+    // The exit code is where the caller reads the decision, and the caller
+    // may name where it is. When it names nothing, the task writes it where
+    // its own build writes, so the task can be run by hand.
+    val exitFile = providers.gradleProperty("maven.exitFile")
+        .orElse(layout.buildDirectory.file("maven-resolution/exit-code").get().asFile.absolutePath)
+        .get()
 
     listOf(manifest).filter { it.isNotBlank() }.forEach { path ->
         inputs.file(project.file(path))
     }
     inputs.property("maven.manifest", manifest)
-    inputs.property("maven.repository", repository)
+    // The repository is NOT declared as an input. An input is written into
+    // the build's own state, and an address is the one string of this task
+    // that could carry a credential; the task never considers itself up to
+    // date, so the input would buy nothing anyway.
     inputs.property("maven.verdict", verdict)
     inputs.property("maven.exitFile", exitFile)
 
@@ -1129,7 +1137,6 @@ tasks.register<JavaExec>("mavenResolution") {
         val missing = listOf(
             "maven.manifest" to manifest,
             "maven.repository" to repository,
-            "maven.exitFile" to exitFile,
         ).filter { (_, value) -> value.isBlank() }.map { (name, _) -> name }
         if (missing.isNotEmpty()) {
             throw GradleException(
@@ -1138,24 +1145,43 @@ tasks.register<JavaExec>("mavenResolution") {
                     "judged without them.",
             )
         }
+        // A verdict left behind by an earlier run is not this run's verdict.
+        // It is removed BEFORE the interpreter starts, so a run that never
+        // reaches it leaves no verdict behind for a reader to mistake for
+        // one. The same is true of the decision file.
+        if (verdict.isNotBlank()) {
+            project.file(verdict).delete()
+        }
+        project.file(exitFile).delete()
     }
 
-    args = listOf(manifest, repository, verdict)
+    args = listOf(manifest, repository, verdict, exitFile)
 
-    // The exit code of the interpreter is the decision, and the BUILD does not
+    // The DECISION of the interpreter is the decision, and the BUILD does not
     // carry it: Gradle turns every non-zero exit into the same build failure,
-    // and the two refusals of this check are not the same fact. The code is
-    // written where the caller can read it, and the build failure is raised
-    // afterwards.
+    // and the two refusals of this check are not the same fact. The decision
+    // is written where the caller can read it, and the build failure is
+    // raised afterwards.
     isIgnoreExitValue = true
     doLast {
-        val code = executionResult.get().exitValue
-        val file = project.file(exitFile)
-        file.parentFile?.mkdirs()
-        file.writeText("$code\n")
-        if (code != 0) {
+        // What the interpreter WROTE is the decision. The exit code of the
+        // process is not: a JVM that cannot start its own main class also
+        // exits with 1, and that 1 is not a decision about the repository.
+        val decided = project.file(exitFile)
+            .takeIf { it.isFile }
+            ?.readText()
+            ?.trim()
+            ?.takeIf { it.matches(Regex("[0-9]+")) }
+        if (decided == null) {
             throw GradleException(
-                "mavenResolution exited with $code: 1 means the repository does not serve the " +
+                "mavenResolution did not conclude: the interpreter wrote no decision, so the " +
+                    "state of the repository was not measured. A check that could not conclude " +
+                    "is not a check that found the channel broken.",
+            )
+        }
+        if (decided != "0") {
+            throw GradleException(
+                "mavenResolution decided $decided: 1 means the repository does not serve the " +
                     "bytes the manifest declares, and 2 means the state could not be measured.",
             )
         }

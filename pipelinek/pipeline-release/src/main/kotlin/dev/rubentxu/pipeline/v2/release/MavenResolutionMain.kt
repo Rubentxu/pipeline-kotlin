@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.v2.release
 
 import java.io.IOException
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import kotlin.system.exitProcess
 
 /**
@@ -25,12 +27,18 @@ import kotlin.system.exitProcess
  * that has to carry the build machinery's noise around it is a report nobody
  * reads to the end.
  *
+ * The DECISION is written to the argument after it, when one is given, and
+ * the decision is written by the model: the exit code of a process is the
+ * exit code of a JVM, and a JVM that cannot find its own class also exits
+ * with 1. A caller that wants to know what this check concluded must read
+ * what this check concluded, and not what the process that ran it did.
+ *
  * The credential of a repository that asks for one is read from the
  * environment and goes nowhere else: it is never an argument, never a file
  * and never part of the verdict.
  *
  * ```text
- * usage: maven-resolution <manifest.json> <repositoryUrl> [verdictFile]
+ * usage: maven-resolution <manifest.json> <repositoryUrl> [verdictFile] [decisionFile]
  * exit  0 = the repository serves what the manifest declares
  *       1 = the repository does not serve it
  *       2 = the state could not be measured, or the invocation was wrong
@@ -38,21 +46,26 @@ import kotlin.system.exitProcess
  */
 fun main(args: Array<String>) {
     if (args.size < 2) {
-        System.err.println("usage: maven-resolution <manifest.json> <repositoryUrl> [verdictFile]")
+        System.err.println(
+            "usage: maven-resolution <manifest.json> <repositoryUrl> [verdictFile] [decisionFile]",
+        )
         exitProcess(2)
     }
 
     val manifestPath = Paths.get(args[0])
     val repositoryUrl = args[1]
     val verdictFile = if (args.size > 2 && args[2].isNotBlank()) Paths.get(args[2]) else null
-
-    val reader = HttpMavenRepositoryReader(
-        baseUrl = repositoryUrl,
-        user = credentialFromEnvironment("PIPELINEK_REPOSITORY_USER"),
-        token = credentialFromEnvironment("PIPELINEK_REPOSITORY_TOKEN"),
-    )
+    val decisionFile = if (args.size > 3 && args[3].isNotBlank()) Paths.get(args[3]) else null
+    // The address is printed in the verdict, and an address can carry a
+    // credential in it. What is printed is the address without it.
+    val repositoryForDisplay = repositoryForDisplay(repositoryUrl)
 
     val outcome = try {
+        val reader = HttpMavenRepositoryReader(
+            baseUrl = repositoryUrl,
+            user = credentialFromEnvironment("PIPELINEK_REPOSITORY_USER"),
+            token = credentialFromEnvironment("PIPELINEK_REPOSITORY_TOKEN"),
+        )
         MavenResolutionAdmission.admit(manifestPath, reader)
     } catch (e: Exception) {
         // The instrument broke, so the state was not measured. That is NOT a
@@ -61,11 +74,12 @@ fun main(args: Array<String>) {
         // them.
         val verdict = buildString {
             appendLine("[release] maven resolution NOT RUN")
-            appendLine("[release]   repository: $repositoryUrl")
+            appendLine("[release]   repository: $repositoryForDisplay")
             append("the check could not conclude: ${e.message ?: e::class.java.simpleName}")
         }
         System.err.print(verdict)
         writeVerdict(verdictFile, verdict)
+        writeDecision(decisionFile, 2)
         exitProcess(2)
     }
 
@@ -73,34 +87,37 @@ fun main(args: Array<String>) {
         is MavenResolutionOutcome.Verified -> {
             val verdict = buildString {
                 appendLine("[release] maven resolution PASSED")
-                appendLine("[release]   repository: $repositoryUrl")
+                appendLine("[release]   repository: $repositoryForDisplay")
                 appendLine("[release]   verdict: ${outcome.summary.trim()}")
             }
             print(verdict)
             writeVerdict(verdictFile, verdict)
+            writeDecision(decisionFile, 0)
             exitProcess(0)
         }
 
         is MavenResolutionOutcome.Rejected -> {
             val verdict = buildString {
                 appendLine("[release] maven resolution FAILED")
-                appendLine("[release]   repository: $repositoryUrl")
+                appendLine("[release]   repository: $repositoryForDisplay")
                 appendLine(outcome.summary.trim())
                 append("The channel does not carry the certified bytes. The reason is above.")
             }
             System.err.print(verdict)
             writeVerdict(verdictFile, verdict)
+            writeDecision(decisionFile, 1)
             exitProcess(1)
         }
 
         is MavenResolutionOutcome.Refused -> {
             val verdict = buildString {
                 appendLine("[release] maven resolution NOT RUN")
-                appendLine("[release]   repository: $repositoryUrl")
+                appendLine("[release]   repository: $repositoryForDisplay")
                 append(outcome.reason)
             }
             System.err.print(verdict)
             writeVerdict(verdictFile, verdict)
+            writeDecision(decisionFile, 2)
             exitProcess(2)
         }
     }
@@ -118,22 +135,92 @@ private fun credentialFromEnvironment(name: String): String? =
     System.getenv(name)?.takeIf { it.isNotBlank() }
 
 /**
+ * The address as it may be printed: without the credential it may carry.
+ *
+ * An address that holds a user or a token is an address that would put that
+ * secret in the verdict file and in the log of whatever quotes it. The
+ * instrument refuses to use such an address, but the refusal is reported
+ * with the address in it, and this is what keeps the secret out of that
+ * report too.
+ */
+private fun repositoryForDisplay(url: String): String = try {
+    val uri = URI(url)
+    if (uri.userInfo == null) {
+        url
+    } else {
+        URI(uri.scheme, null, uri.host, uri.port, uri.path, uri.query, uri.fragment).toString()
+    }
+} catch (e: Exception) {
+    "an address this check could not print"
+}
+
+/**
  * Write the verdict to [path], when a path was given.
  *
+ * The verdict is written and MOVED into place, so a reader never sees half
+ * of it: two checks that run at once write two verdicts, and a verdict that
+ * is being written is not a verdict yet.
+ *
  * A verdict that cannot be written is not a reason to change the decision:
- * the decision is already made, and the door reads the exit code. The failure
- * is reported, because a report that says nothing is a report that will be
- * read as a pass.
+ * the decision is already made, and the door reads the decision file. The
+ * failure is reported, because a report that says nothing is a report that
+ * will be read as a pass.
  */
 private fun writeVerdict(path: Path?, verdict: String) {
     if (path == null) return
     try {
-        path.parent?.let { Files.createDirectories(it) }
-        Files.writeString(path, verdict)
+        writeAtomically(path, verdict)
     } catch (e: IOException) {
         System.err.println(
             "[release] the verdict could not be written to $path: " +
                 (e.message ?: e::class.java.simpleName),
         )
+    }
+}
+
+/**
+ * Write the DECISION of this check to [path], when a path was given.
+ *
+ * The decision is written by the model and not taken from the exit code of
+ * the process: a JVM that cannot start its own main class also exits with
+ * 1, and a caller that read 1 there would hear "the repository does not
+ * serve the bytes" where nothing was measured at all. A caller that finds no
+ * decision file knows that the check did not conclude.
+ */
+private fun writeDecision(path: Path?, code: Int) {
+    if (path == null) return
+    try {
+        writeAtomically(path, "$code\n")
+    } catch (e: IOException) {
+        System.err.println(
+            "[release] the decision could not be written to $path: " +
+                (e.message ?: e::class.java.simpleName),
+        )
+    }
+}
+
+/** Write [text] to [path] and move it into place, so nobody reads half of it. */
+private fun writeAtomically(path: Path, text: String) {
+    var temporary: Path? = null
+    try {
+        path.parent?.let { Files.createDirectories(it) }
+        val directory = path.toAbsolutePath().parent
+        temporary = Files.createTempFile(directory, ".maven-resolution-", ".tmp")
+        Files.writeString(temporary, text)
+        try {
+            Files.move(
+                temporary,
+                path,
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
+        } catch (e: java.nio.file.AtomicMoveNotSupportedException) {
+            // A file system that cannot move atomically still gets the whole
+            // text, just not in one step.
+            Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING)
+        }
+        temporary = null
+    } finally {
+        temporary?.let { runCatching { Files.deleteIfExists(it) } }
     }
 }

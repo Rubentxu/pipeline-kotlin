@@ -103,7 +103,7 @@ class CredentialsImportRefusalTest {
         // The archive is two kilobytes and the entry it carries is two
         // megabytes: the size of the file says nothing about what it costs,
         // which is why the ceiling is applied to the bytes as they are read.
-        val archive = archiveOf("bomb.bin" to ByteArray(2 * 1024 * 1024))
+        val archive = archiveOf(listOf("bomb.bin" to ByteArray(2 * 1024 * 1024)))
 
         val answer = run("add", "--kind", "zip", "--from-stdin", "archive", stdin = archive)
 
@@ -134,7 +134,7 @@ class CredentialsImportRefusalTest {
 
         val answer = run(
             "add", "--kind", "zip", "--from-stdin", "archive",
-            stdin = archiveOf(*entries.toTypedArray()),
+            stdin = archiveOf(entries),
         )
 
         assertEquals(
@@ -155,8 +155,10 @@ class CredentialsImportRefusalTest {
     @Test
     fun `an archive the command accepts comes back from the store with its bytes`() {
         val archive = archiveOf(
-            "config.json" to "one".toByteArray(),
-            "keys/id.pem" to "two".toByteArray(),
+            listOf(
+                "config.json" to "one".toByteArray(),
+                "keys/id.pem" to "two".toByteArray(),
+            ),
         )
 
         val answer = run("add", "--kind", "zip", "--from-stdin", "archive", stdin = archive)
@@ -180,7 +182,7 @@ class CredentialsImportRefusalTest {
     }
 
     /** An archive whose entries are [entries], each one stored as it is. */
-    private fun archiveOf(vararg entries: Pair<String, ByteArray>): ByteArray {
+    private fun archiveOf(entries: List<Pair<String, ByteArray>>): ByteArray {
         val buffer = ByteArrayOutputStream()
         ZipOutputStream(buffer).use { zip ->
             entries.forEach { (name, payload) ->

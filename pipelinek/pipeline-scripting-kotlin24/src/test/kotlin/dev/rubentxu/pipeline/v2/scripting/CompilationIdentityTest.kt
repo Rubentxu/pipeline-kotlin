@@ -28,7 +28,7 @@ import kotlin.script.experimental.api.CompiledScript
  * computed from, so a row can say which bytes entered the key and in what
  * order — the thing a digest alone cannot say.
  *
- * Three of the rows read the identity directly; two of them go through
+ * Five of the rows read the identity directly; two of them go through
  * [ScriptingHost.compile] and watch what the cache is asked for, because a
  * computation nobody consults is not a promise anybody keeps.
  */
@@ -110,6 +110,47 @@ class CompilationIdentityTest {
         assertTrue(
             (identity as CacheIdentity.Unavailable).reason.contains("classes"),
             "the refusal must name the entry it could not read",
+        )
+    }
+
+    @Test
+    fun `the entries of the classpath are held in the order of the classpath`() {
+        val host = host()
+        val alpha = jarAt(tempDir.resolve("alpha.jar"), "alpha")
+        val beta = jarAt(tempDir.resolve("beta.jar"), "beta")
+        val gamma = jarAt(tempDir.resolve("gamma.jar"), "gamma")
+
+        val identity = host.cacheIdentityFor(
+            SCRIPT,
+            listOf(alpha.toFile(), beta.toFile(), gamma.toFile()),
+        )
+        val manifest = (identity as CacheIdentity.Verified).manifest
+
+        val expected = listOf(alpha, beta, gamma).map { digestOf(it) }
+        assertEquals(
+            expected,
+            manifest.orderedClasspath.map { it.sha256 }.takeLast(expected.size),
+            "the classpath's entries must be in the classpath's order, whatever order they were read in",
+        )
+    }
+
+    @Test
+    fun `an entry that cannot be read is named and the others are still read`() {
+        val host = host()
+        val jar = jarAt(tempDir.resolve("readable.jar"), "readable")
+        val classes = Files.createDirectories(tempDir.resolve("classes"))
+
+        val identity = host.cacheIdentityFor(SCRIPT, listOf(jar.toFile(), classes.toFile()))
+
+        assertTrue(identity is CacheIdentity.Unavailable)
+        val reason = (identity as CacheIdentity.Unavailable).reason
+        assertTrue(
+            reason.contains("classes"),
+            "the refusal must name the entry it could not read: $reason",
+        )
+        assertTrue(
+            !reason.contains("readable.jar"),
+            "the refusal must not blame the entry it could read: $reason",
         )
     }
 

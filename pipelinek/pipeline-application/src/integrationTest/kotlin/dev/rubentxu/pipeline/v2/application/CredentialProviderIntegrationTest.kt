@@ -827,7 +827,7 @@ class CredentialProviderIntegrationTest {
 
                 else -> Unit
             }
-            Thread.sleep(500L)
+            Thread.sleep(TERMINAL_POLL_MILLIS)
         }
         error("the run $runId did not finish in time")
     }
@@ -1072,6 +1072,18 @@ class CredentialProviderIntegrationTest {
 
         /** How long the test waits for a run to finish. */
         private const val TERMINAL_DEADLINE_MILLIS: Long = 180_000L
+
+        /**
+         * How long the wait for the terminal state rests between two questions.
+         *
+         * The state of a run is a fact the service already holds: asking it
+         * again costs one round trip over the socket and nothing else, so the
+         * rest between two questions is the granularity of the WAIT and not
+         * the cost of the work. MEASURED on this tree, a rest of half a
+         * second added half a second to every row that waits for a run, and
+         * nine rows of this suite wait for one.
+         */
+        private const val TERMINAL_POLL_MILLIS: Long = 50L
 
         /** How long the test waits for a run to ask a session for a credential. */
         private const val ASKED_DEADLINE_MILLIS: Long = 60_000L

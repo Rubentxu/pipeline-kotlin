@@ -62,6 +62,13 @@
 #
 # Filters compose; --list never invokes Gradle; a filter that selects nothing is
 # an error rather than a green, for the same reason an empty census is not zero.
+#
+# A --test filter reaches BOTH test lanes, the unit one and the integration one,
+# because the affected test is as often an integration test as a unit one. A
+# module the filter does not reach is counted APART and not refused: it was
+# asked, it holds no test the filter names, and it contributed nothing. That is
+# not a green over nothing, and it is not hidden either: the run says how many
+# modules the filter selected out.
 
 set -uo pipefail
 
@@ -224,6 +231,11 @@ unit_tests_ran=0; unit_reports=0; unit_executed=0; unit_failed=0; unit_skipped=0
 unit_rewritten=0; unit_read=0
 integration_tests_ran=0; integration_reports=0; integration_executed=0
 integration_failed=0; integration_skipped=0; integration_rewritten=0; integration_read=0
+# The modules a filter SELECTED OUT: they were asked, they hold no test that
+# the filter names, and they contributed nothing. They are counted apart from
+# the modules that were refused, because "nothing to run here" and "the run
+# that should have happened did not happen" are different facts.
+unit_selected_out=0; integration_selected_out=0
 mutants_ran=0; mutants_killed=0; mutants_survived=0; mutants_no_coverage=0
 mutants_equivalent=0; mutants_timeout=0; mutants_memory=0; mutants_run=0
 mutants_rewritten=0; mutants_read=0
@@ -344,6 +356,10 @@ print_verdict() {
             "$(integration_field)" "$(mutants_field)" "$(stages_field)"
         printf 'filters in effect: module=%s test=%s stage=%s\n' \
             "${module_filter:-none}" "${test_filters[*]:-none}" "$want_stage_upto"
+        if [[ ${#test_filters[@]} -gt 0 ]]; then
+            printf 'modules the filter selected out: unit=%d integration=%d\n' \
+                "$unit_selected_out" "$integration_selected_out"
+        fi
     else
         printf 'PASS %s %s %s %s %s %s\n' \
             "$(identity_fields)" "$(reference_field)" "$(tests_field)" \
@@ -917,6 +933,33 @@ census_reports() {
         "$reports" "$total" "$failed" "$skipped" "$rewritten" "$module"
 }
 
+# --- The instrument of a FILTERED run --------------------------------------------
+#
+# A filter that matches nothing is not a defect of the tree: it is a fact
+# about the filter. Gradle's own Test task refuses that fact — "No tests
+# found for given includes" — and that refusal would turn the local cycle
+# into a red run for every module that does not hold the named test, which
+# is most of them.
+#
+# The gate writes the ONE script that says otherwise and hands it to Gradle,
+# so the module that holds no matching test contributes NOTHING instead of
+# failing the run. The guarantee that a lane which ran nothing is a failure
+# stays in the gate: the census counts what ran, and a filtered run that ran
+# nothing at all is refused with the reason.
+filter_init_script=""
+if [[ ${#test_filters[@]} -gt 0 ]]; then
+    filter_init_script="$log_dir/filter.init.gradle"
+    cat > "$filter_init_script" <<'GRADLE'
+import org.gradle.api.tasks.testing.Test
+
+gradle.allprojects { project ->
+    project.tasks.withType(Test).configureEach { test ->
+        test.filter.failOnNoMatchingTests = false
+    }
+}
+GRADLE
+fi
+
 # --- Stage 3: the permanent unit tests ------------------------------------------
 #
 # Every module runs its own :test. A module with no test source has nothing to
@@ -929,6 +972,7 @@ stage3_started_s=$(( stage3_started_ms / 1000 ))
 silent_modules=()
 undeclared_modules=()
 empty_modules=()
+selected_out_unit_modules=()
 
 if want_stage 3; then
     stage3_ran=1
@@ -955,7 +999,7 @@ if want_stage 3; then
         # would spend the delivery's time to measure what it already knows.
         # The census says which reports this run wrote and which it read.
         if [[ ${#test_filters[@]} -gt 0 ]]; then
-            gradle_args=()
+            gradle_args=("-I" "$filter_init_script")
             for t in "${unit_tasks[@]}"; do
                 gradle_args+=("$t")
                 for p in "${test_filters[@]}"; do gradle_args+=(--tests "$p"); done
@@ -973,6 +1017,17 @@ if want_stage 3; then
         for m in "${modules_with_unit_tests[@]}"; do
             module_selected "$(gradle_path_of "$m")" || continue
             census_verdict="$(census_reports "$m" unit "$m/build/test-results/test" "$stage3_started_s")" || {
+                # A filter that names no test in this module leaves NO report
+                # behind: the module was asked and it holds nothing the filter
+                # reaches. That is not a green over nothing — it is the filter
+                # naming the modules it does not cover — so in a filtered run
+                # it is counted apart and not refused. WITHOUT a filter the
+                # same two shapes ARE a green over nothing, and they are
+                # refused below.
+                if [[ ${#test_filters[@]} -gt 0 && "$census_verdict" != NO_COUNTERS* ]]; then
+                    selected_out_unit_modules+=("$m")
+                    continue
+                fi
                 case "$census_verdict" in
                     NO_COUNTERS*) undeclared_modules+=("$m") ;;
                     NOTHING_RAN*) empty_modules+=("$m") ;;
@@ -1021,6 +1076,12 @@ if want_stage 3; then
         printf '    %d reports, %d executed, %d failed, %d skipped, %d rewritten, %d read\n' \
             "$unit_reports" "$unit_executed" "$unit_failed" "$unit_skipped" \
             "$unit_rewritten" "$unit_read"
+        if [[ ${#selected_out_unit_modules[@]} -gt 0 ]]; then
+            unit_selected_out=${#selected_out_unit_modules[@]}
+            printf '    %d modules the filter selected out (they hold no test it names)\n' \
+                "$unit_selected_out"
+            printf '  %s\n' "${selected_out_unit_modules[@]}"
+        fi
     fi
 fi
 
@@ -1037,6 +1098,7 @@ stage4_started_s=$(( stage4_started_ms / 1000 ))
 silent_integration_modules=()
 undeclared_integration_modules=()
 empty_integration_modules=()
+selected_out_integration_modules=()
 
 if want_stage 4; then
     stage4_ran=1
@@ -1058,7 +1120,21 @@ if want_stage 4; then
         fi
     else
         integration_tests_ran=1
-        if ! ./pipelinek/gradlew -p pipelinek "${integration_tasks[@]}" \
+        # The integration lane answers to the SAME filter as the unit lane:
+        # the affected test is as often an integration test as a unit one, and
+        # a filter that reaches only the unit lane would send the operator
+        # back to the whole gate to find the other half of the answer.
+        if [[ ${#test_filters[@]} -gt 0 ]]; then
+            gradle_args=("-I" "$filter_init_script")
+            for t in "${integration_tasks[@]}"; do
+                gradle_args+=("$t")
+                for p in "${test_filters[@]}"; do gradle_args+=(--tests "$p"); done
+            done
+        else
+            gradle_args=("${integration_tasks[@]}")
+        fi
+
+        if ! ./pipelinek/gradlew -p pipelinek "${gradle_args[@]}" \
             > "$log_dir/stage4.log" 2>&1; then
             tail -40 "$log_dir/stage4.log" >&2
             fail "stage 4 (the tail of the stage log is above)"
@@ -1067,6 +1143,13 @@ if want_stage 4; then
         for m in "${modules_with_integration_tests[@]}"; do
             module_selected "$(gradle_path_of "$m")" || continue
             census_verdict="$(census_reports "$m" integration "$m/build/test-results/integrationTest" "$stage4_started_s")" || {
+                # The same reading as the unit lane: a filter that names no
+                # test in this module leaves no report behind, and that is the
+                # filter naming the modules it does not cover.
+                if [[ ${#test_filters[@]} -gt 0 && "$census_verdict" != NO_COUNTERS* ]]; then
+                    selected_out_integration_modules+=("$m")
+                    continue
+                fi
                 case "$census_verdict" in
                     NO_COUNTERS*) undeclared_integration_modules+=("$m") ;;
                     NOTHING_RAN*) empty_integration_modules+=("$m") ;;
@@ -1113,10 +1196,51 @@ if want_stage 4; then
         printf '    %d reports, %d executed, %d failed, %d skipped, %d rewritten, %d read\n' \
             "$integration_reports" "$integration_executed" "$integration_failed" \
             "$integration_skipped" "$integration_rewritten" "$integration_read"
+        if [[ ${#selected_out_integration_modules[@]} -gt 0 ]]; then
+            integration_selected_out=${#selected_out_integration_modules[@]}
+            printf '    %d modules the filter selected out (they hold no test it names)\n' \
+                "$integration_selected_out"
+            printf '  %s\n' "${selected_out_integration_modules[@]}"
+        fi
     fi
 fi
 
 stage4_wall_ms=$(( $(now_ms) - stage4_started_ms ))
+
+# --- The verdict of a FILTERED run ------------------------------------------------
+#
+# A filter that matches nothing is not a green: it is a run that measured
+# nothing and said PASS.
+#
+# Gradle's own refusal used to be the guard, and the guard was wrong: it fired
+# for every module that does not hold the named test, which is most of them,
+# so the filter could not be used at all. The guard that is right is the
+# AGGREGATE one: the lanes that ran must have executed SOMETHING. A run that
+# executed nothing has measured nothing, and the operator who asked for a
+# subset deserves to be told that the subset is empty instead of a PASS over
+# zero tests.
+#
+# The check lives HERE, after the two lanes and before the mutants, so an
+# empty subset is refused before the most expensive leg of the gate runs.
+#
+# It is armed only when a lane RAN. A run that asked for a stage with no test
+# lane in it (the build, say) has no lane in which the filter could have
+# selected anything, and a filter with nothing to select is not a failure of
+# the tree: the lanes that were asked are reported as NOT_RUN, which is what
+# they are.
+if [[ ${#test_filters[@]} -gt 0 && ( "$unit_tests_ran" == 1 || "$integration_tests_ran" == 1 ) ]]; then
+    filtered_executed=$(( unit_executed + integration_executed ))
+    if [[ "$filtered_executed" -eq 0 ]]; then
+        printf '    the filter matched NO test in the lanes that ran, so the run\n' >&2
+        printf '    measured nothing. A PASS over zero tests is not a PASS.\n' >&2
+        printf '    filters in effect: test=%s\n' "${test_filters[*]}" >&2
+        if [[ "$integration_tests_ran" == 1 ]]; then
+            fail "stage 4: the filter matched no test in the lanes that ran"
+        else
+            fail "stage 3: the filter matched no test in the lanes that ran"
+        fi
+    fi
+fi
 
 # --- Stage 5: the mutants ---------------------------------------------------------
 #

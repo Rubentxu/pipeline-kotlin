@@ -222,6 +222,18 @@ class MavenPublicationValidationTest {
     }
 
     @Test
+    fun `an artifact whose kind contradicts its path is refused`() {
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            MavenArtifactDigest(
+                path = "dev/rubentxu/pipeline/v2/pipeline-domain/0.93.0/pipeline-domain-0.93.0.module",
+                kind = MavenArtifactKind.JAR,
+                sha256 = "3".repeat(64),
+            )
+        }
+        assertTrue(refusal.message?.contains("MODULE") == true, refusal.message)
+    }
+
+    @Test
     fun `a bundle that was rebuilt after the manifest was written is refused`() {
         val codes = violationsOf(observed = observed(bundleSha256 = "0".repeat(64))).map { it.code }
         assertTrue(codes.contains(MavenPublicationViolationCode.BUNDLE_DISAGREES), "got $codes")

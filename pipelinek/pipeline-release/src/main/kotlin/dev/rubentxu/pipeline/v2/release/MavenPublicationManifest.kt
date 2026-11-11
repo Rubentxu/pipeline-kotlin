@@ -28,7 +28,7 @@ import kotlinx.serialization.Serializable
  *    between the two is what proves that the contracts this bundle
  *    publishes are the contracts the candidate was admitted with.
  *  - [artifacts] says WHAT is published and with which digest, one entry per
- *    POM, JAR, sources JAR and javadoc JAR.
+ *    POM, JAR, sources JAR, javadoc JAR and Gradle module metadata.
  *  - [bundleSha256] says the digest of the WHOLE bundle, so a byte that is
  *    not an artifact — a signature, a checksum — is still pinned.
  *
@@ -135,8 +135,16 @@ data class MavenPublicationRequest internal constructor(
  * be true in one place and false in the other.
  *
  * The kind is what tells a consumer's resolver what this file is: the POM
- * that declares the contract, the JAR that carries the classes, and the two
- * companions a repository is expected to hold beside them.
+ * that declares the contract, the JAR that carries the classes, the two
+ * companions a repository is expected to hold beside them, and the Gradle
+ * module metadata that a consumer of Gradle resolves in preference to the
+ * POM.
+ *
+ * The kind is NOT a free label: it is the kind its path says it is, and the
+ * type refuses an artifact that calls a file something else. The measurement
+ * of the bundle classifies by name, so a manifest whose kinds disagreed with
+ * their paths would describe bytes that nobody can compare with the
+ * measurement.
  */
 @Serializable
 data class MavenArtifactDigest(
@@ -151,6 +159,13 @@ data class MavenArtifactDigest(
         require(path.isNotBlank()) { "an artifact without a path is not an artifact: path is blank." }
         require(Sha256.isSha256Hex(sha256)) {
             "sha256 must be a lowercase SHA-256 hex digest (64 chars), got '$sha256'."
+        }
+        val byName = MavenBundleMeasurement.kindOf(path)
+        require(byName == kind) {
+            "the path '$path' is a ${byName?.name ?: "file of no kind"} and the artifact " +
+                "declares $kind. The kind of a file is what its name says it is, and a " +
+                "manifest that calls a file something else describes bytes that nobody can " +
+                "compare with the measurement of the bundle."
         }
     }
 }

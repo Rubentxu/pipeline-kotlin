@@ -332,6 +332,10 @@ class DurableRunCoordinator(
         workspaceBase = workspaceBase,
         secretPatternRegistry = policy.secretPatternRegistry,
         sagaBinding = state.sagaBinding,
+        // The run's parameters: the effective values the run was started with. The
+        // bridge exposes them under RUN_PARAMETERS_CAPABILITY, so a Step that reads a
+        // parameter reaches the run's own values.
+        runParameters = policy.parameters,
     )
     private val bodyDispatch = BodyDispatch(
         bodyPolicyResolver = bodyPolicyResolver,

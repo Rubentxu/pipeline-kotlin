@@ -71,6 +71,13 @@ internal class RuntimeContextFactory(
     // Step that declares it is refused at admission rather than reaching a handler that could
     // not keep the promise it is about to make.
     private val sagaBinding: SagaCompensationBinding? = null,
+    // The run's PARAMETERS, bound to THIS run.
+    //
+    // The effective values of the parameters the run's pipeline declares: the one a caller
+    // delivered, or the one the declaration carries when nothing was delivered. The bridge
+    // exposes them under RUN_PARAMETERS_CAPABILITY, so a Step that reads a parameter reaches
+    // the run's own values and nothing else.
+    private val runParameters: dev.rubentxu.pipeline.v2.domain.step.RunParameterValues? = null,
 ) {
 
     /**
@@ -117,6 +124,10 @@ internal class RuntimeContextFactory(
             bodySlotInvoker = bodySlotInvoker,
             secretPatternRegistry = secretPatternRegistry,
             workspaceBase = workspaceBase,
+            // The run's parameters, bound to THIS run. The bridge exposes them under
+            // RUN_PARAMETERS_CAPABILITY, so a Step that reads a parameter reaches the
+            // values the run was started with and not a value invented at the call site.
+            runParameters = runParameters,
             pluginEventEmitter = pluginEventEmitter(eventRegistry, eventSink, clock),
             // The observability seam, bound to THIS dispatch so the
             // observation a plugin opens hangs under the step's own span.

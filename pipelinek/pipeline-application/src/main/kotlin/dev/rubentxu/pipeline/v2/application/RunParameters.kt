@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.ParameterSpec
+import dev.rubentxu.pipeline.v2.domain.step.RunParameterValues
 import dev.rubentxu.pipeline.v2.dsl.RunInputs
 import dev.rubentxu.pipeline.v2.dsl.RunInputsOutcome
 
@@ -31,8 +33,8 @@ import dev.rubentxu.pipeline.v2.dsl.RunInputsOutcome
  * ## What the values are NOT
  *
  * They are not the environment of the steps, and they are not published in the run's own
- * facts. The body of a pipeline does not read them yet: reading a value that is only known
- * at run time needs a seam the DSL does not have today, and that seam is another slice.
+ * facts. A pipeline reads them through the seam of [effective]: the values travel in the
+ * run's own carrier and reach a step through its capability and through no other.
  */
 internal object RunParameters {
 
@@ -63,5 +65,34 @@ internal object RunParameters {
                 ),
             )
         }
+    }
+
+    /**
+     * The EFFECTIVE values of the parameters this run was started with.
+     *
+     * The value of every parameter the pipeline DECLARED: the one a caller delivered, or
+     * the one the declaration carries when nothing was delivered. A compilation that
+     * produced NO pipeline declares nothing, and a run whose script says nothing carries
+     * no parameters at all.
+     *
+     * ## Where these values go
+     *
+     * Into the run's own carrier, and through nothing else. A step reads them through the
+     * capability of the run: they do not become variables of the steps' processes and they
+     * do not reach the shell. The read has its own seam, and this is the value that seam
+     * carries.
+     *
+     * ## What it does not change
+     *
+     * The refusal of a value that does not fit the declaration: [of] still refuses it, and
+     * the run still never starts with a value it could not accept.
+     */
+    fun effective(
+        config: CliFlags,
+        compiledPipeline: CompiledPipeline?,
+    ): RunParameterValues {
+        val inputs = compiledPipeline?.let { of(config, it.parameters) }
+            ?: return RunParameterValues.EMPTY
+        return RunParameterValues.of(inputs.values)
     }
 }

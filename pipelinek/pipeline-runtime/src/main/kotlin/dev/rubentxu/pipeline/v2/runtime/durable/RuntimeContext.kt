@@ -137,4 +137,15 @@ data class RuntimeContext(
     // is what keeps the fail-closed admission honest: a handler that declares
     // BODY_SLOT_CAPABILITY without the engine having bound it never runs.
     val bodySlotInvoker: dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker? = null,
+    // The run's PARAMETERS, the effective values of the parameters its pipeline declares.
+    //
+    // It rides here for the same reason [eventSink] does: this context is already the
+    // per-run carrier that the capability adapters share, and a handler that reads a
+    // parameter must reach the run's own values and not a process-global map.
+    //
+    // Null when the context was composed WITHOUT the run's parameters — every
+    // pre-existing construction site — so the capability stays unexposed and a Step that
+    // declares it is refused at admission instead of reaching a handler with no values to
+    // read. A canonical run always carries one, empty when the run declares no parameter.
+    val runParameters: dev.rubentxu.pipeline.v2.domain.step.RunParameterValues? = null,
 )

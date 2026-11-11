@@ -145,15 +145,10 @@ private fun runVolatilePipelineOwned(
         )
     }
 
-    // The PARAMETERS of the run, checked against the declaration the compilation just
-    // produced. The check is HERE because this is the first moment at which the product
-    // knows what the script declares, and the values are checked against the SCRIPT and
-    // not against a contract a client may have carried.
-    //
-    // A compilation that produced NO pipeline declares nothing, and a value cannot be
-    // unknown in a script that says nothing: the refusal of that compilation is the one
-    // the operator has to read, and it is read further down.
-    compiledPipeline?.let { RunParameters.of(config, it.parameters) }
+    // The PARAMETERS of the run: checked against the declaration the compilation just
+    // produced, and carried by the run so a step can read the effective value. The check
+    // is HERE because this is the first moment the product knows what the script declares.
+    val runParameters = RunParameters.effective(config, compiledPipeline)
 
     // The seams of this run, in the ONE order every run uses. The order is written down in
     // the contract (composeRunSeams) and not here, so that this branch and the durable one
@@ -290,6 +285,9 @@ private fun runVolatilePipelineOwned(
                         // cannot be read, or that breaks a rule, refuses the run before it
                         // starts.
                         configuration = configuration,
+                        // The parameters the run was started with, so a step can read
+                        // the effective value of a declared one.
+                        parameters = runParameters,
                     ),
                     // S6/G: the frozen composition, not a step registry plus a classloader.
                     // There is no path here that can reach a registry without a directive registry

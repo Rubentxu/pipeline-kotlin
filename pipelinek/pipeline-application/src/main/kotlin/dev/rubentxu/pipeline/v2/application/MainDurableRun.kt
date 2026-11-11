@@ -31,7 +31,6 @@ import dev.rubentxu.pipeline.v2.runtime.durable.RunLeasePort
 import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -185,15 +184,10 @@ private fun runDurablePipelineOwned(
         telemetry = telemetry,
     )
 
-    // The PARAMETERS of the run, checked against the declaration the compilation just
-    // produced. The check is HERE because this is the first moment at which the product
-    // knows what the script declares, and the values are checked against the SCRIPT and
-    // not against a contract a client may have carried.
-    //
-    // A compilation that produced NO pipeline declares nothing, and a value cannot be
-    // unknown in a script that says nothing: the refusal of that compilation is the one
-    // the operator has to read, and it is read further down.
-    compiledPipeline?.let { RunParameters.of(config, it.parameters) }
+    // The PARAMETERS of the run: checked against the declaration the compilation just
+    // produced, and carried by the run so a step can read the effective value. The check
+    // is HERE because this is the first moment the product knows what the script declares.
+    val runParameters = RunParameters.effective(config, compiledPipeline)
 
     // Build orchestrator with all durable dependencies
     // SAGA / durable run: the durable Saga obligations live in the SAME database as the journal and
@@ -202,7 +196,6 @@ private fun runDurablePipelineOwned(
     val journal: OperationJournal = durableStores.journal
     val sagaObligationStore = durableStores.sagaObligations
     val cursorStore: ReplayCursorStore = durableStores.cursors
-    val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
     // The seams of this run, in the ONE order every run uses. The order is written down in
     // the contract (composeRunSeams) and not here, so that this branch and the one that
     // persists nothing cannot answer the operator differently about a single run.
@@ -295,7 +288,7 @@ private fun runDurablePipelineOwned(
                             policy = RunPolicy(
                                 clock = clock,
                                 idGenerator = idGenerator,
-                                effectReplayPolicy = effectPolicy,
+                                effectReplayPolicy = DefaultEffectReplayPolicy(),
                                 controlDirRoot = controlDirRoot,
                                 sandboxProfile = config.sandboxProfile,
                                 // the workspace decision rule: the CLI default is local-first. The
@@ -314,6 +307,9 @@ private fun runDurablePipelineOwned(
                                 withCredentialsExecutor = credentials.executor,
                                 allowNetwork = config.allowNetwork,
                                 secretPatternRegistry = secretPatternRegistry,
+                                // The parameters the run was started with, so a step
+                                // can read the effective value of a declared one.
+                                parameters = runParameters,
                                 // The configuration of the run, read ONCE from the
                                 // snapshot and validated with the same rules the
                                 // service applied. A snapshot that cannot be read,

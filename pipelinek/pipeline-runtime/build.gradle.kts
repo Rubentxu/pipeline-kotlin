@@ -10,9 +10,30 @@ pitest {
     // The type that HOLDS the rules, and the companion that APPLIES them:
     // the two halves of the same subject, and a lane that mutated one of
     // them would leave the other unmeasured.
-    targetClasses = listOf("dev.rubentxu.pipeline.v2.runtime.RunConfiguration*")
+    //
+    // The step that READS a parameter of the run is the second seam of this
+    // module, and it is named for the same reason: its handler decides between
+    // the value the run carries and the refusal that NAMES a parameter the run
+    // does not declare, and its two codecs are the wire both answers travel
+    // on. A lane that mutated the handler and left the codecs unmeasured would
+    // leave the wire unguarded, and the other way round.
+    //
+    // TWO mutants of this seam are EQUIVALENT and are recorded here instead of
+    // being killed: the `schema` of each codec, which the `StepCodec` interface
+    // gives as a default that no codec in the tree overrides, and which NO
+    // caller reads — a mutation of it changes a value nobody consumes. They
+    // are left alive on purpose: the seam measures the handler and the wire,
+    // and a test that pinned a value nobody reads would buy a green with a
+    // lie.
+    targetClasses = listOf(
+        "dev.rubentxu.pipeline.v2.runtime.RunConfiguration*",
+        "dev.rubentxu.pipeline.v2.runtime.CoreParamStep*",
+        "dev.rubentxu.pipeline.v2.runtime.ParamInput",
+        "dev.rubentxu.pipeline.v2.runtime.ParamOutput*",
+    )
     targetTests = listOf(
         "dev.rubentxu.pipeline.v2.runtime.RunConfigurationTest",
+        "dev.rubentxu.pipeline.v2.runtime.CoreParamStepTest",
     )
     threads = System.getenv("PIT_THREADS")?.toInt() ?: 4
     timeoutConstInMillis = 10000

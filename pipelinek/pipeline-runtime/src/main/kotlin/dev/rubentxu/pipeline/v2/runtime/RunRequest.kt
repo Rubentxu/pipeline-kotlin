@@ -106,6 +106,20 @@ data class RunPolicy(
      * the environment of its steps.
      */
     val configuration: RunConfiguration = RunConfiguration.EMPTY,
+    /**
+     * The PARAMETERS the run was started with, checked against the declaration its pipeline
+     * compiled.
+     *
+     * It is a POLICY input and not a derived fact: it is what the caller was given —the
+     * values a client delivered, plus the defaults the declaration carries for the ones
+     * nobody delivered— and the run's steps read it through its own capability.
+     *
+     * It is EMPTY by default, and the default is the historical behaviour: a run that was
+     * given no parameters carries none, and a step that reads a parameter the run does not
+     * declare fails by name instead of answering a value nobody delivered.
+     */
+    val parameters: dev.rubentxu.pipeline.v2.domain.step.RunParameterValues =
+        dev.rubentxu.pipeline.v2.domain.step.RunParameterValues.EMPTY,
 )
 
 /**

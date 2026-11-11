@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
@@ -61,8 +62,19 @@ import java.util.concurrent.TimeUnit
  * How long the runs take, and the words around the step's output: the
  * observation is the step's own stdout, and everything else the run prints
  * is the run's own.
+ *
+ * ## What this lane verifies about a BUSY machine
+ *
+ * That the lane does not turn red because the machine is busy. The wait of
+ * this lane is the BUDGET of the run plus the room the closing takes, and
+ * not a number of its own: a wait that is shorter than the budget gives up
+ * while the product is still working, and the red it produces is a verdict
+ * about the machine under the name of a verdict about the tree. A busy
+ * machine makes the run SLOWER, and a run that is slower than its budget is
+ * aborted BY THE PRODUCT —which the row reports with the reason the product
+ * gave— while a run that is slower than nothing at all still ends.
  */
-@Timeout(value = 300, unit = TimeUnit.SECONDS)
+@Timeout(value = 360, unit = TimeUnit.SECONDS)
 class RunConfigurationIntegrationTest {
 
     @TempDir
@@ -79,6 +91,9 @@ class RunConfigurationIntegrationTest {
 
     /** The socket the service listens on. */
     private lateinit var socket: Path
+
+    /** The store the service reads and the run writes. */
+    private lateinit var store: dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 
     private val clock: Clock = FixedClock
 
@@ -145,7 +160,10 @@ class RunConfigurationIntegrationTest {
 
                 assertTrue(
                     firstOutput.contains("alpha"),
-                    "the first run's step saw the value of the first configuration: $firstOutput",
+                    {
+                        "the first run's step saw the value of the first configuration: $firstOutput " +
+                            "(${describe(one.runId)})"
+                    },
                 )
                 assertFalse(
                     firstOutput.contains("beta"),
@@ -153,7 +171,10 @@ class RunConfigurationIntegrationTest {
                 )
                 assertTrue(
                     secondOutput.contains("beta"),
-                    "the second run's step saw the value of the second configuration: $secondOutput",
+                    {
+                        "the second run's step saw the value of the second configuration: $secondOutput " +
+                            "(${describe(two.runId)})"
+                    },
                 )
                 assertFalse(
                     secondOutput.contains("alpha"),
@@ -258,6 +279,15 @@ class RunConfigurationIntegrationTest {
 
     /**
      * The terminal observation of [runId], asked for until it arrives.
+     *
+     * ## Why the wait is the budget of the run and not a number of its own
+     *
+     * Because the budget is the PRODUCT's promise: the run the row starts
+     * has twenty seconds and four hundredths to end, and a row that gives up
+     * BEFORE that measures its own impatience and calls it a defect of the
+     * tree. A row that waits longer than the promise measures nothing: it
+     * waits for something the product never promised. The wait is the budget
+     * plus the room the closing of the run takes.
      */
     private fun awaitTerminal(runId: String): RuntimeObservation.Terminal {
         val deadline = System.currentTimeMillis() + TERMINAL_DEADLINE_MILLIS
@@ -270,17 +300,80 @@ class RunConfigurationIntegrationTest {
 
                 else -> Unit
             }
-            Thread.sleep(500L)
+            Thread.sleep(POLL_MILLIS)
         }
-        error("the run $runId did not finish in time")
+        error("the run $runId did not finish in time: ${describe(runId)}")
     }
+
+    /**
+     * What the product says about the run, for a reader that has to say WHY.
+     *
+     * It reads the run's OWN facts: the terminal it holds, the lease that
+     * says whether its child is alive, the journal that says how far it got,
+     * and the events that say what the child was doing. A reader that says
+     * "it did not finish" without these is a reader that measured the clock
+     * and called it the product.
+     *
+     * ## The three questions it answers
+     *
+     * Whether the child is ALIVE, whether it TOOK THE LEASE of the run, and
+     * whether it had already STARTED the run. The three are different facts
+     * and they point at different places: a child that is alive and owns the
+     * run is working, a child that is alive and owns nothing has not reached
+     * the run yet —it is compiling the script, which is a resource of the
+     * machine and not of the tree— and a dead child that owned the run is a
+     * run whose writer is gone.
+     */
+    private fun describe(runId: String): String {
+        val terminal = terminalFactOf(runId)
+        val outcome = terminal?.outcome ?: "no terminal yet"
+        val reason = terminal?.diagnostics?.joinToString(" | ") { it.message } ?: ""
+        val answer = client(STARTER_TOKEN).runState(runId)
+        val state = when (answer) {
+            is ServiceAnswer.Answered -> when (val last = answer.value) {
+                is RuntimeObservation.Running ->
+                    "the child is alive=${last.leaseHolder?.alive}, " +
+                        "it owns the run=${last.leaseHolder != null}, " +
+                        "it published ${last.journalPosition.operations} operations, " +
+                        "the last one is ${last.journalPosition.latestOpId}"
+
+                is RuntimeObservation.Terminal -> "the run is terminal"
+                is RuntimeObservation.LiveButEmpty ->
+                    "the child has not started the run yet: ${last.reason}"
+
+                is RuntimeObservation.Unobservable -> "the run cannot be observed: ${last.reason}"
+            }
+
+            is ServiceAnswer.Refused -> "the service refused to answer: ${answer.refusal.kind}"
+            is ServiceAnswer.Unreachable -> "the service is not there: ${answer.detail}"
+            is ServiceAnswer.Unreadable -> "the answer is not readable: ${answer.detail}"
+            ServiceAnswer.TimedOut -> "the service did not answer in time"
+        }
+        val steps = stepsOf(runId)
+        return "outcome=$outcome, reason=$reason, $state, the run published $steps"
+    }
+
+    /**
+     * The terminal fact of the run, read from the run's own store.
+     */
+    private fun terminalFactOf(runId: String): RunFinished? =
+        store.eventsFor(runId).filterIsInstance<RunFinished>().lastOrNull()
+
+    /**
+     * The kinds of the events the run published, in order.
+     *
+     * They say what the child was doing: a run that published the start of
+     * its compilation and no end of it was COMPILING, and a run that
+     * published a step was running that step.
+     */
+    private fun stepsOf(runId: String): String =
+        store.eventsFor(runId).map { it.kind }.joinToString(", ")
 
     /**
      * The service, over a real socket, and the way to stop it.
      */
     private inner class Service(
         private val server: ServiceServer,
-        private val store: dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore,
         private val supervisor: ServiceRunSupervisor,
     ) {
 
@@ -303,7 +396,7 @@ class RunConfigurationIntegrationTest {
      */
     private fun start(): Service {
         val admission = admitEventStore(db.toString(), EventStorePurpose.Read)
-        val store = (admission as EventStoreAdmission.Admitted).store
+        store = (admission as EventStoreAdmission.Admitted).store
         val supervisionRoot = root.resolve("supervisions")
         val registry = when (val read = ServiceStartRegistry.read(root.resolve(ServiceStartRegistry.FILE_NAME))) {
             is ServiceStartRegistryReading.Read -> read.registry
@@ -314,7 +407,7 @@ class RunConfigurationIntegrationTest {
             runPolicy = ServiceRunPolicy(
                 eventStore = db.toAbsolutePath().toString(),
                 controlRoot = control.toAbsolutePath().toString(),
-                deadlineMillis = 240_000L,
+                deadlineMillis = RUN_BUDGET_MILLIS,
                 allowNetwork = false,
             ),
             command = ServiceRunCommand(
@@ -352,7 +445,6 @@ class RunConfigurationIntegrationTest {
         val transport = UnixSocketTransport.bind(socket)
         return Service(
             ServiceServer(transport, operations, streets, authorizations()),
-            store,
             supervisor,
         )
     }
@@ -393,7 +485,19 @@ class RunConfigurationIntegrationTest {
         /** The token of the client that may start runs. */
         private const val STARTER_TOKEN: String = "token-of-the-starter"
 
-        /** How long the test waits for a run to finish. */
-        private const val TERMINAL_DEADLINE_MILLIS: Long = 180_000L
+        /**
+         * The budget of the runs this lane starts: the product's promise of
+         * how long a run may live.
+         */
+        private const val RUN_BUDGET_MILLIS: Long = 240_000L
+
+        /**
+         * How long the test waits for a run to finish: the budget of the run
+         * plus the room the closing of the run takes.
+         */
+        private const val TERMINAL_DEADLINE_MILLIS: Long = RUN_BUDGET_MILLIS + 30_000L
+
+        /** How long the lane waits between two questions about the run. */
+        private const val POLL_MILLIS: Long = 500L
     }
 }

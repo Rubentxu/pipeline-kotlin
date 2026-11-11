@@ -424,6 +424,7 @@ public class dev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps : dev/rubentxu/pipe
 	public static synthetic fun input$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public final fun lock (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)V
 	public static synthetic fun lock$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun param (Ljava/lang/String;)V
 	public final fun readFile (Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun readFile$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun registryBlock-8FtRcd8 (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V

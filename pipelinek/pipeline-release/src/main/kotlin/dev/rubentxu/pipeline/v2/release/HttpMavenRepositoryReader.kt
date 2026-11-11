@@ -22,6 +22,12 @@ import java.util.Base64
  * beside the file is reporting a fact about its own copy, and the question
  * this reader answers is whether those bytes are the certified ones.
  *
+ * The reader answers about the repository that was NAMED. A redirect names
+ * another address, so it is not followed: the bytes would come from
+ * somewhere else while the verdict spoke about this one. A repository that
+ * answers with a redirect has not been measured, and the reader says so
+ * instead of measuring another place.
+ *
  * The credential, when the repository asks for one, arrives in the
  * constructor and in nothing else: it is never written to a report, never
  * printed and never part of an address. Two shapes are offered because the
@@ -91,7 +97,14 @@ class HttpMavenRepositoryReader(
         /** The client every reader starts from. */
         private fun defaultClient(): HttpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
-            .followRedirects(HttpClient.Redirect.NORMAL)
+            // A redirect is NOT followed. The instrument answers a question
+            // about the repository that was NAMED, and a redirect names
+            // another address: the bytes would come from somewhere else
+            // while the verdict spoke about this one. It also keeps the
+            // credential to the address it was sent to, because there is no
+            // second hop. A repository that answers with a redirect has not
+            // been measured, and the verdict says so.
+            .followRedirects(HttpClient.Redirect.NEVER)
             .build()
     }
 }

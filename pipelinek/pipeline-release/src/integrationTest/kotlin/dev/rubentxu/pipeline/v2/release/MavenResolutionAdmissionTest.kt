@@ -113,6 +113,19 @@ class MavenResolutionAdmissionTest {
     }
 
     @Test
+    fun `a repository that answers with a redirect has not been measured`() {
+        serveTheDeclaredBytes()
+        statuses[jar.path] = 302
+
+        val outcome = assertInstanceOf(
+            MavenResolutionOutcome.Refused::class.java,
+            admit(),
+        )
+        assertTrue(outcome.reason.contains(jar.path), outcome.reason)
+        assertTrue(outcome.reason.contains("302"), outcome.reason)
+    }
+
+    @Test
     fun `a manifest nobody can read is not a verdict`() {
         val outcome = MavenResolutionAdmission.admit(
             Path.of("/nonexistent/maven-publication-manifest.json"),

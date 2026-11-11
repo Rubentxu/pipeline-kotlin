@@ -342,6 +342,34 @@ from: the `.asc` that verifies a JAR downloaded from the registry is the same
 the signature of a registry artifact takes it from the Central channel, where it
 travels, and verifies it against the fingerprint published above.
 
+**How a channel is checked.** The bytes that reach a registry are the bytes that
+were signed, and the only way to know that the registry serves them is to ask
+the registry. `scripts/release/verify-published-maven.sh` does that: it reads the
+publication manifest of the candidate and asks a repository whether it serves
+every artifact the manifest declares, at its path, with its digest.
+
+```bash
+scripts/release/verify-published-maven.sh \
+  --manifest <maven-publication-manifest.json> \
+  --repository https://repo1.maven.org/maven2
+```
+
+The verdict names what the repository served: a version it does not serve, an
+artifact it does not serve and an artifact it serves with other bytes are three
+different facts, and each one has its own fix. The instrument measures the bytes
+that arrive and compares digests, so it does not believe what the registry says
+about itself. A registry that answers with something that is neither a file nor
+its absence has NOT been measured, and the verdict says so instead of claiming
+that the version is absent.
+
+What it does NOT measure: the detached signatures, which travel with the
+artifacts and are verified when the bundle is staged
+(`scripts/check-sdk-bundle.py`), and the files the registry generates beside the
+artifacts, which are its own checksums and its own metadata. A repository that
+asks for a credential takes it from the environment
+(`PIPELINEK_REPOSITORY_USER` and `PIPELINEK_REPOSITORY_TOKEN`), never from an
+argument and never from a file of this repository.
+
 **Version 0.94.2 is published in Maven Central**, under the coordinates that
 release was published with. Its six artifacts carry the same bytes the signed
 bundle carries, an independent consumer compiles against them, and every

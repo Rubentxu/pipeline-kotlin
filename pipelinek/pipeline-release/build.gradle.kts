@@ -1087,6 +1087,66 @@ tasks.register<JavaExec>("mavenPublication") {
 }
 
 /**
+ * The consumer-side door of the Maven channel.
+ *
+ * It answers ONE question: "does the repository a consumer resolves from
+ * serve the bytes the publication manifest declares?". The answer is the
+ * model's, and this task only resolves the paths, hands the arguments over
+ * and propagates the exit code.
+ *
+ * The repository is named by its URL and is NOT an input: the state of a
+ * remote repository is a fact about the world, and a task that considered
+ * itself up to date would answer that fact from a cache.
+ */
+tasks.register<JavaExec>("mavenResolution") {
+    group = "distribution"
+    description = "verify that a Maven repository serves the bytes the manifest declares."
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.MavenResolutionMainKt")
+
+    val manifest = providers.gradleProperty("maven.manifest").orElse("").get()
+    val repository = providers.gradleProperty("maven.repository").orElse("").get()
+    val verdict = providers.gradleProperty("maven.verdict").orElse("").get()
+
+    listOf(manifest).filter { it.isNotBlank() }.forEach { path ->
+        inputs.file(project.file(path))
+    }
+    inputs.property("maven.manifest", manifest)
+    inputs.property("maven.repository", repository)
+    inputs.property("maven.verdict", verdict)
+
+    // The decision is NEVER up to date, and that is not a workaround. What it
+    // decides depends on the state of a remote repository, and that state is
+    // not one of its inputs: a task that considered itself up to date would
+    // answer "the repository serves the version" from a cache instead of from
+    // the repository.
+    outputs.upToDateWhen { false }
+
+    doFirst {
+        val missing = listOf(
+            "maven.manifest" to manifest,
+            "maven.repository" to repository,
+        ).filter { (_, value) -> value.isBlank() }.map { (name, _) -> name }
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "mavenResolution: ${missing.joinToString(", ")} must be named. A resolution is " +
+                    "judged against a manifest and against a repository, and it cannot be " +
+                    "judged without them.",
+            )
+        }
+    }
+
+    args = listOf(manifest, repository, verdict)
+
+    // Any non-zero exit means the repository does not serve what the manifest
+    // declares, or that the state could not be measured. Both stop the
+    // caller: the first is a channel that does not carry the release, and the
+    // second is an instrument that measured nothing.
+    isIgnoreExitValue = false
+}
+
+/**
  * The producer of the Maven publication manifest.
  *
  * It reads the candidate's handoff and the bundle that was staged for it,

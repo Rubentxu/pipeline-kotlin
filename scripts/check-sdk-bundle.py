@@ -381,6 +381,43 @@ def check_pom_metadata(
         report.row(True, "3", "the staged POM is byte for byte the POM the RC carries")
 
 
+def missing_variant_files(artifact: str, version_dir: Path, document: dict) -> list[str]:
+    """The files the variants of the metadata resolve, and the ones the bundle lacks.
+
+    The Gradle module metadata is the document a consumer of Gradle resolves IN
+    PREFERENCE to the POM: it says which variant resolves and which file the
+    bytes of that variant come from. A variant whose file is not in the bundle
+    is a variant no consumer can resolve, and a bundle that carries the
+    metadata anyway certifies a coordinate that cannot be used.
+
+    The url is read as a path RELATIVE to the version directory, the way the
+    resolver reads it. A url that leaves that directory is refused by name: a
+    metadata that points outside the bundle is not naming a file of it.
+    """
+    problems: list[str] = []
+    root = version_dir.resolve()
+    for variant in document.get("variants", []):
+        name = str(variant.get("name", "a variant without a name"))
+        for entry in variant.get("files", []):
+            url = str(entry.get("url", ""))
+            if not url:
+                problems.append(f"{artifact}: the variant '{name}' names a file with no url")
+                continue
+            resolved = (version_dir / url).resolve()
+            if not resolved.is_relative_to(root):
+                problems.append(
+                    f"{artifact}: the variant '{name}' names the file '{url}', "
+                    "which is not a file of the bundle"
+                )
+                continue
+            if not resolved.is_file():
+                problems.append(
+                    f"{artifact}: the variant '{name}' names the file '{url}', "
+                    "which the bundle does not carry"
+                )
+    return problems
+
+
 def check_gradle_metadata(coordinates: dict[str, Path], group: str, report: Report) -> None:
     problems: list[str] = []
     for artifact, version_dir in sorted(coordinates.items()):
@@ -400,10 +437,20 @@ def check_gradle_metadata(coordinates: dict[str, Path], group: str, report: Repo
             problems.append(f"{artifact}: the metadata names the module '{component.get('module')}'")
         if str(component.get("version")) != version_dir.name:
             problems.append(f"{artifact}: the metadata names the version '{component.get('version')}'")
+        problems.extend(missing_variant_files(artifact, version_dir, document))
     if problems:
-        report.row(False, "4", "the Gradle module metadata does not name the artifact it accompanies", problems)
+        report.row(
+            False,
+            "4",
+            "the Gradle module metadata does not describe the artifact it accompanies",
+            problems,
+        )
     else:
-        report.row(True, "4", "every artifact carries Gradle module metadata that names it")
+        report.row(
+            True,
+            "4",
+            "every artifact carries Gradle module metadata that names it and the files it resolves",
+        )
 
 
 def check_transitive_dependencies(

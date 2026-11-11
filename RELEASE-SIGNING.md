@@ -275,6 +275,13 @@ re-verifies the bundle against the key declared for the Maven artifacts before
 it packages it, so what travels is what was signed and not what the build
 happened to leave on disk.
 
+The staging proves that the checker can refuse, and not only that it accepts:
+it runs the same checker against a **copy** of the bundle in which one of the
+files that the Gradle module metadata resolves is missing, and the checker must
+refuse it by name. A checker that has never refused anything says nothing about
+what it accepts, and the copy is what is tampered: the bundle that will be
+published is untouched.
+
 The upload is a task of the build, and the order is the guarantee:
 
 ```bash

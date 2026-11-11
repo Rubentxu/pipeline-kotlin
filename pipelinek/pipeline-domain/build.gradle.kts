@@ -139,7 +139,7 @@ plugins {
 //   SAME `BranchTerminal.Unstable` instance, so WHICH unstable branch the
 //   fold keeps is not observable in what it returns.
 //
-// THE TIE-BREAK THAT SURVIVES IN THE FOLD — one of them:
+// THE TIE THAT SURVIVES IN THE FOLD — one of them:
 //
 // - 1 of the FAILURE fold of `ParallelAggregate.kt:58` (library line 76) is
 //   the boundary of the comparison inside the INLINED `minByOrNull { it.key }`:

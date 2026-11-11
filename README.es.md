@@ -132,7 +132,7 @@ La última fila es la honesta: las capacidades `runtime.inspect.v1`, `runtime.ca
 pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock
 ```
 
-Las tres rutas son obligatorias y ninguna tiene valor por defecto: el servicio lee el sustrato que nombras y escucha donde dices, de modo que lo que el socket dice de una ejecución es comparable con lo que dice `inspect --state` sobre las mismas entradas. El servicio no crea el sustrato que sirve ni el control root que va a leer: un `--db` que no está se rechaza por nombre, en vez de dejar un fichero vacío donde el operador guardaba sus hechos. En el sustrato el servicio escribe UN hecho, y sólo cuando puede cancelar: el terminal de una ejecución que cierra —las ejecuciones que arranca escriben el resto, en el almacén que nombraste—. Abrir ese almacén en lectura-escritura también lo PREPARA: el esquema se crea cuando falta y los ficheros del log aparecen en cada arranque, así que un fichero existente y vacío se convierte en un almacén. Lo que el servicio nunca hace es crear el sustrato que no está. Lo que el servicio escribe aparte es suyo, junto al socket: el fichero de las autorizaciones que posee, el registro de los arranques (`starts`) y el directorio de las ejecuciones supervisadas (`supervisions`).
+Las tres rutas son obligatorias y ninguna tiene valor por defecto: el servicio lee el sustrato que nombras y escucha donde dices, de modo que lo que el socket dice de una ejecución es comparable con lo que dice `inspect --state` sobre las mismas entradas. El sustrato lo prepara un paso PROPIO —`pipelinek substrate init --db <path>`—, que crea el fichero con la forma que el servicio lee y dice lo que hizo: la ruta, si se creó o ya estaba, y las tablas que lleva. El servicio no crea el sustrato que sirve ni el control root que va a leer: un `--db` que no está se rechaza por nombre, en vez de dejar un fichero vacío donde el operador guardaba sus hechos. En el sustrato el servicio escribe UN hecho, y sólo cuando puede cancelar: el terminal de una ejecución que cierra —las ejecuciones que arranca escriben el resto, en el almacén que nombraste—. Abrir ese almacén en lectura-escritura también lo PREPARA: el esquema se crea cuando falta y los ficheros del log aparecen en cada arranque, así que un fichero existente y vacío se convierte en un almacén. Lo que el servicio nunca hace es crear el sustrato que no está. Lo que el servicio escribe aparte es suyo, junto al socket: el fichero de las autorizaciones que posee, el registro de los arranques (`starts`) y el directorio de las ejecuciones supervisadas (`supervisions`).
 
 El socket es un fichero del sistema de ficheros, y su modo es la frontera. El socket queda en `rw-------`, y su directorio tiene que ser privado (`rwx------` cuando el servicio lo crea): si el directorio concede algo al grupo o a otros, el servicio no arranca en vez de publicar un socket que esos usuarios podrían abrir.
 
@@ -440,11 +440,15 @@ La distribución es también un contenedor, y el contenedor es un EMPAQUETADO de
 
 **Los volúmenes tienen nombre, y eso es lo que los hace rootless.** Un runtime rootless mapea los directorios del host dentro del contenedor a través de un espacio de nombres de usuario, y un directorio del host llega con un uid con el que el servicio no puede escribir. Un volumen CON NOMBRE lo crea el runtime DESDE la imagen, así que llega con la propiedad y los modos declarados arriba.
 
+**Lo que tiene que estar ahí antes de arrancar el servicio, en este orden.** Los tres volúmenes con nombre, y luego el contenedor: el entrypoint de la imagen PREPARA el sustrato antes de servirlo, así que un primer arranque contra volúmenes vacíos arranca, y no hay ningún paso que hacer a mano.
+
 ```bash
+# 1. los tres volúmenes CON NOMBRE
 podman volume create pipelinek-socket
 podman volume create pipelinek-control
 podman volume create pipelinek-state
 
+# 2. el contenedor: PREPARA el sustrato antes de servirlo
 podman run -d --name pipelinek-service \
   -v pipelinek-socket:/var/lib/pipelinek/socket \
   -v pipelinek-control:/var/lib/pipelinek/control \
@@ -452,7 +456,7 @@ podman run -d --name pipelinek-service \
   localhost/pipelinek:0.96.0
 ```
 
-**El servicio sirve un sustrato; no lo crea.** Sobre un volumen todavía vacío el servicio se niega a arrancar y lo dice —`the substrate cannot be served: the store is not there`— porque ese fichero es de la vía del productor. Una ejecución lo crea, y los datos de esa ejecución quedan después en el volumen:
+**El servicio sirve un sustrato; no lo crea.** La preparación es un paso PROPIO —`pipelinek substrate init --db <path>`— y el contenedor lo da antes de pedirle al servicio que sirva: el entrypoint de la imagen ejecuta ese verbo y luego le pasa el relevo al lanzador. Fuera de un contenedor el mismo paso se da a mano, y su resultado se puede leer: la ruta, si el sustrato se creó o ya estaba, y las tablas que lleva. El servicio sigue negándose a arrancar con un sustrato que no está y lo dice —`the substrate cannot be served: the store is not there`— porque ese fichero es de la vía del productor. Una ejecución crea el almacén de su propia vía, y los datos de esa ejecución quedan después en el volumen:
 
 ```bash
 podman run --rm \

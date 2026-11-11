@@ -37,6 +37,7 @@ set -Eeuo pipefail
 readonly SCRIPT_NAME="${BASH_SOURCE[0]##*/}"
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly CONTAINERFILE="${REPO_ROOT}/pipelinek/pipeline-application/oci/Containerfile"
+readonly ENTRYPOINT="${REPO_ROOT}/pipelinek/pipeline-application/oci/entrypoint.sh"
 readonly DISTRIBUTIONS="${REPO_ROOT}/pipelinek/pipeline-application/build/distributions"
 
 # The runtime that builds the image. Podman is named because it is the one
@@ -97,6 +98,7 @@ main() {
 
     [ -f "${distribution}" ] || die "the distribution is not there: ${distribution}"
     [ -f "${CONTAINERFILE}" ] || die "the profile is not there: ${CONTAINERFILE}"
+    [ -f "${ENTRYPOINT}" ] || die "the profile has no entrypoint: ${ENTRYPOINT}"
     command -v "${RUNTIME}" >/dev/null 2>&1 || die "there is no container runtime to build the image: ${RUNTIME}"
 
     # The context is a global and not a local of this function: the trap that
@@ -124,27 +126,33 @@ main() {
         || die "the distribution carries no launcher: ${distribution}"
 
     cp "${CONTAINERFILE}" "${CONTEXT}/Containerfile"
+    cp "${ENTRYPOINT}" "${CONTEXT}/entrypoint.sh"
 
     printf '%s: building %s from %s\n' "${SCRIPT_NAME}" "${tag}" "${distribution}"
     "${RUNTIME}" build --tag "${tag}" "${CONTEXT}"
 
     printf '\n%s: built %s\n' "${SCRIPT_NAME}" "${tag}"
     cat <<RECIPE
-The volumes are NAMED, and they are the three directories of the image:
-  podman volume create pipelinek-socket
-  podman volume create pipelinek-control
-  podman volume create pipelinek-state
-  podman run -d --name pipelinek-service \\
-    -v pipelinek-socket:/var/lib/pipelinek/socket \\
-    -v pipelinek-control:/var/lib/pipelinek/control \\
-    -v pipelinek-state:/var/lib/pipelinek/state \\
-    ${tag}
+What has to be there before the service starts, in this order:
+  1. the three NAMED volumes, which are the three directories of the image:
+     podman volume create pipelinek-socket
+     podman volume create pipelinek-control
+     podman volume create pipelinek-state
+  2. the container, which PREPARES the substrate before it serves it, so
+     there is no step to take by hand:
+     podman run -d --name pipelinek-service \\
+       -v pipelinek-socket:/var/lib/pipelinek/socket \\
+       -v pipelinek-control:/var/lib/pipelinek/control \\
+       -v pipelinek-state:/var/lib/pipelinek/state \\
+       ${tag}
 A client of the same environment runs as the same uid and reads the token
 beside the socket:
   podman run --rm \\
     -v pipelinek-socket:/var/lib/pipelinek/socket \\
     ${tag} inspect --state --run <run-id> \\
     --endpoint /var/lib/pipelinek/socket/pipelinek.sock
+Outside a container the substrate is prepared by hand, with the same verb:
+  pipelinek substrate init --db /var/lib/pipelinek/state/store.db
 RECIPE
 }
 

@@ -256,7 +256,7 @@ The last row is the honest one: the capabilities `runtime.inspect.v1`, `runtime.
 pipelinek serve --db ./state/pipelinek.db --control-root ./state/durable --socket ./state/pipelinek.sock
 ```
 
-All three paths are required and none of them has a default: the service reads the substrate you name and listens where you say, so what the socket says about a run is comparable with what `inspect --state` says over the same inputs. The service does not create the substrate it serves and does not create the control root it is about to read; a `--db` that is not there is refused by name instead of leaving an empty file where the operator kept their facts. The service writes ONE fact in the substrate, and only when it may cancel: the terminal of a run it closes — the runs it starts write the rest, in the store you named. Opening that store read-write also PREPARES it: the schema is created when it is missing and the write-ahead sidecars appear on every run, so an existing but empty file becomes a store. What the service never does is create the substrate that is not there. What the service writes besides that is its own, next to the socket: the file of the authorizations it owns, the record of the starts (`starts`) and the directory of the supervised runs (`supervisions`).
+All three paths are required and none of them has a default: the service reads the substrate you name and listens where you say, so what the socket says about a run is comparable with what `inspect --state` says over the same inputs. The substrate itself is prepared by a step of its OWN —`pipelinek substrate init --db <path>`— which creates the file with the shape the service reads and says what it did: the path, whether it was created or was already there, and the tables it carries. The service does not create the substrate it serves and does not create the control root it is about to read; a `--db` that is not there is refused by name instead of leaving an empty file where the operator kept their facts. The service writes ONE fact in the substrate, and only when it may cancel: the terminal of a run it closes — the runs it starts write the rest, in the store you named. Opening that store read-write also PREPARES it: the schema is created when it is missing and the write-ahead sidecars appear on every run, so an existing but empty file becomes a store. What the service never does is create the substrate that is not there. What the service writes besides that is its own, next to the socket: the file of the authorizations it owns, the record of the starts (`starts`) and the directory of the supervised runs (`supervisions`).
 
 The socket is a file of the filesystem, and its mode is the boundary. The socket is `rw-------`, and its directory has to be private (`rwx------` when the service creates it) — if the directory grants anything to the group or to others, the service refuses to start rather than publish a socket those users could open.
 
@@ -588,11 +588,15 @@ The distribution is also a container, and the container is a PACKAGING of it: `p
 
 **The volumes are named, and that is what makes them rootless.** A rootless runtime maps the host's directories into the container through a user namespace, and a directory the host owns arrives owned by an id the service cannot write as. A NAMED volume is created by the runtime FROM the image, so it arrives with the ownership and the modes declared above.
 
+**What has to be there before the service starts, in this order.** The three named volumes, and then the container: the image's entrypoint PREPARES the substrate before it serves it, so a first start against empty volumes starts, and there is no step to take by hand.
+
 ```bash
+# 1. the three NAMED volumes
 podman volume create pipelinek-socket
 podman volume create pipelinek-control
 podman volume create pipelinek-state
 
+# 2. the container: it PREPARES the substrate before it serves it
 podman run -d --name pipelinek-service \
   -v pipelinek-socket:/var/lib/pipelinek/socket \
   -v pipelinek-control:/var/lib/pipelinek/control \
@@ -600,7 +604,7 @@ podman run -d --name pipelinek-service \
   localhost/pipelinek:0.96.0
 ```
 
-**The service serves a substrate; it does not create one.** On a volume that is still empty the service refuses to start and says so —`the substrate cannot be served: the store is not there`— because the producer's lane owns that file. A run creates it, and the run's data then lives in the volume:
+**The service serves a substrate; it does not create one.** The preparation is a step of its OWN —`pipelinek substrate init --db <path>`— and the container takes it before the service is asked to serve: the entrypoint of the image runs that verb and then hands over to the launcher. Outside a container the same step is taken by hand, and its result is legible: the path, whether the substrate was created or was already there, and the tables it carries. The service itself still refuses a substrate that is not there and says so —`the substrate cannot be served: the store is not there`— because the producer's lane owns that file. A run creates the store of its own lane, and the run's data then lives in the volume:
 
 ```bash
 podman run --rm \

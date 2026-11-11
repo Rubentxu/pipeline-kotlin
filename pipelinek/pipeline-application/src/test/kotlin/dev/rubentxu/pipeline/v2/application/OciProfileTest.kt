@@ -73,15 +73,37 @@ class OciProfileTest {
     }
 
     @Test
-    fun `the image starts the launcher of the distribution it carries`() {
+    fun `the image starts the entrypoint of the profile`() {
         val copied = instruction("COPY").substringAfterLast(' ').trimEnd('/')
         val entrypoint = arguments("ENTRYPOINT")
 
         assertEquals(1, entrypoint.size, "the image declares more than one entrypoint: $entrypoint")
         assertEquals(
-            "$copied/bin/pipelinek",
+            "$copied/entrypoint.sh",
             entrypoint.single(),
-            "the image does not start the launcher of the distribution it carries",
+            "the image does not start the entrypoint of the profile",
+        )
+    }
+
+    @Test
+    fun `the entrypoint prepares the substrate before it hands over to the launcher`() {
+        val script = Files.readString(entrypointScript())
+
+        val preparation = script.indexOf(PREPARATION)
+        val handover = script.lastIndexOf(HANDOVER)
+
+        assertTrue(
+            preparation >= 0,
+            "the entrypoint never prepares a substrate, so a container against empty volumes " +
+                "starts a service that refuses to serve:\n$script",
+        )
+        assertTrue(
+            handover >= 0,
+            "the entrypoint never hands over to the launcher of the distribution:\n$script",
+        )
+        assertTrue(
+            preparation < handover,
+            "the entrypoint hands over to the service before it prepares the substrate:\n$script",
         )
     }
 
@@ -103,6 +125,25 @@ class OciProfileTest {
         assertFalse(recipe.contains("docker.sock"), "the recipe names a Docker socket")
         assertFalse(recipe.contains("--privileged"), "the recipe asks for a privileged container")
         assertFalse(recipe.contains("--network=host"), "the recipe asks for the host network")
+    }
+
+    @Test
+    fun `the README and the recipe of the script say the same steps in the same order`() {
+        val readme = readmeSection("### The OCI profile")
+        val recipe = Files.readString(repositoryRoot().resolve("scripts/build-oci-image.sh"))
+
+        assertSameSteps(readme, "the README")
+        assertSameSteps(recipe, "the recipe of the script")
+
+        assertTrue(
+            readme.contains(PREPARES),
+            "the README does not say that the container prepares the substrate before it serves it",
+        )
+        assertTrue(
+            recipe.contains(PREPARES),
+            "the recipe of the script does not say that the container prepares the substrate " +
+                "before it serves it",
+        )
     }
 
     @Test
@@ -173,6 +214,20 @@ class OciProfileTest {
             .resolve("Containerfile")
 
     /**
+     * The entrypoint of the profile, in the module that carries the distribution.
+     *
+     * It is read from the tree and not written here, because a copy of the
+     * script in this test would be a copy that says whatever this test says:
+     * the promise under trial is the one the profile SHIPS.
+     */
+    private fun entrypointScript(): Path =
+        repositoryRoot()
+            .resolve("pipelinek")
+            .resolve("pipeline-application")
+            .resolve("oci")
+            .resolve("entrypoint.sh")
+
+    /**
      * The section of the README that a heading opens.
      *
      * The section ends with the next heading of its own level, so a rule
@@ -186,6 +241,30 @@ class OciProfileTest {
         val rest = lines.drop(start + 1)
         val end = rest.indexOfFirst { it.startsWith("### ") }
         return rest.take(if (end < 0) rest.size else end).joinToString("\n")
+    }
+
+    /**
+     * The steps that have to be there before the service starts, in the order
+     * the document names them.
+     *
+     * The three volumes come first and the container comes after them: a
+     * reader who is told to run the container before the volumes exist is
+     * told to start a service that has nowhere to keep what it writes.
+     */
+    private fun assertSameSteps(document: String, what: String) {
+        val volumes = VOLUMES.map { document.indexOf("volume create $it") }
+        val container = document.indexOf(CONTAINER)
+
+        assertTrue(volumes.all { it >= 0 }, "$what does not name the three volumes")
+        assertTrue(container >= 0, "$what does not name the container")
+        assertTrue(
+            volumes.zipWithNext().all { (first, second) -> first < second },
+            "$what does not name the volumes in the same order",
+        )
+        assertTrue(
+            volumes.last() < container,
+            "$what names the container before the volumes that have to be there first",
+        )
     }
 
     /**
@@ -210,5 +289,20 @@ class OciProfileTest {
 
         /** The files that only the root of the repository holds. */
         val ROOT_MARKERS = listOf("AGENTS.md", "README.md", "scripts/verify-all.sh")
+
+        /** The words the entrypoint uses to prepare the substrate it serves. */
+        const val PREPARATION: String = "substrate init"
+
+        /** The words the entrypoint uses to hand over to the launcher. */
+        const val HANDOVER: String = "exec \"\${LAUNCHER}\""
+
+        /** The words both documents use to say that the container prepares the substrate. */
+        const val PREPARES: String = "PREPARES the substrate before it serves it"
+
+        /** The three volumes the profile declares, in the order they are named. */
+        val VOLUMES = listOf("pipelinek-socket", "pipelinek-control", "pipelinek-state")
+
+        /** The line that starts the container of the recipe. */
+        const val CONTAINER: String = "podman run -d --name pipelinek-service"
     }
 }

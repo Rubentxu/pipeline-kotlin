@@ -348,12 +348,7 @@ internal class SqliteSagaObligationStore(
         if (!mayWrite) return
         DbLock.forPath(dbPath).withLock {
             connections.writes.withConnection { connection ->
-                connection.createStatement().use { statement ->
-                    statement.execute(CREATE_OBLIGATION_TABLE)
-                    statement.execute(CREATE_OBLIGATION_RUN_INDEX)
-                }
-                addOwnerColumnIfMissing(connection)
-                addBodyDigestColumnIfMissing(connection)
+                SagaObligationSchema.create(connection)
             }
         }
     }
@@ -371,7 +366,7 @@ internal class SqliteSagaObligationStore(
     private fun obligationsAreThere(connection: Connection): Boolean {
         if (mayWrite) return true
         return connection.prepareStatement(SELECT_TABLE).use { statement ->
-            statement.setString(1, OBLIGATION_TABLE)
+            statement.setString(1, SagaObligationSchema.TABLE)
             statement.executeQuery().use { rs -> rs.next() }
         }
     }
@@ -385,41 +380,7 @@ internal class SqliteSagaObligationStore(
     private fun refuseWhenReadOnly() {
         check(mayWrite) {
             "this saga obligation store is read-only and cannot write the table " +
-                "$OBLIGATION_TABLE in $dbPath"
-        }
-    }
-
-    /**
-     * Adds the column that says which plugin armed each promise, when it is not there yet.
-     *
-     * A database written by an older build has the table without that column, and the rows it
-     * holds were armed by nobody in particular: they keep working, and they simply cannot prove
-     * a conflict against anyone. The column is nullable and the statement only ever adds it, so
-     * a run that is already in flight is not disturbed.
-     */
-    private fun addOwnerColumnIfMissing(connection: Connection) {
-        val hasColumn = connection.metaData.getColumns(null, null, "saga_obligation", "owner_plugin_id")
-            .use { rs -> rs.next() }
-        if (hasColumn) return
-        connection.createStatement().use { statement ->
-            statement.execute(ADD_OWNER_COLUMN)
-        }
-    }
-
-    /**
-     * Adds the column that says which body each promise is paid with, when it is not there yet.
-     *
-     * A database written by an older build holds promises that were armed before the engine
-     * measured bodies, so they name no body: they keep working, and they simply cannot prove a
-     * divergence against anybody. The column is nullable and the statement only ever adds it, so
-     * a run that is already in flight is not disturbed.
-     */
-    private fun addBodyDigestColumnIfMissing(connection: Connection) {
-        val hasColumn = connection.metaData.getColumns(null, null, "saga_obligation", "body_digest")
-            .use { rs -> rs.next() }
-        if (hasColumn) return
-        connection.createStatement().use { statement ->
-            statement.execute(ADD_BODY_DIGEST_COLUMN)
+                "${SagaObligationSchema.TABLE} in $dbPath"
         }
     }
 
@@ -512,14 +473,6 @@ internal class SqliteSagaObligationStore(
     private companion object {
 
         /**
-         * The name of the table the obligations live in.
-         *
-         * It is named here because the reader asks the file for a table BY NAME, and the name
-         * it asks for is the name the refusal gives the operator.
-         */
-        const val OBLIGATION_TABLE = "saga_obligation"
-
-        /**
          * Whether a table of that name is in the database.
          *
          * The question is asked through the reading door, which is a door the engine refuses to
@@ -527,56 +480,6 @@ internal class SqliteSagaObligationStore(
          */
         const val SELECT_TABLE = """
             SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?
-        """
-
-        const val CREATE_OBLIGATION_TABLE = """
-            CREATE TABLE IF NOT EXISTS saga_obligation (
-                run_id TEXT NOT NULL,
-                saga_id TEXT NOT NULL,
-                action_id TEXT NOT NULL,
-                compensation_id TEXT NOT NULL,
-                intent_version INTEGER NOT NULL,
-                plan_fingerprint TEXT NOT NULL,
-                resource_ref TEXT NOT NULL,
-                compensation_kind TEXT NOT NULL,
-                status TEXT NOT NULL,
-                forward_op_id TEXT NOT NULL,
-                compensation_op_id TEXT NOT NULL,
-                lease_epoch INTEGER NOT NULL,
-                created_at_ms INTEGER NOT NULL,
-                updated_at_ms INTEGER NOT NULL,
-                receipt_ref TEXT,
-                owner_plugin_id TEXT,
-                body_digest TEXT,
-                PRIMARY KEY (run_id, saga_id, action_id, compensation_id)
-            )
-        """
-
-        /**
-         * The column that says which plugin armed each promise.
-         *
-         * It is added to a table that already exists, never to a fresh one: the create statement
-         * already declares it, and this one is only for the databases that were written before
-         * the provenance was kept.
-         */
-        const val ADD_OWNER_COLUMN = """
-            ALTER TABLE saga_obligation ADD COLUMN owner_plugin_id TEXT
-        """
-
-        /**
-         * The column that says which body each promise is paid with.
-         *
-         * Same story as the owner's column: it is added to a table that already exists, and the
-         * promises in those rows simply do not name a body, so they keep working and cannot
-         * prove a divergence against anybody.
-         */
-        const val ADD_BODY_DIGEST_COLUMN = """
-            ALTER TABLE saga_obligation ADD COLUMN body_digest TEXT
-        """
-
-        const val CREATE_OBLIGATION_RUN_INDEX = """
-            CREATE INDEX IF NOT EXISTS ix_saga_obligation_run
-            ON saga_obligation (run_id, status)
         """
 
         /**

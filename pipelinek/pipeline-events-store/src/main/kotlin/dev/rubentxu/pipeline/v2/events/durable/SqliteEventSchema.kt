@@ -52,48 +52,68 @@ internal object SqliteEventSchema {
         try {
             conn.createStatement().use { stmt ->
                 stmt.execute("PRAGMA journal_mode = WAL")
-                stmt.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS events (
-                        event_id TEXT NOT NULL,
-                        run_id TEXT NOT NULL,
-                        sequence INTEGER NOT NULL,
-                        kind TEXT NOT NULL,
-                        occurred_at TEXT NOT NULL,
-                        payload TEXT NOT NULL
-                    )
-                    """.trimIndent()
-                )
             }
-            // The durable sequence authority.
-            // The per-run counter is seeded ONCE per instance from
-            // MAX(sequence), so two store instances over the same database
-            // each start from the same number and then increment
-            // independently. Without a uniqueness constraint BOTH inserts
-            // succeed and the events table accumulates duplicate sequences,
-            // breaking the per-run monotonic invariant that replay and every
-            // External observer depend on (observed rows=300 distinct=150).
-            // UNIQUE(run_id, sequence) makes the DATABASE the authority: a
-            // writer that would duplicate a sequence is rejected by SQLite
-            // itself (fail-closed, no silent corruption) instead of
-            // appending a second event with a number already in the log.
-            // This is deliberately the MINIMAL invariant repair. It does not
-            // renumber a colliding event: the single-writer queue already
-            // gives a dense 1..N for one instance, and renumbering under
-            // contention would open holes. Deciding which writer owns a run
-            // is the separate RunExecutionLease design question.
-            createSequenceUniquenessIndex(conn)
-            // Create durable operation journal tables.
-            OperationJournalSchema.create(conn)
-            // Migrate operation_journal schema: add started_at + ended_at columns if absent.
-            // Idempotent: safe to run on databases written by an older format
-            migrateOperationJournalSchema(conn)
-            // Backfill run_id from input JSON for pre-existing rows.
-            // Idempotent: only updates rows where run_id IS NULL.
-            backfillRunId(conn)
+            createOn(conn)
         } finally {
             conn.close()
         }
+    }
+
+    /**
+     * The shape of the file, on a connection that is already open.
+     *
+     * ## Why this is apart from [prepare]
+     *
+     * Because the PREPARATION of a substrate creates the events schema and the
+     * table of the promises in ONE transaction, and a transaction cannot span
+     * two connections. [prepare] opens a connection of its own and cannot join
+     * one; this function takes the connection the caller has, so the CALLER
+     * decides the transaction the shape is created in.
+     *
+     * Every statement here is idempotent, so calling it on a file that
+     * already carries the shape changes nothing.
+     */
+    fun createOn(conn: Connection) {
+        conn.createStatement().use { stmt ->
+            stmt.execute(
+                """
+                CREATE TABLE IF NOT EXISTS events (
+                    event_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    kind TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+                """.trimIndent()
+            )
+        }
+        // The durable sequence authority.
+        // The per-run counter is seeded ONCE per instance from
+        // MAX(sequence), so two store instances over the same database
+        // each start from the same number and then increment
+        // independently. Without a uniqueness constraint BOTH inserts
+        // succeed and the events table accumulates duplicate sequences,
+        // breaking the per-run monotonic invariant that replay and every
+        // External observer depend on (observed rows=300 distinct=150).
+        // UNIQUE(run_id, sequence) makes the DATABASE the authority: a
+        // writer that would duplicate a sequence is rejected by SQLite
+        // itself (fail-closed, no silent corruption) instead of
+        // appending a second event with a number already in the log.
+        // This is deliberately the MINIMAL invariant repair. It does not
+        // renumber a colliding event: the single-writer queue already
+        // gives a dense 1..N for one instance, and renumbering under
+        // contention would open holes. Deciding which writer owns a run
+        // is the separate RunExecutionLease design question.
+        createSequenceUniquenessIndex(conn)
+        // Create durable operation journal tables.
+        OperationJournalSchema.create(conn)
+        // Migrate operation_journal schema: add started_at + ended_at columns if absent.
+        // Idempotent: safe to run on databases written by an older format
+        migrateOperationJournalSchema(conn)
+        // Backfill run_id from input JSON for pre-existing rows.
+        // Idempotent: only updates rows where run_id IS NULL.
+        backfillRunId(conn)
     }
 
     /**

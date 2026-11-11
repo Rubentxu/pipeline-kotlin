@@ -159,21 +159,38 @@ fun CliError.toCliExit(): CliExit = when (this) {
         message = "run id '$runId' cannot name a durable directory",
         hint = "a run id may contain only letters, digits, '.', '_' and '-'",
     )
-    is CliError.SubstrateUnavailable -> substrateUnavailableExit(reason)
+    is CliError.SubstrateRefusal -> substrateExit(this)
     is CliError.ServiceUnavailable -> serviceUnavailableExit(reason, detail)
 }
 
 /**
- * The exit a refusal of the substrate becomes.
+ * The exit a refusal about the substrate becomes.
  *
- * It is the runtime-not-available case: the request asked the service to serve
- * a substrate this machine cannot give it, and that is a fact about the
- * machine, not about the words the operator typed.
+ * ## Why the two refusals share a door
+ *
+ * Because they are the two moments of ONE fact: the substrate is not there to
+ * be served, or it could not be prepared. Both of them are about the same
+ * file, and both of them send the reader to the same step —the one that
+ * prepares it— while the words say WHICH of the two happened.
+ *
+ * ## Why the hint of the first one says that the service does not create it
+ *
+ * Because that is the promise the service makes, and a reader who reads it
+ * learns the shape of the boundary: the file is made by a step somebody says
+ * so, and never by the act of serving it.
  */
-private fun substrateUnavailableExit(reason: String): CliExit = CliExit.RuntimeNotAvailable(
-    message = "the substrate cannot be served: $reason",
-    hint = "the service reads the substrate it is given; it does not create one",
-)
+private fun substrateExit(refusal: CliError.SubstrateRefusal): CliExit = when (refusal) {
+    is CliError.SubstrateUnavailable -> CliExit.RuntimeNotAvailable(
+        message = "the substrate cannot be served: ${refusal.reason}",
+        hint = "the service reads the substrate it is given; it does not create one",
+    )
+
+    is CliError.SubstrateNotPrepared -> CliExit.RuntimeNotAvailable(
+        message = "the substrate cannot be prepared: ${refusal.reason}",
+        hint = "the substrate is prepared by 'pipelinek substrate init --db <path>', " +
+            "and by nothing else; the service reads the one it is given",
+    )
+}
 
 /**
  * The exit a refusal of the startup becomes.

@@ -157,7 +157,23 @@ internal data class ServiceAuthorization(
      * value carries no secret and may be printed.
      */
     val credentialGrants: Set<CredentialGrant> = emptySet(),
-)
+) {
+    /**
+     * The text of this authorization, without the token.
+     *
+     * The token is a secret, and a line of log that carried it would publish
+     * it to whoever reads the log. The label, the scope and the grants are
+     * what tells two authorizations apart, and they carry no secret, so they
+     * stay: a diagnostic that says WHICH authorization it is about is worth
+     * reading, and one that says only "an authorization" is not.
+     *
+     * The grants are written in the order of their credential id, so that two
+     * texts about the same authorization are the same text.
+     */
+    override fun toString(): String =
+        "[SECRET ServiceAuthorization(label=$label, scope=$scope, " +
+            "credentialGrants=${credentialGrants.sortedBy { it.credentialId }})]"
+}
 
 /**
  * What the service decided about a request that carried an authorization.

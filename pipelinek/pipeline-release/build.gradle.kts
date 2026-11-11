@@ -13,21 +13,71 @@ plugins {
 
 // The seam of the mutation lane of this module.
 //
-// It covers the DECISION of the consumer-side check of the Maven channel: the
-// pure model that says what the repository served against what the manifest
-// declares. That model is the part whose rules can be wrong without anything
-// crashing, so it is the part where a surviving mutant is a hole in a test.
+// It covers the DECISIONS of the Maven channel and the DOCUMENTS they judge:
+// the model that says what the repository served against what the manifest
+// declares (the consumer's door), the model that says whether a request may
+// publish the bundle (the publisher's door), and the manifest, the request and
+// the artifact that both doors read. That set is the part whose rules can be
+// wrong without anything crashing, so it is the part where a surviving mutant
+// is a hole in a test.
+//
+// The publisher's door and its three documents were NOT in this seam until the
+// channel was measured for the first time. The seam held eighteen mutants, all
+// of them of the consumer's door, and all eighteen died: a green mutation lane
+// that said nothing at all about the half of the channel that decides what may
+// be published. A decision that nothing measures is a decision nobody has
+// checked, and the number of dead mutants says only that the measured part was
+// measured.
 //
 // The adapter over HTTP is NOT in this seam: its rules (the credential that
 // only travels to the repository that asks for it, the redirect that is not
 // followed, the address that has to be TLS) are effects, and they are
 // measured by the integration lane, which talks to a real server over a real
 // socket.
+//
+// The serializers are excluded because they are GENERATED: the code of a
+// `$$serializer` is written by the plugin, not by this repository, and a
+// mutant in it is a mutant in the plugin.
+//
+// FIVE mutants of this seam survive and are EQUIVALENT: they cannot be killed
+// by any row, and they are recorded here rather than excluded from the seam,
+// because a number that hides its survivors is a number that cannot be read.
+//
+//   - `certificationViolations` and `publishedViolations` each return
+//     `emptyList()` on the path where nothing is wrong; the mutant returns
+//     `java.util.Collections.emptyList()` instead. Two empty lists are the
+//     same value to every caller: `equals` holds, the size holds, and the
+//     type does not promise the identity of the instance.
+//   - the same two functions cast a sealed verdict to the case they have
+//     already excluded, behind an `Intrinsics.checkNotNull`. The verdict has
+//     exactly two cases, the other one was excluded on the line above, and the
+//     value is not null, so the check cannot fire and the cast cannot fail.
+//   - one conditional of the diagnostic that names the kind of an artifact
+//     whose path contradicts it. Its ONLY observable is the message, and the
+//     message is pinned exactly, character by character, in the two
+//     configurations that reach it: a path of no kind, and a path of a kind
+//     the artifact does not declare. The mutant survives both pins, so it
+//     changes no output that any caller can read.
+//
+// Any OTHER survivor of this seam is a hole in a row, and the row is what
+// closes it.
 pitest {
     junit5PluginVersion = "1.2.1"
-    targetClasses = listOf("dev.rubentxu.pipeline.v2.release.MavenResolutionValidation*")
+    targetClasses = listOf(
+        "dev.rubentxu.pipeline.v2.release.MavenResolutionValidation*",
+        "dev.rubentxu.pipeline.v2.release.MavenPublicationValidation*",
+        "dev.rubentxu.pipeline.v2.release.MavenPublicationManifest",
+        "dev.rubentxu.pipeline.v2.release.MavenPublicationRequest",
+        "dev.rubentxu.pipeline.v2.release.MavenArtifactDigest",
+        "dev.rubentxu.pipeline.v2.release.MavenArtifactKind",
+    )
+    excludedClasses = listOf(
+        "dev.rubentxu.pipeline.v2.release.*\$\$serializer",
+    )
     targetTests = listOf(
         "dev.rubentxu.pipeline.v2.release.MavenResolutionValidationTest",
+        "dev.rubentxu.pipeline.v2.release.MavenPublicationValidationTest",
+        "dev.rubentxu.pipeline.v2.release.MavenPublicationCodecTest",
     )
     threads = System.getenv("PIT_THREADS")?.toInt() ?: 4
     timeoutConstInMillis = 10000

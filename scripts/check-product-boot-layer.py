@@ -38,6 +38,28 @@ THE FOUR SHAPES, MEASURED
   Each shape is matched by what it IS, so the layer cannot come back under
   another name: a scenario with another name is still a `.pipeline.kts`.
 
+THE FIFTH SHAPE, AND WHY IT IS A SHAPE
+  A BOOT CHECK: a row that STARTS the product and asks it something.
+
+  It was missing here, and the hole was measured: the tree held two files
+  that unpack the published distribution, start its launcher and ask the
+  service it starts over a socket, and this guard said the tree held no layer
+  that boots a product. The four shapes above could not see them because a
+  test file is none of them: the launcher it starts lives in a temporary
+  directory, and the file that starts it is a `.kt` of a test source set.
+
+  A boot check is matched by what it IS, in two signals that only mean
+  something together: the file NAMES the product --the ZIP the build
+  publishes, the installation the build writes, the launcher of the
+  distribution or the entry point of the product-- and it STARTS A PROCESS.
+  A file that only names the product asserts about it, and a file that only
+  starts a process starts something else.
+
+  A boot check is not a failure BY ITSELF: the tree may hold declared ones.
+  What is a failure is a boot check the declaration does not name, a
+  declaration whose file is gone, a declared file that does not carry the tag
+  the build excludes, and a tag that only one of the three knows.
+
 WHAT IS DECLARED, AND WHY IT IS DECLARED BY NAME
   A program is not forbidden by its kind: the repository's own gate, its own
   guards, the installer and the release tooling are programs, and they are
@@ -90,8 +112,8 @@ THE DECLARED ROOTS
   a declared program that is no longer there is: a declaration that can
   disappear without saying anything is a declaration that governs nothing.
 
-Exit status is 0 when the tree holds no layer that boots a product, and 1
-with the list of the offenders when it does.
+Exit status is 0 when the tree holds no layer that boots a product and no
+undeclared boot check, and 1 with the list of the offenders when it does.
 """
 
 from __future__ import annotations
@@ -302,6 +324,68 @@ DECLARED_SCENARIO_ROOTS = {
     ),
 }
 
+# The tag that marks a row that STARTS the product.
+#
+# The word is written here, in the rows that carry it and in the build that
+# excludes them, and this guard is what says that those three are the same
+# word: a tag that only one of the three knows excludes nothing.
+BOOT_CHECK_TAG = "boot-check"
+
+# The property the gate asks with, so that the build leaves the rows that
+# carry the tag out of the lanes the gate runs.
+BOOT_CHECK_PROPERTY = "pipelinek.excludeBootChecks"
+
+# The signals that a file NAMES the product.
+#
+# They are the ways a test can reach the product: the ZIP the build
+# publishes, the installation the build writes, the launcher of the
+# distribution and the entry point of the product itself.
+PRODUCT_SIGNALS = (
+    "pipelinek.distribution.zip",
+    "build/distributions",
+    "build/install",
+    "bin/pipelinek",
+    "MainKt",
+)
+
+# The signals that a file STARTS A PROCESS.
+PROCESS_SIGNALS = (
+    "ProcessBuilder",
+    "Runtime.getRuntime().exec",
+)
+
+# The source sets whose rows this guard reads. The product starts processes
+# all day long --that is what it does-- and those files are not boot checks.
+TEST_SOURCE_MARKERS = (
+    "/src/test/",
+    "/src/integrationTest/",
+)
+
+# The rows that START the product, with the reason each one is here.
+#
+# A boot check can go red for a reason the code does not have: the machine is
+# busy, the port is taken, the clock of the machine is off. The gate certifies
+# the TREE, so it calls none of these rows; they stay in the tree, they are
+# declared here, and they carry the tag the build excludes.
+#
+# The certification of the PUBLISHED artefact is the harness's, and it is
+# there that the bytes are certified by their digest. These rows are the
+# tree's own, and the tree's own gate does not call them.
+DECLARED_BOOT_CHECKS = {
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/InstalledProductBootIntegrationTest.kt": (
+        "the rows that start the INSTALLED product: the launcher of the "
+        "distribution and the service it starts, asked over a real socket. "
+        "They are the tree's own check of the packaging it publishes, and the "
+        "gate does not call them"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/OciEntrypointIntegrationTest.kt": (
+        "the rows that start the INSTALLED product through the entrypoint of "
+        "the OCI profile: the profile is a packaging of the published "
+        "distribution, and the cold start they measure is a check of that "
+        "packaging. The gate does not call them"
+    ),
+}
+
 
 def tree_files(repo: Path) -> list[tuple[str, str]]:
     """Every file of the working tree, with the mode Git records for it.
@@ -381,6 +465,104 @@ def declared_root_of(name: str) -> str | None:
     return None
 
 
+def is_a_test_source(name: str) -> bool:
+    """Whether the file is a row of a test source set.
+
+    The product starts processes all day long --that is what it does-- and
+    those files are not boot checks: a boot check is a row that starts the
+    product to ask it something.
+    """
+    return any(marker in name for marker in TEST_SOURCE_MARKERS)
+
+
+def reads(name: str, path: Path) -> str:
+    """The text of the file, or the empty text when it cannot be read."""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def boots_the_product(name: str, path: Path) -> bool:
+    """Whether the file starts the product.
+
+    Two signals, and only together: the file NAMES the product --the ZIP the
+    build publishes, the installation the build writes, the launcher of the
+    distribution or the entry point of the product-- and it STARTS A PROCESS.
+
+    A file that only names the product asserts about it, and a file that only
+    starts a process starts something else --a shell, a tool-- and neither of
+    the two boots anything.
+
+    The tag does not hide a boot check: the form is what decides, and a row
+    that starts the product is a boot check whether it carries the tag or not.
+    """
+    if not is_a_test_source(name):
+        return False
+    text = reads(name, path)
+    if not text:
+        return False
+    names_the_product = any(signal in text for signal in PRODUCT_SIGNALS)
+    starts_a_process = any(signal in text for signal in PROCESS_SIGNALS)
+    return names_the_product and starts_a_process
+
+
+def carries_the_tag(path: Path) -> bool:
+    """Whether the file carries the tag of a boot check."""
+    return f'@Tag("{BOOT_CHECK_TAG}")' in reads("", path)
+
+
+def lane_of(name: str) -> int:
+    """The stage of the gate that runs the rows of that source set.
+
+    The rows of the unit lane are the stage 3 and the rows of the integration
+    lane are the stage 4. The gate calls none of the boot checks, so this is
+    the lane that would run them and not the one that does.
+    """
+    return 3 if "/src/test/" in name else 4
+
+
+def build_exclusion_problems(repo: Path) -> list[str]:
+    """Why the build does not leave the boot checks out of the lanes, if it does not.
+
+    The build is what honours the request of the gate, and the tag it excludes
+    is the one the rows carry. A build that does not exclude the tag would
+    leave the rows in the lanes, and the gate would be calling the product
+    without saying so.
+    """
+    build = repo / "pipelinek" / "build.gradle.kts"
+    text = reads("", build)
+    if not text:
+        return ["the build of the tree is not there, so nothing excludes the boot checks"]
+    problems: list[str] = []
+    if f'excludeTags("{BOOT_CHECK_TAG}")' not in text:
+        problems.append(
+            f"the build does not exclude the rows that carry the tag '{BOOT_CHECK_TAG}'"
+        )
+    if BOOT_CHECK_PROPERTY not in text:
+        problems.append(
+            f"the build does not honour the property '{BOOT_CHECK_PROPERTY}'"
+        )
+    return problems
+
+
+def gate_exclusion_problems(repo: Path) -> list[str]:
+    """Why the gate does not ask for the exclusion, if it does not.
+
+    The gate is the one that certifies the tree, and a boot check is a row
+    that can go red for a reason the code does not have. A gate that does not
+    ask for the exclusion calls the product and publishes a verdict about the
+    machine under the name of a verdict about the tree.
+    """
+    gate = repo / "scripts" / "verify-all.sh"
+    text = reads("", gate)
+    if not text:
+        return ["the gate of the tree is not there, so nothing asks for the exclusion"]
+    if f"-P{BOOT_CHECK_PROPERTY}" not in text:
+        return [f"the gate does not ask for the exclusion with '-P{BOOT_CHECK_PROPERTY}'"]
+    return []
+
+
 def main() -> int:
     repo = Path(__file__).resolve().parent.parent
     files = tree_files(repo)
@@ -391,6 +573,8 @@ def main() -> int:
     init_scripts: list[str] = []
     programs: list[str] = []
     undeclared: list[tuple[str, str]] = []
+    boot_checks: list[str] = []
+    undeclared_boots: list[str] = []
 
     for name, mode in files:
         if name.endswith(SCENARIO_SUFFIX):
@@ -411,6 +595,10 @@ def main() -> int:
                 undeclared.append(
                     (name, "a program that this tree does not declare")
                 )
+        if boots_the_product(name, path):
+            boot_checks.append(name)
+            if name not in DECLARED_BOOT_CHECKS:
+                undeclared_boots.append(name)
 
     # A declared program that is no longer on disk is a failure: the
     # declaration is the list of what this tree holds, and a name that no
@@ -428,6 +616,28 @@ def main() -> int:
         if not (repo / root).is_dir()
     ]
 
+    # The boot checks are declared, and the declaration has to govern
+    # something: a declared boot check that is gone, and a declared boot
+    # check that does not carry the tag the build excludes, are both
+    # failures. The second one is the important half: a declared file
+    # without the tag is a file the gate CALLS, and the gate calls no boot
+    # check.
+    gone_boots = [
+        name for name in sorted(DECLARED_BOOT_CHECKS)
+        if not (repo / name).is_file()
+    ]
+    untagged_boots = [
+        name for name in sorted(DECLARED_BOOT_CHECKS)
+        if (repo / name).is_file() and not carries_the_tag(repo / name)
+    ]
+
+    # The chain that takes the boot checks out of the lanes: the gate asks,
+    # the build honours the request and excludes the tag, and the rows carry
+    # the tag. A link that is missing is a link that leaves the gate calling
+    # the product.
+    build_problems = build_exclusion_problems(repo)
+    gate_problems = gate_exclusion_problems(repo)
+
     print("the layer that boots a product lives in a harness repository")
     print(f"  files read:             {len(files)}")
     print(f"  programs:               {len(programs)} found, {len(DECLARED_EXECUTABLES)} declared")
@@ -435,8 +645,13 @@ def main() -> int:
     print(f"  declared as docs:       {len(documented)}")
     print(f"  family maps:            {len(family_maps)}")
     print(f"  init scripts:           {len(init_scripts)}")
+    print(f"  boot checks:            {len(boot_checks)} found, {len(DECLARED_BOOT_CHECKS)} declared")
 
-    if scenarios or family_maps or init_scripts or undeclared or gone or missing_roots:
+    if (
+        scenarios or family_maps or init_scripts or undeclared or gone or missing_roots
+        or undeclared_boots or gone_boots or untagged_boots
+        or build_problems or gate_problems
+    ):
         for name in scenarios:
             print(f"  {name}: a scenario of the product under test")
         for name in family_maps:
@@ -449,10 +664,23 @@ def main() -> int:
             print(f"  {name}: declared as an executable program and no longer there")
         for root in missing_roots:
             print(f"  {root}: declared as a root of documented scenarios and no longer there")
+        for name in undeclared_boots:
+            print(f"  {name}: a check that starts the product and this tree does not declare")
+        for name in gone_boots:
+            print(f"  {name}: declared as a check that starts the product and no longer there")
+        for name in untagged_boots:
+            print(
+                f"  {name}: declared as a check that starts the product and does not carry "
+                f"the tag '{BOOT_CHECK_TAG}', so the gate would call it"
+            )
+        for problem in build_problems:
+            print(f"  the build: {problem}")
+        for problem in gate_problems:
+            print(f"  the gate: {problem}")
         print()
         print(
             "LAYER THAT BOOTS A PRODUCT: "
-            f"{len(scenarios) + len(family_maps) + len(init_scripts) + len(undeclared) + len(gone) + len(missing_roots)}"
+            f"{len(scenarios) + len(family_maps) + len(init_scripts) + len(undeclared) + len(gone) + len(missing_roots) + len(undeclared_boots) + len(gone_boots) + len(untagged_boots) + len(build_problems) + len(gate_problems)}"
         )
         print(
             "  this tree certifies itself with unit tests, integration tests with "
@@ -478,8 +706,18 @@ def main() -> int:
             f"  {len(documented)} pipelines are declared as documentation under "
             f"{', '.join(sorted(DECLARED_SCENARIO_ROOTS))}"
         )
+    if boot_checks:
+        print(
+            f"  {len(boot_checks)} checks start the product and all of them are declared:"
+        )
+        for name in sorted(boot_checks):
+            print(
+                f"    {name}: starts the product; the lane is {lane_of(name)} and the "
+                "gate calls none of it"
+            )
     print(
-        "  this tree holds no layer that boots a product, and this gate calls none"
+        "  this tree holds no layer that boots a product that it does not declare, "
+        "and this gate calls none"
     )
     return 0
 

@@ -539,6 +539,31 @@ subprojects {
     }
 }
 
+// THE ROWS THAT START THE PRODUCT ARE NOT CALLED BY THE GATE.
+//
+// The gate certifies THIS TREE, and a row that starts the product can go red
+// for a reason the code does not have: the machine is busy, the port is
+// taken, the clock of the machine is off. A gate that calls such a row
+// publishes a verdict about the machine under the name of a verdict about the
+// tree.
+//
+// So the rows that carry the tag below are EXCLUDED from the lanes when the
+// gate asks for it, and the gate always asks. The rows stay in the tree: they
+// are declared in `scripts/check-product-boot-layer.py` with the reason they
+// are here, and whoever wants them runs the lane with the property absent.
+//
+// The word of the tag is written here, in the rows that carry it and in the
+// guard that declares them, and the guard is what says that those three are
+// the same word: a tag that only one of the three knows is a tag that does
+// not exclude anything.
+subprojects {
+    tasks.withType<Test>().configureEach {
+        if (providers.gradleProperty("pipelinek.excludeBootChecks").isPresent) {
+            useJUnitPlatform { excludeTags("boot-check") }
+        }
+    }
+}
+
 // The JDK the product is compiled with.
 //
 // The build used to inherit whatever `java` the machine happened to point at,

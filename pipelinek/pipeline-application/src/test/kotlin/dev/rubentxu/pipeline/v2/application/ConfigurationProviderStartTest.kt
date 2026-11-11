@@ -398,7 +398,7 @@ class ConfigurationProviderStartTest {
             ),
         )
 
-        val found = assertInstanceOf(RunConfigurationLookup.Found::class.java, supervisor.describe("run-1"))
+        val found = assertInstanceOf(RunConfigurationLookup.Found::class.java, locatorFor(root, port).describe("run-1"))
         val description = found.description
 
         assertEquals(
@@ -420,12 +420,13 @@ class ConfigurationProviderStartTest {
 
     @Test
     fun `a run started without a provider describes its keys as the request's own`(@TempDir root: Path) {
-        val supervisor = supervisor(root, FakePort(), FakeResolver { _, _, _ -> error("not asked") })
+        val port = FakePort()
+        val supervisor = supervisor(root, port, FakeResolver { _, _, _ -> error("not asked") })
         supervisor.start(request(configuration = mapOf("BUILD_PROFILE" to "release")))
 
         val description = assertInstanceOf(
             RunConfigurationLookup.Found::class.java,
-            supervisor.describe("run-1"),
+            locatorFor(root, port).describe("run-1"),
         ).description
 
         assertEquals(
@@ -438,12 +439,13 @@ class ConfigurationProviderStartTest {
 
     @Test
     fun `a run given no configuration describes an empty one`(@TempDir root: Path) {
-        val supervisor = supervisor(root, FakePort(), resolver = null)
+        val port = FakePort()
+        val supervisor = supervisor(root, port, resolver = null)
         supervisor.start(request())
 
         val description = assertInstanceOf(
             RunConfigurationLookup.Found::class.java,
-            supervisor.describe("run-1"),
+            locatorFor(root, port).describe("run-1"),
         ).description
 
         assertTrue(description.entries.isEmpty())
@@ -452,9 +454,10 @@ class ConfigurationProviderStartTest {
 
     @Test
     fun `a run the service did not start is unknown`(@TempDir root: Path) {
-        val supervisor = supervisor(root, FakePort(), resolver = null)
+        val port = FakePort()
+        supervisor(root, port, resolver = null)
 
-        assertEquals(RunConfigurationLookup.Unknown, supervisor.describe("run-that-never-was"))
+        assertEquals(RunConfigurationLookup.Unknown, locatorFor(root, port).describe("run-that-never-was"))
     }
 
     @Test
@@ -464,24 +467,83 @@ class ConfigurationProviderStartTest {
         supervisor.start(request(provider = ServiceProviderReference("ldap", listOf("REGION"))))
         Files.delete(snapshotOf(port.requests.single()))
 
-        val lookup = assertInstanceOf(RunConfigurationLookup.Unreadable::class.java, supervisor.describe("run-1"))
+        val lookup = assertInstanceOf(
+            RunConfigurationLookup.Unreadable::class.java,
+            locatorFor(root, port).describe("run-1"),
+        )
 
         assertFalse(lookup.detail.contains(root.toString()), "a path does not travel")
     }
 
     @Test
-    fun `the service forgets the oldest runs once the index is full`(@TempDir root: Path) {
+    fun `the supervision directory of a run is named after the correlation the service chose`(
+        @TempDir root: Path,
+    ) {
+        val port = FakePort()
+        val supervisor = supervisor(root, port, resolver = null)
+        supervisor.start(request(configuration = mapOf("BUILD_PROFILE" to "release")))
+
+        val correlation = requireNotNull(port.correlationOf("run-1"))
+        val snapshot = snapshotOf(port.requests.single())
+
+        assertEquals(
+            root.resolve("supervisions").resolve(supervisionDirectoryName(correlation)),
+            snapshot.parent,
+            "the location of the snapshot is derived from the correlation, so no index has to remember it",
+        )
+    }
+
+    @Test
+    fun `every run is described however many runs the service has started`(@TempDir root: Path) {
+        val port = FakePort()
         val supervisor = supervisor(
             root,
-            FakePort(),
+            port,
             FakeResolver { _, _, keys -> resolved(keys.associateWith { "1" }) },
-            maxDescribedRuns = 2,
+            maxSupervisedRuns = 10,
         )
-        repeat(3) { supervisor.start(request(provider = ServiceProviderReference("ldap", listOf("REGION")))) }
+        repeat(6) { supervisor.start(request(provider = ServiceProviderReference("ldap", listOf("REGION")))) }
 
-        assertEquals(RunConfigurationLookup.Unknown, supervisor.describe("run-1"), "the oldest was forgotten")
-        assertInstanceOf(RunConfigurationLookup.Found::class.java, supervisor.describe("run-2"))
-        assertInstanceOf(RunConfigurationLookup.Found::class.java, supervisor.describe("run-3"))
+        val locator = locatorFor(root, port)
+
+        for (run in 1..6) {
+            assertInstanceOf(
+                RunConfigurationLookup.Found::class.java,
+                locator.describe("run-$run"),
+                "the first run is found as the last one is: nothing was evicted, because nothing was kept",
+            )
+        }
+    }
+
+    @Test
+    fun `a locator that did not start the runs still describes them`(@TempDir root: Path) {
+        val port = FakePort()
+        val supervisor = supervisor(
+            root,
+            port,
+            FakeResolver(revision = "rev-9") { _, _, keys -> resolved(keys.associateWith { "1" }) },
+        )
+        supervisor.start(
+            request(
+                configuration = mapOf("BUILD_PROFILE" to "release"),
+                provider = ServiceProviderReference("ldap", listOf("REGION")),
+            ),
+        )
+        val before = assertInstanceOf(
+            RunConfigurationLookup.Found::class.java,
+            locatorFor(root, port).describe("run-1"),
+        ).description
+        supervisor.close()
+
+        // A locator built afterwards shares nothing in memory with the supervisor
+        // that wrote the snapshot, which is what a restarted service is.
+        val after = assertInstanceOf(
+            RunConfigurationLookup.Found::class.java,
+            locatorFor(root, port).describe("run-1"),
+        ).description
+
+        assertEquals(before, after)
+        assertEquals("rev-9", after.revision)
     }
 
     // ------------------------------------------------------------------------------- reader
@@ -586,7 +648,6 @@ class ConfigurationProviderStartTest {
         port: DurableTaskRuntime,
         resolver: ConfigurationResolver?,
         maxSupervisedRuns: Int = 4,
-        maxDescribedRuns: Int = ServiceRunSupervisor.MAX_DESCRIBED_RUNS,
     ): ServiceRunSupervisor {
         val scripts = Files.createDirectories(root.resolve("scripts"))
         Files.writeString(scripts.resolve("build.kts"), "print(1)")
@@ -610,12 +671,26 @@ class ConfigurationProviderStartTest {
             limits = ServiceStartLimits(
                 maxSupervisedRuns = maxSupervisedRuns,
                 startDeadlineMillis = 5_000L,
-                maxDescribedRuns = maxDescribedRuns,
             ),
             supervisionRoot = root.resolve("supervisions"),
-            configurations = resolver,
+            collaborators = ServiceCollaborators(configurations = resolver),
         )
     }
+
+    /**
+     * The door that answers where the configuration of a run came from, over the directory the
+     * supervisor wrote and with the correlations the port saw standing in for the events of the
+     * store: the port is the double of the child, and the child is who publishes them.
+     */
+    private fun locatorFor(root: Path, port: FakePort): RunConfigurationLocator = RunConfigurationLocator(
+        supervisionRoot = root.resolve("supervisions"),
+        correlations = object : RunCorrelationReader {
+            override fun correlationOf(runId: String): RunCorrelation {
+                val correlation = port.correlationOf(runId)
+                return if (correlation == null) RunCorrelation.Absent else RunCorrelation.Found(correlation)
+            }
+        },
+    )
 
     /** A resolver that remembers what it was asked and answers as the test says. */
     private class FakeResolver(
@@ -646,6 +721,10 @@ class ConfigurationProviderStartTest {
         val requests: MutableList<TaskExecutionRequest> =
             java.util.Collections.synchronizedList(mutableListOf<TaskExecutionRequest>())
         private val runs = AtomicInteger()
+        private val correlations = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+        /** The correlation the child of [runId] was started with, or null when no child had that run. */
+        fun correlationOf(runId: String): String? = correlations[runId]
 
         override suspend fun execute(
             request: TaskExecutionRequest,
@@ -655,6 +734,7 @@ class ConfigurationProviderStartTest {
             val argv = (request.task as TaskSpec.ExecTask).argv
             val correlation = argv[argv.indexOf("--correlation-id") + 1]
             val run = runs.incrementAndGet()
+            correlations["run-$run"] = correlation
             outputSink.append(
                 OutputChunk.stdout(
                     (

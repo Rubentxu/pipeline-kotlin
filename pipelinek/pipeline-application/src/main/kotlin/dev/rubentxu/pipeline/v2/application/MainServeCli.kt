@@ -262,7 +262,19 @@ internal data class ServeSubstrate(
     val controlRootPath: Path,
     val socketAbsolute: Path,
     val socketPath: String,
-)
+) {
+
+    /**
+     * The directory the supervisions live in, next to the socket.
+     *
+     * It is derived HERE, once, because the supervisor writes the facts of a
+     * run into it and the door that answers where the configuration of a run
+     * came from has to look in the very same directory: two derivations would
+     * be two names for one place.
+     */
+    val supervisionRoot: Path
+        get() = requireNotNull(socketAbsolute.parent).resolve(SUPERVISION_DIRECTORY)
+}
 
 /**
  * What the composition of the service produced before it could serve.
@@ -439,7 +451,7 @@ internal fun composeServiceToServe(
         policy = policy,
         dbAbsolute = substrate.dbAbsolute,
         controlAbsolute = substrate.controlAbsolute,
-        socketAbsolute = substrate.socketAbsolute,
+        supervisionRoot = substrate.supervisionRoot,
         clock = clock,
         brokers = brokers.factory,
         configurations = providers,
@@ -850,14 +862,12 @@ private fun composeSupervisor(
     policy: ServiceRunDeclaration,
     dbAbsolute: Path,
     controlAbsolute: Path,
-    socketAbsolute: Path,
+    supervisionRoot: Path,
     clock: dev.rubentxu.pipeline.v2.domain.durable.Clock,
     brokers: RunBrokerFactory?,
     configurations: ConfigurationResolver?,
     credentialSessions: CredentialProviderSessions?,
 ): ServiceRunSupervisor {
-    val supervisionRoot = requireNotNull(socketAbsolute.parent)
-        .resolve(SUPERVISION_DIRECTORY)
     return ServiceRunSupervisor(
         admission = ServiceStartAdmission(policy.scriptsRoot, policy.workspacesRoot),
         runPolicy = ServiceRunPolicy(
@@ -878,9 +888,11 @@ private fun composeSupervisor(
             startDeadlineMillis = policy.startDeadlineMillis,
         ),
         supervisionRoot = supervisionRoot,
-        brokers = brokers,
-        configurations = configurations,
-        credentialSessions = credentialSessions,
+        collaborators = ServiceCollaborators(
+            brokers = brokers,
+            configurations = configurations,
+            credentialSessions = credentialSessions,
+        ),
         // The door that closes a run whose child was killed: it stamps the
         // terminal with the SAME clock the service stamps everything else, so
         // a run that the service closed says when the service closed it.
@@ -961,7 +973,10 @@ private fun composeService(
         starts = supervisor,
         cancellations = cancellations,
         providers = providers,
-        configurations = supervisor,
+        configurations = RunConfigurationLocator(
+            supervisionRoot = substrate.supervisionRoot,
+            correlations = EventStoreRunCorrelationReader(dbPath),
+        ),
         inputs = inputs?.let {
             ServiceInputAnswers(
                 inputsRoot = it.root,

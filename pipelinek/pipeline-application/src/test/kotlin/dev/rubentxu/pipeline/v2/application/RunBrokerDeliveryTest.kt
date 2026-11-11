@@ -148,7 +148,7 @@ class RunBrokerDeliveryTest {
                 startDeadlineMillis = 5_000L,
             ),
             supervisionRoot = root.resolve("supervisions"),
-            brokers = brokers,
+            collaborators = ServiceCollaborators(brokers = brokers),
         )
     }
 

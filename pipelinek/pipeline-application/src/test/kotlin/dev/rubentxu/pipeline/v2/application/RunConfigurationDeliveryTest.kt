@@ -203,6 +203,20 @@ class RunConfigurationDeliveryTest {
     }
 
     @Test
+    fun `the record of a run given nothing that cannot be written refuses the start`(@TempDir root: Path) {
+        Files.writeString(root.resolve("supervisions"), "not a directory")
+        val supervisor = supervisor(root, FakePort { request, sink -> sink.append(receiptOf(request)) })
+
+        val refused = supervisor.start(request(key = "order-42"))
+
+        val refusal = assertInstanceOf(
+            ServiceRefusal.RunConfigurationRefused::class.java,
+            assertInstanceOf(ServiceStartOutcome.Refused::class.java, refused).refusal,
+        )
+        assertEquals("the-configuration-cannot-be-written", refusal.reason)
+    }
+
+    @Test
     fun `a snapshot that cannot be written frees the key of the client`(@TempDir root: Path) {
         Files.writeString(root.resolve("supervisions"), "not a directory")
         val supervisor = supervisor(root, FakePort { request, sink -> sink.append(receiptOf(request)) })

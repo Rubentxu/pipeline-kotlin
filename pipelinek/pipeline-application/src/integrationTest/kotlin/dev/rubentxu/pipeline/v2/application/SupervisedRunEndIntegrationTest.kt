@@ -159,7 +159,7 @@ class SupervisedRunEndIntegrationTest {
      */
     private fun reasonOf(runId: String): String {
         val terminal = terminalFactOf(runId)
-        return terminal?.diagnostics?.joinToString(" | ") { it.message } ?: ""
+        return terminal?.diagnostics?.joinToString(" | ") { it.message }.orEmpty()
     }
 
     /**
@@ -177,7 +177,7 @@ class SupervisedRunEndIntegrationTest {
     private fun describe(runId: String): String {
         val terminal = terminalFactOf(runId)
         val outcome = terminal?.outcome ?: "no terminal yet"
-        val reason = terminal?.diagnostics?.joinToString(" | ") { it.message } ?: ""
+        val reason = terminal?.diagnostics?.joinToString(" | ") { it.message }.orEmpty()
         val observation = client(READER_TOKEN).runState(runId)
         val state = when (val answered = observation) {
             is ServiceAnswer.Answered -> when (val value = answered.value) {

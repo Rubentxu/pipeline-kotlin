@@ -439,7 +439,7 @@ class ConfigurationProviderIntegrationTest {
             registry = registry,
             limits = ServiceStartLimits(maxSupervisedRuns = 2, startDeadlineMillis = 120_000L),
             supervisionRoot = supervisionRoot,
-            configurations = providers,
+            collaborators = ServiceCollaborators(configurations = providers),
         )
         val operations = ServiceOperations(
             introspection = composeRuntimeIntrospectionPort(
@@ -458,7 +458,7 @@ class ConfigurationProviderIntegrationTest {
             starts = supervisor,
             cancellations = null,
             providers = providers,
-            configurations = supervisor,
+            configurations = RunConfigurationLocator(supervisionRoot, EventStoreRunCorrelationReader(db.toString())),
         )
         val stores = DurableStores.open(store, control, clock)
         val streets = ServiceSubscription(

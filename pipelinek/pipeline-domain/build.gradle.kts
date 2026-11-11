@@ -91,6 +91,67 @@ plugins {
 //
 // They are NOT excluded from the seam: a number that hides its survivors is a
 // number that cannot be read.
+//
+// THE MUTANTS THAT SURVIVE IN THE PARALLEL RECONCILER, AND WHY THEY CANNOT BE
+// KILLED — eight of them:
+//
+// The parallel reconciler is a PURE function and it had no row at all: the
+// decision of whether a parallel aggregate is started, resumed branch by
+// branch, closed from its children, reused or refused was measured by nobody,
+// in any module. Its rows now exist (`ParallelReconcilerTest`), and the eight
+// that survive are the ones no input can distinguish.
+//
+// - the FAST PATH of the INLINED collection functions — TWO conditionals per
+//   call (`instanceof Collection` and `isEmpty()`) — in four calls:
+//     - `ParallelReconciler.kt:35`, the `Collection.any` of the incomplete
+//       branch (library line 125);
+//     - `ParallelReconciler.kt:103`, the `Collection.any` of the failed child
+//       (library line 128);
+//     - `ParallelReconciler.kt:104`, the `Collection.any` of the unstable
+//       child (library line 131);
+//     - `ParallelReconciler.kt:105`, the `Collection.all` of the succeeded
+//       children (library line 134);
+//   The report attributes them to those lines of the LIBRARY, which do not
+//   exist in this file: the `LineNumberTable` of the method maps the inlined
+//   offsets to the library. MEASURED with `javap -p -c -l` over the compiled
+//   class:
+//     - the receiver is statically a `List`, and a List is ALWAYS a
+//       Collection, so the `instanceof` branch is dead code;
+//     - the fast path's ONLY distinct answer is the EMPTY collection, and an
+//       empty collection answers the same on the fast path AND on the
+//       iterator path (false for `any`, true for `all`), so the two paths
+//       converge for every input and the shortcut has no observable.
+//
+// THE MUTANTS THAT THE PARALLEL DECISION CANNOT REACH, AND WHY THEY ARE NOT A
+// HOLE OF THE PRODUCT — four of them:
+//
+// - 1 at `ParallelReconciler.kt:85` is the `is BranchTerminal.Failed` arm of
+//   the `when` that folds the children. It is UNREACHABLE:
+//   `reconstructBranch` never answers a `Terminal` with a `Failed` (a FAILED
+//   child row is ambiguous and refuses the aggregate before it enters the
+//   map), so the fold can only be `Succeeded` or `Unstable`. The arm exists
+//   because `BranchTerminal` is sealed and the `when` has to be exhaustive,
+//   and it says what the reconciler would do if that invariant were ever
+//   broken: fail closed.
+// - 3 of the UNSTABLE fold of `ParallelAggregate.kt:60` (library lines 93 and
+//   97) are the comparator and the loop condition of the INLINED
+//   `minByOrNull`. No input can kill them: every unstable entry carries the
+//   SAME `BranchTerminal.Unstable` instance, so WHICH unstable branch the
+//   fold keeps is not observable in what it returns.
+//
+// THE TIE-BREAK THAT SURVIVES IN THE FOLD — one of them:
+//
+// - 1 of the FAILURE fold of `ParallelAggregate.kt:58` (library line 76) is
+//   the boundary of the comparison inside the INLINED `minByOrNull { it.key }`:
+//   changing `>` into `>=` only changes WHICH element of a tie is kept. The
+//   keys of the map are branch indices, and a map has UNIQUE keys, so there
+//   is no tie to break. The failure that is kept IS observable (its message
+//   says which branch it was), and that is why the row of the fold that pins
+//   "the lowest branch index wins" kills the OTHER mutant of the same
+//   comparison.
+//
+// They are NOT excluded from the seam: a number that hides its survivors is a
+// number that cannot be read.
 pitest {
     junit5PluginVersion = "1.2.1"
     targetClasses = listOf("dev.rubentxu.pipeline.v2.domain.durable.*")

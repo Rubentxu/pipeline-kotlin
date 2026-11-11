@@ -7,6 +7,32 @@ plugins {
     // runtime version. The catalog alias `libs.plugins.kotlin.serialization`
     // binds to the runtime version and does not resolve as a Gradle plugin id.
     kotlin("plugin.serialization")
+    // Selective mutation (ReplayPolicy core). Run explicitly::pipeline-release:pitest
+    id("info.solidsoft.pitest")
+}
+
+// The seam of the mutation lane of this module.
+//
+// It covers the DECISION of the consumer-side check of the Maven channel: the
+// pure model that says what the repository served against what the manifest
+// declares. That model is the part whose rules can be wrong without anything
+// crashing, so it is the part where a surviving mutant is a hole in a test.
+//
+// The adapter over HTTP is NOT in this seam: its rules (the credential that
+// only travels to the repository that asks for it, the redirect that is not
+// followed, the address that has to be TLS) are effects, and they are
+// measured by the integration lane, which talks to a real server over a real
+// socket.
+pitest {
+    junit5PluginVersion = "1.2.1"
+    targetClasses = listOf("dev.rubentxu.pipeline.v2.release.MavenResolutionValidation*")
+    targetTests = listOf(
+        "dev.rubentxu.pipeline.v2.release.MavenResolutionValidationTest",
+    )
+    threads = System.getenv("PIT_THREADS")?.toInt() ?: 4
+    timeoutConstInMillis = 10000
+    outputFormats = listOf("XML", "HTML")
+    mutators = listOf("DEFAULTS")
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -1084,6 +1110,108 @@ tasks.register<JavaExec>("mavenPublication") {
     // Any non-zero exit means the request may NOT publish, and the publisher
     // MUST NOT continue.
     isIgnoreExitValue = false
+}
+
+/**
+ * The consumer-side door of the Maven channel.
+ *
+ * It answers ONE question: "does the repository a consumer resolves from
+ * serve the bytes the publication manifest declares?". The answer is the
+ * model's, and this task only resolves the paths, hands the arguments over
+ * and propagates the exit code.
+ *
+ * The repository is named by its URL and is NOT an input: the state of a
+ * remote repository is a fact about the world, and a task that considered
+ * itself up to date would answer that fact from a cache.
+ */
+tasks.register<JavaExec>("mavenResolution") {
+    group = "distribution"
+    description = "verify that a Maven repository serves the bytes the manifest declares."
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.MavenResolutionMainKt")
+
+    val manifest = providers.gradleProperty("maven.manifest").orElse("").get()
+    val repository = providers.gradleProperty("maven.repository").orElse("").get()
+    val verdict = providers.gradleProperty("maven.verdict").orElse("").get()
+    // The exit code is where the caller reads the decision, and the caller
+    // may name where it is. When it names nothing, the task writes it where
+    // its own build writes, so the task can be run by hand.
+    val exitFile = providers.gradleProperty("maven.exitFile")
+        .orElse(layout.buildDirectory.file("maven-resolution/exit-code").get().asFile.absolutePath)
+        .get()
+
+    listOf(manifest).filter { it.isNotBlank() }.forEach { path ->
+        inputs.file(project.file(path))
+    }
+    inputs.property("maven.manifest", manifest)
+    // The repository is NOT declared as an input. An input is written into
+    // the build's own state, and an address is the one string of this task
+    // that could carry a credential; the task never considers itself up to
+    // date, so the input would buy nothing anyway.
+    inputs.property("maven.verdict", verdict)
+    inputs.property("maven.exitFile", exitFile)
+
+    // The decision is NEVER up to date, and that is not a workaround. What it
+    // decides depends on the state of a remote repository, and that state is
+    // not one of its inputs: a task that considered itself up to date would
+    // answer "the repository serves the version" from a cache instead of from
+    // the repository.
+    outputs.upToDateWhen { false }
+
+    doFirst {
+        val missing = listOf(
+            "maven.manifest" to manifest,
+            "maven.repository" to repository,
+        ).filter { (_, value) -> value.isBlank() }.map { (name, _) -> name }
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "mavenResolution: ${missing.joinToString(", ")} must be named. A resolution is " +
+                    "judged against a manifest and against a repository, and it cannot be " +
+                    "judged without them.",
+            )
+        }
+        // A verdict left behind by an earlier run is not this run's verdict.
+        // It is removed BEFORE the interpreter starts, so a run that never
+        // reaches it leaves no verdict behind for a reader to mistake for
+        // one. The same is true of the decision file.
+        if (verdict.isNotBlank()) {
+            project.file(verdict).delete()
+        }
+        project.file(exitFile).delete()
+    }
+
+    args = listOf(manifest, repository, verdict, exitFile)
+
+    // The DECISION of the interpreter is the decision, and the BUILD does not
+    // carry it: Gradle turns every non-zero exit into the same build failure,
+    // and the two refusals of this check are not the same fact. The decision
+    // is written where the caller can read it, and the build failure is
+    // raised afterwards.
+    isIgnoreExitValue = true
+    doLast {
+        // What the interpreter WROTE is the decision. The exit code of the
+        // process is not: a JVM that cannot start its own main class also
+        // exits with 1, and that 1 is not a decision about the repository.
+        val decided = project.file(exitFile)
+            .takeIf { it.isFile }
+            ?.readText()
+            ?.trim()
+            ?.takeIf { it.matches(Regex("[0-9]+")) }
+        if (decided == null) {
+            throw GradleException(
+                "mavenResolution did not conclude: the interpreter wrote no decision, so the " +
+                    "state of the repository was not measured. A check that could not conclude " +
+                    "is not a check that found the channel broken.",
+            )
+        }
+        if (decided != "0") {
+            throw GradleException(
+                "mavenResolution decided $decided: 1 means the repository does not serve the " +
+                    "bytes the manifest declares, and 2 means the state could not be measured.",
+            )
+        }
+    }
 }
 
 /**

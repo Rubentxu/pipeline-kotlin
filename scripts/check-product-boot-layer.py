@@ -264,6 +264,12 @@ DECLARED_EXECUTABLES = {
         "may publish a bundle, so what is under test is the publication contract "
         "and not the behaviour of this tree; it is not part of this gate"
     ),
+    "scripts/release/verify-published-maven.sh": (
+        "the consumer-side gate of the Maven channel: it asks a repository "
+        "whether it serves the bytes the publication manifest declares, so what "
+        "is under test is the publication contract and not the behaviour of this "
+        "tree; it is not part of this gate"
+    ),
     "scripts/release/verify-published-tags.sh": (
         "publication: it verifies the tags that were published"
     ),

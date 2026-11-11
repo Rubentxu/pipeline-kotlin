@@ -69,10 +69,16 @@ data class MavenPublicationManifest internal constructor(
         require(Sha256.isSha256Hex(bundleSha256)) {
             "bundle_sha256 must be a lowercase SHA-256 hex digest (64 chars), got '$bundleSha256'."
         }
+        require(schemaVersion == SCHEMA_VERSION) {
+            "the manifest declares the shape '$schemaVersion' and this build speaks " +
+                "'$SCHEMA_VERSION'. A manifest of another shape cannot declare the artifacts " +
+                "this build certifies, and a check that does not cover them says nothing about " +
+                "them."
+        }
     }
 
     companion object {
-        const val SCHEMA_VERSION: String = "pipelinek-maven-publication-manifest-1"
+        const val SCHEMA_VERSION: String = "pipelinek-maven-publication-manifest-2"
     }
 }
 
@@ -193,6 +199,16 @@ enum class MavenArtifactKind {
 
     /** The javadoc JAR: the reference a consumer reads. */
     JAVADOC,
+
+    /**
+     * The Gradle module metadata: the document that tells a Gradle consumer
+     * which variants of the coordinate to resolve.
+     *
+     * It is a kind because a consumer of Gradle resolves this file in
+     * preference to the POM, and the POM says so itself. A file of no kind
+     * here is a file a consumer resolves and nobody has to agree about.
+     */
+    MODULE,
 }
 
 /**

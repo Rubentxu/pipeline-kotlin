@@ -42,6 +42,7 @@ class MavenResolutionAdmissionTest {
 
     private val pomBytes = "the pom of the contract".toByteArray()
     private val jarBytes = "the jar of the classes".toByteArray()
+    private val moduleBytes = "the module metadata of the variants".toByteArray()
 
     private val pom = MavenArtifactDigest(
         path = "dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.pom",
@@ -52,6 +53,11 @@ class MavenResolutionAdmissionTest {
         path = "dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.jar",
         kind = MavenArtifactKind.JAR,
         sha256 = Sha256.ofBytes(jarBytes),
+    )
+    private val module = MavenArtifactDigest(
+        path = "dev/rubentxu/pipelinek/pipelinek-domain/0.96.0/pipelinek-domain-0.96.0.module",
+        kind = MavenArtifactKind.MODULE,
+        sha256 = Sha256.ofBytes(moduleBytes),
     )
 
     @BeforeEach
@@ -276,6 +282,34 @@ class MavenResolutionAdmissionTest {
         assertTrue(requested.isEmpty(), "nothing must be asked of a manifest that is not a release")
     }
 
+    @Test
+    fun `the module metadata of a coordinate is asked for`() {
+        serveTheDeclaredBytes()
+        bodies[module.path] = moduleBytes
+
+        assertInstanceOf(
+            MavenResolutionOutcome.Verified::class.java,
+            admit(artifacts = listOf(pom, jar, module)),
+        )
+        assertTrue(
+            requested.contains(module.path),
+            "the module metadata must be asked for: $requested",
+        )
+    }
+
+    @Test
+    fun `a module metadata served with other bytes is refused by name`() {
+        serveTheDeclaredBytes()
+        bodies[module.path] = "the module metadata of other variants".toByteArray()
+
+        val outcome = assertInstanceOf(
+            MavenResolutionOutcome.Rejected::class.java,
+            admit(artifacts = listOf(pom, jar, module)),
+        )
+        assertTrue(outcome.summary.contains("ARTIFACT_DISAGREES"), outcome.summary)
+        assertTrue(outcome.summary.contains(module.path), outcome.summary)
+    }
+
     /** Put the declared bytes in the repository, under the paths of the manifest. */
     private fun serveTheDeclaredBytes() {
         bodies[pom.path] = pomBytes
@@ -299,9 +333,13 @@ class MavenResolutionAdmissionTest {
     }
 
     /** The outcome of the check against the repository that is running. */
-    private fun admit(user: String? = null, token: String? = null): MavenResolutionOutcome =
+    private fun admit(
+        user: String? = null,
+        token: String? = null,
+        artifacts: List<MavenArtifactDigest> = listOf(pom, jar),
+    ): MavenResolutionOutcome =
         MavenResolutionAdmission.admit(
-            manifestPath(),
+            manifestPath(artifacts),
             HttpMavenRepositoryReader(baseUrl, user = user, token = token),
         )
 

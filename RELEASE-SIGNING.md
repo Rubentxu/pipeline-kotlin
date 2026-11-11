@@ -338,7 +338,7 @@ same contracts, and this one carries the name of the solution.
 | Channel | What it serves | What a consumer needs |
 |---|---|---|
 | the SDK ZIP of the release | the seven coordinates with their JARs and POMs | unzip it and point the build at the directory |
-| Maven Central, through its portal | the same coordinates with `sources.jar`, `javadoc.jar` and a detached signature for every artifact | nothing but the coordinates |
+| Maven Central, through its portal | the same coordinates with `sources.jar`, `javadoc.jar`, the Gradle module metadata and a detached signature for every artifact | nothing but the coordinates |
 | the Maven registry of GitHub Packages | the same coordinates and the same bytes | a token with `read:packages` |
 
 The two remote channels exist because they fail differently. Central needs a
@@ -374,6 +374,25 @@ about itself. A registry that answers with something that is neither a file nor
 its absence has NOT been measured, and the verdict says so instead of claiming
 that the version is absent.
 
+What the manifest declares is what the check measures, and the manifest
+declares the files a consumer resolves: the POM, the JAR, the sources, the
+javadoc and the Gradle module metadata. The last one is not a companion of the
+publication: a consumer of Gradle resolves the `.module` in preference to the
+POM, and the POM says so itself, so a manifest that left it out would certify
+the coordinate of a consumer of Maven and say nothing about the one of a
+consumer of Gradle. The manifest carries a shape, and the instrument refuses a
+manifest of another shape: a check that cannot declare the files it certifies
+says nothing about them.
+
+MEASURED on 2026-11-11 against `https://repo1.maven.org/maven2`: the manifest
+of the 0.96.0 candidate, measured again by the producer of this repository
+from the same staged bundle the publication used — its digest over the whole
+bundle is the one the published manifest carries — declares 32 artifacts, and
+the channel serves the 32 with their declared digests: the 6 JARs, the 6
+sources, the 6 javadocs, the 7 POMs and the 7 Gradle module metadata files.
+The same check with one of those digests altered is refused, and the refusal
+names the file.
+
 What it does NOT measure: the detached signatures, which travel with the
 artifacts and are verified when the bundle is staged
 (`scripts/check-sdk-bundle.py`), and the files the registry generates beside the
@@ -383,6 +402,14 @@ served with their digests, not that a resolver of any shape finds them. The
 authenticity of the manifest itself is the caller's assumption: the instrument
 reads the document it is given and measures the repository against it, so the
 manifest that reaches it must come from the publication that produced it.
+
+**The limit, named: what the manifest declares is what is measured.** The
+instrument does not enumerate what the repository holds. A file the manifest
+does not declare is not measured, not compared and not reported, so the verdict
+says "32 artifact(s) served with the declared digests" and never "the
+repository is complete". The manifest is the whole contract of this check: a
+manifest that declares less certifies less, and a manifest of another shape is
+refused rather than measured with the vocabulary of this one.
 
 A repository that asks for a credential takes it from the environment
 (`PIPELINEK_REPOSITORY_USER` and `PIPELINEK_REPOSITORY_TOKEN`), never from an

@@ -131,12 +131,15 @@ object MavenBundleMeasurement {
      * The kind of a file, by what it is called.
      *
      * The names are the ones a Maven repository uses, and they are the ones
-     * a consumer's resolver asks for by name. A file that is not one of them
-     * has no kind, and a file with no kind is not an artifact: it is pinned
-     * by the bundle's root digest and by nothing else.
+     * a consumer's resolver asks for by name. The Gradle module metadata is
+     * one of them: it is the file a consumer of Gradle resolves in
+     * preference to the POM, and the POM says so itself. A file that is not
+     * one of them has no kind, and a file with no kind is not an artifact: it
+     * is pinned by the bundle's root digest and by nothing else.
      */
     fun kindOf(path: String): MavenArtifactKind? = when {
         path.endsWith(".pom") -> MavenArtifactKind.POM
+        path.endsWith(".module") -> MavenArtifactKind.MODULE
         path.endsWith("-sources.jar") -> MavenArtifactKind.SOURCES
         path.endsWith("-javadoc.jar") -> MavenArtifactKind.JAVADOC
         path.endsWith(".jar") -> MavenArtifactKind.JAR

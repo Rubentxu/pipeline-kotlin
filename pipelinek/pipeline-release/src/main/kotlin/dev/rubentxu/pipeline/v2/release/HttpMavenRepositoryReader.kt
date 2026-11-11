@@ -148,6 +148,16 @@ class HttpMavenRepositoryReader(
                             second.close()
                             MavenServedFile.Absent
                         }
+                        in 300..399 -> {
+                            second.close()
+                            MavenServedFile.Unreadable(
+                                "the repository answered ${second.status} for ${quoteForReport(path)} " +
+                                    "after it was given the credential: it is a redirect to another " +
+                                    "address, and a redirect is not followed, so the bytes of the " +
+                                    "repository that was named were not measured",
+                            )
+                        }
+
                         else -> {
                             second.close()
                             MavenServedFile.Unreadable(

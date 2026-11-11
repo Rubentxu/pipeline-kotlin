@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -138,6 +139,25 @@ class MavenResolutionAdmissionTest {
         )
         assertTrue(outcome.reason.contains(jar.path), outcome.reason)
         assertTrue(outcome.reason.contains("302"), outcome.reason)
+    }
+
+    @Test
+    fun `a redirect after the credential is reported as a redirect and not as a refused credential`() {
+        serveTheDeclaredBytes()
+        challenged += jar.path
+        statuses[jar.path] = 302
+
+        val outcome = assertInstanceOf(
+            MavenResolutionOutcome.Refused::class.java,
+            admit(user = "the-user", token = "the-token"),
+        )
+        assertTrue(authorizationSeen.contains(jar.path), "the repository must have been given the credential")
+        assertTrue(outcome.reason.contains("302"), outcome.reason)
+        assertTrue(outcome.reason.contains("redirect"), outcome.reason)
+        assertFalse(
+            outcome.reason.contains("does not open this path"),
+            "the credential was accepted and the repository redirected: ${outcome.reason}",
+        )
     }
 
     @Test

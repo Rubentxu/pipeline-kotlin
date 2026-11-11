@@ -32,7 +32,8 @@ import kotlin.io.path.isRegularFile
  * ReplayPolicy: `MEMOIZED` (file content is deterministic; replay may reuse
  *   the cached output when the durable fingerprint matches).
  * RecoveryPolicy: `None` (no transient failure modes — the only failures are
- *   typed USER-class errors for missing files or invalid JSON).
+ *   typed USER-class errors for missing files, files that are not UTF-8, or
+ *   invalid JSON).
  * Determinism: identical inputs always produce identical outputs (modulo the
  * file content changing on disk).
 */
@@ -85,13 +86,13 @@ class CoreUtilsReadJsonStepDefinition : StepDefinition<ReadJsonInput, ReadJsonOu
             )
         }
 
-        val rawText: String = try {
-            rawBytes.toString(Charsets.UTF_8)
-        } catch (e: Exception) {
-            throw PluginStepException(
+        val rawText: String = when (val decoding = StrictUtf8.decode(rawBytes)) {
+            is Utf8Decoding.Text -> decoding.value
+            is Utf8Decoding.Malformed -> throw PluginStepException(
                 failure = PipelineFailure(
                     kind = FailureKind.USER,
-                    message = "core-utils.readJson: file is not valid UTF-8: ${e.message}",
+                    message = "core-utils.readJson: file is not valid UTF-8: " +
+                        "the malformed sequence starts at the offset ${decoding.offset}",
                 ),
             )
         }

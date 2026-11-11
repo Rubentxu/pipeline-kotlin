@@ -26,8 +26,14 @@ import java.io.InputStream
 */
 internal object StreamCredentialPrompts {
 
-    fun read(kind: MainCredentialsCli.CredentialKind, stdin: InputStream): Credential {
-        val bytes = kind.framing.value(stdin.readBytes())
+    fun read(
+        kind: MainCredentialsCli.CredentialKind,
+        stdin: InputStream,
+        limits: CredentialImportLimits = CredentialImportLimits.DEFAULT,
+    ): Credential {
+        val bytes = kind.framing.value(
+            BoundedInput.read(stdin, kind.ceilingOf(limits), kind.subject),
+        )
         return when (kind) {
             MainCredentialsCli.CredentialKind.SECRET_TEXT ->
                 CredentialValues.secretText(bytes)
@@ -59,7 +65,7 @@ internal object StreamCredentialPrompts {
                 CredentialValues.certificate(bytes, alias = null)
 
             MainCredentialsCli.CredentialKind.ZIP ->
-                CredentialValues.zip(bytes)
+                CredentialValues.zip(bytes, limits)
         }
     }
 

@@ -11,6 +11,7 @@ import kotlinx.serialization.json.buildJsonObject
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
+import java.util.HexFormat
 
 /**
  * The manifest an operator approves for a script: the declaration of its parameters, bound to
@@ -138,7 +139,7 @@ internal object ParameterManifest {
                 digest.update(block, 0, read)
             }
         }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        return HexFormat.of().formatHex(digest.digest())
     }
 
     private fun JsonObject.text(field: String): String? =

@@ -486,17 +486,19 @@ internal fun composeServiceToServe(
             clock = clock,
             supervisor = supervisor,
             cancellations = cancellations,
-            providers = providers,
-            inputs = if (authorizations.mayAnswerAnyInput) {
-                ServiceInputsBinding(
-                    root = substrate.controlAbsolute.resolve(InputQuestionLayout.INPUTS_DIRECTORY),
-                    responderOf = authorizations::labelOfDigest,
-                )
-            } else {
-                null
-            },
-            credentialSessions = credentialRegistry,
-            parameterDescriptions = ApprovedManifestDescriber(ServiceStartAdmission(policy.scriptsRoot, null)),
+            answers = ServiceAnswerSources(
+                providers = providers,
+                inputs = if (authorizations.mayAnswerAnyInput) {
+                    ServiceInputsBinding(
+                        root = substrate.controlAbsolute.resolve(InputQuestionLayout.INPUTS_DIRECTORY),
+                        responderOf = authorizations::labelOfDigest,
+                    )
+                } else {
+                    null
+                },
+                credentialSessions = credentialRegistry,
+                parameterDescriptions = ApprovedManifestDescriber(ServiceStartAdmission(policy.scriptsRoot, null)),
+            ),
         )
     ) {
         is ServiceComposition.Composed -> composed
@@ -906,6 +908,27 @@ private fun composeSupervisor(
 }
 
 /**
+ * What the operations of the service answer from, besides the substrate and the runs it supervises.
+ *
+ * The composition hands each of these to the operations as it receives it, or wraps it over the
+ * substrate it composes, so they travel together and none of them is read before the service is
+ * composed.
+ *
+ * @property providers the sessions of the configuration providers.
+ * @property inputs where the answers to the input questions are written, and who answers them;
+ *   `null` when no authorization may answer an input.
+ * @property credentialSessions the sessions of the credential providers; `null` when the service
+ *   does not serve them.
+ * @property parameterDescriptions what describes the parameters of a script.
+ */
+private class ServiceAnswerSources(
+    val providers: ConfigurationProviderSessions,
+    val inputs: ServiceInputsBinding?,
+    val credentialSessions: CredentialProviderSessions?,
+    val parameterDescriptions: ServiceParameterDescriber,
+)
+
+/**
  * What the composition of the service produced.
  */
 private sealed interface ServiceComposition {
@@ -953,10 +976,7 @@ private fun composeService(
     clock: SystemClock,
     supervisor: ServiceRunSupervisor,
     cancellations: ServiceRunCancellation?,
-    providers: ConfigurationProviderSessions,
-    inputs: ServiceInputsBinding?,
-    credentialSessions: CredentialProviderSessions?,
-    parameterDescriptions: ServiceParameterDescriber,
+    answers: ServiceAnswerSources,
 ): ServiceComposition = try {
     val dbPath = substrate.dbPath
     val controlRoot = substrate.controlRoot
@@ -978,20 +998,20 @@ private fun composeService(
         },
         starts = supervisor,
         cancellations = cancellations,
-        providers = providers,
+        providers = answers.providers,
         configurations = RunConfigurationLocator(
             supervisionRoot = substrate.supervisionRoot,
             correlations = EventStoreRunCorrelationReader(dbPath),
         ),
-        inputs = inputs?.let {
+        inputs = answers.inputs?.let {
             ServiceInputAnswers(
                 inputsRoot = it.root,
                 runState = RunStateQuery(introspection)::stateOf,
                 responderOf = it.responderOf,
             )
         },
-        credentialSessions = credentialSessions,
-        parameterDescriptions = parameterDescriptions,
+        credentialSessions = answers.credentialSessions,
+        parameterDescriptions = answers.parameterDescriptions,
     )
     val stores = DurableStores.open(store, controlRootPath, clock)
     val streets = ServiceSubscription(

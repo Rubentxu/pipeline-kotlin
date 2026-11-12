@@ -70,7 +70,9 @@ internal fun pluginClassLoaderFor(jars: List<String>): ClassLoader =
  * Returns the merged list of:
  *  - bundled plugins resolved from the runtime classpath (install/lib + tests)
  *    via [BundledPluginClasspathPlan];
- *  - user-supplied `--plugin-jar` entries (`config.pluginJars`);
+ *  - the ABSOLUTE paths the user-supplied `--plugin-jar` entries
+ *    (`config.pluginJars`) resolve to, so the file the compiler compiles
+ *    against and the file the admission measured are the same file BY NAME;
  *  - the canonical SDK JARs the Kotlin compiler cannot see automatically
  *    (pipeline-domain and pipeline-scripting-api), explicit by name only.
  *  The same list feeds `updateClasspath` in `Kotlin24ScriptingHost.compile`
@@ -89,7 +91,7 @@ internal fun computeScriptClasspath(pluginJars: List<String>): List<String> {
         ScriptDefinition.domainJar()?.let(::add)
         ScriptDefinition.dslApiJar()?.let(::add)
         addAll(bundledPlugins)
-        addAll(pluginJars)
+        addAll(operatorPluginJars(pluginJars, PROCESS_WORKING_DIRECTORY).map { it.toString() })
     }
 }
 
@@ -198,9 +200,17 @@ internal fun admitPluginsForRun(
     // recorded, and the journal that records it must not read the machine's clock:
     // the same run would stamp its rows at instants the caller cannot reproduce.
     clock: dev.rubentxu.pipeline.v2.domain.durable.Clock,
+    // The directory a relative `--plugin-jar` name is resolved against. The names are
+    // resolved BEFORE the admission, so the artifact it refuses is named by the path
+    // it is at — the same path `ide init` names it by, because that verb resolves
+    // against the same working directory.
+    workingDirectory: Path = PROCESS_WORKING_DIRECTORY,
+    // Where the admission's report goes. The caller owns the destination, and the
+    // destination is therefore a parameter all the way down.
+    err: PrintStream = System.err,
 ): PluginAdmission =
     admitThenCompose(
-        pluginJars = config.pluginJars,
+        pluginJars = operatorPluginJars(config.pluginJars, workingDirectory).map { it.toString() },
         // The policy is OPT-IN: without the file the runtime admits plugins as it always has.
         trust = pluginTrustSource(config.pluginTrust),
         // The row is written before the decision returns, which is what makes the journal an
@@ -210,6 +220,7 @@ internal fun admitPluginsForRun(
         // Whether an unverified plugin the operator brought is a refusal instead of a
         // warning. FALSE by default: the policy is opt-in.
         requireTrust = config.requirePluginTrust,
+        err = err,
         // The private copies of the artifacts, inside the run's OWN control root. The
         // copies are what the run loads, and the control root is the place the run owns.
         copyRoot = controlDirRoot.resolve("plugin-copies"),

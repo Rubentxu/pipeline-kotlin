@@ -61,9 +61,19 @@ internal val IDE_INIT_REQUEST: CliRequest = CliRequest(
  * names each by its absolute path. Before anything is written they go through the admission `run`
  * applies before it loads a class: their bytes are measured, their manifests read, their API range
  * checked, and, with `--plugin-trust` or `--require-plugin-trust`, the operator's trust decision
- * applied. A jar the admission refuses is refused here with the words `run` uses, and nothing is
- * written. The admission runs only when the request names one of the three options, so a request
- * without them is answered from the installation alone.
+ * applied. A jar the admission refuses is refused here with the words `run` uses — the path of the
+ * artifact included, because both verbs resolve the operator's names against the same working
+ * directory — and nothing is written.
+ *
+ * The admission also covers the plugins of the INSTALLATION, which the project reaches through the
+ * `lib/` directory. A request without any of the three options is answered from the installation
+ * alone, but it is still admitted first: a plugin of the installation that `run` would refuse is a
+ * plugin this project would compile against, and the operator hears about it here rather than with
+ * a project that cannot run.
+ *
+ * The build names the artifacts the admission ADMITTED and the operator brought. The admission
+ * measures the bytes and deduplicates by them, so two paths to one jar are one artifact: a build
+ * that named both would carry the same class twice.
  *
  * ## What the admission does not cover
  *
@@ -80,7 +90,7 @@ internal fun runIdeInitVerb(args: Array<String>, out: PrintStream, err: PrintStr
         out = out,
         err = err,
         definitionLocation = PipelineScript::class.java.protectionDomain?.codeSource?.location,
-        workingDirectory = Path.of("").toAbsolutePath(),
+        workingDirectory = PROCESS_WORKING_DIRECTORY,
     )
 
 /**
@@ -109,9 +119,7 @@ internal fun runIdeInit(
     if (outOfGradleReach(directory)) return refuseIdeInit(IdeProjectRefusal.DirectoryOutOfGradleReach(directory), err)
 
     val pluginJars = try {
-        accepted.repeated["--plugin-jar"].orEmpty()
-            .map { workingDirectory.resolve(it).toAbsolutePath().normalize() }
-            .distinct()
+        operatorPluginJars(accepted.repeated["--plugin-jar"].orEmpty(), workingDirectory).distinct()
     } catch (invalid: InvalidPathException) {
         return refuseIdeInit(CliError.InvalidOptionValue("--plugin-jar", "not a path: ${invalid.message}"), err)
     }
@@ -133,28 +141,45 @@ internal fun runIdeInit(
         return refuseIdeInit(IdeProjectRefusal.InstallationOutOfGradleReach(installation.lib), err)
     }
 
-    if (pluginJars.isNotEmpty() || trustFile != null || requireTrust) {
-        val bundled = try {
-            bundledPlugins()
-        } catch (refused: CommandRefused) {
-            return refused.exit
-        }
-        val admission = PluginCompositionAdmitter.admit(
-            pluginJars = pluginJars.map { it.toString() },
-            trust = pluginTrustSource(trustFile?.toString()),
-            journal = null,
-            requireTrust = requireTrust,
-            err = err,
-            bundledPlugins = bundled,
-        )
-        when (admission) {
-            is PreLoadAdmissionOutcome.Admitted -> Unit
-            is CompositionOutcome.Refused -> return refusePluginArtifact(admission, err)
-            is CompositionOutcome.RuntimeVersionUnavailable -> return refuseRuntimeVersion(admission, err)
-        }
+    // The admission ALWAYS runs, and it admits the plugins of the installation beside the ones
+    // the operator brought. The project names the plugins of the installation through the `lib/`
+    // directory, so a plugin of the installation that `run` would refuse is a plugin this project
+    // would compile against: refusing here is the only way the operator hears about it before the
+    // editor opens a project that cannot run.
+    val bundled = try {
+        bundledPlugins()
+    } catch (refused: CommandRefused) {
+        return refused.exit
+    }
+    val admission = PluginCompositionAdmitter.admit(
+        pluginJars = pluginJars.map { it.toString() },
+        trust = pluginTrustSource(trustFile?.toString()),
+        journal = null,
+        requireTrust = requireTrust,
+        err = err,
+        bundledPlugins = bundled,
+    )
+    // The build names the artifacts the admission ADMITTED, at the paths those artifacts are at.
+    // The admission deduplicates by BYTES, so two paths to one jar are one artifact; a build that
+    // named both would put the same class twice on the classpath.
+    // A jar of the operator whose bytes are the ones of a plugin of the installation does not
+    // survive that deduplication either: the installation's copy is the one that is admitted, and
+    // the classpath already carries it through `lib/`.
+    val operatorPaths = pluginJars.toSet()
+    val admittedOperatorJars = when (admission) {
+        is PreLoadAdmissionOutcome.Admitted -> admission.artifacts
+            .filter { it.operatorNamed && operatorPaths.contains(it.path) }
+            .map { it.path }
+        is CompositionOutcome.Refused -> return refusePluginArtifact(admission, err)
+        is CompositionOutcome.RuntimeVersionUnavailable -> return refuseRuntimeVersion(admission, err)
     }
 
-    val project = ideProject(installation.lib, installedKotlinVersion(), definitionCompilerOptions(), pluginJars)
+    val project = ideProject(
+        installation.lib,
+        installedKotlinVersion(),
+        definitionCompilerOptions(),
+        admittedOperatorJars,
+    )
     return when (val write = writeIdeProject(directory, project)) {
         is IdeProjectWrite.Refused -> refuseIdeInit(write.refusal, err)
         is IdeProjectWrite.Written -> {
@@ -162,7 +187,7 @@ internal fun runIdeInit(
             write.created.forEach { out.println("created $it") }
             write.unchanged.forEach { out.println("unchanged $it") }
             out.println("installation ${installation.lib}")
-            pluginJars.forEach { out.println("plugin $it") }
+            admittedOperatorJars.forEach { out.println("plugin $it") }
             out.println("scripts ${write.directory.resolve(project.scriptsDirectory)}")
             CliExit.Success()
         }

@@ -1,17 +1,21 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec
+import dev.rubentxu.pipeline.v2.runtime.NoopPipelineTelemetry
 import dev.rubentxu.pipeline.v2.runtime.OperatorPluginFixture
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -24,7 +28,8 @@ import org.junit.jupiter.api.io.TempDir
  *
  * That the verb writes the project only from an installation and only into a directory that does
  * not already hold something else, and that each refusal leaves the directory as it was and exits
- * with the code of its kind.
+ * with the code of its kind. And that a refusal names the artifact it refused the way `run` names
+ * it, because the two verbs read the same option with the same meaning.
  *
  * ## Why this instrument
  *
@@ -203,14 +208,56 @@ class MainIdeInitCliTest {
     }
 
     @Test
-    fun `without a plugin option nothing is admitted and the build names no plugin of the operator`() {
-        val answer = ask(installation(), "--dir", "project", bundled = { error("nothing asked for an admission") })
+    fun `two paths to the bytes of one jar are one artifact, and the build names one`() {
+        val definition = installation()
+        val plugins = Files.createDirectories(root.resolve("work").resolve("plugins"))
+        val jar = OperatorPluginFixture.jar(plugins, "one.jar", thing = "one")
+        val link = plugins.resolve("the-same-bytes.jar")
+        Files.createSymbolicLink(link, jar)
+
+        val answer = ask(
+            definition,
+            "--dir", "project",
+            "--plugin-jar", "plugins/one.jar",
+            "--plugin-jar", "plugins/the-same-bytes.jar",
+        )
+
+        val project = root.resolve("work").resolve("project")
+        assertEquals(0, answer.exit.code, answer.stderr)
+        val build = Files.readString(project.resolve("build.gradle.kts"))
+        val named = Regex("File\\((.*)\\)").findAll(build).map { it.groupValues[1] }.toList()
+        assertEquals(
+            1,
+            named.count { it.contains("one.jar") || it.contains("the-same-bytes.jar") },
+            "the build names the two paths to one jar once, because the admission measured one artifact:\n$build",
+        )
+    }
+
+    @Test
+    fun `without a plugin option the build names no plugin of the operator`() {
+        val answer = ask(installation(), "--dir", "project", bundled = { emptyList() })
 
         assertEquals(0, answer.exit.code, answer.stderr)
         assertEquals("", answer.stderr)
         assertFalse(answer.stdout.lines().any { it.startsWith("plugin ") }, answer.stdout)
         val build = Files.readString(root.resolve("work").resolve("project").resolve("build.gradle.kts"))
         assertFalse(build.contains("pipelinekPluginJars"), build)
+    }
+
+    @Test
+    fun `a plugin of the installation that is refused is refused here too, and nothing is written`() {
+        val definition = installation()
+        val broken = root.resolve("pipelinek").resolve("lib").resolve("broken-plugin.jar")
+        Files.writeString(broken, "not a jar")
+
+        val answer = ask(definition, "--dir", "project", bundled = { listOf(broken.toString()) })
+
+        assertEquals(2, answer.exit.code, answer.stderr)
+        assertTrue(
+            answer.stderr.contains("Plugin admission refused for $broken"),
+            "the refusal does not name the plugin of the installation:\n${answer.stderr}",
+        )
+        assertEquals(emptyList<String>(), entries(root.resolve("work")))
     }
 
     @Test
@@ -267,6 +314,12 @@ class MainIdeInitCliTest {
 
         assertEquals(2, answer.exit.code, answer.stderr)
         assertTrue(answer.stderr.contains("required every plugin they brought to be verified"), answer.stderr)
+        // The refusal names the artifact: a message that only said what was demanded would be
+        // satisfied by a refusal about any other jar.
+        assertTrue(
+            answer.stderr.contains("${root.resolve("work").resolve("plugins").resolve("operator-plugin.jar")}"),
+            "the refusal does not name the artifact it refused:\n${answer.stderr}",
+        )
         assertEquals(listOf("plugins"), entries(root.resolve("work")))
     }
 
@@ -315,6 +368,51 @@ class MainIdeInitCliTest {
     }
 
     @Test
+    fun `a refused plugin is named by the same path here and in the run that reads the same option`() {
+        val definition = installation()
+        val plugins = Files.createDirectories(root.resolve("work").resolve("plugins"))
+        val jar = plugins.resolve("not-a-plugin.jar")
+        Files.writeString(jar, "not a jar")
+
+        val answer = ask(definition, "--dir", "project", "--plugin-jar", "plugins/not-a-plugin.jar")
+
+        // What the run says about the same jar, offered the same way: the operator's name,
+        // resolved against the working directory, and the refusal naming the artifact by the
+        // path it is at. The two verbs read the option with the same meaning, so they have to
+        // name one artifact the same way.
+        val runSaid = ByteArrayOutputStream()
+        val admission = admitPluginsForRun(
+            config = CliFlags(
+                command = CliCommand.RUN,
+                dbPath = null,
+                durableRunPolicy = DurableRunPolicy.ReusePriorRun,
+                scriptPath = "pipeline.kts",
+                pluginJars = listOf("plugins/not-a-plugin.jar"),
+            ),
+            controlDirRoot = root.resolve("control"),
+            telemetry = NoopPipelineTelemetry,
+            clock = EPOCH,
+            workingDirectory = root.resolve("work"),
+            err = PrintStream(runSaid, true, Charsets.UTF_8.name()),
+        )
+        assertInstanceOf(
+            PluginAdmission.Refused::class.java,
+            admission,
+            "a jar that is not a plugin is refused by the run as well",
+        )
+        val spoken = runSaid.toString(Charsets.UTF_8)
+
+        assertTrue(
+            answer.stderr.contains("Plugin admission refused for $jar"),
+            "this verb does not name the refused artifact by the path it is at:\n${answer.stderr}",
+        )
+        assertTrue(
+            spoken.contains("Plugin admission refused for $jar"),
+            "the run does not name the refused artifact by the path it is at:\n$spoken",
+        )
+    }
+
+    @Test
     fun `a plugin of the operator that claims the identity of a bundled plugin with other bytes is refused and nothing is written`() {
         val definition = installation()
         val bundledCopy = root.resolve("pipelinek").resolve("lib").resolve("bundled-plugin.jar")
@@ -336,7 +434,15 @@ class MainIdeInitCliTest {
         )
 
         assertEquals(2, answer.exit.code, answer.stderr)
-        assertTrue(answer.stderr.contains("Plugin admission refused for "), answer.stderr)
+        // The refusal names the artifact it refused, and not the one that claimed the name
+        // first: a message that said only "refused for" would be satisfied by a refusal
+        // about the other jar.
+        assertTrue(
+            answer.stderr.contains(
+                "Plugin admission refused for ${root.resolve("work").resolve("plugins").resolve("operator-plugin.jar")}",
+            ),
+            "the refusal does not name the artifact it refused:\n${answer.stderr}",
+        )
         assertTrue(answer.stderr.contains("DuplicateIdentity"), answer.stderr)
         assertEquals(listOf("plugins"), entries(root.resolve("work")))
     }
@@ -395,5 +501,10 @@ class MainIdeInitCliTest {
 
     private companion object {
         const val DEFINITION_JAR: String = "pipeline-scripting-definition-0.0.0.jar"
+
+        /** A clock that does not read the machine's: the row is about paths, not about instants. */
+        val EPOCH: Clock = object : Clock {
+            override fun now(): Instant = Instant.EPOCH
+        }
     }
 }

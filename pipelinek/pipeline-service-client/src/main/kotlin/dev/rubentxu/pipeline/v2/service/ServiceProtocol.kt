@@ -2322,7 +2322,7 @@ private fun decodeRefusal(document: JsonObject): ServiceRefusal? {
     val kind = document["kind"]?.jsonPrimitive?.contentOrNull ?: return null
     return when (kind) {
         "unknown-run", "held-by-another", "inconsistent-lease-state",
-        "unknown-run-operation", "run-not-authorized", "invalid-cursor",
+        "unknown-operation", "run-not-authorized", "invalid-cursor",
         "cursor-beyond-tail" -> decodeRunRefusal(kind, document)
 
         "start-not-authorized", "script-not-admitted", "workspace-not-admitted",
@@ -2404,7 +2404,7 @@ private fun decodeRunRefusal(kind: String, document: JsonObject): ServiceRefusal
         document.long("fencingToken") ?: return null,
     )
     "inconsistent-lease-state" -> ServiceRefusal.Inconsistent(document.str("details") ?: return null)
-    "unknown-run-operation" -> ServiceRefusal.UnknownRunOperation(
+    "unknown-operation" -> ServiceRefusal.UnknownRunOperation(
         document.str("operationId") ?: return null,
         document.long("attempt")?.toInt() ?: return null,
     )

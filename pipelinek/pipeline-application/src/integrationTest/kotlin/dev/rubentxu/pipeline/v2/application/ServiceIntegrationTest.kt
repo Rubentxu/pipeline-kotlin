@@ -84,6 +84,7 @@ import dev.rubentxu.pipeline.v2.service.ServiceSubscriptionRequest
  * neither is a sign of a class doing too much.
  */
 @Suppress("TooManyFunctions")
+@Timeout(value = 120, unit = java.util.concurrent.TimeUnit.SECONDS)
 class ServiceIntegrationTest {
 
     @TempDir
@@ -210,6 +211,20 @@ class ServiceIntegrationTest {
         assertEquals(
             "incompatible-protocol",
             answer["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
+    fun `a question this build does not have is refused by name over the socket`() {
+        val service = start()
+
+        val answer = service.ask("""{"schema":"pipelinek.service/2","op":"service.capabilities"}""")
+
+        assertEquals("refused", answer["kind"]?.jsonPrimitive?.content)
+        assertEquals(
+            "unknown-op",
+            answer["refusal"]?.jsonObject?.get("kind")?.jsonPrimitive?.content,
+            "a question the service does not have is refused by name, and not by a closed connection",
         )
     }
 

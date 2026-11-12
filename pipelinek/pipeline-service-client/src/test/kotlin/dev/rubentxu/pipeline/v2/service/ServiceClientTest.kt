@@ -7,8 +7,10 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import java.io.IOException
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 
 /**
  * The typed client of the local service.
@@ -37,6 +39,7 @@ import java.nio.file.Path
  * Unix socket binds and whether a real service answers are facts about a
  * machine, and the integration lane is where they are observed.
  */
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class ServiceClientTest {
 
     @Test
@@ -112,6 +115,46 @@ class ServiceClientTest {
 
         val refusal = assertInstanceOf(ServiceAnswer.Refused::class.java, answer).refusal
         assertEquals(ServiceRefusal.UnknownRun("run-1"), refusal)
+    }
+
+    @Test
+    fun `a client of another protocol asks the version and is refused by name`() {
+        val channel = FakeChannel(
+            listOf("""{"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"incompatible-protocol"}}"""),
+        )
+
+        val answer = client(channel, schema = "pipelinek.service/3").version()
+
+        assertEquals(ServiceAnswer.Refused(ServiceRefusal.IncompatibleProtocol), answer)
+        assertTrue(
+            channel.written.single().contains(""""schema":"pipelinek.service/3""""),
+            "the client did not ask under its own protocol: ${channel.written}",
+        )
+    }
+
+    @Test
+    fun `an operation the service does not know is refused by name`() {
+        val channel = FakeChannel(
+            listOf("""{"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-op"}}"""),
+        )
+
+        val answer = client(channel).runState("run-1")
+
+        assertEquals(ServiceAnswer.Refused(ServiceRefusal.UnknownOp), answer)
+    }
+
+    @Test
+    fun `a run whose operation the service does not know is refused by name`() {
+        val channel = FakeChannel(
+            listOf(
+                """{"schema":"pipelinek.service/2","kind":"refused",""" +
+                    """"refusal":{"kind":"unknown-operation","operationId":"op-1","attempt":2}}""",
+            ),
+        )
+
+        val answer = client(channel).runState("run-1")
+
+        assertEquals(ServiceAnswer.Refused(ServiceRefusal.UnknownRunOperation("op-1", 2)), answer)
     }
 
     @Test
@@ -261,13 +304,13 @@ class ServiceClientTest {
     }
 
     /**
-     * A client that talks to [channel].
+     * A client that speaks [schema] to [channel].
      */
-    private fun client(channel: ServiceChannel): ServiceClient = ServiceClient(
+    private fun client(channel: ServiceChannel, schema: String = ServiceProtocol.SCHEMA): ServiceClient = ServiceClient(
         endpoint = Path.of("/tmp/service.sock"),
         credential = "token-1",
         deadline = null,
-        schema = ServiceProtocol.SCHEMA,
+        schema = schema,
         channels = { _, _ -> channel },
     )
 

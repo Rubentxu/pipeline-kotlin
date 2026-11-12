@@ -108,6 +108,12 @@ public final class dev/rubentxu/pipeline/v2/dsl/PipelineDslKt {
 public abstract interface annotation class dev/rubentxu/pipeline/v2/dsl/PipelineDslMarker : java/lang/annotation/Annotation {
 }
 
+public final class dev/rubentxu/pipeline/v2/dsl/PipelineEnvironmentScope {
+	public fun <init> ()V
+	public final fun build ()Ljava/util/Map;
+	public final fun env (Ljava/lang/String;Ljava/lang/String;)V
+}
+
 public final class dev/rubentxu/pipeline/v2/dsl/PipelineScope {
 	public fun <init> ()V
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V

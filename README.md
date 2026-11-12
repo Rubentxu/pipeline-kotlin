@@ -120,7 +120,14 @@ pipeline {
 
 `environment { }` and `agent(…)` also exist at **pipeline level**, with the same spelling they have inside a stage. What the pipeline declares is the DEFAULT of its stages: a stage that declares a variable of its own keeps it, and a stage that declares an agent of its own keeps it too. The precedence is the one the gate already uses — a declaration beats a value that arrives from outside — and it is decided **name by name**: the `deploy` stage above runs with `TARGET=production` and with `REGISTRY=registry.internal`, the pipeline's `TARGET` does not reach it, and its agent is `linux-arm` and not the pipeline's `linux`.
 
-The declaration is read as the script runs, so the pipeline's `environment { }` block has to be written **before** the `stages { }` block for a read inside a stage to see it. The variables reach the steps either way: they are the environment the steps of those stages run with.
+Two rules about the order, and they differ because they are about different things:
+
+- the **variables** are read as the script runs, so the pipeline's `environment { }` block has to be written **before** the `stages { }` block for a read inside a stage to see it. A read of a variable that is declared later answers the value the machine has, and not `null`: the variable is declared, only too late for that read. The variables reach the steps either way — they are the environment the steps of those stages run with;
+- the **agent** is applied at the end of the pipeline's block, so the place the `agent(…)` declaration is written does not change which agent a stage runs with.
+
+A second `environment { }` block at pipeline level **adds** to the first one: the variables of both reach the stages, and the name both of them declare is the one of the later block. A pipeline declares **one** agent: a second `agent(…)` is refused where it is written, because it would put two requirements of the same directive on every stage that declares none.
+
+The pipeline's variables are also what a stage's **gate** reads: the `deploy` stage above is gated with the same `TARGET=production` its steps run with, and the pipeline's `REGISTRY` is visible to that gate too.
 
 ### The `script { }` block holds steps
 

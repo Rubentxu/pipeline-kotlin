@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
-import dev.rubentxu.pipeline.v2.domain.directivekey.AGENT_DIRECTIVE_KEY
 import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
 import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
 
@@ -826,21 +825,18 @@ class StageScope(
         // data and the coordinator decides which finalizer fires from the pure
         // PostPlanner; the DSL still decides NOTHING about execution.
         //
-        // The agent of the PIPELINE is the agent BY DEFAULT of this stage: it
-        // applies only to a stage that declares none of its own. A stage that
-        // declares one keeps it and the pipeline's does NOT reach it — two
-        // requirements would be two leases, and the author asked for one.
-        val directives = if (stageDirectives.any { it.key == AGENT_DIRECTIVE_KEY.value }) {
-            stageDirectives
-        } else {
-            stageDirectives + pipelineDirectives
-        }
+        // The builder carries what THIS STAGE declares, and nothing else. The
+        // declarations of the PIPELINE are applied once, at the end of the
+        // pipeline's block, by `PipelineScope.buildStages()`. Applying them in
+        // the two places would make the plan the result of two merges, and a
+        // merge that is broken in one of them would leave the plan untouched
+        // — the mistake would be invisible to every row that measures it.
         return StageBuilder(
             stageName,
             steps.toList(),
             stageOptions,
-            declaredEnvironmentValues(),
-            directives,
+            stageEnvironment?.values,
+            stageDirectives,
             stagePost ?: PostConditionSpec(),
         )
     }

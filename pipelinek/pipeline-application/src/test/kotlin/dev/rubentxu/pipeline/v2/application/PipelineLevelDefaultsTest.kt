@@ -129,8 +129,8 @@ class PipelineLevelDefaultsTest {
         assertEquals(
             ExecutionTargetRequirement.LocalLabels(setOf(AgentLabel("from-the-stage"))),
             requirementOf(stage.directives),
-            "el agente del stage es el suyo: dos exigencias serían dosleases, " +
-                "y el autor pidió uno",
+            "el agente del stage es el suyo: dos exigencias de la misma directiva " +
+                "en un stage son una contradicción, y el autor pidió uno",
         )
     }
 
@@ -166,6 +166,78 @@ class PipelineLevelDefaultsTest {
             ExecutionTargetRequirement.LocalLabels(setOf(AgentLabel("own"))),
             requirementOf(second.directives),
             "el segundo stage declara su propio agente, así que el del pipeline no le llega",
+        )
+    }
+
+    /**
+     * Un SEGUNDO bloque de variables AÑADE al primero.
+     *
+     * Los dos llegan al stage: el nombre que sólo declara el primer bloque y
+     * el que sólo declara el segundo. Y el nombre que los dos declaran es el
+     * del bloque POSTERIOR, porque un pipeline que declara una variable dos
+     * veces en dos bloques ha pedido dos cosas, y la que contesta es la última
+     * que se dijo.
+     */
+    @Test
+    fun `un segundo bloque de variables anade al primero`() {
+        val compiled = compiledOf(
+            pipeline {
+                environment {
+                    env("TARGET", "from-the-first-block")
+                    env("REGISTRY", "from-the-first-block")
+                }
+                environment {
+                    env("TARGET", "from-the-second-block")
+                    env("EXTRA", "from-the-second-block")
+                }
+                stages {
+                    stage("build") {
+                        echo("hello")
+                    }
+                }
+            },
+        )
+
+        val stage = compiled.stages.single()
+        assertEquals(
+            mapOf(
+                "TARGET" to "from-the-second-block",
+                "REGISTRY" to "from-the-first-block",
+                "EXTRA" to "from-the-second-block",
+            ),
+            stage.environment.values,
+            "el segundo bloque AÑADE al primero: los dos llegan, y el nombre que los dos " +
+                "declaran es el del bloque posterior",
+        )
+    }
+
+    /**
+     * El agente declarado DESPUÉS de los stages llega a los stages.
+     *
+     * La fila fija el ORDEN de la regla: la aplicación del agente se decide al
+     * final del bloque del pipeline, así que el lugar donde se declara no
+     * decide qué agente corre el stage. Es lo contrario de lo que pasa con la
+     * LECTURA de una variable, que sí ve el orden, y las dos filas lo dicen.
+     */
+    @Test
+    fun `el agente declarado despues de los stages llega a los stages`() {
+        val compiled = compiledOf(
+            pipeline {
+                stages {
+                    stage("build") {
+                        echo("hello")
+                    }
+                }
+                agent(label = "linux")
+            },
+        )
+
+        val stage = compiled.stages.single()
+        assertEquals(
+            ExecutionTargetRequirement.LocalLabels(setOf(AgentLabel("linux"))),
+            requirementOf(stage.directives),
+            "el agente del pipeline se aplica al final del bloque del pipeline: el lugar donde " +
+                "se declara no decide qué agente corre el stage",
         )
     }
 

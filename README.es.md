@@ -122,7 +122,14 @@ pipeline {
 
 `environment { }` y `agent(…)` existen también a **nivel de pipeline**, con la misma grafía que tienen dentro de un stage. Lo que declara el pipeline es el POR DEFECTO de sus stages: un stage que declara una variable propia la conserva, y un stage que declara un agente propio lo conserva también. La precedencia es la que ya usa el gate —una declaración gana sobre un valor que llega de fuera— y se decide **nombre por nombre**: el stage `deploy` de arriba corre con `TARGET=production` y con `REGISTRY=registry.internal`, el `TARGET` del pipeline no le llega, y su agente es `linux-arm` y no el `linux` del pipeline.
 
-La declaración se lee mientras corre el script, así que el bloque `environment { }` del pipeline tiene que estar escrito **antes** del bloque `stages { }` para que una lectura dentro de un stage la vea. Las variables llegan a los pasos igual: son el entorno con el que corren los pasos de esos stages.
+Dos reglas sobre el orden, y se diferencian porque son sobre cosas distintas:
+
+- las **variables** se leen mientras corre el script, así que el bloque `environment { }` del pipeline tiene que estar escrito **antes** del bloque `stages { }` para que una lectura dentro de un stage la vea. Una lectura de una variable declarada más tarde responde con el valor que tiene la máquina, y no con `null`: la variable está declarada, sólo que demasiado tarde para esa lectura. Las variables llegan a los pasos igual: son el entorno con el que corren los pasos de esos stages;
+- el **agente** se aplica al final del bloque del pipeline, así que el sitio donde está escrita la declaración `agent(…)` no cambia qué agente corre un stage.
+
+Un segundo bloque `environment { }` a nivel de pipeline **añade** al primero: las variables de los dos llegan a los stages, y el nombre que declaran los dos es el del bloque posterior. Un pipeline declara **un** agente: un segundo `agent(…)` se rechaza donde se escribe, porque pondría dos exigencias de la misma directiva en cada stage que no declara ninguno.
+
+Las variables del pipeline son también lo que lee el **gate** de un stage: el stage `deploy` de arriba se condiciona con el mismo `TARGET=production` con el que corren sus pasos, y el `REGISTRY` del pipeline es visible para ese gate también.
 
 ### El bloque `script { }` contiene pasos
 

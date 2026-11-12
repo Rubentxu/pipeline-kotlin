@@ -307,17 +307,13 @@ open class StageScopeCore(
      * value that arrives from outside — and it is decided NAME BY NAME: a stage
      * that declares `TARGET` keeps its own value and still inherits the
      * pipeline's `REGISTRY`.
+     *
+     * This is the READ view: it carries what the pipeline had declared when
+     * this stage was opened. The agent of the pipeline does NOT travel this
+     * way — it is applied at the end of the pipeline's block, so a declaration
+     * written after the `stages { }` block reaches the stages as well.
      */
     internal var pipelineEnvironment: EnvironmentSpec? = null
-
-    /**
-     * The agent the PIPELINE declares, carried as the directives that hold it.
-     *
-     * It is the agent BY DEFAULT of the stages that declare none: a stage that
-     * declares its own keeps it, and the pipeline's does not reach it. Two
-     * requirements would be two leases, and the author asked for one.
-     */
-    internal var pipelineDirectives: List<dev.rubentxu.pipeline.v2.domain.StageDirective> = emptyList()
 
     /**
      * The environment the steps of this scope run with.
@@ -337,23 +333,25 @@ open class StageScopeCore(
     }
 
     /**
-     * The variables the STEPS of this stage run with: the ones the pipeline
-     * declares, with the ones this stage declares winning over them.
+     * The variables this scope READS: the ones the pipeline declares, with the
+     * ones this scope declares winning over them.
      *
-     * It is the ONE place where the two declarations are combined, so the read
-     * and the steps cannot disagree about which one wins: both read this.
+     * This is the READ view, and it is not the same thing as the environment
+     * the steps run with: a read happens while the plan is built, and the
+     * pipeline's declaration is read as the script runs, so a declaration
+     * written AFTER the `stages { }` block reaches the steps and not this
+     * read. That difference is the ORDER RULE, and it is a decision.
      *
-     * `null` means "this stage declares no variable", and it is a different
-     * statement from "this stage declares none of them": the first leaves the
+     * The rule of both views is the same one — the declaration of the stage
+     * wins, name by name — and it lives in [DeclaredVariables], so the two
+     * views cannot disagree about WHICH declaration wins.
+     *
+     * `null` means "this scope declares no variable", and it is a different
+     * statement from "this scope declares none of them": the first leaves the
      * environment of the steps to the layers beneath it.
      */
-    internal fun declaredEnvironmentValues(): Map<String, String>? {
-        val stage = stageEnvironment?.values
-        val pipeline = pipelineEnvironment?.values
-        if (pipeline == null) return stage
-        if (stage == null) return pipeline
-        return pipeline + stage
-    }
+    internal fun declaredEnvironmentValues(): Map<String, String>? =
+        DeclaredVariables.merged(pipelineEnvironment?.values, stageEnvironment?.values)
 
     /**
      * The value of the environment variable named [name].
@@ -710,5 +708,36 @@ open class StageScopeTopSteps(
             }
         }
         return sb.toString()
+    }
+}
+
+/**
+ * The rule that combines the variables a PIPELINE declares with the ones a
+ * STAGE declares.
+ *
+ * ## One rule and one home
+ *
+ * The rule is the same for the READ and for the PLAN: the declaration of the
+ * stage wins for the names it declares, and the declaration of the pipeline
+ * is there for the names it does not. Two answers to one rule are two rules
+ * that can drift, and the drift shows up as a stage that reads one value and
+ * runs with another.
+ *
+ * ## What `null` means
+ *
+ * `null` means "nothing is declared here", and it is a different statement
+ * from "declared as empty": the first leaves the variables to the layer
+ * beneath it, and the second is a value that says nothing.
+ */
+internal object DeclaredVariables {
+
+    /**
+     * The variables of a stage: the ones the pipeline declares, with the ones
+     * the stage declares winning over them, name by name.
+     */
+    fun merged(pipeline: Map<String, String>?, stage: Map<String, String>?): Map<String, String>? = when {
+        pipeline == null -> stage
+        stage == null -> pipeline
+        else -> pipeline + stage
     }
 }

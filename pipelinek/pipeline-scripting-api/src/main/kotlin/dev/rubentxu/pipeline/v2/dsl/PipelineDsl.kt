@@ -652,39 +652,6 @@ class BranchScope {
 }
 
 /**
- * Script scope for inline script blocks.
-*/
-@StepDslMarker
-class ScriptScope {
-    val commands = mutableListOf<String>()
-
-    /**
-     * Adds a command line to the script.
-*/
-    fun line(command: String) {
-        commands.add(command)
-    }
-
-    // The @DslMarker hierarchy correctly
-    // blocks implicit outer receivers inside `script { }`, so script bodies can no longer
-    // resolve `echo`/`sh` from [StageScope]. Jenkins-familiar script blocks still expect
-    // these step verbs, so the scope carries its own step shims that record the
-    // equivalent shell command. Kotlin control flow (if/when/loops) around them is real
-    // code evaluated at DSL-construction time — only the chosen branch is recorded.
-    fun echo(text: String) {
-        commands.add("echo \"${text.replace("\"", "\\\"")}\"")
-    }
-
-    fun sh(command: String) {
-        commands.add(command)
-    }
-
-    fun error(message: String) {
-        commands.add("echo \"$message\" >&2; exit 1")
-    }
-}
-
-/**
  * Builder for a stage, capturing its name, steps, options, environment, and
  * declared directives.
 */

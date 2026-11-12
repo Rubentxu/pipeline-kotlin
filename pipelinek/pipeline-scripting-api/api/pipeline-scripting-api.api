@@ -307,15 +307,6 @@ public final class dev/rubentxu/pipeline/v2/dsl/RunInputsRefusal$TheValueHasTheW
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class dev/rubentxu/pipeline/v2/dsl/ScriptScope {
-	public fun <init> ()V
-	public final fun echo (Ljava/lang/String;)V
-	public final fun error (Ljava/lang/String;)V
-	public final fun getCommands ()Ljava/util/List;
-	public final fun line (Ljava/lang/String;)V
-	public final fun sh (Ljava/lang/String;)V
-}
-
 public final class dev/rubentxu/pipeline/v2/dsl/StageBuilder {
 	public fun <init> (Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;ILkotlin/jvm/internal/DefaultConstructorMarker;)V

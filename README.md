@@ -97,6 +97,26 @@ stage("build") {
 
 The value is read **while the plan is built**, so it travels inside the plan and a replay reproduces it. A variable that is not defined reads as `null` and not as an empty text, and the material of a credential is never among the answers: a credential reaches the step through the environment of the child process, never through the environment of the engine.
 
+### The `script { }` block holds steps
+
+```kotlin
+stage("build") {
+    script {
+        val branch = env("BRANCH")
+        if (branch == "main") {
+            echo("building main")
+        }
+        sh("make")
+    }
+}
+```
+
+`script { }` is a **block of steps**, the way a Jenkinsfile writes it: `echo("…")` inside it is a `core.echo` and `sh("…")` is a `core.sh`, each one a step of its own, with its own identity and its own policy. It is not a block of shell lines: a `core.sh` runs on an agent, executes a subprocess and replays from the beginning, while a `core.echo` runs on the controller, reads nothing and replays from its result. The identity of the steps is the identity of Jenkins.
+
+The block carries the receiver of a stage, so it has the whole vocabulary (`echo`, `sh`, `dir`, `retry`, …). A block of shell **lines** is one step, written with `sh("""…""")`.
+
+What the block adds is the Kotlin control flow of the author, and that control flow is evaluated **while the plan is built**: the `if` above decides which arm is declared, before the first step runs. A condition that has to be decided while the run runs is written with the `when*` gates.
+
 ### Edit pipelines in IntelliJ IDEA
 
 The editor resolves a script against the classpath of the module it belongs to, and a `.pipeline.kts` outside any module gets no DSL and no diagnostics. `ide init` writes that module, as a Gradle project, from the installation you run it with:

@@ -20,14 +20,15 @@ import kotlin.script.experimental.api.ide
  * REFUSES (its options). It declares no classpath: the runner adds the product's jars and the
  * plugins' jars on top of [PipelineScriptCompilationConfiguration] when it compiles, and an IDE
  * resolves the classpath of the module the script lives in.
+ *
+ * It is an abstract class and not an interface because the compiler generates the class of each
+ * script as a SUBCLASS of the template. It has no member because a pipeline script needs none.
  */
 @KotlinScript(
     displayName = "PipelineK pipeline",
     fileExtension = "pipeline.kts",
     compilationConfiguration = PipelineScriptCompilationConfiguration::class,
 )
-// A class, not an interface: the compiler generates the class of each script as a SUBCLASS of
-// the template, and the template has no member because a pipeline script needs none.
 @Suppress("AbstractClassCanBeInterface")
 abstract class PipelineScript
 

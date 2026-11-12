@@ -322,7 +322,8 @@ class Kotlin24ScriptingHost(
             val evalError = evalResult.returnValue as? kotlin.script.experimental.api.ResultValue.Error
             if (evalError != null) {
                 ScriptCompilationResult.Failure(
-                    diagnostics = diagnostics + evaluationErrorDiagnostic(evalError.error, definition),
+                    diagnostics = diagnostics +
+                        evaluationErrorDiagnostic(evalError.error, definition, evalError.scriptClass?.java?.name),
                     cacheKey = cacheKey,
                 )
             } else {
@@ -374,10 +375,14 @@ class Kotlin24ScriptingHost(
     }
 
     /**
-     * Reports a body-build throwable as an honest compilation failure:
-     * emits the CompilationFinished diagnostic and returns Failure with the
-     * author's message verbatim. See the catch-site comment in [compile].
-*/
+     * Reports a throwable that escaped the host as an honest compilation failure:
+     * emits the CompilationFinished diagnostic and returns Failure with its
+     * message verbatim. See the catch-site comment in [compile].
+     *
+     * The evaluator turns what the script's body throws into a result, so a
+     * throwable that reaches here was not raised through an evaluated script,
+     * and its diagnostic has no line.
+     */
     private fun compilationFailure(
         t: Throwable,
         effectiveRunId: String,
@@ -385,7 +390,7 @@ class Kotlin24ScriptingHost(
         definition: ScriptDefinition,
         origin: ScriptOrigin,
     ): ScriptCompilationResult.Failure {
-        val diag = evaluationErrorDiagnostic(t, definition)
+        val diag = evaluationErrorDiagnostic(t, definition, scriptClass = null)
         // One key, computed once before the compilation and used by BOTH the
         // event and the result. Re-deriving it here would be a second
         // construction of the same fact, free to disagree with the first.
@@ -409,29 +414,25 @@ class Kotlin24ScriptingHost(
 
     /**
      * The diagnostic of a throwable raised while the script was evaluated, with the author's
-     * message verbatim.
+     * message verbatim, under the name of the script [definition] reads.
      *
-     * The line is the one of the first frame of the script in the stack trace: the compiler names
-     * the classes of a script after its file, so that frame is the line of the script the throwable
-     * came through. A gate the DSL raises while it builds a stage points at the call to that
-     * stage. The JVM records no column, and a throwable with no frame of the script (an inline
-     * script, or one raised outside its body) has no line either: both stay 0, which is what
-     * "unknown" means in these diagnostics.
+     * The line is the one [scriptLineOf] finds for [scriptClass], the class that was evaluated:
+     * the first frame of that class in the stack trace. The path is the script's own, also when
+     * the artifact was stored by a file with another name. The JVM records no column, and a throwable with no frame
+     * of the script has no line either: both stay 0, which is what "unknown" means in these
+     * diagnostics.
      */
-    private fun evaluationErrorDiagnostic(t: Throwable, definition: ScriptDefinition): ScriptingDiagnostic {
-        val sourcePath = definition.sourcePath
-        // A frame with no file name must not match a script with no file: both are null.
-        val line = sourcePath?.fileName?.toString()?.let { scriptFileName ->
-            t.stackTrace.firstOrNull { frame -> frame.fileName == scriptFileName && frame.lineNumber > 0 }
-        }?.lineNumber ?: 0
-        return ScriptingDiagnostic(
-            severity = ScriptDiagnosticSeverity.ERROR,
-            message = t.message ?: t.toString(),
-            line = line,
-            column = 0,
-            path = sourcePath?.toString() ?: "<inline>",
-        )
-    }
+    private fun evaluationErrorDiagnostic(
+        t: Throwable,
+        definition: ScriptDefinition,
+        scriptClass: String?,
+    ): ScriptingDiagnostic = ScriptingDiagnostic(
+        severity = ScriptDiagnosticSeverity.ERROR,
+        message = t.message ?: t.toString(),
+        line = scriptLineOf(t, scriptClass),
+        column = 0,
+        path = definition.sourcePath?.toString() ?: "<inline>",
+    )
 
     /**
      * The JVM's own classpath as canonical files, resolved once per host:

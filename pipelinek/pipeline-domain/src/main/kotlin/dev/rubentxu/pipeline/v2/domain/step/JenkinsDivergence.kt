@@ -117,5 +117,14 @@ object JenkinsDivergences {
                 "variable of the branch, because a gate only sees what is declared.",
             scope = JenkinsDivergence.Scope.PRODUCT,
         ),
+        JenkinsDivergence(
+            name = "the environment a script reads",
+            reason = "Jenkins evaluates `env.X` when the step RUNS, on the agent that runs it. " +
+                "Here the read happens while the PLAN is BUILT, on the host that compiles the " +
+                "script: the value travels inside the plan, so a replay reproduces it, and a " +
+                "variable that only the agent has at runtime is not visible to the script. The " +
+                "variable the stage DECLARES is visible; the one the agent happens to have is not.",
+            scope = JenkinsDivergence.Scope.PRODUCT,
+        ),
     )
 }

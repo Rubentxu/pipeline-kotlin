@@ -126,15 +126,15 @@ class MainStepsCliTest {
     }
 
     @Test
-    fun `the document carries the global divergences, four of the language and four of the product`() {
+    fun `the document carries the global divergences, four of the language and five of the product`() {
         val document = MainStepsCli.document(coreEntries())
 
         val parsed = Json.parseToJsonElement(document.toString()).jsonObject
         val divergences = parsed["divergences"]?.jsonArray ?: fail("the document carries the divergences")
         assertEquals(
-            8,
+            9,
             divergences.size,
-            "the document carries the eight differences that are the same for every script",
+            "the document carries the nine differences that are the same for every script",
         )
         val byScope = divergences.groupBy { it.jsonObject["scope"]?.jsonPrimitive?.content ?: "" }
         assertEquals(
@@ -143,7 +143,7 @@ class MainStepsCliTest {
             "a divergence says whether the language or the product imposes it",
         )
         assertEquals(4, byScope.getValue("language").size, "four of the differences the language imposes")
-        assertEquals(4, byScope.getValue("product").size, "four of the differences the product decides")
+        assertEquals(5, byScope.getValue("product").size, "five of the differences the product decides")
         assertTrue(
             divergences.all { it.jsonObject["reason"]?.jsonPrimitive?.content?.isNotBlank() == true },
             "every divergence says WHY the two products differ",

@@ -18,9 +18,9 @@ import java.util.concurrent.TimeUnit
  *
  * These facts live in code and not in a document, so the cheapest instrument
  * that can fail is the code itself: the declarations are read and compared with
- * the four differences of each kind that the card names. A divergence that
- * loses its motive, or that changes kind, fails here and not in a reader's
- * terminal.
+ * the differences of each kind that the card names, and with the one the map
+ * adds. A divergence that loses its motive, or that changes kind, fails here
+ * and not in a reader's terminal.
  *
  * ## What is NOT under trial
  *
@@ -48,7 +48,7 @@ class JenkinsDivergenceTest {
     }
 
     @Test
-    fun `the four differences the product decides are declared`() {
+    fun `the differences the product decides are declared`() {
         val product = divergencesOf(JenkinsDivergence.Scope.PRODUCT)
 
         assertEquals(
@@ -57,9 +57,11 @@ class JenkinsDivergenceTest {
                 "the control flow of the body of a script",
                 "the gate compares against what is declared",
                 "the predicate of the branch",
+                "the environment a script reads",
             ),
             product.map { it.name },
-            "the product decides four differences, and they are the four the card names",
+            "the product decides five differences: the four the card names and the one the " +
+                "map adds, the environment a script reads",
         )
     }
 

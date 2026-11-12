@@ -26,15 +26,17 @@ import java.util.concurrent.TimeUnit
  * ## Why each row is here
  *
  * - The thrown row is the plain case: the author's top-level body calls `error(...)`.
+ * - The inline row is the same case for a script with no file: the line comes from the class that
+ *   was evaluated, not from a file name, so a script with no file has one too.
  * - The consumption-gate row is the refusal the DSL itself raises while the pipeline is built.
  *   Its text is the one the author has to read to find the discarded carrier.
  * - The compile-error row is the control. A script the compiler refuses already reached the
  *   event, and it must reach it exactly as before: each error once, with the compiler's
  *   position, and no evaluation error added to it.
  *
- * The line of an evaluation error is read from the frame of the script in the stack trace. The
- * JVM does not record a column, so the column stays 0, which is what "unknown" already means in
- * these diagnostics.
+ * The line of an evaluation error is read from the first frame of the evaluated script's class in
+ * the stack trace. The JVM does not record a column, so the column stays 0, which is what
+ * "unknown" already means in these diagnostics.
  */
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
 class EvaluationErrorDiagnosticTest {
@@ -98,7 +100,7 @@ class EvaluationErrorDiagnosticTest {
     }
 
     @Test
-    fun `an inline script that throws carries the reason with no position`() {
+    fun `an inline script that throws carries the reason at the line that threw`() {
         val sink = RecordingSink()
         val host = Kotlin24ScriptingHost(eventSink = sink, cache = CompiledScriptCache.Disabled)
 
@@ -109,9 +111,9 @@ class EvaluationErrorDiagnosticTest {
         val finished = sink.events.filterIsInstance<CompilationFinished>().single()
         assertFalse(result.isSuccess, "an inline script whose body throws was accepted")
         assertEquals(
-            listOf(ScriptingDiagnostic(ScriptDiagnosticSeverity.ERROR, "boom: inline", 0, 0, "<inline>")),
+            listOf(ScriptingDiagnostic(ScriptDiagnosticSeverity.ERROR, "boom: inline", 1, 0, "<inline>")),
             errorsOf(finished.diagnostics),
-            "an inline script has no file, so no frame of it can give a line",
+            "an inline script has no file, but its class is the one evaluated, so its frame gives the line",
         )
     }
 

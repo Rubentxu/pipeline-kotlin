@@ -57,6 +57,10 @@ import java.util.concurrent.TimeUnit
  * - The reused warning is the same script validated twice against one store. The second validation
  *   is served by the artifact the first one stored, and the compiler does not run: it used to say
  *   "1 warning" the first time and nothing the second, although the script had not changed.
+ * - The reused body that throws is the thrown script validated from two files with different
+ *   names against one store. The second file is served by the artifact the first one stored, whose
+ *   frames name the first file: the error must still point at the line that threw, under the name
+ *   of the file the operator validated.
  */
 @Timeout(value = 180, unit = TimeUnit.SECONDS)
 class ValidateVerbIntegrationTest {
@@ -185,6 +189,24 @@ class ValidateVerbIntegrationTest {
         )
         val position = "${dir.resolve("warn.pipeline.kts")}:2:11: warning: $TO_INT"
         assertEquals(1, occurrences(warm.out, position), "the reuse did not print the warning once:\n${warm.out}")
+    }
+
+    @Test
+    fun `a body that throws in a reused artifact points at its line, under the name of the file validated`() {
+        val store = JarCompiledScriptCache(dir.resolve("cache"))
+
+        val stored = validate("first.pipeline.kts", THROWN, cache = store)
+        val reused = validate("second.pipeline.kts", THROWN, cache = store)
+
+        assertEquals(CliExit.INVALID_ARGUMENT, reused.exit, reused.out + reused.err)
+        assertTrue("Compilation finished with 1 error (compiled)" in stored.out, stored.out)
+        assertTrue(
+            "Compilation finished with 1 error (reused)" in reused.out,
+            "the second file was not served by the artifact the first one stored:\n${reused.out}",
+        )
+        val position = "${dir.resolve("second.pipeline.kts")}:2:0: $THROWN_REASON"
+        assertEquals(1, occurrences(reused.out, position), "the reuse lost the line that threw:\n${reused.out}")
+        assertEquals("VALIDATION FAILED: 1 error", reused.err.trim())
     }
 
     @Test

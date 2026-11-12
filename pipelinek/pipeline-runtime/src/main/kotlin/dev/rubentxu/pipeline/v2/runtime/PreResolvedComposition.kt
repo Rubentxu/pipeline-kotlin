@@ -159,6 +159,93 @@ object PluginCompositionAdmitter {
          */
         classLoaderFor: (List<String>) -> ClassLoader,
     ): CompositionOutcome {
+        val admitted = when (
+            val admission = admit(pluginJars, trust, journal, requireTrust, err, bundledPlugins)
+        ) {
+            is PreLoadAdmissionOutcome.Admitted -> admission.artifacts
+            is CompositionOutcome.Refused -> return admission
+            is CompositionOutcome.RuntimeVersionUnavailable -> return admission
+        }
+
+        if (admitted.isEmpty()) {
+            // Not a degraded case: an installation with no plugin JARs still composes, it just
+            // composes core only. Written out rather than defaulted so "no plugins" stays a
+            // decision rather than an accident.
+            return CompositionOutcome.Composed(
+                composition = PluginComposition.resolve(null),
+                admitted = emptyList(),
+            )
+        }
+
+        // Time-of-check/time-of-use, closed by COPYING rather than by reading the
+        // original a second time. A second reading still leaves a window between the
+        // reading and the load, and the classloader reads the file AFTER the reading.
+        // The copy is verified against the digest the admission decided on and is
+        // then the artifact that is loaded, so what was verified is what runs.
+        val copies = when (
+            val outcome = PrivatePluginArtifacts.copyAll(
+                admitted = admitted,
+                into = copyRoot ?: Files.createTempDirectory("pipelinek-plugin-copies"),
+            )
+        ) {
+            is PrivatePluginArtifacts.CopyOutcome.Copied -> outcome.artifacts
+
+            is PrivatePluginArtifacts.CopyOutcome.Refused -> return CompositionOutcome.Refused(
+                artifact = outcome.artifact,
+                rejection = outcome.rejection,
+                detail = outcome.detail,
+            )
+        }
+
+        val loader = classLoaderFor(copies.map { it.path.toString() })
+        return try {
+            CompositionOutcome.Composed(
+                // Pass 2 sees ONLY admitted artifacts. The parent loader still exposes the
+                // bundled JARs, and every one of them is in `copies`, so nothing
+                // reachable through ServiceLoader escaped pass 1. The same list is handed to
+                // the cross-check so a plugin is verified against its OWN contributions.
+                composition = PluginComposition.resolve(loader, copies),
+                admitted = copies,
+            )
+        } catch (e: PluginContributionRefusal.Drift) {
+            // Pass 1 admitted the artifact; pass 2 caught the artifact LYING about what it
+            // provides. Turn it back into the same typed refusal a pass-1 rejection produces,
+            // so the CLI exits 2 naming the artifact and the drift, uniformly.
+            CompositionOutcome.Refused(e.artifact, e.rejection)
+        } catch (e: PluginContributionRefusal.Unattributed) {
+            // Pass 2 could not even tell WHICH artifact a provider belongs to, so there is
+            // no artifact to name: the provider is named instead, and the composition stops
+            // rather than admitting a contribution that no manifest can be compared against.
+            CompositionOutcome.UnattributedProvider(e.providerClass, e.reason)
+        }
+    }
+
+    /**
+     * Pass 1 alone: every candidate is measured, deduplicated by its bytes, and admitted over its
+     * manifest, the runtime's API range and the operator's trust decision, and no class of any of
+     * them is loaded.
+     *
+     * [admitThenCompose] runs exactly this before it copies what was admitted and loads the
+     * copies. A caller that hands the artifacts to another tool instead of to a classloader of its
+     * own calls this, and gets the answer a run gets about the same artifacts. What it does not
+     * get is pass 2: the check that each plugin contributes what its manifest declares runs the
+     * plugin's code, and only a caller that loads the plugin runs it.
+     *
+     * The parameters are those of [admitThenCompose].
+     *
+     * @return [PreLoadAdmissionOutcome.Admitted] with the admitted artifacts, empty when there was
+     *   nothing to admit; or the [CompositionOutcome.Refused] or
+     *   [CompositionOutcome.RuntimeVersionUnavailable] that [admitThenCompose] returns for the same
+     *   request.
+     */
+    fun admit(
+        pluginJars: List<String>,
+        trust: PluginTrustSource? = null,
+        journal: AdmissionControlJournal? = null,
+        requireTrust: Boolean = false,
+        err: PrintStream = System.err,
+        bundledPlugins: List<String>,
+    ): PreLoadAdmissionOutcome {
         val candidates = (bundledPlugins + pluginJars).map { Path.of(it) }
 
         // Measure the REAL bytes of every candidate BEFORE any class from any of them is loaded.
@@ -221,15 +308,9 @@ object PluginCompositionAdmitter {
             .associate { measurement -> measurement.digest.value.lowercase() to measurement.path }
         val trustPolicy = trust?.let { source -> PluginTrustPolicy(source, operatorArtifacts) }
 
-        if (artifacts.isEmpty()) {
-            // Not a degraded case: an installation with no plugin JARs still composes, it just
-            // composes core only. Written out rather than defaulted so "no plugins" stays a
-            // decision rather than an accident.
-            return CompositionOutcome.Composed(
-                composition = PluginComposition.resolve(null),
-                admitted = emptyList(),
-            )
-        }
+        // Nothing to admit is an answer, not a refusal: the runtime version is not read, because
+        // no plugin has to be judged against it.
+        if (artifacts.isEmpty()) return PreLoadAdmissionOutcome.Admitted(emptyList())
 
         val runtimeVersion = try {
             RuntimeApiVersion.current()
@@ -261,51 +342,21 @@ object PluginCompositionAdmitter {
                 detail = admission.detail,
             )
 
-            is AdmittedArtifacts.Admitted -> {
-                // Time-of-check/time-of-use, closed by COPYING rather than by reading the
-                // original a second time. A second reading still leaves a window between the
-                // reading and the load, and the classloader reads the file AFTER the reading.
-                // The copy is verified against the digest the admission decided on and is
-                // then the artifact that is loaded, so what was verified is what runs.
-                val copies = when (
-                    val outcome = PrivatePluginArtifacts.copyAll(
-                        admitted = admission.artifacts,
-                        into = copyRoot ?: Files.createTempDirectory("pipelinek-plugin-copies"),
-                    )
-                ) {
-                    is PrivatePluginArtifacts.CopyOutcome.Copied -> outcome.artifacts
-
-                    is PrivatePluginArtifacts.CopyOutcome.Refused -> return CompositionOutcome.Refused(
-                        artifact = outcome.artifact,
-                        rejection = outcome.rejection,
-                        detail = outcome.detail,
-                    )
-                }
-
-                val loader = classLoaderFor(copies.map { it.path.toString() })
-                try {
-                    CompositionOutcome.Composed(
-                        // Pass 2 sees ONLY admitted artifacts. The parent loader still exposes the
-                        // bundled JARs, and every one of them is in `copies`, so nothing
-                        // reachable through ServiceLoader escaped pass 1. The same list is handed to
-                        // the cross-check so a plugin is verified against its OWN contributions.
-                        composition = PluginComposition.resolve(loader, copies),
-                        admitted = copies,
-                    )
-                } catch (e: PluginContributionRefusal.Drift) {
-                    // Pass 1 admitted the artifact; pass 2 caught the artifact LYING about what it
-                    // provides. Turn it back into the same typed refusal a pass-1 rejection produces,
-                    // so the CLI exits 2 naming the artifact and the drift, uniformly.
-                    CompositionOutcome.Refused(e.artifact, e.rejection)
-                } catch (e: PluginContributionRefusal.Unattributed) {
-                    // Pass 2 could not even tell WHICH artifact a provider belongs to, so there is
-                    // no artifact to name: the provider is named instead, and the composition stops
-                    // rather than admitting a contribution that no manifest can be compared against.
-                    CompositionOutcome.UnattributedProvider(e.providerClass, e.reason)
-                }
-            }
+            is AdmittedArtifacts.Admitted -> PreLoadAdmissionOutcome.Admitted(admission.artifacts)
         }
     }
+}
+
+/**
+ * Closed outcome of pass 1 alone, as [PluginCompositionAdmitter.admit] answers it.
+ *
+ * A refusal is the same value [CompositionOutcome] carries, so a caller of pass 1 and a caller of
+ * the whole composition read one refusal type and render it the same way.
+ */
+sealed interface PreLoadAdmissionOutcome {
+
+    /** Every candidate was admitted, and none of them was loaded. Empty when there was none. */
+    data class Admitted(val artifacts: List<AdmittedArtifact>) : PreLoadAdmissionOutcome
 }
 
 /** Closed outcome of admitting then composing. Pass 2 does not run on a refusal. */
@@ -322,7 +373,7 @@ sealed interface CompositionOutcome {
         val rejection: dev.rubentxu.pipeline.v2.domain.step.AdmissionRejection,
         /** The human sentence behind the refusal, when it has one. */
         val detail: String? = null,
-    ) : CompositionOutcome
+    ) : CompositionOutcome, PreLoadAdmissionOutcome
 
     /**
      * A provider in the composition window could not be attributed to an artifact, so the
@@ -334,7 +385,7 @@ sealed interface CompositionOutcome {
     data class UnattributedProvider(val providerClass: String, val reason: String) : CompositionOutcome
 
     /** The running artifact carries no usable version, so no plugin could be judged. */
-    data class RuntimeVersionUnavailable(val detail: String) : CompositionOutcome
+    data class RuntimeVersionUnavailable(val detail: String) : CompositionOutcome, PreLoadAdmissionOutcome
 }
 
 /**

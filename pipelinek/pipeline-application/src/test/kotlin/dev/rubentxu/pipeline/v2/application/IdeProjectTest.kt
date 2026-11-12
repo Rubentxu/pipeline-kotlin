@@ -66,6 +66,39 @@ class IdeProjectTest {
     }
 
     @Test
+    fun `the plugin jars of the operator are on the classpath by their paths, after a check that each is still there`() {
+        val jars = listOf(Path.of("/srv/plugins/a.jar"), Path.of("/srv/we\$ird \"p\"/b.jar"))
+
+        val build = buildScript(ideProject(Path.of("/opt/pipelinek/lib"), "2.4.10", emptyList(), jars))
+
+        val list = build.lines().dropWhile { it != "val pipelinekPluginJars = listOf(" }.takeWhile { it != ")" }
+        assertEquals(
+            listOf(
+                "val pipelinekPluginJars = listOf(",
+                "    File(\"/srv/plugins/a.jar\"),",
+                "    File(\"/srv/we\\\$ird \\\"p\\\"/b.jar\"),",
+            ),
+            list,
+            "each jar is a literal of its own:\n$build",
+        )
+        assertTrue(build.contains("    require(pluginJar.isFile) {"), "the build checks every jar:\n$build")
+        assertTrue(build.contains("run 'pipelinek ide init' again with the plugin jars"), "the refusal says how to write it again:\n$build")
+        assertTrue(
+            build.indexOf("require(pluginJar.isFile)") < build.indexOf("dependencies {"),
+            "the check runs before the classpath is declared:\n$build",
+        )
+        assertTrue(build.contains("    implementation(files(pipelinekPluginJars))"), "the jars are on the classpath:\n$build")
+    }
+
+    @Test
+    fun `without plugin jars the build is the one of the installation alone`() {
+        val build = buildScript(ideProject(Path.of("/opt/pipelinek/lib"), "2.4.10", emptyList(), emptyList()))
+
+        assertFalse(build.contains("pipelinekPluginJars"), build)
+        assertFalse(build.contains("files("), build)
+    }
+
+    @Test
     fun `a path is written as a literal no character of it can turn into code`() {
         val lib = Path.of("/opt/we\$ird \"dir\"\\x\nline/lib")
 

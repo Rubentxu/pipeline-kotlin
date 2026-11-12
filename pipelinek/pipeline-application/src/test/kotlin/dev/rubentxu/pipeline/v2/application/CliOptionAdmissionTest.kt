@@ -189,8 +189,44 @@ class CliOptionAdmissionTest {
     }
 
     @Test
+    fun `a repeatable option keeps every value it was given, in the order it was given`() {
+        val request = CliRequest(options = listOf(CliOption("--jar", takesValue = true, repeatable = true)))
+
+        assertEquals(
+            CliAdmission.Admitted(
+                flags = emptySet(),
+                values = mapOf("--jar" to "b.jar"),
+                positionals = emptyList(),
+                repeated = mapOf("--jar" to listOf("a.jar", "b.jar")),
+            ),
+            CliOptionAdmission.admit(arrayOf("--jar", "a.jar", "--jar", "b.jar"), request),
+        )
+    }
+
+    @Test
+    fun `an option that is not repeatable keeps the last value and nothing else`() {
+        val request = CliRequest(options = listOf(CliOption("--dir", takesValue = true)))
+
+        assertEquals(
+            CliAdmission.Admitted(
+                flags = emptySet(),
+                values = mapOf("--dir" to "b"),
+                positionals = emptyList(),
+            ),
+            CliOptionAdmission.admit(arrayOf("--dir", "a", "--dir", "b"), request),
+        )
+    }
+
+    @Test
+    fun `a flag cannot be declared repeatable, because it has no value to keep`() {
+        val refusal = runCatching { CliOption("--flag", repeatable = true) }.exceptionOrNull()
+
+        assertTrue(refusal is IllegalArgumentException, "a repeatable flag was accepted: $refusal")
+    }
+
+    @Test
     fun `the two option vocabularies agree about every token they share`() {
-        val shared = listOf(VERSION_REQUEST, OPERATIONS_REQUEST, EVENTS_VERIFY_REQUEST)
+        val shared = listOf(VERSION_REQUEST, OPERATIONS_REQUEST, EVENTS_VERIFY_REQUEST, IDE_INIT_REQUEST)
             .flatMap { it.options }
             .filter { knownOptionArity(it.token) != null }
         assertTrue(shared.isNotEmpty(), "no token is shared; the agreement proves nothing")

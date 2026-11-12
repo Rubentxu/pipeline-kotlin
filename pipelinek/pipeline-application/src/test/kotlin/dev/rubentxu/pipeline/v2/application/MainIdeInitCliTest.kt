@@ -1,11 +1,15 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec
+import dev.rubentxu.pipeline.v2.runtime.OperatorPluginFixture
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -28,6 +32,9 @@ import org.junit.jupiter.api.io.TempDir
  * working directory, and both are given to it here, so an installation can be built in a
  * temporary directory. That the launcher of a real installation reaches the same answer is
  * measured by the integration row that runs it.
+ *
+ * The plugins the installation bundles are given to it too, because in the test process the
+ * classpath is the build's and not an installation's.
  */
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class MainIdeInitCliTest {
@@ -154,6 +161,187 @@ class MainIdeInitCliTest {
     }
 
     @Test
+    fun `the plugin jars the operator names are written into the build by their absolute path, once each`() {
+        val definition = installation()
+        val plugins = Files.createDirectories(root.resolve("work").resolve("plugins"))
+        val first = OperatorPluginFixture.jar(plugins, "first.jar", thing = "first")
+        val second = OperatorPluginFixture.jar(plugins, "we\$ird \"second\".jar", thing = "second")
+
+        val answer = ask(
+            definition,
+            "--dir", "project",
+            "--plugin-jar", "plugins/first.jar",
+            "--plugin-jar", "plugins/we\$ird \"second\".jar",
+            "--plugin-jar", "plugins/../plugins/first.jar",
+        )
+
+        val project = root.resolve("work").resolve("project")
+        assertEquals(0, answer.exit.code, answer.stderr)
+        assertEquals(
+            listOf(
+                "ide-project $project: ready",
+                "created settings.gradle.kts",
+                "created build.gradle.kts",
+                "created gradle.properties",
+                "created pipelines/",
+                "installation ${root.resolve("pipelinek").resolve("lib")}",
+                "plugin $first",
+                "plugin $second",
+                "scripts ${project.resolve("pipelines")}",
+            ),
+            answer.stdout.lines().filter { it.isNotEmpty() },
+        )
+        val build = Files.readString(project.resolve("build.gradle.kts"))
+        listOf(first, second).forEach { jar ->
+            assertEquals(
+                1,
+                Regex(Regex.escape("File(${kotlinStringLiteral(jar.toString())})")).findAll(build).count(),
+                "the build names $jar once, by its absolute path:\n$build",
+            )
+        }
+        assertTrue(build.contains("implementation(files(pipelinekPluginJars))"), build)
+    }
+
+    @Test
+    fun `without a plugin option nothing is admitted and the build names no plugin of the operator`() {
+        val answer = ask(installation(), "--dir", "project", bundled = { error("nothing asked for an admission") })
+
+        assertEquals(0, answer.exit.code, answer.stderr)
+        assertEquals("", answer.stderr)
+        assertFalse(answer.stdout.lines().any { it.startsWith("plugin ") }, answer.stdout)
+        val build = Files.readString(root.resolve("work").resolve("project").resolve("build.gradle.kts"))
+        assertFalse(build.contains("pipelinekPluginJars"), build)
+    }
+
+    @Test
+    fun `a jar that is not a plugin is refused by its path and nothing is written`() {
+        val definition = installation()
+        val plugins = Files.createDirectories(root.resolve("work").resolve("plugins"))
+        Files.writeString(plugins.resolve("not-a-plugin.jar"), "not a jar")
+
+        val answer = ask(definition, "--dir", "project", "--plugin-jar", "plugins/not-a-plugin.jar")
+
+        assertEquals(2, answer.exit.code, answer.stderr)
+        assertTrue(
+            answer.stderr.contains("Plugin admission refused for ${plugins.resolve("not-a-plugin.jar")}"),
+            answer.stderr,
+        )
+        assertFalse(answer.stderr.contains(IDE_INIT_USAGE), "a refused plugin is not a misuse of the verb: ${answer.stderr}")
+        assertEquals(listOf("plugins"), entries(root.resolve("work")))
+    }
+
+    @Test
+    fun `a jar that is not there is refused by its path and nothing is written`() {
+        val answer = ask(installation(), "--dir", "project", "--plugin-jar", "plugins/missing.jar")
+
+        assertEquals(2, answer.exit.code, answer.stderr)
+        assertTrue(
+            answer.stderr.contains("Plugin admission refused for ${root.resolve("work").resolve("plugins").resolve("missing.jar")}"),
+            answer.stderr,
+        )
+        assertEquals(emptyList<String>(), entries(root.resolve("work")))
+    }
+
+    @Test
+    fun `a plugin no trust decision covers is written, and the operator is told`() {
+        val definition = installation()
+        OperatorPluginFixture.jar(Files.createDirectories(root.resolve("work").resolve("plugins")))
+
+        val answer = ask(definition, "--dir", "project", "--plugin-jar", "plugins/operator-plugin.jar")
+
+        assertEquals(0, answer.exit.code, answer.stderr)
+        assertTrue(answer.stderr.contains("${OperatorPluginFixture.PLUGIN_ID} was loaded WITHOUT a trust decision"), answer.stderr)
+    }
+
+    @Test
+    fun `when the operator demands trust, a plugin no trust decision covers is refused and nothing is written`() {
+        val definition = installation()
+        OperatorPluginFixture.jar(Files.createDirectories(root.resolve("work").resolve("plugins")))
+
+        val answer = ask(
+            definition,
+            "--dir", "project",
+            "--plugin-jar", "plugins/operator-plugin.jar",
+            "--require-plugin-trust",
+        )
+
+        assertEquals(2, answer.exit.code, answer.stderr)
+        assertTrue(answer.stderr.contains("required every plugin they brought to be verified"), answer.stderr)
+        assertEquals(listOf("plugins"), entries(root.resolve("work")))
+    }
+
+    @Test
+    fun `a plugin the operator's trust file approves is written under the demand`() {
+        val definition = installation()
+        val jar = OperatorPluginFixture.jar(Files.createDirectories(root.resolve("work").resolve("plugins")))
+        OperatorPluginFixture.approvingTrustFile(jar, Files.createDirectories(root.resolve("work").resolve("trust")))
+
+        val answer = ask(
+            definition,
+            "--dir", "project",
+            "--plugin-jar", "plugins/operator-plugin.jar",
+            "--plugin-trust", "trust/trust.json",
+            "--require-plugin-trust",
+        )
+
+        assertEquals(0, answer.exit.code, answer.stderr)
+        assertTrue(answer.stderr.contains("admitted under the operator's trust policy"), answer.stderr)
+        assertTrue(answer.stdout.contains("plugin $jar"), answer.stdout)
+    }
+
+    @Test
+    fun `a plugin jar Gradle cannot reach is refused with the code of an invalid argument and nothing is written`() {
+        val answer = ask(installation(), "--dir", "project", "--plugin-jar", "back\\slash.jar")
+
+        assertEquals(2, answer.exit.code, answer.stderr)
+        assertTrue(
+            answer.stderr.contains("Gradle cannot reach the plugin jar at ${root.resolve("work").resolve("back\\slash.jar")}"),
+            answer.stderr,
+        )
+        assertEquals(emptyList<String>(), entries(root.resolve("work")))
+    }
+
+    @Test
+    fun `a refused classpath of the bundled plugins ends the request with its own exit and nothing is written`() {
+        val answer = ask(
+            installation(),
+            "--dir", "project",
+            "--require-plugin-trust",
+            bundled = { throw CommandRefused(CliExit.InvalidArgument(message = "the bundled plugin classpath is in conflict")) },
+        )
+
+        assertEquals(2, answer.exit.code, answer.stderr)
+        assertEquals(emptyList<String>(), entries(root.resolve("work")))
+    }
+
+    @Test
+    fun `a plugin of the operator that claims the identity of a bundled plugin with other bytes is refused and nothing is written`() {
+        val definition = installation()
+        val bundledCopy = root.resolve("pipelinek").resolve("lib").resolve("bundled-plugin.jar")
+        JarOutputStream(Files.newOutputStream(bundledCopy)).use { out ->
+            out.putNextEntry(JarEntry(PluginManifestCodec.RESOURCE_PATH))
+            out.write(PluginManifestCodec.encode(OperatorPluginFixture.manifest()).toByteArray(Charsets.UTF_8))
+            out.closeEntry()
+            out.putNextEntry(JarEntry("installation.txt"))
+            out.write("the copy the installation bundles".toByteArray(Charsets.UTF_8))
+            out.closeEntry()
+        }
+        OperatorPluginFixture.jar(Files.createDirectories(root.resolve("work").resolve("plugins")))
+
+        val answer = ask(
+            definition,
+            "--dir", "project",
+            "--plugin-jar", "plugins/operator-plugin.jar",
+            bundled = { listOf(bundledCopy.toString()) },
+        )
+
+        assertEquals(2, answer.exit.code, answer.stderr)
+        assertTrue(answer.stderr.contains("Plugin admission refused for "), answer.stderr)
+        assertTrue(answer.stderr.contains("DuplicateIdentity"), answer.stderr)
+        assertEquals(listOf("plugins"), entries(root.resolve("work")))
+    }
+
+    @Test
     fun `the family word on its own names its form`() {
         val door = requireNotNull(cliFamilyDoor(arrayOf("ide"))) { "the family word 'ide' has no refusal" }
 
@@ -173,14 +361,18 @@ class MainIdeInitCliTest {
 
     private data class Answer(val exit: CliExit, val stdout: String, val stderr: String)
 
-    private fun ask(definition: URL, vararg words: String): Answer {
+    private fun ask(
+        definition: URL,
+        vararg words: String,
+        bundled: () -> List<String> = { emptyList() },
+    ): Answer {
         val outBytes = ByteArrayOutputStream()
         val errBytes = ByteArrayOutputStream()
         val out = PrintStream(outBytes, true, Charsets.UTF_8.name())
         val err = PrintStream(errBytes, true, Charsets.UTF_8.name())
         val working = Files.createDirectories(root.resolve("work"))
 
-        val exit = runIdeInit(words.toList().toTypedArray(), out, err, definition, working)
+        val exit = runIdeInit(words.toList().toTypedArray(), out, err, definition, working, bundledPlugins = bundled)
 
         return Answer(exit, outBytes.toString(Charsets.UTF_8), errBytes.toString(Charsets.UTF_8))
     }

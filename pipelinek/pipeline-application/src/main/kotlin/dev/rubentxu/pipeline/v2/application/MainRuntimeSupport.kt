@@ -295,12 +295,7 @@ internal fun admitThenCompose(
             PluginAdmission.Admitted(outcome.composition)
         }
 
-        is CompositionOutcome.Refused -> {
-            val reason = outcome.rejection.toString()
-            val detail = outcome.detail?.let { " — $it" }.orEmpty()
-            err.println("Plugin admission refused for ${outcome.artifact}: $reason$detail")
-            PluginAdmission.Refused(CliExit.INVALID_ARGUMENT)
-        }
+        is CompositionOutcome.Refused -> PluginAdmission.Refused(refusePluginArtifact(outcome, err))
 
         is CompositionOutcome.UnattributedProvider -> {
             // No artifact can be named for this one: the provider does not say which artifact
@@ -312,10 +307,7 @@ internal fun admitThenCompose(
             PluginAdmission.Refused(CliExit.INVALID_ARGUMENT)
         }
 
-        is CompositionOutcome.RuntimeVersionUnavailable -> {
-            err.println("FATAL — ${outcome.detail}")
-            PluginAdmission.Refused(CliExit.INCOMPATIBLE_VERSION)
-        }
+        is CompositionOutcome.RuntimeVersionUnavailable -> PluginAdmission.Refused(refuseRuntimeVersion(outcome, err))
     }
     // A refusal is NOT a failed run: nothing ran. The span says so, so a trace
     // does not report a broken pipeline where the truth is a refused admission.
@@ -327,6 +319,31 @@ internal fun admitThenCompose(
         },
     )
     return admission
+}
+
+/**
+ * Tells the operator that the admission refused [refusal]'s artifact, naming it and the rejection,
+ * and answers the exit of an invalid argument: the artifact is one the operator named or one the
+ * installation bundles, and either way it is theirs to replace.
+ *
+ * `run` and `ide init` refuse an artifact with these words, so an operator reads one refusal for
+ * one artifact whichever verb admitted it.
+ */
+internal fun refusePluginArtifact(refusal: CompositionOutcome.Refused, err: PrintStream): CliExit {
+    val reason = refusal.rejection.toString()
+    val detail = refusal.detail?.let { " — $it" }.orEmpty()
+    err.println("Plugin admission refused for ${refusal.artifact}: $reason$detail")
+    return CliExit.INVALID_ARGUMENT
+}
+
+/**
+ * Tells the operator that this build cannot say which runtime version it is, and answers the exit
+ * of an incompatible version: without it no plugin's declared range can be checked, so none is
+ * admitted.
+ */
+internal fun refuseRuntimeVersion(refusal: CompositionOutcome.RuntimeVersionUnavailable, err: PrintStream): CliExit {
+    err.println("FATAL — ${refusal.detail}")
+    return CliExit.INCOMPATIBLE_VERSION
 }
 
 /**

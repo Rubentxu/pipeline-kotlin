@@ -6,12 +6,10 @@ import dev.rubentxu.pipeline.v2.runtime.AdmittedArtifacts
 import dev.rubentxu.pipeline.v2.runtime.FilePublisherKeyRing
 import dev.rubentxu.pipeline.v2.runtime.LocalFileOperatorTrustDatabase
 import dev.rubentxu.pipeline.v2.runtime.OperatorPluginFixture
-import dev.rubentxu.pipeline.v2.runtime.PluginArtifactSignatureCodec
 import dev.rubentxu.pipeline.v2.runtime.PluginManifestResourceReader
 import dev.rubentxu.pipeline.v2.runtime.PluginTrustPolicy
 import dev.rubentxu.pipeline.v2.runtime.PluginTrustSource
 import dev.rubentxu.pipeline.v2.runtime.PreLoadPluginAdmission
-import dev.rubentxu.pipeline.v2.runtime.rawBytes
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -19,11 +17,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
-import java.nio.file.Files
 import java.nio.file.Path
-import java.security.KeyPairGenerator
-import java.security.Signature
-import java.util.Base64
 
 /**
  * The plugin the operator brought, and what the runtime tells them about it.
@@ -194,7 +188,7 @@ class PluginTrustAdmissionTest {
         val jar = OperatorPluginFixture.jar(root)
         val digest = measuredDigestOf(jar)
         val policy = PluginTrustPolicy(
-            source = approvedBy(jar, digest),
+            source = approvedBy(jar),
             operatorArtifacts = mapOf(digest.value.lowercase() to jar),
         )
         val report = ByteArrayOutputStream()
@@ -252,44 +246,14 @@ class PluginTrustAdmissionTest {
     }
 
     /**
-     * A trust source that APPROVES the fixture jar, with a real publisher signature.
-     *
-     * The operator's file names the plugin, the release, the digest and the key; the publisher's
-     * detached signature travels beside the artifact, and the key the operator keeps is the one
-     * that verifies it. All three are real files, because the decision is about real bytes and a
-     * fixture that faked any of them would prove nothing about the decision.
+     * A trust source that APPROVES the fixture jar, with a real publisher signature: the trust
+     * file and the key the operator keeps, and the signature the publisher wrote beside the jar.
      */
-    private fun approvedBy(jar: Path, digest: Digest): PluginTrustSource {
-        val keys = Files.createDirectories(root.resolve("keys"))
-        val pair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
-        Files.writeString(
-            keys.resolve("${OperatorPluginFixture.KEY_ID}.pub"),
-            Base64.getEncoder().encodeToString(pair.public.encoded),
+    private fun approvedBy(jar: Path): PluginTrustSource =
+        PluginTrustSource(
+            trustDatabase = LocalFileOperatorTrustDatabase(OperatorPluginFixture.approvingTrustFile(jar, root)),
+            keyRing = FilePublisherKeyRing(root.resolve("keys")),
         )
-        val trustFile = root.resolve("trust.json")
-        Files.writeString(
-            trustFile,
-            """{"${OperatorPluginFixture.PLUGIN_ID}@${OperatorPluginFixture.RELEASE_VERSION}": """ +
-                """{"digest": "${digest.value}", "publisher": "${OperatorPluginFixture.PUBLISHER}", """ +
-                """"signed": true, "signedBy": "${OperatorPluginFixture.KEY_ID}"}}""",
-        )
-        val signer = Signature.getInstance("Ed25519")
-        signer.initSign(pair.private)
-        signer.update(
-            requireNotNull(digest.rawBytes()) { "the digest is not a SHA-256 this test can sign over" },
-        )
-        Files.writeString(
-            PluginArtifactSignatureCodec.sidecarOf(jar),
-            """{"keyId": "${OperatorPluginFixture.KEY_ID}", """ +
-                """"algorithm": "${PluginArtifactSignatureCodec.ALGORITHM}", """ +
-                """"signature": "${Base64.getEncoder().encodeToString(signer.sign())}", """ +
-                """"digest": "${digest.value}"}""",
-        )
-        return PluginTrustSource(
-            trustDatabase = LocalFileOperatorTrustDatabase(trustFile),
-            keyRing = FilePublisherKeyRing(keys),
-        )
-    }
 
     private fun measuredDigestOf(jar: Path): Digest =
         requireNotNull(PluginManifestResourceReader.digestOfArtifactAt(jar)) {

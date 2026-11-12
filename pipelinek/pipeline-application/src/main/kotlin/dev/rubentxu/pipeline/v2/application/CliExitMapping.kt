@@ -186,8 +186,8 @@ private fun substrateExit(refusal: CliError.SubstrateRefusal): CliExit = when (r
 /**
  * The exit a refusal of `ide init` becomes.
  *
- * A directory that holds other files, or whose path Gradle cannot read, is the operator's to sort
- * out, so it is an invalid argument; an installation that is not there or that Gradle cannot reach,
+ * A directory that holds other files, or a directory or plugin jar whose path Gradle cannot read,
+ * is the operator's to sort out, so it is an invalid argument; an installation that is not there or that Gradle cannot reach,
  * or a file system that refuses the write, is a fact about the host.
  */
 private fun ideProjectExit(refusal: IdeProjectRefusal): CliExit = when (refusal) {
@@ -211,6 +211,11 @@ private fun ideProjectExit(refusal: IdeProjectRefusal): CliExit = when (refusal)
         message = "Gradle cannot reach the installation at ${refusal.lib}: " +
             "it reads the backslash in the path as a separator",
         hint = "install the distribution under a path without a backslash",
+    )
+    is IdeProjectRefusal.PluginJarOutOfGradleReach -> CliExit.InvalidArgument(
+        message = "Gradle cannot reach the plugin jar at ${refusal.jar}: " +
+            "it reads the backslash in the path as a separator",
+        hint = "name a plugin jar without a backslash in its path with --plugin-jar",
     )
 }
 

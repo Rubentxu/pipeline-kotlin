@@ -5,11 +5,19 @@ package dev.rubentxu.pipeline.v2.application
  *
  * @property token the option as the operator types it.
  * @property takesValue whether the option carries a value.
+ * @property repeatable whether the option may be given more than once, each time with a value
+ *   the verb keeps. An option that is not repeatable keeps the last value it was given. Only an
+ *   option that carries a value can be repeatable: a flag given twice says nothing new.
  */
 internal data class CliOption(
     val token: String,
     val takesValue: Boolean = false,
-)
+    val repeatable: Boolean = false,
+) {
+    init {
+        require(!repeatable || takesValue) { "$token cannot be repeatable: it carries no value to keep" }
+    }
+}
 
 /**
  * What a verb's own options said about a request.
@@ -40,13 +48,16 @@ internal sealed interface CliAdmission {
      * The request was made of options the verb owns.
      *
      * @property flags the options that carry no value.
-     * @property values the options that carry a value, with the value each was given.
+     * @property values the options that carry a value, with the last value each was given.
      * @property positionals the arguments that are not options.
+     * @property repeated the repeatable options, with every value each was given, in the order
+     *   of the request.
      */
     data class Admitted(
         val flags: Set<String>,
         val values: Map<String, String>,
         val positionals: List<String>,
+        val repeated: Map<String, List<String>> = emptyMap(),
     ) : CliAdmission
 
     /** The request carried an option the verb does not own, or one it cannot read. */
@@ -216,6 +227,7 @@ internal object CliOptionAdmission {
         val ownedTokens = owned.mapTo(mutableSetOf()) { it.token }
         val flags = linkedSetOf<String>()
         val values = linkedMapOf<String, String>()
+        val repeated = linkedMapOf<String, MutableList<String>>()
         val positionals = mutableListOf<String>()
         var index = 0
         while (index < args.size) {
@@ -245,6 +257,7 @@ internal object CliOptionAdmission {
             when (val outcome = readOptionValue(token, args, index + 1, ownedTokens)) {
                 is OptionValueOutcome.Present -> {
                     values[token] = outcome.value
+                    if (option.repeatable) repeated.getOrPut(token) { mutableListOf() } += outcome.value
                     index += 2
                 }
 
@@ -276,7 +289,7 @@ internal object CliOptionAdmission {
                 },
             )
         }
-        return CliAdmission.Admitted(flags, values, positionals)
+        return CliAdmission.Admitted(flags, values, positionals, repeated)
     }
 }
 

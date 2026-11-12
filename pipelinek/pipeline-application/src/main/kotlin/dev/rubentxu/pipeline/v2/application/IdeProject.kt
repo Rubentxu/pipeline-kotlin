@@ -48,14 +48,20 @@ internal fun definitionCompilerOptions(): List<String> =
 internal fun installedKotlinVersion(): String = KotlinVersion.CURRENT.toString()
 
 /**
- * The project that compiles `.pipeline.kts` files against the installation at [lib].
+ * The project that compiles `.pipeline.kts` files against the installation at [lib] and the
+ * plugins of the operator at [pluginJars].
  *
- * - The classpath is every jar of [lib] and nothing else. The definition, the DSL, the standard
- *   library and the example plugins the distribution ships all live there; a plugin the operator
- *   adds to the runner with `--plugin-jar` is not on it.
- * - The build refuses to configure when [lib] is no longer a directory, with a message that says
- *   how to write the project again: a `fileTree` over a directory that is gone is empty, and the
- *   editor would mark every word of the DSL as unresolved instead.
+ * - The classpath is every jar of [lib] and each of [pluginJars], and nothing else. The
+ *   definition, the DSL, the standard library and the example plugins the distribution ships all
+ *   live in [lib]; [pluginJars] are the jars the operator hands the runner with `--plugin-jar`,
+ *   written as the paths given, in the order given.
+ * - The build refuses to configure when [lib] is no longer a directory, or when one of
+ *   [pluginJars] is no longer a file, with a message that says how to write the project again: a
+ *   `fileTree` over a directory that is gone is empty, a jar that is gone is skipped, and the
+ *   editor would mark every word they provide as unresolved instead.
+ * - The build reads the jars at the paths it names, whatever their bytes are by then. What the
+ *   runner admitted is the jar as it was when the project was written; the build does not admit
+ *   it again.
  * - Gradle adds no standard library of its own (`kotlin.stdlib.default.dependency=false`), so
  *   the one on the classpath is the installation's.
  * - [compilerOptions] become `freeCompilerArgs`.
@@ -64,7 +70,12 @@ internal fun installedKotlinVersion(): String = KotlinVersion.CURRENT.toString()
  * as a Kotlin string literal by [kotlinStringLiteral], so no character of a path can end the
  * literal or interpolate a template.
  */
-internal fun ideProject(lib: Path, kotlinVersion: String, compilerOptions: List<String>): IdeProject {
+internal fun ideProject(
+    lib: Path,
+    kotlinVersion: String,
+    compilerOptions: List<String>,
+    pluginJars: List<Path> = emptyList(),
+): IdeProject {
     val scripts = kotlinStringLiteral(IDE_PROJECT_SCRIPTS_DIRECTORY)
     val options = compilerOptions.joinToString(",\n") { "                ${kotlinStringLiteral(it)}" }
     val build = buildString {
@@ -85,6 +96,19 @@ internal fun ideProject(lib: Path, kotlinVersion: String, compilerOptions: List<
         appendLine("        \"and run 'pipelinek ide init' again with the launcher of the installation\"")
         appendLine("}")
         appendLine()
+        if (pluginJars.isNotEmpty()) {
+            appendLine("val pipelinekPluginJars = listOf(")
+            pluginJars.forEach { appendLine("    File(${kotlinStringLiteral(it.toString())}),") }
+            appendLine(")")
+            appendLine("for (pluginJar in pipelinekPluginJars) {")
+            appendLine("    require(pluginJar.isFile) {")
+            appendLine("        \"the plugin jar this project was written with is not at \$pluginJar: \" +")
+            appendLine("            \"delete settings.gradle.kts, build.gradle.kts and gradle.properties, \" +")
+            appendLine("            \"and run 'pipelinek ide init' again with the plugin jars the runner loads\"")
+            appendLine("    }")
+            appendLine("}")
+            appendLine()
+        }
         appendLine("repositories {")
         appendLine("    mavenCentral()")
         appendLine("}")
@@ -106,6 +130,7 @@ internal fun ideProject(lib: Path, kotlinVersion: String, compilerOptions: List<
         appendLine()
         appendLine("dependencies {")
         appendLine("    implementation(fileTree(pipelinekLib) { include(\"*.jar\") })")
+        if (pluginJars.isNotEmpty()) appendLine("    implementation(files(pipelinekPluginJars))")
         appendLine("}")
     }
     val settings = buildString {
@@ -192,6 +217,9 @@ internal sealed interface IdeProjectRefusal : CliError {
 
     /** Gradle cannot reach the [lib] directory of the installation: see [outOfGradleReach]. */
     data class InstallationOutOfGradleReach(val lib: Path) : IdeProjectRefusal
+
+    /** Gradle cannot reach a plugin [jar] the operator named: see [outOfGradleReach]. */
+    data class PluginJarOutOfGradleReach(val jar: Path) : IdeProjectRefusal
 }
 
 /** The result of writing a project. */

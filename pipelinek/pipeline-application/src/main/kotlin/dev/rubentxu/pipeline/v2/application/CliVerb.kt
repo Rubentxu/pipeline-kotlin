@@ -181,7 +181,7 @@ internal val CLI_VERBS: List<CliVerb> = buildList {
     add(
         CliVerb(
             "ide init",
-            "write a Gradle project IntelliJ IDEA opens .pipeline.kts files with (--dir)",
+            "write a Gradle project IntelliJ IDEA opens .pipeline.kts files with (--dir, --plugin-jar, --plugin-trust)",
             ::runIdeInitVerb,
             IDE_INIT_USAGE,
         ),

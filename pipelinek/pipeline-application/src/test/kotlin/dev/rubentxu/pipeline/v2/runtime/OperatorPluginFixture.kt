@@ -17,6 +17,9 @@ import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.KeyPairGenerator
+import java.security.Signature
+import java.util.Base64
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 
@@ -62,9 +65,15 @@ internal object OperatorPluginFixture {
     /** A version every fixture's declared range admits. */
     val RUNTIME_VERSION: SemVer = SemVer(0, 92, 0)
 
-    /** The manifest the fixture plugin declares. */
-    fun manifest(): PluginManifest {
-        val identity = ResourceRef(ResourceKind.PLUGIN, listOf("example", "operator-plugin", "thing"))
+    /**
+     * The manifest the fixture plugin declares.
+     *
+     * @param thing the last segment of the plugin's identity and the name of its Step. Two
+     *   fixtures with different [thing]s are two different plugins; [PLUGIN_ID] is the one
+     *   named `thing`.
+     */
+    fun manifest(thing: String = "thing"): PluginManifest {
+        val identity = ResourceRef(ResourceKind.PLUGIN, listOf("example", "operator-plugin", thing))
         return PluginManifest(
             schemaVersion = ManifestSchemaVersion.CURRENT,
             plugin = identity,
@@ -79,7 +88,7 @@ internal object OperatorPluginFixture {
             delivery = Delivery.EXTERNAL_REFERENCE,
             trust = TrustMetadata.Unverified(),
             contributions = PluginContributions(
-                steps = listOf(PluginStepContribution(PluginStepId("example.thing"), emptySet())),
+                steps = listOf(PluginStepContribution(PluginStepId("example.$thing"), emptySet())),
             ),
         )
     }
@@ -90,14 +99,55 @@ internal object OperatorPluginFixture {
      * @param into the directory the JAR is written into.
      * @param name the file name of the JAR. The extension matters: the classloader is given a
      *   file URL, and the JDK reads a file URL as a JAR because the file is not a directory.
+     * @param thing which plugin the JAR carries: see [manifest].
      */
-    fun jar(into: Path, name: String = "operator-plugin.jar"): Path {
+    fun jar(into: Path, name: String = "operator-plugin.jar", thing: String = "thing"): Path {
         val jar = into.resolve(name)
         JarOutputStream(Files.newOutputStream(jar)).use { out ->
             out.putNextEntry(JarEntry(PluginManifestCodec.RESOURCE_PATH))
-            out.write(PluginManifestCodec.encode(manifest()).toByteArray(Charsets.UTF_8))
+            out.write(PluginManifestCodec.encode(manifest(thing)).toByteArray(Charsets.UTF_8))
             out.closeEntry()
         }
         return jar
+    }
+
+    /**
+     * An operator trust file that APPROVES [jar], with a real publisher signature.
+     *
+     * The trust file names the plugin, the release, the digest of [jar]'s bytes and the key. The
+     * public key is written into `keys/` beside the trust file, where the runtime's keyring looks
+     * for it, and the publisher's detached signature is written beside [jar]. All three are real
+     * files, because the decision is about real bytes and a fixture that faked any of them would
+     * prove nothing about the decision.
+     *
+     * @param jar the artifact to approve. Its bytes are measured here, so it must not change after.
+     * @param into the directory the trust file and its `keys/` directory are written into.
+     * @return the trust file.
+     */
+    fun approvingTrustFile(jar: Path, into: Path): Path {
+        val digest = requireNotNull(PluginManifestResourceReader.digestOfArtifactAt(jar)) {
+            "the fixture jar's bytes could not be measured, so nothing could be decided about them"
+        }
+        val keys = Files.createDirectories(into.resolve("keys"))
+        val pair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+        Files.writeString(keys.resolve("$KEY_ID.pub"), Base64.getEncoder().encodeToString(pair.public.encoded))
+        val trustFile = into.resolve("trust.json")
+        Files.writeString(
+            trustFile,
+            """{"$PLUGIN_ID@$RELEASE_VERSION": """ +
+                """{"digest": "${digest.value}", "publisher": "$PUBLISHER", """ +
+                """"signed": true, "signedBy": "$KEY_ID"}}""",
+        )
+        val signer = Signature.getInstance("Ed25519")
+        signer.initSign(pair.private)
+        signer.update(requireNotNull(digest.rawBytes()) { "the digest is not a SHA-256 this fixture can sign over" })
+        Files.writeString(
+            PluginArtifactSignatureCodec.sidecarOf(jar),
+            """{"keyId": "$KEY_ID", """ +
+                """"algorithm": "${PluginArtifactSignatureCodec.ALGORITHM}", """ +
+                """"signature": "${Base64.getEncoder().encodeToString(signer.sign())}", """ +
+                """"digest": "${digest.value}"}""",
+        )
+        return trustFile
     }
 }

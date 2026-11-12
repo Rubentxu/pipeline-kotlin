@@ -23,6 +23,9 @@ import org.junit.jupiter.api.io.TempDir
  * refuses at the same line and column with the same message. That the path of the
  * installation reaches the build as the path it is, whatever characters of a Kotlin string it
  * holds, and that a build whose installation is gone says so instead of compiling against nothing.
+ * That a plugin the operator names with `--plugin-jar` reaches the build, so a script that imports
+ * one of its Steps compiles there, that without it the same script does not, and that a build whose
+ * plugin jar is gone says so.
  *
  * ## Why these rows are NOT in the gate
  *
@@ -119,6 +122,43 @@ class IdeInitBootIntegrationTest {
         )
     }
 
+    @Test
+    fun `a script that imports the Step of a plugin the operator names compiles, and without the plugin it does not`() {
+        val launcher = launcher()
+        val lib = launcher.parent.parent.resolve("lib")
+        val bundled = Files.newDirectoryStream(lib, "example-uppercase-plugin-*.jar").use { it.toList() }
+        assertEquals(1, bundled.size, "the installation does not carry exactly one uppercase plugin: $bundled")
+        val plugins = Files.createDirectories(root.resolve("plugins"))
+        val jar = Files.move(bundled.single(), plugins.resolve(bundled.single().fileName))
+
+        val bare = root.resolve("bare")
+        val withoutPlugin = run(launcher, "ide", "init", "--dir", bare.toString())
+        assertEquals(0, withoutPlugin.exit, withoutPlugin.output)
+        Files.copy(pluginScript(), bare.resolve(IDE_PROJECT_SCRIPTS_DIRECTORY).resolve("uppercase.pipeline.kts"))
+        val unresolved = gradle(bare)
+        assertTrue(unresolved.exit != 0, "the project compiles a Step of a plugin it was not written with:\n${unresolved.output}")
+        assertTrue(
+            unresolved.output.lines().any { it.startsWith("e: ") && it.contains("uppercase.pipeline.kts:") },
+            "the project without the plugin refuses for a reason that is not the script:\n${unresolved.output}",
+        )
+
+        val project = root.resolve("project")
+        val withPlugin = run(launcher, "ide", "init", "--dir", project.toString(), "--plugin-jar", jar.toString())
+        assertEquals(0, withPlugin.exit, withPlugin.output)
+        assertTrue(withPlugin.output.lines().contains("plugin $jar"), withPlugin.output)
+        Files.copy(pluginScript(), project.resolve(IDE_PROJECT_SCRIPTS_DIRECTORY).resolve("uppercase.pipeline.kts"))
+        val compiled = gradle(project)
+        assertEquals(0, compiled.exit, "the project does not compile a Step of the plugin it was written with:\n${compiled.output}")
+
+        Files.delete(jar)
+        val gone = gradle(project)
+        assertTrue(gone.exit != 0, "the build configured without the plugin jar it was written with:\n${gone.output}")
+        assertTrue(
+            gone.output.contains("the plugin jar this project was written with is not at $jar"),
+            "the build does not name the plugin jar it lost:\n${gone.output}",
+        )
+    }
+
     // --- fixtures ---
 
     private data class Finished(val exit: Int, val output: String)
@@ -127,6 +167,11 @@ class IdeInitBootIntegrationTest {
     private fun controlScript(): Path = repository()
         .resolve("examples/catalogue/features/steps/writeFile/writeFile.pipeline.kts")
         .also { check(Files.isRegularFile(it)) { "the catalogue does not hold the control script at $it" } }
+
+    /** A script of the catalogue that imports the Step of the uppercase plugin. */
+    private fun pluginScript(): Path = repository()
+        .resolve("examples/catalogue/features/plugins/uppercase/uppercase.pipeline.kts")
+        .also { check(Files.isRegularFile(it)) { "the catalogue does not hold the plugin script at $it" } }
 
     /**
      * `compileKotlin` on [project], with the Gradle this repository builds with.

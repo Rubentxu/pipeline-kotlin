@@ -97,6 +97,31 @@ stage("build") {
 
 The value is read **while the plan is built**, so it travels inside the plan and a replay reproduces it. A variable that is not defined reads as `null` and not as an empty text, and the material of a credential is never among the answers: a credential reaches the step through the environment of the child process, never through the environment of the engine.
 
+### What the pipeline declares for its stages
+
+```kotlin
+pipeline {
+    environment {
+        env("TARGET", "staging")
+        env("REGISTRY", "registry.internal")
+    }
+    agent(label = "linux")
+    stages {
+        stage("build") {
+            sh("echo " + env("TARGET"))
+        }
+        stage("deploy") {
+            environment { env("TARGET", "production") }
+            agent(label = "linux-arm")
+        }
+    }
+}
+```
+
+`environment { }` and `agent(…)` also exist at **pipeline level**, with the same spelling they have inside a stage. What the pipeline declares is the DEFAULT of its stages: a stage that declares a variable of its own keeps it, and a stage that declares an agent of its own keeps it too. The precedence is the one the gate already uses — a declaration beats a value that arrives from outside — and it is decided **name by name**: the `deploy` stage above runs with `TARGET=production` and with `REGISTRY=registry.internal`, the pipeline's `TARGET` does not reach it, and its agent is `linux-arm` and not the pipeline's `linux`.
+
+The declaration is read as the script runs, so the pipeline's `environment { }` block has to be written **before** the `stages { }` block for a read inside a stage to see it. The variables reach the steps either way: they are the environment the steps of those stages run with.
+
 ### The `script { }` block holds steps
 
 ```kotlin

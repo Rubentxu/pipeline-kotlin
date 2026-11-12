@@ -112,9 +112,14 @@ public final class dev/rubentxu/pipeline/v2/dsl/PipelineScope {
 	public fun <init> ()V
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V
 	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun agent (Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun agent$default (Ldev/rubentxu/pipeline/v2/dsl/PipelineScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun agentAny ()V
+	public final fun agentWithCapabilities ([Ljava/lang/String;)V
 	public final fun buildParameters ()Ljava/util/List;
 	public final fun buildStages ()Ljava/util/List;
 	public final fun env (Ljava/lang/String;)Ljava/lang/String;
+	public final fun environment (Lkotlin/jvm/functions/Function1;)V
 	public final fun parameters (Lkotlin/jvm/functions/Function1;)V
 	public final fun stages (Lkotlin/jvm/functions/Function1;)V
 }

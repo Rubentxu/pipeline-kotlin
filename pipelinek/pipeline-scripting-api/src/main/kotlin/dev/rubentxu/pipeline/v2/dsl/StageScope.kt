@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
+import dev.rubentxu.pipeline.v2.domain.directivekey.AGENT_DIRECTIVE_KEY
 import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
 import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
 
@@ -775,25 +776,7 @@ class StageScope(
      *   which is a contradiction rather than a stricter constraint.
 */
     fun agent(label: String? = null, remoteUri: String? = null) {
-        require(label != null || remoteUri != null) {
-            "agent requires a label, a remoteUri, or both: declaring no constraint at all is " +
-                "what agentAny() is for, so an empty declaration should say so explicitly"
-        }
-        require(!(label != null && remoteUri != null)) {
-            "agent(label = \"$label\", remoteUri = \"$remoteUri\") is contradictory: a remote " +
-                "target is selected by selector, not by label. Declare a local label target or a " +
-                "remote selector target, not both."
-        }
-        val requirement = if (remoteUri != null) {
-            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.Remote(
-                dev.rubentxu.pipeline.v2.domain.directive.RemoteSelector(remoteUri),
-            )
-        } else {
-            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.LocalLabels(
-                setOf(dev.rubentxu.pipeline.v2.domain.directive.AgentLabel(label!!)),
-            )
-        }
-        stageDirectives = stageDirectives + appendAgentRequirement(requirement)
+        stageDirectives = stageDirectives + appendAgentRequirement(AgentRequirements.of(label, remoteUri))
     }
 
     /**
@@ -804,9 +787,7 @@ class StageScope(
      * from a stage that never mentioned an agent at all.
 */
     fun agentAny() {
-        stageDirectives = stageDirectives + appendAgentRequirement(
-            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.LocalAny,
-        )
+        stageDirectives = stageDirectives + appendAgentRequirement(AgentRequirements.any())
     }
 
     /**
@@ -816,17 +797,8 @@ class StageScope(
      * for a capability nobody bound and be told yes.
 */
     fun agentWithCapabilities(vararg capabilities: String) {
-        require(capabilities.isNotEmpty()) {
-            "agentWithCapabilities requires at least one capability key; use agentAny() for an " +
-                "unconstrained local target, because an empty set is indistinguishable from it"
-        }
-        stageDirectives = stageDirectives + appendAgentRequirement(
-            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.CapabilitySet(
-                capabilities
-                    .map { dev.rubentxu.pipeline.v2.domain.step.StepCapability(it) }
-                    .toSet(),
-            ),
-        )
+        stageDirectives = stageDirectives +
+            appendAgentRequirement(AgentRequirements.withCapabilities(capabilities))
     }
 
     /**
@@ -853,12 +825,22 @@ class StageScope(
         // Never running. The block is carried as typed
         // data and the coordinator decides which finalizer fires from the pure
         // PostPlanner; the DSL still decides NOTHING about execution.
+        //
+        // The agent of the PIPELINE is the agent BY DEFAULT of this stage: it
+        // applies only to a stage that declares none of its own. A stage that
+        // declares one keeps it and the pipeline's does NOT reach it — two
+        // requirements would be two leases, and the author asked for one.
+        val directives = if (stageDirectives.any { it.key == AGENT_DIRECTIVE_KEY.value }) {
+            stageDirectives
+        } else {
+            stageDirectives + pipelineDirectives
+        }
         return StageBuilder(
             stageName,
             steps.toList(),
             stageOptions,
-            stageEnvironment?.values,
-            stageDirectives,
+            declaredEnvironmentValues(),
+            directives,
             stagePost ?: PostConditionSpec(),
         )
     }

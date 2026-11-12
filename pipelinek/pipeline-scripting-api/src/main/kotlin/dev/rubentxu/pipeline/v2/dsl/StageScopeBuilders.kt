@@ -300,14 +300,60 @@ open class StageScopeCore(
     internal var inheritedEnvironment: EnvironmentSpec? = null
 
     /**
+     * The variables the PIPELINE declares, which are the DEFAULT of every stage
+     * that declares none of its own.
+     *
+     * The precedence is the one the gate already uses — a declaration beats a
+     * value that arrives from outside — and it is decided NAME BY NAME: a stage
+     * that declares `TARGET` keeps its own value and still inherits the
+     * pipeline's `REGISTRY`.
+     */
+    internal var pipelineEnvironment: EnvironmentSpec? = null
+
+    /**
+     * The agent the PIPELINE declares, carried as the directives that hold it.
+     *
+     * It is the agent BY DEFAULT of the stages that declare none: a stage that
+     * declares its own keeps it, and the pipeline's does not reach it. Two
+     * requirements would be two leases, and the author asked for one.
+     */
+    internal var pipelineDirectives: List<dev.rubentxu.pipeline.v2.domain.StageDirective> = emptyList()
+
+    /**
      * The environment the steps of this scope run with.
      *
      * The scope that opens a stage declares it. A scope that opens inside that
      * stage inherits it, and the inherited declaration wins over the one the
      * nested scope carries, because a nested declaration never reaches the steps.
+     *
+     * A stage that declares nothing of its own runs with the variables the
+     * PIPELINE declares, and a stage that declares some of them runs with its
+     * own value for those and with the pipeline's value for the others.
      */
-    private fun visibleEnvironment(): EnvironmentSpec =
-        inheritedEnvironment ?: stageEnvironment ?: EnvironmentSpec(emptyMap())
+    private fun visibleEnvironment(): EnvironmentSpec {
+        val inherited = inheritedEnvironment
+        if (inherited != null) return inherited
+        return EnvironmentSpec(declaredEnvironmentValues().orEmpty())
+    }
+
+    /**
+     * The variables the STEPS of this stage run with: the ones the pipeline
+     * declares, with the ones this stage declares winning over them.
+     *
+     * It is the ONE place where the two declarations are combined, so the read
+     * and the steps cannot disagree about which one wins: both read this.
+     *
+     * `null` means "this stage declares no variable", and it is a different
+     * statement from "this stage declares none of them": the first leaves the
+     * environment of the steps to the layers beneath it.
+     */
+    internal fun declaredEnvironmentValues(): Map<String, String>? {
+        val stage = stageEnvironment?.values
+        val pipeline = pipelineEnvironment?.values
+        if (pipeline == null) return stage
+        if (stage == null) return pipeline
+        return pipeline + stage
+    }
 
     /**
      * The value of the environment variable named [name].
@@ -315,8 +361,9 @@ open class StageScopeCore(
      * The value is the one the STAGE declares, when the stage declares one: a
      * stage that writes `environment { env("TARGET", "staging") }` reads
      * "staging" here, in the stage and in the blocks the stage opens. A stage
-     * that declares nothing reads the environment of the PROCESS that builds the
-     * plan, through the runtime configuration port.
+     * that declares nothing of its own reads the variables the PIPELINE
+     * declares, and what neither of them declares reads the environment of the
+     * PROCESS that builds the plan, through the runtime configuration port.
      *
      * The read happens WHILE THE PLAN IS BUILT, so the value travels inside the
      * plan and a replay reproduces it. It is not read again when the step runs,

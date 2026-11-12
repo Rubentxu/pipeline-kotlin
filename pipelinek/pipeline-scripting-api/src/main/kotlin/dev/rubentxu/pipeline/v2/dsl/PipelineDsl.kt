@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.directivekey.AGENT_DIRECTIVE_KEY
 
 /**
  * Top-level `pipeline { }` DSL entry point.
@@ -138,10 +139,57 @@ class PipelineScope(
     private val stageBuilders = mutableListOf<StageBuilder>()
     private val parameterSpecs = mutableListOf<dev.rubentxu.pipeline.v2.domain.ParameterSpec>()
 
+    /**
+     * The variables the pipeline declares, and the agent it declares as the
+     * default of the stages that declare none.
+     *
+     * Both are handed to every stage the pipeline opens, and a stage that
+     * declares its own keeps it: the pipeline's variables are the DEFAULT of a
+     * stage, and the pipeline's agent is the agent of a stage that declares
+     * none.
+     */
+    private var pipelineEnvironment: EnvironmentSpec? = null
+    private val pipelineAgentDirectives =
+        mutableListOf<dev.rubentxu.pipeline.v2.domain.StageDirective>()
+
     fun stages(block: StagesScope.() -> Unit) {
         val scope = StagesScope(runtimeConfig)
+        // The declarations the pipeline carries are handed to the stages as they
+        // are KNOWN at this point. A declaration written AFTER this block is
+        // applied to the stages anyway, by [buildStages], but a READ inside a
+        // stage cannot see it: the read happens while the plan is built, and the
+        // plan is built while this block runs. That is the same order rule the
+        // stage level already states — the `environment { }` block has to be
+        // written BEFORE the step that reads the variable.
+        scope.pipelineEnvironment = pipelineEnvironment
+        scope.pipelineDirectives = pipelineAgentDirectives.toList()
         scope.block()
         scope.buildStageBuilders().forEach { stageBuilders.add(it) }
+    }
+
+    /**
+     * The variables the pipeline declares for its stages.
+     *
+     * The block is the same one a stage writes, with the same
+     * [EnvironmentScope.env]: `environment { env("TARGET", "staging") }`.
+     *
+     * A stage that declares a variable of its own keeps its own value — the
+     * precedence is the one the gate already uses, a declaration beats a value
+     * that arrives from outside — and a stage that declares none runs with the
+     * pipeline's variables. The precedence is decided NAME BY NAME, so a stage
+     * that declares `TARGET` still inherits the pipeline's `REGISTRY`.
+     *
+     * The declaration is read as the script runs, so the `environment { }` block
+     * has to be written BEFORE the `stages { }` block for a READ inside a stage
+     * to see it. The variables themselves reach the stages either way: they are
+     * the environment the steps of those stages run with.
+     *
+     * @param block the declaration, written with [EnvironmentScope.env]
+     */
+    fun environment(block: EnvironmentScope.() -> Unit) {
+        val scope = EnvironmentScope()
+        scope.block()
+        pipelineEnvironment = EnvironmentSpec(scope.build())
     }
 
     /**
@@ -159,13 +207,50 @@ class PipelineScope(
     }
 
     /**
+     * Declare the execution target the stages of this pipeline require, unless
+     * they declare their own (Jenkins-familiar `agent`).
+     *
+     * The declaration is the same one a stage writes, with the same refusals:
+     * a target that is neither local nor remote is refused, and a target that
+     * is both is refused as a contradiction.
+     *
+     * @param label the label of a local target
+     * @param remoteUri the selector of a remote target
+     * @throws IllegalArgumentException if neither is supplied, or if both are
+     */
+    fun agent(label: String? = null, remoteUri: String? = null) {
+        pipelineAgentDirectives += appendAgentRequirement(AgentRequirements.of(label, remoteUri))
+    }
+
+    /**
+     * Declare that the stages of this pipeline run on any local target, unless
+     * they declare their own.
+     */
+    fun agentAny() {
+        pipelineAgentDirectives += appendAgentRequirement(AgentRequirements.any())
+    }
+
+    /**
+     * Declare that the target of the stages of this pipeline must provide the
+     * given capabilities, unless they declare their own.
+     *
+     * @param capabilities the capability keys the target must provide
+     * @throws IllegalArgumentException if the set is empty, because an empty
+     *   set is indistinguishable from [agentAny]
+     */
+    fun agentWithCapabilities(vararg capabilities: String) {
+        pipelineAgentDirectives +=
+            appendAgentRequirement(AgentRequirements.withCapabilities(capabilities))
+    }
+
+    /**
      * The value of the environment variable named [name].
      *
-     * The pipeline declares no environment of its own, so the value is the one the
-     * PROCESS that builds the plan has, read through the runtime configuration
-     * port. A stage that declares `environment { env("TARGET", "staging") }` does
-     * not change what this reads: the declaration belongs to the stage, and it is
-     * the stage that reads it.
+     * The value is the one the pipeline declares with `environment { }` when it
+     * declares one, and the one the PROCESS that builds the plan has when it
+     * declares none. A stage that declares `environment { env("TARGET", "staging") }`
+     * does not change what this reads: the declaration belongs to the stage, and
+     * it is the stage that reads it.
      *
      * The read happens WHILE THE PLAN IS BUILT, so the value travels inside the
      * plan and a replay reproduces it. It is not read again when the step runs.
@@ -180,9 +265,62 @@ class PipelineScope(
      *
      * @param name the name of the variable, as the operating system spells it
      */
-    fun env(name: String): String? = runtimeConfig.env(name)
+    fun env(name: String): String? {
+        val declared = pipelineEnvironment
+        if (declared != null) {
+            val value = declared.values[name]
+            if (value != null) return value
+        }
+        return runtimeConfig.env(name)
+    }
 
-    fun buildStages(): List<StageSpec> = stageBuilders.map { it.build() }
+    /**
+     * The stages of the pipeline, with the declarations of the pipeline applied
+     * to every stage that declares none of its own.
+     *
+     * The application happens HERE, at the end of the pipeline's block, so a
+     * declaration written after the `stages { }` block still reaches the
+     * stages. The stage's own declaration wins over the pipeline's, name by
+     * name, and the stage's own agent wins over the pipeline's entirely.
+     */
+    fun buildStages(): List<StageSpec> = stageBuilders.map { builder ->
+        val stage = builder.build()
+        stage.copy(
+            environment = mergeEnvironment(stage.environment, pipelineEnvironment?.values),
+            directives = mergeDirectives(stage.directives, pipelineAgentDirectives),
+        )
+    }
+
+    /**
+     * The variables of a stage, with the pipeline's under them.
+     *
+     * The stage's own value wins for the names it declares, and the pipeline's
+     * value is there for the names it does not.
+     */
+    private fun mergeEnvironment(
+        stage: Map<String, String>?,
+        pipeline: Map<String, String>?,
+    ): Map<String, String>? {
+        if (pipeline == null) return stage
+        if (stage == null) return pipeline
+        return pipeline + stage
+    }
+
+    /**
+     * The directives of a stage, with the pipeline's agent under them.
+     *
+     * A stage that declares an agent of its own keeps it and the pipeline's
+     * does not reach it: two requirements would be two leases, and the author
+     * asked for one.
+     */
+    private fun mergeDirectives(
+        stage: List<dev.rubentxu.pipeline.v2.domain.StageDirective>,
+        pipeline: List<dev.rubentxu.pipeline.v2.domain.StageDirective>,
+    ): List<dev.rubentxu.pipeline.v2.domain.StageDirective> {
+        if (pipeline.isEmpty()) return stage
+        if (stage.any { it.key == AGENT_DIRECTIVE_KEY.value }) return stage
+        return stage + pipeline
+    }
 
     fun buildParameters(): List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> =
         parameterSpecs.toList()
@@ -356,8 +494,19 @@ class StagesScope(
 ) {
     private val stageBuilders = mutableListOf<StageBuilder>()
 
+    /**
+     * The declarations of the PIPELINE, handed to every stage this scope opens.
+     *
+     * They are the DEFAULT of a stage: a stage that declares a variable of its
+     * own keeps it, and a stage that declares an agent of its own keeps it too.
+     */
+    internal var pipelineEnvironment: EnvironmentSpec? = null
+    internal var pipelineDirectives: List<dev.rubentxu.pipeline.v2.domain.StageDirective> = emptyList()
+
     fun stage(name: String, block: StageScope.() -> Unit) {
         val scope = StageScope(name, runtimeConfig)
+        scope.pipelineEnvironment = pipelineEnvironment
+        scope.pipelineDirectives = pipelineDirectives
         scope.block()
         // Fail closed HERE, while the
         // pipeline is still being built, so an unconsumed MUST_CONSUME carrier
@@ -390,8 +539,34 @@ internal object StubRuntimeConfig : dev.rubentxu.pipeline.v2.domain.RuntimeConfi
 
 /**
  * Environment variables scope.
+ *
+ * ## Why it carries the marker of the PIPELINE layer too
+ *
+ * The scope is the receiver of an `environment { }` block, and the block DECLARES
+ * variables: it says `env("TARGET", "staging")`. The pipeline's own `env(name)`
+ * READS a variable, so the two spellings differ in their ARITY and not in their
+ * intent — and a block that declared `env("TARGET")` would read a variable
+ * instead of declaring one, silently, with nothing to say so.
+ *
+ * The stage layer already refuses that shape: the scope that opens the block
+ * carries [StepDslMarker] and hides the stage's own `env(name)`, so the one-
+ * argument call has no receiver to reach and the compiler refuses it. The
+ * pipeline layer has to refuse it the same way, and the marker that does it is
+ * this one: with it, the pipeline's `env(name)` is out of reach inside the
+ * block, exactly as the stage's is.
+ *
+ * ## What it costs, measured
+ *
+ * The scope carries [PipelineDslMarker] too, so inside the block the PIPELINE's
+ * own calls are out of reach: `stages { }`, `parameters { }`, `buildStages()`,
+ * `buildParameters()` and the pipeline's `env(name)` no longer compile there.
+ * The STAGE's own calls were already out of reach before this change —
+ * [StageScope] carries [StepDslMarker] and this scope carries it too — so
+ * what is new is the narrowing of the pipeline layer, and only inside a block
+ * whose whole purpose is to DECLARE.
 */
 @StepDslMarker
+@PipelineDslMarker
 class EnvironmentScope {
     private val values = mutableMapOf<String, String>()
 

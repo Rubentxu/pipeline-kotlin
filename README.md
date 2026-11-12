@@ -283,7 +283,7 @@ needs none.
 | **Local execution** | One run per CLI invocation, in your own working directory. No controller, no agent, no daemon that starts itself | Available |
 | **Durable journal** | A SQLite journal (`--db`) plus a control root: a killed run leaves a record you can inspect, resume, cancel or recover | Available |
 | **Typed events** | `CompilationStarted`, `RunStarted`, `StageStarted`, `StepStarted`, `StepFinished`, `StepFailed`, `RunFinished`, `EchoOutputCaptured` — with the failure's stage attached to the failure event | Available |
-| **Structured CLI** | `validate`, `run`, `observe`, `console`, `events`, `inspect`, `credentials`, `doctor`, `version`, `capabilities`, `sdk-info`, `serve`, `runs cancel`, `runs recover` — each verb prints its own usage | Available |
+| **Structured CLI** | `validate`, `run`, `observe`, `console`, `events`, `inspect`, `credentials`, `doctor`, `version`, `capabilities`, `sdk-info`, `steps`, `describe`, `serve`, `runs cancel`, `runs recover` — each verb prints its own usage | Available |
 | **Plugin SDK** | `StepContract`, typed codecs, declared capabilities, a manifest with an API range. Plugin authors build against the published SDK alone | Available |
 | **Plugin trust** | `--plugin-trust` admits a plugin only if its bytes match the pinned SHA-256 and carry a valid detached Ed25519 signature; `--require-plugin-trust` refuses anything unvouched, before its code runs | Available |
 | **OpenTelemetry** | Optional OTLP export of timing, counts and buckets — never payloads. Off unless `PIPELINEK_OTEL_ENABLED=true` | Available |
@@ -292,6 +292,47 @@ needs none.
 The last row is the honest one: the capabilities `runtime.inspect.v1`, `runtime.cancel.v1`, `runtime.recover.v1` and `output.pin.v1` are published as **experimental**. `pipelinek capabilities` prints the exact status of every key this build admits.
 
 **What is published:** `output.follow.v2`, `events.follow.v3`, `events.stepoutcome.v1`, `events.failurestage.v1`.
+
+### The catalogue of steps and directives
+
+`pipelinek steps` prints the index of what this build supports: every step and every directive of the composition it would run —the core, the plugins of the installation, and the ones you name with `--plugin-jar`. The index is read from the same registry a run is composed from, so it cannot name a step nobody registered, and it cannot omit one everybody can use.
+
+```bash
+$ pipelinek steps
+directive  core.agent                        agent
+step       core.echo                         echo
+step       core.file.writeFile               writeFile
+step       core.sh                           sh
+step       scm-git.checkout                  scm-git.checkout
+```
+
+`pipelinek steps --json` publishes the same catalogue as one document of the schema `pipelinek.steps/1`: one entry per key, with the effects the step declares, what a replay does with it, what the engine does with it when the run died with it still RUNNING, the capabilities it needs, and the JSON Schema of its payload.
+
+`pipelinek describe sh` prints the card of one entry, named by its key (`core.sh`) or by its name (`sh`):
+
+```bash
+$ pipelinek describe sh
+core.sh
+  kind          step
+  name          sh
+  provider      core
+  effects       EXECUTES_SUBPROCESS
+  replay        RERUN
+  recovery      ExternalSubprocess
+  capabilities  shellOperations
+  location      AGENT
+  body          none
+  input schema:
+    {}
+  output schema:
+    {}
+  jenkins       (none)
+  deprecation   (none)
+```
+
+The payload schema is the one the step's codec declares, and the core steps declare none yet: their schema is `{}` until a codec says what the payload looks like.
+
+A name nobody carries is refused with the entries that come close, and a name two entries carry is refused with both of them named — `core.pwd` and `core.pwd.tmp` are two different steps, and answering with one of them would be a coin toss dressed as an answer.
 
 ### The local service
 

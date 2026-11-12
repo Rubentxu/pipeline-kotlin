@@ -600,6 +600,25 @@ sealed interface CliError {
      * @property detail what the machine said about it.
      */
     data class ServiceUnavailable(val reason: String, val detail: String) : CliError
+
+    /**
+     * A name the catalogue does not resolve to exactly one entry.
+     *
+     * Two facts travel together, and they are not the same fact: a name that
+     * names NOTHING, and a name that names MORE THAN ONE. The second is not
+     * an unknown name — the operator typed something real — and answering it
+     * with the first would tell them their name is wrong when it is not.
+     *
+     * @property name the name the operator wrote.
+     * @property keys the entries the name points at: the near ones when the
+     *   name names nothing, and the ambiguous ones when it names two.
+     * @property ambiguous whether the name names MORE THAN ONE entry.
+     */
+    data class UnknownStep(
+        val name: String,
+        val keys: List<String>,
+        val ambiguous: Boolean = false,
+    ) : CliError
 }
 
 /**

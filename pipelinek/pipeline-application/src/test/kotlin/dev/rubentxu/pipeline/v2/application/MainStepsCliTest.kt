@@ -136,7 +136,7 @@ class MainStepsCliTest {
             divergences.size,
             "the document carries the nine differences that are the same for every script",
         )
-        val byScope = divergences.groupBy { it.jsonObject["scope"]?.jsonPrimitive?.content ?: "" }
+        val byScope = divergences.groupBy { it.jsonObject["scope"]?.jsonPrimitive?.content.orEmpty() }
         assertEquals(
             listOf("language", "product"),
             byScope.keys.sorted(),

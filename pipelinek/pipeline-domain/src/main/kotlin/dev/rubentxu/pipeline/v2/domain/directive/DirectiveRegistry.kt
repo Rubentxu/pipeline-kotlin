@@ -94,11 +94,11 @@ class ErasedDirectiveDefinition<I, O>(
      * carry.
      */
     override val jenkinsSurface: String
-        get() = (delegate as? JenkinsSurfaceDeclaration)?.jenkinsSurface ?: ""
+        get() = (delegate as? JenkinsSurfaceDeclaration)?.jenkinsSurface.orEmpty()
 
     /** The divergence with Jenkins, when the definition declares one. */
     override val jenkinsDivergence: String
-        get() = (delegate as? JenkinsSurfaceDeclaration)?.jenkinsDivergence ?: ""
+        get() = (delegate as? JenkinsSurfaceDeclaration)?.jenkinsDivergence.orEmpty()
 
     @Suppress("UNCHECKED_CAST")
     override fun decodeAny(encodedArguments: String): DirectiveDecodeResult<Any> =

@@ -1565,7 +1565,10 @@ object ServiceCodec {
         }
         val digest = java.security.MessageDigest.getInstance("SHA-256")
             .digest(text.toString().toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
+        // The hex is written with the ROOT locale and not with the default one: the digest
+        // travels in the protocol, and a locale whose digits are not ASCII would write a
+        // digest that no other machine computes.
+        return digest.joinToString("") { String.format(java.util.Locale.ROOT, "%02x", it) }
     }
 
     /**

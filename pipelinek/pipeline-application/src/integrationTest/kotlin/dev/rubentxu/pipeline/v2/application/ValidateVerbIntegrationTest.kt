@@ -116,7 +116,7 @@ class ValidateVerbIntegrationTest {
     /** The messages of the ERROR diagnostics of the closing event, read from the JSON document. */
     private fun errorMessagesOf(document: String): List<String> = diagnosticsOf(document)
         .filter { it["severity"]?.jsonPrimitive?.content == "ERROR" }
-        .map { it["message"]!!.jsonPrimitive.content }
+        .map { it.getValue("message").jsonPrimitive.content }
 
     private fun occurrences(text: String, needle: String): Int = text.windowed(needle.length).count { it == needle }
 
@@ -178,7 +178,7 @@ class ValidateVerbIntegrationTest {
             "the summary counts something it does not print:\n${text.out}",
         )
         val diagnostics = diagnosticsOf(json.out).map {
-            it["severity"]!!.jsonPrimitive.content to it["message"]!!.jsonPrimitive.content
+            it.getValue("severity").jsonPrimitive.content to it.getValue("message").jsonPrimitive.content
         }
         assertEquals(listOf("WARNING" to TO_INT), diagnostics, "the JSON document and the text one disagree:\n${json.out}")
     }

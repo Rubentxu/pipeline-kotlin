@@ -54,13 +54,9 @@ class SupervisedRunCloserDiagnosticsIntegrationTest {
 
     private lateinit var db: Path
 
-    private val clock: Clock = object : Clock {
-        override fun now(): Instant = Instant.EPOCH
-    }
+    private val clock: Clock = EpochClock()
 
-    private val sealer = object : SupervisedRunOutputSealer {
-        override fun sealOutputOf(runId: String): SupervisedRunSeal = SupervisedRunSeal.Sealed(0)
-    }
+    private val sealer = SupervisedRunOutputSealer { SupervisedRunSeal.Sealed(0) }
 
     @BeforeEach
     fun material() {
@@ -159,4 +155,15 @@ class SupervisedRunCloserDiagnosticsIntegrationTest {
             ScriptDiagnosticSeverity.FATAL, "The compiler could not analyse the script.", 0, 0, SCRIPT,
         )
     }
+}
+
+/**
+ * The clock of this scenario: the epoch, always.
+ *
+ * A named class and not an object literal: the literal would be a candidate for
+ * a lambda, and the lambda form does not compile — `Clock` is not a `fun
+ * interface`, so Kotlin's SAM conversion does not apply to it.
+ */
+private class EpochClock : Clock {
+    override fun now(): Instant = Instant.EPOCH
 }

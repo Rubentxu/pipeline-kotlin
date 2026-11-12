@@ -145,6 +145,7 @@ fun CliError.toCliExit(): CliExit = when (this) {
     is CliError.InvalidCombination -> CliExit.InvalidArgument("invalid combination: $reason")
     is CliError.OptionBelongsToVerb -> CliExit.InvalidArgument("option $option belongs to '$owner': $why")
     is CliError.UnknownSubcommand -> unknownSubcommandExit(value, expected)
+    is CliError.UnknownStep -> unknownStepExit(this)
     is CliError.RunIdCannotNameADirectory -> CliExit.InvalidArgument(
         message = "run id '$runId' cannot name a durable directory",
         hint = "a run id may contain only letters, digits, '.', '_' and '-'",
@@ -258,6 +259,32 @@ private fun unknownSubcommandExit(value: String, expected: List<String>): CliExi
         message = "unknown subcommand: ${renderValue(value)}",
         hint = "expected one of: ${expected.joinToString(", ") { "'$it'" }}",
     )
+
+/**
+ * The exit a refusal about the name of a step becomes.
+ *
+ * A name that names NOTHING and a name that names MORE THAN ONE are two
+ * facts, and they get two sentences: the first says the name is unknown and
+ * offers the entries that come close, the second says the name is real and
+ * names the entries it points at. Answering the second with the first would
+ * send the operator looking for a typo they did not make.
+ */
+private fun unknownStepExit(error: CliError.UnknownStep): CliExit = if (error.ambiguous) {
+    CliExit.InvalidArgument(
+        message = "the name ${renderValue(error.name)} names more than one entry: " +
+            error.keys.joinToString(", "),
+        hint = "name the entry by its key",
+    )
+} else {
+    CliExit.InvalidArgument(
+        message = "no step named ${renderValue(error.name)}",
+        hint = if (error.keys.isEmpty()) {
+            "run 'pipelinek steps' to see every step this build supports"
+        } else {
+            "near: ${error.keys.joinToString(", ")}"
+        },
+    )
+}
 
 /**
  * The hint a refusal carries.

@@ -238,6 +238,23 @@ internal fun runSdkInfoVerb(args: Array<String>, out: PrintStream, err: PrintStr
     verbExit(MainSdkInfoCli.main(args, out, err))
 
 /**
+ * `steps` — the index of the steps and directives this build supports.
+ *
+ * Side-effect free: it starts no step of a pipeline and writes nothing. It does
+ * compose the plugins, because a plugin's steps exist only in its code.
+ */
+internal fun runStepsVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainStepsCli.main(args, out, err))
+
+/**
+ * `describe` — the card of one step or directive of the catalogue.
+ *
+ * Side-effect free, and it reads the same catalogue `steps` reads.
+ */
+internal fun runDescribeVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainDescribeCli.main(args, out, err))
+
+/**
  * `doctor` — local-only health diagnostics.
  *
  * JDK version, operating system, working directory writability probe. Exits 0

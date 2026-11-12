@@ -159,6 +159,20 @@ internal val CLI_VERBS: List<CliVerb> = buildList {
     add(CliVerb("sdk-info", "print the SDK coordinates a plugin builds against", ::runSdkInfoVerb))
     add(
         CliVerb(
+            "steps",
+            "list the steps and directives this build supports (--json)",
+            ::runStepsVerb,
+        ),
+    )
+    add(
+        CliVerb(
+            "describe",
+            "read the card of one step or directive (step)",
+            ::runDescribeVerb,
+        ),
+    )
+    add(
+        CliVerb(
             "serve",
             "run the local service on a Unix socket (--db, --control-root, --socket)",
             ::runServeVerb,

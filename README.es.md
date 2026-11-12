@@ -157,7 +157,7 @@ Los hechos de una ejecución se leen desde fuera del producto, y sólo por las p
 | **Ejecución local** | Una ejecución por invocación de la CLI, en tu propio directorio de trabajo. Sin controlador, sin agente, sin demonio que se arranque solo | Disponible |
 | **Journal durable** | Un journal en SQLite (`--db`) más un control root: una ejecución matada deja un registro que puedes inspeccionar, reanudar, cancelar o recuperar | Disponible |
 | **Eventos tipados** | `CompilationStarted`, `RunStarted`, `StageStarted`, `StepStarted`, `StepFinished`, `StepFailed`, `RunFinished`, `EchoOutputCaptured`, con el stage del fallo adjunto al propio evento de fallo | Disponible |
-| **CLI estructurada** | `validate`, `run`, `observe`, `console`, `events`, `inspect`, `credentials`, `doctor`, `version`, `capabilities`, `sdk-info`, `serve`, `runs cancel`, `runs recover`: cada verbo imprime su propio uso | Disponible |
+| **CLI estructurada** | `validate`, `run`, `observe`, `console`, `events`, `inspect`, `credentials`, `doctor`, `version`, `capabilities`, `sdk-info`, `steps`, `describe`, `serve`, `runs cancel`, `runs recover`: cada verbo imprime su propio uso | Disponible |
 | **SDK de plugins** | `StepContract`, códecs tipados, capacidades declaradas, un manifiesto con su rango de API. El autor de un plugin compila contra el SDK publicado, y nada más | Disponible |
 | **Confianza en plugins** | `--plugin-trust` admite un plugin solo si sus bytes coinciden con el SHA-256 fijado y llevan una firma Ed25519 válida; `--require-plugin-trust` rechaza lo que no esté avalado, antes de que corra su código | Disponible |
 | **OpenTelemetry** | Exportación OTLP opcional de tiempos, recuentos y buckets: nunca cargas útiles. Apagada salvo `PIPELINEK_OTEL_ENABLED=true` | Disponible |
@@ -166,6 +166,47 @@ Los hechos de una ejecución se leen desde fuera del producto, y sólo por las p
 La última fila es la honesta: las capacidades `runtime.inspect.v1`, `runtime.cancel.v1`, `runtime.recover.v1` y `output.pin.v1` se publican como **experimentales**. `pipelinek capabilities` imprime el estado exacto de cada clave que admite esta build.
 
 **Lo que está publicado:** `output.follow.v2`, `events.follow.v3`, `events.stepoutcome.v1`, `events.failurestage.v1`.
+
+### El catálogo de steps y directivas
+
+`pipelinek steps` imprime el índice de lo que admite esta build: cada step y cada directiva de la composición que ejecutaría —el núcleo, los plugins de la instalación y los que nombras con `--plugin-jar`. El índice se lee del mismo registro del que se compone una ejecución, así que no puede nombrar un step que nadie registró ni omitir uno que todo el mundo puede usar.
+
+```bash
+$ pipelinek steps
+directive  core.agent                        agent
+step       core.echo                         echo
+step       core.file.writeFile               writeFile
+step       core.sh                           sh
+step       scm-git.checkout                  scm-git.checkout
+```
+
+`pipelinek steps --json` publica el mismo catálogo como un documento del esquema `pipelinek.steps/1`: una entrada por clave, con los efectos que declara el step, qué hace un replay con él, qué hace el motor con él cuando la ejecución murió con él todavía en RUNNING, las capacidades que necesita y el JSON Schema de su carga útil.
+
+`pipelinek describe sh` imprime la ficha de una entrada, nombrada por su clave (`core.sh`) o por su nombre (`sh`):
+
+```bash
+$ pipelinek describe sh
+core.sh
+  kind          step
+  name          sh
+  provider      core
+  effects       EXECUTES_SUBPROCESS
+  replay        RERUN
+  recovery      ExternalSubprocess
+  capabilities  shellOperations
+  location      AGENT
+  body          none
+  input schema:
+    {}
+  output schema:
+    {}
+  jenkins       (none)
+  deprecation   (none)
+```
+
+El esquema de la carga útil es el que declara el códec del step, y los steps del núcleo todavía no declaran ninguno: su esquema es `{}` hasta que un códec diga qué forma tiene la carga útil.
+
+Un nombre que nadie lleva se rechaza nombrando las entradas que se le parecen, y un nombre que llevan dos entradas se rechaza nombrando las dos: `core.pwd` y `core.pwd.tmp` son dos steps distintos, y responder con uno de ellos sería un azar disfrazado de respuesta.
 
 ### El servicio local
 

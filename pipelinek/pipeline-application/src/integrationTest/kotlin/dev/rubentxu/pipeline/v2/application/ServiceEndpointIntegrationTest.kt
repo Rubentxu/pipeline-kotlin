@@ -20,9 +20,15 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
+import dev.rubentxu.pipeline.v2.service.ServiceAnswer
 import dev.rubentxu.pipeline.v2.service.ServiceClient
+import dev.rubentxu.pipeline.v2.service.ServiceProtocol
+import dev.rubentxu.pipeline.v2.service.ServiceRefusal
+import dev.rubentxu.pipeline.v2.service.ServiceVersion
 import java.time.Duration
+import java.util.concurrent.TimeUnit
 
 /**
  * The remote path of `inspect --state`, over a real socket, over a real store.
@@ -51,6 +57,7 @@ import java.time.Duration
  * client reads what it is given; it would not prove that the two paths
  * agree.
  */
+@Timeout(value = 120, unit = TimeUnit.SECONDS)
 class ServiceEndpointIntegrationTest {
 
     @TempDir
@@ -205,6 +212,34 @@ class ServiceEndpointIntegrationTest {
                 inspect(arrayOf("--state", "--endpoint", socket.toString(), runId)).stdout.trim(),
                 "the client and the command line did not read the same fact",
             )
+        } finally {
+            service.stop()
+        }
+    }
+
+    @Test
+    fun `the client of the SDK asks the version first and the service answers under its protocol`() {
+        val service = start()
+        try {
+            val answer = ServiceClient(socket, TOKEN, Duration.ofSeconds(10)).version()
+
+            val version = requireNotNull((answer as? ServiceAnswer.Answered<ServiceVersion>)?.value) {
+                "the service did not answer the version: $answer"
+            }
+            assertEquals(ServiceProtocol.SCHEMA, version.schema)
+            assertTrue(version.productVersion.isNotBlank(), "the service named no build: $version")
+        } finally {
+            service.stop()
+        }
+    }
+
+    @Test
+    fun `a client of the SDK that speaks another protocol is refused by name and not left unread`() {
+        val service = start()
+        try {
+            val answer = ServiceClient(socket, TOKEN, Duration.ofSeconds(10), schema = "pipelinek.service/3").version()
+
+            assertEquals(ServiceAnswer.Refused(ServiceRefusal.IncompatibleProtocol), answer)
         } finally {
             service.stop()
         }

@@ -4,8 +4,11 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import dev.rubentxu.pipeline.v2.service.ServiceAnswer
 import dev.rubentxu.pipeline.v2.service.ServiceClient
+import dev.rubentxu.pipeline.v2.service.ServiceProtocol
+import dev.rubentxu.pipeline.v2.service.ServiceRefusal
 import java.nio.file.Path
 import java.time.Duration
+import kotlin.system.exitProcess
 
 /**
  * An OUTSIDE client of the local service.
@@ -17,6 +20,15 @@ import java.time.Duration
  * [RuntimeObservation] the command line renders when it reads the same run
  * from the same store.
  *
+ * ## How it negotiates
+ *
+ * The first question is the version. A service of the same protocol answers
+ * it with its protocol and its build; a service of another protocol refuses
+ * it with `incompatible-protocol`, by name, before any question about a run. A
+ * service of this protocol that is a build without a question this SDK asks
+ * refuses that question with `unknown-op`. Each negative names what the
+ * operator does next, and none of them is read as an answer.
+ *
  * ## What this does NOT do
  *
  * It does not re-implement the wire, and it does not re-implement the
@@ -26,12 +38,19 @@ import java.time.Duration
  *
  * ## How to run it
  *
+ * From the root of the repository, unpack the published SDK and resolve it:
+ *
  * ```
+ * ./pipelinek/gradlew -p pipelinek unpackPublishedSdk
  * PIPELINEK_SERVICE_TOKEN=<token> \
- * ./gradlew -p examples/example-service-client run \
- *     -PsdkRepo=pipelinek/build/sdk-repo -PsdkVersion=0.95.0 \
+ * ./pipelinek/gradlew -p examples/example-service-client run \
+ *     -PsdkRepo="$PWD/pipelinek/build/sdk-repo-published" -PsdkVersion=0.97.0 \
  *     --args="<socket> <runId>"
  * ```
+ *
+ * The repository is an ABSOLUTE path: a relative one is read from this
+ * example's directory, and a version Maven Central already carries then
+ * resolves from Central without a word.
  *
  * The token travels in the ENVIRONMENT and not in the arguments, because the
  * arguments of a process are visible to every other process of the machine.
@@ -41,7 +60,7 @@ import java.time.Duration
 fun main(args: Array<String>) {
     if (args.size < 2) {
         System.err.println("usage: example-service-client <socket> <runId>")
-        kotlin.system.exitProcess(2)
+        exitProcess(2)
     }
     val socket = Path.of(args[0])
     val runId = args[1]
@@ -54,36 +73,53 @@ fun main(args: Array<String>) {
         System.err.println(
             "the service asks for an authorization: set PIPELINEK_SERVICE_TOKEN to the token of one of them",
         )
-        kotlin.system.exitProcess(2)
+        exitProcess(2)
     }
 
     val client = ServiceClient(socket, token, Duration.ofSeconds(10))
 
-    when (val answer = client.runState(runId)) {
-        is ServiceAnswer.Answered -> {
-            println("run $runId: ${describe(answer.value)}")
-        }
+    val version = client.version()
+    if (version !is ServiceAnswer.Answered) fail(negative(version, socket))
+    println("service ${version.value.productVersion}, protocol ${version.value.schema}")
 
-        is ServiceAnswer.Refused -> {
-            System.err.println("the service refused the question: ${answer.refusal.kind}")
-            kotlin.system.exitProcess(1)
-        }
+    val state = client.runState(runId)
+    if (state !is ServiceAnswer.Answered) fail(negative(state, socket))
+    println("run $runId: ${describe(state.value)}")
+}
 
-        is ServiceAnswer.Unreachable -> {
-            System.err.println("there is no service at $socket: ${answer.detail}")
-            kotlin.system.exitProcess(1)
-        }
+/**
+ * What [answer], which is not an answer, tells the operator.
+ */
+private fun negative(answer: ServiceAnswer<*>, socket: Path): String = when (answer) {
+    is ServiceAnswer.Answered -> error("an answer is not a negative")
+    is ServiceAnswer.Refused -> refused(answer.refusal)
+    is ServiceAnswer.Unreachable -> "there is no service at $socket: ${answer.detail}"
+    is ServiceAnswer.Unreadable -> "the service did not answer in this protocol: ${answer.detail}"
+    ServiceAnswer.TimedOut -> "the service did not answer within 10s"
+}
 
-        is ServiceAnswer.Unreadable -> {
-            System.err.println("the service did not answer in this protocol: ${answer.detail}")
-            kotlin.system.exitProcess(1)
-        }
+/**
+ * What [refusal] tells the operator to do.
+ *
+ * The refusals of the negotiation get words of their own, because each one
+ * sends the operator somewhere else; any other refusal is reported by the
+ * name the service gave it.
+ */
+private fun refused(refusal: ServiceRefusal): String = when (refusal) {
+    ServiceRefusal.IncompatibleProtocol ->
+        "the service speaks another protocol than ${ServiceProtocol.SCHEMA}: use the SDK of the service's build"
 
-        ServiceAnswer.TimedOut -> {
-            System.err.println("the service did not answer within 10s")
-            kotlin.system.exitProcess(1)
-        }
-    }
+    ServiceRefusal.UnknownOp ->
+        "the service is a build without this question: use the SDK of the service's build"
+
+    is ServiceRefusal.UnknownRun -> "the service knows no run ${refusal.runId}"
+
+    else -> "the service refused the question: ${refusal.kind}"
+}
+
+private fun fail(message: String): Nothing {
+    System.err.println(message)
+    exitProcess(1)
 }
 
 /**

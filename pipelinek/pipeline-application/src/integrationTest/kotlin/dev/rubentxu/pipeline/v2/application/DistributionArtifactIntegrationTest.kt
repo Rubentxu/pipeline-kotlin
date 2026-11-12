@@ -2,10 +2,12 @@ package dev.rubentxu.pipeline.v2.application
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 
 /**
  * The distribution is READ, and not started.
@@ -31,10 +33,11 @@ import org.junit.jupiter.api.Test
  * bytes that leave the tree, and a double of the ZIP would answer whatever
  * the double was told.
  */
+@Timeout(value = 60, unit = TimeUnit.SECONDS)
 class DistributionArtifactIntegrationTest {
 
     @Test
-    fun `the distribution carries the launcher, the application and the client that talks to the service`() {
+    fun `the distribution carries the launcher, the application, the script definition and the service client`() {
         val entries = entriesOfDistribution()
 
         assertTrue(entries.contains("bin/pipelinek"), "the distribution carries no launcher: $entries")
@@ -46,6 +49,12 @@ class DistributionArtifactIntegrationTest {
         assertTrue(
             entries.contains("lib/pipeline-service-client-${version()}.jar"),
             "the distribution carries no client of the service: $entries",
+        )
+        // The host compiles every script with the definition's configuration, so a distribution
+        // without this jar compiles no script at all.
+        assertTrue(
+            entries.contains("lib/pipeline-scripting-definition-${version()}.jar"),
+            "the distribution carries no definition of a .pipeline.kts: $entries",
         )
         assertTrue(
             entries.none { it.contains("docker") },

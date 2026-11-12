@@ -55,6 +55,10 @@ include(
     // published contracts without repeating the version. See its build script for why that
     // distinction is load-bearing.
     ":pipeline-sdk-bom",
+    // The ONE definition of a `.pipeline.kts`: the `@KotlinScript` class, its compilation
+    // configuration and the template marker an IDE discovers it by. Published, because an IDE and an
+    // external build have to resolve the same definition the runner compiles with.
+    ":pipeline-scripting-definition",
     ":pipeline-scripting-kotlin24",
     ":pipeline-events",
     // The event plane's durable implementation: journal, replay cursor, run lease, and the

@@ -16,13 +16,18 @@ import kotlin.script.experimental.api.ResultValue
 import kotlin.script.experimental.api.ScriptDiagnostic
 import kotlin.script.experimental.api.ScriptEvaluator
 import kotlin.script.experimental.api.SourceCode
-import kotlin.script.experimental.api.defaultImports
+import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.compilerOptions
+import kotlin.script.experimental.api.with
 import kotlin.script.experimental.host.StringScriptSource
 import kotlin.script.experimental.jvm.BasicJvmScriptEvaluator
 import kotlin.script.experimental.jvm.dependenciesFromCurrentContext
 import kotlin.script.experimental.jvm.jvm
 import kotlin.script.experimental.jvm.updateClasspath
+import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromTemplate
+import kotlin.script.experimental.jvmhost.createJvmEvaluationConfigurationFromTemplate
+import dev.rubentxu.pipeline.v2.scripting.definition.PipelineScript
+import dev.rubentxu.pipeline.v2.scripting.definition.PipelineScriptCompilationConfiguration
 
 /**
  * Kotlin 2.4.10 adapter that wraps [CachingJvmScriptingHost] (a
@@ -30,18 +35,18 @@ import kotlin.script.experimental.jvm.updateClasspath
  * stored compilation) and
  * exposes the [ScriptingHost] contract from `:pipeline-scripting-api`.
  * Design contract:
- * `createJvmCompilationConfigurationFromTemplate<Any>`
- *    which resolves to the built-in Kotlin script definition (no custom
- *    `@KotlinScript` annotation needed — the file extension is conveyed
- *    via [SourceCodeFactory] producing a [kotlin.script.experimental.host.FileScriptSource]
- *    whose `name` is the file's basename; the host recognises the
- *    `.pipeline.kts` extension through that).
+ *  - Compiles with the published definition of a `.pipeline.kts`,
+ *    [PipelineScript] and its [PipelineScriptCompilationConfiguration]: the
+ *    default imports and the compiler options are read from there, the same
+ *    place an IDE reads them from, and are not repeated here.
  *  - Builds the classpath via `jvm { dependenciesFromCurrentContext() }`
  *    (default `wholeClasspath = false` — i.e. the current compilation
  *    context classpath only: kotlin-stdlib, kotlin-script-runtime,
  *    kotlin-reflect, the scripting-jvm-host artifacts on this module's
  *    compile classpath). No `wholeClasspath = true` appears anywhere in
  *    production.
+ *  - Adds the location of [PipelineScript] itself, because every script
+ *    compiles as a subclass of it.
  *  - Per-call jars supplied via [ScriptDefinition.classpath] are appended
  *    through `jvm { updateClasspath(files) }` inside the eval body.
  *  - Returns a stable [ScriptCompilationResult.cacheKey] computed from
@@ -66,41 +71,71 @@ class Kotlin24ScriptingHost(
      * Options themselves were not part of the key — OBSERVED in: the flag was in the
      * binary, yet a script compiled before the change still discarded its result silently.
      * That defence is now a second line rather than the only one: [compilerFlags] is its own
-     * cache-key dimension (see [cacheKeyFor]), so an option change invalidates the key whether
+     * cache-key dimension (see [cacheIdentityFor]), so an option change invalidates the key whether
      * or not anyone remembers this value. The bumps above stay, because [hostVersion] still
      * covers host changes that are not options — a different classpath assembly, a different
      * compiler invocation — and because a stale `v1` label is still on old event payloads.
+     * Bumped to 1.3.0 when the script's base class moved from `Any` to [PipelineScript]: the
+     * compiled class of a script changes with its base class, and that is not an option.
 */
-    private val hostVersion = "1.2.0"
+    private val hostVersion = "1.3.0"
 
     /**
-     * The compiler options the host always passes to the Kotlin scripting host.
-     * `-Xuse-fast-jar-file-system=false` is mandatory. Kotlin 2.4.10's
-     * [FastJarFileSystemKt] (in kotlin-stdlib) calls
-     * `sun.misc.Unsafe::invokeCleaner`, which on JDK 21+ emits a warning and
-     * is scheduled for removal. Disabling the fast jar file system routes
-     * jar reads through the regular `JarFile` path, which is the documented
-     * Workaround and removes the call entirely. See
-     * The option list is read directly into the compilation identity (see [cacheKeyFor]), so
-     * adding an option invalidates the key by construction. It was previously covered only by
-     * the [hostVersion] bump discipline described above, which is a comment asking every future
-     * author to remember something that the key can enforce instead.
+     * The compiler options of a `.pipeline.kts`, read from the definition that owns them
+     * ([PipelineScriptCompilationConfiguration]). The host does not declare a second list: the
+     * definition says why each option is there, and an IDE that loads the same definition
+     * receives the same options.
+     * The option list is read directly into the compilation identity (see [cacheIdentityFor]),
+     * so an option added to the definition invalidates the key by construction. It was
+     * previously covered only by the [hostVersion] bump discipline, which is a comment asking
+     * every future author to remember something that the key can enforce instead.
 */
-    private val compilerFlags: List<String> = listOf(
-        // Pure Builder Consumption Gate: an unconsumed return value from
-        // a MUST_CONSUME PURE_BUILDER is a compile error in a
-        // `.pipeline.kts`. This is Kotlin's own return-value checker
-        // (`@MustUseReturnValues` + `-Xreturn-value-checker=check`) —
-        // no custom compiler plugin and no second source of truth.
-        // The annotation is only enforced where the checker is enabled,
-        // so other consumers of the DSL library are unaffected.
-        "-Xreturn-value-checker=check",
-        // Real elimination of `sun.misc.Unsafe::invokeCleaner`
-        // calls from Kotlin 2.4.10's [FastJarFileSystemKt]. Routes jar
-        // reads through the legacy `JarFile` path, which does not
-        // touch Unsafe. See the field KDoc above.
-        "-Xuse-fast-jar-file-system=false",
-    )
+    private val compilerFlags: List<String> =
+        PipelineScriptCompilationConfiguration[ScriptCompilationConfiguration.compilerOptions].orEmpty()
+
+    /**
+     * Where the class every script extends was loaded from: a jar in a distribution, a directory
+     * of classes in a build.
+     *
+     * The host chose [PipelineScript] as the template, so the host is the one that puts it on the
+     * script's classpath. `dependenciesFromCurrentContext()` brings the Kotlin runtime and not the
+     * template, and the per-call jars of the runner are the domain, the DSL and the plugins.
+     * Without this entry most scripts still compile, which is why its absence hides: the compiler
+     * resolves the base class only when it looks at the script's own receiver, and a fully
+     * qualified name at the top level of a script (`java.io.File(...)`) is the common way that
+     * happens. That script is then refused with an unresolved reference to [PipelineScript].
+     *
+     * In a distribution the template is a jar on this JVM's class path, and [cacheIdentityFor]
+     * digests that class path with the rest of the context.
+     */
+    private val templateClasspath: File =
+        File(
+            requireNotNull(PipelineScript::class.java.protectionDomain.codeSource) {
+                "the definition of a .pipeline.kts was loaded without a code source"
+            }.location.toURI(),
+        ).canonicalFile
+
+    /**
+     * The compilation configuration of one compilation: the definition, plus the classpath of
+     * this call.
+     *
+     * The classpath is ADDED to the definition with `with { }` on the configuration the template
+     * produced. Declaring it inside the template's own builder block would not be the same thing,
+     * and it is the trap: there it replaces the dependencies instead of adding to them.
+     *
+     * The definition declares no classpath on purpose (see [PipelineScript]). What a script of the
+     * runner compiles against is the host's own compilation context
+     * (`dependenciesFromCurrentContext()`, `wholeClasspath = false`), the template it extends
+     * ([templateClasspath]) and the per-call jars of [ScriptDefinition.classpath], the DSL and the
+     * plugins among them.
+     */
+    private fun compilationConfigurationFor(classpathFiles: List<File>): ScriptCompilationConfiguration =
+        createJvmCompilationConfigurationFromTemplate<PipelineScript>().with {
+            jvm {
+                dependenciesFromCurrentContext()
+                updateClasspath(listOf(templateClasspath) + classpathFiles)
+            }
+        }
 
     /**
      * Compile the definition AND RUN it.
@@ -126,7 +161,7 @@ class Kotlin24ScriptingHost(
      * The COMPILATION is the same one [compile] performs — same source, same
      * default imports, same per-call classpath, same compiler options, same
      * cache identity — because the compilation configuration is built by
-     * `evalWithTemplate` and that call is shared by both paths.
+     * [compilationConfigurationFor] and that call is shared by both paths.
      *
      * A second compilation, done differently, would answer a different
      * question: "does a program that resembles the script compile?" instead of
@@ -189,24 +224,13 @@ class Kotlin24ScriptingHost(
         // across relative/absolute invocations of the same logical script.
         val classpathFiles = definition.classpath.map { File(it).canonicalFile }
 
-        // (Pure Builder Consumption Gate)
-        // WHY `evalWithTemplate` AND NOT A CONFIGURATION
-        // ========================================================
-        // OBSERVED: with `createJvmCompilationConfigurationFromTemplate` the
-        // `compilerOptions` key is accepted, stored, and then IGNORED — a
-        // discarded `@MustUseReturnValues` result still compiled silently.
-        // ROOT CAUSE (verified against the 2.4.10 artifacts, not guessed):
-        //   - `kotlin-scripting-jvm` and `kotlin-scripting-jvm-host` contain
-        //     ZERO references to "compilerOptions".
-        //   - `kotlin-scripting-compiler-impl-embeddable` references it only in
-        //     `org.jetbrains.kotlin.scripting.definitions.ScriptDefinition`.
-        // So the option is read from a `ScriptDefinition`, which only
-        // `evalWithTemplate` constructs. Handing the host a pre-built
-        // `ScriptCompilationConfiguration` bypasses that read entirely.
-        // `evalWithTemplate` keeps ONE compilation body — the DSL default
-        // imports, the per-call classpath and the gate flag are all declared in
-        // the same builder — so there is still a single source of truth for how
-        // a `.pipeline.kts` is compiled.
+        // The compilation is configured by the published definition
+        // ([PipelineScript]) and nothing else: its default imports and its
+        // compiler options reach the compiler through the configuration the
+        // template produces. `-Xreturn-value-checker=check` on its own reports
+        // a discarded `@MustUseReturnValues` result as a WARNING, which does not
+        // stop a compilation; the definition also raises both diagnostics of a
+        // discard to errors, so the compiler refuses it with its line and column.
         // A fail-closed DSL guard that throws while
         // the script BODY is being built (e.g. the Pure Builder Consumption
         // gate rejecting an unconsumed MUST_CONSUME carrier) escapes the entry
@@ -264,49 +288,11 @@ class Kotlin24ScriptingHost(
         val host = CachingJvmScriptingHost(cacheForThisCompilation, cacheKey, lookup, evaluator)
 
         val rwd: ResultWithDiagnostics<*> = try {
-            host.evalWithTemplate<Any>(
+            host.eval(
                 source,
-            {
-                // Pure Builder Consumption Gate + fast-jar-file-system
-                // option. Both live in [compilerFlags] so they share the same
-                // Authority and the same cache-key input. The /
-                // comments on those fields explain why each option is here.
-                this[compilerOptions] = compilerFlags
-                jvm {
-                    dependenciesFromCurrentContext()
-                    if (classpathFiles.isNotEmpty()) {
-                        updateClasspath(classpathFiles)
-                    }
-                }
-                defaultImports(
-                    "dev.rubentxu.pipeline.v2.dsl.pipeline",
-                    "dev.rubentxu.pipeline.v2.dsl.stages",
-                    "dev.rubentxu.pipeline.v2.dsl.stage",
-                    "dev.rubentxu.pipeline.v2.dsl.echo",
-                    "dev.rubentxu.pipeline.v2.dsl.sh",
-                    "dev.rubentxu.pipeline.v2.dsl.PipelineSpec",
-                    "dev.rubentxu.pipeline.v2.dsl.StageSpec",
-                    "dev.rubentxu.pipeline.v2.dsl.StepSpec",
-                    "dev.rubentxu.pipeline.v2.dsl.PipelineScope",
-                    "dev.rubentxu.pipeline.v2.dsl.StagesScope",
-                    "dev.rubentxu.pipeline.v2.dsl.StageScope",
-                    "dev.rubentxu.pipeline.v2.dsl.StageBuilder",
-                    "dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint",
-                    "dev.rubentxu.pipeline.v2.scripting.ScriptedArtifactIdentity",
-                    "dev.rubentxu.pipeline.v2.scripting.ScriptedStepFacade",
-                    "dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId",
-                    "dev.rubentxu.pipeline.v2.scripting.ScriptedDynamicScopeId",
-                    "dev.rubentxu.pipeline.v2.scripting.ScriptedSourceId",
-                    "dev.rubentxu.pipeline.v2.scripting.ScriptedBlockName",
-                    "dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLocation",
-                    "dev.rubentxu.pipeline.v2.scripting.ReturnStdout",
-                    "dev.rubentxu.pipeline.v2.scripting.ReturnStatus",
-                    "dev.rubentxu.pipeline.v2.domain.CredentialsId",
-                    "dev.rubentxu.pipeline.v2.domain.CredentialsRef"
-                )
-            },
-            {},
-        )
+                compilationConfigurationFor(classpathFiles),
+                createJvmEvaluationConfigurationFromTemplate<PipelineScript>(),
+            )
         } catch (t: Throwable) {
             // The host has already recorded how this run obtained its artifact,
             // even though the compilation blew up: a throwable that escaped the

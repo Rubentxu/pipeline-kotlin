@@ -23,6 +23,9 @@ dependencies {
     implementation(libs.kotlin.scripting.jvm)
     implementation(libs.kotlin.compiler.embeddable)
     implementation(project(":pipeline-scripting-api"))
+    // The definition of a `.pipeline.kts`. The host compiles with it and declares no second
+    // list of default imports or compiler options.
+    implementation(project(":pipeline-scripting-definition"))
     implementation(project(":pipeline-events"))
     implementation(project(":pipeline-domain"))
 }

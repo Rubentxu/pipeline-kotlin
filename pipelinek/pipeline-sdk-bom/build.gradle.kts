@@ -28,6 +28,7 @@ plugins {
 //     implementation("dev.rubentxu.pipelinek:pipelinek-scripting-api")
 //     implementation("dev.rubentxu.pipelinek:pipelinek-runtime-api")
 //     implementation("dev.rubentxu.pipelinek:pipelinek-service-client")
+//     implementation("dev.rubentxu.pipelinek:pipelinek-scripting-definition")
 // That is convenience of RESOLUTION, and it is the whole of what this module does.
 // The distinction that matters: a contract is a set of TYPES a consumer compiles against and whose
 // bytes are guarded by `apiCheck`. `publishedContractModules` in the root build remains the single
@@ -60,6 +61,9 @@ dependencies {
         // ports did: a consumer that pins the platform version pulls the SDK it needs to
         // talk to the service, without repeating the version of the coordinate.
         api("dev.rubentxu.pipelinek:pipelinek-service-client:${rootProject.version}")
+        // The definition of a `.pipeline.kts`, so the IDE project that pins the platform
+        // compiles its scripts with the definition of the same release as its DSL.
+        api("dev.rubentxu.pipelinek:pipelinek-scripting-definition:${rootProject.version}")
     }
 }
 

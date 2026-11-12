@@ -19,7 +19,7 @@ import java.io.PrintStream
  *
  * The list this test pins is the one the build generates from the single
  * declaration of the published coordinate. The test therefore does not restate the
- * coordinate as a fact of its own: it pins the SHAPE of the answer (seven entries, one
+ * coordinate as a fact of its own: it pins the SHAPE of the answer (eight entries, one
  * group, the BOM as the platform) and the NAME the solution publishes under, which is
  * the thing a rename has to carry.
  */
@@ -29,7 +29,7 @@ class MainSdkInfoCoordinatesTest {
         val answer = sdkInfo()
         val coordinates = answer["coordinates"]!!.jsonArray
 
-        assertEquals(7, coordinates.size, "the SDK publishes six contracts and the BOM: $answer")
+        assertEquals(8, coordinates.size, "the SDK publishes seven contracts and the BOM: $answer")
 
         val groups = coordinates.map { it.jsonObject["group"]!!.jsonPrimitive.content }.distinct()
         assertEquals(1, groups.size, "every published coordinate carries the same group: $answer")
@@ -43,6 +43,7 @@ class MainSdkInfoCoordinatesTest {
                 "pipelinek-output",
                 "pipelinek-runtime-api",
                 "pipelinek-scripting-api",
+                "pipelinek-scripting-definition",
                 "pipelinek-service-client",
                 "pipelinek-sdk-bom",
             ),
@@ -54,7 +55,7 @@ class MainSdkInfoCoordinatesTest {
         assertEquals("bom", scopes.last(), "the BOM is the platform a consumer pins: $answer")
         assertTrue(
             scopes.dropLast(1).all { it == "implementation" },
-            "the six contracts are the ones a consumer compiles against: $answer",
+            "the seven contracts are the ones a consumer compiles against: $answer",
         )
     }
 

@@ -292,16 +292,13 @@ val generateSdkCoordinates by tasks.registering {
     val publishedArtifactNames = rootProject.extra["sdkBundleArtifactNames"] as Map<*, *>
 
     // The order the CLI publishes, and the scope each coordinate carries. The BOM is
-    // the one a consumer pins as a platform; the five contracts are the ones it
-    // compiles against.
-    val contracts = listOf(
-        "pipeline-domain",
-        "pipeline-events",
-        "pipeline-output",
-        "pipeline-runtime-api",
-        "pipeline-scripting-api",
-        "pipeline-service-client",
-    )
+    // the one a consumer pins as a platform; the contracts are the ones it
+    // compiles against. The contracts are read from the root build's single
+    // declaration (`publishedContractModules`) and sorted by name, so the answer
+    // has one order whatever order the declaration lists them in.
+    val contracts = (rootProject.extra["publishedContractModules"] as List<*>)
+        .map { it as String }
+        .sorted()
     val bom = "pipeline-sdk-bom"
 
     val coordinates = (contracts.map { it to "implementation" } + (bom to "bom")).map { (module, scope) ->

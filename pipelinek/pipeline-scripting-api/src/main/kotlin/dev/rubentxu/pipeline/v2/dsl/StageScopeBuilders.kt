@@ -94,10 +94,12 @@ internal class CarrierRegistry {
  * discarding the returned value loses nothing. The manifest records them as
  * MAY_DISCARD, and the compile-time checker cannot be scoped per-builder — it is
  * all-or-nothing per compilation, so it stays silent for them.
- * The real, enforced gate is the admission-time carrier registry below, which
- * classifies each carrier individually and therefore CANNOT be over-applied.
- * The annotation is the compile-time first line, and it bites on the paths where
- * the checker is enabled.
+ * The annotation is the compile-time first line. The definition of a
+ * `.pipeline.kts` turns Kotlin's return-value checker on and raises its
+ * diagnostics to errors, so a discarded carrier is refused by the compiler with
+ * the line and the column of the call. The second line is the admission-time
+ * carrier registry below: it classifies each carrier individually, so it CANNOT
+ * be over-applied, and it does not depend on how the script was compiled.
 */
 @MustUseReturnValues
 open class StageScopeCore(
@@ -112,12 +114,13 @@ open class StageScopeCore(
     // WHY THIS EXISTS NEXT TO `@MustUseReturnValues`
     // ================================================
     // The annotation is the FIRST line of defence and it is not sufficient on
-    // its own, because its reach depends on HOW the script is compiled. The
-    // flag `-Xreturn-value-checker=check` is read by `ScriptDefinition`, which
-    // only `evalWithTemplate` constructs: a host handed a pre-built
-    // `ScriptCompilationConfiguration` bypasses that read, and there a
-    // discarded `@MustUseReturnValues` result compiles silently. This registry
-    // does not depend on the compiler at all, so it holds on every path.
+    // its own, because its reach depends on HOW the script is compiled: only a
+    // compilation with the return-value checker on, and its diagnostics raised
+    // to errors, refuses the discard. The definition of a `.pipeline.kts` does
+    // both; a compilation that does not use that definition, or that keeps the
+    // checker's default WARNING, lets a discarded `@MustUseReturnValues` result
+    // compile. This registry does not depend on the compiler at all, so it
+    // holds on every path.
     // The rule is expressed as DATA, not as a per-builder name check:
     // a PURE_BUILDER registers the carrier it hands out, and a consumer
     // marks that exact carrier as consumed. Anything registered and never
@@ -240,8 +243,9 @@ open class StageScopeCore(
      * `Checkout` steps.
      * Purity constrains EFFECTS, not the
      * fate of the carrier. `[MustUseReturnValues]` makes discarding the
-     * `[CheckoutSpec]` a compile error inside `.pipeline.kts` (the scripting host
-     * enables `-Xreturn-value-checker=check`), because a statement-position
+     * `[CheckoutSpec]` a compile error inside `.pipeline.kts` (the definition of a
+     * `.pipeline.kts` enables `-Xreturn-value-checker=check` and raises its
+     * diagnostics to errors), because a statement-position
      * `scmGit(..)` that compiles would give the author a checkout they silently
      * did not get. The annotation does not change purity: this still returns a value and
      * still emits no step and no event.

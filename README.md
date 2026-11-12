@@ -75,6 +75,15 @@ pipeline {
 
 `validate` compiles the script **and evaluates its body** — a `.pipeline.kts` is trusted code, not data. Use `validate --compile-only` when you only want to know that it compiles.
 
+A value the script builds and then drops is a **compile error**, not a step that silently never ran. A `scmGit(...)` that never reaches `checkout(...)` is refused with its line and column, inside a `stage { }` or in a helper function:
+
+```text
+build.pipeline.kts:9:13: Unused return value of 'scmGit'. It was coerced to 'Unit' due to a functional parameter type.
+VALIDATION FAILED: 1 error
+```
+
+The rule covers every result that must be used, the standard library's too (`"x".uppercase()` on its own line is refused; `list.add(x)` is not). A scripted call such as `pwd()` already emits its step, so it compiles in statement position, as it does in a Jenkinsfile.
+
 ### Read the run afterwards
 
 Give the run a journal and a control root, and every step, event and output stays readable:
@@ -108,21 +117,25 @@ A run's facts are readable from outside the product, and only through the doors 
 
 ## Use the SDK from Maven or Gradle
 
-The SDK is seven coordinates under the group `dev.rubentxu.pipelinek`:
+The SDK is eight coordinates under the group `dev.rubentxu.pipelinek`:
 
 | Coordinate | What it is |
 |---|---|
 | `pipelinek-domain` | the contracts: steps, events, outputs and the domains around them |
 | `pipelinek-scripting-api` | the Kotlin DSL that writes a pipeline |
+| `pipelinek-scripting-definition` | the definition of a `.pipeline.kts`: the `@KotlinScript` class an IDE discovers, with the imports and the refused diagnostics the runner applies |
 | `pipelinek-events` | the typed event lane |
 | `pipelinek-output` | the output plane |
 | `pipelinek-runtime-api` | the runtime API a plugin talks to |
 | `pipelinek-service-client` | the client of the local service, and the vocabulary of its wire |
-| `pipelinek-sdk-bom` | the BOM: pins the six above at one version |
+| `pipelinek-sdk-bom` | the BOM: pins the seven above at one version |
 
-The six contracts are **experimental** — the maturity of each one is declared in
+The seven contracts are **experimental** — the maturity of each one is declared in
 `pipelinek/contract/published-contract-maturity.json` and printed by
 `pipelinek capabilities`.
+
+`pipelinek-scripting-definition` is new in this tree: the 0.97.0 release does not
+carry it, so the coordinates below resolve the other seven.
 
 ### Where the SDK is today
 
@@ -156,7 +169,7 @@ dependencies {
 
 ### The two remote channels
 
-Both are wired, measured and fail-closed, and they serve the same seven coordinates
+Both are wired, measured and fail-closed, and they serve the same coordinates
 with the same bytes.
 
 - **Maven Central**, through its portal. The bundle carries `sources.jar`,
@@ -183,7 +196,7 @@ refuses to publish a version that is already published — a published version i
 never replaced. A published coordinate is verifiable against the fingerprint in
 `RELEASE-SIGNING.md`.
 
-This is how a consumer resolves the seven coordinates from each channel, with Maven
+This is how a consumer resolves the published coordinates from each channel, with Maven
 and with Gradle:
 
 ```kotlin
@@ -684,7 +697,7 @@ Nothing above is a promise of compatibility: a project declares the SDK range it
 
 A plugin is an independent Gradle build that compiles against the published SDK and nothing else. It declares a `StepContract` — the family key, the descriptor, the typed codecs and the capabilities it requires — and a manifest with the API range it was built against.
 
-The SDK ships with every release as `pipelinek-<version>.sdk.zip`: seven artifacts (`pipelinek-domain`, `pipelinek-events`, `pipelinek-output`, `pipelinek-runtime-api`, `pipelinek-scripting-api`, `pipelinek-service-client`, `pipelinek-sdk-bom`) and a BOM that pins their versions together. `pipelinek sdk-info` prints the group and the exact coordinates a plugin builds against.
+The SDK ships with every release as `pipelinek-<version>.sdk.zip`: eight artifacts (`pipelinek-domain`, `pipelinek-events`, `pipelinek-output`, `pipelinek-runtime-api`, `pipelinek-scripting-api`, `pipelinek-scripting-definition`, `pipelinek-service-client`, `pipelinek-sdk-bom`) and a BOM that pins their versions together; 0.97.0 shipped all of them but `pipelinek-scripting-definition`. `pipelinek sdk-info` prints the group and the exact coordinates a plugin builds against.
 
 A plugin is loaded from `--plugin-jar`. With `--plugin-trust <file>` it is admitted only if its bytes match the SHA-256 the operator pinned and it carries a valid detached Ed25519 signature; with `--require-plugin-trust`, a plugin nobody vouched for is refused before any of its code runs.
 

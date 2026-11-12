@@ -84,6 +84,19 @@ VALIDATION FAILED: 1 error
 
 The rule covers every result that must be used, the standard library's too (`"x".uppercase()` on its own line is refused; `list.add(x)` is not). A scripted call such as `pwd()` already emits its step, so it compiles in statement position, as it does in a Jenkinsfile.
 
+### Reading a variable of the environment
+
+```kotlin
+stage("build") {
+    environment { env("TARGET", "staging") }
+    sh("echo " + env("TARGET"))
+}
+```
+
+`env("TARGET")` is how a script reads a variable: the one the stage declares with `environment { }` when it declares one, and otherwise the one the machine that builds the plan has. It is **not** `env.TARGET` — Kotlin has no dynamic properties, so a name that is only known at runtime cannot be a property of an object.
+
+The value is read **while the plan is built**, so it travels inside the plan and a replay reproduces it. A variable that is not defined reads as `null` and not as an empty text, and the material of a credential is never among the answers: a credential reaches the step through the environment of the child process, never through the environment of the engine.
+
 ### Edit pipelines in IntelliJ IDEA
 
 The editor resolves a script against the classpath of the module it belongs to, and a `.pipeline.kts` outside any module gets no DSL and no diagnostics. `ide init` writes that module, as a Gradle project, from the installation you run it with:

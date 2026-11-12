@@ -1,18 +1,11 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
-import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetryFactory
-import dev.rubentxu.pipeline.v2.runtime.SystemRuntimeConfig
 import dev.rubentxu.pipeline.v2.runtime.withPipelineTelemetry
-import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
-import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 import java.nio.file.Paths
 import java.nio.file.Files
 
@@ -260,115 +253,18 @@ fun main(args: Array<String>) {
     }
 
     if (command == CliCommand.VALIDATE) {
-        // What `validate` does with the author's BODY is the trust model, and
-        // the model is owned by [ScriptTrust] — the help renders it, and
-        // nothing here restates it. Two forms, both real:
-        //
-        //   - the default one compiles the script AND evaluates it, so the
-        //     author's top-level body runs inside this process;
-        //   - `--compile-only` compiles the script and does NOT run it.
-        val rawStore = InMemoryEventStore()
-        val store = RedactingEventSink(rawStore, secretPatternRegistry)
-        val validateRunId = java.util.UUID.randomUUID().toString()
-        val host = Kotlin24ScriptingHost(store, validateRunId)
-        val dslClasspath = try {
-            computeScriptClasspath(config.pluginJars)
-        } catch (refused: CommandRefused) {
-            // Validation holds nothing, so the refusal becomes the exit right here.
-            kotlin.system.exitProcess(refused.exit.code)
-        }
-        val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
-        // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
-        // return values reflect the host environment during validation.
-        dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.set(SystemRuntimeConfig())
-        val compileResult = try {
-            // The EVALUATOR is the only difference between the two forms, and
-            // it is swapped inside the host: the compilation is the same one
-            // either way, so a compile-only validation answers "does THIS
-            // script compile?" and not "does a program that resembles it
-            // compile?".
-            if (config.compileOnly) host.compileOnly(definition) else host.compile(definition)
-        } finally {
-            dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
-        }
-        // The DESCRIPTION of the parameters the script declares.
-        //
-        // It is a projection of the declaration the compilation just produced, and it is
-        // printed INSTEAD of the run's events: the operator asked for the contract, not
-        // for what a run did.
-        //
-        // A script that did not compile is NOT described here: the diagnostics of the
-        // failure are what the operator has to read, and they are printed below.
-        if (config.describeParameters && compileResult.isSuccess) {
-            val declaration = pipelineSpecOf(compileResult)?.parameters.orEmpty()
-            System.out.println(
-                Json.encodeToString(
-                    JsonObject.serializer(),
-                    dev.rubentxu.pipeline.v2.dsl.ParameterDescription.of(declaration),
-                ),
-            )
-            return
-        }
-        val events = store.eventsFor(validateRunId).toList()
-        writeEventDocument(
-            events = events,
-            view = config.view,
-            format = config.format,
-            query = compiledQuery,
-            protocol = outputProtocol,
+        // The verb reports on the streams it is given and returns its verdict; this is the
+        // place that ends the process, so the verdict becomes the exit code here.
+        val exit = validateScript(
+            config = config,
+            scriptPath = scriptPath,
+            secretPatternRegistry = secretPatternRegistry,
+            compiledQuery = compiledQuery,
+            outputProtocol = outputProtocol,
+            out = System.out,
+            err = System.err,
         )
-        // a script that compiles but throws while building
-        // its IR reaches here with isSuccess == true and no usable spec.
-        // Reporting SUCCESS for it was the same DEFAULT_SUCCESS the run path
-        // turned into an NPE.
-        //
-        // A compilation produces a LIST of diagnostics. Measured on the built
-        // distribution, the previous shape collapsed it to one message with
-        // `lastOrNull`: a script with nine errors printed exactly one of them —
-        // the LAST one, which is the least likely to be the one
-        // the author wrote first — while the cardinality stayed visible. This
-        // verdict only has to answer "may it run, and if not, how many
-        // reasons"; the renderer above already printed each one with its
-        // position.
-        val evalFailures = compileResult.diagnostics
-            .filter { it.severity == dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity.ERROR }
-            .mapNotNull { it.message.takeIf(String::isNotBlank) }
-        // A compile-only validation has NO script instance on purpose: nothing
-        // was evaluated, so there is no instance to inspect. Asking it for a
-        // pipeline would be asking a question the form deliberately did not
-        // answer, and the verdict below would report a missing pipeline for a
-        // script that may declare a perfectly good one.
-        val noSpec = !config.compileOnly && compileResult.isSuccess &&
-            compileResult.scriptInstance?.javaClass?.methods?.any { it.name == "get\$\$result" } != true
-        if (!compileResult.isSuccess || evalFailures.isNotEmpty() || noSpec) {
-            // compile failure is an invocation/admission error,
-            // not a pipeline execution failure. Exit 2 per the canonical
-            // contract (0 success / 1 pipeline fail / 2 invocation+compile).
-            //
-            // The verdict is ONE line. The reasons were just printed above by
-            // the console renderer, each with path:line:column, on this same
-            // stream — repeating them here would print every error twice, and
-            // a doubled diagnostic reads as two distinct problems.
-            val verdict = when {
-                evalFailures.size == 1 -> "1 error"
-                evalFailures.size > 1 -> "${evalFailures.size} errors"
-                config.compileOnly -> "the script did not compile"
-                else -> "the script produced no pipeline"
-            }
-            System.err.println("VALIDATION FAILED: $verdict")
-            System.exit(CliExit.INVALID_ARGUMENT.code)
-        } else {
-            // Two validations that did DIFFERENT things must not print the
-            // same line: the operator has to be able to tell from the output
-            // alone whether the author's body ran.
-            System.err.println(
-                if (config.compileOnly) {
-                    "VALIDATION SUCCESSFUL (${ScriptTrust.COMPILE_ONLY_NOTE})"
-                } else {
-                    "VALIDATION SUCCESSFUL"
-                },
-            )
-        }
+        System.exit(exit.code)
         return
     }
 

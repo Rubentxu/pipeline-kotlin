@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.BodyInvocationPolicy
 import dev.rubentxu.pipeline.v2.domain.ContextKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepBody
+import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry
@@ -165,11 +166,26 @@ object StepCatalogue {
      * composition get the same order, and an order that follows the
      * registration order would change with the order the plugins were
      * discovered in.
+     *
+     * @param declared the families that are DECLARED without a registered
+     *   handler —the core's block steps, the ones the DSL writes and the
+     *   canonical body engine executes. They are part of what this product
+     *   supports, and a catalogue that left them out would leave out
+     *   `retry`, `timeout` and `catchError`: the very scopes a reader coming
+     *   from Jenkins writes first. A key the composition ALSO registers is
+     *   taken from the composition, because that is the one that runs.
      */
-    fun entries(steps: StepRegistry, directives: DirectiveRegistry): List<StepCatalogueEntry> {
+    fun entries(
+        steps: StepRegistry,
+        directives: DirectiveRegistry,
+        declared: StepDescriptorRegistry = StepDescriptorRegistry.standard(),
+    ): List<StepCatalogueEntry> {
         val stepEntries = steps.keys().mapNotNull { key -> stepEntry(steps, key) }
+        val declaredEntries = declared.keys()
+            .filter { key -> steps.definition(key) == null }
+            .map { key -> declaredStepEntry(declared, key) }
         val directiveEntries = directives.keys().mapNotNull { key -> directiveEntry(directives, key) }
-        return (stepEntries + directiveEntries).sortedBy { it.key }
+        return (stepEntries + declaredEntries + directiveEntries).sortedBy { it.key }
     }
 
     /**
@@ -196,6 +212,38 @@ object StepCatalogue {
             body = bodyOf(descriptor.body),
             inputSchema = definition.contract.inputCodec.schema(),
             outputSchema = definition.contract.outputCodec.schema(),
+        )
+    }
+
+    /**
+     * The entry of a family that is DECLARED without a registered handler.
+     *
+     * There is no codec and no contract for these rows: the canonical body
+     * engine executes them from the declaration itself, and the payload
+     * arrives through the wire codec of the scope that carries it. The entry
+     * therefore carries what the declaration says —the body it takes, the
+     * dimension it projects and whether it catches interruptions— and no
+     * schema, because none is declared.
+     */
+    private fun declaredStepEntry(
+        registry: StepDescriptorRegistry,
+        key: PluginStepId,
+    ): StepCatalogueEntry.Step {
+        val descriptor = registry.get(key) ?: error("the registry named a key it does not hold: $key")
+        return StepCatalogueEntry.Step(
+            key = key.value,
+            name = descriptor.name,
+            provider = descriptor.pluginId,
+            jenkinsSurface = descriptor.jenkinsSurface,
+            deprecation = descriptor.deprecation,
+            effects = descriptor.effects.map { it.name },
+            replayPolicy = descriptor.replayPolicy.name,
+            recoveryPolicy = recoveryPolicyName(descriptor.recoveryPolicy),
+            requiredCapabilities = descriptor.requiredCapabilities,
+            executionLocation = descriptor.executionLocation.name,
+            body = bodyOf(descriptor.body),
+            inputSchema = descriptor.inputSchema,
+            outputSchema = descriptor.outputSchema,
         )
     }
 

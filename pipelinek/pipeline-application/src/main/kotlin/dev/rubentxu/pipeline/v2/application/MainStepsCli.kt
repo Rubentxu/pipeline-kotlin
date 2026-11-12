@@ -246,8 +246,7 @@ internal object MainDescribeCli {
     /** The body of a step, as one line: `none`, or the shape it declares. */
     private fun bodyLine(entry: StepCatalogueEntry.Step): String {
         if (entry.body.kind == "none") return "none"
-        val shape = entry.body.policy
-        return "${entry.body.invocation.lowercase()} body, $shape, owner ${entry.body.owner}"
+        return "${entry.body.invocation} body, ${entry.body.policy}, owner ${entry.body.owner}"
     }
 
     /** The schema of a payload, as the codec declared it, indented under its label. */

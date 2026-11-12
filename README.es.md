@@ -171,11 +171,14 @@ La última fila es la honesta: las capacidades `runtime.inspect.v1`, `runtime.ca
 
 `pipelinek steps` imprime el índice de lo que admite esta build: cada step y cada directiva de la composición que ejecutaría —el núcleo, los plugins de la instalación y los que nombras con `--plugin-jar`. El índice se lee del mismo registro del que se compone una ejecución, así que no puede nombrar un step que nadie registró ni omitir uno que todo el mundo puede usar.
 
+También lleva los scopes que escribe el DSL —`retry`, `timeout`, `catchError`, `dir`, `withEnv`, `withCredentials`, `timestamps` y `warnError`—, que el motor ejecuta desde su declaración y no desde un manejador registrado.
+
 ```bash
 $ pipelinek steps
 directive  core.agent                        agent
 step       core.echo                         echo
 step       core.file.writeFile               writeFile
+step       core.retry                        retry
 step       core.sh                           sh
 step       scm-git.checkout                  scm-git.checkout
 ```

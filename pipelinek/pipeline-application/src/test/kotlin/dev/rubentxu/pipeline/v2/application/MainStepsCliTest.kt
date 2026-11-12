@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry
 import dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepCatalogue
@@ -44,16 +45,43 @@ class MainStepsCliTest {
     @Test
     fun `the catalogue carries one entry per key of the composition`() {
         val entries = coreEntries()
+        val registry = coreRegistry()
+        val declaredOnly = StepDescriptorRegistry.standard().keys().count { registry.definition(it) == null }
 
         assertEquals(
-            coreRegistry().keys().size + coreDirectives().keys().size,
+            registry.keys().size + coreDirectives().keys().size + declaredOnly,
             entries.size,
-            "every key of the registries is an entry of the catalogue",
+            "every key of the registries, and every declared family, is an entry of the catalogue",
         )
         assertEquals(
             entries.map { it.key }.sorted(),
             entries.map { it.key },
             "the catalogue is an index: its order does not depend on the order the keys were registered in",
+        )
+    }
+
+    @Test
+    fun `the catalogue carries the families the DSL writes and the composition does not register`() {
+        val entries = coreEntries()
+
+        val declared = StepDescriptorRegistry.standard().keys().map { it.value }
+        val missing = declared.filter { key -> entries.none { it.key == key } }
+        assertEquals(
+            emptyList<String>(),
+            missing,
+            "every declared family is an entry of the catalogue, plugin or not",
+        )
+        val retry = entries.first { it.key == "core.retry" }
+        val step = assertInstanceOf(StepCatalogueEntry.Step::class.java, retry, "core.retry is a step")
+        assertEquals(
+            "declared",
+            step.body.kind,
+            "core.retry takes a body: it is a scope, and the catalogue says so",
+        )
+        assertEquals(
+            "RETRYING",
+            step.body.policy,
+            "the body of core.retry executes in the shape the declaration names",
         )
     }
 

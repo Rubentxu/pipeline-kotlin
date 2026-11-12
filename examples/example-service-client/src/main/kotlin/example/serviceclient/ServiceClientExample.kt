@@ -79,11 +79,17 @@ fun main(args: Array<String>) {
     val client = ServiceClient(socket, token, Duration.ofSeconds(10))
 
     val version = client.version()
-    if (version !is ServiceAnswer.Answered) fail(negative(version, socket))
+    if (version !is ServiceAnswer.Answered) {
+        System.err.println(negative(version, socket))
+        exitProcess(1)
+    }
     println("service ${version.value.productVersion}, protocol ${version.value.schema}")
 
     val state = client.runState(runId)
-    if (state !is ServiceAnswer.Answered) fail(negative(state, socket))
+    if (state !is ServiceAnswer.Answered) {
+        System.err.println(negative(state, socket))
+        exitProcess(1)
+    }
     println("run $runId: ${describe(state.value)}")
 }
 
@@ -115,11 +121,6 @@ private fun refused(refusal: ServiceRefusal): String = when (refusal) {
     is ServiceRefusal.UnknownRun -> "the service knows no run ${refusal.runId}"
 
     else -> "the service refused the question: ${refusal.kind}"
-}
-
-private fun fail(message: String): Nothing {
-    System.err.println(message)
-    exitProcess(1)
 }
 
 /**

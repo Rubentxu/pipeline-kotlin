@@ -212,6 +212,10 @@ DECLARED_EXECUTABLES = {
     "scripts/check-durable-shell-cost.py": (
         "a guard of the gate: it reads the tree and starts nothing"
     ),
+    "scripts/check-jenkins-surface.py": (
+        "a guard of the gate: it reads the tree, and the dictionary of "
+        "Jenkins it carries with its source, and starts nothing"
+    ),
     "scripts/check-kdoc-coverage.py": (
         "a guard of the gate: it reads the tree and starts nothing"
     ),

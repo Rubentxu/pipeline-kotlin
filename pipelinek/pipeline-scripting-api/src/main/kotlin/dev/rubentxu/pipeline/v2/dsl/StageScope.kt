@@ -145,6 +145,14 @@ class StageScope(
 
     /**
      * Catches errors from nested steps and optionally downgrades the build result.
+     *
+     * The body runs ONCE, in the caller's own context, and what this scope does with that
+     * outcome is a FOLD: the scope decides the result it publishes, and the declared
+     * [buildResult] decides what that result is. The canonical body engine executes that
+     * fold under the FOLDING policy with the CONTAINMENT fold, and it is declared rather
+     * than implied: the catalogue publishes this step as the entry `core.catchError`, whose
+     * body declares the FOLDING policy and the ONCE invocation.
+     *
      * Jenkins verbatim (catalog lines 41-43):
      * `catchError(buildResult: String? = null, stageResult: String? = null, message: String? = null) { ... }`
      * Both results are [CatchErrorBuildResult] and no longer `String`. A typo such
@@ -156,11 +164,6 @@ class StageScope(
      * @param message User-visible message
      * @param block Nested steps
 */
-    @Deprecated(
-        message = "catchError is compiled into a canonical body-bearing Step whose scope "
-            + "decides its own outcome. Use try/catch at the orchestrator level instead.",
-        replaceWith = ReplaceWith("catchError(buildResult, stageResult, message, block)"),
-    )
     fun catchError(
         buildResult: CatchErrorBuildResult,
         stageResult: CatchErrorBuildResult? = null,
@@ -180,9 +183,9 @@ class StageScope(
     /**
      * The STABLE historical spelling, kept as a validated adapter.
      * The published authoring contract documents `catchError(buildResult?, stageResult?,
-     * Message?)` and declares the construct **DEPRECATED**— which is a promise about this
-     * signature: DEPRECATED means members may be removed only after the declared removal
-     * boundary, not at the convenience of the next migration. It parses IMMEDIATELY — see
+     * Message?)`. Its spelling is stable: its members may be removed only after the
+     * declared removal boundary, not at the convenience of the next migration.
+     * It parses IMMEDIATELY — see
      * [LegacyResultVocabulary] — so the token is typed before the pipeline exists and never
      * reaches the IR or the runtime.
      * `catchError { ... }` with no results resolves HERE, because the typed overload requires
@@ -191,13 +194,11 @@ class StageScope(
      * Measured (mutation failed to compile for exactly that reason). A declared absence
      * produces the same typed state either way, so nothing is lost by routing it through here.
      * Removal is not scheduled. It needs the exit (`try/catch` at the orchestrator)
-     * which is the declared replacement path — not a deprecation added here.
+     * which is the declared replacement path.
+     * The body runs ONCE and its outcome is FOLDED, exactly as in the typed overload: the
+     * canonical body engine executes the FOLDING policy with the CONTAINMENT fold, and the
+     * catalogue publishes the step as the entry `core.catchError`.
 */
-    @Deprecated(
-        message = "catchError is compiled into a canonical body-bearing Step whose scope "
-            + "decides its own outcome. Use try/catch at the orchestrator level instead.",
-        replaceWith = ReplaceWith("catchError(buildResult, stageResult, message, block)"),
-    )
     fun catchError(
         buildResult: String? = null,
         stageResult: String? = null,
@@ -216,17 +217,20 @@ class StageScope(
 
     /**
      * Catches errors and forces stage result to UNSTABLE (warnError semantics).
+     *
+     * The body runs AT MOST ONCE, and what this scope does with its outcome is a FOLD:
+     * the stage is degraded with the declared [message] whatever the body did. The
+     * canonical body engine executes that fold under the FOLDING policy with the
+     * OUTPUT_DECORATION fold, and it is declared rather than implied: the catalogue
+     * publishes this step as the entry `core.warnError`, whose body declares the FOLDING
+     * policy and the AT_MOST_ONCE invocation.
+     *
      * Jenkins verbatim:
      * `warnError(message: String, catchInterruptions: Boolean = true) { ... }`
      * @param message User-visible warning message
      * @param catchInterruptions If true, also catch Thread.interrupt
      * @param block Nested steps
 */
-    @Deprecated(
-        message = "warnError is compiled into a canonical body-bearing Step whose scope "
-            + "decides its own outcome. Use try/catch at the orchestrator level instead.",
-        replaceWith = ReplaceWith("warnError(message, catchInterruptions, block)"),
-    )
     fun warnError(
         message: String,
         catchInterruptions: Boolean = true,

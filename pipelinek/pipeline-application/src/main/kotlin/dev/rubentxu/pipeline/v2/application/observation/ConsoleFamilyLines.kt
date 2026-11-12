@@ -158,45 +158,55 @@ internal object ConsoleFamilyLines {
     }
 
     /**
-     * A compilation produces a LIST of diagnostics. The previous shape announced
-     * the cardinality and withheld every word of it:
-     * `"Compilation finished with 9 diagnostic(s)"` — a user whose script does
-     * not compile was told that nine reasons existed and shown none of them, and
-     * a user whose script is fine was told the same thing about a warning they
-     * cannot see. Measured in an earlier build on the built distribution: even the
-     * repo's own canonical fixture (`01-basic.pipeline.kts`) printed
-     * "1 diagnostic(s)" on a `VALIDATION SUCCESSFUL` run.
-     * Three properties, one cause — the count was rendered and the content was
-     * not:
+     * The closing line of a compilation: a summary that counts the diagnostics by severity, and one
+     * line under it for EVERY diagnostic it counts.
+     *
      *  1. **The count is interpretable.** Severity is broken out, so "1" is
      *     distinguishable as "1 warning" from "1 error". A bare number is
      *     indistinguishable between a run that is fine and a run that cannot
-     *     start, which is why the phantom warning read as alarming.
-     *  2. **The content is shown.** Every ERROR is printed as
-     *     `path:line:column: message`. `sanitize` preserves `\n`, so the list
-     *     renders as separate lines inside this one `Line` and needs no change
-     *     to the renderer's one-line-per-event shape.
-     *  3. **Errors are always visible.** Errors land in [Family.FAILURE] —
-     *     "a failure a view can hide is a lie" — so no `ObservationView` can
-     *     filter away the reason a run failed to start. A warnings-only
-     *     compilation stays in [Family.RUN].
+     *     start.
+     *  2. **Nothing is counted that is not printed.** Each diagnostic gets its
+     *     own line, worst first and in the compiler's order within a severity.
+     *     An error reads `path:line:column: message`; every other severity
+     *     names itself after the position, the way the Kotlin compiler does
+     *     (`path:line:column: warning: message`), so a warning printed next to
+     *     an error does not read as a second error. `sanitize` preserves `\n`,
+     *     so the list renders as separate lines inside this one `Line` and
+     *     needs no change to the renderer's one-line-per-event shape.
+     *  3. **Failures are always visible.** A compilation with an error or a
+     *     fatal diagnostic lands in [Family.FAILURE] — "a failure a view can
+     *     hide is a lie" — so no `ObservationView` can filter away the reason a
+     *     run failed to start. One with only warnings, notes or debug output
+     *     compiled, and stays in [Family.RUN].
 */
     private fun compilationFinished(event: CompilationFinished): Line {
-        val errors = event.diagnostics.filter { it.severity == ScriptDiagnosticSeverity.ERROR }
-        val summary = describeBySeverity(event.diagnostics)
-        val origin = " (" + originText(event.origin) + ")"
-        if (errors.isEmpty()) {
-            return Line(Family.RUN, summary + origin)
+        val summary = describeBySeverity(event.diagnostics) + " (" + originText(event.origin) + ")"
+        if (event.diagnostics.isEmpty()) {
+            return Line(Family.RUN, summary)
         }
-        val detail = errors.joinToString("\n") { diagnostic ->
-            val location = if (diagnostic.path.isBlank()) {
-                "${diagnostic.line}:${diagnostic.column}"
-            } else {
-                "${diagnostic.path}:${diagnostic.line}:${diagnostic.column}"
-            }
-            sanitize("$location: ${diagnostic.message}")
+        val detail = event.diagnostics
+            .sortedByDescending { it.severity }
+            .joinToString("\n") { sanitize(detailLine(it)) }
+        val failed = event.diagnostics.any { it.severity >= ScriptDiagnosticSeverity.ERROR }
+        return Line(if (failed) Family.FAILURE else Family.RUN, "$summary\n$detail")
+    }
+
+    private fun detailLine(diagnostic: ScriptingDiagnostic): String {
+        val location = if (diagnostic.path.isBlank()) {
+            "${diagnostic.line}:${diagnostic.column}"
+        } else {
+            "${diagnostic.path}:${diagnostic.line}:${diagnostic.column}"
         }
-        return Line(Family.FAILURE, "$summary$origin\n$detail")
+        val label = if (diagnostic.severity == ScriptDiagnosticSeverity.ERROR) "" else nounOf(diagnostic.severity) + ": "
+        return "$location: $label${diagnostic.message}"
+    }
+
+    private fun nounOf(severity: ScriptDiagnosticSeverity): String = when (severity) {
+        ScriptDiagnosticSeverity.FATAL -> "fatal"
+        ScriptDiagnosticSeverity.ERROR -> "error"
+        ScriptDiagnosticSeverity.WARNING -> "warning"
+        ScriptDiagnosticSeverity.INFO -> "info"
+        ScriptDiagnosticSeverity.DEBUG -> "debug"
     }
 
     /**
@@ -219,20 +229,15 @@ internal object ConsoleFamilyLines {
      * Severity is named rather than elided because a bare count is the defect:
      * "1 diagnostic(s)" on a green run reads as a failure, and the only way to
      * tell an ignorable warning from a fatal error was to read a message that
-     * was never printed. Severities are listed worst-first and empty ones are
-     * dropped, so the count and the shape cannot drift apart.
+     * was never printed. Severities are listed worst-first — [ScriptDiagnosticSeverity]
+     * declares them from the least to the worst — and empty ones are dropped, so
+     * the count and the shape cannot drift apart.
 */
     private fun describeBySeverity(diagnostics: List<ScriptingDiagnostic>): String {
         if (diagnostics.isEmpty()) return "Compilation finished"
-        val parts = listOf(
-            ScriptDiagnosticSeverity.FATAL to "fatal",
-            ScriptDiagnosticSeverity.ERROR to "error",
-            ScriptDiagnosticSeverity.WARNING to "warning",
-            ScriptDiagnosticSeverity.INFO to "info",
-            ScriptDiagnosticSeverity.DEBUG to "debug",
-        ).mapNotNull { (severity, noun) ->
+        val parts = ScriptDiagnosticSeverity.entries.reversed().mapNotNull { severity ->
             val count = diagnostics.count { it.severity == severity }
-            if (count == 0) null else "$count $noun${if (count == 1) "" else "s"}"
+            if (count == 0) null else "$count ${nounOf(severity)}${if (count == 1) "" else "s"}"
         }
         return "Compilation finished with " + parts.joinToString(" and ")
     }

@@ -304,6 +304,7 @@ class Kotlin24ScriptingHost(
 
         val diagnostics = rwd.reports
             .filter { it.severity >= ScriptDiagnostic.Severity.INFO }
+            .filterNot(::isJarFileSystemNote)
             .map(::mapDiagnostic)
         val result = if (rwd is ResultWithDiagnostics.Success) {
             @Suppress("UNCHECKED_CAST")
@@ -548,6 +549,22 @@ class Kotlin24ScriptingHost(
         null
     }
 
+    /**
+     * The note the compiler answers the definition's `-Xuse-fast-jar-file-system=false` with:
+     * "Using outdated version of JAR FS: it might make your build slower".
+     *
+     * The product sets that option, so the note is raised on every compilation, with no file and
+     * no position, and says nothing about the author's script. Listed, it made a script without a
+     * single warning compile "with 1 info". Only that note is left out: the match is its severity,
+     * its missing file and position, and the start of its text, so any other note, or this one if
+     * the compiler rewords it, still reaches the list.
+     */
+    private fun isJarFileSystemNote(report: ScriptDiagnostic): Boolean =
+        report.severity == ScriptDiagnostic.Severity.INFO &&
+            report.sourcePath == null &&
+            report.location == null &&
+            report.message.startsWith(JAR_FILE_SYSTEM_NOTE)
+
     private fun mapDiagnostic(diag: ScriptDiagnostic): ScriptingDiagnostic {
         val severity = when (diag.severity) {
             ScriptDiagnostic.Severity.DEBUG -> ScriptDiagnosticSeverity.DEBUG
@@ -572,6 +589,9 @@ class Kotlin24ScriptingHost(
     }
 
     private companion object {
+        /** The start of the note [isJarFileSystemNote] leaves out of a compilation's diagnostics. */
+        const val JAR_FILE_SYSTEM_NOTE = "Using outdated version of JAR FS"
+
         /**
          * How many files of the classpath are read at the same time.
          *

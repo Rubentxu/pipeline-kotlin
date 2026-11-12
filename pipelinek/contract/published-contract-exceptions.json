@@ -1617,6 +1617,49 @@
         "dev/rubentxu/pipeline/v2/service/ServiceParameterDescription#copy$default(Ldev/rubentxu/pipeline/v2/service/ServiceParameterDescription;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/service/ServiceParameterDescription;"
       ],
       "evidence": "Measured on the artifacts the releases published. The release 0.96.0 published pipelinek-0.96.0.sdk.zip, whose SHA256 049f4857182dd91c8b93960859e931ae10dc2038e27051c5b40682bc01f4520e matches the SHA256SUMS of that release, and it carries pipelinek-service-client-0.96.0.jar with the SHA256 02a571473173d5907457f956852ba4068067ca32358dfebb0cde85d9955daefc, which matches the .sha256 published next to it. The release 0.97.0 published pipelinek-0.97.0.sdk.zip, whose SHA256 2e0c60dff9b137b0dca1fd26be5812ad470b657a990d3ec2f2b776adf1aa4cc3 matches the SHA256SUMS of that release, and it carries pipelinek-service-client-0.97.0.jar with the SHA256 0d545afc1700c75f3fa6c6d94ce12fc2df6ed6dd817ef20a787bc42d63bce1be, which matches the .sha256 published next to it. In both jars `javap` shows dev/rubentxu/pipeline/v2/service/ServiceParameterDescription with the members <init>(Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V, copy(Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;) and copy$default of those two parameters, which are the three removals this entry authorizes. The candidate carries their four-parameter forms, and the rows of ServiceClientTest and ServiceParametersProtocolTest measure that an answer without the declaration, or whose digest does not match it, is read as `unreadable`."
+    },
+    {
+      "module": "pipeline-scripting-api",
+      "sha": "0eb32c5c6",
+      "surface": "the class ParametersScope, the scope that holds the parameters a pipeline declares, and the three functions string, boolean and choice, whose parameter of the value by default was renamed from `default` to `defaultValue` and which each gained a deprecated overload that keeps the historical spelling",
+      "change": "NO BINARY BREAK. The JVM descriptors of the three functions survive: `string(Ljava/lang/String;Ljava/lang/String;)V`, `boolean(Ljava/lang/String;Ljava/lang/Boolean;)V` and `choice(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)V` are still published, and the regenerated dump adds six lines and removes none. Renaming a parameter does not change a descriptor, and the historical spelling is carried by a NEW OVERLOAD, which is an addition and not a replacement. The card that asked for this change predicted a binary break, and the measurement says the opposite: this entry is the receipt of that measurement. WHAT IS A SOURCE-VISIBLE CHANGE: a declaration written with `default = ` resolves now to the deprecated alias and carries the compiler's deprecation notice, which names the spelling that replaces it. A consumer that compiles the published artifact with warnings as errors sees that notice as an error; a consumer that writes the new name, or that compiles with warnings as warnings, sees nothing.",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "THE NAME OF THE VALUE BY DEFAULT IS NOT A NEW CONCEPT: it is the name Jenkins gives it, and the DSL is read by whoever comes from Jenkins. The two spellings declared the SAME value before this change and declare it after it, so what changes is the word an author writes and not what the run receives.",
+        "THE ALIAS IS AN OVERLOAD and not a second parameter of the same function because Kotlin cannot mark a value parameter as deprecated: the annotation does not apply to it, and a function whose two spellings shared one signature would have to carry the notice somewhere else. The overload carries the compiler's own notice, which the author reads in the editor and in the compilation of the script, and the notice names the spelling that replaces the historical one.",
+        "THE ABI GREW AND DID NOT BREAK, and that is why this entry records a change and authorises no removal: an overload keeps the descriptor of the published function, so an artifact compiled against the previous release calls the method it called before, and the gate that compares the candidate with the last published release finds nothing removed. What the comparison finds is six added lines: one overload and one synthetic bridge per type.",
+        "WHAT THIS ENTRY DOES NOT AUTHORISE: the removal of the historical spelling, which keeps working in all three types and whose removal is a separate decision with its own boundary and its own evidence; a second way of declaring the value by default; or a change of the meaning of the `type` name, of the `choices` set, or of the rule that says a parameter without a default is required."
+      ],
+      "removal_boundary": "the historical spelling of the value by default keeps working, in all three types, and the deprecated alias it resolves to stays published. What this entry does NOT authorise: the removal of that alias, the removal of the notice, or a change of the name that replaces the historical spelling. The removal of the alias is a separate decision, and it has to carry its own boundary and its own evidence.",
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.76.0",
+        "0.77.0",
+        "0.78.0",
+        "0.79.0",
+        "0.80.0",
+        "0.81.0",
+        "0.82.0",
+        "0.83.0",
+        "0.84.0",
+        "0.85.0",
+        "0.86.0",
+        "0.87.0",
+        "0.88.0",
+        "0.89.0",
+        "0.90.0",
+        "0.91.0",
+        "0.92.0",
+        "0.93.0",
+        "0.94.0",
+        "0.94.1",
+        "0.94.2",
+        "0.95.0",
+        "0.96.0",
+        "0.97.0"
+      ],
+      "authorized_removals": [],
+      "evidence": "Measured on the published artifact of the DSL: the jar of the versions 0.95.0, 0.96.0 and 0.97.0 resolves in Central today (HTTP 200 on dev/rubentxu/pipelinek/pipelinek-scripting-api/<version>/pipelinek-scripting-api-<version>.jar) and the versions before them do not resolve there any more (HTTP 404), but a consumer that resolved one of them keeps the bytes it resolved. The declaration of a parameter reached the DSL in the version 0.76.0, and every version published since carries the historical spelling of the value by default, so every one of them is a consumer this change reaches. The ABI of the three functions was measured against the committed dump of this repository: the regenerated dump adds six lines and removes none, and the descriptors of the three functions survive. No script of this repository writes the historical spelling, and none of the 103 .pipeline.kts of the tree declares a parameter at all, so the change reaches no script of this tree."
     }
   ]
 }

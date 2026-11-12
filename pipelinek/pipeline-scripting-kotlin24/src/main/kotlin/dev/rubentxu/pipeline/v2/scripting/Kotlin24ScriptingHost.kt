@@ -321,13 +321,7 @@ class Kotlin24ScriptingHost(
             val evalError = evalResult.returnValue as? kotlin.script.experimental.api.ResultValue.Error
             if (evalError != null) {
                 ScriptCompilationResult.Failure(
-                    diagnostics = diagnostics + ScriptingDiagnostic(
-                        severity = ScriptDiagnosticSeverity.ERROR,
-                        message = evalError.error.message ?: evalError.error.toString(),
-                        line = 0,
-                        column = 0,
-                        path = definition.sourcePath?.toString() ?: "<inline>",
-                    ),
+                    diagnostics = diagnostics + evaluationErrorDiagnostic(evalError.error, definition),
                     cacheKey = cacheKey,
                 )
             } else {
@@ -352,7 +346,11 @@ class Kotlin24ScriptingHost(
                 sequence = 0L,
                 occurredAt = compilationFinishedAt,
                 cacheKey = cacheKey,
-                diagnostics = diagnostics,
+                // The RESULT's diagnostics, not only the compiler's: the console and the JSON
+                // document render this event and nothing else, so a reason that lives only in
+                // the result (the error the body raised while it was evaluated) is a refusal
+                // nobody can read.
+                diagnostics = result.diagnostics,
                 // The OUTCOME, not the decision: the host reports what this
                 // run really did. It differs from the announced origin in
                 // exactly one case — a stored artifact that loads but cannot
@@ -386,13 +384,7 @@ class Kotlin24ScriptingHost(
         definition: ScriptDefinition,
         origin: ScriptOrigin,
     ): ScriptCompilationResult.Failure {
-        val diag = ScriptingDiagnostic(
-            severity = ScriptDiagnosticSeverity.ERROR,
-            message = t.message ?: t.toString(),
-            line = 0,
-            column = 0,
-            path = definition.sourcePath?.toString() ?: "<inline>",
-        )
+        val diag = evaluationErrorDiagnostic(t, definition)
         // One key, computed once before the compilation and used by BOTH the
         // event and the result. Re-deriving it here would be a second
         // construction of the same fact, free to disagree with the first.
@@ -411,6 +403,32 @@ class Kotlin24ScriptingHost(
         return ScriptCompilationResult.Failure(
             diagnostics = listOf(diag),
             cacheKey = cacheKey,
+        )
+    }
+
+    /**
+     * The diagnostic of a throwable raised while the script was evaluated, with the author's
+     * message verbatim.
+     *
+     * The line is the one of the first frame of the script in the stack trace: the compiler names
+     * the classes of a script after its file, so that frame is the line of the script the throwable
+     * came through. A gate the DSL raises while it builds a stage points at the call to that
+     * stage. The JVM records no column, and a throwable with no frame of the script (an inline
+     * script, or one raised outside its body) has no line either: both stay 0, which is what
+     * "unknown" means in these diagnostics.
+     */
+    private fun evaluationErrorDiagnostic(t: Throwable, definition: ScriptDefinition): ScriptingDiagnostic {
+        val sourcePath = definition.sourcePath
+        // A frame with no file name must not match a script with no file: both are null.
+        val line = sourcePath?.fileName?.toString()?.let { scriptFileName ->
+            t.stackTrace.firstOrNull { frame -> frame.fileName == scriptFileName && frame.lineNumber > 0 }
+        }?.lineNumber ?: 0
+        return ScriptingDiagnostic(
+            severity = ScriptDiagnosticSeverity.ERROR,
+            message = t.message ?: t.toString(),
+            line = line,
+            column = 0,
+            path = sourcePath?.toString() ?: "<inline>",
         )
     }
 

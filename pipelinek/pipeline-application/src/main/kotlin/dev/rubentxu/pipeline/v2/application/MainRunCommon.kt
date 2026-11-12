@@ -199,8 +199,13 @@ internal fun absentPipelineOutcome(compilation: ScriptCompilation): RunOutcome.F
  * - [OutputProtocol.SeparatedV2] → stderr (machine events go to
  *   stderr; the receipt is unaffected and stays on stdout via
  *   [emitCorrelationAndReceipt]).
- * - TEXT view is unaffected in both protocols; this helper is
- *   only called for JSON / JSON_LINES.
+ * - The run path calls it only for JSON / JSON_LINES, because its text was
+ *   streamed live while the run went on. `validate` calls it for every
+ *   format, TEXT included: nothing streamed its text, and this document is
+ *   where its diagnostics are printed.
+ *
+ * [out] and [err] are the process's streams unless a verb that reports on its own streams
+ * passes them.
  */
 internal fun writeEventDocument(
     events: List<dev.rubentxu.pipeline.v2.events.DomainEvent>,
@@ -208,11 +213,13 @@ internal fun writeEventDocument(
     format: ObservationFormat,
     query: dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery,
     protocol: OutputProtocol,
+    out: java.io.PrintStream = System.out,
+    err: java.io.PrintStream = System.err,
 ) {
     val bytes = RunObservationOutput.encode(events, view, format, query).toByteArray(Charsets.UTF_8)
     val sink = when (protocol) {
-        OutputProtocol.Published -> System.out
-        OutputProtocol.SeparatedV2 -> System.err
+        OutputProtocol.Published -> out
+        OutputProtocol.SeparatedV2 -> err
     }
     sink.write(bytes)
     sink.flush()

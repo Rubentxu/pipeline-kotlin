@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
@@ -177,6 +178,18 @@ internal interface SupervisedRunCloser {
  * closed and unsealed at the same time; a seal that cannot be written leaves
  * the run open, and the closer answers with the refusal.
  *
+ * ## Why the terminal carries the errors of the run's compilation
+ *
+ * Because a child whose script does not compile ends with the exit code 1 and
+ * writes no terminal of its own, and the exit code alone does not say why: the
+ * client of the service reads the terminal, not the machine the child ran on.
+ * What the compiler refused is already in the run's store, in its last
+ * `CompilationFinished`, so the terminal carries the closer's own diagnostic
+ * first and then the errors and fatal reports of that compilation, as the
+ * store holds them. Its warnings stay out: a warning is not why a run failed.
+ * The child's own stderr stays out too: it is a file of the supervision, not
+ * a fact of the run's store, and nothing redacted it on its way there.
+ *
  * ## What this closer does NOT do
  *
  * It does not seal a run that already holds a terminal: that run was closed
@@ -214,8 +227,10 @@ internal class EventStoreSupervisedRunCloser(
             // question was asked through the reading door, and a run that ended
             // by itself must keep the terminal it wrote. A second terminal
             // would be a second truth about the same run.
-            if (store.eventsFor(runId).any { it is RunFinished }) {
-                return SupervisedRunClosure.AlreadyEnded
+            var compilation: CompilationFinished? = null
+            for (event in store.eventsFor(runId)) {
+                if (event is RunFinished) return SupervisedRunClosure.AlreadyEnded
+                if (event is CompilationFinished) compilation = event
             }
             // The output is sealed BEFORE the terminal is written, so that a
             // run is never closed and unsealed at the same time: a reader that
@@ -238,7 +253,7 @@ internal class EventStoreSupervisedRunCloser(
                     sequence = 0L,
                     occurredAt = clock.now(),
                     outcome = end.outcomeToken(),
-                    diagnostics = listOf(end.diagnostic()),
+                    diagnostics = listOf(end.diagnostic()) + compilation.errors(),
                 ),
             )
             store.makeDurable(eventId)
@@ -249,6 +264,14 @@ internal class EventStoreSupervisedRunCloser(
             store.close()
         }
     }
+
+    /**
+     * What the compiler refused in this compilation: its errors and fatal
+     * reports, in the order it raised them, and nothing for a run that holds
+     * no compilation.
+     */
+    private fun CompilationFinished?.errors(): List<ScriptingDiagnostic> =
+        this?.diagnostics.orEmpty().filter { it.severity >= ScriptDiagnosticSeverity.ERROR }
 
     /**
      * Whether the run already holds a terminal, as the READING door says it.

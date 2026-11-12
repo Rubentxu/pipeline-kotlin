@@ -323,6 +323,12 @@ class RunConfigurationIntegrationTest {
      * the run yet —it is compiling the script, which is a resource of the
      * machine and not of the tree— and a dead child that owned the run is a
      * run whose writer is gone.
+     *
+     * ## Why it prints the stderr of the children
+     *
+     * Because a child that ends without a terminal of its own says why only
+     * there, and the file is in the row's own directory, gone once the row
+     * ends: a red row that does not print it leaves the cause unmeasurable.
      */
     private fun describe(runId: String): String {
         val terminal = terminalFactOf(runId)
@@ -350,7 +356,8 @@ class RunConfigurationIntegrationTest {
             ServiceAnswer.TimedOut -> "the service did not answer in time"
         }
         val steps = stepsOf(runId)
-        return "outcome=$outcome, reason=$reason, $state, the run published $steps"
+        return "outcome=$outcome, reason=$reason, $state, the run published $steps, " +
+            "the children wrote to their stderr: ${childStderrTails(root.resolve("supervisions"))}"
     }
 
     /**

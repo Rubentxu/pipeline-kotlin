@@ -51,32 +51,22 @@ fun CliError.toCliExit(): CliExit = when (this) {
         message = "unknown command: ${renderValue(value)}",
         hint = "expected one of: ${CLI_VERBS.joinToString(", ") { it.label }}; run 'pipelinek --help'",
     )
-    is CliError.MissingOptionValue -> CliExit.InvalidArgument(
-        message = "option $option requires a value",
-    )
-    CliError.ConflictingDurablePolicies -> CliExit.InvalidArgument(
-        message = "--resume and --rerun are mutually exclusive",
-    )
+    is CliError.MissingOptionValue -> CliExit.InvalidArgument("option $option requires a value")
+    CliError.ConflictingDurablePolicies -> CliExit.InvalidArgument("--resume and --rerun are mutually exclusive")
     is CliError.ConflictingWorkspaceModes -> CliExit.InvalidArgument(
         message = "conflicting workspace modes: ${renderValue(workspace)}",
         hint = "--isolated requests a PipelineK-managed scratch workspace while --workspace attaches a " +
             "user directory; choose one",
     )
-    is CliError.InvalidSandboxProfile -> CliExit.InvalidArgument(
-        message = "invalid sandbox profile: ${renderValue(value)}",
-    )
+    is CliError.InvalidSandboxProfile -> CliExit.InvalidArgument("invalid sandbox profile: ${renderValue(value)}")
     is CliError.UnsupportedSandboxProfile -> CliExit.RuntimeNotAvailable(
         message = "sandbox profile not supported in this build: ${renderValue(value)}",
         hint = "use 'none', 'local' or 'confined' instead, or rebuild the runtime with the requested " +
             "profile enabled",
     )
     is CliError.IsolationRequestRefused -> isolationRefusalExit(reason, required)
-    is CliError.UnknownOption -> CliExit.InvalidArgument(
-        message = "unknown option: ${renderValue(value)}",
-    )
-    CliError.MissingScriptPath -> CliExit.InvalidArgument(
-        message = "missing script path",
-    )
+    is CliError.UnknownOption -> CliExit.InvalidArgument("unknown option: ${renderValue(value)}")
+    CliError.MissingScriptPath -> CliExit.InvalidArgument("missing script path")
     is CliError.TrailingOption -> CliExit.InvalidArgument(
         message = "trailing option without value: ${renderValue(value)}",
         hint = "options must appear before the script path, not after it",
@@ -161,6 +151,7 @@ fun CliError.toCliExit(): CliExit = when (this) {
     )
     is CliError.SubstrateRefusal -> substrateExit(this)
     is CliError.ServiceUnavailable -> serviceUnavailableExit(reason, detail)
+    is IdeProjectRefusal -> ideProjectExit(this)
 }
 
 /**
@@ -189,6 +180,37 @@ private fun substrateExit(refusal: CliError.SubstrateRefusal): CliExit = when (r
         message = "the substrate cannot be prepared: ${refusal.reason}",
         hint = "the substrate is prepared by 'pipelinek substrate init --db <path>', " +
             "and by nothing else; the service reads the one it is given",
+    )
+}
+
+/**
+ * The exit a refusal of `ide init` becomes.
+ *
+ * A directory that holds other files, or whose path Gradle cannot read, is the operator's to sort
+ * out, so it is an invalid argument; an installation that is not there or that Gradle cannot reach,
+ * or a file system that refuses the write, is a fact about the host.
+ */
+private fun ideProjectExit(refusal: IdeProjectRefusal): CliExit = when (refusal) {
+    is IdeProjectRefusal.NotAnInstallation -> CliExit.RuntimeNotAvailable(
+        message = "no installation to compile against: ${refusal.reason}",
+        hint = "run 'ide init' with the bin/pipelinek launcher of an installed distribution",
+    )
+    is IdeProjectRefusal.Different -> CliExit.InvalidArgument(
+        message = "the directory already holds other contents at: ${refusal.paths.joinToString(", ")}",
+        hint = "'ide init' never replaces a file; move them aside, or name another directory with --dir",
+    )
+    is IdeProjectRefusal.Unwritable -> CliExit.RuntimeNotAvailable(
+        message = "the project cannot be written at ${refusal.path}: ${refusal.detail}",
+        hint = "'ide init' keeps nothing it wrote when it refuses; name a directory this user can write with --dir",
+    )
+    is IdeProjectRefusal.DirectoryOutOfGradleReach -> CliExit.InvalidArgument(
+        message = "Gradle cannot reach ${refusal.directory}: it reads the backslash in the path as a separator",
+        hint = "name a directory without a backslash in its path with --dir",
+    )
+    is IdeProjectRefusal.InstallationOutOfGradleReach -> CliExit.RuntimeNotAvailable(
+        message = "Gradle cannot reach the installation at ${refusal.lib}: " +
+            "it reads the backslash in the path as a separator",
+        hint = "install the distribution under a path without a backslash",
     )
 }
 

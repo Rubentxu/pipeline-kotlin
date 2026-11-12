@@ -402,6 +402,10 @@ dependencies {
     // verify` CLI verb, dispatched from Main.kt, and is PRODUCT functionality, not harness.
 
     implementation(project(":pipeline-scripting-kotlin24"))
+    // `ide init` reads the compiler options of the script definition, so the Gradle project it
+    // writes refuses what the runner refuses. The runner reaches the definition through
+    // `:pipeline-scripting-kotlin24`, which keeps it as an implementation detail.
+    implementation(project(":pipeline-scripting-definition"))
     implementation(project(":pipeline-scripting-api"))
     implementation(project(":pipeline-step-sdk:api"))
     implementation(project(":pipeline-step-sdk:runtime"))

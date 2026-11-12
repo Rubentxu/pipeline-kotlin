@@ -176,6 +176,16 @@ internal val CLI_VERBS: List<CliVerb> = buildList {
             SUBSTRATE_INIT_USAGE,
         ),
     )
+    // The editor needs a module to resolve a script against, and the module is a file the operator
+    // keeps; `ide` is a family so that the step that writes it says so in its own words.
+    add(
+        CliVerb(
+            "ide init",
+            "write a Gradle project IntelliJ IDEA opens .pipeline.kts files with (--dir)",
+            ::runIdeInitVerb,
+            IDE_INIT_USAGE,
+        ),
+    )
 
     addAll(
         MainRunsCli.RunsVerb.entries.map {

@@ -84,6 +84,37 @@ VALIDATION FAILED: 1 error
 
 The rule covers every result that must be used, the standard library's too (`"x".uppercase()` on its own line is refused; `list.add(x)` is not). A scripted call such as `pwd()` already emits its step, so it compiles in statement position, as it does in a Jenkinsfile.
 
+### Edit pipelines in IntelliJ IDEA
+
+The editor resolves a script against the classpath of the module it belongs to, and a `.pipeline.kts` outside any module gets no DSL and no diagnostics. `ide init` writes that module, as a Gradle project, from the installation you run it with:
+
+```bash
+"$PIPELINEK" ide init --dir my-pipelines
+# ide-project /…/my-pipelines: ready
+# created settings.gradle.kts
+# created build.gradle.kts
+# created gradle.properties
+# created pipelines/
+# installation /…/pipelinek-<version>/lib
+# scripts /…/my-pipelines/pipelines
+```
+
+Put the scripts in `my-pipelines/pipelines/` and open `my-pipelines` in IntelliJ IDEA. The project compiles them with the jars in the `lib/` directory of the installation and with the compiler options of its script definition, so the editor marks a dropped `scmGit(...)` as an error at the line and column `validate` names, with the same words, and `compileKotlin` run in that directory refuses it the same way:
+
+```text
+e: file:///…/my-pipelines/pipelines/build.pipeline.kts:9:13 Unused return value of 'scmGit'. It was coerced to 'Unit' due to a functional parameter type.
+```
+
+- **It never replaces a file.** A directory that holds a different file at one of those paths is refused by name, and nothing is written. A second run on the project it wrote changes nothing.
+- **It writes no Gradle wrapper.** IntelliJ IDEA writes one when it opens the project (2026.2 writes one for Gradle 9.6.0); the project builds with Gradle 8.14 and 9.6.
+- **The project belongs to one installation.** `build.gradle.kts` names the absolute path of its `lib/` directory. After you install another version, delete `settings.gradle.kts`, `build.gradle.kts` and `gradle.properties` and run `ide init` again with the new launcher. A build whose installation is gone refuses to configure and says so.
+- **No backslash in the paths.** Gradle reads a backslash in a path as a separator, so a project directory or an installation whose path holds one is refused.
+- **Only the plugins of the distribution.** The project sees the plugins in the `lib/` directory of the installation; a plugin loaded from anywhere else is not on its classpath.
+- **The banner.** IntelliJ IDEA shows *"This script is not supposed to be inside source root"* over each script. Leave the scripts in `pipelines/`: the build compiles them there, and the editor highlights them there.
+- **Only the editor.** IntelliJ IDEA's command-line inspector (`inspect.sh`) does not analyse `.pipeline.kts` files; on a CI machine, use `pipelinek validate` or `gradle compileKotlin`.
+
+`ide init` is new in this tree: the 0.97.0 release does not carry it.
+
 ### Read the run afterwards
 
 Give the run a journal and a control root, and every step, event and output stays readable:

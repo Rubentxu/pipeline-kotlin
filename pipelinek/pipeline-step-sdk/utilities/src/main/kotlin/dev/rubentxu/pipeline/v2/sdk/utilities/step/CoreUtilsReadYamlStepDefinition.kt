@@ -70,6 +70,7 @@ class CoreUtilsReadYamlStepDefinition(
         descriptor = StepDescriptor(
             stepId = CoreUtilsReadYamlKey.VALUE.value,
             name = "core-utils.readYaml",
+            jenkinsSurface = "readYaml",
             configRef = "",
             pluginId = "utilities",
             pluginVersion = "0.0.1-dev",  // overridden by manifest at registration

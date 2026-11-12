@@ -80,10 +80,25 @@ interface DirectiveDefinitionAny {
 /** Lift a typed definition into the type-erased registry view. */
 class ErasedDirectiveDefinition<I, O>(
     private val delegate: DirectiveDefinition<I, O>,
-) : DirectiveDefinitionAny {
+) : DirectiveDefinitionAny, JenkinsSurfaceDeclaration {
     override val key: DirectiveKey get() = delegate.key
     override val phase: DirectivePhase get() = delegate.phase
     override val policy: DirectiveExecutionPolicy get() = delegate.policy
+
+    /**
+     * The equivalent in Jenkins, when the definition declares one.
+     *
+     * The delegation is what keeps the SPI OPEN: a definition that does not
+     * implement [JenkinsSurfaceDeclaration] says nothing, and the catalogue
+     * reads an empty surface instead of asking a plugin for a fact it does not
+     * carry.
+     */
+    override val jenkinsSurface: String
+        get() = (delegate as? JenkinsSurfaceDeclaration)?.jenkinsSurface ?: ""
+
+    /** The divergence with Jenkins, when the definition declares one. */
+    override val jenkinsDivergence: String
+        get() = (delegate as? JenkinsSurfaceDeclaration)?.jenkinsDivergence ?: ""
 
     @Suppress("UNCHECKED_CAST")
     override fun decodeAny(encodedArguments: String): DirectiveDecodeResult<Any> =

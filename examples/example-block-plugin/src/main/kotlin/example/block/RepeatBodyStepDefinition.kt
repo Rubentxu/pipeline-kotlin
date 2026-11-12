@@ -140,6 +140,7 @@ object RepeatBodyStepDefinition : StepDefinition<RepeatInput, RepeatOutput> {
         descriptor = StepDescriptor(
             stepId = KEY.value,
             name = "repeat",
+            jenkinsDivergence = "it belongs to an EXAMPLE plugin and not to the surface of the product, so it has no equivalent in Jenkins",
             configRef = "",
             pluginId = "example.repeat",
             pluginVersion = "0.1.0",

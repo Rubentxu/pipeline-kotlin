@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 import dev.rubentxu.pipeline.v2.domain.directive.DirectivePhase
 import dev.rubentxu.pipeline.v2.domain.directive.GateVerdict
+import dev.rubentxu.pipeline.v2.domain.directive.JenkinsSurfaceDeclaration
 import dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate
 import dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateCodec
 import dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY
@@ -30,9 +31,30 @@ import dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY
  * the DSL and the runtime cannot diverge.
 */
 /** The `core.when` definition. */
-class WhenDirectiveDefinition : DirectiveDefinition<WhenPredicate, GateVerdict> {
+class WhenDirectiveDefinition :
+    DirectiveDefinition<WhenPredicate, GateVerdict>,
+    JenkinsSurfaceDeclaration {
 
     override val key: DirectiveKey get() = WHEN_DIRECTIVE_KEY
+
+    /**
+     * The equivalent in Jenkins: there is none.
+     *
+     * In Jenkins `when` is a CONDITION of the declarative pipeline and not a step
+     * of the scripted one, so there is no step name a reader could carry over.
+     */
+    override val jenkinsSurface: String get() = ""
+
+    /**
+     * The divergence with the Jenkins `when`, with its motive.
+     *
+     * In Jenkins the `when` guards a BRANCH of the pipeline. Here it is a directive
+     * of a stage, and what it gates is the STAGE: the condition it carries is
+     * evaluated before the body runs, and it decides whether the body runs at all.
+     */
+    override val jenkinsDivergence: String get() =
+        "in Jenkins when is a CONDITION of the declarative pipeline and not a step; here it " +
+            "is a directive of a stage, and it gates the stage instead of a branch."
 
     /**
      * A gate is considered BEFORE the stage body, and it is the only policy

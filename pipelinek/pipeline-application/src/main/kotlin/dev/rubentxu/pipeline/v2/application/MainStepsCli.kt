@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.step.JenkinsDivergence
 import dev.rubentxu.pipeline.v2.domain.step.StepCatalogue
 import dev.rubentxu.pipeline.v2.domain.step.StepCatalogueEntry
 import dev.rubentxu.pipeline.v2.runtime.NoopPipelineTelemetry
@@ -74,8 +75,17 @@ internal val DESCRIBE_REQUEST: CliRequest = CliRequest(
  */
 internal object MainStepsCli {
 
-    /** The schema of the document `--json` publishes. */
-    const val SCHEMA: String = "pipelinek.steps/1"
+    /**
+     * The schema of the document `--json` publishes.
+     *
+     * It is `pipelinek.steps/2` since the document carries the divergences: the
+     * entries carry the equivalent in Jenkins and the divergence of THAT entry,
+     * and the document carries the section of the divergences that are the same
+     * for every script. A consumer that parses `/1` reads an entry without its
+     * divergence, and a document without a section cannot say what the product
+     * does; the version names that change.
+     */
+    const val SCHEMA: String = "pipelinek.steps/2"
 
     /**
      * The published document, as a value.
@@ -84,10 +94,27 @@ internal object MainStepsCli {
      * be READ: the shape a consumer parses is a value this build names, and a
      * shape that only the code knows about is not a shape.
      */
-    fun document(entries: List<StepCatalogueEntry>): JsonObject = buildJsonObject {
+    fun document(
+        entries: List<StepCatalogueEntry>,
+        divergences: List<JenkinsDivergence> = StepCatalogue.divergences(),
+    ): JsonObject = buildJsonObject {
         put("schema", JsonPrimitive(SCHEMA))
         put("version", JsonPrimitive(RuntimeApiVersion.readImplementationVersion() ?: "unknown"))
         put("entries", JsonArray(entries.map { entry -> entryOf(entry) }))
+        put("divergences", JsonArray(divergences.map { divergence -> divergenceOf(divergence) }))
+    }
+
+    /**
+     * One global divergence, as the document carries it.
+     *
+     * The scope is carried because a reader who has to guess whether a
+     * difference is imposed by the language or by the product cannot tell
+     * whether a workaround applies to their script.
+     */
+    private fun divergenceOf(divergence: JenkinsDivergence): JsonObject = buildJsonObject {
+        put("name", JsonPrimitive(divergence.name))
+        put("scope", JsonPrimitive(divergence.scope.name.lowercase()))
+        put("reason", JsonPrimitive(divergence.reason))
     }
 
     /**
@@ -124,6 +151,7 @@ internal object MainStepsCli {
             }
         }
         put("jenkinsSurface", JsonPrimitive(entry.jenkinsSurface))
+        put("jenkinsDivergence", JsonPrimitive(entry.jenkinsDivergence))
         put("deprecation", JsonPrimitive(entry.deprecation))
     }
 
@@ -239,6 +267,7 @@ internal object MainDescribeCli {
             }
         }
         lines += field("jenkins", entry.jenkinsSurface.ifEmpty { NONE })
+        lines += field("divergence", entry.jenkinsDivergence.ifEmpty { NONE })
         lines += field("deprecation", entry.deprecation.ifEmpty { NONE })
         return lines
     }

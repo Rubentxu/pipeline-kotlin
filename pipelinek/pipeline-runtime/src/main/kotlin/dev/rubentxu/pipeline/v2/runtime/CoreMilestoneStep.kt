@@ -184,6 +184,7 @@ object CoreMilestoneStep {
     private val descriptor = StepDescriptor(
         stepId = "core.milestone",
         name = "milestone",
+        jenkinsSurface = "milestone",
         configRef = "",
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.READ_ONLY),

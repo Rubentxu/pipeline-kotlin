@@ -92,6 +92,7 @@ object CoreSleepStep {
     private val descriptor = StepDescriptor(
         stepId = "core.sleep",
         name = "sleep",
+        jenkinsSurface = "sleep",
         configRef = "",
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.READ_ONLY),

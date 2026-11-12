@@ -149,6 +149,9 @@ object CorePwdTmpStep {
     private val descriptor = StepDescriptor(
         stepId = "core.pwd.tmp",
         name = "pwd.tmp",
+        jenkinsSurface = "pwd",
+        jenkinsDivergence = "Jenkins has ONE pwd step and the temporary directory is its tmp argument; here the temporary directory is a key of its own, " +
+            "core.pwd.tmp, and the plan carries it separately.",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.WRITES_WORKSPACE),

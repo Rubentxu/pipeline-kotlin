@@ -50,6 +50,7 @@ class CoreUtilsSha256StepDefinition : StepDefinition<Sha256Input, Sha256Output> 
         descriptor = StepDescriptor(
             stepId = CoreUtilsSha256Key.VALUE.value,
             name = "core-utils.sha256",
+            jenkinsSurface = "sha256",
             configRef = "",
             pluginId = "utilities",
             pluginVersion = "0.0.1-dev",

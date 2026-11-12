@@ -9,12 +9,14 @@ import dev.rubentxu.pipeline.v2.runtime.AgentDirectiveDefinition
 import dev.rubentxu.pipeline.v2.runtime.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.runtime.WhenDirectiveDefinition
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.io.ByteArrayOutputStream
@@ -112,7 +114,7 @@ class MainStepsCliTest {
 
         val parsed = Json.parseToJsonElement(document.toString()).jsonObject
         assertEquals(
-            "pipelinek.steps/1",
+            "pipelinek.steps/2",
             parsed["schema"]?.jsonPrimitive?.content,
             "the document names the schema a consumer parses it by",
         )
@@ -121,6 +123,64 @@ class MainStepsCliTest {
             parsed["entries"]?.jsonArray?.size,
             "the document carries one entry per key of the composition",
         )
+    }
+
+    @Test
+    fun `the document carries the global divergences, four of the language and four of the product`() {
+        val document = MainStepsCli.document(coreEntries())
+
+        val parsed = Json.parseToJsonElement(document.toString()).jsonObject
+        val divergences = parsed["divergences"]?.jsonArray ?: fail("the document carries the divergences")
+        assertEquals(
+            8,
+            divergences.size,
+            "the document carries the eight differences that are the same for every script",
+        )
+        val byScope = divergences.groupBy { it.jsonObject["scope"]?.jsonPrimitive?.content ?: "" }
+        assertEquals(
+            listOf("language", "product"),
+            byScope.keys.sorted(),
+            "a divergence says whether the language or the product imposes it",
+        )
+        assertEquals(4, byScope.getValue("language").size, "four of the differences the language imposes")
+        assertEquals(4, byScope.getValue("product").size, "four of the differences the product decides")
+        assertTrue(
+            divergences.all { it.jsonObject["reason"]?.jsonPrimitive?.content?.isNotBlank() == true },
+            "every divergence says WHY the two products differ",
+        )
+    }
+
+    @Test
+    fun `every entry of the catalogue declares its equivalent in Jenkins or the divergence that says why it has none`() {
+        val entries = installedEntries()
+
+        val blank = entries.filter { entry ->
+            entry["jenkinsSurface"]?.jsonPrimitive?.content.isNullOrBlank() &&
+                entry["jenkinsDivergence"]?.jsonPrimitive?.content.isNullOrBlank()
+        }
+        assertEquals(
+            emptyList<String>(),
+            blank.map { it["key"]?.jsonPrimitive?.content },
+            "an entry with no equivalent in Jenkins says WHY it has none: an empty pair of facts " +
+                "is a statement the reader cannot tell from an oversight",
+        )
+    }
+
+    @Test
+    fun `the card of an entry names its equivalent in Jenkins and its divergence`() {
+        val out = ByteArrayOutputStream()
+        val err = ByteArrayOutputStream()
+
+        val code = MainDescribeCli.main(
+            arrayOf("core.sh"),
+            PrintStream(out, true, Charsets.UTF_8.name()),
+            PrintStream(err, true, Charsets.UTF_8.name()),
+        )
+
+        assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
+        val card = out.toString(Charsets.UTF_8.name())
+        assertTrue(card.contains("jenkins"), "the card names the equivalent in Jenkins: $card")
+        assertTrue(card.contains("divergence"), "the card names the divergence of the entry: $card")
     }
 
     @Test
@@ -191,7 +251,7 @@ class MainStepsCliTest {
         assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
         val parsed = Json.parseToJsonElement(out.toString(Charsets.UTF_8.name())).jsonObject
         assertEquals(
-            "pipelinek.steps/1",
+            "pipelinek.steps/2",
             parsed["schema"]?.jsonPrimitive?.content,
             "what the verb publishes is the document the schema names",
         )
@@ -259,6 +319,32 @@ class MainStepsCliTest {
     /** The catalogue of the core composition, with no plugin of the installation in it. */
     private fun coreEntries(): List<StepCatalogueEntry> =
         StepCatalogue.entries(coreRegistry(), coreDirectives())
+
+    /**
+     * The entries of the catalogue of the INSTALLED composition.
+     *
+     * It is the composition the verb publishes: the core registry, the declared
+     * families and the plugins of the installation. The count depends on which
+     * plugins are installed, and that is why no row asserts a number: the
+     * guarantee is that EVERY entry declares its equivalent or its divergence,
+     * and that holds for any composition.
+     */
+    private fun installedEntries(): List<JsonObject> {
+        val out = ByteArrayOutputStream()
+        val err = ByteArrayOutputStream()
+
+        val code = MainStepsCli.main(
+            arrayOf("--json"),
+            PrintStream(out, true, Charsets.UTF_8.name()),
+            PrintStream(err, true, Charsets.UTF_8.name()),
+        )
+
+        assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
+        val parsed = Json.parseToJsonElement(out.toString(Charsets.UTF_8.name())).jsonObject
+        val entries = parsed["entries"]?.jsonArray
+            ?: fail("the document the verb publishes carries no entries")
+        return entries.map { it.jsonObject }
+    }
 
     /** The registry of the core steps. */
     private fun coreRegistry() = CoreStepRegistryFactory.registry()

@@ -82,6 +82,7 @@ object CoreWriteFileStep {
     private val descriptor = StepDescriptor(
         stepId = "core.file.writeFile",
         name = "writeFile",
+        jenkinsSurface = "writeFile",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.WRITES_WORKSPACE),

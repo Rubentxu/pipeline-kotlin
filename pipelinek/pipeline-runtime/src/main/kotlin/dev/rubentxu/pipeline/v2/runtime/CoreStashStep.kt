@@ -142,6 +142,7 @@ object CoreStashStep {
     private val descriptor = StepDescriptor(
         stepId = "core.stash",
         name = "stash",
+        jenkinsSurface = "stash",
         configRef = "",
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.WRITES_WORKSPACE),
@@ -289,6 +290,7 @@ object CoreUnstashStep {
     private val descriptor = StepDescriptor(
         stepId = "core.unstash",
         name = "unstash",
+        jenkinsSurface = "unstash",
         configRef = "",
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.WRITES_WORKSPACE),

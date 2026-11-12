@@ -216,7 +216,7 @@ step       core.sh                           sh
 step       scm-git.checkout                  scm-git.checkout
 ```
 
-`pipelinek steps --json` publica el mismo catálogo como un documento del esquema `pipelinek.steps/1`: una entrada por clave, con los efectos que declara el step, qué hace un replay con él, qué hace el motor con él cuando la ejecución murió con él todavía en RUNNING, las capacidades que necesita y el JSON Schema de su carga útil.
+`pipelinek steps --json` publica el mismo catálogo como un documento del esquema `pipelinek.steps/2`: una entrada por clave, con los efectos que declara el step, qué hace un replay con él, qué hace el motor con él cuando la ejecución murió con él todavía en RUNNING, las capacidades que necesita, el JSON Schema de su carga útil, el equivalente en Jenkins y la divergencia de ESA entrada. El documento lleva además una sección `divergences`: las diferencias que son las mismas para todo script —las que impone el lenguaje y las que decide el producto—, cada una con su nombre y su motivo.
 
 `pipelinek describe sh` imprime la ficha de una entrada, nombrada por su clave (`core.sh`) o por su nombre (`sh`):
 
@@ -236,11 +236,14 @@ core.sh
     {}
   output schema:
     {}
-  jenkins       (none)
+  jenkins       sh
+  divergence    (none)
   deprecation   (none)
 ```
 
 El esquema de la carga útil es el que declara el códec del step, y los steps del núcleo todavía no declaran ninguno: su esquema es `{}` hasta que un códec diga qué forma tiene la carga útil.
+
+La tabla de equivalencias con Jenkins NO está escrita aquí, y ese es el punto: vive en el catálogo, que se construye desde el código —cada step declara su equivalente y su divergencia en el descriptor que lo describe, y el catálogo los lee. Una tabla escrita en un documento es una segunda autoridad sobre un hecho que el código ya posee, y se desvía la primera vez que se añade un step. Este README nombra los dos verbos que la publican (`pipelinek steps` para el índice, `pipelinek describe` para la ficha de una entrada) y el documento que la lleva; la tabla legible se genera desde ese mismo código para la web.
 
 Un nombre que nadie lleva se rechaza nombrando las entradas que se le parecen, y un nombre que llevan dos entradas se rechaza nombrando las dos: `core.pwd` y `core.pwd.tmp` son dos steps distintos, y responder con uno de ellos sería un azar disfrazado de respuesta.
 

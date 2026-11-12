@@ -50,6 +50,7 @@ object CoreInputStep {
     private val descriptor = StepDescriptor(
         stepId = KEY.value,
         name = "input",
+        jenkinsSurface = "input",
         configRef = "",
         pluginId = "core",
         pluginVersion = "0.1.0",

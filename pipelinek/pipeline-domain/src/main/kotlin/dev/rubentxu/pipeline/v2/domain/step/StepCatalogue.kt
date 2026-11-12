@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry
+import dev.rubentxu.pipeline.v2.domain.directive.JenkinsSurfaceDeclaration
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 
 /**
@@ -51,6 +52,15 @@ sealed interface StepCatalogueEntry {
     /** The equivalent in Jenkins, empty when no equivalent is declared. */
     val jenkinsSurface: String
 
+    /**
+     * The divergence of this entry with the equivalent in Jenkins, with its motive.
+     *
+     * Empty when there is nothing to declare. It is NOT empty when the entry
+     * has no equivalent in Jenkins: in that case it says WHY, so that an empty
+     * surface is a statement and not an oversight.
+     */
+    val jenkinsDivergence: String
+
     /** The deprecation notice, empty when the entry is not deprecated. */
     val deprecation: String
 
@@ -79,6 +89,7 @@ sealed interface StepCatalogueEntry {
      * @property body the body the step takes, or that it is terminal.
      * @property inputSchema the JSON Schema fragment the input codec declares.
      * @property outputSchema the JSON Schema fragment the output codec declares.
+     * @property jenkinsDivergence the divergence with the equivalent in Jenkins, with its motive.
      */
     data class Step(
         override val key: String,
@@ -94,6 +105,7 @@ sealed interface StepCatalogueEntry {
         val body: StepCatalogueBody,
         val inputSchema: String,
         val outputSchema: String,
+        override val jenkinsDivergence: String = "",
     ) : StepCatalogueEntry {
         override val kind: Kind get() = Kind.STEP
     }
@@ -108,6 +120,7 @@ sealed interface StepCatalogueEntry {
      * @property policy what the directive does.
      * @property policyDetail the predicate the policy names, or the phase a resource
      *   directive asks for. Empty when the policy names neither.
+     * @property jenkinsDivergence the divergence with the equivalent in Jenkins, with its motive.
      */
     data class Directive(
         override val key: String,
@@ -118,6 +131,7 @@ sealed interface StepCatalogueEntry {
         val phase: String,
         val policy: String,
         val policyDetail: String,
+        override val jenkinsDivergence: String = "",
     ) : StepCatalogueEntry {
         override val kind: Kind get() = Kind.DIRECTIVE
     }
@@ -189,6 +203,15 @@ object StepCatalogue {
     }
 
     /**
+     * The divergences that are the same for every script.
+     *
+     * They are DECLARED in the code and not written in a document, so the
+     * catalogue publishes what the product does and not what a document
+     * remembered. The ones that belong to a single entry live in that entry.
+     */
+    fun divergences(): List<JenkinsDivergence> = JenkinsDivergences.global()
+
+    /**
      * The entry of the step [key], or null when the registry holds no definition for it.
      *
      * A key the registry names but does not define is skipped rather than
@@ -203,6 +226,7 @@ object StepCatalogue {
             name = descriptor.name,
             provider = descriptor.pluginId,
             jenkinsSurface = descriptor.jenkinsSurface,
+            jenkinsDivergence = descriptor.jenkinsDivergence,
             deprecation = descriptor.deprecation,
             effects = descriptor.effects.map { it.name },
             replayPolicy = descriptor.replayPolicy.name,
@@ -235,6 +259,7 @@ object StepCatalogue {
             name = descriptor.name,
             provider = descriptor.pluginId,
             jenkinsSurface = descriptor.jenkinsSurface,
+            jenkinsDivergence = descriptor.jenkinsDivergence,
             deprecation = descriptor.deprecation,
             effects = descriptor.effects.map { it.name },
             replayPolicy = descriptor.replayPolicy.name,
@@ -256,11 +281,16 @@ object StepCatalogue {
     ): StepCatalogueEntry.Directive? {
         val definition = registry.find(key) ?: return null
         val policy = policyOf(definition.policy)
+        // The Jenkins facts are the ones the definition DECLARED, and a
+        // definition that declares none says nothing: the open SPI asks nothing
+        // of the plugins that do not implement it.
+        val jenkins = definition as? JenkinsSurfaceDeclaration
         return StepCatalogueEntry.Directive(
             key = key.value,
             name = key.value.substringAfterLast('.'),
             provider = key.value.substringBefore('.'),
-            jenkinsSurface = "",
+            jenkinsSurface = jenkins?.jenkinsSurface ?: "",
+            jenkinsDivergence = jenkins?.jenkinsDivergence ?: "",
             deprecation = "",
             phase = definition.phase.name,
             policy = policy.first,

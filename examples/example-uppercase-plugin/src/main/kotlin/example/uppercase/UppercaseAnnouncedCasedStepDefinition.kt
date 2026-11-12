@@ -44,6 +44,7 @@ object UppercaseAnnouncedCasedStepDefinition : StepDefinition<UppercaseInput, Up
         descriptor = StepDescriptor(
             stepId = KEY.value,
             name = "uppercase-announced-cased",
+            jenkinsDivergence = "it belongs to an EXAMPLE plugin and not to the surface of the product, so it has no equivalent in Jenkins",
             configRef = "",
             pluginId = "example.uppercase",
             pluginVersion = "0.1.0",

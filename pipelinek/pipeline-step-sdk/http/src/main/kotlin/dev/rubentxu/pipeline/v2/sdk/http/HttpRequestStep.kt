@@ -71,6 +71,7 @@ object HttpRequestStep {
     private val descriptor = StepDescriptor(
         stepId = "http.request",
         name = "httpRequest",
+        jenkinsSurface = "httpRequest",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.NETWORKS),

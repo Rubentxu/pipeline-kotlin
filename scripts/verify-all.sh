@@ -684,6 +684,23 @@ if want_stage 1; then
     # authority.
     stage1_guards+=("the shape of the catalogue of examples|scripts/check-catalogue-shape.py|catalogue-shape.out|stage 1: the catalogue-shape guard")
 
+    # --- The table of equivalences with Jenkins --------------------------------
+    # The catalogue publishes, for every entry, the step of Jenkins it
+    # corresponds to and the divergence it has with it, and those facts are
+    # DECLARED in the code that describes the step. So the guard reads the
+    # code, and it checks four failures the tree can see by itself: an
+    # equivalent that names something Jenkins does not publish; a step whose
+    # contract carries no descriptor, or carries one that describes another
+    # step, so the catalogue publishes nothing for a step the tree offers; a
+    # row that declares no fact at all, so the table says nothing about an
+    # entry; and a README whose sample drifts from the tree.
+    #
+    # The dictionary of Jenkins the guard carries cites the source it was read
+    # from, so the check is auditable and not a second opinion of this
+    # product about the other one. The guard does not run the product to ask
+    # it what it supports: it reads the tree, and it starts nothing.
+    stage1_guards+=("the table of equivalences with Jenkins|scripts/check-jenkins-surface.py|jenkins-surface.out|stage 1: the Jenkins-surface guard")
+
     # --- The releases the compatibility gate compares against ----------------
     # The external-consumer gate of the publication compares the candidate
     # against PUBLISHED releases, and which release fills each of the three

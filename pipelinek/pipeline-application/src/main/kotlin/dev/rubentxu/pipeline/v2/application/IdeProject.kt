@@ -54,7 +54,7 @@ internal fun installedKotlinVersion(): String = KotlinVersion.CURRENT.toString()
  * - The classpath is every jar of [lib] and each of [pluginJars], and nothing else. The
  *   definition, the DSL, the standard library and the example plugins the distribution ships all
  *   live in [lib]; [pluginJars] are the jars the operator hands the runner with `--plugin-jar`,
- *   written as the paths given, in the order given.
+ *   written as the ABSOLUTE path of each one, in the order they were given.
  * - The build refuses to configure when [lib] is no longer a directory, or when one of
  *   [pluginJars] is no longer a file, with a message that says how to write the project again: a
  *   `fileTree` over a directory that is gone is empty, a jar that is gone is skipped, and the

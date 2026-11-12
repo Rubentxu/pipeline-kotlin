@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope
 import dev.rubentxu.pipeline.v2.dsl.ParameterDescription
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.runtime.SystemRuntimeConfig
+import dev.rubentxu.pipeline.v2.scripting.CompiledScriptCache
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
@@ -25,6 +26,10 @@ import java.nio.file.Path
  *
  * The parser, the protocol negotiation and the check that the script exists have already run; this
  * function starts where `main` hands the verb its inputs.
+ *
+ * [cache] is where a compiled script is looked up and stored. `main` hands it the one the
+ * environment names, as every other compilation of the product uses; a test hands it a cache of its
+ * own, so it neither reads nor writes the operator's.
  */
 @Suppress("LongParameterList")
 internal fun validateScript(
@@ -33,6 +38,7 @@ internal fun validateScript(
     secretPatternRegistry: SecretPatternRegistry,
     compiledQuery: CompiledObservationQuery,
     outputProtocol: OutputProtocol,
+    cache: CompiledScriptCache,
     out: PrintStream,
     err: PrintStream,
 ): CliExit {
@@ -46,7 +52,7 @@ internal fun validateScript(
     val rawStore = InMemoryEventStore()
     val store = RedactingEventSink(rawStore, secretPatternRegistry)
     val validateRunId = java.util.UUID.randomUUID().toString()
-    val host = Kotlin24ScriptingHost(store, validateRunId)
+    val host = Kotlin24ScriptingHost(store, validateRunId, cache = cache)
     val dslClasspath = try {
         computeScriptClasspath(config.pluginJars)
     } catch (refused: CommandRefused) {

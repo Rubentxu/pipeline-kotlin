@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.runtime.PipelineTelemetryFactory
 import dev.rubentxu.pipeline.v2.runtime.withPipelineTelemetry
+import dev.rubentxu.pipeline.v2.scripting.CompiledScriptCache
 import java.nio.file.Paths
 import java.nio.file.Files
 
@@ -261,6 +262,7 @@ fun main(args: Array<String>) {
             secretPatternRegistry = secretPatternRegistry,
             compiledQuery = compiledQuery,
             outputProtocol = outputProtocol,
+            cache = CompiledScriptCache.fromEnvironment(),
             out = System.out,
             err = System.err,
         )

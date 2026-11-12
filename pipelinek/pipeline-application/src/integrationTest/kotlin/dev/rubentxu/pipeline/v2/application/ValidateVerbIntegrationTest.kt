@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.scripting.CompiledScriptCache
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -33,7 +34,8 @@ import java.util.concurrent.TimeUnit
  * ## The instrument
  *
  * Each row calls [validateScript], the function `main` hands the verb to, with the parser's own
- * flags and the published protocol, and captures the two channels apart. Under that protocol the
+ * flags and the published protocol, and captures the two channels apart. The compiled-script cache
+ * is off: every row compiles its script, and none reads or writes the cache of the machine. Under that protocol the
  * document goes to `out` and the verdict to `err`, so the reason is read on `out`, next to the
  * compiler's errors, and never repeated on `err`. The rows that read the JSON document parse it and
  * look for the diagnostic inside the closing event; a substring of the document would also match a
@@ -46,6 +48,10 @@ import java.util.concurrent.TimeUnit
  *   the only thing that tells the author which carrier they dropped.
  * - The compile error is the control: it already reached the document, and it must still reach it
  *   exactly once, with no evaluation error added to it.
+ * - The warning is a real one from the compiler, on a script that validates. The summary used to
+ *   count it and print nothing under it, and to count a note the product's own compiler options
+ *   raise on every script. The row reads both documents: the text one prints the warning with its
+ *   position and counts nothing else, and the JSON one carries the same single diagnostic.
  */
 @Timeout(value = 180, unit = TimeUnit.SECONDS)
 class ValidateVerbIntegrationTest {
@@ -69,22 +75,25 @@ class ValidateVerbIntegrationTest {
             secretPatternRegistry = SecretPatternRegistry(),
             compiledQuery = (compileQuery(config.query) as SelectorCompileResult.Ok).value,
             outputProtocol = OutputProtocol.Published,
+            cache = CompiledScriptCache.Disabled,
             out = PrintStream(outBytes, true, Charsets.UTF_8.name()),
             err = PrintStream(errBytes, true, Charsets.UTF_8.name()),
         )
         return Outcome(exit, outBytes.toString(Charsets.UTF_8), errBytes.toString(Charsets.UTF_8))
     }
 
-    /** The ERROR diagnostics of the closing event of the compilation, read from the JSON document. */
-    private fun errorMessagesOf(document: String): List<String> {
+    /** The diagnostics of the closing event of the compilation, read from the JSON document. */
+    private fun diagnosticsOf(document: String): List<JsonObject> {
         val finished = Json.parseToJsonElement(document).jsonArray
             .map { it.jsonObject }
             .single { it["kind"]?.jsonPrimitive?.content == "CompilationFinished" }
-        return (finished["diagnostics"] as JsonArray)
-            .map { it as JsonObject }
-            .filter { it["severity"]?.jsonPrimitive?.content == "ERROR" }
-            .map { it["message"]!!.jsonPrimitive.content }
+        return (finished["diagnostics"] as JsonArray).map { it as JsonObject }
     }
+
+    /** The messages of the ERROR diagnostics of the closing event, read from the JSON document. */
+    private fun errorMessagesOf(document: String): List<String> = diagnosticsOf(document)
+        .filter { it["severity"]?.jsonPrimitive?.content == "ERROR" }
+        .map { it["message"]!!.jsonPrimitive.content }
 
     private fun occurrences(text: String, needle: String): Int = text.windowed(needle.length).count { it == needle }
 
@@ -133,6 +142,25 @@ class ValidateVerbIntegrationTest {
     }
 
     @Test
+    fun `a warning is printed with its position, counted alone, and the script still validates`() {
+        val text = validate("warn.pipeline.kts", WARNED, "--compile-only")
+        val json = validate("warn.pipeline.kts", WARNED, "--compile-only", "--format", "json")
+
+        assertEquals(CliExit.SUCCESS, text.exit, text.out + text.err)
+        assertEquals(CliExit.SUCCESS, json.exit, json.out + json.err)
+        val position = "${dir.resolve("warn.pipeline.kts")}:2:11: warning: $TO_INT"
+        assertEquals(1, occurrences(text.out, position), "the warning is not printed once with its position:\n${text.out}")
+        assertTrue(
+            "Compilation finished with 1 warning (compiled)" in text.out,
+            "the summary counts something it does not print:\n${text.out}",
+        )
+        val diagnostics = diagnosticsOf(json.out).map {
+            it["severity"]!!.jsonPrimitive.content to it["message"]!!.jsonPrimitive.content
+        }
+        assertEquals(listOf("WARNING" to TO_INT), diagnostics, "the JSON document and the text one disagree:\n${json.out}")
+    }
+
+    @Test
     fun `a script that builds its pipeline still validates`() {
         val (exit, out, err) = validate("ok.pipeline.kts", PIPELINE_ONLY)
 
@@ -169,5 +197,9 @@ class ValidateVerbIntegrationTest {
         """.trimIndent()
 
         val BROKEN = "val count: Int = \"not a number\"\n\n$PIPELINE_ONLY"
+
+        const val TO_INT = "Use 'toInt' to give the type explicitly."
+
+        val WARNED = "// The cast is redundant, and the compiler says so.\nval n = 1 as Int\n\n$PIPELINE_ONLY"
     }
 }

@@ -401,13 +401,34 @@ open class StageScopeCore(
     }
 
 
-    fun script(block: ScriptScope.() -> Unit) {
-        val scope = ScriptScope()
-        scope.block()
-        val scriptContent = scope.commands.joinToString("\n")
-        if (scriptContent.isNotEmpty()) {
-            steps.add(StepSpec.Shell(scriptContent, isScriptBlock = true))
-        }
+    /**
+     * The steps of a `script { }` block.
+     *
+     * The block holds STEPS, the way a stage holds them: every call inside it is a
+     * step of its own, with its own identity and its own descriptor. `script {
+     * echo("x") }` is a `core.echo` and `script { sh("y") }` is a `core.sh`, and
+     * neither of them is folded into a single shell.
+     *
+     * The steps the block declares are the steps of the stage that opened it: the
+     * block opens no scope of its own while the run runs. What it adds is the
+     * Kotlin control flow of the author, and that control flow is evaluated while
+     * the PLAN is built: an `if` inside the block decides which arm is declared,
+     * and only the arm that was taken reaches the plan. A condition that has to
+     * be decided while the run runs is written with the `when*` gates.
+     *
+     * The receiver is the receiver of a stage, so the block carries the whole
+     * vocabulary: `echo`, `sh`, `dir`, `retry` and the rest. It does NOT carry a
+     * recorder of shell lines: a block of shell lines is ONE step, written with
+     * `sh("""…""")`.
+     *
+     * The `@StepDslMarker` of the scope hides the scope that opened the block
+     * inside it, so a call inside the block resolves against the block's own
+     * scope and never against the stage that opened it.
+     */
+    fun script(block: StageScope.() -> Unit) {
+        val inner = nestedScope()
+        inner.block()
+        steps.addAll(inner.steps())
     }
 
     fun steps(): List<StepSpec> = steps.toList()

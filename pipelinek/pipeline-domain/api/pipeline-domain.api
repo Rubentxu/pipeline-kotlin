@@ -8818,6 +8818,113 @@ public abstract interface class dev/rubentxu/pipeline/v2/domain/step/StepCapabil
 	public abstract fun get-40KO7Hc (Ljava/lang/String;Lkotlin/reflect/KClass;)Ljava/lang/Object;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogue {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogue;
+	public final fun entries (Ldev/rubentxu/pipeline/v2/domain/step/StepRegistry;Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveRegistry;Ldev/rubentxu/pipeline/v2/domain/StepDescriptorRegistry;)Ljava/util/List;
+	public static synthetic fun entries$default (Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogue;Ldev/rubentxu/pipeline/v2/domain/step/StepRegistry;Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveRegistry;Ldev/rubentxu/pipeline/v2/domain/StepDescriptorRegistry;ILjava/lang/Object;)Ljava/util/List;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCatchesInterruptions ()Z
+	public final fun getIntroduces ()Ljava/lang/String;
+	public final fun getInvocation ()Ljava/lang/String;
+	public final fun getKind ()Ljava/lang/String;
+	public final fun getOwner ()Ljava/lang/String;
+	public final fun getPolicy ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry {
+	public abstract fun getDeprecation ()Ljava/lang/String;
+	public abstract fun getJenkinsSurface ()Ljava/lang/String;
+	public abstract fun getKey ()Ljava/lang/String;
+	public abstract fun getKind ()Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind;
+	public abstract fun getName ()Ljava/lang/String;
+	public abstract fun getProvider ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Directive : dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Directive;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Directive;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Directive;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getDeprecation ()Ljava/lang/String;
+	public fun getJenkinsSurface ()Ljava/lang/String;
+	public fun getKey ()Ljava/lang/String;
+	public fun getKind ()Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind;
+	public fun getName ()Ljava/lang/String;
+	public final fun getPhase ()Ljava/lang/String;
+	public final fun getPolicy ()Ljava/lang/String;
+	public final fun getPolicyDetail ()Ljava/lang/String;
+	public fun getProvider ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind : java/lang/Enum {
+	public static final field DIRECTIVE Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind;
+	public static final field STEP Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step : dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Ljava/lang/String;
+	public final fun component11 ()Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;
+	public final fun component12 ()Ljava/lang/String;
+	public final fun component13 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/util/List;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBody ()Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;
+	public fun getDeprecation ()Ljava/lang/String;
+	public final fun getEffects ()Ljava/util/List;
+	public final fun getExecutionLocation ()Ljava/lang/String;
+	public final fun getInputSchema ()Ljava/lang/String;
+	public fun getJenkinsSurface ()Ljava/lang/String;
+	public fun getKey ()Ljava/lang/String;
+	public fun getKind ()Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind;
+	public fun getName ()Ljava/lang/String;
+	public final fun getOutputSchema ()Ljava/lang/String;
+	public fun getProvider ()Ljava/lang/String;
+	public final fun getRecoveryPolicy ()Ljava/lang/String;
+	public final fun getReplayPolicy ()Ljava/lang/String;
+	public final fun getRequiredCapabilities ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/domain/step/StepCodec {
 	public abstract fun decode-j8uo1iw (Ljava/lang/String;)Ljava/lang/Object;
 	public abstract fun encode-9TXO0do (Ljava/lang/Object;)Ljava/lang/String;

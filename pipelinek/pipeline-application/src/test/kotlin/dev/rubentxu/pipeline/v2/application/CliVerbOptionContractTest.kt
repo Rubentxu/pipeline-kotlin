@@ -143,6 +143,57 @@ class CliVerbOptionContractTest {
         )
     }
 
+    /**
+     * `--parameter-manifest` asks a validation for the manifest an operator approves for the
+     * script, and `validate` is the verb that compiles it.
+     */
+    @Test
+    fun `the verb that validates admits the parameter manifest and applies it`() {
+        val flags = CliExecutionParser.parse(arrayOf("validate", "--parameter-manifest", SCRIPT)).parsed()
+
+        assertTrue(flags.parameterManifest, "validate accepted --parameter-manifest and did not apply it")
+    }
+
+    @Test
+    fun `the verb that runs refuses the two documents of the declaration by naming the verb that owns them`() {
+        assertEquals(
+            CliError.OptionBelongsToVerb("--describe-parameters", "validate", DESCRIBE_BELONGS_TO_VALIDATE),
+            CliExecutionParser.parse(arrayOf("run", "--describe-parameters", SCRIPT)).rejected(),
+            "run does not refuse --describe-parameters by naming the verb that owns it",
+        )
+        assertEquals(
+            CliError.OptionBelongsToVerb("--parameter-manifest", "validate", MANIFEST_BELONGS_TO_VALIDATE),
+            CliExecutionParser.parse(arrayOf("run", "--parameter-manifest", SCRIPT)).rejected(),
+            "run does not refuse --parameter-manifest by naming the verb that owns it",
+        )
+    }
+
+    /**
+     * The declaration is what the script's body builds, so a validation that does not run the
+     * body has none to print: printing an empty one would describe a script that declares
+     * parameters as one that declares none.
+     */
+    @Test
+    fun `a validation that does not run the body refuses to print a declaration it never built`() {
+        assertEquals(
+            CliError.InvalidCombination(DESCRIBE_NEEDS_THE_BODY),
+            CliExecutionParser.parse(arrayOf("validate", "--compile-only", "--describe-parameters", SCRIPT)).rejected(),
+        )
+        assertEquals(
+            CliError.InvalidCombination(MANIFEST_NEEDS_THE_BODY),
+            CliExecutionParser.parse(arrayOf("validate", "--parameter-manifest", "--compile-only", SCRIPT)).rejected(),
+        )
+    }
+
+    @Test
+    fun `a validation prints one document of the declaration, not two`() {
+        assertEquals(
+            CliError.InvalidCombination(ONE_DOCUMENT),
+            CliExecutionParser.parse(arrayOf("validate", "--describe-parameters", "--parameter-manifest", SCRIPT))
+                .rejected(),
+        )
+    }
+
     @Test
     fun `the verb that reads refuses the receipt by naming it`() {
         val error = CliObservationParser.parse(arrayOf("--receipt", RECEIPT, RUN_ID)).rejected()
@@ -326,5 +377,26 @@ class CliVerbOptionContractTest {
          */
         const val COMPILE_ONLY_BELONGS_TO_VALIDATE =
             "'run' executes the script, so compiling it without running it is 'validate --compile-only'."
+
+        /** Why the description of the declaration is refused by the verb that runs the script. */
+        const val DESCRIBE_BELONGS_TO_VALIDATE =
+            "'run' executes the script, so describing its parameters is 'validate --describe-parameters'."
+
+        /** Why the manifest of the declaration is refused by the verb that runs the script. */
+        const val MANIFEST_BELONGS_TO_VALIDATE =
+            "'run' executes the script, so writing the manifest of its parameters is " +
+                "'validate --parameter-manifest'."
+
+        const val DESCRIBE_NEEDS_THE_BODY =
+            "--describe-parameters prints the declaration the script's body builds, and " +
+                "--compile-only does not run the body"
+
+        const val MANIFEST_NEEDS_THE_BODY =
+            "--parameter-manifest prints the declaration the script's body builds, and " +
+                "--compile-only does not run the body"
+
+        const val ONE_DOCUMENT =
+            "--describe-parameters and --parameter-manifest each print one document on the " +
+                "standard output; ask for one of them"
     }
 }

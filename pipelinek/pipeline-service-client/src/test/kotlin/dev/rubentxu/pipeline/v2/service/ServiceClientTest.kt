@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.service
 
 import dev.rubentxu.pipeline.v2.domain.AttemptId
+import dev.rubentxu.pipeline.v2.domain.ParameterSpec
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -292,6 +293,40 @@ class ServiceClientTest {
         assertEquals(mapOf("dryRun" to "false"), started.parameters)
     }
 
+    @Test
+    fun `a description is read with the declaration it carries and the digest that names it`() {
+        val channel = FakeChannel(listOf(describedAnswer(DECLARATION, ServiceCodec.parameterContractDigest(DECLARATION))))
+
+        val described = client(channel).describeParameters("deploy.pipeline.kts").value<ServiceParameterDescription>()
+
+        assertEquals(DECLARATION, described.contract, "the declaration comes back whole and in its order")
+        assertEquals(ServiceCodec.parameterContractDigest(DECLARATION), described.contractSha256)
+        assertEquals(
+            """{"schema":"pipelinek.service/2","auth":"token-1","op":"describe.parameters","script":"deploy.pipeline.kts"}""",
+            channel.written.single(),
+        )
+    }
+
+    @Test
+    fun `a description whose declaration is not the one its digest names is not a description`() {
+        // A client that started a run under this declaration would start it under a contract
+        // nobody approved: the digest names another one.
+        val other = listOf(ParameterSpec("target", "string", "production"))
+        val channel = FakeChannel(listOf(describedAnswer(DECLARATION, ServiceCodec.parameterContractDigest(other))))
+
+        val answer = client(channel).describeParameters("deploy.pipeline.kts")
+
+        val unreadable = assertInstanceOf(ServiceAnswer.Unreadable::class.java, answer)
+        assertTrue(unreadable.detail.contains("digest"), "the negative says what did not match: ${unreadable.detail}")
+    }
+
+    /** The line of a service that describes a script with [contract], named by [contractSha256]. */
+    private fun describedAnswer(contract: List<ParameterSpec>, contractSha256: String): String =
+        """{"schema":"pipelinek.service/2","kind":"answer","result":{""" +
+            """"description":{"type":"object"},""" +
+            """"contract":${ServiceCodec.encodeParameterContract(contract)},""" +
+            """"contractSha256":"$contractSha256"}}"""
+
     /**
      * The value of an answer, when the answer carried one.
      *
@@ -354,5 +389,12 @@ class ServiceClientTest {
         override fun write(line: String) = throw IOException("no service at the endpoint")
         override fun readLine(): ServiceRead = ServiceRead.Closed
         override fun close() = Unit
+    }
+
+    private companion object {
+        val DECLARATION: List<ParameterSpec> = listOf(
+            ParameterSpec("target", "string"),
+            ParameterSpec("region", "choice", "eu", listOf("eu", "us")),
+        )
     }
 }

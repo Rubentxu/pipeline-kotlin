@@ -65,15 +65,33 @@ sealed interface ServiceAnswer<out T> {
 data class ServiceVersion(val schema: String, val productVersion: String)
 
 /**
- * The description of the parameters a script declares.
+ * The description of the parameters a script declares, as an approved manifest declares them.
  *
- * It is a JSON Schema 2020-12 document, and it is the SAME declaration the script carries:
- * a representation of it, and not another contract. A service that cannot describe a script
- * answers the request with a refusal instead of with one of these.
+ * ## What it carries
+ *
+ * - [description] is a JSON Schema 2020-12 document of the parameters: every value is a text,
+ *   the parameters without a default are `required`, a boolean or a choice carries its `enum`,
+ *   and a name the declaration does not carry is refused by `additionalProperties: false`. It
+ *   is a REPRESENTATION of [contract] for a form, and not another contract.
+ * - [contract] is the declaration itself, in the order it declares the parameters and in the
+ *   shape a start sends it: the client that starts the run hands it back as the start's
+ *   `parameterContract`, and the service checks the values against the same rules it judged
+ *   the declaration with.
+ * - [contractSha256] names [contract]: it is [ServiceCodec.parameterContractDigest] of it, and
+ *   the client has already checked that it is.
+ *
+ * ## Where it comes from
+ *
+ * From the manifest an operator approved next to the script, and never from the script: the
+ * service does not compile or run the script to describe it. A script without an approved
+ * manifest, or one that changed after its manifest was approved, is answered with a refusal
+ * instead of with one of these.
  */
 data class ServiceParameterDescription(
     val schema: String,
     val description: JsonObject,
+    val contract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec>,
+    val contractSha256: String,
 )
 
 /**
@@ -649,27 +667,42 @@ class ServiceClient internal constructor(
     /**
      * Asks the service to DESCRIBE the parameters of [script].
      *
+     * ## Where the description comes from
+     *
+     * From the manifest an operator approved for the script —`<script>.parameters.json`, next
+     * to it under the service's root of scripts, written by `pipelinek validate
+     * --parameter-manifest`— and never from the script itself: describing a script by
+     * compiling it would run the author's code inside the service. The service checks that
+     * the manifest still describes the script it names, that its contract is the one its
+     * digest names, and that the declaration is one a start would accept.
+     *
      * ## What the answer is
      *
-     * A refusal, on a service that does not compile the scripts it is asked about:
-     * describing the parameters of a script means compiling it, and compiling it means
-     * running the author's code inside the service.
+     * The description, the contract and its digest (see [ServiceParameterDescription]), or a
+     * refusal: `script-not-admitted` for a script the service would not start, and
+     * `describe-parameters-refused` with the reason when the script has no approved manifest,
+     * when the manifest cannot be read or its contract does not match its digest, when the
+     * script changed after the manifest was approved, or when the declaration is not one a
+     * start accepts.
      *
-     * ## Why the name is in the vocabulary
-     *
-     * Because a service that CAN describe a script —one that admits an artifact that was
-     * authorized beforehand— answers the same request, and a client written against the
-     * name works with both. A client that had no way to ask could only find out by
-     * starting a run and reading the operator's log.
-     *
-     * The description a client needs before it starts a run comes from the compiler, or
-     * from the contract it already carries.
+     * An answer whose contract is not the one its digest names is `Unreadable`, and not a
+     * description: a client that started a run under it would start it under a contract
+     * nobody approved.
      */
     fun describeParameters(script: String): ServiceAnswer<ServiceParameterDescription> =
         ask(ServiceRequest.DescribeParameters(schema, script)).narrow { result ->
             val description = result["description"] as? JsonObject
                 ?: return@narrow ServiceAnswer.Unreadable("no description")
-            ServiceAnswer.Answered(ServiceParameterDescription(schema, description))
+            val contract = result["contract"]?.let { decodeParameterContract(it) }
+                ?: return@narrow ServiceAnswer.Unreadable("no contract")
+            val contractSha256 = (result["contractSha256"] as? JsonPrimitive)?.contentOrNull
+                ?: return@narrow ServiceAnswer.Unreadable("no contract digest")
+            if (contractSha256 != ServiceCodec.parameterContractDigest(contract)) {
+                return@narrow ServiceAnswer.Unreadable(
+                    "the contract the answer carries is not the one its digest names",
+                )
+            }
+            ServiceAnswer.Answered(ServiceParameterDescription(schema, description, contract, contractSha256))
         }
 
     /**

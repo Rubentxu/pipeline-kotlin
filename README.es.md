@@ -157,7 +157,7 @@ Una petición por línea, una respuesta por línea, en JSON, con la versión del
 {"schema":"pipelinek.service/2","kind":"refused","refusal":{"kind":"unknown-run","runId":"34b28ddc-…"}}
 ```
 
-El servicio lee tres cosas: `version` (la versión del producto y la del protocolo), `health` (el servicio y el sustrato con el que se compuso) y `run.state` (el estado de una ejecución, la misma respuesta que imprime `inspect --state` sobre el mismo almacén). También puede ARRANCAR una ejecución, CANCELAR una y RESPONDER la pregunta de una, que son una cuarta, una quinta y una sexta puerta, cada una con un derecho propio. Cada rechazo lleva un nombre — `unknown-run`, `incompatible-protocol`, `unknown-op`, `unknown-operation`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `configuration-provider-refused`, `credential-provider-refused`, `cancel-not-authorized`, `run-cancel-refused`, `answer-not-authorized`, `input-answer-refused` — para que el cliente lea una palabra y no una frase.
+El servicio lee tres cosas: `version` (la versión del producto y la del protocolo), `health` (el servicio y el sustrato con el que se compuso) y `run.state` (el estado de una ejecución, la misma respuesta que imprime `inspect --state` sobre el mismo almacén). También puede ARRANCAR una ejecución, CANCELAR una y RESPONDER la pregunta de una, que son una cuarta, una quinta y una sexta puerta, cada una con un derecho propio. Cada rechazo lleva un nombre — `unknown-run`, `incompatible-protocol`, `unknown-op`, `unknown-operation`, `request-too-large`, `too-many-connections`, `not-authorized`, `run-not-authorized`, `too-many-subscriptions`, `start-not-authorized`, `script-not-admitted`, `workspace-not-admitted`, `idempotency-conflict`, `too-many-supervised-runs`, `run-start-refused`, `run-configuration-refused`, `configuration-provider-refused`, `credential-provider-refused`, `cancel-not-authorized`, `run-cancel-refused`, `answer-not-authorized`, `input-answer-refused`, `parameters-refused`, `describe-parameters-refused` — para que el cliente lea una palabra y no una frase.
 
 Un cliente **negocia** preguntando primero `version`. Un servicio del mismo protocolo la responde con su protocolo y su build; un servicio de otro protocolo la rechaza con `incompatible-protocol`, antes de cualquier pregunta sobre una ejecución; y una build de este protocolo a la que le falta una pregunta que el cliente hace la rechaza con `unknown-op`. El protocolo no tiene una operación de capacidades propia: lo que admite esta build, y si cada capacidad está publicada, es experimental o está obsoleta, es lo que imprime `pipelinek capabilities`, y un cliente no lee una capacidad experimental como una estable.
 
@@ -201,6 +201,31 @@ La petición puede además llevar una **configuración**: los pares NOMBRE/VALOR
 La respuesta **devuelve** la configuración, y ese es el motivo: el esquema del cable no cambia cuando una operación gana un campo, así que un servicio que no conoce el campo lo ignora en silencio y arranca la ejecución SIN la configuración — y el cliente, que la mandó y vio una respuesta bien formada, cree en una configuración que no está ahí. El eco convierte ese silencio en un hecho, y el cliente tipado que compara el eco con lo que mandó convierte el hecho en un negativo con nombre (`unreadable`: la ejecución EXISTE, así que el operador tiene que poder cancelarla).
 
 La configuración es un **canal público, y lo dice**. No hay oráculo que distinga un secreto de un texto plano, así que el servicio no puede prometer guardar un secreto: los valores se escriben en la instantánea que el servicio posee (modo `0600`, en su propio directorio de supervisión), están en el ambiente de los pasos y, si un paso los imprime, están en la salida de la ejecución. Lo que el servicio rechaza es el vocabulario del producto — `PIPELINE_*`, `PIPELINEK_*` y `DURABLE_SH_*`, los nombres que la caja quita de un ambiente, y `JAVA_HOME`/`M2_HOME`/`PATH`, que el lanzador consume para construir el PATH de un paso — por su nombre, con `run-configuration-refused` y un motivo (`the-configuration-name-is-reserved`, `the-configuration-name-is-denied`, `the-configuration-name-is-a-path-anchor`, …). Una configuración que rompe una regla NO ocupa la clave del cliente: el cliente puede corregirla y repetir con la misma clave.
+
+#### Una ejecución con parámetros, y la descripción de sus parámetros
+
+Un script declara sus parámetros como lo hace un Jenkinsfile —`parameters { string("target", default = "staging"); boolean("dryRun"); choice("region", listOf("eu", "us"), default = "eu") }`— y un cliente puede preguntar al servicio cuáles son ANTES de arrancar la ejecución. El servicio responde desde un **manifiesto que el operador aprobó**, y nunca compila el script para responder: compilar un script ejecuta código del script, y un cliente que puede pedir una descripción no puede ejecutarlo.
+
+El operador escribe el manifiesto en su lado y lo coloca junto al script, dentro del directorio de `--scripts`:
+
+```bash
+pipelinek validate --parameter-manifest scripts/build.kts > scripts/build.kts.parameters.json
+```
+
+El manifiesto lleva la declaración, su digest y el digest de los bytes del script, y nada del cuerpo del script. La petición nombra el script, y la respuesta lleva el JSON Schema de los valores que acepta un arranque (cada valor es un texto; un `boolean` se describe con `"true"` y `"false"`, un `choice` con sus textos), la propia declaración en la forma en que la lleva un arranque, y su digest:
+
+```json
+{"schema":"pipelinek.service/2","op":"describe.parameters","script":"build.kts","auth":"…"}
+{"schema":"pipelinek.service/2","kind":"answer","result":{"description":{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"target":{"type":"string","default":"staging"},"dryRun":{"type":"string","enum":["true","false"]},"region":{"type":"string","enum":["eu","us"],"default":"eu"}},"required":["dryRun"],"propertyNames":{…},"additionalProperties":false},"contract":[{"name":"target","type":"string","defaultValue":"staging"},{"name":"dryRun","type":"boolean"},{"name":"region","type":"choice","defaultValue":"eu","choices":["eu","us"]}],"contractSha256":"…"}}
+```
+
+El cliente tipado comprueba `contractSha256` contra el `contract` que recibió y lee como `unreadable` una respuesta cuyo digest no casa. Un arranque lleva después los valores y la declaración contra la que se rellenaron, y el hijo comprueba los valores contra la declaración del script que compiló:
+
+```json
+{"schema":"pipelinek.service/2","op":"run.start","script":"build.kts","idempotencyKey":"order-42","parameters":{"dryRun":"false"},"parameterContract":[{"name":"target","type":"string","defaultValue":"staging"},…],"auth":"…"}
+```
+
+Una descripción que el servicio no puede producir se rechaza con `describe-parameters-refused` y un motivo: `the-script-has-no-approved-manifest`, `the-manifest-is-not-readable`, `the-manifest-contract-does-not-match-its-digest`, `the-script-changed-since-its-manifest-was-approved` (el script se editó después de aprobar el manifiesto: el operador aprueba uno nuevo), `the-script-is-not-readable`, o un motivo de las reglas de los parámetros cuando la declaración es una que un arranque rechazaría. Los valores que rompen la declaración se rechazan con `parameters-refused` y un motivo (`the-parameter-is-missing`, `the-parameter-is-unknown`, `the-parameter-has-the-wrong-type`, …): el cliente corrige el valor y lo vuelve a mandar. Un nombre que un arranque no admitiría es también aquí `script-not-admitted`, así que describir nunca es una forma de mirar fuera del directorio de los scripts.
 
 #### Una ejecución cuya configuración suministra un controlador
 

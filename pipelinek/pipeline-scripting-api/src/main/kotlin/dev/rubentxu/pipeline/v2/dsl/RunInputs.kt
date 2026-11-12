@@ -200,8 +200,16 @@ class RunInputs private constructor(
          * of the caller: the caller cannot fix it, and a refusal that named the caller would
          * send it to fix something it never wrote. The default is part of the declaration, and
          * the declaration is checked first.
+         *
+         * ## Why it can be asked on its own
+         *
+         * Because a declaration can be judged before any value exists: the service judges the
+         * declaration of an approved manifest before it describes it, and a description of a
+         * declaration [of] would refuse is a form whose every submission is refused. Asking
+         * [of] with no values would not answer that question, because a declaration with a
+         * required parameter is refused for the missing value and not for itself.
          */
-        private fun declarationRefusal(declaration: List<ParameterSpec>): RunInputsRefusal? {
+        fun declarationRefusal(declaration: List<ParameterSpec>): RunInputsRefusal? {
             val seen = HashSet<String>()
             for (spec in declaration) {
                 if (!NAME_PATTERN.matches(spec.name)) {

@@ -437,6 +437,54 @@ class ServiceOperationsTest {
         }
     }
 
+    @Test
+    fun `a described script is answered with its schema, its declaration and the digest of the declaration`() {
+        val contract = listOf(
+            dev.rubentxu.pipeline.v2.domain.ParameterSpec("target", "string"),
+            dev.rubentxu.pipeline.v2.domain.ParameterSpec("region", "choice", "eu", listOf("eu", "us")),
+        )
+        val digest = dev.rubentxu.pipeline.v2.service.ServiceCodec.parameterContractDigest(contract)
+        val asked = mutableListOf<String>()
+        val operations = operations(
+            observation = terminalRun(),
+            parameterDescriptions = { script ->
+                asked += script
+                ServiceParameterDescribing.Described(contract, digest)
+            },
+        )
+
+        val result = resultOf(operations.answer(ServiceRequest.DescribeParameters(ServiceProtocol.SCHEMA, "deploy.kts")))
+
+        assertEquals(listOf("deploy.kts"), asked, "the describer is asked about the script the request names")
+        assertEquals(setOf("description", "contract", "contractSha256"), result.keys)
+        assertEquals(dev.rubentxu.pipeline.v2.dsl.ParameterDescription.of(contract), result["description"])
+        assertEquals(dev.rubentxu.pipeline.v2.service.ServiceCodec.encodeParameterContract(contract), result["contract"])
+        assertEquals(digest, result.getValue("contractSha256").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `a script the describer refuses is refused with the describer's refusal`() {
+        val refusal = ServiceRefusal.DescribeParametersRefused("the-script-has-no-approved-manifest", "none")
+        val operations = operations(
+            observation = terminalRun(),
+            parameterDescriptions = { ServiceParameterDescribing.Refused(refusal) },
+        )
+
+        assertEquals(
+            ServiceResponse.Refused(ServiceProtocol.SCHEMA, refusal),
+            operations.answer(ServiceRequest.DescribeParameters(ServiceProtocol.SCHEMA, "deploy.kts")),
+        )
+    }
+
+    @Test
+    fun `a service without a describer admits no script to be described`() {
+        assertEquals(
+            ServiceResponse.Refused(ServiceProtocol.SCHEMA, ServiceRefusal.ScriptNotAdmitted("deploy.kts")),
+            operations(observation = terminalRun())
+                .answer(ServiceRequest.DescribeParameters(ServiceProtocol.SCHEMA, "deploy.kts")),
+        )
+    }
+
     /**
      * The result of an answer, read as a document.
      */
@@ -458,6 +506,7 @@ class ServiceOperationsTest {
         refusal: IntrospectionRefusal? = null,
         cancellations: ServiceRunCancellation? = null,
         inputs: ServiceInputAnswers? = null,
+        parameterDescriptions: ServiceParameterDescriber? = null,
     ): ServiceOperations = ServiceOperations(
         introspection = AnsweringPort(
             if (refusal != null) {
@@ -477,6 +526,7 @@ class ServiceOperationsTest {
         starts = ServiceTestStarter(),
         cancellations = cancellations,
         inputs = inputs,
+        parameterDescriptions = parameterDescriptions,
     )
 
     /** The answers over [tmp], for a run that is alive and one authorization behind [DIGEST]. */

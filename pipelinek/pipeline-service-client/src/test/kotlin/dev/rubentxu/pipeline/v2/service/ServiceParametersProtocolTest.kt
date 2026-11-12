@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 
 /**
  * The parameters of a run, on the wire.
@@ -17,12 +19,17 @@ import org.junit.jupiter.api.Test
  *
  * ## Why the DECLARATION travels
  *
- * Because the service does not compile the scripts it is asked about: describing a script's
- * parameters is compiling it, and compiling it is running the author's code inside the
- * service. The declaration the client carries is therefore the contract the service can
- * check against, and it is DATA: the authority is the declaration of the script, and the
- * child verifies the values against it before the body runs.
+ * Because the service never compiles a script to learn what it declares: compiling it would
+ * run the author's code inside the service. The declaration comes from the manifest an
+ * operator approved for the script, a description hands it to the client, and the client
+ * hands it back with the start, so the service checks the values against DATA. The
+ * authority is still the declaration of the script: the child verifies the values against
+ * it before the body runs.
+ *
+ * A declaration with a blank name, type or choice is a shape no parameter of the domain can
+ * carry, so the line that carries one is malformed, and never an exception.
  */
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class ServiceParametersProtocolTest {
 
     @Test
@@ -202,17 +209,35 @@ class ServiceParametersProtocolTest {
     }
 
     @Test
+    fun `a declaration with a blank name, type or choice is a malformed line, and not an exception`() {
+        for (entry in listOf(
+            """{"name":" ","type":"string"}""",
+            """{"name":"target","type":""}""",
+            """{"name":"mode","type":"choice","choices":["fast",""]}""",
+        )) {
+            val decoded = ServiceCodec.decode(
+                """{"schema":"pipelinek.service/2","op":"run.start","script":"build.kts",""" +
+                    """"parameterContract":[$entry]}""",
+            )
+
+            val refused = assertInstanceOf(ServiceDecoding.Refused::class.java, decoded, "the entry $entry")
+            assertEquals(ServiceRefusal.MalformedRequest, refused.refusal, "the entry $entry")
+        }
+    }
+
+    @Test
     fun `the refusal of a description has a name of its own`() {
         // The refusal of a DESCRIPTION is not the refusal of the VALUES: the
-        // values are fixed and sent again, and a description this service
-        // cannot produce is asked of somebody else. One word for both would
-        // make the client read the reason to tell them apart.
+        // values are fixed and sent again, and a description the service
+        // cannot produce is asked of the operator, who approves a manifest.
+        // One word for both would make the client read the reason to tell
+        // them apart.
         val line = ServiceCodec.encode(
             ServiceResponse.Refused(
                 ServiceProtocol.SCHEMA,
                 ServiceRefusal.DescribeParametersRefused(
-                    "the-service-does-not-describe-parameters",
-                    "describing the parameters of a script means compiling it",
+                    "the-script-has-no-approved-manifest",
+                    "there is no approved manifest 'build.kts.parameters.json' next to the script",
                 ),
             ),
         )
@@ -223,7 +248,7 @@ class ServiceParametersProtocolTest {
             ServiceRefusal.DescribeParametersRefused::class.java,
             refused.refusal,
         )
-        assertEquals("the-service-does-not-describe-parameters", description.reason)
-        assertTrue(description.detail.contains("compiling"))
+        assertEquals("the-script-has-no-approved-manifest", description.reason)
+        assertTrue(description.detail.contains("build.kts.parameters.json"), "the detail travels whole")
     }
 }

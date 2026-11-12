@@ -11,77 +11,6 @@ import kotlin.script.experimental.jvm.BasicJvmScriptEvaluator
 import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
 
 /**
- * A [BasicJvmScriptingHost] that reuses a previously compiled script instead of
- * recompiling it.
- * The cache key arrives as a **constructor argument** rather than being derived
- * here. That is the whole design: identity is owned by [Kotlin24ScriptingHost],
- * which already computes it once per compilation for the emitted
- * `CompilationFinished`. If this class re-derived it from the source and the
- * compilation configuration, two derivations would exist for one compilation,
- * and a divergence between them would serve the wrong artifact silently —
- * The second-authority defect forbids. Passing the key also means this
- * host carries no mutable state, which the explicit-immutable-context law
- * Requires of anything that participates in execution
- * ### Why the override is not a reimplementation
- * `BasicScriptingHost.eval` is `compiler.invoke(source, compilationConfiguration)`
- * and, on success, `evaluator.invoke(compiled.value,
- * evaluationConfiguration ?: ScriptEvaluationConfiguration.Default)` with the
- * compile diagnostics merged into the result via `ResultWithDiagnostics.plus`.
- * That body was read out of the shipped bytecode before this class was written,
- * and it is reproduced here call for call against the same `compiler` and
- * `evaluator` instances the superclass would have used. The only additions are
- * the store, consulted before the compile, and the recovery described below.
- * On a hit the compile is skipped and the loaded artifact goes straight to the
- * evaluator with the same configuration the superclass would have used, so a
- * reused script is evaluated exactly as a freshly compiled one.
- * ### A stored artifact that loads but cannot be evaluated
- * `loadScriptFromJar` returning a value is not proof that the artifact is
- * usable. Measured on the installed CLI : a jar truncated to a
- * quarter of its bytes still loads — the entry the loader reads is at the front
- * of the file — and it fails at evaluation, not at load. The failure arrives as
- * a `RuntimeException` thrown by
- * `KJvmCompiledScriptLazilyLoadedFromClasspath.getScriptOrError()`, which is why
- * the recovery below catches an exception rather than inspecting the result.
- * Because a hit never stored anything, the damaged entry then served that same
- * failure on every subsequent run — the exact opposite of the interface's
- * contract that every failure degrades to a miss.
- * That failure is recognised by its **origin**, not by its text: the decision
- * reads the frame the exception was raised from, and compares it with the
- * loader's own class and method. The text of the message is upstream's, and a
- * decision that reads it is a decision about a string this project does not own.
- * A throwable from this call is infrastructure, not the author's script: a script
- * whose body throws is reported by the evaluator as a `ResultValue.Error`, so it
- * arrives as a result rather than an exception. The catch is therefore narrowed
- * to `RuntimeException` rather than `Throwable`, so an `Error` (an exhausted heap,
- * a linkage failure the JVM cannot continue past) still propagates instead of
- * being silently converted into a recompile.
- * Coverage boundary, stated rather than implied: a damage mode that made the
- * artifact load *and* evaluate into a wrong-but-successful result is not
- * addressed here and cannot be detected from inside the host. Two classes are
- * measured — unreadable at load, and throwable at evaluation — and those are the
- * two the store degrades from.
- * @param cache where to look and to store; [CompiledScriptCache.Disabled] to
- *   keep the uncached behaviour.
- * @param cacheKey the identity of the one compilation this host exists to run.
- * @param lookup the ANSWER to the cache question, resolved by the caller.
- *   The lookup is not performed here: the owner of the compilation
- *   ([Kotlin24ScriptingHost]) already knows the key, already asks the store
- *   once, and has to publish what it found before the compilation starts — the
- *   console says "reusing compiled pipeline" or "compiling pipeline" from that
- *   answer. Asking the store again here would be a second answer to one
- *   question, and the two could disagree: the console would announce a reuse
- *   while this host compiled, or the reverse.
- * @param evaluator the step that RUNS the compiled script.
- *   It is a constructor argument because the compilation and the evaluation are
- *   two different promises, and only one of them is always kept. The default is
- *   upstream's own evaluator — the one the superclass would have used — so a
- *   host that says nothing about it behaves exactly as it did before. A host
- *   that is handed a different evaluator compiles the SAME way and evaluates
- *   differently, and that is the only difference the swap makes: the
- *   compilation configuration, the classpath, the default imports and the
- *   compiler options are all built by the superclass either way.
-*/
-/**
  * Why an evaluation of a cache-loaded artifact threw.
  *
  * The distinction is the whole safety rule. [UnloadedArtifact] is the one
@@ -147,6 +76,90 @@ fun classifyEvaluationFailure(throwable: Throwable): EvaluationFailure {
     }
 }
 
+/**
+ * A [BasicJvmScriptingHost] that reuses a previously compiled script instead of
+ * recompiling it.
+ * The cache key arrives as a **constructor argument** rather than being derived
+ * here. That is the whole design: identity is owned by [Kotlin24ScriptingHost],
+ * which already computes it once per compilation for the emitted
+ * `CompilationFinished`. If this class re-derived it from the source and the
+ * compilation configuration, two derivations would exist for one compilation,
+ * and a divergence between them would serve the wrong artifact silently —
+ * The second-authority defect forbids. Passing the key also means this
+ * host carries no mutable state, which the explicit-immutable-context law
+ * Requires of anything that participates in execution
+ * ### Why the override is not a reimplementation
+ * `BasicScriptingHost.eval` is `compiler.invoke(source, compilationConfiguration)`
+ * and, on success, `evaluator.invoke(compiled.value,
+ * evaluationConfiguration ?: ScriptEvaluationConfiguration.Default)` with the
+ * compile diagnostics merged into the result via `ResultWithDiagnostics.plus`.
+ * That body was read out of the shipped bytecode before this class was written,
+ * and it is reproduced here call for call against the same `compiler` and
+ * `evaluator` instances the superclass would have used. The only additions are
+ * the store, consulted before the compile, and the recovery described below.
+ * On a hit the compile is skipped and the loaded artifact goes straight to the
+ * evaluator with the same configuration the superclass would have used, so a
+ * reused script is evaluated exactly as a freshly compiled one.
+ * ### What a reuse says in the compiler's place
+ * The compiler is where the diagnostics of a compilation come from, and a hit
+ * skips it. A compilation therefore stores its reports with the artifact
+ * ([CompilationReports]), and a hit publishes them ahead of the evaluator's,
+ * in the order the superclass merges a fresh compilation's: a script compiled
+ * "with 1 warning" is reused with that same warning, and not with none. A
+ * report about the compiled script names the script this host compiles, not
+ * the one that stored the artifact: the key is the text, not the file.
+ * ### A stored artifact that loads but cannot be evaluated
+ * `loadScriptFromJar` returning a value is not proof that the artifact is
+ * usable. Measured on the installed CLI : a jar truncated to a
+ * quarter of its bytes still loads — the entry the loader reads is at the front
+ * of the file — and it fails at evaluation, not at load. The failure arrives as
+ * a `RuntimeException` thrown by
+ * `KJvmCompiledScriptLazilyLoadedFromClasspath.getScriptOrError()`, which is why
+ * the recovery below catches an exception rather than inspecting the result.
+ * Because a hit never stored anything, the damaged entry then served that same
+ * failure on every subsequent run — the exact opposite of the interface's
+ * contract that every failure degrades to a miss.
+ * The jar store reads the reports of the compilation through the jar's
+ * directory, at the end of the file, so it refuses a truncated jar of its own
+ * at load. The recovery stays for the artifact that loads and then fails: the
+ * lazy loader reads the jar only at evaluation, and a jar that changes between
+ * the two is still caught here.
+ * That failure is recognised by its **origin**, not by its text: the decision
+ * reads the frame the exception was raised from, and compares it with the
+ * loader's own class and method. The text of the message is upstream's, and a
+ * decision that reads it is a decision about a string this project does not own.
+ * A throwable from this call is infrastructure, not the author's script: a script
+ * whose body throws is reported by the evaluator as a `ResultValue.Error`, so it
+ * arrives as a result rather than an exception. The catch is therefore narrowed
+ * to `RuntimeException` rather than `Throwable`, so an `Error` (an exhausted heap,
+ * a linkage failure the JVM cannot continue past) still propagates instead of
+ * being silently converted into a recompile.
+ * Coverage boundary, stated rather than implied: a damage mode that made the
+ * artifact load *and* evaluate into a wrong-but-successful result is not
+ * addressed here and cannot be detected from inside the host. Two classes are
+ * measured — unreadable at load, and throwable at evaluation — and those are the
+ * two the store degrades from.
+ * @param cache where to look and to store; [CompiledScriptCache.Disabled] to
+ *   keep the uncached behaviour.
+ * @param cacheKey the identity of the one compilation this host exists to run.
+ * @param lookup the ANSWER to the cache question, resolved by the caller.
+ *   The lookup is not performed here: the owner of the compilation
+ *   ([Kotlin24ScriptingHost]) already knows the key, already asks the store
+ *   once, and has to publish what it found before the compilation starts — the
+ *   console says "reusing compiled pipeline" or "compiling pipeline" from that
+ *   answer. Asking the store again here would be a second answer to one
+ *   question, and the two could disagree: the console would announce a reuse
+ *   while this host compiled, or the reverse.
+ * @param evaluator the step that RUNS the compiled script.
+ *   It is a constructor argument because the compilation and the evaluation are
+ *   two different promises, and only one of them is always kept. The default is
+ *   upstream's own evaluator — the one the superclass would have used — so a
+ *   host that says nothing about it behaves exactly as it did before. A host
+ *   that is handed a different evaluator compiles the SAME way and evaluates
+ *   differently, and that is the only difference the swap makes: the
+ *   compilation configuration, the classpath, the default imports and the
+ *   compiler options are all built by the superclass either way.
+ */
 class CachingJvmScriptingHost(
     private val cache: CompiledScriptCache,
     private val cacheKey: CacheKey,
@@ -189,7 +202,11 @@ class CachingJvmScriptingHost(
                 // artifact — and the recovery below overwrites the claim when
                 // the artifact turns out to be unusable.
                 effectiveOrigin = ScriptOrigin.REUSED
-                runInCoroutineContext { evaluator.invoke(lookup.script, evaluationConfig) }
+                // What the compiler said when it produced the artifact goes
+                // first, as a fresh compilation's reports do: the reuse says
+                // what that compilation said, about the script compiled now.
+                val reports = lookup.reports.about(script.locationId)
+                runInCoroutineContext { reports.plus(evaluator.invoke(lookup.script, evaluationConfig)) }
             } catch (failure: RuntimeException) {
                 when (classifyEvaluationFailure(failure)) {
                     // The artifact never reached script code: recompile, and
@@ -213,8 +230,9 @@ class CachingJvmScriptingHost(
     /**
      * Compile, persist, then evaluate — the superclass's order, with the store
      * between the first and the second step so the artifact is durable before
-     * anything is executed with it.
-*/
+     * anything is executed with it. The reports of the compilation are stored
+     * with the artifact, so a later reuse can say what this compilation said.
+     */
     private fun compileAndEvaluate(
         script: SourceCode,
         compilationConfiguration: ScriptCompilationConfiguration,
@@ -227,7 +245,7 @@ class CachingJvmScriptingHost(
             when (val compiled = compiler.invoke(script, compilationConfiguration)) {
                 is ResultWithDiagnostics.Failure -> compiled
                 is ResultWithDiagnostics.Success -> {
-                    cache.store(cacheKey, compiled.value)
+                    cache.store(cacheKey, compiled.value, CompilationReports.of(compiled.reports, script.locationId))
                     compiled.reports.plus(
                         evaluator.invoke(compiled.value, evaluationConfig),
                     )

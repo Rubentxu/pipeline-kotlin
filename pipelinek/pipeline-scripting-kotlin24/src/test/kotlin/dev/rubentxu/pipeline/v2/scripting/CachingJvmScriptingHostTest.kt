@@ -4,7 +4,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import java.io.File
+import java.util.concurrent.TimeUnit
 import kotlin.reflect.KClass
 import kotlin.script.experimental.api.CompiledScript
 import kotlin.script.experimental.api.ResultValue
@@ -27,6 +29,7 @@ import kotlin.script.experimental.host.StringScriptSource
  * runtime's own lazy loader. Nothing is read from disk and no clock is
  * consulted.
  */
+@Timeout(value = 120, unit = TimeUnit.SECONDS)
 class CachingJvmScriptingHostTest {
 
     /**
@@ -38,9 +41,9 @@ class CachingJvmScriptingHostTest {
         var stored: Int = 0
             private set
 
-        override fun load(key: CacheKey): CacheLookup = CacheLookup.Hit(artifact)
+        override fun load(key: CacheKey): CacheLookup = CacheLookup.Hit(artifact, CompilationReports.NONE)
 
-        override fun store(key: CacheKey, script: CompiledScript) {
+        override fun store(key: CacheKey, script: CompiledScript, reports: CompilationReports) {
             stored++
         }
     }
@@ -79,7 +82,7 @@ class CachingJvmScriptingHostTest {
         val cache = CountingCache(UnreadableSourceLocation(boom))
 
         val thrown = assertThrows(RuntimeException::class.java) {
-            host(cache, CacheLookup.Hit(cache.artifact)).eval(
+            host(cache, CacheLookup.Hit(cache.artifact, CompilationReports.NONE)).eval(
                 source("1 + 1"),
                 ScriptCompilationConfiguration.Default,
                 ScriptEvaluationConfiguration.Default,
@@ -106,7 +109,7 @@ class CachingJvmScriptingHostTest {
 
         val cache = CountingCache(broken)
 
-        val result = host(cache, CacheLookup.Hit(broken)).eval(
+        val result = host(cache, CacheLookup.Hit(broken, CompilationReports.NONE)).eval(
             source("1 + 1"),
             ScriptCompilationConfiguration.Default,
             ScriptEvaluationConfiguration.Default,
@@ -135,7 +138,7 @@ class CachingJvmScriptingHostTest {
             .newInstance("com.example.NeverCompiled", emptyList<File>()) as CompiledScript
 
         val cache = CountingCache(broken)
-        val host = host(cache, CacheLookup.Hit(broken))
+        val host = host(cache, CacheLookup.Hit(broken, CompilationReports.NONE))
 
         host.eval(
             source("1 + 1"),
@@ -157,7 +160,7 @@ class CachingJvmScriptingHostTest {
     fun `a hit that serves the run is reported as reused`() {
         val boom = RuntimeException("Compiled script is not loaded yet")
         val cache = CountingCache(UnreadableSourceLocation(boom))
-        val host = host(cache, CacheLookup.Hit(cache.artifact))
+        val host = host(cache, CacheLookup.Hit(cache.artifact, CompilationReports.NONE))
 
         assertThrows(RuntimeException::class.java) {
             host.eval(

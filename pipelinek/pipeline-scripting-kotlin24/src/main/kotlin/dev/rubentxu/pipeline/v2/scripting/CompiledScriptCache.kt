@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.v2.scripting
 
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.util.zip.ZipFile
 import kotlin.script.experimental.api.CompiledScript
 import kotlin.script.experimental.jvm.impl.KJvmCompiledScript
 import kotlin.script.experimental.jvmhost.loadScriptFromJar
@@ -33,6 +35,13 @@ enum class CacheMissReason {
      * not written to.
      */
     UNSAFE_STORE,
+
+    /**
+     * The artifact is there and the reports of the compilation that produced it are not: a version
+     * of the store that did not keep them wrote it. Serving it would publish that compilation as one
+     * the compiler said nothing about, so the script is compiled again and the store replaces it.
+     */
+    INCOMPLETE,
 }
 
 /**
@@ -42,7 +51,11 @@ enum class CacheMissReason {
  * bare `null` that a caller can silently drop.
 */
 sealed interface CacheLookup {
-    data class Hit(val script: CompiledScript) : CacheLookup
+    /**
+     * The stored artifact, and what the compiler said while it produced it: a reuse skips the
+     * compiler, and [reports] are what it publishes in the compiler's place.
+     */
+    data class Hit(val script: CompiledScript, val reports: CompilationReports) : CacheLookup
     data class Miss(val reason: CacheMissReason) : CacheLookup
 }
 
@@ -58,8 +71,11 @@ sealed interface CacheLookup {
 interface CompiledScriptCache {
     fun load(key: CacheKey): CacheLookup
 
-    /** Persist [script] under [key]. Failure is silent by contract; see the interface KDoc. */
-    fun store(key: CacheKey, script: CompiledScript)
+    /**
+     * Persist [script] under [key], with the [reports] of the compilation that produced it.
+     * Failure is silent by contract; see the interface KDoc.
+     */
+    fun store(key: CacheKey, script: CompiledScript, reports: CompilationReports)
 
     /**
      * The store that stores nothing.
@@ -68,7 +84,7 @@ interface CompiledScriptCache {
 */
     object Disabled : CompiledScriptCache {
         override fun load(key: CacheKey): CacheLookup = CacheLookup.Miss(CacheMissReason.ABSENT)
-        override fun store(key: CacheKey, script: CompiledScript) = Unit
+        override fun store(key: CacheKey, script: CompiledScript, reports: CompilationReports) = Unit
     }
 
     companion object {
@@ -115,6 +131,12 @@ interface CompiledScriptCache {
  * the literals of the script that produced it, and those literals may be
  * anybody's business, so a directory another user can read is a directory
  * that is not used at all — neither read from nor written to.
+ *
+ * The reports of the compilation travel IN the jar, as one more entry
+ * ([REPORTS_ENTRY]), and not in a file next to it: one file is moved into place
+ * in one step, so no reader can find an artifact with another compilation's
+ * reports, or reports with no artifact. A jar without the entry was written by
+ * a store that did not keep them, and it is a miss ([CacheMissReason.INCOMPLETE]).
  * @param root directory holding the jars; created private on first store.
 */
 class JarCompiledScriptCache(private val root: Path) : CompiledScriptCache {
@@ -137,6 +159,9 @@ class JarCompiledScriptCache(private val root: Path) : CompiledScriptCache {
         val jar = root.resolve(fileNameFor(key))
         if (!Files.isRegularFile(jar)) return CacheLookup.Miss(CacheMissReason.ABSENT)
         return try {
+            // The reports are read first: an artifact without them is not
+            // served, so there is no point loading it.
+            val reports = reportsIn(jar) ?: return CacheLookup.Miss(CacheMissReason.INCOMPLETE)
             // checkMissingDependencies defaults to true: a jar whose recorded
             // classpath no longer exists is a miss, not a load that fails later
             // inside evaluation with an error the author cannot act on.
@@ -144,7 +169,7 @@ class JarCompiledScriptCache(private val root: Path) : CompiledScriptCache {
             if (loaded == null) {
                 CacheLookup.Miss(CacheMissReason.UNREADABLE)
             } else {
-                CacheLookup.Hit(loaded)
+                CacheLookup.Hit(loaded, reports)
             }
         } catch (t: Throwable) {
             // Truncated, corrupt, or a foreign file. Compiling is always available;
@@ -153,7 +178,7 @@ class JarCompiledScriptCache(private val root: Path) : CompiledScriptCache {
         }
     }
 
-    override fun store(key: CacheKey, script: CompiledScript) {
+    override fun store(key: CacheKey, script: CompiledScript, reports: CompilationReports) {
         if (script !is KJvmCompiledScript) return
         if (!ScriptCacheStore.ensurePrivate(root)) return
         val target = root.resolve(fileNameFor(key))
@@ -164,6 +189,7 @@ class JarCompiledScriptCache(private val root: Path) : CompiledScriptCache {
         }
         try {
             script.saveToJar(tmp.toFile())
+            addReports(tmp, reports)
             // Move into place only once the bytes are complete. A kill between
             // write and move leaves a `.tmp` file, which `load` never reads; a
             // move without this step would leave a truncated jar under the real
@@ -172,6 +198,26 @@ class JarCompiledScriptCache(private val root: Path) : CompiledScriptCache {
             moveIntoPlace(tmp, target)
         } catch (t: Throwable) {
             runCatching { Files.deleteIfExists(tmp) }
+        }
+    }
+
+    /**
+     * The reports in [jar], or null when the jar has none.
+     *
+     * Opening the jar reads its central directory, at the end of the file, so a truncated jar fails
+     * here and is a miss: the artifact never reaches the evaluator.
+     */
+    private fun reportsIn(jar: Path): CompilationReports? = ZipFile(jar.toFile()).use { zip ->
+        val entry = zip.getEntry(REPORTS_ENTRY) ?: return null
+        CompilationReports.decode(zip.getInputStream(entry).use { it.readBytes() })
+    }
+
+    /** Write [reports] into [jar] as one more entry, next to the artifact the platform wrote. */
+    private fun addReports(jar: Path, reports: CompilationReports) {
+        FileSystems.newFileSystem(jar).use { zip ->
+            val entry = zip.getPath(REPORTS_ENTRY)
+            entry.parent?.let { Files.createDirectories(it) }
+            Files.write(entry, reports.encode())
         }
     }
 
@@ -192,5 +238,8 @@ class JarCompiledScriptCache(private val root: Path) : CompiledScriptCache {
          * unrepresentable instead of merely discouraged.
 */
         fun fileNameFor(key: CacheKey): String = "${key.version}-${key.value}.jar"
+
+        /** The entry of the jar that holds the reports of the compilation that produced it. */
+        const val REPORTS_ENTRY: String = "META-INF/pipelinek/compilation-reports"
     }
 }

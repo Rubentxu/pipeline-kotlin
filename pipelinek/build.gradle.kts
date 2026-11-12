@@ -284,6 +284,10 @@ val bcvModules = setOf(
     // client that speaks it. The dump freezes exactly which types a consumer of the SDK
     // resolves, which is the whole point of publishing it.
     "pipeline-service-client",
+    // The definition of a `.pipeline.kts`: the `@KotlinScript` class and its compilation
+    // configuration. An IDE loads this class by name from the template marker, so a rename or
+    // a removed declaration breaks every editor that resolves the artifact.
+    "pipeline-scripting-definition",
 )
 
 // SAST (detekt). Applied to every Kotlin subproject with a single
@@ -818,6 +822,10 @@ val publishedContractModules = listOf(
     // published because a consumer OUTSIDE this repository has to resolve it to talk to
     // the service, and a module nobody can resolve is a module nobody can use.
     "pipeline-service-client",
+    // The definition of a `.pipeline.kts`. It is published because an IDE outside this
+    // repository resolves it to compile a script with the same imports and the same refused
+    // diagnostics the runner applies.
+    "pipeline-scripting-definition",
 )
 
 // ── the second ABI reading: the candidate against the PREVIOUSLY PUBLISHED artifact ──
@@ -884,6 +892,7 @@ val sdkBundleArtifactNames: Map<String, String> = mapOf(
     "pipeline-output" to "pipelinek-output",
     "pipeline-runtime-api" to "pipelinek-runtime-api",
     "pipeline-service-client" to "pipelinek-service-client",
+    "pipeline-scripting-definition" to "pipelinek-scripting-definition",
     "pipeline-sdk-bom" to "pipelinek-sdk-bom",
 )
 
@@ -905,8 +914,9 @@ val legacyPublishedArtifactNames: Map<String, String> = mapOf(
     "pipeline-output" to "pipeline-output",
     "pipeline-runtime-api" to "pipeline-runtime-api",
     "pipeline-sdk-bom" to "pipeline-sdk-bom",
-    // `pipeline-service-client` is NOT here, and its absence is the honest
-    // entry: a module that this release publishes for the FIRST time never
+    // `pipeline-service-client` and `pipeline-scripting-definition` are NOT
+    // here, and their absence is the honest entry: a module that a release
+    // publishes for the FIRST time never
     // carried a legacy name, because there is no legacy version of it. An
     // entry that named one would assert a publication that never happened,
     // and the reading that looks for a previous artifact would go looking
@@ -1053,11 +1063,16 @@ val guardedUnpublishedModules = listOf("pipeline-credentials-api", "pipeline-ste
 extra["publishedApiDumpDirs"] = publishedApiDumpDirs
 extra["publishedApiVersions"] = publishedApiCoordinates.mapValues { it.value.second }
 extra["abiComparedModules"] = publishedContractModules + guardedUnpublishedModules
-// The published coordinate, handed to the modules that have to name it: the BOM that
-// pins the five contracts and the release module that writes the JSON manifest of
-// them. Read from here, so the coordinate is written in ONE place in this build.
+// The published coordinate, handed to the modules that have to name it: the release
+// module that writes the JSON manifest of the contracts and the application that
+// generates the coordinates `pipelinek sdk-info` answers with. Read from here, so the
+// coordinate is written in ONE place in this build.
 extra["sdkBundleGroup"] = sdkBundleGroup
 extra["sdkBundleArtifactNames"] = sdkBundleArtifactNames
+// The set of contracts, handed to the same two modules for the same reason: a module
+// that joins `publishedContractModules` joins the JSON manifest and the CLI's answer
+// without a second list to edit.
+extra["publishedContractModules"] = publishedContractModules
 
 subprojects {
     val publishedModule = publishedContractModules.firstOrNull { ":$it" == project.path }
@@ -1268,6 +1283,9 @@ val sdkBomModules = listOf(
     // The service client, for the same reason: a consumer that pins the platform version
     // pulls the SDK of the service with it, instead of repeating its version.
     "pipeline-service-client",
+    // The script definition, so an IDE project that pins the platform resolves the definition
+    // of the same release as the DSL it compiles against.
+    "pipeline-scripting-definition",
 )
 
 val publishSdkForExternalPlugin by tasks.registering {
@@ -1345,6 +1363,10 @@ val sdkPomMetadata = mapOf(
     "pipeline-service-client" to (
         "PipelineK Service Client" to
             "The wire contract of the PipelineK local service and the typed client that speaks it."
+        ),
+    "pipeline-scripting-definition" to (
+        "PipelineK Scripting Definition" to
+            "The definition of a PipelineK .pipeline.kts: the @KotlinScript class, its compilation configuration and the template marker an IDE discovers it by."
         ),
     "pipeline-sdk-bom" to (
         "PipelineK SDK BOM" to

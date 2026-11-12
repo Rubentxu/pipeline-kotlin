@@ -5,10 +5,12 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 import java.util.jar.JarOutputStream
 import java.util.zip.ZipEntry
 import kotlin.script.experimental.api.CompiledScript
@@ -28,10 +30,11 @@ import kotlin.script.experimental.api.CompiledScript
  * computed from, so a row can say which bytes entered the key and in what
  * order — the thing a digest alone cannot say.
  *
- * Five of the rows read the identity directly; two of them go through
+ * Six of the rows read the identity directly; two of them go through
  * [ScriptingHost.compile] and watch what the cache is asked for, because a
  * computation nobody consults is not a promise anybody keeps.
  */
+@Timeout(value = 120, unit = TimeUnit.SECONDS)
 class CompilationIdentityTest {
 
     @TempDir
@@ -154,6 +157,35 @@ class CompilationIdentityTest {
         )
     }
 
+    /**
+     * A script used to compile as a subclass of `Any`, with options that left a discarded
+     * builder a warning. Its artifact was filed under the identity of that host. Now it
+     * compiles as a subclass of the definition, whose options turn the discard into an
+     * error, so the old artifact must not be found under this host's key.
+     *
+     * Each dimension is checked on its own: one assertion for the host and one for the options.
+     * Either alone is enough to keep the old artifact out, and this row fails if either stops
+     * changing the key.
+     */
+    @Test
+    fun `an artifact compiled before the definition is not found under this host's key`() {
+        val identity = host().cacheIdentityFor(SCRIPT, emptyList()) as CacheIdentity.Verified
+
+        val previousHost = identity.manifest.copy(adapterIdentity = HOST_BEFORE_THE_DEFINITION)
+        val previousOptions = identity.manifest.copy(compilerFlags = OPTIONS_BEFORE_THE_DEFINITION)
+
+        assertNotEquals(
+            CacheKey.Companion.v3.compute(previousHost),
+            identity.key,
+            "the host still claims the identity it had before the definition",
+        )
+        assertNotEquals(
+            CacheKey.Companion.v3.compute(previousOptions),
+            identity.key,
+            "the options of the definition do not change the key",
+        )
+    }
+
     @Test
     fun `the cache is addressed by the key the identity computed`() {
         val cache = RecordingCache()
@@ -202,5 +234,11 @@ class CompilationIdentityTest {
 
     private companion object {
         const val SCRIPT = "1 + 1"
+
+        /** The adapter identity of the host that compiled every script as a subclass of `Any`. */
+        const val HOST_BEFORE_THE_DEFINITION = "1.2.0"
+
+        /** The options that host passed: the checker on, and nothing raising its warnings. */
+        val OPTIONS_BEFORE_THE_DEFINITION = listOf("-Xreturn-value-checker=check", "-Xuse-fast-jar-file-system=false")
     }
 }

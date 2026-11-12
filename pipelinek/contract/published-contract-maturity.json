@@ -54,6 +54,7 @@
     "pipeline-runtime-api": "EXPERIMENTAL",
     "pipeline-credentials-api": "EXPERIMENTAL",
     "pipeline-service-client": "EXPERIMENTAL",
+    "pipeline-scripting-definition": "EXPERIMENTAL",
     "pipeline-application": "EXPERIMENTAL"
   },
   "rationale": {
@@ -295,6 +296,25 @@
       "of the sealed interfaces of the requests and of the refusals, so a consumer with an exhaustive",
       "`when` stops compiling, and no member of the dump was removed: the artifact has never been",
       "published, so no published consumer exists to break."
+    ],
+    "pipeline-scripting-definition": [
+      "EXPERIMENTAL, and the reason is specific: this module publishes the DEFINITION of a",
+      ".pipeline.kts, the @KotlinScript class an IDE loads by name from the template marker",
+      "the artifact carries, and the compilation configuration the runner compiles every",
+      "script with. Its surface is small (one abstract class and one configuration object),",
+      "but its BEHAVIOUR is the larger promise: the default imports a script sees and the",
+      "diagnostics the compiler refuses. Adding an import or raising a diagnostic to an error",
+      "changes which scripts compile without changing a single symbol of the ABI.",
+      "",
+      "Its first publication is the first release whose previous surface for it is EMPTY,",
+      "the same case as the first publication of pipeline-service-client: everything it",
+      "publishes is an addition.",
+      "",
+      "EXPERIMENTAL is the honest classification because no external IDE has resolved this",
+      "artifact yet, and whether an IDE applies the compiler options a definition hands it",
+      "is still being measured. The class name is the part that is already a promise: the",
+      "marker names it, so renaming or moving it breaks every editor that resolves the",
+      "artifact."
     ],
     "pipeline-application": [
       "EXPERIMENTAL, and the reason is specific: this module resolves from NO Maven coordinate",

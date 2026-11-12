@@ -76,6 +76,11 @@ CONTRACTS: list[tuple[str, str, str]] = [
         "pipelinek/pipeline-scripting-api/src/main/kotlin",
     ),
     (
+        "pipeline-scripting-definition",
+        "pipelinek/pipeline-scripting-definition/api/pipeline-scripting-definition.api",
+        "pipelinek/pipeline-scripting-definition/src/main/kotlin",
+    ),
+    (
         "pipeline-service-client",
         "pipelinek/pipeline-service-client/api/pipeline-service-client.api",
         "pipelinek/pipeline-service-client/src/main/kotlin",

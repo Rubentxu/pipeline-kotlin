@@ -15,11 +15,10 @@ import kotlin.script.experimental.api.ScriptEvaluator
  * A `.pipeline.kts` has to be compiled the way the product compiles it — with
  * the DSL's default imports, the per-call classpath and the product's own
  * compiler options — or "it compiles" would be a claim about a DIFFERENT
- * compilation than the one a run performs. That configuration is built by
- * `evalWithTemplate`, and only there: handing the host a pre-built
- * `ScriptCompilationConfiguration` makes the `compilerOptions` key be
- * accepted, stored, and then IGNORED (measured; see the KDoc of
- * [Kotlin24ScriptingHost] for the evidence and the upstream references).
+ * compilation than the one a run performs. That configuration is built in
+ * one place, from the published definition of a `.pipeline.kts`
+ * (`dev.rubentxu.pipeline.v2.scripting.definition.PipelineScript`), and both
+ * paths of [Kotlin24ScriptingHost] share it.
  *
  * So the compilation is left EXACTLY as it was, and the only thing replaced
  * is the evaluator: the step that would RUN the author's body. The body is

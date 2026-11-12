@@ -75,6 +75,17 @@ pipeline {
 
 `validate` compila el script **y evalúa su cuerpo**: un `.pipeline.kts` es código de confianza, no datos. Usa `validate --compile-only` cuando solo quieras saber que compila.
 
+Un valor que el script construye y luego descarta es un **error de compilación**, no un paso que no se ejecutó sin que nadie lo dijera. Un `scmGit(...)` que nunca llega a `checkout(...)` se rechaza con su línea y su columna, dentro de un `stage { }` o en una función auxiliar:
+
+```text
+build.pipeline.kts:9:13: Unused return value of 'scmGit'. It was coerced to 'Unit' due to a functional parameter type.
+VALIDATION FAILED: 1 error
+```
+
+La regla cubre todo resultado que deba usarse, también los de la biblioteca estándar (`"x".uppercase()` solo en su línea se rechaza; `list.add(x)` no). Una llamada de script como `pwd()` ya emite su paso, así que compila como sentencia, igual que en un Jenkinsfile.
+
+La definición de un `.pipeline.kts` (la clase `@KotlinScript`, sus imports y estas opciones del compilador) se publica como `pipelinek-scripting-definition`, para que un IDE compile el script con las mismas reglas que el runner. Es nueva en este árbol: la release 0.97.0 no la lleva.
+
 ### Consultar la ejecución después
 
 Dale a la ejecución un journal y un control root, y cada paso, evento y salida se queda legible:
@@ -532,7 +543,7 @@ Nada de lo anterior es una promesa de compatibilidad: un proyecto declara el ran
 
 Un plugin es un build de Gradle independiente que compila contra el SDK publicado y contra nada más. Declara un `StepContract` — la clave de familia, el descriptor, los códecs tipados y las capacidades que requiere — y un manifiesto con el rango de API con el que se construyó.
 
-El SDK viaja con cada release como `pipelinek-<version>.sdk.zip`: siete artefactos (`pipelinek-domain`, `pipelinek-events`, `pipelinek-output`, `pipelinek-runtime-api`, `pipelinek-scripting-api`, `pipelinek-service-client`, `pipelinek-sdk-bom`) y un BOM que fija sus versiones entre sí. `pipelinek sdk-info` imprime el grupo y las coordenadas exactas contra las que compila un plugin.
+El SDK viaja con cada release como `pipelinek-<version>.sdk.zip`: ocho artefactos (`pipelinek-domain`, `pipelinek-events`, `pipelinek-output`, `pipelinek-runtime-api`, `pipelinek-scripting-api`, `pipelinek-scripting-definition`, `pipelinek-service-client`, `pipelinek-sdk-bom`) y un BOM que fija sus versiones entre sí; 0.97.0 los publicó todos menos `pipelinek-scripting-definition`. `pipelinek sdk-info` imprime el grupo y las coordenadas exactas contra las que compila un plugin.
 
 Un plugin se carga desde `--plugin-jar`. Con `--plugin-trust <file>` solo se admite si sus bytes coinciden con el SHA-256 fijado por el operador y llevan una firma Ed25519 válida; con `--require-plugin-trust`, un plugin que nadie ha avalado se rechaza antes de que corra su código.
 

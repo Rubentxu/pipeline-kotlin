@@ -114,11 +114,12 @@ internal fun runCanonical(request: RunRequest): RunOutcome = runBlocking {
         // Gates read the environment the STAGE actually declares, plus
         // the process environment for names the stage names explicitly.
         //
-        // The stage's own `environment { env(...) }` block is the source of
-        // truth, because that is what the DSL can express. `pipeline.environment`
-        // is a separate pipeline-level spec the DSL does not populate, so
-        // reading only that would make every real gate see an empty world and
-        // skip unconditionally.
+        // What the stage declares is the source of truth: the variables of its
+        // own `environment { env(...) }` block, and the variables the PIPELINE
+        // declares for the stages that declare none. The pipeline's variables
+        // reach the gate the same way they reach the steps of that stage, so a
+        // pipeline that declares its variables at the pipeline level does not
+        // lose them when a gate asks for one of them.
         //
         // Only variables the stage DECLARES are read from the host: a gate must
         // not be able to observe an arbitrary ambient process variable, or the

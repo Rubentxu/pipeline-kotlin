@@ -365,7 +365,7 @@ class ReadOnlyVerbIntegrationTest {
 
     @Test
     fun `every form the README's quickstart names is a form this CLI dispatches`() {
-        val named = quickstartForms()
+        val named = quickstartInvocations()
 
         assertTrue(
             named.isNotEmpty(),
@@ -373,32 +373,37 @@ class ReadOnlyVerbIntegrationTest {
         )
 
         val dispatched = CLI_VERBS.map { it.label }.toSet()
-        named.forEach { form ->
+        named.forEach { words ->
+            val form = cliVerbFor(words.toTypedArray())
             assertTrue(
-                form in dispatched,
-                "the README tells the operator to run '$form', which this CLI does not dispatch; " +
-                    "the forms it dispatches are ${dispatched.sorted().joinToString()}",
+                form != null,
+                "the README tells the operator to run '${words.joinToString(" ")}', which this CLI " +
+                    "does not dispatch; the forms it dispatches are ${dispatched.sorted().joinToString()}",
             )
         }
     }
 
     /**
-     * The command forms the README's quickstart tells the operator to run.
+     * The command lines the README's quickstart tells the operator to run.
      *
      * Only the invocations of the binary itself count: a line that starts with
      * the variable the quickstart binds the binary to is a command the reader
      * will type, and the scripts the README installs are not commands of this
-     * CLI. A family form takes its second word too, because `runs` alone is a
-     * refusal and `runs cancel` is the form.
+     * CLI.
+     *
+     * The words are kept as the operator types them and NOT folded into a form
+     * by hand: a family form takes its second word — `runs cancel`, `ide init`,
+     * `events verify` — and the list of the families that need one changes with
+     * the CLI, so the rule asks the CLI's own dispatcher which form a line
+     * names instead of naming one family and hoping the others are the same.
      */
-    private fun quickstartForms(): List<String> {
+    private fun quickstartInvocations(): List<List<String>> {
         val text = Files.readString(repositoryRoot().resolve("README.md"))
 
         return text.lineSequence()
             .map { it.trim() }
             .mapNotNull { line -> INVOCATION.find(line) }
-            .map { match -> match.groupValues[1] to match.groupValues[2] }
-            .map { (first, second) -> if (first == RUNS_FAMILY) "$first $second" else first }
+            .map { match -> match.groupValues.drop(1).filter { it.isNotEmpty() } }
             .distinct()
             .toList()
     }
@@ -480,9 +485,6 @@ class ReadOnlyVerbIntegrationTest {
     private companion object {
         /** The files that only the root of the repository holds. */
         val ROOT_MARKERS = listOf("AGENTS.md", "README.md", "scripts/verify-all.sh")
-
-        /** The family whose forms take a second word to name them. */
-        const val RUNS_FAMILY = "runs"
 
         /**
          * An invocation of the binary the quickstart binds it to.

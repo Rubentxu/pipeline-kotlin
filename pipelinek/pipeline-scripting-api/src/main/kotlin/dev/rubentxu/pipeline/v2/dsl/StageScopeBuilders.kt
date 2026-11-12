@@ -300,14 +300,58 @@ open class StageScopeCore(
     internal var inheritedEnvironment: EnvironmentSpec? = null
 
     /**
+     * The variables the PIPELINE declares, which are the DEFAULT of every stage
+     * that declares none of its own.
+     *
+     * The precedence is the one the gate already uses — a declaration beats a
+     * value that arrives from outside — and it is decided NAME BY NAME: a stage
+     * that declares `TARGET` keeps its own value and still inherits the
+     * pipeline's `REGISTRY`.
+     *
+     * This is the READ view: it carries what the pipeline had declared when
+     * this stage was opened. The agent of the pipeline does NOT travel this
+     * way — it is applied at the end of the pipeline's block, so a declaration
+     * written after the `stages { }` block reaches the stages as well.
+     */
+    internal var pipelineEnvironment: EnvironmentSpec? = null
+
+    /**
      * The environment the steps of this scope run with.
      *
      * The scope that opens a stage declares it. A scope that opens inside that
      * stage inherits it, and the inherited declaration wins over the one the
      * nested scope carries, because a nested declaration never reaches the steps.
+     *
+     * A stage that declares nothing of its own runs with the variables the
+     * PIPELINE declares, and a stage that declares some of them runs with its
+     * own value for those and with the pipeline's value for the others.
      */
-    private fun visibleEnvironment(): EnvironmentSpec =
-        inheritedEnvironment ?: stageEnvironment ?: EnvironmentSpec(emptyMap())
+    private fun visibleEnvironment(): EnvironmentSpec {
+        val inherited = inheritedEnvironment
+        if (inherited != null) return inherited
+        return EnvironmentSpec(declaredEnvironmentValues().orEmpty())
+    }
+
+    /**
+     * The variables this scope READS: the ones the pipeline declares, with the
+     * ones this scope declares winning over them.
+     *
+     * This is the READ view, and it is not the same thing as the environment
+     * the steps run with: a read happens while the plan is built, and the
+     * pipeline's declaration is read as the script runs, so a declaration
+     * written AFTER the `stages { }` block reaches the steps and not this
+     * read. That difference is the ORDER RULE, and it is a decision.
+     *
+     * The rule of both views is the same one — the declaration of the stage
+     * wins, name by name — and it lives in [DeclaredVariables], so the two
+     * views cannot disagree about WHICH declaration wins.
+     *
+     * `null` means "this scope declares no variable", and it is a different
+     * statement from "this scope declares none of them": the first leaves the
+     * environment of the steps to the layers beneath it.
+     */
+    internal fun declaredEnvironmentValues(): Map<String, String>? =
+        DeclaredVariables.merged(pipelineEnvironment?.values, stageEnvironment?.values)
 
     /**
      * The value of the environment variable named [name].
@@ -315,8 +359,9 @@ open class StageScopeCore(
      * The value is the one the STAGE declares, when the stage declares one: a
      * stage that writes `environment { env("TARGET", "staging") }` reads
      * "staging" here, in the stage and in the blocks the stage opens. A stage
-     * that declares nothing reads the environment of the PROCESS that builds the
-     * plan, through the runtime configuration port.
+     * that declares nothing of its own reads the variables the PIPELINE
+     * declares, and what neither of them declares reads the environment of the
+     * PROCESS that builds the plan, through the runtime configuration port.
      *
      * The read happens WHILE THE PLAN IS BUILT, so the value travels inside the
      * plan and a replay reproduces it. It is not read again when the step runs,
@@ -663,5 +708,36 @@ open class StageScopeTopSteps(
             }
         }
         return sb.toString()
+    }
+}
+
+/**
+ * The rule that combines the variables a PIPELINE declares with the ones a
+ * STAGE declares.
+ *
+ * ## One rule and one home
+ *
+ * The rule is the same for the READ and for the PLAN: the declaration of the
+ * stage wins for the names it declares, and the declaration of the pipeline
+ * is there for the names it does not. Two answers to one rule are two rules
+ * that can drift, and the drift shows up as a stage that reads one value and
+ * runs with another.
+ *
+ * ## What `null` means
+ *
+ * `null` means "nothing is declared here", and it is a different statement
+ * from "declared as empty": the first leaves the variables to the layer
+ * beneath it, and the second is a value that says nothing.
+ */
+internal object DeclaredVariables {
+
+    /**
+     * The variables of a stage: the ones the pipeline declares, with the ones
+     * the stage declares winning over them, name by name.
+     */
+    fun merged(pipeline: Map<String, String>?, stage: Map<String, String>?): Map<String, String>? = when {
+        pipeline == null -> stage
+        stage == null -> pipeline
+        else -> pipeline + stage
     }
 }

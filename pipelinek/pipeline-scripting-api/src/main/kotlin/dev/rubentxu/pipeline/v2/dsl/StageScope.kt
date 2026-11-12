@@ -775,25 +775,7 @@ class StageScope(
      *   which is a contradiction rather than a stricter constraint.
 */
     fun agent(label: String? = null, remoteUri: String? = null) {
-        require(label != null || remoteUri != null) {
-            "agent requires a label, a remoteUri, or both: declaring no constraint at all is " +
-                "what agentAny() is for, so an empty declaration should say so explicitly"
-        }
-        require(!(label != null && remoteUri != null)) {
-            "agent(label = \"$label\", remoteUri = \"$remoteUri\") is contradictory: a remote " +
-                "target is selected by selector, not by label. Declare a local label target or a " +
-                "remote selector target, not both."
-        }
-        val requirement = if (remoteUri != null) {
-            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.Remote(
-                dev.rubentxu.pipeline.v2.domain.directive.RemoteSelector(remoteUri),
-            )
-        } else {
-            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.LocalLabels(
-                setOf(dev.rubentxu.pipeline.v2.domain.directive.AgentLabel(label!!)),
-            )
-        }
-        stageDirectives = stageDirectives + appendAgentRequirement(requirement)
+        stageDirectives = stageDirectives + appendAgentRequirement(AgentRequirements.of(label, remoteUri))
     }
 
     /**
@@ -804,9 +786,7 @@ class StageScope(
      * from a stage that never mentioned an agent at all.
 */
     fun agentAny() {
-        stageDirectives = stageDirectives + appendAgentRequirement(
-            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.LocalAny,
-        )
+        stageDirectives = stageDirectives + appendAgentRequirement(AgentRequirements.any())
     }
 
     /**
@@ -816,17 +796,8 @@ class StageScope(
      * for a capability nobody bound and be told yes.
 */
     fun agentWithCapabilities(vararg capabilities: String) {
-        require(capabilities.isNotEmpty()) {
-            "agentWithCapabilities requires at least one capability key; use agentAny() for an " +
-                "unconstrained local target, because an empty set is indistinguishable from it"
-        }
-        stageDirectives = stageDirectives + appendAgentRequirement(
-            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.CapabilitySet(
-                capabilities
-                    .map { dev.rubentxu.pipeline.v2.domain.step.StepCapability(it) }
-                    .toSet(),
-            ),
-        )
+        stageDirectives = stageDirectives +
+            appendAgentRequirement(AgentRequirements.withCapabilities(capabilities))
     }
 
     /**
@@ -853,6 +824,13 @@ class StageScope(
         // Never running. The block is carried as typed
         // data and the coordinator decides which finalizer fires from the pure
         // PostPlanner; the DSL still decides NOTHING about execution.
+        //
+        // The builder carries what THIS STAGE declares, and nothing else. The
+        // declarations of the PIPELINE are applied once, at the end of the
+        // pipeline's block, by `PipelineScope.buildStages()`. Applying them in
+        // the two places would make the plan the result of two merges, and a
+        // merge that is broken in one of them would leave the plan untouched
+        // — the mistake would be invisible to every row that measures it.
         return StageBuilder(
             stageName,
             steps.toList(),

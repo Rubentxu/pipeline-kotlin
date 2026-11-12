@@ -227,7 +227,7 @@ class CompilationIdentityTest {
             return CacheLookup.Miss(CacheMissReason.ABSENT)
         }
 
-        override fun store(key: CacheKey, script: CompiledScript) {
+        override fun store(key: CacheKey, script: CompiledScript, reports: CompilationReports) {
             stored += key
         }
     }

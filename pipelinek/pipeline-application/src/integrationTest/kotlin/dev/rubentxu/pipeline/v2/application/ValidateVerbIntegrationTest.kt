@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptCache
+import dev.rubentxu.pipeline.v2.scripting.JarCompiledScriptCache
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -35,7 +36,8 @@ import java.util.concurrent.TimeUnit
  *
  * Each row calls [validateScript], the function `main` hands the verb to, with the parser's own
  * flags and the published protocol, and captures the two channels apart. The compiled-script cache
- * is off: every row compiles its script, and none reads or writes the cache of the machine. Under that protocol the
+ * is off unless a row hands it a store in its own directory: no row reads or writes the cache of
+ * the machine. Under that protocol the
  * document goes to `out` and the verdict to `err`, so the reason is read on `out`, next to the
  * compiler's errors, and never repeated on `err`. The rows that read the JSON document parse it and
  * look for the diagnostic inside the closing event; a substring of the document would also match a
@@ -52,6 +54,9 @@ import java.util.concurrent.TimeUnit
  *   count it and print nothing under it, and to count a note the product's own compiler options
  *   raise on every script. The row reads both documents: the text one prints the warning with its
  *   position and counts nothing else, and the JSON one carries the same single diagnostic.
+ * - The reused warning is the same script validated twice against one store. The second validation
+ *   is served by the artifact the first one stored, and the compiler does not run: it used to say
+ *   "1 warning" the first time and nothing the second, although the script had not changed.
  */
 @Timeout(value = 180, unit = TimeUnit.SECONDS)
 class ValidateVerbIntegrationTest {
@@ -61,7 +66,12 @@ class ValidateVerbIntegrationTest {
 
     private data class Outcome(val exit: CliExit, val out: String, val err: String)
 
-    private fun validate(name: String, script: String, vararg flags: String): Outcome {
+    private fun validate(
+        name: String,
+        script: String,
+        vararg flags: String,
+        cache: CompiledScriptCache = CompiledScriptCache.Disabled,
+    ): Outcome {
         val path = dir.resolve(name)
         Files.writeString(path, script)
         val config = (
@@ -75,7 +85,7 @@ class ValidateVerbIntegrationTest {
             secretPatternRegistry = SecretPatternRegistry(),
             compiledQuery = (compileQuery(config.query) as SelectorCompileResult.Ok).value,
             outputProtocol = OutputProtocol.Published,
-            cache = CompiledScriptCache.Disabled,
+            cache = cache,
             out = PrintStream(outBytes, true, Charsets.UTF_8.name()),
             err = PrintStream(errBytes, true, Charsets.UTF_8.name()),
         )
@@ -158,6 +168,23 @@ class ValidateVerbIntegrationTest {
             it["severity"]!!.jsonPrimitive.content to it["message"]!!.jsonPrimitive.content
         }
         assertEquals(listOf("WARNING" to TO_INT), diagnostics, "the JSON document and the text one disagree:\n${json.out}")
+    }
+
+    @Test
+    fun `a validation served by the stored artifact prints the warning the compilation raised`() {
+        val store = JarCompiledScriptCache(dir.resolve("cache"))
+
+        val cold = validate("warn.pipeline.kts", WARNED, "--compile-only", cache = store)
+        val warm = validate("warn.pipeline.kts", WARNED, "--compile-only", cache = store)
+
+        assertEquals(CliExit.SUCCESS, warm.exit, warm.out + warm.err)
+        assertTrue("Compilation finished with 1 warning (compiled)" in cold.out, cold.out)
+        assertTrue(
+            "Compilation finished with 1 warning (reused)" in warm.out,
+            "the reuse did not count the warning the compilation raised:\n${warm.out}",
+        )
+        val position = "${dir.resolve("warn.pipeline.kts")}:2:11: warning: $TO_INT"
+        assertEquals(1, occurrences(warm.out, position), "the reuse did not print the warning once:\n${warm.out}")
     }
 
     @Test

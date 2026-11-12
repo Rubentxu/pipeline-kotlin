@@ -10,6 +10,7 @@ import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.TraceFlags
 import io.opentelemetry.api.trace.TraceState
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk
+import io.opentelemetry.sdk.common.CompletableResultCode
 import io.opentelemetry.sdk.resources.Resource
 import java.util.concurrent.TimeUnit
 
@@ -152,6 +153,8 @@ object PipelineTelemetryFactory {
     private const val DEPLOYMENT_ENVIRONMENT = "deployment.environment.name"
     private const val TRACER_SCOPE = "dev.rubentxu.pipeline.v2"
     private const val METRIC_SCOPE = "dev.rubentxu.pipeline.v2"
+    private const val SHUTDOWN_BOUND_MILLIS = 2_000L
+    private const val SHUTDOWN_THREAD_NAME = "pipelinek-telemetry-shutdown"
 
     /**
      * Selects a runtime by an explicit opt-in. Only the literal `true` enables the SDK.
@@ -290,9 +293,9 @@ object PipelineTelemetryFactory {
         }
 
         override fun close() {
-            // A CLI invocation has a finite lifetime. Bound each flush and the shared shutdown so
-            // an unavailable collector cannot hold the process open indefinitely. A failed signal
-            // must not skip the other providers or the SDK shutdown.
+            // A CLI invocation has a finite lifetime. Each flush and the shared shutdown is bounded,
+            // so an unavailable collector holds the way out for at most the sum of the bounds. A
+            // failed signal must not skip the other providers or the SDK shutdown.
             //
             // Each step of the way out carries the reason it is, so a failed export can be
             // COUNTED and not only reported on stderr: a reader of the metrics then sees that
@@ -307,13 +310,37 @@ object PipelineTelemetryFactory {
                 MetricExportLoss.LoggerFlush to
                     { check(sdk.sdkLoggerProvider.forceFlush().join(500, TimeUnit.MILLISECONDS).isSuccess) },
                 MetricExportLoss.Shutdown to
-                    { check(sdk.shutdown().join(2, TimeUnit.SECONDS).isSuccess) },
+                    { check(shutDownWithin(SHUTDOWN_BOUND_MILLIS)) },
             )
             runTelemetryCleanup(
                 actions = wayOut.map { it.second },
                 warning = warning,
                 onFailure = { index -> metrics.exportLoss(wayOut[index].first) },
             )
+        }
+
+        /**
+         * Whether the SDK shut down within [millis].
+         *
+         * The shutdown is more than the result it returns: the periodic metric reader waits, on
+         * the thread that shuts it down, for the export in flight and then for a last export,
+         * each for up to five seconds. So the call is made on a daemon thread of its own, and the
+         * bound is the one this close declares and not the reader's; a shutdown still under way
+         * when the bound is reached does not hold the process open.
+         */
+        private fun shutDownWithin(millis: Long): Boolean {
+            val shutdown = CompletableResultCode()
+            val worker = Thread({
+                try {
+                    val result = sdk.shutdown()
+                    result.whenComplete { if (result.isSuccess) shutdown.succeed() else shutdown.fail() }
+                } catch (_: Exception) {
+                    shutdown.fail()
+                }
+            }, SHUTDOWN_THREAD_NAME)
+            worker.isDaemon = true
+            worker.start()
+            return shutdown.join(millis, TimeUnit.MILLISECONDS).isSuccess
         }
     }
 

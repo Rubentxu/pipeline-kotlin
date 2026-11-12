@@ -568,6 +568,27 @@ subprojects {
     }
 }
 
+// THE LANES DO NOT TOUCH THE OPERATOR'S CACHE OF COMPILED SCRIPTS.
+//
+// A row that compiles a script in process, and every child of the product a
+// row starts, finds the cache through `PIPELINEK_SCRIPT_CACHE_DIR`, and with
+// no value there the cache is the operator's own, under the home of the user.
+// A lane that uses that cache is served artifacts another build stored, and
+// leaves artifacts of its own in the operator's machine.
+//
+// So every lane gives the variable a directory of its own, in the temporary
+// directory of the task, and empties it before it runs. The children of the
+// rows inherit the environment of the JVM of the lane, so the directory
+// reaches them without a seam of the product that only a test would use. A
+// row that is about the cache itself names a directory of its own.
+subprojects {
+    tasks.withType<Test>().configureEach {
+        val scriptCache = temporaryDir.resolve("script-cache")
+        environment("PIPELINEK_SCRIPT_CACHE_DIR", scriptCache.absolutePath)
+        doFirst { scriptCache.deleteRecursively() }
+    }
+}
+
 // The JDK the product is compiled with.
 //
 // The build used to inherit whatever `java` the machine happened to point at,

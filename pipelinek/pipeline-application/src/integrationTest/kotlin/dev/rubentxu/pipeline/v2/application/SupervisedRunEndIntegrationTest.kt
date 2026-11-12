@@ -38,6 +38,10 @@ import java.util.concurrent.TimeUnit
  * That a run whose child CANNOT write its own terminal still ENDS: the
  * service closes it, and the terminal says why it was closed.
  *
+ * A child whose script does not compile writes no terminal either: it ends by
+ * itself with the exit code 1, and the terminal the service writes names what
+ * the compiler refused, with its line, after saying how the child ended.
+ *
  * ## Why this guarantee needs a machine
  *
  * Because the child is killed: the watchdog ends it with a signal that gives
@@ -101,6 +105,13 @@ class SupervisedRunEndIntegrationTest {
             "pipeline {\n    stages {\n        stage(\"chatty\") {\n" +
                 "            sh(\"echo $MARKER; sleep 60\")\n        }\n    }\n}\n",
         )
+        // A script the compiler refuses: the child says so and ends with the
+        // exit code 1, and it writes no terminal of its own.
+        Files.writeString(
+            scripts.resolve("broken.pipeline.kts"),
+            "pipeline {\n    stages {\n        stage(\"broken\") {\n" +
+                "            sh(undefinedThing)\n        }\n    }\n}\n",
+        )
         val admission = admitEventStore(db.toString(), EventStorePurpose.Produce)
         val writable = (admission as EventStoreAdmission.Admitted).store
         DurableStores.open(writable, control, clock)
@@ -139,6 +150,44 @@ class SupervisedRunEndIntegrationTest {
                 reason.contains("budget"),
                 "the terminal of the run says WHY it was closed, and the why names the budget " +
                     "of the run: '$reason'",
+            )
+        } finally {
+            service.stop()
+        }
+    }
+
+    @Test
+    fun `a run whose script does not compile ends with a terminal that names what the compiler refused`() {
+        val service = start()
+        try {
+            val answer = client(STARTER_TOKEN).startRun(
+                script = "broken.pipeline.kts",
+                idempotencyKey = "key-broken",
+                configuration = emptyMap(),
+            )
+            val started = assertInstanceOf(ServiceRunStart::class.java, assertInstanceOf(
+                ServiceAnswer.Answered::class.java,
+                answer,
+            ).value)
+
+            val terminal = awaitTerminal(started.runId)
+
+            assertInstanceOf(
+                TerminalObservation.Failed::class.java,
+                terminal.terminal,
+                "a run whose script does not compile failed: ${describe(started.runId)}",
+            )
+            val diagnostics = terminalFactOf(started.runId)?.diagnostics.orEmpty()
+            assertEquals(
+                SupervisedRunEnd.Ended(1).diagnostic(),
+                diagnostics.firstOrNull(),
+                "the terminal says first how the child ended: ${describe(started.runId)}",
+            )
+            val refused = diagnostics.drop(1)
+            assertTrue(
+                refused.any { it.message.contains("undefinedThing") && it.line == 4 },
+                "after how the child ended, the terminal names what the compiler refused and where, " +
+                    "so the client does not have to read the machine: $refused, ${describe(started.runId)}",
             )
         } finally {
             service.stop()
@@ -295,7 +344,9 @@ class SupervisedRunEndIntegrationTest {
      * What the product says about the run, for a reader that has to say WHY.
      *
      * It is the run's own facts: the terminal it holds, the lease that says
-     * whether its child is alive, and the journal that says how far it got.
+     * whether its child is alive, and the journal that says how far it got;
+     * and the stderr of the children, the only place where a child that ended
+     * without a terminal says why.
      */
     private fun describe(runId: String): String {
         val terminal = terminalFactOf(runId)
@@ -319,7 +370,8 @@ class SupervisedRunEndIntegrationTest {
             is ServiceAnswer.Unreadable -> "the answer is not readable: ${answered.detail}"
             ServiceAnswer.TimedOut -> "the service did not answer in time"
         }
-        return "outcome=$outcome, reason=$reason, $state"
+        return "outcome=$outcome, reason=$reason, $state, " +
+            "the children wrote to their stderr: ${childStderrTails(root.resolve("supervisions"))}"
     }
 
     /**

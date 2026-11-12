@@ -21,7 +21,15 @@ import org.junit.jupiter.api.Test
  * Because the description is a function of the declaration, and a function that is tested
  * apart from its argument can be tested against anything. The rows build the declaration
  * with the DSL and describe it, so a projection that read something else would fail here.
+ *
+ * ## Why the rows write the OLD spelling
+ *
+ * Because that spelling has to keep working, and these rows are where that is pinned: a
+ * declaration written with `default = ` has to reach the description with the same value it
+ * always did. The notice it carries is measured where the COMPILER is, in the module that
+ * compiles scripts.
  */
+@Suppress("DEPRECATION")
 class PipelineParametersTest {
 
     @Test

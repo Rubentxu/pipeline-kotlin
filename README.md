@@ -451,7 +451,7 @@ The configuration is a **public channel, and it says so**. There is no oracle th
 
 #### A run with parameters, and the description of its parameters
 
-A script declares its parameters the way a Jenkinsfile does —`parameters { string("target", default = "staging"); boolean("dryRun"); choice("region", listOf("eu", "us"), default = "eu") }`— and a client can ask the service what they are BEFORE it starts the run. The service answers from a **manifest the operator approved**, and never compiles the script to answer: compiling a script runs code of the script, and a client that may ask for a description may not run it.
+A script declares its parameters the way a Jenkinsfile does —`parameters { string("target", defaultValue = "staging"); boolean("dryRun"); choice("region", listOf("eu", "us"), defaultValue = "eu") }`— and a client can ask the service what they are BEFORE it starts the run. The value by default is named `defaultValue`, the name Jenkins gives it; the historical spelling `default` still compiles and still declares the same value, and it carries a deprecation notice that names `defaultValue`. The service answers from a **manifest the operator approved**, and never compiles the script to answer: compiling a script runs code of the script, and a client that may ask for a description may not run it.
 
 The operator writes the manifest on their side and places it next to the script, inside the directory of `--scripts`:
 

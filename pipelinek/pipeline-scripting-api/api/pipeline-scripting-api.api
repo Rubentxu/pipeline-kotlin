@@ -85,12 +85,18 @@ public abstract interface annotation class dev/rubentxu/pipeline/v2/dsl/Paramete
 public final class dev/rubentxu/pipeline/v2/dsl/ParametersScope {
 	public fun <init> ()V
 	public final fun boolean (Ljava/lang/String;Ljava/lang/Boolean;)V
+	public final fun boolean (Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Boolean;)V
 	public static synthetic fun boolean$default (Ldev/rubentxu/pipeline/v2/dsl/ParametersScope;Ljava/lang/String;Ljava/lang/Boolean;ILjava/lang/Object;)V
+	public static synthetic fun boolean$default (Ldev/rubentxu/pipeline/v2/dsl/ParametersScope;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Boolean;ILjava/lang/Object;)V
 	public final fun build ()Ljava/util/List;
 	public final fun choice (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)V
+	public final fun choice (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun choice$default (Ldev/rubentxu/pipeline/v2/dsl/ParametersScope;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)V
+	public static synthetic fun choice$default (Ldev/rubentxu/pipeline/v2/dsl/ParametersScope;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun string (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun string (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun string$default (Ldev/rubentxu/pipeline/v2/dsl/ParametersScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public static synthetic fun string$default (Ldev/rubentxu/pipeline/v2/dsl/ParametersScope;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 }
 
 public final class dev/rubentxu/pipeline/v2/dsl/PipelineDslKt {

@@ -293,7 +293,7 @@ La configuración es un **canal público, y lo dice**. No hay oráculo que disti
 
 #### Una ejecución con parámetros, y la descripción de sus parámetros
 
-Un script declara sus parámetros como lo hace un Jenkinsfile —`parameters { string("target", default = "staging"); boolean("dryRun"); choice("region", listOf("eu", "us"), default = "eu") }`— y un cliente puede preguntar al servicio cuáles son ANTES de arrancar la ejecución. El servicio responde desde un **manifiesto que el operador aprobó**, y nunca compila el script para responder: compilar un script ejecuta código del script, y un cliente que puede pedir una descripción no puede ejecutarlo.
+Un script declara sus parámetros como lo hace un Jenkinsfile —`parameters { string("target", defaultValue = "staging"); boolean("dryRun"); choice("region", listOf("eu", "us"), defaultValue = "eu") }`— y un cliente puede preguntar al servicio cuáles son ANTES de arrancar la ejecución. El valor por defecto se llama `defaultValue`, el nombre que le da Jenkins; la grafía histórica `default` sigue compilando y sigue declarando el mismo valor, y lleva un aviso de deprecación que nombra `defaultValue`. El servicio responde desde un **manifiesto que el operador aprobó**, y nunca compila el script para responder: compilar un script ejecuta código del script, y un cliente que puede pedir una descripción no puede ejecutarlo.
 
 El operador escribe el manifiesto en su lado y lo coloca junto al script, dentro del directorio de `--scripts`:
 

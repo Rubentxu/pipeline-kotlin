@@ -105,6 +105,11 @@ class StepDescriptorRegistry private constructor(
             PluginStepId("core.catchError") to StepDescriptor(
                 stepId = "core.catchError",
                 name = "catchError",
+                jenkinsSurface = "catchError",
+                jenkinsDivergence = "the outcome is the one the step's POLICY declares: the scope " +
+                    "absorbs the failure and ends with the declared buildResult, and a declared " +
+                    "FAILURE is re-thrown outward unchanged; Jenkins marks the build and continues " +
+                    "the flow.",
                 configRef = "",
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
@@ -121,6 +126,10 @@ class StepDescriptorRegistry private constructor(
             PluginStepId("core.warnError") to StepDescriptor(
                 stepId = "core.warnError",
                 name = "warnError",
+                jenkinsSurface = "warnError",
+                jenkinsDivergence = "the outcome is the one the step's POLICY declares: the scope " +
+                    "always ends UNSTABLE and publishes the warning, whatever the body did; " +
+                    "Jenkins marks the build UNSTABLE only when the body fails.",
                 configRef = "",
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.AT_MOST_ONCE,
@@ -149,6 +158,7 @@ class StepDescriptorRegistry private constructor(
             PluginStepId("core.withEnv") to StepDescriptor(
                 stepId = "core.withEnv",
                 name = "withEnv",
+                jenkinsSurface = "withEnv",
                 configRef = "",
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
@@ -162,6 +172,7 @@ class StepDescriptorRegistry private constructor(
             PluginStepId("core.dir") to StepDescriptor(
                 stepId = "core.dir",
                 name = "dir",
+                jenkinsSurface = "dir",
                 configRef = "",
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
@@ -175,6 +186,7 @@ class StepDescriptorRegistry private constructor(
             PluginStepId("core.withCredentials") to StepDescriptor(
                 stepId = "core.withCredentials",
                 name = "withCredentials",
+                jenkinsSurface = "withCredentials",
                 configRef = "",
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
@@ -188,6 +200,7 @@ class StepDescriptorRegistry private constructor(
             PluginStepId("core.timeout") to StepDescriptor(
                 stepId = "core.timeout",
                 name = "timeout",
+                jenkinsSurface = "timeout",
                 configRef = "",
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
@@ -203,6 +216,7 @@ class StepDescriptorRegistry private constructor(
             PluginStepId("core.timestamps") to StepDescriptor(
                 stepId = "core.timestamps",
                 name = "timestamps",
+                jenkinsSurface = "timestamps",
                 configRef = "",
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
@@ -221,6 +235,7 @@ class StepDescriptorRegistry private constructor(
             PluginStepId("core.retry") to StepDescriptor(
                 stepId = "core.retry",
                 name = "retry",
+                jenkinsSurface = "retry",
                 configRef = "",
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ZERO_OR_MORE,
@@ -241,6 +256,7 @@ class StepDescriptorRegistry private constructor(
             PluginStepId("core.waitUntil") to StepDescriptor(
                 stepId = "core.waitUntil",
                 name = "waitUntil",
+                jenkinsSurface = "waitUntil",
                 configRef = "",
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ZERO_OR_MORE,
@@ -260,7 +276,13 @@ class StepDescriptorRegistry private constructor(
          * Terminal steps: a declared absence of body.
          * A terminal row has no body to own, so the engine never has to decide whether it
          * may execute one. The pair is the table, because every terminal row differs only in
-         * its key and display name.
+         * its key, its display name and its Jenkins facts.
+         *
+         * The Jenkins facts of these rows are the SAME the runtime's own descriptors
+         * declare: the runtime registers a handler for every one of these keys, and a
+         * composition that does not register one falls back to this row. The two copies
+         * are checked against each other, so the fallback cannot drift away from the
+         * descriptor that runs the step.
 */
         private fun terminalRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
             "core.emit.event" to "emitEvent",
@@ -273,8 +295,38 @@ class StepDescriptorRegistry private constructor(
                 stepId = stepId,
                 name = name,
                 configRef = "",
+                jenkinsSurface = jenkinsSurfaceOf(stepId),
+                jenkinsDivergence = jenkinsDivergenceOf(stepId),
                 body = StepBody.None,
             )
+        }
+
+        /**
+         * The equivalent in Jenkins of a terminal row, empty when it has none.
+         *
+         * The facts are read from a table, and not from the row's own descriptor, because
+         * the terminal rows are generated from a list of keys: a table is where a fact
+         * about several keys can live without being written five times.
+*/
+        private fun jenkinsSurfaceOf(stepId: String): String = when (stepId) {
+            "core.sh" -> "sh"
+            "core.echo" -> "echo"
+            "core.sleep" -> "sleep"
+            "core.file.writeFile" -> "writeFile"
+            else -> ""
+        }
+
+        /**
+         * The divergence of a terminal row with its equivalent in Jenkins, with its motive.
+         *
+         * The only terminal row with no equivalent in Jenkins is `core.emit.event`: there
+         * is no Jenkins step that publishes an event of the run.
+*/
+        private fun jenkinsDivergenceOf(stepId: String): String = when (stepId) {
+            "core.emit.event" ->
+                "Jenkins has no step that publishes an event of the run: here the step " +
+                    "writes one to the event plane, and a consumer of the events sees it."
+            else -> ""
         }
     }
 }

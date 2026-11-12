@@ -60,6 +60,8 @@ class CoreUtilsReadJsonStepDefinition(
         descriptor = StepDescriptor(
             stepId = CoreUtilsReadJsonKey.VALUE.value,
             name = "core-utils.readJson",
+            jenkinsSurface = "readJSON",
+            jenkinsDivergence = "the Jenkins step is spelled readJSON; the DSL spells it readJson, the spelling of the DSL.",
             configRef = "",
             pluginId = "utilities",
             pluginVersion = "0.0.1-dev",  // overridden by manifest at registration

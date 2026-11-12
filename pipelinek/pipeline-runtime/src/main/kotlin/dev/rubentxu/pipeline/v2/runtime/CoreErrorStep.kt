@@ -137,6 +137,7 @@ object CoreErrorStep {
     private val descriptor = StepDescriptor(
         stepId = "core.error",
         name = "error",
+        jenkinsSurface = "error",
         configRef = "",
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.ABORTS_PIPELINE),

@@ -164,6 +164,8 @@ object CoreEmitEventStep {
     private val descriptor = StepDescriptor(
         stepId = "core.emit.event",
         name = "emitEvent",
+        jenkinsDivergence = "Jenkins has no step that publishes an event of the run: here the " +
+            "step writes one to the event plane, and a consumer of the events sees it.",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.READ_ONLY),

@@ -50,6 +50,7 @@ class CoreUtilsZipStepDefinition : StepDefinition<ZipInput, ZipOutput> {
             descriptor = StepDescriptor(
                 stepId = CoreUtilsZipKey.VALUE.value,
                 name = "core-utils.zip",
+                jenkinsSurface = "zip",
                 configRef = "",
                 pluginId = "utilities",
                 pluginVersion = "0.0.1-dev",  // overridden by manifest at registration

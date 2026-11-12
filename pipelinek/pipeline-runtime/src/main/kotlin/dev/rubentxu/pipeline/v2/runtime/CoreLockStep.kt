@@ -152,6 +152,7 @@ object CoreLockStep {
     private val descriptor = StepDescriptor(
         stepId = KEY.value,
         name = "lock",
+        jenkinsSurface = "lock",
         configRef = "",
         pluginId = "core",
         pluginVersion = "0.1.0",

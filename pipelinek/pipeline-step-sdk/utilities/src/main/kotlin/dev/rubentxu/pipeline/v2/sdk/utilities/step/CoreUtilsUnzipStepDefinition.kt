@@ -51,6 +51,7 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
             descriptor = StepDescriptor(
                 stepId = CoreUtilsUnzipKey.VALUE.value,
                 name = "core-utils.unzip",
+                jenkinsSurface = "unzip",
                 configRef = "",
                 pluginId = "utilities",
                 pluginVersion = "0.0.1-dev",

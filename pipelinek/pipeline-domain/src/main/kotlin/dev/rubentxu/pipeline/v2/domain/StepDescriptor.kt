@@ -58,6 +58,21 @@ data class StepDescriptor(
      * ([dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport]).
 */
     val body: StepBody = StepBody.None,
+    /**
+     * The divergence of this Step with the equivalent in Jenkins, with its motive.
+     *
+     * The field is declared HERE, beside the other facts of the Step, because
+     * the divergence is a fact of the Step and not of the catalogue: the
+     * catalogue reads it, and a catalogue that carried its own copy of it would
+     * be a second authority for a fact the descriptor already owns.
+     *
+     * It is empty when there is nothing to declare: the Step has no equivalent
+     * in Jenkins and the reason why is written here, or the equivalent behaves
+     * exactly as the Jenkins one does. A Step that has an equivalent and a
+     * divergence carries both, and the divergence says WHICH difference the
+     * reader is going to meet.
+     */
+    val jenkinsDivergence: String = "",
 ) {
     /** Legacy terminology retained for consumers of the legacy definition model. */
     val id: String get() = stepId

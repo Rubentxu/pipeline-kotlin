@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 import dev.rubentxu.pipeline.v2.domain.directive.DirectivePhase
 import dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition
+import dev.rubentxu.pipeline.v2.domain.directive.JenkinsSurfaceDeclaration
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -31,13 +32,28 @@ data class UppercaseAffected(val prefix: String = "")
  * something structural, and the engine decides what to do about it, which is what keeps the engine
  * from learning the name `example.*`.
 */
-object UppercaseCasedOnDirectiveDefinition : DirectiveDefinition<UppercaseAffected, Unit> {
+object UppercaseCasedOnDirectiveDefinition :
+    DirectiveDefinition<UppercaseAffected, Unit>,
+    JenkinsSurfaceDeclaration {
 
     val KEY = DirectiveKey("example.uppercase.casedOn")
 
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
 
     override val key: DirectiveKey = KEY
+
+    /** The equivalent in Jenkins: there is none. */
+    override val jenkinsSurface: String = ""
+
+    /**
+     * The divergence with Jenkins, with its motive.
+     *
+     * The directive belongs to an EXAMPLE plugin and not to the surface of the
+     * product, so it has no equivalent to diverge from.
+     */
+    override val jenkinsDivergence: String =
+        "it belongs to an EXAMPLE plugin and not to the surface of the product, so it has no " +
+            "equivalent in Jenkins"
 
     override val phase: DirectivePhase = DirectivePhase.BEFORE_STAGE
 

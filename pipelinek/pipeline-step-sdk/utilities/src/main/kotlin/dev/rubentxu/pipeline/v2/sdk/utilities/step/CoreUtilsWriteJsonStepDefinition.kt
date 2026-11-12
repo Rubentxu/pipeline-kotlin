@@ -43,6 +43,8 @@ class CoreUtilsWriteJsonStepDefinition : StepDefinition<WriteJsonInput, WriteJso
         descriptor = StepDescriptor(
             stepId = CoreUtilsWriteJsonKey.VALUE.value,
             name = "core-utils.writeJson",
+            jenkinsSurface = "writeJSON",
+            jenkinsDivergence = "the Jenkins step is spelled writeJSON; the DSL spells it writeJson, the spelling of the DSL.",
             configRef = "",
             pluginId = "utilities",
             pluginVersion = "0.0.1-dev",

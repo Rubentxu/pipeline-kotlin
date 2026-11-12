@@ -51,6 +51,7 @@ class CoreUtilsFindFilesStepDefinition : StepDefinition<FindFilesInput, FindFile
             descriptor = StepDescriptor(
                 stepId = CoreUtilsFindFilesKey.VALUE.value,
                 name = "core-utils.findFiles",
+                jenkinsSurface = "findFiles",
                 configRef = "",
                 pluginId = "utilities",
                 pluginVersion = "0.0.1-dev",  // overridden by manifest at registration

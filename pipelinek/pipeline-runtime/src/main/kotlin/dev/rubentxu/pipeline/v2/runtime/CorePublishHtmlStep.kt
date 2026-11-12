@@ -156,6 +156,7 @@ object CorePublishHtmlStep {
     private val descriptor = StepDescriptor(
         stepId = "core.publishHTML",
         name = "publishHTML",
+        jenkinsSurface = "publishHTML",
         configRef = "",
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.WRITES_WORKSPACE),

@@ -120,6 +120,7 @@ object CoreIsUnixStep {
     private val descriptor = StepDescriptor(
         stepId = "core.isUnix",
         name = "isUnix",
+        jenkinsSurface = "isUnix",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.READ_ONLY),

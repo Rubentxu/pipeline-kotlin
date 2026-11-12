@@ -54,6 +54,7 @@ class CoreUtilsWriteYamlStepDefinition : StepDefinition<WriteYamlInput, WriteYam
         descriptor = StepDescriptor(
             stepId = CoreUtilsWriteYamlKey.VALUE.value,
             name = "core-utils.writeYaml",
+            jenkinsSurface = "writeYaml",
             configRef = "",
             pluginId = "utilities",
             pluginVersion = "0.0.1-dev",

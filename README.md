@@ -342,7 +342,7 @@ step       core.sh                           sh
 step       scm-git.checkout                  scm-git.checkout
 ```
 
-`pipelinek steps --json` publishes the same catalogue as one document of the schema `pipelinek.steps/1`: one entry per key, with the effects the step declares, what a replay does with it, what the engine does with it when the run died with it still RUNNING, the capabilities it needs, and the JSON Schema of its payload.
+`pipelinek steps --json` publishes the same catalogue as one document of the schema `pipelinek.steps/2`: one entry per key, with the effects the step declares, what a replay does with it, what the engine does with it when the run died with it still RUNNING, the capabilities it needs, the JSON Schema of its payload, the equivalent in Jenkins and the divergence of THAT entry. The document also carries a `divergences` section: the differences that are the same for every script —the ones the language imposes and the ones the product decides— each with its name and its motive.
 
 `pipelinek describe sh` prints the card of one entry, named by its key (`core.sh`) or by its name (`sh`):
 
@@ -362,11 +362,14 @@ core.sh
     {}
   output schema:
     {}
-  jenkins       (none)
+  jenkins       sh
+  divergence    (none)
   deprecation   (none)
 ```
 
 The payload schema is the one the step's codec declares, and the core steps declare none yet: their schema is `{}` until a codec says what the payload looks like.
+
+The table of equivalences with Jenkins is NOT written here, and that is the point: it lives in the catalogue, which is built from the code —every step declares its equivalent and its divergence in the descriptor that describes it, and the catalogue reads them. A table written in a document is a second authority for a fact the code already owns, and it drifts the first time a step is added. This README names the two verbs that publish it (`pipelinek steps` for the index, `pipelinek describe` for the card of one entry) and the document that carries it; the readable table is generated from that same code for the web.
 
 A name nobody carries is refused with the entries that come close, and a name two entries carry is refused with both of them named — `core.pwd` and `core.pwd.tmp` are two different steps, and answering with one of them would be a coin toss dressed as an answer.
 

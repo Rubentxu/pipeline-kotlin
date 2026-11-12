@@ -295,6 +295,7 @@ object CoreWaitUntilStep {
     private val descriptor = StepDescriptor(
         stepId = "core.waitUntil",
         name = "waitUntil",
+        jenkinsSurface = "waitUntil",
         configRef = "",
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.READ_ONLY),

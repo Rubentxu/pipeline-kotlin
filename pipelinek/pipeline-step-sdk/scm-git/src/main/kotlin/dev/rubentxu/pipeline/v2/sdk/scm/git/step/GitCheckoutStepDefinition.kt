@@ -87,6 +87,8 @@ class GitCheckoutStepDefinition(
         descriptor = StepDescriptor(
             stepId = ScmGitCheckoutKey.VALUE.value,
             name = "scm-git.checkout",
+            jenkinsSurface = "checkout",
+            jenkinsDivergence = "the Jenkins step takes the SCM in an scm block; here the KEY of the step names the SCM that is checked out.",
             configRef = "",
             pluginId = "scm-git",
             pluginVersion = "0.0.1-dev",  // overridden by manifest at registration

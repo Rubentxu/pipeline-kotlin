@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinition
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 import dev.rubentxu.pipeline.v2.domain.directive.DirectivePhase
+import dev.rubentxu.pipeline.v2.domain.directive.JenkinsSurfaceDeclaration
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -22,11 +23,24 @@ import kotlinx.serialization.json.Json
 @Serializable
 data class LockInput(val resource: String, val timeoutSeconds: Int? = null)
 
-object LockDirectiveDefinition : DirectiveDefinition<LockInput, Unit> {
+object LockDirectiveDefinition : DirectiveDefinition<LockInput, Unit>, JenkinsSurfaceDeclaration {
     val KEY = DirectiveKey("acme.lock")
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
 
     override val key: DirectiveKey = KEY
+
+    /** The equivalent in Jenkins: there is none. */
+    override val jenkinsSurface: String = ""
+
+    /**
+     * The divergence with Jenkins, with its motive.
+     *
+     * The directive belongs to an EXAMPLE plugin and not to the surface of the
+     * product, so it has no equivalent to diverge from.
+     */
+    override val jenkinsDivergence: String =
+        "it belongs to an EXAMPLE plugin and not to the surface of the product, so it has no " +
+            "equivalent in Jenkins"
 
     override val phase: DirectivePhase = DirectivePhase.BEFORE_STAGE
 

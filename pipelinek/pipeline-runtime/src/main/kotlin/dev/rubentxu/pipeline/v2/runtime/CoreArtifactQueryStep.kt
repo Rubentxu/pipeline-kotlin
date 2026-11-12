@@ -167,6 +167,8 @@ object CoreArtifactQueryStep {
     private val descriptor = StepDescriptor(
         stepId = "core.artifact.query",
         name = "artifactQuery",
+        jenkinsDivergence = "Jenkins has no step that reads the artifacts a run produced: the artifacts of a build are read with the Artifacts API, and not " +
+            "with a step of the pipeline.",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.READ_ONLY),

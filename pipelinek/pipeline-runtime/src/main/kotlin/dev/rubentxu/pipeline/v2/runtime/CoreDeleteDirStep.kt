@@ -119,6 +119,7 @@ object CoreDeleteDirStep {
     private val descriptor = StepDescriptor(
         stepId = "core.deleteDir",
         name = "deleteDir",
+        jenkinsSurface = "deleteDir",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.WRITES_WORKSPACE),

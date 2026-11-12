@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 import dev.rubentxu.pipeline.v2.domain.directive.DirectivePhase
 import dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement
 import dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirementCodec
+import dev.rubentxu.pipeline.v2.domain.directive.JenkinsSurfaceDeclaration
 import dev.rubentxu.pipeline.v2.domain.directive.TargetLeaseResult
 import dev.rubentxu.pipeline.v2.domain.directivekey.AGENT_DIRECTIVE_KEY
 
@@ -24,9 +25,32 @@ import dev.rubentxu.pipeline.v2.domain.directivekey.AGENT_DIRECTIVE_KEY
  * would give the caller a single boolean and force it to invent the target it
  * was already told about.
 */
-class AgentDirectiveDefinition : DirectiveDefinition<ExecutionTargetRequirement, TargetLeaseResult> {
+class AgentDirectiveDefinition :
+    DirectiveDefinition<ExecutionTargetRequirement, TargetLeaseResult>,
+    JenkinsSurfaceDeclaration {
 
     override val key: DirectiveKey get() = AGENT_DIRECTIVE_KEY
+
+    /**
+     * The equivalent in Jenkins: the `node` step.
+     *
+     * It is the step that allocates an executor there, and the name is what a
+     * reader coming from Jenkins is going to look for.
+     */
+    override val jenkinsSurface: String get() = "node"
+
+    /**
+     * The divergence with the Jenkins `node`, with its motive.
+     *
+     * In Jenkins the step ALLOCATES an executor on an agent. Here the agent is a
+     * DIRECTIVE of the stage, resolved before the body runs, and the `node` step
+     * of the DSL refuses itself: no registered definition owns the key it
+     * lowers to, so the admission of the step refuses it.
+     */
+    override val jenkinsDivergence: String get() =
+        "in Jenkins the node step ALLOCATES an executor on an agent; here the agent is a " +
+            "DIRECTIVE of the stage, and the node step of the DSL refuses itself: no " +
+            "definition owns the key it lowers to."
 
     /**
      * Resolved before the stage body runs.

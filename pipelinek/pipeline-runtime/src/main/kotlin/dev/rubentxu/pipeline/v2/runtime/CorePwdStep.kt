@@ -157,6 +157,7 @@ object CorePwdStep {
     private val descriptor = StepDescriptor(
         stepId = "core.pwd",
         name = "pwd",
+        jenkinsSurface = "pwd",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.READ_ONLY),

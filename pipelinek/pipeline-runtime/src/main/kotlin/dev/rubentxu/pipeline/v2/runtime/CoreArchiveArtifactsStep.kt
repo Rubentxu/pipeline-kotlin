@@ -123,6 +123,7 @@ object CoreArchiveArtifactsStep {
     private val descriptor = StepDescriptor(
         stepId = "core.archiveArtifacts",
         name = "archiveArtifacts",
+        jenkinsSurface = "archiveArtifacts",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.WRITES_WORKSPACE),

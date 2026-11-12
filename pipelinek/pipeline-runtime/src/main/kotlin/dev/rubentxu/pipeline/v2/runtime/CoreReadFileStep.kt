@@ -122,6 +122,7 @@ object CoreReadFileStep {
     private val descriptor = StepDescriptor(
         stepId = "core.readFile",
         name = "readFile",
+        jenkinsSurface = "readFile",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.READ_ONLY),

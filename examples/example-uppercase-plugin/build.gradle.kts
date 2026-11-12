@@ -64,11 +64,25 @@ val uppercaseApiRangeMin: String = providers.gradleProperty("uppercaseApiRangeMi
 val uppercaseApiRangeCeiling: String = nextMinor
 
 repositories {
-    mavenCentral()
+    // The SDK of the SAME revision comes FIRST, and Central comes second.
+    //
+    // The order is the guarantee, and not a detail: the build produces the SDK
+    // of this revision in `sdkRepo` and asks this plugin to compile against it,
+    // and a published artifact of the SAME version would satisfy the resolution
+    // silently. That is the failure this build is supposed to make LOUD: a
+    // plugin compiled against a stale SDK does not fail at the resolution, it
+    // fails at the compile with an error that names a missing member instead of
+    // naming the stale artifact.
+    //
+    // It is not a hypothetical: the version of the tree is the version of the
+    // last release while the next one is being built, so Central holds an
+    // artifact of that version and it is the published one. With Central first,
+    // the plugin would compile against the release and not against this tree.
     maven {
         name = "sdk"
         url = uri(sdkRepo)
     }
+    mavenCentral()
 }
 
 // The SDK is published as a SNAPSHOT. Gradle's default snapshot cache TTL is 24h,

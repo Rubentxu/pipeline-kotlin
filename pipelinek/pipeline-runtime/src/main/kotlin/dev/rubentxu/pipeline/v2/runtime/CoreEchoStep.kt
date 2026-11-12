@@ -70,6 +70,7 @@ object CoreEchoStep {
     private val descriptor = StepDescriptor(
         stepId = "core.echo",
         name = "echo",
+        jenkinsSurface = "echo",
         configRef = "",
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.READ_ONLY),

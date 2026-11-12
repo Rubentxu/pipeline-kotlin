@@ -56,6 +56,9 @@ class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResult
         descriptor = StepDescriptor(
             stepId = JUnitResultsKey.VALUE.value,
             name = "junit.results",
+            jenkinsSurface = "junit",
+            jenkinsDivergence = "the Jenkins step archives the test results of the build and publishes them; here the step reads a JUnit report from the " +
+                "workspace and returns its summary.",
             configRef = "",
             pluginId = "junit",
             pluginVersion = "0.1.0",

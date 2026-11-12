@@ -373,6 +373,7 @@ object CoreShellStep {
     private val descriptor = StepDescriptor(
         stepId = "core.sh",
         name = "sh",
+        jenkinsSurface = "sh",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.EXECUTES_SUBPROCESS),

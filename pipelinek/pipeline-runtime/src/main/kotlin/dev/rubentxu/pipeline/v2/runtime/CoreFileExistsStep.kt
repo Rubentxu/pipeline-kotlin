@@ -93,6 +93,7 @@ object CoreFileExistsStep {
     private val descriptor = StepDescriptor(
         stepId = "core.fileExists",
         name = "fileExists",
+        jenkinsSurface = "fileExists",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.READ_ONLY),

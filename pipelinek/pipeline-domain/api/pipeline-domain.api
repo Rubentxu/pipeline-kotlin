@@ -2168,8 +2168,8 @@ public final class dev/rubentxu/pipeline/v2/domain/StepBody$None : dev/rubentxu/
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/StepDescriptor {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/ExecutionLocation;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;Ldev/rubentxu/pipeline/v2/domain/durable/RecoveryPolicy;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepBody;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/ExecutionLocation;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;Ldev/rubentxu/pipeline/v2/domain/durable/RecoveryPolicy;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepBody;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/ExecutionLocation;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;Ldev/rubentxu/pipeline/v2/domain/durable/RecoveryPolicy;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepBody;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/ExecutionLocation;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;Ldev/rubentxu/pipeline/v2/domain/durable/RecoveryPolicy;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepBody;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()Ljava/util/List;
 	public final fun component11 ()Ljava/util/List;
@@ -2182,6 +2182,7 @@ public final class dev/rubentxu/pipeline/v2/domain/StepDescriptor {
 	public final fun component18 ()Ljava/lang/String;
 	public final fun component19 ()Ldev/rubentxu/pipeline/v2/domain/StepBody;
 	public final fun component2 ()Ljava/lang/String;
+	public final fun component20 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()Ljava/lang/String;
 	public final fun component5 ()Ljava/lang/String;
@@ -2189,8 +2190,8 @@ public final class dev/rubentxu/pipeline/v2/domain/StepDescriptor {
 	public final fun component7 ()Ldev/rubentxu/pipeline/v2/domain/ExecutionLocation;
 	public final fun component8 ()Ljava/lang/String;
 	public final fun component9 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/ExecutionLocation;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;Ldev/rubentxu/pipeline/v2/domain/durable/RecoveryPolicy;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepBody;)Ldev/rubentxu/pipeline/v2/domain/StepDescriptor;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/StepDescriptor;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/ExecutionLocation;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;Ldev/rubentxu/pipeline/v2/domain/durable/RecoveryPolicy;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepBody;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/StepDescriptor;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/ExecutionLocation;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;Ldev/rubentxu/pipeline/v2/domain/durable/RecoveryPolicy;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepBody;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/StepDescriptor;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/StepDescriptor;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/ExecutionLocation;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;Ldev/rubentxu/pipeline/v2/domain/durable/RecoveryPolicy;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepBody;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/StepDescriptor;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getApiVersion ()Ljava/lang/String;
 	public final fun getBody ()Ldev/rubentxu/pipeline/v2/domain/StepBody;
@@ -2201,6 +2202,7 @@ public final class dev/rubentxu/pipeline/v2/domain/StepDescriptor {
 	public final fun getId ()Ljava/lang/String;
 	public final fun getIdempotencyModel ()Ljava/lang/String;
 	public final fun getInputSchema ()Ljava/lang/String;
+	public final fun getJenkinsDivergence ()Ljava/lang/String;
 	public final fun getJenkinsSurface ()Ljava/lang/String;
 	public final fun getName ()Ljava/lang/String;
 	public final fun getOutputSchema ()Ljava/lang/String;
@@ -2959,9 +2961,11 @@ public final class dev/rubentxu/pipeline/v2/domain/directive/DirectiveRegistry$D
 	public fun <init> (Ljava/lang/String;)V
 }
 
-public final class dev/rubentxu/pipeline/v2/domain/directive/ErasedDirectiveDefinition : dev/rubentxu/pipeline/v2/domain/directive/DirectiveDefinitionAny {
+public final class dev/rubentxu/pipeline/v2/domain/directive/ErasedDirectiveDefinition : dev/rubentxu/pipeline/v2/domain/directive/DirectiveDefinitionAny, dev/rubentxu/pipeline/v2/domain/directive/JenkinsSurfaceDeclaration {
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveDefinition;)V
 	public fun decodeAny (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveDecodeResult;
+	public fun getJenkinsDivergence ()Ljava/lang/String;
+	public fun getJenkinsSurface ()Ljava/lang/String;
 	public fun getKey-LahLOg8 ()Ljava/lang/String;
 	public fun getPhase ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectivePhase;
 	public fun getPolicy ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionPolicy;
@@ -3172,6 +3176,11 @@ public final class dev/rubentxu/pipeline/v2/domain/directive/GateVerdict$Unverif
 	public final fun getReason ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/directive/JenkinsSurfaceDeclaration {
+	public abstract fun getJenkinsDivergence ()Ljava/lang/String;
+	public abstract fun getJenkinsSurface ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/directive/RemoteSelector {
@@ -8201,6 +8210,34 @@ public final class dev/rubentxu/pipeline/v2/domain/step/InterpretedBody$Unimplem
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence$Scope;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence$Scope;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence$Scope;)Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence$Scope;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getReason ()Ljava/lang/String;
+	public final fun getScope ()Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence$Scope;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence$Scope : java/lang/Enum {
+	public static final field LANGUAGE Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence$Scope;
+	public static final field PRODUCT Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence$Scope;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence$Scope;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergence$Scope;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/JenkinsDivergences {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/JenkinsDivergences;
+	public final fun global ()Ljava/util/List;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/ManifestSchemaVersion {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/step/ManifestSchemaVersion$Companion;
 	public static final synthetic fun box-impl (I)Ldev/rubentxu/pipeline/v2/domain/step/ManifestSchemaVersion;
@@ -8820,6 +8857,7 @@ public abstract interface class dev/rubentxu/pipeline/v2/domain/step/StepCapabil
 
 public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogue {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogue;
+	public final fun divergences ()Ljava/util/List;
 	public final fun entries (Ldev/rubentxu/pipeline/v2/domain/step/StepRegistry;Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveRegistry;Ldev/rubentxu/pipeline/v2/domain/StepDescriptorRegistry;)Ljava/util/List;
 	public static synthetic fun entries$default (Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogue;Ldev/rubentxu/pipeline/v2/domain/step/StepRegistry;Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveRegistry;Ldev/rubentxu/pipeline/v2/domain/StepDescriptorRegistry;ILjava/lang/Object;)Ljava/util/List;
 }
@@ -8848,6 +8886,7 @@ public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody {
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry {
 	public abstract fun getDeprecation ()Ljava/lang/String;
+	public abstract fun getJenkinsDivergence ()Ljava/lang/String;
 	public abstract fun getJenkinsSurface ()Ljava/lang/String;
 	public abstract fun getKey ()Ljava/lang/String;
 	public abstract fun getKind ()Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind;
@@ -8856,7 +8895,8 @@ public abstract interface class dev/rubentxu/pipeline/v2/domain/step/StepCatalog
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Directive : dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/String;
@@ -8865,10 +8905,12 @@ public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Direc
 	public final fun component6 ()Ljava/lang/String;
 	public final fun component7 ()Ljava/lang/String;
 	public final fun component8 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Directive;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Directive;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Directive;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Directive;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Directive;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Directive;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getDeprecation ()Ljava/lang/String;
+	public fun getJenkinsDivergence ()Ljava/lang/String;
 	public fun getJenkinsSurface ()Ljava/lang/String;
 	public fun getKey ()Ljava/lang/String;
 	public fun getKind ()Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind;
@@ -8890,12 +8932,14 @@ public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind 
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step : dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;Ljava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()Ljava/lang/String;
 	public final fun component11 ()Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;
 	public final fun component12 ()Ljava/lang/String;
 	public final fun component13 ()Ljava/lang/String;
+	public final fun component14 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()Ljava/lang/String;
@@ -8904,14 +8948,15 @@ public final class dev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step 
 	public final fun component7 ()Ljava/lang/String;
 	public final fun component8 ()Ljava/lang/String;
 	public final fun component9 ()Ljava/util/List;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Step;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBody ()Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueBody;
 	public fun getDeprecation ()Ljava/lang/String;
 	public final fun getEffects ()Ljava/util/List;
 	public final fun getExecutionLocation ()Ljava/lang/String;
 	public final fun getInputSchema ()Ljava/lang/String;
+	public fun getJenkinsDivergence ()Ljava/lang/String;
 	public fun getJenkinsSurface ()Ljava/lang/String;
 	public fun getKey ()Ljava/lang/String;
 	public fun getKind ()Ldev/rubentxu/pipeline/v2/domain/step/StepCatalogueEntry$Kind;

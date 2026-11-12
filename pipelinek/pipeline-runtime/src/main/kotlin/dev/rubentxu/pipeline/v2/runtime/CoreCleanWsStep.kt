@@ -154,6 +154,7 @@ object CoreCleanWsStep {
     private val descriptor = StepDescriptor(
         stepId = "core.cleanWs",
         name = "cleanWs",
+        jenkinsSurface = "cleanWs",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.WRITES_WORKSPACE),

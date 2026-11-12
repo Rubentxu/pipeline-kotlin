@@ -412,6 +412,13 @@ DECLARED_BOOT_CHECKS = {
         "distribution, and the cold start they measure is a check of that "
         "packaging. The gate does not call them"
     ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ServiceTelemetryCorrelationBootIntegrationTest.kt": (
+        "the rows that start the INSTALLED service with the live telemetry "
+        "the operator gives it in the environment, and read what a run it "
+        "starts exports to a local collector. The environment of a process "
+        "is only given when it starts, so the guarantee can only be measured "
+        "on a service started as its own process. The gate does not call them"
+    ),
 }
 
 # The signals that a row BOOTS THE TREE'S OWN PRODUCT.
@@ -478,6 +485,12 @@ DECLARED_TREE_BOOT_CHECKS = {
     "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/RunConfigurationIntegrationTest.kt": (
         "the rows that deliver a configuration to a run and check that each run "
         "sees its own and not the one next to it"
+    ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ServiceParameterDescriptionIntegrationTest.kt": (
+        "the rows where the service describes a script from the manifest its "
+        "operator approved, and a run started with that description is "
+        "accepted by the child that checks the values against its own "
+        "declaration"
     ),
     "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/RunConfigurationRestartIntegrationTest.kt": (
         "the rows that stop the service and start another over the same "

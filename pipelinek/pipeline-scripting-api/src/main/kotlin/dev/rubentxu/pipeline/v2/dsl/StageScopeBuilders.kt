@@ -178,7 +178,10 @@ open class StageScopeCore(
     }
 
     protected fun nestedScope(): StageScope =
-        StageScope(stageName, runtimeConfig).also { it.carrierRegistry = carrierRegistry }
+        StageScope(stageName, runtimeConfig).also {
+            it.carrierRegistry = carrierRegistry
+            it.inheritedEnvironment = visibleEnvironment()
+        }
 
     fun echo(text: String) {
         steps.add(StepSpec.Echo(text))
@@ -286,6 +289,54 @@ open class StageScopeCore(
         // `..scm` is the consumption, not a separate statement.
         checkout(scmGit(url, branch, credentialsId, changelog, poll, "."))
     }
+
+    /**
+     * The variables the stage declares, and the ones the steps of the stage run with.
+     *
+     * A scope that opens INSIDE the stage inherits them, and the declaration a
+     * nested block may carry never reaches the steps — so it is not read either:
+     * a read and the steps have to see the same environment.
+     */
+    internal var inheritedEnvironment: EnvironmentSpec? = null
+
+    /**
+     * The environment the steps of this scope run with.
+     *
+     * The scope that opens a stage declares it. A scope that opens inside that
+     * stage inherits it, and the inherited declaration wins over the one the
+     * nested scope carries, because a nested declaration never reaches the steps.
+     */
+    private fun visibleEnvironment(): EnvironmentSpec =
+        inheritedEnvironment ?: stageEnvironment ?: EnvironmentSpec(emptyMap())
+
+    /**
+     * The value of the environment variable named [name].
+     *
+     * The value is the one the STAGE declares, when the stage declares one: a
+     * stage that writes `environment { env("TARGET", "staging") }` reads
+     * "staging" here, in the stage and in the blocks the stage opens. A stage
+     * that declares nothing reads the environment of the PROCESS that builds the
+     * plan, through the runtime configuration port.
+     *
+     * The read happens WHILE THE PLAN IS BUILT, so the value travels inside the
+     * plan and a replay reproduces it. It is not read again when the step runs,
+     * and a variable that only the agent has at runtime is not visible here.
+     *
+     * A variable that is not defined answers null and not an empty text: "not
+     * declared" and "declared as empty" are two different statements, and only
+     * the second one is a value.
+     *
+     * What it cannot answer is the material of a credential. A credential reaches
+     * the step through the environment of the child process, and the environment
+     * of this process never holds it.
+     *
+     * The declaration is read as the script runs, so the `environment { }` block
+     * has to be written BEFORE the step that reads the variable.
+     *
+     * @param name the name of the variable, as the operating system spells it
+     */
+    fun env(name: String): String? =
+        visibleEnvironment().values[name] ?: runtimeConfig.env(name)
 
     fun environment(block: EnvironmentScope.() -> Unit) {
         val scope = EnvironmentScope()

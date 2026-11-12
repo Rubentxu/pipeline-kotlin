@@ -86,6 +86,19 @@ La regla cubre todo resultado que deba usarse, también los de la biblioteca est
 
 La definición de un `.pipeline.kts` (la clase `@KotlinScript`, sus imports y estas opciones del compilador) se publica como `pipelinek-scripting-definition`, para que un IDE compile el script con las mismas reglas que el runner. Es nueva en este árbol: la release 0.97.0 no la lleva.
 
+### Leer una variable del entorno
+
+```kotlin
+stage("build") {
+    environment { env("TARGET", "staging") }
+    sh("echo " + env("TARGET"))
+}
+```
+
+`env("TARGET")` es cómo lee un script una variable: la que declara el stage con `environment { }` cuando declara alguna, y si no, la que tiene la máquina que construye el plan. **No** es `env.TARGET`: Kotlin no tiene properties dinámicas, así que un nombre que solo se conoce en runtime no puede ser una property de un objeto.
+
+El valor se lee **mientras se construye el plan**, así que viaja dentro del plan y un replay lo reproduce. Una variable que no está definida se lee como `null` y no como un texto vacío, y el material de una credencial nunca está entre las respuestas: una credencial llega al paso por el entorno del proceso hijo, nunca por el entorno del motor.
+
 ### Editar pipelines en IntelliJ IDEA
 
 El editor resuelve un script contra el classpath del módulo al que pertenece, y un `.pipeline.kts` fuera de cualquier módulo no tiene DSL ni diagnósticos. `ide init` escribe ese módulo, como un proyecto Gradle, a partir de la instalación con la que lo ejecutas:

@@ -158,6 +158,30 @@ class PipelineScope(
         parameterSpecs.addAll(scope.build())
     }
 
+    /**
+     * The value of the environment variable named [name].
+     *
+     * The pipeline declares no environment of its own, so the value is the one the
+     * PROCESS that builds the plan has, read through the runtime configuration
+     * port. A stage that declares `environment { env("TARGET", "staging") }` does
+     * not change what this reads: the declaration belongs to the stage, and it is
+     * the stage that reads it.
+     *
+     * The read happens WHILE THE PLAN IS BUILT, so the value travels inside the
+     * plan and a replay reproduces it. It is not read again when the step runs.
+     *
+     * A variable that is not defined answers null and not an empty text: "not
+     * declared" and "declared as empty" are two different statements, and only
+     * the second one is a value.
+     *
+     * What it cannot answer is the material of a credential. A credential reaches
+     * the step through the environment of the child process, and the environment
+     * of this process never holds it.
+     *
+     * @param name the name of the variable, as the operating system spells it
+     */
+    fun env(name: String): String? = runtimeConfig.env(name)
+
     fun buildStages(): List<StageSpec> = stageBuilders.map { it.build() }
 
     fun buildParameters(): List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> =

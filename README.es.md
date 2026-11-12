@@ -86,6 +86,37 @@ La regla cubre todo resultado que deba usarse, también los de la biblioteca est
 
 La definición de un `.pipeline.kts` (la clase `@KotlinScript`, sus imports y estas opciones del compilador) se publica como `pipelinek-scripting-definition`, para que un IDE compile el script con las mismas reglas que el runner. Es nueva en este árbol: la release 0.97.0 no la lleva.
 
+### Editar pipelines en IntelliJ IDEA
+
+El editor resuelve un script contra el classpath del módulo al que pertenece, y un `.pipeline.kts` fuera de cualquier módulo no tiene DSL ni diagnósticos. `ide init` escribe ese módulo, como un proyecto Gradle, a partir de la instalación con la que lo ejecutas:
+
+```bash
+"$PIPELINEK" ide init --dir mis-pipelines
+# ide-project /…/mis-pipelines: ready
+# created settings.gradle.kts
+# created build.gradle.kts
+# created gradle.properties
+# created pipelines/
+# installation /…/pipelinek-<version>/lib
+# scripts /…/mis-pipelines/pipelines
+```
+
+Pon los scripts en `mis-pipelines/pipelines/` y abre `mis-pipelines` en IntelliJ IDEA. El proyecto los compila con los jars del directorio `lib/` de la instalación y con las opciones del compilador de su definición de script, así que el editor marca como error un `scmGit(...)` descartado en la línea y la columna que nombra `validate`, con las mismas palabras, y `compileKotlin` ejecutado en ese directorio lo rechaza igual:
+
+```text
+e: file:///…/mis-pipelines/pipelines/build.pipeline.kts:9:13 Unused return value of 'scmGit'. It was coerced to 'Unit' due to a functional parameter type.
+```
+
+- **Nunca sustituye un fichero.** Un directorio que tiene otro fichero en una de esas rutas se rechaza nombrándolo, y no se escribe nada. Una segunda ejecución sobre el proyecto que escribió no cambia nada.
+- **No escribe un wrapper de Gradle.** IntelliJ IDEA escribe uno cuando abre el proyecto (la 2026.2 lo escribe para Gradle 9.6.0); el proyecto compila con Gradle 8.14 y 9.6.
+- **El proyecto pertenece a una instalación.** `build.gradle.kts` nombra la ruta absoluta de su directorio `lib/`. Después de instalar otra versión, borra `settings.gradle.kts`, `build.gradle.kts` y `gradle.properties` y vuelve a ejecutar `ide init` con el lanzador nuevo. Un build cuya instalación ya no está se niega a configurarse y lo dice.
+- **Sin barra invertida en las rutas.** Gradle lee una barra invertida en una ruta como un separador, así que se rechaza un directorio de proyecto o una instalación cuya ruta la contenga.
+- **Solo los plugins de la distribución.** El proyecto ve los plugins del directorio `lib/` de la instalación; un plugin cargado desde cualquier otro sitio no está en su classpath.
+- **El aviso.** IntelliJ IDEA muestra *"This script is not supposed to be inside source root"* encima de cada script. Deja los scripts en `pipelines/`: ahí los compila el build, y ahí los resalta el editor.
+- **Solo el editor.** El inspector de línea de órdenes de IntelliJ IDEA (`inspect.sh`) no analiza los ficheros `.pipeline.kts`; en una máquina de CI, usa `pipelinek validate` o `gradle compileKotlin`.
+
+`ide init` es nuevo en este árbol: la release 0.97.0 no lo lleva.
+
 ### Consultar la ejecución después
 
 Dale a la ejecución un journal y un control root, y cada paso, evento y salida se queda legible:

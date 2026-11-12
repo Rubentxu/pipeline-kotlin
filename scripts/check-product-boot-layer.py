@@ -400,6 +400,13 @@ TEST_SOURCE_MARKERS = (
 # there that the bytes are certified by their digest. These rows are the
 # tree's own, and the tree's own gate does not call them.
 DECLARED_BOOT_CHECKS = {
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/IdeInitBootIntegrationTest.kt": (
+        "the rows that start the INSTALLED launcher to write the project of "
+        "'ide init' and then a Gradle build of that project against the "
+        "installation: what they measure is what Gradle does with the files, "
+        "and Gradle can go red for a reason the tree does not have. The gate "
+        "does not call them"
+    ),
     "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/InstalledProductBootIntegrationTest.kt": (
         "the rows that start the INSTALLED product: the launcher of the "
         "distribution and the service it starts, asked over a real socket. "

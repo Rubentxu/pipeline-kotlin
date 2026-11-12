@@ -216,32 +216,70 @@ class ParametersScope {
     /**
      * A parameter that accepts any text.
      *
-     * The [default] is the text a caller receives when it delivers nothing.
+     * The [defaultValue] is the text a caller receives when it delivers nothing, and it is
+     * the name Jenkins gives it. The historical spelling (`default`) is still accepted and
+     * still declares the same value; it carries a deprecation notice that names this one.
      */
-    fun string(name: String, default: String? = null) {
-        specs.add(
-            dev.rubentxu.pipeline.v2.domain.ParameterSpec(
-                name = name,
-                type = RunInputs.TYPE_STRING,
-                defaultValue = default,
-            ),
+    fun string(name: String, defaultValue: String? = null) {
+        declare(
+            name = name,
+            type = RunInputs.TYPE_STRING,
+            defaultValue = defaultValue,
+        )
+    }
+
+    /**
+     * The ALIAS of [string] that keeps the historical spelling of the value by default.
+     *
+     * It exists so a script that writes `default = ` still compiles, and it says so: the
+     * notice it carries names the spelling that replaces it. When both spellings arrive, the
+     * new one wins.
+     */
+    @Deprecated(
+        message = "`default` is the historical spelling of the value by default: use `defaultValue`.",
+        replaceWith = ReplaceWith("string(name, defaultValue = defaultValue ?: default)"),
+    )
+    fun string(name: String, default: String?, defaultValue: String? = null) {
+        declare(
+            name = name,
+            type = RunInputs.TYPE_STRING,
+            defaultValue = defaultValue ?: default,
         )
     }
 
     /**
      * A parameter that accepts `true` or `false`.
      *
-     * The [default] is written as the boolean it is, and the text that reaches the contract
-     * is the spelling of that boolean: a declaration that carried a free text here would let
-     * an author write a default the type cannot hold.
+     * The [defaultValue] is written as the boolean it is, and the text that reaches the
+     * contract is the spelling of that boolean: a declaration that carried a free text here
+     * would let an author write a default the type cannot hold. The historical spelling
+     * (`default`) is still accepted and still declares the same value; it carries a
+     * deprecation notice that names this one.
      */
-    fun boolean(name: String, default: Boolean? = null) {
-        specs.add(
-            dev.rubentxu.pipeline.v2.domain.ParameterSpec(
-                name = name,
-                type = RunInputs.TYPE_BOOLEAN,
-                defaultValue = default?.toString(),
-            ),
+    fun boolean(name: String, defaultValue: Boolean? = null) {
+        declare(
+            name = name,
+            type = RunInputs.TYPE_BOOLEAN,
+            defaultValue = defaultValue?.toString(),
+        )
+    }
+
+    /**
+     * The ALIAS of [boolean] that keeps the historical spelling of the value by default.
+     *
+     * It exists so a script that writes `default = ` still compiles, and it says so: the
+     * notice it carries names the spelling that replaces it. When both spellings arrive, the
+     * new one wins.
+     */
+    @Deprecated(
+        message = "`default` is the historical spelling of the value by default: use `defaultValue`.",
+        replaceWith = ReplaceWith("boolean(name, defaultValue = defaultValue ?: default)"),
+    )
+    fun boolean(name: String, default: Boolean?, defaultValue: Boolean? = null) {
+        declare(
+            name = name,
+            type = RunInputs.TYPE_BOOLEAN,
+            defaultValue = (defaultValue ?: default)?.toString(),
         )
     }
 
@@ -249,16 +287,58 @@ class ParametersScope {
      * A parameter that accepts one of the [values].
      *
      * The set is closed: a caller that delivers a text outside it is refused, and the
-     * refusal names the parameter. The [default] has to be one of the texts of the set, and
-     * the checker that decides it is the one that checks every value.
+     * refusal names the parameter. The [defaultValue] has to be one of the texts of the set,
+     * and the checker that decides it is the one that checks every value. The historical
+     * spelling (`default`) is still accepted and still declares the same value; it carries a
+     * deprecation notice that names this one.
      */
-    fun choice(name: String, values: List<String>, default: String? = null) {
+    fun choice(name: String, values: List<String>, defaultValue: String? = null) {
+        declare(
+            name = name,
+            type = RunInputs.TYPE_CHOICE,
+            defaultValue = defaultValue,
+            choices = values.toList(),
+        )
+    }
+
+    /**
+     * The ALIAS of [choice] that keeps the historical spelling of the value by default.
+     *
+     * It exists so a script that writes `default = ` still compiles, and it says so: the
+     * notice it carries names the spelling that replaces it. When both spellings arrive, the
+     * new one wins.
+     */
+    @Deprecated(
+        message = "`default` is the historical spelling of the value by default: use `defaultValue`.",
+        replaceWith = ReplaceWith("choice(name, values, defaultValue = defaultValue ?: default)"),
+    )
+    fun choice(name: String, values: List<String>, default: String?, defaultValue: String? = null) {
+        declare(
+            name = name,
+            type = RunInputs.TYPE_CHOICE,
+            defaultValue = defaultValue ?: default,
+            choices = values.toList(),
+        )
+    }
+
+    /**
+     * The declaration every spelling of a parameter ends in.
+     *
+     * The spellings differ in what the author writes, not in what the run receives: one
+     * declaration, one parameter, one value.
+     */
+    private fun declare(
+        name: String,
+        type: String,
+        defaultValue: String?,
+        choices: List<String>? = null,
+    ) {
         specs.add(
             dev.rubentxu.pipeline.v2.domain.ParameterSpec(
                 name = name,
-                type = RunInputs.TYPE_CHOICE,
-                defaultValue = default,
-                choices = values.toList(),
+                type = type,
+                defaultValue = defaultValue,
+                choices = choices.orEmpty(),
             ),
         )
     }

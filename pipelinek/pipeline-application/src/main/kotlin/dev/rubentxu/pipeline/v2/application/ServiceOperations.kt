@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.dsl.ParameterDescription
 import dev.rubentxu.pipeline.v2.runtime.RuntimeApiVersion
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
@@ -76,6 +77,7 @@ internal class ServiceOperations(
     private val providers: ConfigurationProviderSessions? = null,
     private val configurations: ServiceRunConfigurations? = null,
     credentialSessions: CredentialProviderSessions? = null,
+    private val parameterDescriptions: ServiceParameterDescriber? = null,
 ) {
 
     private val credentials = CredentialProviderOperations(credentialSessions)
@@ -95,7 +97,7 @@ internal class ServiceOperations(
         is ServiceRequest.CancelRun -> cancelOf(request)
         is ServiceRequest.ListInputs -> listInputsOf(request)
         is ServiceRequest.AnswerInput -> answerInputOf(request, credentialDigest)
-        is ServiceRequest.DescribeParameters -> describeParametersOf()
+        is ServiceRequest.DescribeParameters -> describeParametersOf(request)
         is ServiceRequest.ProviderRegister -> providerRegisterOf(request, credentialDigest)
         is ServiceRequest.ProviderPoll -> providerPollOf(request, credentialDigest)
         is ServiceRequest.ProviderAnswer -> providerAnswerOf(request, credentialDigest)
@@ -110,26 +112,29 @@ internal class ServiceOperations(
     /**
      * The answer to a request to DESCRIBE the parameters of a script.
      *
-     * The answer is a REFUSAL, and it is the same refusal for every script: this service
-     * does not compile the scripts it is asked about, and describing the parameters of a
-     * script is compiling it.
+     * The declaration comes from [parameterDescriptions], which reads the manifest an operator
+     * approved for the script and compiles nothing. The answer carries the JSON Schema of the
+     * values a start accepts —the description [ParameterDescription] writes from the
+     * declaration, with the rules [dev.rubentxu.pipeline.v2.dsl.RunInputs] checks a start
+     * with—, the declaration itself in the shape a start carries it, and its digest.
      *
-     * ## Why the name is not the one the VALUES are refused with
-     *
-     * Because the client's two actions are different and neither of them is a retry: the
-     * values of a request that break a rule are fixed and sent again, and a description this
-     * service cannot produce is asked of somebody else. A word that covered both would make
-     * the client read the reason to tell them apart.
+     * A service composed without a describer admits no script to be described, and it says
+     * so with the refusal a start without a root of scripts says it with.
      */
-    private fun describeParametersOf(): ServiceResponse = ServiceResponse.Refused(
-        ServiceProtocol.SCHEMA,
-        ServiceRefusal.DescribeParametersRefused(
-            "the-service-does-not-describe-parameters",
-            "describing the parameters of a script means compiling it, and this service does " +
-                "not compile the scripts it is asked about; the description comes from the " +
-                "compiler, or from the contract the client already carries",
-        ),
-    )
+    private fun describeParametersOf(request: ServiceRequest.DescribeParameters): ServiceResponse {
+        val describer = parameterDescriptions
+            ?: return ServiceResponse.Refused(ServiceProtocol.SCHEMA, ServiceRefusal.ScriptNotAdmitted(request.script))
+        return when (val describing = describer.describe(request.script)) {
+            is ServiceParameterDescribing.Refused -> ServiceResponse.Refused(ServiceProtocol.SCHEMA, describing.refusal)
+            is ServiceParameterDescribing.Described -> answered(
+                buildJsonObject {
+                    put("description", ParameterDescription.of(describing.contract))
+                    put("contract", ServiceCodec.encodeParameterContract(describing.contract))
+                    put("contractSha256", JsonPrimitive(describing.contractSha256))
+                },
+            )
+        }
+    }
 
     /**
      * The version of the product and the version of the protocol.

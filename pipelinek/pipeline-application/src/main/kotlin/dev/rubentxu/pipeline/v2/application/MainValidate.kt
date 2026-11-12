@@ -3,16 +3,20 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.domain.ParameterSpec
 import dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope
 import dev.rubentxu.pipeline.v2.dsl.ParameterDescription
+import dev.rubentxu.pipeline.v2.dsl.RunInputs
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.runtime.SystemRuntimeConfig
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptCache
+import dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import java.io.IOException
 import java.io.PrintStream
 import java.nio.file.Path
 
@@ -49,6 +53,14 @@ internal fun validateScript(
     //   - the default one compiles the script AND evaluates it, so the
     //     author's top-level body runs inside this process;
     //   - `--compile-only` compiles the script and does NOT run it.
+    // The manifest names the bytes it was taken from, so they are digested BEFORE the
+    // compilation reads them: a script that changes while it compiles is caught by the second
+    // digest, after it.
+    val scriptSha256 = if (config.parameterManifest) {
+        digestOrNull(scriptPath) ?: return manifestRefused(err, "the script could not be read to digest it")
+    } else {
+        null
+    }
     val rawStore = InMemoryEventStore()
     val store = RedactingEventSink(rawStore, secretPatternRegistry)
     val validateRunId = java.util.UUID.randomUUID().toString()
@@ -90,6 +102,19 @@ internal fun validateScript(
             ),
         )
         return CliExit.SUCCESS
+    }
+    // The MANIFEST of the parameters: the same declaration, bound to the script's bytes.
+    //
+    // Only a validation that succeeded whole prints it, so a manifest is never the account of
+    // a script that failed: a failure falls through to the diagnostics below, as without the
+    // option.
+    val declared = if (scriptSha256 != null && compileResult.isSuccess && compileResult.hasNoErrors()) {
+        pipelineSpecOf(compileResult)?.parameters
+    } else {
+        null
+    }
+    if (scriptSha256 != null && declared != null) {
+        return printParameterManifest(scriptPath, scriptSha256, declared, out, err)
     }
     val events = store.eventsFor(validateRunId).toList()
     writeEventDocument(
@@ -156,3 +181,44 @@ internal fun validateScript(
     )
     return CliExit.SUCCESS
 }
+
+/**
+ * Prints the manifest of [declaration] for the script whose bytes had [scriptSha256] before it
+ * was compiled, or refuses to.
+ *
+ * Refused when the declaration is one a run refuses, judged by [RunInputs.declarationRefusal]:
+ * a manifest is what the service describes the script with, and a description whose every
+ * submission is refused is no description. Refused too when the script's bytes are not the
+ * ones digested before the compilation, because then the manifest would name bytes nobody
+ * compiled.
+ */
+private fun printParameterManifest(
+    scriptPath: Path,
+    scriptSha256: String,
+    declaration: List<ParameterSpec>,
+    out: PrintStream,
+    err: PrintStream,
+): CliExit {
+    RunInputs.declarationRefusal(declaration)?.let { refusal ->
+        return manifestRefused(err, "the declaration is one a run refuses (${refusal.reason}): ${refusal.detail}")
+    }
+    if (digestOrNull(scriptPath) != scriptSha256) {
+        return manifestRefused(err, "the script changed while it was compiled, so no manifest names its bytes")
+    }
+    out.println(ParameterManifest.encode(scriptSha256, declaration))
+    return CliExit.SUCCESS
+}
+
+private fun manifestRefused(err: PrintStream, reason: String): CliExit {
+    err.println("VALIDATION FAILED: no parameter manifest: $reason")
+    return CliExit.INVALID_ARGUMENT
+}
+
+private fun digestOrNull(script: Path): String? = try {
+    ParameterManifest.digestOf(script)
+} catch (_: IOException) {
+    null
+}
+
+private fun ScriptCompilationResult.hasNoErrors(): Boolean =
+    diagnostics.none { it.severity == ScriptDiagnosticSeverity.ERROR }

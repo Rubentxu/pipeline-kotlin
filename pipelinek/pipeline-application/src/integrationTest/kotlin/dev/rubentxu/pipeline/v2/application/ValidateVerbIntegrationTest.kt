@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.domain.ParameterSpec
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptCache
 import dev.rubentxu.pipeline.v2.scripting.JarCompiledScriptCache
 import kotlinx.serialization.json.Json
@@ -12,6 +13,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -61,6 +64,12 @@ import java.util.concurrent.TimeUnit
  *   names against one store. The second file is served by the artifact the first one stored, whose
  *   frames name the first file: the error must still point at the line that threw, under the name
  *   of the file the operator validated.
+ * - The parameter manifest is the operator's half of a description the service gives without
+ *   compiling: the row places what `validate` printed next to the script and asks the service's
+ *   describer for it, so the two halves are tried as the one flow they are. The script carries a
+ *   literal that must not reach the manifest.
+ * - A declaration a run refuses is not printed as a manifest, and a script that does not compile
+ *   prints the diagnostics of the failure and no manifest.
  */
 @Timeout(value = 180, unit = TimeUnit.SECONDS)
 class ValidateVerbIntegrationTest {
@@ -210,6 +219,42 @@ class ValidateVerbIntegrationTest {
     }
 
     @Test
+    fun `the manifest validate prints is the one the service describes the script with`() {
+        val (exit, out, err) = validate(MANIFESTED, DECLARING, "--parameter-manifest")
+
+        assertEquals(CliExit.SUCCESS, exit, out + err)
+        val read = assertInstanceOf(ParameterManifestReading.Read::class.java, ParameterManifest.read(out), out)
+        assertEquals(DECLARED, read.manifest.contract, "the manifest does not carry the declaration in its order")
+        assertEquals(ParameterManifest.digestOf(dir.resolve(MANIFESTED)), read.manifest.scriptSha256)
+        assertFalse(out.contains(LITERAL), "a literal of the script's body reached the manifest:\n$out")
+
+        Files.writeString(dir.resolve(MANIFESTED + ParameterManifest.SUFFIX), out)
+        val described = ApprovedManifestDescriber(ServiceStartAdmission(dir, null)).describe(MANIFESTED)
+
+        assertEquals(ServiceParameterDescribing.Described(DECLARED, read.manifest.contractSha256), described)
+    }
+
+    @Test
+    fun `a declaration a run refuses is not printed as a manifest`() {
+        val reserved = DECLARING.replace("string(\"target\"", "string(\"PIPELINEK_TARGET\"")
+        val (exit, out, err) = validate(MANIFESTED, reserved, "--parameter-manifest")
+
+        assertEquals(CliExit.INVALID_ARGUMENT, exit, out + err)
+        assertEquals("", out, "a manifest was printed for a declaration a run refuses")
+        assertTrue("the-parameter-name-is-reserved" in err, "the refusal does not name its reason:\n$err")
+    }
+
+    @Test
+    fun `a script that does not compile prints its diagnostics and no manifest`() {
+        val (exit, out, err) = validate(MANIFESTED, BROKEN, "--parameter-manifest")
+
+        assertEquals(CliExit.INVALID_ARGUMENT, exit, out + err)
+        assertInstanceOf(ParameterManifestReading.Unreadable::class.java, ParameterManifest.read(out), out)
+        assertTrue("Initializer type mismatch" in out, "the diagnostics of the failure were not printed:\n$out")
+        assertEquals("VALIDATION FAILED: 1 error", err.trim())
+    }
+
+    @Test
     fun `a script that builds its pipeline still validates`() {
         val (exit, out, err) = validate("ok.pipeline.kts", PIPELINE_ONLY)
 
@@ -250,5 +295,31 @@ class ValidateVerbIntegrationTest {
         const val TO_INT = "Use 'toInt' to give the type explicitly."
 
         val WARNED = "// The cast is redundant, and the compiler says so.\nval n = 1 as Int\n\n$PIPELINE_ONLY"
+
+        const val MANIFESTED = "declaring.pipeline.kts"
+        const val LITERAL = "ghp_literal-of-the-body-0123456789"
+
+        val DECLARING = """
+            val token = "$LITERAL"
+
+            pipeline {
+                parameters {
+                    string("target", default = "staging")
+                    boolean("dryRun")
+                    choice("region", listOf("eu", "us"), default = "eu")
+                }
+                stages {
+                    stage("build") {
+                        sh("echo hello")
+                    }
+                }
+            }
+        """.trimIndent()
+
+        val DECLARED = listOf(
+            ParameterSpec("target", "string", "staging"),
+            ParameterSpec("dryRun", "boolean"),
+            ParameterSpec("region", "choice", "eu", listOf("eu", "us")),
+        )
     }
 }

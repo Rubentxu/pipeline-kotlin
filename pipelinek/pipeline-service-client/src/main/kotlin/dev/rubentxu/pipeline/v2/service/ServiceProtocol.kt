@@ -334,12 +334,13 @@ sealed interface ServiceRequest {
      * DECLARES, together with the declaration the caller knows.
      *
      * The declaration travels with the values because the service does not
-     * compile the script: describing a script's parameters is compiling
-     * it, and compiling it is running the author's code inside the
-     * service. The contract the service checks the values against is
-     * therefore the one the client carries, and it is DATA and not
-     * authority — the authority is the declaration of the script, and the
-     * child verifies the values against it before any STEP of the run runs.
+     * compile the script: compiling it is running the author's code inside
+     * the service. The client gets it from the description of an approved
+     * manifest —see [DescribeParameters]— or from its own compiler. The
+     * contract the service checks the values against is therefore the one
+     * the client carries, and it is DATA and not authority — the authority
+     * is the declaration of the script, and the child verifies the values
+     * against it before any STEP of the run runs.
      * The child's check cannot happen earlier: the declaration is built
      * while the author's own body runs.
      *
@@ -647,29 +648,38 @@ sealed interface ServiceRequest {
      *
      * ## What the request carries
      *
-     * The NAME of the script, and nothing else. A description is a read of the script's
-     * own declaration, so it asks about one script by name.
+     * The NAME of the script, and nothing else, resolved under the service's root of scripts
+     * with the same rule a start resolves it with.
      *
-     * ## Why the service REFUSES this request
+     * ## Where the answer comes from
      *
-     * Because describing the parameters of a script means COMPILING it, and compiling it
-     * means running the author's code inside the service. A socket on a machine that
-     * compiled whatever it was asked about would run untrusted code by answering a
-     * question, and a question is easier to ask than a start.
+     * From the manifest an operator APPROVED for the script, `<script>.parameters.json` next
+     * to it, and never from the script: describing a script by compiling it would run the
+     * author's code inside the service, and a question is easier to ask than a start. The
+     * manifest names the script by its SHA-256 and the contract by its digest, so a script
+     * that changed after its manifest was approved is refused instead of described with a
+     * declaration it may no longer carry.
      *
-     * The service therefore answers this request with a NAMED refusal —see
-     * [ServiceRefusal.DescribeParametersRefused]— that says what it cannot do and why. The
-     * name is reserved in the vocabulary on purpose: a build that can describe a script
-     * because it admits an artifact that was authorized beforehand answers this same
-     * request, and a client written against the name works with both.
+     * ## What the answer carries
+     *
+     * - `description`: the JSON Schema (draft 2020-12) of the values a start accepts against
+     *   the declaration: the defaults, which parameters are required, the closed sets of a
+     *   choice and the shape of a name.
+     * - `contract`: the declaration itself, in the shape the `parameterContract` of a start
+     *   travels in, so the client starts the run with the contract it was described.
+     * - `contractSha256`: the digest [ServiceCodec.parameterContractDigest] names the
+     *   contract with; the client recomputes it to know the contract is the one the digest
+     *   names.
+     *
+     * A name a start refuses is refused here with the same `script-not-admitted`.
+     *
+     * A script the service cannot describe is refused by name —see
+     * [ServiceRefusal.DescribeParametersRefused]— with the reason: the client has nothing to
+     * fix in the request and asks the operator for an approved manifest.
      *
      * The name is NOT the one the VALUES are refused with: the values of a request that
-     * break a rule are fixed and sent again, and a description this service cannot produce
-     * is asked of somebody else.
-     *
-     * A client that needs the description before it starts a run gets it from the
-     * compiler —the command line compiles the script it is about to run— or from the
-     * contract it already carries.
+     * break a rule are fixed and sent again, and a description the service cannot produce
+     * is asked of the operator.
      */
     data class DescribeParameters(
         override val schema: String,
@@ -1150,8 +1160,8 @@ sealed interface ServiceRefusal {
      * Because the two facts are not the same for the client: this refusal says that the
      * values the client sent break a rule, and the client has to fix a value and send it
      * again. A refusal that says that the service cannot DESCRIBE the parameters of a script
-     * says that there is nothing to fix: the client has to ask somebody else for the
-     * contract. One word for both would make the client read the reason to tell them apart,
+     * says that there is nothing to fix in the request: the client has to ask the operator
+     * for an approved manifest. One word for both would make the client read the reason to tell them apart,
      * and the reason is read by a machine far more often than by a person.
      *
      * The refusal of a description is [DescribeParametersRefused].
@@ -1169,18 +1179,25 @@ sealed interface ServiceRefusal {
      *
      * ## What it says
      *
-     * That this service does not serve the description, and why: describing the parameters of
-     * a script means compiling it, and compiling it means running the author's code inside
-     * the service.
+     * That the service cannot describe that script, and why, in [reason]:
+     *
+     * - `the-script-has-no-approved-manifest`: no manifest was approved next to the script.
+     * - `the-manifest-is-not-readable`: the manifest is not one this build reads.
+     * - `the-manifest-contract-does-not-match-its-digest`: the manifest's contract is not the
+     *   one its digest names.
+     * - `the-script-changed-since-its-manifest-was-approved`: the script is not the one the
+     *   manifest was approved for; `the-script-is-not-readable` when it cannot be read.
+     * - a reason of the rules of the parameters (`the-declaration-is-not-legal`,
+     *   `the-parameter-name-is-reserved`, …): the declaration is one a start would refuse.
      *
      * ## Why it is a word of its own
      *
      * Because the client's two actions are different and neither of them is a retry: the
-     * values of a request that break a rule are fixed and sent again, and a description this
-     * service cannot produce is asked of somebody else —the compiler, or the contract the
-     * client already carries. A word that covered both would leave the client reading the
-     * reason to learn which of the two happened, and the reason is a field of the refusal
-     * that a machine reads before a person does.
+     * values of a request that break a rule are fixed and sent again, and a description the
+     * service cannot produce is asked of the operator, who approves a manifest for the
+     * script. A word that covered both would leave the client reading the reason to learn
+     * which of the two happened, and the reason is a field of the refusal that a machine
+     * reads before a person does.
      */
     data class DescribeParametersRefused(val reason: String, val detail: String) : ServiceRefusal {
         override val kind: String = "describe-parameters-refused"
@@ -1484,6 +1501,71 @@ object ServiceCodec {
             "describe.parameters" -> decodeDescribeParameters(request, schema, credential)
             else -> ProviderWire.decode(op, request, schema, credential)
         }
+    }
+
+    /**
+     * The shape [contract] travels as: an ARRAY of objects, one per parameter, in the order the
+     * contract declares them.
+     *
+     * Each object carries the parameter's `name` and `type`; its `defaultValue` only when it
+     * declares one, and its `choices` only when it has any. A parameter without a default is
+     * one a caller has to satisfy, so an absent `defaultValue` is a fact and not an omission.
+     *
+     * It is the shape `run.start` sends the contract in and the shape `describe.parameters`
+     * answers it in, so a client that hands back the contract it was described starts the run
+     * under the very declaration the service judged.
+     */
+    fun encodeParameterContract(contract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec>): JsonArray =
+        JsonArray(contract.map { spec ->
+            buildJsonObject {
+                put("name", JsonPrimitive(spec.name))
+                put("type", JsonPrimitive(spec.type))
+                spec.defaultValue?.let { put("defaultValue", JsonPrimitive(it)) }
+                if (spec.choices.isNotEmpty()) {
+                    put("choices", JsonArray(spec.choices.map { JsonPrimitive(it) }))
+                }
+            }
+        })
+
+    /**
+     * The identity of [contract]: the SHA-256, in lowercase hexadecimal, of its declaration in
+     * the order it declares it.
+     *
+     * ## What is hashed
+     *
+     * The UTF-8 bytes of a text in which every field says where it ends, so two declarations
+     * that differ in anything —a name, a type, a default, a choice, the presence of a default,
+     * the order of the parameters— never share the text:
+     *
+     * ```
+     * <count>;  then, per parameter:  <field name> <field type> <default> <count of choices>; <field choice>...
+     * ```
+     *
+     * where `<field x>` is the length of `x` in UTF-8 bytes, a colon and `x`, and `<default>`
+     * is `-` when the parameter declares none and `<field default>` when it does. A length
+     * starts with a digit and the absence is a dash, so an absent default and an empty one are
+     * not the same text, and `["a,b"]` and `["a", "b"]` are not the same choices.
+     *
+     * The service names a described contract with this digest, and a client recomputes it to
+     * know that the contract it received is the one the digest names.
+     */
+    fun parameterContractDigest(contract: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec>): String {
+        val text = StringBuilder()
+        fun field(value: String) {
+            text.append(value.toByteArray(Charsets.UTF_8).size).append(':').append(value)
+        }
+        text.append(contract.size).append(';')
+        for (spec in contract) {
+            field(spec.name)
+            field(spec.type)
+            val defaultValue = spec.defaultValue
+            if (defaultValue == null) text.append('-') else field(defaultValue)
+            text.append(spec.choices.size).append(';')
+            spec.choices.forEach { field(it) }
+        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(text.toString().toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
     }
 
     /**
@@ -1850,16 +1932,7 @@ private fun JsonObjectBuilder.putStartRun(request: ServiceRequest.StartRun) {
     }
     request.credentialProvider?.let { put("credentialProvider", JsonPrimitive(it)) }
     if (request.parameterContract.isNotEmpty()) {
-        put("parameterContract", JsonArray(request.parameterContract.map { spec ->
-            buildJsonObject {
-                put("name", JsonPrimitive(spec.name))
-                put("type", JsonPrimitive(spec.type))
-                spec.defaultValue?.let { put("defaultValue", JsonPrimitive(it)) }
-                if (spec.choices.isNotEmpty()) {
-                    put("choices", JsonArray(spec.choices.map { JsonPrimitive(it) }))
-                }
-            }
-        }))
+        put("parameterContract", ServiceCodec.encodeParameterContract(request.parameterContract))
     }
 }
 
@@ -2086,12 +2159,24 @@ private fun JsonObject.parameters(): Map<String, String>? {
  */
 private fun JsonObject.parameterContract(): List<dev.rubentxu.pipeline.v2.domain.ParameterSpec>? {
     val element = this["parameterContract"] ?: return emptyList()
+    return decodeParameterContract(element)
+}
+
+/**
+ * The declaration [element] is, read in the shape [ServiceCodec.encodeParameterContract]
+ * writes, or null when it is not that shape.
+ *
+ * A name, a type or a choice that is BLANK is a shape the protocol does not admit, because no
+ * parameter of the domain can carry it: it is answered with null here and not with the
+ * exception the domain raises, since a line is a request or a refusal and never an exception.
+ */
+internal fun decodeParameterContract(element: JsonElement): List<dev.rubentxu.pipeline.v2.domain.ParameterSpec>? {
     val entries = element as? JsonArray ?: return null
     val specs = mutableListOf<dev.rubentxu.pipeline.v2.domain.ParameterSpec>()
     for (entry in entries) {
         val spec = entry as? JsonObject ?: return null
-        val name = spec.text("name") ?: return null
-        val type = spec.text("type") ?: return null
+        val name = spec.text("name")?.takeIf { it.isNotBlank() } ?: return null
+        val type = spec.text("type")?.takeIf { it.isNotBlank() } ?: return null
         val defaultValue = spec.text("defaultValue")
         val choicesElement = spec["choices"]
         val choices = if (choicesElement == null) {
@@ -2100,7 +2185,7 @@ private fun JsonObject.parameterContract(): List<dev.rubentxu.pipeline.v2.domain
             val choiceEntries = choicesElement as? JsonArray ?: return null
             val texts = mutableListOf<String>()
             for (choice in choiceEntries) {
-                texts.add((choice as? JsonPrimitive)?.contentOrNull ?: return null)
+                texts.add((choice as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: return null)
             }
             texts
         }

@@ -212,6 +212,12 @@ data class CliFlags(
      */
     val describeParameters: Boolean = false,
     /**
+     * Whether the operator asked for the MANIFEST of the parameters instead of a run: the
+     * declaration the compilation produced, bound to the SHA-256 of the script's bytes, in the
+     * shape the service reads to describe the script without compiling it.
+     */
+    val parameterManifest: Boolean = false,
+    /**
      * Which families of observation reach the reader. Orthogonal to
      * [format]; neither changes execution.
 */

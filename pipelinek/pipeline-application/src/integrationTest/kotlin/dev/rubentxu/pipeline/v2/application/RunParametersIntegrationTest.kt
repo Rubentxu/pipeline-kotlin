@@ -259,24 +259,6 @@ class RunParametersIntegrationTest {
     }
 
     @Test
-    fun `the service does not describe the parameters of a script and says so by name`() {
-        val service = start()
-        try {
-            val answer = client(STARTER_TOKEN).describeParameters("parameters.pipeline.kts")
-
-            val refusal = assertInstanceOf(ServiceAnswer.Refused::class.java, answer).refusal
-            val named = assertInstanceOf(ServiceRefusal.DescribeParametersRefused::class.java, refusal)
-            assertEquals(
-                "the-service-does-not-describe-parameters",
-                named.reason,
-                "describing a script is compiling it, and the service does not compile scripts",
-            )
-        } finally {
-            service.stop()
-        }
-    }
-
-    @Test
     fun `the values of the parameters do not become the environment of the steps`() {
         val service = start()
         try {
@@ -601,8 +583,8 @@ class RunParametersIntegrationTest {
         /**
          * The declaration the client carries: the one the script declares.
          *
-         * It travels with the request because the service does not compile the script, and
-         * it is DATA: the child checks the values against the declaration of the SCRIPT.
+         * It is the declaration a description carries, and the client sends it back with the
+         * start; it is DATA: the child checks the values against the declaration of the SCRIPT.
          */
         private val CONTRACT: List<ParameterSpec> = listOf(
             ParameterSpec(name = "target", type = "string", defaultValue = "staging"),

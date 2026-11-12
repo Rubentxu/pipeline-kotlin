@@ -496,6 +496,7 @@ internal fun composeServiceToServe(
                 null
             },
             credentialSessions = credentialRegistry,
+            parameterDescriptions = ApprovedManifestDescriber(ServiceStartAdmission(policy.scriptsRoot, null)),
         )
     ) {
         is ServiceComposition.Composed -> composed
@@ -955,6 +956,7 @@ private fun composeService(
     providers: ConfigurationProviderSessions,
     inputs: ServiceInputsBinding?,
     credentialSessions: CredentialProviderSessions?,
+    parameterDescriptions: ServiceParameterDescriber,
 ): ServiceComposition = try {
     val dbPath = substrate.dbPath
     val controlRoot = substrate.controlRoot
@@ -989,6 +991,7 @@ private fun composeService(
             )
         },
         credentialSessions = credentialSessions,
+        parameterDescriptions = parameterDescriptions,
     )
     val stores = DurableStores.open(store, controlRootPath, clock)
     val streets = ServiceSubscription(

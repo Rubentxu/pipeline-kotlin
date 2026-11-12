@@ -134,6 +134,7 @@ internal object CliExecutionParser {
         // without running it" is not a run the operator can ask for. Refused by naming the
         // verb that owns it, exactly as `--receipt` is refused on the other side.
         foreignVerbOptionRefusal(state, command)?.let { return CliParseResult.Rejected(it) }
+        declarationDocumentRefusal(state)?.let { return CliParseResult.Rejected(it) }
 
         // `--require-plugin-trust` demands that every plugin the operator brought carries a
         // trust decision. Only a verb that LOADS plugins can keep that promise: `validate`
@@ -188,6 +189,7 @@ internal object CliExecutionParser {
                 credentialBrokerPath = state.credentialBrokerPath,
                 parameters = state.parameterValues.toMap(),
                 describeParameters = state.describeParameters,
+                parameterManifest = state.parameterManifest,
                 view = state.view,
                 format = state.format,
                 outputProtocolTokens = state.outputProtocolTokens,
@@ -221,6 +223,26 @@ internal object CliExecutionParser {
             CliError.OptionBelongsToVerb("--param", "run", PARAM_BELONGS_TO_RUN)
         state.compileOnly && command == CliCommand.RUN ->
             CliError.OptionBelongsToVerb("--compile-only", "validate", COMPILE_ONLY_BELONGS_TO_VALIDATE)
+        state.describeParameters && command == CliCommand.RUN ->
+            CliError.OptionBelongsToVerb("--describe-parameters", "validate", DESCRIBE_BELONGS_TO_VALIDATE)
+        state.parameterManifest && command == CliCommand.RUN ->
+            CliError.OptionBelongsToVerb("--parameter-manifest", "validate", MANIFEST_BELONGS_TO_VALIDATE)
+        else -> null
+    }
+
+    /**
+     * The refusal a request for a document of the declaration earns when the validation it
+     * names cannot print it, or nothing.
+     *
+     * The declaration of the parameters is what the script's BODY builds, so a compile-only
+     * validation has none: printing an empty one would describe a script that declares
+     * parameters as one that declares none. And each document is the whole standard output, so
+     * a request for both is a request for one output that is two.
+     */
+    private fun declarationDocumentRefusal(state: ParseState): CliError? = when {
+        state.describeParameters && state.parameterManifest -> CliError.InvalidCombination(ONE_DOCUMENT)
+        state.describeParameters && state.compileOnly -> CliError.InvalidCombination(DESCRIBE_NEEDS_THE_BODY)
+        state.parameterManifest && state.compileOnly -> CliError.InvalidCombination(MANIFEST_NEEDS_THE_BODY)
         else -> null
     }
 
@@ -271,6 +293,27 @@ internal object CliExecutionParser {
     /** Why `--compile-only` is refused by the verb that runs the author's body. */
     private const val COMPILE_ONLY_BELONGS_TO_VALIDATE =
         "'run' executes the script, so compiling it without running it is 'validate --compile-only'."
+
+    /** Why `--describe-parameters` is refused by the verb that runs the script. */
+    private const val DESCRIBE_BELONGS_TO_VALIDATE =
+        "'run' executes the script, so describing its parameters is 'validate --describe-parameters'."
+
+    /** Why `--parameter-manifest` is refused by the verb that runs the script. */
+    private const val MANIFEST_BELONGS_TO_VALIDATE =
+        "'run' executes the script, so writing the manifest of its parameters is " +
+            "'validate --parameter-manifest'."
+
+    private const val DESCRIBE_NEEDS_THE_BODY =
+        "--describe-parameters prints the declaration the script's body builds, and " +
+            "--compile-only does not run the body"
+
+    private const val MANIFEST_NEEDS_THE_BODY =
+        "--parameter-manifest prints the declaration the script's body builds, and " +
+            "--compile-only does not run the body"
+
+    private const val ONE_DOCUMENT =
+        "--describe-parameters and --parameter-manifest each print one document on the " +
+            "standard output; ask for one of them"
 
     /** Why `--require-plugin-trust` is refused by the verb that loads no plugin. */
     private const val REQUIRE_PLUGIN_TRUST_BELONGS_TO_RUN =

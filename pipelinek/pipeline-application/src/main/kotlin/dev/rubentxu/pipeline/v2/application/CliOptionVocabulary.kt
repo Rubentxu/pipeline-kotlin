@@ -160,6 +160,11 @@ internal class ParseState(
      */
     var describeParameters: Boolean = false
     /**
+     * `--parameter-manifest`. Print the manifest an operator approves for the script: its
+     * declaration of parameters, bound to the SHA-256 of the script's bytes.
+     */
+    var parameterManifest: Boolean = false
+    /**
      * Every `--output-protocol`
      * token the operator supplied. The last one wins. Validation
      * against [dev.rubentxu.pipeline.v2.application.OutputProtocol.SUPPORTED_IDS]
@@ -397,6 +402,9 @@ private val VALIDATION_ONLY_FLAGS: List<FlagOption> = listOf(
     // The description of the parameters is something a COMPILATION produces, and `validate`
     // is the verb that compiles. A verb that runs would have to run the script to answer it.
     FlagOption.DESCRIBE_PARAMETERS,
+    // The manifest is the description bound to the script's bytes, so it is the same product
+    // of the same compilation.
+    FlagOption.PARAMETER_MANIFEST,
 )
 
 internal val VALIDATION_ONLY_OPTIONS: Set<String> =
@@ -405,8 +413,8 @@ internal val VALIDATION_ONLY_OPTIONS: Set<String> =
 /**
  * The whole option surface of this CLI, in one table.
  * Two enums rather than one, and the reason is exhaustiveness: [FlagOptions] matches a
- * `when (FlagOption)` over six cases and [ValuedOptions] a `when (ValuedOption)` over fifteen, both
- * with no `else`. One enum would force an `else` into each, and an `else` here is the defect this
+ * `when (FlagOption)` and [ValuedOptions] a `when (ValuedOption)`, each over every case of its enum
+ * and both with no `else`. One enum would force an `else` into each, and an `else` here is the defect this
  * refactor exists to remove — an unrecognised option is exactly what must never fall through.
 */
 private enum class FlagOption(val token: String) {
@@ -463,6 +471,15 @@ private enum class FlagOption(val token: String) {
      * not implement.
      */
     DESCRIBE_PARAMETERS("--describe-parameters"),
+
+    /**
+     * Print the manifest an operator approves for the script, so that the service can describe
+     * the script without compiling it.
+     *
+     * A BOOLEAN with no value: the manifest goes to the standard output, and placing it next to
+     * the script is the operator's act of approving it.
+     */
+    PARAMETER_MANIFEST("--parameter-manifest"),
     ;
 
     companion object {
@@ -581,6 +598,7 @@ private object FlagOptions {
         FlagOption.COMPILE_ONLY -> flag(index) { state.compileOnly = true }
         FlagOption.REQUIRE_PLUGIN_TRUST -> flag(index) { state.requirePluginTrust = true }
         FlagOption.DESCRIBE_PARAMETERS -> flag(index) { state.describeParameters = true }
+        FlagOption.PARAMETER_MANIFEST -> flag(index) { state.parameterManifest = true }
     }
 
     /** A flag occupies exactly one position, so its outcome never depends on what follows it. */

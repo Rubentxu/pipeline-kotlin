@@ -183,6 +183,7 @@ public final class dev/rubentxu/pipeline/v2/dsl/RunInputs {
 
 public final class dev/rubentxu/pipeline/v2/dsl/RunInputs$Companion {
 	public final fun canonicalText (Ljava/util/List;Ljava/util/Map;)Ljava/lang/String;
+	public final fun declarationRefusal (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/RunInputsRefusal;
 	public final fun getEMPTY ()Ldev/rubentxu/pipeline/v2/dsl/RunInputs;
 	public final fun getNAME_PATTERN ()Lkotlin/text/Regex;
 	public final fun getRESERVED_PREFIXES ()Ljava/util/List;

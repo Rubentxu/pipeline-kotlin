@@ -94,6 +94,11 @@ object CoreFileExistsStep {
         stepId = "core.fileExists",
         name = "fileExists",
         jenkinsSurface = "fileExists",
+        jenkinsDivergence = "Jenkins hands the answer of the check back to the script that wrote " +
+            "the call. Here the eager DSL DECLARES the check and returns nothing: the answer " +
+            "stays inside the typed output of the step, and the scripted form is the one that " +
+            "decodes it back to a Boolean. The answer arrives as the `FileExistsChecked` event, " +
+            "and a file that is not there is a legitimate false and not a failure.",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.READ_ONLY),

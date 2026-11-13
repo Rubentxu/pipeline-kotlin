@@ -1026,11 +1026,12 @@ object DslCompiledPipelineCompiler {
                     put("kind", "ansiColor")
                     put("colorMapName", step.colorMapName)
                 }
-                // Canonical envelope for core.node
-                // (LOCAL_no_op semantics — emits AgentResolved, executes inner
-                // body as-is). The step is body-aware; the inner `steps` are
-                // lowered by `stepNodes` and live inside a [BlockStepNode]
-                // body. The envelope carries only the agent label.
+                // Canonical envelope for core.node: the agent label and NOTHING
+                // else. NO registered definition owns that key, so the canonical
+                // admission refuses the step: the node of Jenkins is the
+                // `agent` directive here, and a directive is not a step. The node
+                // lowers to an OPAQUE step, so the inner `steps` do not travel:
+                // the envelope carries only the agent label.
                 // Jenkins `node(label?: String) { block }`.
                 is StepSpec.NodeNoOp -> {
                     put("kind", "node")

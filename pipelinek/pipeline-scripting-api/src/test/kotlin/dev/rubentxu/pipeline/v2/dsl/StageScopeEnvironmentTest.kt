@@ -129,6 +129,71 @@ class StageScopeEnvironmentTest {
     }
 
     @Test
+    fun `the declaration of a withEnv block is visible to the reads inside it`() {
+        var read: String? = null
+
+        pipeline(host(env = mapOf("TARGET" to "from-the-process"))) {
+            stages {
+                stage("build") {
+                    withEnv(listOf("TARGET=from-the-block")) {
+                        read = env("TARGET")
+                    }
+                }
+            }
+        }
+
+        assertEquals(
+            "from-the-block",
+            read,
+            "the block declares the variable its steps run with, so the read inside it sees it",
+        )
+    }
+
+    @Test
+    fun `the declaration of a withEnv block is not visible outside it`() {
+        var read: String? = null
+
+        pipeline(host(env = mapOf("TARGET" to "from-the-process"))) {
+            stages {
+                stage("build") {
+                    withEnv(listOf("TARGET=from-the-block")) {
+                        sh("echo inside")
+                    }
+                    read = env("TARGET")
+                }
+            }
+        }
+
+        assertEquals(
+            "from-the-process",
+            read,
+            "the block declares the variables of ITS steps, and not the ones of its parent",
+        )
+    }
+
+    @Test
+    fun `an override without a value declares the name with an empty value`() {
+        var read: String? = "the read did not happen"
+
+        pipeline(host(env = mapOf("TARGET" to "from-the-process"))) {
+            stages {
+                stage("build") {
+                    withEnv(listOf("TARGET")) {
+                        read = env("TARGET")
+                    }
+                }
+            }
+        }
+
+        assertEquals(
+            "",
+            read,
+            "the runtime gives an override without a value the name and an empty value, " +
+                "and the read has to answer the same thing",
+        )
+    }
+
+    @Test
     fun `the read happens while the plan is built and the plan keeps the value it read`() {
         val changing = ChangingRuntimeConfig()
 

@@ -118,7 +118,7 @@ class MainStepsCliTest {
 
         val parsed = Json.parseToJsonElement(document.toString()).jsonObject
         assertEquals(
-            "pipelinek.steps/10",
+            "pipelinek.steps/11",
             parsed["schema"]?.jsonPrimitive?.content,
             "the document names the schema a consumer parses it by",
         )
@@ -318,7 +318,7 @@ class MainStepsCliTest {
         val parsed = Json.parseToJsonElement(document.toString()).jsonObject
 
         assertEquals(
-            "pipelinek.steps/10",
+            "pipelinek.steps/11",
             parsed["schema"]?.jsonPrimitive?.content,
             "the document names the version a consumer parses it by, and the version moved with the " +
                 "meaning of the field",
@@ -434,7 +434,7 @@ class MainStepsCliTest {
         assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
         val parsed = Json.parseToJsonElement(out.toString(Charsets.UTF_8.name())).jsonObject
         assertEquals(
-            "pipelinek.steps/10",
+            "pipelinek.steps/11",
             parsed["schema"]?.jsonPrimitive?.content,
             "what the verb publishes is the document the schema names",
         )

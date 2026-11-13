@@ -126,8 +126,14 @@ class EnvironmentDeclarationCompilationTest {
     }
 
     /**
-     * Asserts that the compiler REFUSED the script and that it NAMED the
-     * reference it could not resolve.
+     * Asserts that the compiler REFUSED the script and that it answered EXACTLY
+     * the sentence the catalogue publishes.
+     *
+     * The sentence is read out of the published reason, and the comparison is
+     * an equality and not a containment: a published sentence that is one
+     * character away from the diagnostic is a text the reader will not
+     * recognize in the terminal, and the number of the schema is the warning
+     * that the text changed.
      */
     private fun assertRefusedByTheCompiler(result: ScriptCompilationResult, what: String) {
         assertFalse(
@@ -135,12 +141,9 @@ class EnvironmentDeclarationCompilationTest {
             "$what: ${result.diagnostics}",
         )
         assertTrue(
-            result.diagnostics.any { diagnostic ->
-                diagnostic.message.contains("Unresolved reference") &&
-                    diagnostic.message.contains(publishedName())
-            },
-            "the compiler names the reference it cannot resolve, so the author knows WHICH " +
-                "name failed: ${result.diagnostics}",
+            result.diagnostics.any { diagnostic -> diagnostic.message.trim() == publishedRefusal() },
+            "the compiler answers EXACTLY the sentence the catalogue publishes, so the published " +
+                "text and the diagnostic cannot drift apart: ${result.diagnostics}",
         )
     }
 
@@ -189,7 +192,7 @@ class EnvironmentDeclarationCompilationTest {
         pipeline {
             stages {
                 stage("s") {
-                    ${publishedDeclaration()}
+                    ${environmentBlockHolding(publishedCall())}
                     sh("echo hello")
                 }
             }
@@ -201,7 +204,7 @@ class EnvironmentDeclarationCompilationTest {
      */
     private fun pipelineWithDeclaration(): String = """
         pipeline {
-            ${publishedDeclaration()}
+            ${environmentBlockHolding(publishedCall())}
             stages {
                 stage("s") {
                     sh("echo hello")
@@ -239,21 +242,25 @@ class EnvironmentDeclarationCompilationTest {
     }
 
     /**
-     * The declaration of this product, as the catalogue publishes it.
+     * The call of this product, as the catalogue publishes it.
+     *
+     * It is the CALL and not the block that holds it: the block is published
+     * too, and the script is composed with the two, the way the catalogue
+     * publishes them.
      */
-    private fun publishedDeclaration(): String = requireNotNull(
-        DECLARATION_BLOCK.find(publishedReason())?.groupValues?.get(1),
+    private fun publishedCall(): String = requireNotNull(
+        DECLARATION_CALL.find(publishedReason())?.groupValues?.get(1),
     ) {
         "the published reason names no declaration of this product: ${publishedReason()}"
     }
 
     /**
-     * The name of the variable that the published assignment assigns.
+     * The sentence the catalogue publishes about what the compiler answers.
      */
-    private fun publishedName(): String = requireNotNull(
-        ASSIGNED_NAME.find(publishedAssignment())?.groupValues?.get(1),
+    private fun publishedRefusal(): String = requireNotNull(
+        REFUSAL.find(publishedReason())?.groupValues?.get(1),
     ) {
-        "the published assignment names no variable: ${publishedAssignment()}"
+        "the published reason quotes no answer of the compiler: ${publishedReason()}"
     }
 
     private companion object {
@@ -266,10 +273,10 @@ class EnvironmentDeclarationCompilationTest {
         /** The assignment of Jenkins, as the reason quotes it. */
         val ASSIGNMENT = Regex("""`([A-Za-z_][A-Za-z0-9_]*\s*=\s*[^`]+)`""")
 
-        /** The declaration of this product, as the reason quotes it. */
-        val DECLARATION_BLOCK = Regex("""`(environment \{[^`]*env\([^`]*\)[^`]*\})`""")
+        /** The call of this product, as the reason quotes it. */
+        val DECLARATION_CALL = Regex("""`(env\([^`]*\))`""")
 
-        /** The name that an assignment assigns. */
-        val ASSIGNED_NAME = Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*=""")
+        /** The sentence the reason quotes as the answer of the compiler. */
+        val REFUSAL = Regex("""the compiler answers `([^`]+)`""")
     }
 }

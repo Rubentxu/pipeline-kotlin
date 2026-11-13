@@ -68,7 +68,17 @@ internal object MainMigrateCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.migrate/7`: the document carries the DIFFERENCES with
+     * It is `pipelinek.migrate/8`: the document carries the DIFFERENCES with
+     * their reason, and the reason of the divergence of the DECLARATION of a
+     * variable changed what it says — what the declaration REACHES, and the
+     * fact that only the `env(name, value)` call declares a variable the stage
+     * and its steps can see — and the reason of the divergence of the
+     * environment a script reads says now WHEN a read sees a declaration. The
+     * text that said that the declaration of the pipeline reached the steps of
+     * EVERY stage told the reader with a stage of its own that it did not, so
+     * the version is the warning to the consumer that reads it again.
+     *
+     * It was `pipelinek.migrate/7`: the document carries the DIFFERENCES with
      * their reason, and the reason of the divergence of the CONTROL FLOW
      * changed what it says — it names the block `steps { }` beside the block
      * `script { }`, so the reader of the block a Jenkinsfile writes sees when
@@ -96,7 +106,7 @@ internal object MainMigrateCli {
      * the form of the named argument is byte-identical to the reason of the
      * difference of the named arguments.
      */
-    const val SCHEMA: String = "pipelinek.migrate/7"
+    const val SCHEMA: String = "pipelinek.migrate/8"
 
     /**
      * The classification of the names the operator asked about.

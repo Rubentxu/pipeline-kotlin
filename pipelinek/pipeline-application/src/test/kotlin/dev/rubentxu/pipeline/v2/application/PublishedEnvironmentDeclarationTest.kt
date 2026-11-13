@@ -96,6 +96,64 @@ class PublishedEnvironmentDeclarationTest {
     }
 
     /**
+     * The declaration the catalogue publishes declares the variable the
+     * assignment declares.
+     *
+     * The two forms are published side by side, and the reader has to be able
+     * to read one from the other: the assignment names the variable
+     * (`FOO = 'x'`), and the call has to declare THAT variable. A published
+     * call that declared another one would be a form the DSL takes and a
+     * variable the author does not get.
+     */
+    @Test
+    @DisplayName("the published declaration declares the variable the published assignment assigns")
+    fun thePublishedDeclarationDeclaresTheVariableThePublishedAssignmentAssigns() {
+        val reason = publishedDeclaration().reason
+        val call = requireNotNull(DECLARATION_CALL.find(reason)) {
+            "the reason does not name a declaration the DSL can take: $reason"
+        }
+        val assigned = requireNotNull(ASSIGNED_NAME.find(reason)) {
+            "the reason does not name the assignment of Jenkins: $reason"
+        }
+
+        assertEquals(
+            assigned.groupValues[1],
+            call.groupValues[1],
+            "the first argument of the published declaration is the name the published " +
+                "assignment assigns, so the two published forms are the same variable",
+        )
+    }
+
+    /**
+     * The published reason says the two things a reader would otherwise
+     * discover by failing.
+     *
+     * A `val` written in the block declares a local of the block and nothing
+     * else: it compiles, and the variable never reaches anything. And the
+     * declaration of a stage wins over the declaration of the pipeline, name
+     * by name: a published reason that said the opposite sent the reader with
+     * a stage of its own to a variable it does not have.
+     */
+    @Test
+    @DisplayName("the published reason says that a `val` declares nothing and that the stage wins")
+    fun thePublishedReasonSaysThatAValDeclaresNothingAndThatTheStageWins() {
+        val reason = publishedDeclaration().reason
+
+        assertTrue(
+            reason.contains(VAL_TRAP),
+            "the reason does not say that a `val` written in the block declares a local of the " +
+                "block and nothing else, so the reader who follows it writes a declaration that " +
+                "does nothing and does not hear a word: $reason",
+        )
+        assertTrue(
+            reason.contains(PRECEDENCE),
+            "the reason does not say that the declaration of a stage wins over the one of the " +
+                "pipeline, name by name, so the reader believes that the declaration of the " +
+                "pipeline reaches a stage that declares its own: $reason",
+        )
+    }
+
+    /**
      * The difference the catalogue publishes about the declaration of a variable.
      */
     private fun publishedDeclaration() = requireNotNull(
@@ -118,6 +176,12 @@ class PublishedEnvironmentDeclarationTest {
         /** What the compiler answers to the assignment of Jenkins. */
         const val REFUSAL = "Unresolved reference"
 
+        /** The sentence that says that a `val` declares a local and nothing else. */
+        const val VAL_TRAP = "A `val` written in the block"
+
+        /** The sentence that says which declaration wins. */
+        const val PRECEDENCE = "the declaration of a stage wins, name by name"
+
         /**
          * The declaration the published reason names.
          *
@@ -126,5 +190,14 @@ class PublishedEnvironmentDeclarationTest {
          * itself and would pass with a form the DSL does not take.
          */
         val DECLARATION_CALL = Regex("""env\("([^"]+)", "([^"]+)"\)""")
+
+        /**
+         * The name that the published assignment assigns.
+         *
+         * It is read out of the TEXT for the same reason the declaration is:
+         * a row that carried its own copy of the name would compare the text
+         * with itself.
+         */
+        val ASSIGNED_NAME = Regex("""`([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[^`]+`""")
     }
 }

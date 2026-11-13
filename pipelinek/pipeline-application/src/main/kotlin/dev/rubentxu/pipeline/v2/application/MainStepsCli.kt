@@ -81,7 +81,19 @@ internal object MainStepsCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.steps/10` since the reason of the DIVERGENCE of the
+     * It is `pipelinek.steps/11` since the reason of the DIVERGENCE of the
+     * DECLARATION of a variable says what the DECLARATION reaches: the
+     * declaration of a stage wins over the one of the pipeline, name by name,
+     * and only the `env(name, value)` call declares a variable the stage, its
+     * gate and its steps can see. The reason that said that the declaration
+     * of the pipeline reached the steps of EVERY stage told the reader with a
+     * stage of its own that it did not, and the sentence that said that the
+     * name had to be declared invited a `val` that declares a local of the
+     * block and nothing else. The reason of the DIVERGENCE of the environment
+     * a script reads says now WHEN a read sees a declaration. A consumer that
+     * matched on the text it read has to read it again.
+     *
+     * It was `pipelinek.steps/10` since the reason of the DIVERGENCE of the
      * CONTROL FLOW names the block `steps { }` beside the block `script { }`:
      * the block a Jenkinsfile writes declares the steps of a stage, and its
      * Kotlin is evaluated while the PLAN is built, the same way the body of a
@@ -148,7 +160,7 @@ internal object MainStepsCli {
      * in `forms` that said what `divergences` says; the version names that
      * change.
      */
-    const val SCHEMA: String = "pipelinek.steps/10"
+    const val SCHEMA: String = "pipelinek.steps/11"
 
     /**
      * The published document, as a value.

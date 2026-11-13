@@ -669,6 +669,11 @@ open class StageScopeTopSteps(
      * no code path. Declaring a delay that nothing honours is a silent lie.
      * The supported surface is the block form `retry(n) { ... }`, which lowers
      * to a `core.retry` Block Step and is honoured by the coordinator.
+     *
+     * This refusal is the RETIREMENT of the form, and it stays in the language
+     * because a rejection that names the form that works is worth more than
+     * the absence of the member: a script that wrote `retry(3, 5)` reads what
+     * to write instead, instead of an overload error the compiler produces.
      * @throws IllegalArgumentException always.
 */
     @Suppress("UnusedParameter") // parameters retained so a rejected call fails

@@ -177,7 +177,7 @@ class StageDirectiveDiagnosticTest {
             written.map { declaration ->
                 DynamicTest.dynamicTest("${capsule.name} holds ${declaration.name}") {
                     val script = scriptWithCapsule(
-                        capsule.template.format(declaration.call),
+                        capsule.template.format(java.util.Locale.ROOT, declaration.call),
                         capsule.imports,
                     )
                     val result = compile(
@@ -259,6 +259,28 @@ class StageDirectiveDiagnosticTest {
         assertTrue(
             result.diagnostics.isEmpty(),
             "what the compiler resolved produces a diagnostic: ${result.diagnostics}",
+        )
+    }
+
+    /**
+     * The control flow of Kotlin inside a body is not advice.
+     *
+     * A body may hold the control flow of Kotlin —a loop, a branch— and the
+     * compiler resolves it. Nothing here reads the control flow, so a body
+     * that holds it earns no advice: the advice is about a DECLARATION of the
+     * stage, and the control flow is not one.
+     */
+    @Test
+    fun `the control flow of Kotlin inside a body is not advice`() {
+        val result = compile("stage-directive-control-flow.pipeline.kts", CONTROL_FLOW)
+
+        assertTrue(
+            result.diagnostics.none { it.severity == ScriptDiagnosticSeverity.ERROR },
+            "the control flow of Kotlin inside a body does not compile: ${result.diagnostics}",
+        )
+        assertTrue(
+            result.diagnostics.none { it.message.contains("In PipelineK:") },
+            "the control flow of Kotlin inside a body earns an advice: ${result.diagnostics}",
         )
     }
 
@@ -449,6 +471,24 @@ class StageDirectiveDiagnosticTest {
                             echo("options { }")
                             // options { } is not written here
                             registryStep(PluginStepId("example.step"), EncodedStepValue("{}"))
+                            sh("echo hello")
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+
+        /**
+         * A body that holds the control flow of Kotlin.
+         */
+        val CONTROL_FLOW = """
+            pipeline {
+                stages {
+                    stage("s") {
+                        steps {
+                            for (index in 1..2) {
+                                sh("echo hello")
+                            }
                             sh("echo hello")
                         }
                     }

@@ -95,11 +95,11 @@ class StageScope(
         require(declared.size == 1) {
             "A slot names exactly one step: '$name' names ${declared.size}"
         }
-        steps.add(StepSpec.Slot(slotName = name, step = declared.single()))
+        sequence.declare(StepSpec.Slot(slotName = name, step = declared.single()))
     }
 
     fun deleteDir(path: String = ".") {
-        steps.add(StepSpec.DeleteDir(path = path))
+        sequence.declare(StepSpec.DeleteDir(path = path))
     }
 
     /**
@@ -127,7 +127,7 @@ class StageScope(
             sb.append('"').append(escapeJsonString(p)).append('"')
         }
         sb.append("]}")
-        steps.add(
+        sequence.declare(
             StepSpec.RegistryStepSpec(
                 stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.cleanWs"),
                 schemaVersion = "dsl-v1",
@@ -179,7 +179,7 @@ class StageScope(
     ) {
         val inner = blockScope("catchError")
         inner.block()
-        steps.add(StepSpec.CatchError(
+        sequence.declare(StepSpec.CatchError(
             buildResult = buildResult,
             stageResult = stageResult,
             message = message,
@@ -214,7 +214,7 @@ class StageScope(
     ) {
         val inner = blockScope("catchError")
         inner.block()
-        steps.add(StepSpec.CatchError(
+        sequence.declare(StepSpec.CatchError(
             buildResult = LegacyResultVocabulary.catchBuildResult(buildResult, "buildResult"),
             stageResult = LegacyResultVocabulary.catchStageResult(stageResult),
             message = message,
@@ -245,7 +245,7 @@ class StageScope(
     ) {
         val inner = blockScope("warnError")
         inner.block()
-        steps.add(StepSpec.WarnError(
+        sequence.declare(StepSpec.WarnError(
             message = message,
             catchInterruptions = catchInterruptions,
             steps = inner.steps(),
@@ -264,7 +264,7 @@ class StageScope(
         replaceWith = ReplaceWith("unstable(message)"),
     )
     fun unstable(message: String) {
-        steps.add(StepSpec.Unstable(message = message))
+        sequence.declare(StepSpec.Unstable(message = message))
     }
 
     /**
@@ -313,7 +313,7 @@ class StageScope(
         // `core.pwd` and `core.pwd.tmp` are the only production authorities.
         if (tmp) {
             val encoded = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue("{}")
-            steps.add(
+            sequence.declare(
                 StepSpec.RegistryStepSpec(
                     stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.pwd.tmp"),
                     schemaVersion = "dsl-v1",
@@ -324,7 +324,7 @@ class StageScope(
             val encoded = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(
                 """{"kind":"pwd","tmp":false}""",
             )
-            steps.add(
+            sequence.declare(
                 StepSpec.RegistryStepSpec(
                     stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.pwd"),
                     schemaVersion = "dsl-v1",
@@ -375,7 +375,7 @@ class StageScope(
 */
     fun isUnix(): Boolean {
         val encoded = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue("{}")
-        steps.add(
+        sequence.declare(
             StepSpec.RegistryStepSpec(
                 stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.isUnix"),
                 schemaVersion = "dsl-v1",
@@ -477,7 +477,7 @@ class StageScope(
                 "evaluate. Declare the step that decides the condition, for example: " +
                 "waitUntil { sh(\"test -f marker\") }."
         }
-        steps.add(StepSpec.WaitUntilBlock(
+        sequence.declare(StepSpec.WaitUntilBlock(
             initialRecurrencePeriod = initialRecurrencePeriod,
             maxBackoffMs = maxBackoffMs,
             body = inner.steps(),
@@ -506,7 +506,7 @@ class StageScope(
     fun timestamps(block: StageScope.() -> Unit) {
         val inner = blockScope("timestamps")
         inner.block()
-        steps.add(StepSpec.Timestamps(steps = inner.steps()))
+        sequence.declare(StepSpec.Timestamps(steps = inner.steps()))
     }
 
     // =============================================================================
@@ -547,7 +547,7 @@ class StageScope(
             }
             append("}")
         }
-        steps.add(
+        sequence.declare(
             StepSpec.RegistryStepSpec(
                 stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.milestone"),
                 schemaVersion = "dsl-v1",
@@ -580,7 +580,7 @@ class StageScope(
             sb.append(",\"excludes\":\"").append(escapeJsonString(excludes)).append("\"")
         }
         sb.append("}")
-        steps.add(
+        sequence.declare(
             StepSpec.RegistryStepSpec(
                 stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.stash"),
                 schemaVersion = "dsl-v1",
@@ -613,7 +613,7 @@ class StageScope(
             sb.append(",\"into\":\"").append(escapeJsonString(into)).append("\"")
         }
         sb.append("}")
-        steps.add(
+        sequence.declare(
             StepSpec.RegistryStepSpec(
                 stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.unstash"),
                 schemaVersion = "dsl-v1",
@@ -679,7 +679,7 @@ class StageScope(
         if (allowMissing) sb.append(",\"allowMissing\":true")
         if (escapeUnderscores) sb.append(",\"escapeUnderscores\":true")
         sb.append("}")
-        steps.add(
+        sequence.declare(
             StepSpec.RegistryStepSpec(
                 stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.publishHTML"),
                 schemaVersion = "dsl-v1",
@@ -704,7 +704,7 @@ class StageScope(
     fun timeout(time: Long, unit: String, block: StageScope.() -> Unit) {
         val inner = blockScope("timeout")
         inner.block()
-        steps.add(StepSpec.TimeoutBlock(time = time, unit = unit, steps = inner.steps()))
+        sequence.declare(StepSpec.TimeoutBlock(time = time, unit = unit, steps = inner.steps()))
     }
 
     /**
@@ -726,7 +726,7 @@ class StageScope(
     fun retry(count: Int, block: StageScope.() -> Unit) {
         val inner = blockScope("retry")
         inner.block()
-        steps.add(StepSpec.RetryBlock(count = count, conditions = null, steps = inner.steps()))
+        sequence.declare(StepSpec.RetryBlock(count = count, conditions = null, steps = inner.steps()))
     }
 
     // =============================================================================

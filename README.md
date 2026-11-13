@@ -186,6 +186,17 @@ The body of the stage declares steps too, and the two are **one list**: the step
 
 A block that carries steps has **no authority over the stage**: a declaration that belongs to the stage —the `when*` gates, the declarative `environment`, the `options`, the `post` and the `directives`— is refused where it is written, and the refusal names the declaration, the block it was written in and the place where it belongs. A gate that a nested block dropped in silence would be a gate that does not gate, and the stage would run unconditionally.
 
+### The body of a block declares steps, and nothing else
+
+The body of a `steps { }` block —and of every other block that carries steps— receives a receiver with the **operations** of the DSL and nothing else: the steps it may declare, the wrappers that carry steps of their own, and the steps a plugin publishes. The configuration of the stage is not in that receiver, and that is the point: a `when*` gate, the declarative `environment`, the `options`, the `post` or the `directives` written inside a body are refused by the compiler instead of being dropped in silence.
+
+**What moves for a pipeline that compiles today.** A body that declares steps does not move: the same call declares the same step, with the same values, at stage level and inside a body. Two things do:
+
+- the configuration of the stage written inside a body —the `when*` gates, the declarative `environment`, the `options`, the `post` and the `directives`— no longer compiles. It never ran either: the refusal was already there, where it was written, and it named the declaration and the block. Move the declaration out of the block, to the body of the stage.
+- the versioned form of a plugin's step —the one that names the version of the envelope explicitly— is not reachable from a body. The form that does not name it declares the same step, and it is the one a plugin writes.
+
+A consumer compiled against the previous release keeps linking and keeps running: the object the runtime hands to a body is the stage itself, so a block that a previous release compiled still receives what it expected.
+
 ### Edit pipelines in IntelliJ IDEA
 
 The editor resolves a script against the classpath of the module it belongs to, and a `.pipeline.kts` outside any module gets no DSL and no diagnostics. `ide init` writes that module, as a Gradle project, from the installation you run it with:

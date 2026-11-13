@@ -1,5 +1,6 @@
 package example.block
 
+import dev.rubentxu.pipeline.v2.dsl.StepBodyScope
 import dev.rubentxu.pipeline.v2.dsl.StepEmitter
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 
@@ -46,11 +47,11 @@ fun <B : StepEmitter<B>> StepEmitter<B>.repeatBlock(times: Int, block: B.() -> U
  * descriptor it had, and it delegates to the route of the contract: the two
  * declare the SAME block, and the one that runs is the one of the contract.
  *
- * The body is written in the scope that hosts it, and the scope is the
- * stage: the body of a plugin's block is a body of steps of the stage that
- * carries it.
+ * The body is written in the scope that hosts it, and that scope is the body
+ * of steps: the body of a plugin's block is a body of steps of the stage that
+ * carries it, and it receives the narrow receiver of a body.
  */
-fun StageScope.repeatBlock(times: Int, block: StageScope.() -> Unit) {
-    val emitter: StepEmitter<StageScope> = this
+fun StageScope.repeatBlock(times: Int, block: StepBodyScope.() -> Unit) {
+    val emitter: StepEmitter<StepBodyScope> = this
     emitter.repeatBlock(times, block)
 }

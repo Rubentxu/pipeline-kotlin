@@ -188,6 +188,17 @@ El cuerpo del stage declara pasos también, y los dos son **una sola lista**: lo
 
 Un bloque que lleva pasos **no tiene autoridad sobre el stage**: una declaración que pertenece al stage —las puertas `when*`, el `environment` declarativo, las `options`, el `post` y las `directives`— se rechaza donde se escribe, y el rechazo nombra la declaración, el bloque en el que se escribió y el sitio donde pertenece. Una puerta que un bloque anidado se comiera en silencio sería una puerta que no puerta, y el stage correría sin condición.
 
+### El cuerpo de un bloque declara pasos, y nada más
+
+El cuerpo de un bloque `steps { }` —y de cualquier otro bloque que lleva pasos— recibe un receptor con las **operaciones** del DSL y nada más: los pasos que puede declarar, los envoltorios que llevan pasos propios y los pasos que publica un plugin. La configuración del stage no está en ese receptor, y esa es la razón: una puerta `when*`, el `environment` declarativo, las `options`, el `post` o las `directives` escritas dentro de un cuerpo las rechaza el compilador, en lugar de que se pierdan en silencio.
+
+**Qué se mueve para un pipeline que compila hoy.** Un cuerpo que declara pasos no se mueve: la misma llamada declara el mismo paso, con los mismos valores, en el nivel del stage y dentro de un cuerpo. Dos cosas sí se mueven:
+
+- la configuración del stage escrita dentro de un cuerpo —las puertas `when*`, el `environment` declarativo, las `options`, el `post` y las `directives`— deja de compilar. Tampoco corría antes: el rechazo ya estaba, donde se escribía, y nombraba la declaración y el bloque. Llévala fuera del bloque, al cuerpo del stage.
+- la forma versionada del paso de un plugin —la que nombra explícitamente la versión del sobre— no se alcanza desde un cuerpo. La forma que no la nombra declara el mismo paso, y es la que escribe un plugin.
+
+Un consumidor compilado contra la release anterior sigue enlazando y sigue corriendo: el objeto que el runtime entrega a un cuerpo es el propio stage, así que un bloque que compiló la release anterior sigue recibiendo lo que esperaba.
+
 ### Editar pipelines en IntelliJ IDEA
 
 El editor resuelve un script contra el classpath del módulo al que pertenece, y un `.pipeline.kts` fuera de cualquier módulo no tiene DSL ni diagnósticos. `ide init` escribe ese módulo, como un proyecto Gradle, a partir de la instalación con la que lo ejecutas:

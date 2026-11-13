@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.sdk.http
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.dsl.StepBodyScope
 import dev.rubentxu.pipeline.v2.dsl.StepEmitter
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
@@ -50,7 +51,7 @@ class HttpStepConstructorTest {
         val contractRoute = pipeline {
             stages {
                 stage("build") {
-                    val emitter: StepEmitter<StageScope> = this
+                    val emitter: StepEmitter<StepBodyScope> = this
                     emitter.httpRequest(HttpRequestInput(url = "https://example.test/one"))
                 }
             }

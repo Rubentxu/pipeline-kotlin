@@ -68,10 +68,10 @@ class DirectivesScope {
  * Receiver scope for the step block inside `stage("name") { }`.
 */
 @StepDslMarker
-class StageScope(
+open class StageScope(
     stageName: String,
     runtimeConfig: RuntimeConfig = currentRuntimeConfig(),
-) : StageScopeTopSteps(stageName, runtimeConfig), StepEmitter<StageScope> {
+) : StageScopeTopSteps(stageName, runtimeConfig), StepEmitter<StepBodyScope> {
 
     /**
      * `slot("name") { ... }` — NAMES one step of the body it is written in.
@@ -88,7 +88,7 @@ class StageScope(
      * @param name the address the plugin will use for the step the block declares
      * @throws IllegalArgumentException when the block does not declare exactly one step
      */
-    fun slot(name: String, block: StageScope.() -> Unit) {
+    fun slot(name: String, block: StepBodyScope.() -> Unit) {
         val inner = blockScope("slot")
         inner.block()
         val declared = inner.steps()
@@ -175,7 +175,7 @@ class StageScope(
         buildResult: CatchErrorBuildResult,
         stageResult: CatchErrorBuildResult? = null,
         message: String? = null,
-        block: StageScope.() -> Unit,
+        block: StepBodyScope.() -> Unit,
     ) {
         val inner = blockScope("catchError")
         inner.block()
@@ -210,7 +210,7 @@ class StageScope(
         buildResult: String? = null,
         stageResult: String? = null,
         message: String? = null,
-        block: StageScope.() -> Unit,
+        block: StepBodyScope.() -> Unit,
     ) {
         val inner = blockScope("catchError")
         inner.block()
@@ -241,7 +241,7 @@ class StageScope(
     fun warnError(
         message: String,
         catchInterruptions: Boolean = true,
-        block: StageScope.() -> Unit,
+        block: StepBodyScope.() -> Unit,
     ) {
         val inner = blockScope("warnError")
         inner.block()
@@ -462,7 +462,7 @@ class StageScope(
     fun waitUntil(
         initialRecurrencePeriod: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
         maxBackoffMs: Long = DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
-        body: StageScope.() -> Unit,
+        body: StepBodyScope.() -> Unit,
     ) {
         // Construction-time body capture: invoke the lambda once on a
         // fresh StageScope so its declared steps land in `inner.steps`,
@@ -503,7 +503,7 @@ class StageScope(
      *
      * @param block Nested steps to execute inside the announced scope
 */
-    fun timestamps(block: StageScope.() -> Unit) {
+    fun timestamps(block: StepBodyScope.() -> Unit) {
         val inner = blockScope("timestamps")
         inner.block()
         sequence.declare(StepSpec.Timestamps(steps = inner.steps()))
@@ -701,7 +701,7 @@ class StageScope(
      * @param unit Time unit (SECONDS, MINUTES, etc.)
      * @param block Nested steps to execute with timeout
 */
-    fun timeout(time: Long, unit: String, block: StageScope.() -> Unit) {
+    fun timeout(time: Long, unit: String, block: StepBodyScope.() -> Unit) {
         val inner = blockScope("timeout")
         inner.block()
         sequence.declare(StepSpec.TimeoutBlock(time = time, unit = unit, steps = inner.steps()))
@@ -723,7 +723,7 @@ class StageScope(
      * @param count Maximum retry attempts
      * @param block Nested steps to execute with retry
 */
-    fun retry(count: Int, block: StageScope.() -> Unit) {
+    fun retry(count: Int, block: StepBodyScope.() -> Unit) {
         val inner = blockScope("retry")
         inner.block()
         sequence.declare(StepSpec.RetryBlock(count = count, conditions = null, steps = inner.steps()))

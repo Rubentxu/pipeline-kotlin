@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.dsl.StepBodyScope
 import dev.rubentxu.pipeline.v2.dsl.StepEmitter
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 
@@ -72,7 +73,7 @@ fun StageScope.scmGitCheckout(
     poll: Boolean = true,
     relativeTargetDir: String = ".",
 ) {
-    val emitter: StepEmitter<StageScope> = this
+    val emitter: StepEmitter<StepBodyScope> = this
     emitter.scmGitCheckout(
         url = url,
         branch = branch,

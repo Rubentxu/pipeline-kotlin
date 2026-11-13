@@ -123,6 +123,12 @@ object CoreReadFileStep {
         stepId = "core.readFile",
         name = "readFile",
         jenkinsSurface = "readFile",
+        jenkinsDivergence = "Jenkins hands the content of the file back to the script that wrote " +
+            "the call. Here the eager DSL DECLARES the read and returns nothing: the content " +
+            "stays inside the typed output of the step, and the scripted form is the one that " +
+            "decodes it back to a String. The evidence of the read —the path, the digest and " +
+            "the size— arrives as the `FileRead` event, and the content never enters the event " +
+            "channel.",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.READ_ONLY),

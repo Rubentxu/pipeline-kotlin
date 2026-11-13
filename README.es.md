@@ -318,7 +318,7 @@ core.sh
   output schema:
     {}
   jenkins       sh
-  divergence    (none)
+  divergence    Jenkins hands the captured standard output back to the script that wrote the call. Here the eager DSL DECLARES the shell and returns nothing: the captured output stays inside the typed output of the step, and the scripted form is the one that decodes it back to a String. A shell that exits non-zero under this mode is a failure and not an empty output.
   deprecation   (none)
 ```
 
@@ -335,12 +335,12 @@ $ pipelinek migrate --jenkins sh --jenkins pwd --jenkins bat
 sh
   status        the catalogue declares an equivalent
   equivalent    core.sh  (name: sh)
-  divergence    (none)
+  divergence    Jenkins hands the captured standard output back to the script that wrote the call. Here the eager DSL DECLARES the shell and returns nothing: the captured output stays inside the typed output of the step, and the scripted form is the one that decodes it back to a String. A shell that exits non-zero under this mode is a failure and not an empty output.
 
 pwd
   status        the catalogue declares an equivalent
   equivalent    core.pwd  (name: pwd)
-  divergence    (none)
+  divergence    Jenkins hands back the path of the workspace when the step runs; here the path is the typed output of the step, and the eager DSL — whose plan is built before the workspace exists — answers the sentinel `<workspace>`. The real path arrives as the `PwdResolved` event of the step.
   equivalent    core.pwd.tmp  (name: pwd.tmp)
   divergence    Jenkins has ONE pwd step and the temporary directory is its tmp argument; here the temporary directory is a key of its own, core.pwd.tmp, and the plan carries it separately.
 

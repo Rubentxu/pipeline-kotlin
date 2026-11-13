@@ -263,10 +263,36 @@ open class StageScopeCore(
         steps.add(StepSpec.Echo(text))
     }
 
+    /**
+     * DECLARES the shell step that runs a command.
+     *
+     * Jenkins hands the captured standard output back to the script that wrote
+     * the call. This call returns nothing: it declares the shell, and the
+     * captured output stays inside the typed output of the step, and the
+     * SCRIPTED form is the one that decodes it back to a String.
+     *
+     * @param command the command the shell runs
+     */
     fun sh(command: String) {
         steps.add(StepSpec.Shell(command))
     }
 
+    /**
+     * DECLARES the shell step that runs a script.
+     *
+     * Jenkins hands the captured standard output back to the script that wrote
+     * the call. This call returns nothing, and that is true with
+     * `returnStdout = true` too: the flag asks the step for the captured
+     * output, and the captured output stays inside the typed output of the
+     * step, and the SCRIPTED form is the one that decodes it back to a String.
+     * A shell that exits non-zero under that mode is a failure and not an
+     * empty output.
+     *
+     * @param script the script the shell runs
+     * @param isScriptBlock whether the script is a block of shell lines and not
+     *   a single command
+     * @param returnStdout whether the step asks for the captured standard output
+     */
     fun sh(script: String, isScriptBlock: Boolean = false, returnStdout: Boolean = false) {
         steps.add(
             StepSpec.Shell(
@@ -707,10 +733,35 @@ open class StageScopeTopSteps(
         steps.add(StepSpec.RegistryBlockSpec(stepKey, schemaVersion, encodedInput, inner.steps()))
     }
 
+    /**
+     * DECLARES the read of a file of the workspace.
+     *
+     * Jenkins hands the content of the file back to the script that wrote the
+     * call. This call returns nothing: it declares the read, and the content
+     * stays inside the typed output of the step, and the SCRIPTED form is the
+     * one that decodes it back to a String. The evidence of the read —the path,
+     * the digest and the size— arrives as the `FileRead` event, and the
+     * content never enters the event channel.
+     *
+     * @param file the file, relative to the workspace of the stage
+     * @param encoding the encoding the file is read with
+     */
     fun readFile(file: String, encoding: String = "UTF-8") {
         steps.add(StepSpec.ReadFile(file = file, encoding = encoding))
     }
 
+    /**
+     * DECLARES the check of whether a file of the workspace exists.
+     *
+     * Jenkins hands the answer of the check back to the script that wrote the
+     * call. This call returns nothing: it declares the check, and the answer
+     * stays inside the typed output of the step, and the SCRIPTED form is the
+     * one that decodes it back to a Boolean. The answer arrives as the
+     * `FileExistsChecked` event, and a file that is not there is a legitimate
+     * false and not a failure.
+     *
+     * @param file the file, relative to the workspace of the stage
+     */
     fun fileExists(file: String) {
         steps.add(StepSpec.FileExists(file = file))
     }

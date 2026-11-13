@@ -374,6 +374,11 @@ object CoreShellStep {
         stepId = "core.sh",
         name = "sh",
         jenkinsSurface = "sh",
+        jenkinsDivergence = "Jenkins hands the captured standard output back to the script that " +
+            "wrote the call. Here the eager DSL DECLARES the shell and returns nothing: the " +
+            "captured output stays inside the typed output of the step, and the scripted form is " +
+            "the one that decodes it back to a String. A shell that exits non-zero under this " +
+            "mode is a failure and not an empty output.",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.EXECUTES_SUBPROCESS),

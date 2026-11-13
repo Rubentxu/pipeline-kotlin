@@ -444,11 +444,22 @@ class StepDescriptorRegistry private constructor(
          *
          * The only terminal row with no equivalent in Jenkins is `core.emit.event`: there
          * is no Jenkins step that publishes an event of the run.
+         *
+         * The text of a row that the runtime ALSO registers is written here and in the
+         * descriptor the runtime registers, and the two copies are checked against each
+         * other: the fact is one, and the row that owns it is the one that runs the step.
+         * The copy here is the one a composition WITHOUT the runtime publishes.
 */
         private fun jenkinsDivergenceOf(stepId: String): String = when (stepId) {
             "core.emit.event" ->
                 "Jenkins has no step that publishes an event of the run: here the step " +
                     "writes one to the event plane, and a consumer of the events sees it."
+            "core.sh" ->
+                "Jenkins hands the captured standard output back to the script that " +
+                    "wrote the call. Here the eager DSL DECLARES the shell and returns nothing: the " +
+                    "captured output stays inside the typed output of the step, and the scripted form " +
+                    "is the one that decodes it back to a String. A shell that exits non-zero under this " +
+                    "mode is a failure and not an empty output."
             else -> ""
         }
     }

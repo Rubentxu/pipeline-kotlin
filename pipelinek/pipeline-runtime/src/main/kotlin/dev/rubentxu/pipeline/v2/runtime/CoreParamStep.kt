@@ -183,7 +183,9 @@ object CoreParamStep {
         stepId = "core.param",
         name = "param",
         jenkinsDivergence = "Jenkins exposes a declared parameter as the VARIABLE params.<name>; here the value is read with the core.param step, and a " +
-            "parameter the run does not declare is a failure and not an empty value.",
+            "parameter the run does not declare is a failure and not an empty value. The eager DSL DECLARES the read and returns nothing: the value " +
+            "stays inside the typed output of the step, and no value is knowable while the plan is built, because the effective value is the one the run " +
+            "is given.",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.READ_ONLY),

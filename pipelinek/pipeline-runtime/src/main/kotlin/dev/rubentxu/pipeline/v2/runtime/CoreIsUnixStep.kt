@@ -2,6 +2,9 @@ package dev.rubentxu.pipeline.v2.runtime
 
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.UnixPlatformClassifier
@@ -92,6 +95,9 @@ object CoreIsUnixStep {
             Json.parseToJsonElement(encoded.value).jsonObject
             return IsUnixInput
         }
+
+        /** This step takes no arguments, and the catalogue says so. */
+        override fun schema(): String = StepArguments.of().jsonSchema("core.isUnix")
     }
 
     private val outputCodec = object : StepCodec<IsUnixOutput> {

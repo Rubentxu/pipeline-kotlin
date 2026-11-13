@@ -3,6 +3,9 @@ package dev.rubentxu.pipeline.v2.runtime
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
@@ -98,6 +101,18 @@ object CoreArtifactQueryStep {
                 name = obj.getValue("name").jsonPrimitive.content,
             )
         }
+
+        /** The arguments this step accepts, as the catalogue publishes them. */
+        override fun schema(): String = StepArguments(
+            arguments = listOf(
+                StepArgument(
+                    name = "name",
+                    type = StepArgumentType.STRING,
+                    required = true,
+                    description = "the name the artifact was archived with",
+                ),
+            ),
+        ).jsonSchema("core.artifact.query")
     }
 
     private val outputCodec = object : StepCodec<TypedStepOutput> {

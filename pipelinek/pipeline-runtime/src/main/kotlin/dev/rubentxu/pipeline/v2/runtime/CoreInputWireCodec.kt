@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.v2.runtime
 
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import kotlinx.serialization.json.Json
@@ -58,6 +61,42 @@ object CoreInputWireCodec : StepCodec<CoreInputInput> {
             timeoutSeconds = obj["timeoutSeconds"]?.jsonPrimitive?.intOrNull,
         )
     }
+
+    /** The arguments this step accepts, as the catalogue publishes them. */
+    override fun schema(): String = StepArguments(
+        arguments = listOf(
+            StepArgument(
+                name = "message",
+                type = StepArgumentType.STRING,
+                required = true,
+                description = "the question the step asks",
+            ),
+            StepArgument(
+                name = "ok",
+                type = StepArgumentType.STRING,
+                required = false,
+                description = "the label of the answer that proceeds, Proceed by default",
+            ),
+            StepArgument(
+                name = "submitter",
+                type = StepArgumentType.STRING,
+                required = false,
+                description = "the answerer the step waits for",
+            ),
+            StepArgument(
+                name = "id",
+                type = StepArgumentType.STRING,
+                required = false,
+                description = "the name the question is published with",
+            ),
+            StepArgument(
+                name = "timeoutSeconds",
+                type = StepArgumentType.INTEGER,
+                required = false,
+                description = "how long the step waits for an answer, in seconds",
+            ),
+        ),
+    ).jsonSchema("core.input")
 
     private fun JsonObject.stringOrNull(name: String): String? =
         get(name)?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() }

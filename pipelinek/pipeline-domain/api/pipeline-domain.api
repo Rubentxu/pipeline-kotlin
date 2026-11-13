@@ -2132,6 +2132,59 @@ public final class dev/rubentxu/pipeline/v2/domain/StageOption$Timeout$Companion
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/StepArgument {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;ZLjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;ZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+	public final fun component3 ()Z
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;ZLjava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/StepArgument;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/StepArgument;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;ZLjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/StepArgument;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getRequired ()Z
+	public final fun getType ()Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/StepArgumentType : java/lang/Enum {
+	public static final field ARRAY Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+	public static final field BOOLEAN Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+	public static final field INTEGER Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+	public static final field NUMBER Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+	public static final field OBJECT Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+	public static final field STRING Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getJsonType ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/StepArguments {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/StepArguments$Companion;
+	public static final field DIALECT Ljava/lang/String;
+	public fun <init> ()V
+	public fun <init> (Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;)V
+	public synthetic fun <init> (Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+	public final fun copy (Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;)Ldev/rubentxu/pipeline/v2/domain/StepArguments;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/StepArguments;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/StepArguments;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArguments ()Ljava/util/List;
+	public final fun getOpenPayloadType ()Ldev/rubentxu/pipeline/v2/domain/StepArgumentType;
+	public fun hashCode ()I
+	public final fun jsonSchema (Ljava/lang/String;)Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/StepArguments$Companion {
+	public final fun of ([Ldev/rubentxu/pipeline/v2/domain/StepArgument;)Ldev/rubentxu/pipeline/v2/domain/StepArguments;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/domain/StepBody {
 	public abstract fun getDeclared ()Ldev/rubentxu/pipeline/v2/domain/StepBody$Declared;
 }
@@ -2343,6 +2396,12 @@ public final class dev/rubentxu/pipeline/v2/domain/StepOutcome$Unstable : dev/ru
 	public fun getWireToken ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/StepSchema {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/StepSchema;
+	public static final field UNDECLARED Ljava/lang/String;
+	public final fun declared (Ljava/lang/String;)Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/ToolSpec {

@@ -87,8 +87,11 @@ sealed interface StepCatalogueEntry {
      * @property requiredCapabilities the capability keys the step needs to be admitted.
      * @property executionLocation where the step runs.
      * @property body the body the step takes, or that it is terminal.
-     * @property inputSchema the JSON Schema fragment the input codec declares.
-     * @property outputSchema the JSON Schema fragment the output codec declares.
+     * @property inputSchema the JSON Schema fragment the input codec declares, or
+     *   [dev.rubentxu.pipeline.v2.domain.StepSchema.UNDECLARED] when nobody declared the
+     *   arguments of the step.
+     * @property outputSchema the JSON Schema fragment the output codec declares, with the same
+     *   convention.
      * @property jenkinsDivergence the divergence with the equivalent in Jenkins, with its motive.
      */
     data class Step(

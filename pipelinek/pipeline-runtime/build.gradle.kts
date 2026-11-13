@@ -18,13 +18,16 @@ pitest {
     // on. A lane that mutated the handler and left the codecs unmeasured would
     // leave the wire unguarded, and the other way round.
     //
-    // TWO mutants of this seam are EQUIVALENT and are recorded here instead of
-    // being killed: the `schema` of each codec, which the `StepCodec` interface
-    // gives as a default that no codec in the tree overrides, and which NO
-    // caller reads — a mutation of it changes a value nobody consumes. They
-    // are left alive on purpose: the seam measures the handler and the wire,
-    // and a test that pinned a value nobody reads would buy a green with a
-    // lie.
+    // The `schema` of each codec used to be a value nobody read: the
+    // `StepCodec` interface gave it as a default, no codec of the core
+    // overrode it, and the catalogue published it empty — the text that says
+    // "nobody declared the arguments of this step" and nothing more.
+    //
+    // It is DECLARED now: every codec of the core declares the arguments it
+    // accepts, and the catalogue publishes that declaration. The row that
+    // compares the declaration with the payload the codec really encodes runs
+    // in this lane, so a mutant of the declaration is a RED lane and not a
+    // survivor that nobody read.
     targetClasses = listOf(
         "dev.rubentxu.pipeline.v2.runtime.RunConfiguration*",
         "dev.rubentxu.pipeline.v2.runtime.CoreParamStep*",
@@ -34,6 +37,7 @@ pitest {
     targetTests = listOf(
         "dev.rubentxu.pipeline.v2.runtime.RunConfigurationTest",
         "dev.rubentxu.pipeline.v2.runtime.CoreParamStepTest",
+        "dev.rubentxu.pipeline.v2.runtime.CoreStepInputSchemaTest",
     )
     threads = System.getenv("PIT_THREADS")?.toInt() ?: 4
     timeoutConstInMillis = 10000

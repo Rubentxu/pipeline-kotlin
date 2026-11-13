@@ -2,6 +2,9 @@ package dev.rubentxu.pipeline.v2.runtime
 
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -119,6 +122,9 @@ object CorePwdTmpStep {
             Json.parseToJsonElement(encoded.value).jsonObject
             return PwdTmpInput
         }
+
+        /** This step takes no arguments, and the catalogue says so. */
+        override fun schema(): String = StepArguments.of().jsonSchema("core.pwd.tmp")
     }
 
     private val outputCodec = object : StepCodec<PwdTmpOutput> {

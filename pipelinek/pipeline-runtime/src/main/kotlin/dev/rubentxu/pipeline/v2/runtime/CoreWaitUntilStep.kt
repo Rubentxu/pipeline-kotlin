@@ -4,6 +4,9 @@ import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepBody
@@ -184,6 +187,18 @@ object CoreWaitUntilStep {
                 ?: DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
             return WaitUntilInput(initialRecurrencePeriod)
         }
+
+        /** The arguments this step accepts, as the catalogue publishes them. */
+        override fun schema(): String = StepArguments(
+            arguments = listOf(
+                StepArgument(
+                    name = "initialRecurrencePeriod",
+                    type = StepArgumentType.INTEGER,
+                    required = false,
+                    description = "how long the step waits before it polls the body again, in milliseconds",
+                ),
+            ),
+        ).jsonSchema("core.waitUntil")
     }
 
     private val outputCodec = object : StepCodec<WaitUntilOutput> {

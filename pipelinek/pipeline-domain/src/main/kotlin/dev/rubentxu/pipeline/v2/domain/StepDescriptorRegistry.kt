@@ -111,6 +111,34 @@ class StepDescriptorRegistry private constructor(
                     "FAILURE is re-thrown outward unchanged; Jenkins marks the build and continues " +
                     "the flow.",
                 configRef = "",
+                inputSchema = StepArguments(
+                    arguments = listOf(
+                        StepArgument(
+                            name = "buildResult",
+                            type = StepArgumentType.STRING,
+                            required = true,
+                            description = "the result the build ends with when the body fails",
+                        ),
+                        StepArgument(
+                            name = "stageResult",
+                            type = StepArgumentType.STRING,
+                            required = true,
+                            description = "the result the stage ends with when the body fails",
+                        ),
+                        StepArgument(
+                            name = "message",
+                            type = StepArgumentType.STRING,
+                            required = false,
+                            description = "the text the failure carries",
+                        ),
+                        StepArgument(
+                            name = "catchInterruptions",
+                            type = StepArgumentType.BOOLEAN,
+                            required = true,
+                            description = "whether the scope absorbs an interruption of the body",
+                        ),
+                    ),
+                ).jsonSchema("core.catchError"),
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
                     // Containment is a FOLD of the body's typed outcome, not an execution
@@ -131,6 +159,34 @@ class StepDescriptorRegistry private constructor(
                     "always ends UNSTABLE and publishes the warning, whatever the body did; " +
                     "Jenkins marks the build UNSTABLE only when the body fails.",
                 configRef = "",
+                inputSchema = StepArguments(
+                    arguments = listOf(
+                        StepArgument(
+                            name = "buildResult",
+                            type = StepArgumentType.STRING,
+                            required = true,
+                            description = "the result the build ends with, always UNSTABLE",
+                        ),
+                        StepArgument(
+                            name = "stageResult",
+                            type = StepArgumentType.STRING,
+                            required = true,
+                            description = "the result the stage ends with, always UNSTABLE",
+                        ),
+                        StepArgument(
+                            name = "message",
+                            type = StepArgumentType.STRING,
+                            required = false,
+                            description = "the text the warning carries",
+                        ),
+                        StepArgument(
+                            name = "catchInterruptions",
+                            type = StepArgumentType.BOOLEAN,
+                            required = true,
+                            description = "whether the scope absorbs an interruption of the body",
+                        ),
+                    ),
+                ).jsonSchema("core.warnError"),
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.AT_MOST_ONCE,
                     execution = BodyExecution(
@@ -160,6 +216,16 @@ class StepDescriptorRegistry private constructor(
                 name = "withEnv",
                 jenkinsSurface = "withEnv",
                 configRef = "",
+                inputSchema = StepArguments(
+                    arguments = listOf(
+                        StepArgument(
+                            name = "overrides",
+                            type = StepArgumentType.ARRAY,
+                            required = true,
+                            description = "the environment variables the body runs with",
+                        ),
+                    ),
+                ).jsonSchema("core.withEnv"),
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
                     execution = BodyExecution(
@@ -174,6 +240,16 @@ class StepDescriptorRegistry private constructor(
                 name = "dir",
                 jenkinsSurface = "dir",
                 configRef = "",
+                inputSchema = StepArguments(
+                    arguments = listOf(
+                        StepArgument(
+                            name = "path",
+                            type = StepArgumentType.STRING,
+                            required = true,
+                            description = "the directory the body runs in, relative to the workspace",
+                        ),
+                    ),
+                ).jsonSchema("core.dir"),
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
                     execution = BodyExecution(
@@ -188,6 +264,16 @@ class StepDescriptorRegistry private constructor(
                 name = "withCredentials",
                 jenkinsSurface = "withCredentials",
                 configRef = "",
+                inputSchema = StepArguments(
+                    arguments = listOf(
+                        StepArgument(
+                            name = "bindings",
+                            type = StepArgumentType.ARRAY,
+                            required = true,
+                            description = "the credential bindings the body runs with",
+                        ),
+                    ),
+                ).jsonSchema("core.withCredentials"),
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
                     execution = BodyExecution(
@@ -202,6 +288,16 @@ class StepDescriptorRegistry private constructor(
                 name = "timeout",
                 jenkinsSurface = "timeout",
                 configRef = "",
+                inputSchema = StepArguments(
+                    arguments = listOf(
+                        StepArgument(
+                            name = "seconds",
+                            type = StepArgumentType.INTEGER,
+                            required = true,
+                            description = "how long the body may run, in seconds",
+                        ),
+                    ),
+                ).jsonSchema("core.timeout"),
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
                     execution = BodyExecution(
@@ -218,6 +314,7 @@ class StepDescriptorRegistry private constructor(
                 name = "timestamps",
                 jenkinsSurface = "timestamps",
                 configRef = "",
+                inputSchema = StepArguments.of().jsonSchema("core.timestamps"),
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ONCE,
                     execution = BodyExecution(
@@ -237,6 +334,16 @@ class StepDescriptorRegistry private constructor(
                 name = "retry",
                 jenkinsSurface = "retry",
                 configRef = "",
+                inputSchema = StepArguments(
+                    arguments = listOf(
+                        StepArgument(
+                            name = "maxAttempts",
+                            type = StepArgumentType.INTEGER,
+                            required = true,
+                            description = "how many times the body may run",
+                        ),
+                    ),
+                ).jsonSchema("core.retry"),
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ZERO_OR_MORE,
                     execution = BodyExecution(

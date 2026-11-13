@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.v2.runtime
 
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import kotlinx.serialization.json.Json
@@ -55,4 +58,16 @@ object CoreFileExistsWireCodec : StepCodec<CoreFileExistsInput> {
             file = obj.getValue("file").jsonPrimitive.content,
         )
     }
+
+    /** The arguments this step accepts, as the catalogue publishes them. */
+    override fun schema(): String = StepArguments(
+        arguments = listOf(
+            StepArgument(
+                name = "file",
+                type = StepArgumentType.STRING,
+                required = true,
+                description = "the path whose existence the step reports, relative to the workspace",
+            ),
+        ),
+    ).jsonSchema("core.fileExists")
 }

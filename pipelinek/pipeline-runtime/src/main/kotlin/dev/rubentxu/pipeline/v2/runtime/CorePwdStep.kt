@@ -2,6 +2,9 @@ package dev.rubentxu.pipeline.v2.runtime
 
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
@@ -128,6 +131,18 @@ object CorePwdStep {
             }
             return PwdInput(tmp = false)
         }
+
+        /** The arguments this step accepts, as the catalogue publishes them. */
+        override fun schema(): String = StepArguments(
+            arguments = listOf(
+                StepArgument(
+                    name = "tmp",
+                    type = StepArgumentType.BOOLEAN,
+                    required = false,
+                    description = "whether the step answers with the temporary workspace instead of the stage one",
+                ),
+            ),
+        ).jsonSchema("core.pwd")
     }
 
     private val outputCodec = object : StepCodec<PwdOutput> {

@@ -29,8 +29,22 @@ data class StepDescriptor(
     val pluginVersion: String = "0.0.0",
     val apiVersion: String = "v1",
     val executionLocation: ExecutionLocation = ExecutionLocation.WORKER,
-    val inputSchema: String = "{}",
-    val outputSchema: String = "{}",
+    /**
+     * The JSON Schema of the arguments the Step accepts.
+     *
+     * It is [StepSchema.UNDECLARED] when nobody declared them: a family that
+     * declares its arguments states them here, and the catalogue publishes no
+     * schema for a family that says nothing, so that a reader can tell "this
+     * Step takes no arguments" from "nobody said".
+     */
+    val inputSchema: String = StepSchema.UNDECLARED,
+    /**
+     * The JSON Schema of the values the Step produces.
+     *
+     * It follows the same convention as [inputSchema]: the empty schema means
+     * that nobody declared them.
+     */
+    val outputSchema: String = StepSchema.UNDECLARED,
     val requiredCapabilities: List<String> = emptyList(),
     val effects: List<Effect> = emptyList(),
     val replayPolicy: ReplayPolicy = ReplayPolicy.MEMOIZED,

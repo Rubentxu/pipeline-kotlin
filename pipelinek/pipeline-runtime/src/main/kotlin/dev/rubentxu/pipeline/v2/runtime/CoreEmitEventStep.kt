@@ -4,6 +4,9 @@ import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
@@ -135,6 +138,19 @@ object CoreEmitEventStep {
                 .associate { it.key to it.value.jsonPrimitive.contentOrNull }
             return CoreEmitEventInput(kind, payload)
         }
+
+        /** The arguments this step accepts, as the catalogue publishes them. */
+        override fun schema(): String = StepArguments(
+            arguments = listOf(
+                StepArgument(
+                    name = "kind",
+                    type = StepArgumentType.STRING,
+                    required = true,
+                    description = "the kind of the event the step publishes; the rest of the payload are the fields of the event",
+                ),
+            ),
+            openPayloadType = StepArgumentType.STRING,
+        ).jsonSchema("core.emit.event")
     }
 
     private val outputCodec = object : StepCodec<CoreEmitEventOutput> {

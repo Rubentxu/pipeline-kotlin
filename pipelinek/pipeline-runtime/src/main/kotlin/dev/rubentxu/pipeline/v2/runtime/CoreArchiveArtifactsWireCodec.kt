@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.v2.runtime
 
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import kotlinx.serialization.json.Json
@@ -72,4 +75,40 @@ object CoreArchiveArtifactsWireCodec : StepCodec<ArchiveArtifactsInput> {
             name = obj["name"]?.jsonPrimitive?.content,
         )
     }
+
+    /** The arguments this step accepts, as the catalogue publishes them. */
+    override fun schema(): String = StepArguments(
+        arguments = listOf(
+            StepArgument(
+                name = "artifacts",
+                type = StepArgumentType.STRING,
+                required = true,
+                description = "the comma-separated paths to archive, relative to the workspace",
+            ),
+            StepArgument(
+                name = "name",
+                type = StepArgumentType.STRING,
+                required = false,
+                description = "the name the archive is published with",
+            ),
+            StepArgument(
+                name = "allowEmptyArchive",
+                type = StepArgumentType.BOOLEAN,
+                required = false,
+                description = "whether an empty archive is published instead of refused",
+            ),
+            StepArgument(
+                name = "excludes",
+                type = StepArgumentType.STRING,
+                required = false,
+                description = "the comma-separated paths the archive leaves out",
+            ),
+            StepArgument(
+                name = "fingerprint",
+                type = StepArgumentType.BOOLEAN,
+                required = false,
+                description = "whether the archive is published with the fingerprint of its content",
+            ),
+        ),
+    ).jsonSchema("core.archiveArtifacts")
 }

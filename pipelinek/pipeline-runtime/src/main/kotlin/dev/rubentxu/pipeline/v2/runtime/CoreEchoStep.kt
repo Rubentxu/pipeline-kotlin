@@ -1,6 +1,9 @@
 package dev.rubentxu.pipeline.v2.runtime
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
@@ -59,6 +62,18 @@ object CoreEchoStep {
             }
             return EchoInput(objectValue.getValue("text").jsonPrimitive.content)
         }
+
+        /** The arguments this step accepts, as the catalogue publishes them. */
+        override fun schema(): String = StepArguments(
+            arguments = listOf(
+                StepArgument(
+                    name = "text",
+                    type = StepArgumentType.STRING,
+                    required = true,
+                    description = "the text the step prints",
+                ),
+            ),
+        ).jsonSchema("core.echo")
     }
 
     private val outputCodec = object : StepCodec<String> {

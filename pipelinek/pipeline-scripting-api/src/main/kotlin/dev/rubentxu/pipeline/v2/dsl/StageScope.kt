@@ -510,12 +510,15 @@ class StageScope(
      *
      * The step lowers to the key `core.node`, and NO registered definition owns
      * that key: the canonical admission refuses the step, in the RUN and not in
-     * the compilation. The script compiles, and the run refuses it naming the
-     * form of this product that replaces it.
+     * the compilation. The script compiles, and the run refuses it saying the
+     * truth: this product does not allocate an executor on an agent, and the
+     * stage runs on the machine where the run started.
      *
-     * The form that replaces it is the `agent` DIRECTIVE of the stage: the
-     * agent of a stage is resolved before its body runs, and it is a
-     * declaration of the stage and not a block that wraps one.
+     * What remains of the agent is the `core.agent` DIRECTIVE of the stage: a
+     * plan that carries the requirement has it resolved before its body runs,
+     * and it is a declaration of the stage and not a block that wraps one. The
+     * language offers no way to author it —the requirement reaches the plan
+     * through the generic seam— but the runtime still decides it.
      *
      * @param label Agent label (optional)
      * @param block Nested steps to execute

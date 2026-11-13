@@ -226,11 +226,11 @@ open class StageScopeCore(
      *
      * A nested scope is a lexical block of the stage that opened it, and only
      * its STEPS reach the plan. A declaration that belongs to the STAGE —the
-     * agent, the gate, the declarative environment, the options, the post
-     * conditions, the directives— would be DROPPED in silence, and a gate that
-     * is dropped is a gate that does not gate: the stage runs
-     * unconditionally. The scope therefore carries the name of the block that
-     * opened it, so the refusal can say WHERE the declaration was written.
+     * gate, the declarative environment, the options, the post conditions, the
+     * directives— would be DROPPED in silence, and a gate that is dropped is a
+     * gate that does not gate: the stage runs unconditionally. The scope
+     * therefore carries the name of the block that opened it, so the refusal
+     * can say WHERE the declaration was written.
      */
     internal var openingBlock: String? = null
 
@@ -385,9 +385,9 @@ open class StageScopeCore(
      * pipeline's `REGISTRY`.
      *
      * This is the READ view: it carries what the pipeline had declared when
-     * this stage was opened. The agent of the pipeline does NOT travel this
-     * way — it is applied at the end of the pipeline's block, so a declaration
-     * written after the `stages { }` block reaches the stages as well.
+     * this stage was opened. What the pipeline declares is applied at the end
+     * of the pipeline's block, so a declaration written after the `stages { }`
+     * block reaches the stages as well.
      */
     internal var pipelineEnvironment: EnvironmentSpec? = null
 
@@ -441,7 +441,7 @@ open class StageScopeCore(
      *
      * The read happens WHILE THE PLAN IS BUILT, so the value travels inside the
      * plan and a replay reproduces it. It is not read again when the step runs,
-     * and a variable that only the agent has at runtime is not visible here.
+     * and a variable that only the machine has at runtime is not visible here.
      *
      * A variable that is not defined answers null and not an empty text: "not
      * declared" and "declared as empty" are two different statements, and only
@@ -581,11 +581,11 @@ open class StageScopeCore(
      * scope and never against the stage that opened it.
      *
      * The block carries STEPS and no authority over the stage: a declaration
-     * that belongs to the stage —the agent, the gate, the declarative
-     * environment, the options, the post conditions and the directives— is
-     * refused where it is written, naming the declaration, the block and the
-     * place where it belongs. A gate that the block dropped in silence would
-     * be a gate that does not gate.
+     * that belongs to the stage —the gate, the declarative environment, the
+     * options, the post conditions and the directives— is refused where it is
+     * written, naming the declaration, the block and the place where it
+     * belongs. A gate that the block dropped in silence would be a gate that
+     * does not gate.
      */
     fun script(block: StageScope.() -> Unit) {
         val inner = blockScope("script")
@@ -630,11 +630,11 @@ open class StageScopeCore(
      * scope and never against the stage that opened it.
      *
      * The block carries STEPS and no authority over the stage: a declaration
-     * that belongs to the stage —the agent, the gate, the declarative
-     * environment, the options, the post conditions and the directives— is
-     * refused where it is written, naming the declaration, the block and the
-     * place where it belongs. A gate that the block dropped in silence would
-     * be a gate that does not gate.
+     * that belongs to the stage —the gate, the declarative environment, the
+     * options, the post conditions and the directives— is refused where it is
+     * written, naming the declaration, the block and the place where it
+     * belongs. A gate that the block dropped in silence would be a gate that
+     * does not gate.
      */
     fun steps(block: StageScope.() -> Unit) {
         val inner = blockScope("steps")

@@ -17,7 +17,10 @@ import dev.rubentxu.pipeline.v2.domain.directive.RemoteSelector
 import dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateEvaluator
 import dev.rubentxu.pipeline.v2.domain.directivekey.AGENT_DIRECTIVE_KEY
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.events.NullEventSink
+import dev.rubentxu.pipeline.v2.events.DirectiveDenied
+import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.ExecutionTargetResolved
 import dev.rubentxu.pipeline.v2.runtime.AgentDirectiveDefinition
 import dev.rubentxu.pipeline.v2.runtime.LocalExecutionTargetResolver
 import dev.rubentxu.pipeline.v2.runtime.SequentialIdGenerator
@@ -53,30 +56,53 @@ import org.junit.jupiter.api.Timeout
  * therefore two facts about the same change, and this file measures the second
  * one.
  *
- * ## What this file does NOT freeze
+ * ## Why the rows read the OBSERVATION and not only the decision
  *
- * The events. The seam emits the resolution or the denial before the verdict
- * reaches the coordinator, and that order is the engine's own contract; this
- * file reads the DECISION, which is what the coordinator acts on.
+ * Because a decision alone cannot tell two cases apart. A stage that carries
+ * no requirement at all is admitted, exactly like a stage whose requirement
+ * the host satisfies: the verdict of the first is indistinguishable from the
+ * verdict of the second, and the difference between them is the whole point —
+ * a requirement that is DECLARED AND SATISFIED has to be visible as such, so
+ * that nobody can read the run as one that never had the requirement.
+ *
+ * The engine's own contract says an observer can tell the three cases apart
+ * (declared and satisfied, declared and refused, never declared), and this
+ * file measures that: the event is appended BEFORE the verdict reaches the
+ * coordinator, so its presence in the stream is proof that the requirement
+ * was read and decided, not that the stage simply ran.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class HistoricalAgentRequirementTest {
 
     /**
-     * A requirement the host satisfies is granted.
+     * A requirement the host satisfies is granted, and the grant is OBSERVED.
      */
     @Test
     @DisplayName("a requirement the host satisfies is granted")
     fun aRequirementTheHostSatisfiesIsGranted() {
-        val verdict = verdictOf(
+        val outcome = seamOf(
             ExecutionTargetRequirement.LocalLabels(setOf(AgentLabel("unix"))),
         )
 
         assertEquals(
             BeforeStageDirectiveEngine.Verdict.Admitted,
-            verdict,
+            outcome.verdict,
             "the host advertises the label the requirement asks for, so the stage runs: the " +
                 "requirement is still checked and it is still satisfiable",
+        )
+
+        val resolved = assertInstanceOf(
+            ExecutionTargetResolved::class.java,
+            outcome.events.filterIsInstance<ExecutionTargetResolved>().firstOrNull(),
+            "the seam observed the resolution of the requirement: a requirement that is declared " +
+                "and satisfied has to be distinguishable from a requirement that was never " +
+                "declared, and only the observation tells the two apart",
+        )
+        assertEquals(
+            AGENT_DIRECTIVE_KEY.value,
+            resolved.directiveKey,
+            "the observation names the directive it resolved: the requirement that the plan " +
+                "carries is the one that was decided",
         )
     }
 
@@ -90,13 +116,13 @@ class HistoricalAgentRequirementTest {
     @Test
     @DisplayName("a requirement the host does not satisfy is refused in closed")
     fun aRequirementTheHostDoesNotSatisfyIsRefusedInClosed() {
-        val verdict = verdictOf(
+        val outcome = seamOf(
             ExecutionTargetRequirement.LocalLabels(setOf(AgentLabel("gpu"))),
         )
 
         val denied = assertInstanceOf(
             BeforeStageDirectiveEngine.Verdict.Denied::class.java,
-            verdict,
+            outcome.verdict,
             "a requirement the host cannot satisfy fails the stage closed: a stage that runs on a " +
                 "machine the author excluded is the exact silent semantic drop this product exists " +
                 "to remove",
@@ -110,6 +136,19 @@ class HistoricalAgentRequirementTest {
             "the refusal names the labels the host advertises, so the author can see what it " +
                 "does have: ${denied.reason}",
         )
+
+        val observed = assertInstanceOf(
+            DirectiveDenied::class.java,
+            outcome.events.filterIsInstance<DirectiveDenied>().firstOrNull(),
+            "the refusal is observable: the observers of the run have to see that the " +
+                "requirement was declared AND refused, and not only that the stage did not run",
+        )
+        assertEquals(
+            AGENT_DIRECTIVE_KEY.value,
+            observed.directiveKey,
+            "the denial names the directive it denied: the requirement the plan carries is the " +
+                "one that was refused",
+        )
     }
 
     /**
@@ -118,13 +157,13 @@ class HistoricalAgentRequirementTest {
     @Test
     @DisplayName("a remote requirement is refused, and the refusal says why")
     fun aRemoteRequirementIsRefusedAndTheRefusalSaysWhy() {
-        val verdict = verdictOf(
+        val outcome = seamOf(
             ExecutionTargetRequirement.Remote(RemoteSelector("worker-1")),
         )
 
         val denied = assertInstanceOf(
             BeforeStageDirectiveEngine.Verdict.Denied::class.java,
-            verdict,
+            outcome.verdict,
             "a remote requirement is refused: this runtime is single-host, and running the stage " +
                 "on the local host would silently ignore the selector",
         )
@@ -139,14 +178,22 @@ class HistoricalAgentRequirementTest {
     }
 
     /**
-     * The verdict of a stage that carries the requirement.
+     * What the seam decided, and what it observed while deciding it.
+     */
+    private data class SeamOutcome(
+        val verdict: BeforeStageDirectiveEngine.Verdict,
+        val events: List<DomainEvent>,
+    )
+
+    /**
+     * The seam's answer for a stage that carries the requirement.
      *
      * The stage, the registry and the resolver are the ones the product
      * composes: the row exercises the seam, it does not rewrite it. The host
      * is a fixed one — a machine that advertises `linux` and `unix` — so the
      * rows do not depend on the machine the suite runs on.
      */
-    private fun verdictOf(requirement: ExecutionTargetRequirement): BeforeStageDirectiveEngine.Verdict {
+    private fun seamOf(requirement: ExecutionTargetRequirement): SeamOutcome {
         val stage = StageNode(
             id = StageId("stage-0"),
             name = "build",
@@ -159,8 +206,9 @@ class HistoricalAgentRequirementTest {
                 ),
             ),
         )
+        val sink = RecordingEventSink()
         val engine = BeforeStageDirectiveEngine(
-            eventSink = NullEventSink,
+            eventSink = sink,
             clock = FixedClock,
             idGenerator = SequentialIdGenerator(),
             gateContext = { environment ->
@@ -174,7 +222,7 @@ class HistoricalAgentRequirementTest {
                 ),
             ),
         )
-        return engine.interpret(
+        val verdict = engine.interpret(
             stage = stage,
             stageIndex = 0,
             runId = RunId("run-1"),
@@ -182,6 +230,23 @@ class HistoricalAgentRequirementTest {
                 .add(ErasedDirectiveDefinition(AgentDirectiveDefinition()))
                 .build(),
         )
+        return SeamOutcome(verdict = verdict, events = sink.events.toList())
+    }
+
+    /**
+     * A sink that keeps what the seam observed.
+     *
+     * The seam appends synchronously, so what the sink holds when the verdict
+     * arrives is what the seam observed BEFORE the verdict: the order of the
+     * two is the engine's own contract.
+     */
+    private class RecordingEventSink : EventSink {
+        val events = mutableListOf<DomainEvent>()
+        override fun append(event: DomainEvent) {
+            events += event
+        }
+
+        override fun eventsFor(runId: String): Sequence<DomainEvent> = events.asSequence()
     }
 
     /** A clock that does not move, so nothing in these rows depends on the wall clock. */

@@ -493,9 +493,9 @@ class StagesScope(
      * The VARIABLES of the PIPELINE, handed to every stage this scope opens.
      *
      * They are the DEFAULT of a stage: a stage that declares a variable of its
-     * own keeps it. The agent of the pipeline does NOT travel this way — it is
-     * applied at the end of the pipeline's block, so the place its declaration
-     * is written does not decide which agent a stage runs with.
+     * own keeps it. What the pipeline declares is applied at the end of the
+     * pipeline's block, so the place the declaration is written does not
+     * decide which variables a stage runs with.
      */
     internal var pipelineEnvironment: EnvironmentSpec? = null
 

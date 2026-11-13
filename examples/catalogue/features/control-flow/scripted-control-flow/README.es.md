@@ -27,8 +27,8 @@ Que rama de una bifurcacion se ejecuta, y cuantas veces corre el cuerpo de un bu
 ### 1. `scripted-control-flow`
 
 - `script` — un bloque de Kotlin
-  - `echo` — `x is positive`
-  - `echo` — `x is not positive`
+  - `sh` — `echo 'x is positive'`
+  - `sh` — `echo 'x is not positive'`
 - `sh` — `"""for i in 1 2 3; do echo "iteration ${'$'}i"; done > iterations.txt""", isScriptBlock...`
 - `sh` — `"""test "${'$'}(wc -l < iterations.txt)" -eq 3"""`
 
@@ -56,5 +56,5 @@ pipelinek run      examples/catalogue/features/control-flow/scripted-control-flo
 
 - **Nombre historico:** `05-scripted-control-flow.pipeline.kts`
 - **Ruta de origen:** `examples/control-flow/05-scripted-control-flow.pipeline.kts`
-- **Huella del cuerpo:** `sha256:e8e81b23af0eb4b38f0458c4dfb04715116e7d39498e7e3d7a4b82a2097df15c`
+- **Huella del cuerpo:** `sha256:07f0346b7ad18d6c642b4c9a0781ab792c7af6c908e27b6af391c5e7745ff425`
 - **Huella del origen:** `sha256:0a79bc32d4fd2d4abc5460c2df27dff45e050ff8e1c39852296db15d32654e84`

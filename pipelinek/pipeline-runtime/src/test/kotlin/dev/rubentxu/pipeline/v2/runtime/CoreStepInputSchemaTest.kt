@@ -63,7 +63,7 @@ class CoreStepInputSchemaTest {
             val codec = definition.contract.inputCodec
             val schema = Json.parseToJsonElement(codec.schema()).jsonObject
             val properties = schema["properties"]?.jsonObject ?: JsonObject(emptyMap())
-            val required = schema["required"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet() ?: emptySet()
+            val required = schema["required"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet().orEmpty()
             val open = schema["additionalProperties"] != null
 
             val payload = payloadOf(key.value, properties)
@@ -109,7 +109,7 @@ class CoreStepInputSchemaTest {
             val codec = definition.contract.inputCodec
             val schema = Json.parseToJsonElement(codec.schema()).jsonObject
             val properties = schema["properties"]?.jsonObject ?: JsonObject(emptyMap())
-            val required = schema["required"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet() ?: emptySet()
+            val required = schema["required"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet().orEmpty()
             val payload = payloadOf(key.value, properties)
 
             properties.keys.forEach { name ->

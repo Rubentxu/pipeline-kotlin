@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
+import dev.rubentxu.pipeline.v2.dsl.StageScope
 import dev.rubentxu.pipeline.v2.dsl.StageSpec
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import kotlinx.serialization.json.Json
@@ -50,7 +51,7 @@ class DeclaredFamilyInputSchemaTest {
                 ?: fail("the registry holds no descriptor for $key")
             val parsed = Json.parseToJsonElement(schema).jsonObject
             val properties = parsed["properties"]?.jsonObject ?: JsonObject(emptyMap())
-            val required = parsed["required"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet() ?: emptySet()
+            val required = parsed["required"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet().orEmpty()
 
             payload.keys.forEach { name ->
                 if (name == "kind") {
@@ -92,8 +93,8 @@ class DeclaredFamilyInputSchemaTest {
         "core.timeout" to StepSpec.TimeoutBlock(time = 1, unit = "SECONDS", steps = emptyList()),
         "core.retry" to StepSpec.RetryBlock(count = 2, steps = emptyList()),
         "core.timestamps" to StepSpec.Timestamps(steps = emptyList()),
-        "core.catchError" to StepSpec.CatchError(steps = emptyList()),
-        "core.warnError" to StepSpec.WarnError(message = "aviso", steps = emptyList()),
+        "core.catchError" to catchErrorScope(),
+        "core.warnError" to warnErrorScope(),
         "core.withCredentials" to StepSpec.WithCredentialsBlock(
             credentialsId = CredentialsId("credencial"),
             purpose = "una credencial",
@@ -107,6 +108,32 @@ class DeclaredFamilyInputSchemaTest {
             steps = emptyList(),
         ),
     )
+
+    /**
+     * The step of a `catchError { }` scope.
+     *
+     * The spec type of that scope is deprecated in favour of the scope that
+     * builds it, so the row writes the scope an author writes and reads the
+     * step it produced.
+     *
+     * @return the step the scope declared.
+     */
+    private fun catchErrorScope(): StepSpec {
+        val scope = StageScope("s")
+        scope.catchError { }
+        return scope.steps().single()
+    }
+
+    /**
+     * The step of a `warnError { }` scope.
+     *
+     * @return the step the scope declared.
+     */
+    private fun warnErrorScope(): StepSpec {
+        val scope = StageScope("s")
+        scope.warnError(message = "aviso") { }
+        return scope.steps().single()
+    }
 
     /**
      * The node that the compiler produces for a stage with this step.

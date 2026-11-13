@@ -228,6 +228,25 @@ class MainStepsCliTest {
     }
 
     @Test
+    fun `the entry of the workspace declares the sentinel the eager DSL answers`() {
+        val document = MainStepsCli.document(coreEntries())
+
+        val parsed = Json.parseToJsonElement(document.toString()).jsonObject
+        val entries = parsed["entries"]?.jsonArray ?: fail("the document carries the entries")
+        val pwd = entries.first { it.jsonObject["key"]?.jsonPrimitive?.content == "core.pwd" }
+        val divergence = pwd.jsonObject["jenkinsDivergence"]?.jsonPrimitive?.content.orEmpty()
+
+        assertTrue(
+            divergence.contains("<workspace>"),
+            "the entry of core.pwd declares the sentinel the eager DSL answers instead of a path: $divergence",
+        )
+        assertTrue(
+            divergence.contains("PwdResolved"),
+            "the entry of core.pwd says where the real path arrives: $divergence",
+        )
+    }
+
+    @Test
     fun `the card of an entry names its equivalent in Jenkins and its divergence`() {
         val out = ByteArrayOutputStream()
         val err = ByteArrayOutputStream()

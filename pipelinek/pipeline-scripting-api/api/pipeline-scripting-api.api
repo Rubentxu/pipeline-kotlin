@@ -335,7 +335,6 @@ public abstract interface annotation class dev/rubentxu/pipeline/v2/dsl/StageDsl
 }
 
 public final class dev/rubentxu/pipeline/v2/dsl/StageScope : dev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps {
-	public static final field ISUNIX_PLACEHOLDER Z
 	public static final field RUNTIME_VALUE_PLACEHOLDER Ljava/lang/String;
 	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V
 	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V

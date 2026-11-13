@@ -2374,6 +2374,11 @@ public final class dev/rubentxu/pipeline/v2/domain/ToolSpec$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/UnixPlatformClassifier {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/UnixPlatformClassifier;
+	public final fun classifyUnix (Ljava/lang/String;)Z
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/UserStepException : dev/rubentxu/pipeline/v2/domain/PipelineStepException {
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/PipelineFailure;Ljava/lang/Throwable;)V
 	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/PipelineFailure;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V

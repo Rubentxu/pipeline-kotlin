@@ -609,10 +609,17 @@ class StagesScope(
 
 /**
  * Stub RuntimeConfig used as a default when the DSL is constructed without
- * one. Returns empty strings for OS-dependent queries so the DSL still
- * compiles but `pwd()` / `isUnix()` will return the placeholder values used
- * pre-v0.33.1. Production callers must pass an explicit config; see
- * [pipeline] overload that accepts a [dev.rubentxu.pipeline.v2.domain.RuntimeConfig].
+ * one. It answers nothing it does not know: no variable, no property, and no
+ * platform.
+ *
+ * The platform it reports is the EMPTY name, and the canonical classification
+ * of an empty name is "not a Unix-like platform": a port that has no platform
+ * to report cannot answer that the machine is one. So a script built without
+ * a port behind it takes the branch that is not the Unix one, and `pwd()`
+ * answers the sentinel `<workspace>` as it always does.
+ *
+ * Production callers must pass an explicit config; see the [pipeline]
+ * overload that accepts a [dev.rubentxu.pipeline.v2.domain.RuntimeConfig].
 */
 internal object StubRuntimeConfig : dev.rubentxu.pipeline.v2.domain.RuntimeConfig {
     override fun env(name: String): String? = null

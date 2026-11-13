@@ -1,0 +1,84 @@
+package dev.rubentxu.pipeline.v2.domain
+
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
+
+/**
+ * The one classification of a platform name.
+ *
+ * ## The guarantee
+ *
+ * A name of the frozen set is a Unix-like platform, and a name that is not of
+ * it is not. The membership is EXACT after normalizing, so a name that merely
+ * CONTAINS a Unix-like word is not a name of the set.
+ *
+ * ## Why the exactness is the guarantee and not a detail
+ *
+ * The eager DSL and the runtime step classify with this same function, so the
+ * two answers cannot disagree. A policy that answered by substring would make
+ * them disagree on every name that only resembles a platform (`linux-gnu`),
+ * and the disagreement would be a plan built on a value nobody can reproduce.
+ */
+@Timeout(value = 60, unit = TimeUnit.SECONDS)
+class UnixPlatformClassifierTest {
+
+    @Test
+    fun `the names of the set are Unix-like platforms`() {
+        listOf(
+            "linux",
+            "macos",
+            "mac os x",
+            "darwin",
+            "sunos",
+            "aix",
+            "hp-ux",
+            "freebsd",
+            "openbsd",
+            "netbsd",
+        ).forEach { osName ->
+            assertTrue(
+                UnixPlatformClassifier.classifyUnix(osName),
+                "'$osName' is a name of the set, so it is a Unix-like platform",
+            )
+        }
+    }
+
+    @Test
+    fun `a name that is not of the set is not a Unix-like platform`() {
+        listOf(
+            "windows",
+            "windows 11",
+            "Mac OS X Server",
+            "plan9",
+            "linux-gnu",
+            "",
+        ).forEach { osName ->
+            assertFalse(
+                UnixPlatformClassifier.classifyUnix(osName),
+                "'$osName' is not a name of the set, so it is not a Unix-like platform",
+            )
+        }
+    }
+
+    @Test
+    fun `the name is normalized before the membership is decided`() {
+        assertTrue(
+            UnixPlatformClassifier.classifyUnix("  Linux  "),
+            "the name of the JVM carries no spaces and no capital letters, and the classifier answers either",
+        )
+        assertTrue(
+            UnixPlatformClassifier.classifyUnix("MAC OS X"),
+            "the classifier normalizes the case of the name",
+        )
+    }
+
+    @Test
+    fun `the classification is total and never throws`() {
+        listOf("", " ", "\n", "Linux", "0", "\u0000", "a".repeat(1024)).forEach { osName ->
+            UnixPlatformClassifier.classifyUnix(osName)
+        }
+    }
+}

@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
+import dev.rubentxu.pipeline.v2.domain.UnixPlatformClassifier
 import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
 import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
 
@@ -264,24 +265,33 @@ class StageScope(
      * Prints the current working directory (workspace root).
      * Jenkins verbatim:
      * `pwd()` or `pwd(tmp: Boolean)`
-     * Runtime-returning DSL fun.** This builder lowers to a
+     * Runtime-returning DSL fun. This builder lowers to a
      * registry Step that produces the path as a typed runtime value at
-     * execution time. It does NOT return the real path synchronously from
-     * this DSL call — that would be a fake runtime value (the path belongs
-     * to execution, not to IR construction).
+     * execution time.
+     *
+     * ## What this call answers, and what it cannot answer
+     *
+     * The eager DSL BUILDS the plan, and the workspace of a stage is allocated
+     * when the run happens: while the plan is built there is no path to hand
+     * back. So this call answers the SENTINEL `<workspace>`, which NAMES the
+     * workspace instead of inventing a path. A sentinel that says what it is
+     * is not a lie; the directory of the process that compiles the script
+     * would be, because it is not the workspace of the stage.
+     *
+     * The call still enqueues `core.pwd` (or `core.pwd.tmp`), and that is
+     * where the real path lives: the step resolves the workspace when it runs
+     * and publishes it as the typed event `PwdResolved(path, workspaceRoot)`.
+     *
      * Supported usage:
      *  - inside a `scriptable` block / a compiled scripted runtime context,
      *    where the façade materialises the value before control returns;
      *  - inside the generator form (`.pipeline.kts` lowered to a
      *    `CompiledScriptedEntryPoint`), where `CorePwdStep` / `CorePwdTmpStep`
      *    are invoked through `ScriptedRegistryInvoker`.
-     * Unsupported usage (fail-closed):
-     *  - reading the synchronous return value during IR construction (this
-     *    method returns the placeholder `<workspace>` for backward
-     *    compatibility, but the placeholder MUST NOT be used as if it were
-     *    the real runtime path).
-     *  - the eager `PipelineSpec` form. Scripts that need the real value
-     *    MUST route through the scripted runtime context.
+     *
+     * The usage the eager form cannot serve:
+     *  - reading the path synchronously. The eager form answers the sentinel,
+     *    and a script that needs the path reads the event of the step.
      * `tmp=false` lowers to `core.pwd` (READ_ONLY + MEMOIZED, replay
      * reproduces the persisted path without re-observing the workspace).
      * `tmp=true` lowers to `core.pwd.tmp` (deterministic
@@ -316,39 +326,46 @@ class StageScope(
                 ),
             )
         }
-        // Honest return: this DSL fun is data construction. The placeholder
-        // is preserved for in-memory scripting hosts (tests, ad-hoc harnesses)
-        // that read the return value, but scripts that need the real path
-        // MUST route through the scripted runtime context where
-        // CorePwdStep/CorePwdTmpStep materialise the typed value.
+        // The workspace does not exist while the plan is built, so there is no
+        // path to answer. The sentinel names it; the enqueued step is what
+        // resolves it, and its typed output is the real path.
         return RUNTIME_VALUE_PLACEHOLDER
     }
 
     /**
-     * Checks whether the current system is Unix-like (Linux/macOS).
+     * Whether the machine that runs this plan is a Unix-like one.
      * Jenkins verbatim:
      * `isUnix()`
-     * Runtime-returning DSL fun.** This builder lowers to a
-     * registry Step that classifies the platform at execution time. It does
-     * NOT return the real classification synchronously from this DSL call —
-     * that would be a fake runtime value (the classification belongs to
-     * execution, not to IR construction).
+     * Runtime-returning DSL fun. This builder lowers to a
+     * registry Step that classifies the platform at execution time.
+     *
+     * ## What this call answers
+     *
+     * The platform is a fact of the MACHINE, and the machine is known while the
+     * plan is built: this call reads it through the port
+     * ([RuntimeConfig.osName]) — the same port the execution-target resolver
+     * reads to decide which machine a stage runs on — and classifies it with
+     * [UnixPlatformClassifier], the same function the runtime step uses. So
+     * the answer is the classification the runtime would observe, and not a
+     * constant that happens to look like one: `true` on a machine that is not
+     * a Unix one is a value the reader cannot tell from the real one.
+     *
+     * The runtime is single-host: a stage that asks for a remote machine is
+     * REFUSED, so the machine that builds the plan is the machine that runs
+     * it, and the classification does not change between the two moments.
+     *
      * Supported usage:
      *  - inside a `scriptable` block / a compiled scripted runtime context,
      *    where `CoreIsUnixStep` materialises the Boolean through
      *    `ScriptedRegistryInvoker`;
      *  - inside the generator form, where the Boolean reaches the script
-     *    as a typed value with full REUSE replay semantics
-     *    (__ISUNIX_SCRIPTED_RUNTIME_CONSUMER.md).
-     * Unsupported usage (fail-closed):
-     *  - reading the synchronous return value during IR construction (this
-     *    method returns `RUNTIME_VALUE_PLACEHOLDER_BOOLEAN` to make misuse
-     *    visible).
-     *  - the eager `PipelineSpec` form for branches that depend on the
-     *    real value.
-     * @return the placeholder sentinel; the real value is materialised by
-     *   `core.isUnix` at execution time. Reading this return value as the
-     * Real classification is a contract violation
+     *    as a typed value with full REUSE replay semantics.
+     *
+     * The usage the eager form cannot serve:
+     *  - a branch on the platform that has to be decided when the step runs:
+     *    the eager form decides the branch while the plan is built.
+     * @return the classification of the platform, the same one `core.isUnix`
+     *   observes when it runs
 */
     fun isUnix(): Boolean {
         val encoded = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue("{}")
@@ -359,29 +376,20 @@ class StageScope(
                 encodedInput = encoded,
             ),
         )
-        return ISUNIX_PLACEHOLDER
+        return UnixPlatformClassifier.classifyUnix(runtimeConfig.osName())
     }
 
     internal companion object {
         /**
-         * Placeholder returned by [pwd] when called in IR-construction context.
-         * The real path is produced at execution time by `core.pwd` /
-         * `core.pwd.tmp` through the scripted runtime context. Reading this
-         * Sentinel as if it were the real runtime path is a
-         * contract violation.
-*/
+         * The sentinel [pwd] answers while the plan is built.
+         *
+         * The workspace of a stage is allocated when the run happens, so no
+         * path exists at that moment and this call names the workspace instead
+         * of inventing one. The real path is the typed output of the enqueued
+         * step `core.pwd` / `core.pwd.tmp`, and the catalogue declares this
+         * divergence on the entry of that step.
+         */
         const val RUNTIME_VALUE_PLACEHOLDER: String = "<workspace>"
-
-        /**
-         * Placeholder returned by [isUnix] when called in IR-construction
-         * context. Reading this sentinel as if it were the real
-         * Classification is a contract violation. The choice of
-         * `true` (rather than `false`) preserves the previous
-         * `StubRuntimeConfig` behaviour so consumers that ignore the
-         * Placeholder still get a non-error value; the behaviour
-         * lives at the runtime-routing seam, not at the placeholder.
-*/
-        const val ISUNIX_PLACEHOLDER: Boolean = true
     }
 
     /**

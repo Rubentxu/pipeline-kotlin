@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.UnixPlatformClassifier
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -56,10 +57,10 @@ data class IsUnixOutput(
  * It is registered through the SAME mechanism an external plugin uses
  * ([CoreStepRegistryFactory]), and the registry is the only authority that resolves
  * the key.
- * Classification policy is **PATH_B verbatim**:
- * `osName.lowercase()` contains any of
- * `linux | mac | darwin | freebsd`. The DSL-side whitelist (PATH_A) is deliberately NOT
- * Copied; the canonical-policy decision belongs to with a clean `C == B` baseline
+ * Classification policy is [UnixPlatformClassifier], the ONE function of the
+ * domain that answers whether a platform name is Unix-like. The eager DSL
+ * classifies with the SAME function, so the value a script reads while the
+ * plan is built and the value this step observes when it runs cannot disagree.
  * Capability separation:
  * - [PLATFORM_IDENTITY_CAPABILITY] owns the environmental OBSERVATION (`osName`);
  *   the single `System.getProperty("os.name")` read lives in the capability bridge,
@@ -75,10 +76,8 @@ object CoreIsUnixStep {
     val KEY: PluginStepId = PluginStepId("core.isUnix")
 
     /**
-     * Classification now routes through the single canonical pure
-     * Classifier [UnixPlatformClassifier.classifyUnix] (decision). The
-     * PATH_B-verbatim body is retired; see the differential-freeze receipt for the
-     * APPROVED_FIX / APPROVED_CONTRACT_DELTA matrix.
+     * The classification of a platform name, through the one canonical pure
+     * classifier of the domain ([UnixPlatformClassifier.classifyUnix]).
 */
     internal fun classify(osName: String): Boolean = UnixPlatformClassifier.classifyUnix(osName)
 

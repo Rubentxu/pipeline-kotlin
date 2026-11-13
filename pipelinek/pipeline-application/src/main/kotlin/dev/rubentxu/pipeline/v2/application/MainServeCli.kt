@@ -883,6 +883,11 @@ private fun composeSupervisor(
             javaBinary = Path.of(System.getProperty("java.home"), "bin", "java").toString(),
             classpath = System.getProperty("java.class.path"),
             mainClass = SERVICE_MAIN_CLASS,
+            // The archive of the distribution, when the launcher published one:
+            // the children map it and read the Kotlin compiler from it instead
+            // of from the jar, which is worth more than a second before the
+            // run starts.
+            sharedArchive = ServiceRunCommand.sharedArchiveOf(),
         ),
         port = ProcessDurableTaskRuntime(supervisionRoot, clock),
         registry = policy.registry,

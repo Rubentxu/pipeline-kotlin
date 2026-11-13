@@ -205,11 +205,20 @@ internal data class ServiceRunPolicy(
  * The three values are the ones the machine has, and they are a VALUE so
  * that a test can point them at something else: the supervisor does not
  * know how a JVM is invoked, it knows that a command is.
+ *
+ * @property sharedArchive the shared class archive the child may map, or null
+ *   when there is none. It is the archive the distribution's own launcher uses
+ *   for the command line, and the child maps the SAME one: a child that reads
+ *   the Kotlin compiler from the jar instead of from the archive pays more than
+ *   a second before the run starts, and the difference is not the run's work.
+ *   The path is a VALUE and not a name the product writes: the launcher owns
+ *   the archive, its name and its life, and it publishes the path it mapped.
  */
 internal data class ServiceRunCommand(
     val javaBinary: String,
     val classpath: String,
     val mainClass: String,
+    val sharedArchive: String? = null,
 ) {
 
     /**
@@ -264,6 +273,19 @@ internal data class ServiceRunCommand(
      * `/proc/<pid>/cmdline`: the argv names the place, the token stays in a
      * file the child reads once and deletes. The option is absent when the
      * service has no broker for the run, as for the snapshots.
+     *
+     * ## Why the archive options come FIRST
+     *
+     * Because they are options of the JVM and not arguments of the product:
+     * the child maps the shared classes the way the command line maps them,
+     * and a child that reads the Kotlin compiler from the jar pays more than
+     * a second before its run starts.
+     *
+     * @param trainingArchive the file the child writes the archive to when it
+     *   is the one that trains it, or null when it only reads it. The child
+     *   writes to a file of its own and the supervisor renames it over the
+     *   archive: a reader that finds the archive half written sees a JVM
+     *   that refuses to start.
      */
     fun argvFor(
         script: Path,
@@ -273,9 +295,23 @@ internal data class ServiceRunCommand(
         runConfig: Path? = null,
         runInputs: Path? = null,
         credentialBroker: Path? = null,
+        trainingArchive: Path? = null,
     ): List<String> {
-        val argv = mutableListOf(
-            javaBinary,
+        val argv = mutableListOf(javaBinary)
+        // The JVM REFUSES to start when it is told to map an archive and to
+        // write one at the same time ("-XX:ArchiveClassesAtExit is
+        // unsupported when a dynamic CDS archive is specified in
+        // -XX:SharedArchiveFile"), and it says so on its stdout, where
+        // nobody reads it: the child dies with a code and no reason. So the
+        // child that WRITES the archive does not map it. It is the child that
+        // pays for building it — it reads the compiler from the jar, like the
+        // children before the archive existed — and the children that follow
+        // are the ones that read it.
+        if (trainingArchive == null) {
+            sharedArchive?.let { argv += "-XX:SharedArchiveFile=$it" }
+        }
+        trainingArchive?.let { argv += "-XX:ArchiveClassesAtExit=$it" }
+        argv += listOf(
             "-cp",
             classpath,
             mainClass,
@@ -301,6 +337,63 @@ internal data class ServiceRunCommand(
         }
         argv += script.toString()
         return argv
+    }
+
+    internal companion object {
+
+        /**
+         * The variable the launcher publishes the shared class archive in.
+         *
+         * ## Why the launcher publishes it and the product does not look for it
+         *
+         * Because the launcher OWNS the archive: it writes it, it names it,
+         * it decides when it is stale and it rewrites it when the jars
+         * change. The product asked for a second name of the same file, and
+         * the two names would drift apart the first time one of them changed.
+         * So the launcher says which file it mapped, and the product reads
+         * that answer.
+         *
+         * The name is written in the launcher too, and the two places are
+         * bound by this sentence: the launcher of the distribution
+         * (`pipeline-application/launcher/pipelinek`) exports it with this
+         * name.
+         */
+        const val SHARED_ARCHIVE_ENV_VAR: String = "PIPELINEK_SHARED_ARCHIVE"
+
+        /**
+         * The shared class archive the children of a service may map, or null
+         * when there is none.
+         *
+         * ## Why the file has to be READABLE and not only named
+         *
+         * Because the variable can name a file that is not there: the
+         * launcher publishes the archive it mapped, and the file can be
+         * removed afterwards, or the service can be started by something
+         * else that left the variable behind. A child that maps an archive
+         * that is not there starts a JVM that warns and carries on, and a
+         * warning on the child's stderr is a line the operator has to read
+         * for nothing.
+         *
+         * ## Why the file has to have SOMETHING in it
+         *
+         * Because an archive of no size is an archive that is not written
+         * yet: the launcher creates the file before the JVM that fills it
+         * exits, and a child that maps an empty archive maps nothing and
+         * warns about it. A file with nothing in it is not an archive, and
+         * the children that would map it pay the whole price of the classes
+         * the archive was supposed to hold.
+         *
+         * @param env the environment of the service, read as a VALUE so that
+         *   a test can say what the launcher published.
+         */
+        fun sharedArchiveOf(env: Map<String, String> = System.getenv()): String? {
+            val named = env[SHARED_ARCHIVE_ENV_VAR]?.trim().orEmpty()
+            if (named.isEmpty()) return null
+            val file = Path.of(named)
+            val usable = Files.isReadable(file) &&
+                runCatching { Files.size(file) }.getOrDefault(0L) > 0L
+            return if (usable) file.toAbsolutePath().toString() else null
+        }
     }
 }
 
@@ -431,6 +524,54 @@ internal class ServiceRunSupervisor(
      * leak no test can see.
      */
     internal fun supervisedRunsInFlight(): Int = liveRuns.get()
+
+    /**
+     * The lock that guards the state of the archive.
+     *
+     * The state is two facts --whether a child is training the archive, and
+     * whether the archive is already trained-- and they are read TOGETHER: a
+     * child that asks for the archive while another one is training it has to
+     * be told that it only reads it, and the answer is the same whether the
+     * training is over or not.
+     */
+    private val archiveLock = Any()
+
+    /**
+     * Whether a child is writing the shared class archive right now.
+     *
+     * ## Why only ONE child writes it
+     *
+     * Because the archive is a hundred megabytes and the child that writes it
+     * pays for the write: a service with four children training at once would
+     * write four archives to learn one thing.
+     *
+     * ## Why a child that fails does not close the door forever
+     *
+     * Because the flag is about the TRAINING and not about the archive: a
+     * child that died before writing the archive leaves the archive as it
+     * was, and the next child is free to train it. The archive is a cache,
+     * and a cache that nobody fills is a slow start, not a broken service.
+     */
+    private var archiveTraining = false
+
+    /**
+     * Whether the shared class archive was published.
+     *
+     * It is the fact that ends the training: once the archive holds the
+     * classes the children need, no child writes it again.
+     */
+    private var archiveTrained = false
+
+    /**
+     * Whether the archive of the distribution is already trained.
+     *
+     * The fact is here for the rows that wait for the training to be over:
+     * the archive is published a moment BEFORE this flag is set, and a row
+     * that read the file and started a run in that window would ask a child
+     * to train an archive that is already trained.
+     */
+    internal val archiveIsTrained: Boolean
+        get() = synchronized(archiveLock) { archiveTrained }
 
     /**
      * Starts the run [request] asks for.
@@ -847,6 +988,10 @@ internal class ServiceRunSupervisor(
             is BrokerOpening.Refused -> return ServiceStartOutcome.Refused(opening.refusal)
         }
 
+        // The archive of the distribution: the child maps it, and the FIRST
+        // child also writes it, because the child is the one that compiles and
+        // the archive only knows the compiler when something compiled with it.
+        val training = trainingArchiveFor(supervisionId)
         val argv = command.argvFor(
             paths.script,
             paths.workspace,
@@ -858,13 +1003,14 @@ internal class ServiceRunSupervisor(
             snapshots.configuration.takeIf { !effective.configuration.isEmpty },
             snapshots.parameters,
             lease?.directory,
+            training,
         )
         val watcher = LaunchWatcher(supervisionDir.resolve(CHILD_LOG_NAME))
         val job = Job()
         val supervision = Supervision(job)
         val taskRequest = taskRequestOf(supervisionId, argv, paths.script)
         val thread = Thread(
-            { superviseChild(job, watcher, supervision, taskRequest, lease) },
+            { superviseChild(job, watcher, supervision, taskRequest, lease, training) },
             "pipelinek-supervisor-$supervisionId",
         )
         supervision.thread = thread
@@ -999,6 +1145,7 @@ internal class ServiceRunSupervisor(
         supervision: Supervision,
         taskRequest: TaskExecutionRequest,
         lease: RunBrokerLease?,
+        training: Path? = null,
     ) {
         var end: SupervisedRunEnd? = null
         try {
@@ -1018,6 +1165,10 @@ internal class ServiceRunSupervisor(
             // and its own words are what name the resource that gave way.
             end = SupervisedRunEnd.Failed(causeOf(failure))
         } finally {
+            // The archive the child was writing is published BEFORE anything
+            // else, because the child is already gone: the JVM wrote the
+            // archive when it exited, and the file it wrote is whole.
+            publishArchive(training)
             closeLease(lease)
             closeRunWithoutTerminal(supervision, end)
             supervision.over(supervised)
@@ -1046,6 +1197,121 @@ internal class ServiceRunSupervisor(
         val kind = failure.javaClass.simpleName
         val message = failure.message?.trim().orEmpty()
         return if (message.isBlank()) kind else "$kind: $message"
+    }
+
+    /**
+     * The file the child that TRAINS the shared class archive writes it to,
+     * or null when this child does not train it.
+     *
+     * ## Why the child that compiles is the one that trains
+     *
+     * Because the archive is a record of the classes a JVM loaded, and the
+     * only process that loads the Kotlin compiler is the one that compiles a
+     * script. The service never compiles --the child does-- so the archive of
+     * a distribution that only ever served runs knows nothing about the
+     * compiler, and every child pays more than a second to read those classes
+     * from the jar. The first child loads them anyway, and the archive it
+     * leaves behind is the one the next children read.
+     *
+     * ## Why the file is the child's OWN
+     *
+     * Because the child writes it at its exit, and a reader that finds the
+     * archive half written finds a JVM that refuses to start. The child
+     * writes to a file of its own and the supervisor renames it over the
+     * archive: the rename is atomic, so a reader sees the old archive or the
+     * new one, never a file that is being written.
+     *
+     * ## Why the file is created BEFORE the child starts
+     *
+     * Because the JVM refuses to start when it cannot write the archive it
+     * was told to write. A child that cannot be launched is a run that does
+     * not start, and an archive that cannot be written is a slow start.
+     */
+    private fun trainingArchiveFor(supervisionId: String): Path? {
+        val archive = command.sharedArchive ?: return null
+        synchronized(archiveLock) {
+            // The archive is trained once: a child that arrives when the
+            // archive is already trained reads it, and a child that arrives
+            // while another one trains it reads it too. The child that trains
+            // it is the one that pays for the write, and there is one.
+            if (archiveTrained || archiveTraining) return null
+            archiveTraining = true
+        }
+        val target = Path.of(archive)
+        val temporary = target.resolveSibling(target.fileName.toString() + "." + supervisionId + ".tmp")
+        return try {
+            Files.write(temporary, ByteArray(0))
+            temporary
+        } catch (_: Exception) {
+            // The archive cannot be written: this child does not train it, and
+            // the next one is free to try again.
+            synchronized(archiveLock) { archiveTraining = false }
+            null
+        }
+    }
+
+    /**
+     * Publishes the archive the child wrote, when it wrote one.
+     *
+     * ## Why the rename and not a copy
+     *
+     * Because a copy is a file that is written while the readers are reading
+     * it, and the reader that finds a half written archive finds a JVM that
+     * refuses to start. The rename is atomic: the archive is either the one
+     * the distribution had or the one the child wrote, and never a file that
+     * is in between.
+     *
+     * ## Why a failure is not the service's failure
+     *
+     * Because the archive is a cache and the run is not: a run that cannot
+     * train the archive still runs, and it starts a second later. The
+     * service keeps serving, and the next child may try again.
+     */
+    private fun publishArchive(temporary: Path?) {
+        val file = temporary ?: return
+        val archive = command.sharedArchive ?: return
+        try {
+            // The file has to hold something: the child creates it before it
+            // starts, and a child that died before it wrote leaves it EMPTY.
+            // An archive with no size is not an archive, and a child that maps
+            // one starts a JVM that warns about an archive it cannot read.
+            if (!Files.exists(file) || Files.size(file) == 0L) {
+                deleteQuietly(file)
+                return
+            }
+            val target = Path.of(archive)
+            try {
+                Files.move(
+                    file,
+                    target,
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE,
+                )
+            } catch (_: Exception) {
+                // A filesystem that cannot rename atomically still renames: the
+                // move without the flag is a rename on the same filesystem.
+                Files.move(file, target, StandardCopyOption.REPLACE_EXISTING)
+            }
+            synchronized(archiveLock) { archiveTrained = true }
+        } catch (_: Exception) {
+            deleteQuietly(file)
+        } finally {
+            synchronized(archiveLock) { archiveTraining = false }
+        }
+    }
+
+    /**
+     * Deletes [file] and says nothing about it.
+     *
+     * A leftover temporary file is not a fact the service has to keep, and a
+     * file that cannot be deleted is not a reason to stop serving.
+     */
+    private fun deleteQuietly(file: Path) {
+        try {
+            Files.deleteIfExists(file)
+        } catch (_: Exception) {
+            // Nothing to do.
+        }
     }
 
     /**

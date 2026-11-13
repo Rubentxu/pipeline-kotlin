@@ -399,9 +399,21 @@ class StageScope(
     }
 
     /**
-     * Polls a condition closure until it returns true or the backoff ceiling is reached.
+     * Polls the steps of its body until they succeed or the backoff ceiling is
+     * reached.
      * Jenkins verbatim:
      * `waitUntil(initialRecurrencePeriod: Long = 1) { condition }`
+     *
+     * The predicate of a wait here is the OUTCOME of the steps the body
+     * declares: the engine runs the body and reads whether it succeeded. A
+     * body that declares NO step has no predicate to evaluate, so it is
+     * REFUSED while the script is written — an expression such as `{ true }`
+     * is not a step, and a wait that read it would end satisfied on its first
+     * poll without looking at any condition.
+     *
+     * The events of a poll are `WaitUntilPolled` (one per attempt, carrying
+     * the verdict that attempt produced) and `WaitUntilCompleted` (the
+     * terminal of the wait).
      * Jenkins also carries a `quiet: Boolean = false`. It is NOT accepted here: this engine's
      * `waitUntil` narration already renders at `Family.NOTE`, and `ObservationView.NORMAL`
      * hides that family, so a `quiet` flag had nothing left to silence in the default view.
@@ -442,8 +454,10 @@ class StageScope(
      *   is no separate wall-clock deadline in this API, so the wall-clock
      *   duration of a wait is the sum of the intervals it waited, not
      *   `maxBackoffMs` itself.
-     * @param body Lambda producing the nested steps whose last step emits
-     *   WaitUntilPredicateEvaluated(true/false)
+     * @param body Lambda producing the nested steps whose OUTCOME is the
+     *   condition the wait polls for
+     * @throws IllegalArgumentException when the body declares no step: a wait
+     *   with no predicate would end satisfied without looking at anything.
 */
     fun waitUntil(
         initialRecurrencePeriod: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
@@ -457,6 +471,12 @@ class StageScope(
         // (see AGENTS.md DSL-vs-runtime section + receipt)
         val inner = blockScope("waitUntil")
         inner.body()
+        require(inner.steps().isNotEmpty()) {
+            "waitUntil was refused: the predicate of a wait is the outcome of the steps its " +
+                "body declares, and a body that declares no step has no predicate to " +
+                "evaluate. Declare the step that decides the condition, for example: " +
+                "waitUntil { sh(\"test -f marker\") }."
+        }
         steps.add(StepSpec.WaitUntilBlock(
             initialRecurrencePeriod = initialRecurrencePeriod,
             maxBackoffMs = maxBackoffMs,
@@ -469,9 +489,19 @@ class StageScope(
     // =============================================================================
 
     /**
-     * Decorates captured stdout/stderr with timestamps.
+     * Announces the scope of a body whose output Jenkins decorates with the
+     * time each line was produced.
+     *
      * Jenkins verbatim: `timestamps { block }`
-     * @param block Nested steps to execute with timestamp decoration
+     *
+     * Here the scope ANNOUNCES itself and DECORATES NOTHING: it publishes
+     * the `TimestampsEntered` and `TimestampsExited` events of the scope, and
+     * the body runs exactly as it would outside the scope, with the captured
+     * output travelling as the process produced it. The scope has no carrier
+     * for a decoration: the options the body runs under are the ones the
+     * scope received.
+     *
+     * @param block Nested steps to execute inside the announced scope
 */
     fun timestamps(block: StageScope.() -> Unit) {
         val inner = blockScope("timestamps")
@@ -484,14 +514,23 @@ class StageScope(
     // =============================================================================
 
     /**
-     * Records a milestone for cross-build coordination.
+     * Records a milestone of THIS run.
      * Jenkins verbatim: `milestone(ordinal: Int, label: String? = null)`
      * This DSL lowers directly to `StepSpec.RegistryStepSpec` (open-world registry
      * path). The payload is encoded inline here to match the canonical codec of
      * `CoreMilestoneStep.inputCodec` byte-for-byte, so the durable fingerprint is preserved
      * Across the destructive flip. The legacy `StepSpec.Milestone` subtype and its compiler
      * Branch are removed at; this DSL was the only producer
-     * @param ordinal The milestone ordinal (must be monotonically increasing)
+     *
+     * The ordinal is observed WITHIN THE RUN: the state of the mark lives in
+     * the run, an ordinal that is not strictly greater than the one already
+     * reached aborts the mark (the step ends UNSTABLE and the run continues),
+     * and nothing here coordinates the ordinals of two builds — in Jenkins a
+     * milestone is the mark a later build waits for, and that coordination is
+     * not a capability of this runner.
+     *
+     * @param ordinal The milestone ordinal (must be strictly greater than the
+     *   one this run already reached)
      * @param label Optional label for the milestone
 */
     fun milestone(ordinal: Int, label: String? = null) {
@@ -590,6 +629,11 @@ class StageScope(
     /**
      * Publishes an HTML report from the stage workspace into the run-scoped
      * reports archive.
+     *
+     * The archive belongs to the run: the reports of a previous run are not
+     * kept, and the `keepAll` flag of Jenkins — which asks for exactly that —
+     * is refused.
+     *
      * Jenkins verbatim: `publishHTML(target: HtmlPublisherTarget)` where
      * `target` carries name, reportFiles, reportDir, keepAll, allowMissing,
      * escapeUnderscores. Pipeline-K keeps the public DSL surface narrow and
@@ -603,12 +647,16 @@ class StageScope(
      *             subdirectory; sanitised by `PublishHtmlSanitiser`).
      * @param reportDir Workspace-relative directory containing the report files.
      * @param reportFiles Ant-style glob (default `**` recursive match).
-     * @param keepAll Whether to keep historical reports across runs (v1 runtime
-     *   REJECTS keepAll=true: the archive is overwritten per run and the flag
-     *   has no interpreter, so it fails closed instead of being dropped).
+     * @param keepAll Whether to keep historical reports across runs. It is
+     *   REFUSED here: the archive of reports is written per run, the flag has
+     *   no interpreter in this runtime, and a script that asked for it
+     *   compiled and then failed halfway through the run. The parameter stays
+     *   in the signature so the call fails with THIS diagnostic and not with
+     *   a bare Kotlin signature error.
      * @param allowMissing When true, do not fail the Step if the directory or
      *                     glob is empty (emit `HtmlReportSkipped` instead).
      * @param escapeUnderscores When true, escape `_` in the sanitised name (Jenkins-canonical).
+     * @throws IllegalArgumentException when `keepAll` is true.
 */
     @JvmOverloads
     fun publishHTML(
@@ -619,11 +667,15 @@ class StageScope(
         allowMissing: Boolean = false,
         escapeUnderscores: Boolean = false,
     ) {
+        require(!keepAll) {
+            "publishHTML(keepAll = true) was refused: the reports archive of this runtime is " +
+                "written per run, and the flag has no interpreter here: the reports of the " +
+                "previous runs are not kept. Publish the report without the flag."
+        }
         val sb = StringBuilder()
         sb.append("{\"kind\":\"publishHTML\",\"name\":\"").append(escapeJsonString(name)).append("\",")
         sb.append("\"reportDir\":\"").append(escapeJsonString(reportDir)).append("\",")
         sb.append("\"reportFiles\":\"").append(escapeJsonString(reportFiles)).append("\"")
-        if (keepAll) sb.append(",\"keepAll\":true") // handler fails closed (no v1 interpreter)
         if (allowMissing) sb.append(",\"allowMissing\":true")
         if (escapeUnderscores) sb.append(",\"escapeUnderscores\":true")
         sb.append("}")

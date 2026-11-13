@@ -612,8 +612,9 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     /**
      * A body the engine polls until its condition holds.
      *
-     * The engine waits one interval, runs the body, and doubles the interval
-     * after every attempt whose condition did not hold, up to the ceiling.
+     * The condition is the OUTCOME of the steps the body declares: the engine
+     * waits one interval, runs the body, and doubles the interval after every
+     * attempt whose condition did not hold, up to the ceiling.
      * [maxBackoffMs] is that ceiling, and it is the deadline of the wait: the
      * attempt that has reached it is the last one, and a condition that still
      * does not hold ends the wait with a timeout failure.
@@ -628,10 +629,12 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     /**
-     * A body whose output is decorated with the time each line was produced.
+     * A body whose scope is announced with the pair of bookend events.
      *
-     * The decoration reaches the output of the body only, and the body itself
-     * runs as it would outside the scope.
+     * The shape does NOT decorate the output: the body runs as it would
+     * outside the scope, and the captured output travels as the process
+     * produced it. What the scope adds is the OBSERVATION — the
+     * `TimestampsEntered` and `TimestampsExited` events of the scope.
      */
     data class Timestamps(
         val steps: List<StepSpec>,

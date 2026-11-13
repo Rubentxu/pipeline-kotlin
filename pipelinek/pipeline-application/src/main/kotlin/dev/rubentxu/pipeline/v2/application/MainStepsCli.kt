@@ -81,7 +81,14 @@ internal object MainStepsCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.steps/5` since a schema of a step is PUBLISHED only
+     * It is `pipelinek.steps/6` since the reason of the DIVERGENCE of the dollar
+     * says what the compiler does: a string of several lines is a raw string,
+     * and a raw string reads a dollar as a template, so the text that said the
+     * opposite published a fact the compiler does not keep. The reason also
+     * names the spelling that reaches the shell in each of the two strings, and
+     * a consumer that matched on the text it read has to read it again.
+     *
+     * It was `pipelinek.steps/5` since a schema of a step is PUBLISHED only
      * when the product declares it: the key `inputSchema` is ABSENT from the
      * entry of a step whose arguments nobody declared, and it is PRESENT —
      * with the arguments it names, or with none at all — when the codec or
@@ -105,7 +112,7 @@ internal object MainStepsCli {
      * in `forms` that said what `divergences` says; the version names that
      * change.
      */
-    const val SCHEMA: String = "pipelinek.steps/5"
+    const val SCHEMA: String = "pipelinek.steps/6"
 
     /**
      * The published document, as a value.

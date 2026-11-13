@@ -57,7 +57,7 @@ class NestedStageAuthorityTest {
                 stages {
                     stage("deploy") {
                         steps {
-                            whenEnvIs("APPROVED", "true")
+                            (this as StageScope).whenEnvIs("APPROVED", "true")
                             sh("./deploy.sh")
                         }
                     }
@@ -99,7 +99,7 @@ class NestedStageAuthorityTest {
                 stages {
                     stage("deploy") {
                         steps {
-                            whenEnvIs("APPROVED", "true")
+                            (this as StageScope).whenEnvIs("APPROVED", "true")
                             reachedTheStep = true
                             sh("./deploy.sh")
                         }
@@ -128,7 +128,7 @@ class NestedStageAuthorityTest {
         val spec = pipeline {
             stages {
                 stage("deploy") {
-                    whenEnvIs("APPROVED", "true")
+                    (this as StageScope).whenEnvIs("APPROVED", "true")
                     sh("./deploy.sh")
                 }
             }
@@ -188,7 +188,7 @@ class NestedStageAuthorityTest {
                 stages {
                     stage("deploy") {
                         steps {
-                            environment { env("TARGET", "prod") }
+                            (this as StageScope).environment { env("TARGET", "prod") }
                             sh("./deploy.sh")
                         }
                     }
@@ -214,7 +214,7 @@ class NestedStageAuthorityTest {
                 stages {
                     stage("deploy") {
                         steps {
-                            options { timeout(60) }
+                            (this as StageScope).options { timeout(60) }
                             sh("./deploy.sh")
                         }
                     }
@@ -240,7 +240,7 @@ class NestedStageAuthorityTest {
                 stages {
                     stage("deploy") {
                         steps {
-                            post { always { sh("./cleanup.sh") } }
+                            (this as StageScope).post { always { sh("./cleanup.sh") } }
                             sh("./deploy.sh")
                         }
                     }
@@ -266,7 +266,7 @@ class NestedStageAuthorityTest {
                 stages {
                     stage("deploy") {
                         steps {
-                            directives { directive("acme.lock", """{"resource":"prod"}""") }
+                            (this as StageScope).directives { directive("acme.lock", """{"resource":"prod"}""") }
                             sh("./deploy.sh")
                         }
                     }
@@ -325,14 +325,14 @@ class NestedStageAuthorityTest {
          * here — including the one a plugin opens with `registryBlock`.
          */
         val BLOCKS: List<Pair<String, StageScope.() -> Unit>> = listOf(
-            "steps" to { steps { whenEnvIs("APPROVED", "true") } },
-            "script" to { script { whenEnvIs("APPROVED", "true") } },
-            "dir" to { dir("build") { whenEnvIs("APPROVED", "true") } },
-            "retry" to { retry(2) { whenEnvIs("APPROVED", "true") } },
-            "withEnv" to { withEnv(listOf("TARGET=prod")) { whenEnvIs("APPROVED", "true") } },
+            "steps" to { steps { (this as StageScope).whenEnvIs("APPROVED", "true") } },
+            "script" to { script { (this as StageScope).whenEnvIs("APPROVED", "true") } },
+            "dir" to { dir("build") { (this as StageScope).whenEnvIs("APPROVED", "true") } },
+            "retry" to { retry(2) { (this as StageScope).whenEnvIs("APPROVED", "true") } },
+            "withEnv" to { withEnv(listOf("TARGET=prod")) { (this as StageScope).whenEnvIs("APPROVED", "true") } },
             "withCredentials" to {
                 withCredentials(listOf(StepSpec.CredentialsBinding.string("acme", "TOKEN"))) {
-                    whenEnvIs("APPROVED", "true")
+                    (this as StageScope).whenEnvIs("APPROVED", "true")
                 }
             },
             "registryBlock" to {
@@ -340,7 +340,7 @@ class NestedStageAuthorityTest {
                     stepKey = PluginStepId("acme.block"),
                     encodedInput = EncodedStepValue("{}"),
                 ) {
-                    whenEnvIs("APPROVED", "true")
+                    (this as StageScope).whenEnvIs("APPROVED", "true")
                 }
             },
         )

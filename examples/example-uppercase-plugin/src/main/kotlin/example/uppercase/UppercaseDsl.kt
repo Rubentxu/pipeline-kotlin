@@ -1,5 +1,6 @@
 package example.uppercase
 
+import dev.rubentxu.pipeline.v2.dsl.StepBodyScope
 import dev.rubentxu.pipeline.v2.dsl.StepEmitter
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 
@@ -44,7 +45,7 @@ fun <B : StepEmitter<B>> StepEmitter<B>.uppercase(text: String) {
  * declare the SAME step, and the one that runs is the one of the contract.
  */
 fun StageScope.uppercase(text: String) {
-    val emitter: StepEmitter<StageScope> = this
+    val emitter: StepEmitter<StepBodyScope> = this
     emitter.uppercase(text)
 }
 
@@ -82,7 +83,7 @@ fun <B : StepEmitter<B>> StepEmitter<B>.uppercaseObserved(text: String) {
  * declare the SAME step, and the one that runs is the one of the contract.
  */
 fun StageScope.uppercaseObserved(text: String) {
-    val emitter: StepEmitter<StageScope> = this
+    val emitter: StepEmitter<StepBodyScope> = this
     emitter.uppercaseObserved(text)
 }
 
@@ -122,6 +123,6 @@ fun <B : StepEmitter<B>> StepEmitter<B>.uppercaseMeasured(text: String) {
  * declare the SAME step, and the one that runs is the one of the contract.
  */
 fun StageScope.uppercaseMeasured(text: String) {
-    val emitter: StepEmitter<StageScope> = this
+    val emitter: StepEmitter<StepBodyScope> = this
     emitter.uppercaseMeasured(text)
 }

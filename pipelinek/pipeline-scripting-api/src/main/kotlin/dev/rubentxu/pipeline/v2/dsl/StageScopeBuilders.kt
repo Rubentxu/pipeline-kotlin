@@ -267,8 +267,12 @@ open class StageScopeCore(
      * @param blockName the name of the block that opens the scope, as the
      *   author wrote it.
      */
-    internal fun blockScope(blockName: String): StageScope =
-        nestedScope().also { it.openingBlock = blockName }
+    internal fun blockScope(blockName: String): StepBodyHostScope =
+        StepBodyHostScope(stageName, runtimeConfig).also {
+            it.carrierRegistry = carrierRegistry
+            it.inheritedEnvironment = visibleEnvironment()
+            it.openingBlock = blockName
+        }
 
     protected fun nestedScope(): StageScope =
         StageScope(stageName, runtimeConfig).also {
@@ -560,18 +564,18 @@ open class StageScopeCore(
         sequence.declare(StepSpec.Parallel(scope.build().map { StepSpec.BranchSpec(it.name, it.steps) }))
     }
 
-    fun withCredentials(binding: StepSpec.CredentialsBinding, block: StageScope.() -> Unit) {
+    fun withCredentials(binding: StepSpec.CredentialsBinding, block: StepBodyScope.() -> Unit) {
         withCredentials(listOf(binding), block)
     }
 
     fun withCredentials(
         vararg bindings: StepSpec.CredentialsBinding,
-        block: StageScope.() -> Unit,
+        block: StepBodyScope.() -> Unit,
     ) {
         withCredentials(bindings.toList(), block)
     }
 
-    fun withCredentials(bindings: List<StepSpec.CredentialsBinding>, block: StageScope.() -> Unit) {
+    fun withCredentials(bindings: List<StepSpec.CredentialsBinding>, block: StepBodyScope.() -> Unit) {
         val innerScope = blockScope("withCredentials")
         innerScope.block()
         val primaryId = bindings.firstOrNull()?.credentialsId ?: CredentialsId("")
@@ -588,7 +592,7 @@ open class StageScopeCore(
         )
     }
 
-    fun environment(credentialsId: String, variable: String, block: StageScope.() -> Unit) {
+    fun environment(credentialsId: String, variable: String, block: StepBodyScope.() -> Unit) {
         withCredentials(listOf(StepSpec.CredentialsBinding.string(credentialsId, variable)), block)
     }
 
@@ -624,7 +628,7 @@ open class StageScopeCore(
      * belongs. A gate that the block dropped in silence would be a gate that
      * does not gate.
      */
-    fun script(block: StageScope.() -> Unit) {
+    fun script(block: StepBodyScope.() -> Unit) {
         val inner = blockScope("script")
         inner.block()
         sequence.declareAll(inner.steps())
@@ -673,7 +677,7 @@ open class StageScopeCore(
      * belongs. A gate that the block dropped in silence would be a gate that
      * does not gate.
      */
-    fun steps(block: StageScope.() -> Unit) {
+    fun steps(block: StepBodyScope.() -> Unit) {
         val inner = blockScope("steps")
         inner.block()
         sequence.declareAll(inner.steps())
@@ -770,7 +774,7 @@ open class StageScopeTopSteps(
         stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
         encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
         schemaVersion: String = "dsl-v1",
-        block: StageScope.() -> Unit,
+        block: StepBodyScope.() -> Unit,
     ) {
         val inner = blockScope("registryBlock")
         inner.block()
@@ -787,7 +791,7 @@ open class StageScopeTopSteps(
     fun registryBlock(
         stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
         encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
-        block: StageScope.() -> Unit,
+        block: StepBodyScope.() -> Unit,
     ) {
         registryBlock(stepKey, encodedInput, "dsl-v1", block)
     }
@@ -854,7 +858,7 @@ open class StageScopeTopSteps(
      * @param overrides the variables the block declares, as `NAME=VALUE`.
      * @param block the steps that run with them.
      */
-    fun withEnv(overrides: List<String>, block: StageScope.() -> Unit) {
+    fun withEnv(overrides: List<String>, block: StepBodyScope.() -> Unit) {
         val inner = blockScope("withEnv")
         inner.inheritedEnvironment = EnvironmentSpec(
             inner.inheritedEnvironment?.values.orEmpty() + declaredOverrides(overrides),
@@ -863,11 +867,11 @@ open class StageScopeTopSteps(
         sequence.declare(StepSpec.WithEnv(overrides = overrides, steps = inner.steps()))
     }
 
-    fun withEnv(overrides: Array<String>, block: StageScope.() -> Unit) {
+    fun withEnv(overrides: Array<String>, block: StepBodyScope.() -> Unit) {
         withEnv(overrides.toList(), block)
     }
 
-    fun withEnv(overrides: Map<String, String>, block: StageScope.() -> Unit) {
+    fun withEnv(overrides: Map<String, String>, block: StepBodyScope.() -> Unit) {
         withEnv(overrides.map { "${it.key}=${it.value}" }, block)
     }
 
@@ -956,7 +960,7 @@ open class StageScopeTopSteps(
         )
     }
 
-    fun dir(path: String, block: StageScope.() -> Unit) {
+    fun dir(path: String, block: StepBodyScope.() -> Unit) {
         val inner = blockScope("dir")
         inner.block()
         sequence.dir(path, inner.steps())
@@ -982,7 +986,7 @@ open class StageScopeTopSteps(
         timeoutSeconds: Int? = null,
         reason: String? = null,
         skipIfLocked: Boolean = false,
-        block: StageScope.() -> Unit,
+        block: StepBodyScope.() -> Unit,
     ) {
         val inner = blockScope("lock")
         inner.block()
@@ -1016,7 +1020,7 @@ open class StageScopeTopSteps(
         submitter: String? = null,
         id: String? = null,
         timeoutSeconds: Int? = null,
-        block: StageScope.() -> Unit,
+        block: StepBodyScope.() -> Unit,
     ) {
         val inner = blockScope("input")
         inner.block()

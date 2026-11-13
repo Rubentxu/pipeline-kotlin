@@ -172,6 +172,20 @@ The block carries the receiver of a stage, so it has the whole vocabulary (`echo
 
 What the block adds is the Kotlin control flow of the author, and that control flow is evaluated **while the plan is built**: the `if` above decides which arm is declared, before the first step runs. A condition that has to be decided while the run runs is written with the `when*` gates.
 
+### The `steps { }` block holds the steps of a stage
+
+```kotlin
+stage("build") {
+    steps {
+        sh("make")
+    }
+}
+```
+
+`steps { }` is the block a Jenkinsfile writes, and it is here with that name and that shape: the steps declared inside it are the steps of the stage that declares them, in the order they were declared, and the block declares no step of its own.
+
+The body of the stage declares steps too, and the two are **one list**: the steps of the body and the steps of the block, in the order the author wrote them. Neither form is the one the product requires, and neither is the one it refuses.
+
 ### Edit pipelines in IntelliJ IDEA
 
 The editor resolves a script against the classpath of the module it belongs to, and a `.pipeline.kts` outside any module gets no DSL and no diagnostics. `ide init` writes that module, as a Gradle project, from the installation you run it with:
@@ -367,7 +381,7 @@ needs none.
 
 | Capability | What it gives you | Status |
 |---|---|---|
-| **Kotlin DSL** | `pipeline { stages { stage { … } } }` plus real Kotlin control flow, `script {}` blocks, `parallel`, `retry`, `timeout`, `catchError`, `whenGate` | Available |
+| **Kotlin DSL** | `pipeline { stages { stage { … } } }` plus real Kotlin control flow, `script {}` and `steps {}` blocks, `parallel`, `retry`, `timeout`, `catchError`, `whenGate` | Available |
 | **Local execution** | One run per CLI invocation, in your own working directory. No controller, no agent, no daemon that starts itself | Available |
 | **Durable journal** | A SQLite journal (`--db`) plus a control root: a killed run leaves a record you can inspect, resume, cancel or recover | Available |
 | **Typed events** | `CompilationStarted`, `RunStarted`, `StageStarted`, `StepStarted`, `StepFinished`, `StepFailed`, `RunFinished`, `EchoOutputCaptured` — with the failure's stage attached to the failure event | Available |

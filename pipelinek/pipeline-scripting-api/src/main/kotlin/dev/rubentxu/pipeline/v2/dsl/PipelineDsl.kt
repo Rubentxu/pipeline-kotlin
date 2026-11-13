@@ -275,6 +275,35 @@ class PipelineScope(
     }
 
     /**
+     * Declare the execution target the stages of this pipeline require, the way
+     * a Jenkinsfile writes it: `agent { label("linux") }`.
+     *
+     * The block and the call are TWO SPELLINGS OF ONE DECLARATION: the block
+     * builds the requirement with the same authority the call uses, and it is
+     * carried by the same directive (`core.agent`). A pipeline that declares
+     * its agent with the block declares the agent the same pipeline would
+     * declare with the call, and it is the default of the stages that declare
+     * none.
+     *
+     * The refusal of a second agent is the refusal of the call: the pipeline
+     * declares ONE agent, and the second declaration is refused where it is
+     * written, whichever of the two spellings carries it.
+     *
+     * The block holds the OPTIONS of the agent and no step, because the block
+     * of Jenkins holds no step either: the scope it opens carries a marker of
+     * its own, so the calls of the pipeline are out of reach from inside it.
+     *
+     * @param block the options of the agent, written with [AgentScope.label]
+     * @throws IllegalArgumentException when the block declares no label, or
+     *   declares two, or when the pipeline already declared an agent
+     */
+    fun agent(block: AgentScope.() -> Unit) {
+        val scope = AgentScope()
+        scope.block()
+        declareAgent(scope.requirement())
+    }
+
+    /**
      * Declare that the stages of this pipeline run on any local target, unless
      * they declare their own.
      *

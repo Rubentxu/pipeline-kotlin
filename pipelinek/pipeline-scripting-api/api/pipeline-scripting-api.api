@@ -1,3 +1,8 @@
+public final class dev/rubentxu/pipeline/v2/dsl/AgentScope {
+	public fun <init> ()V
+	public final fun label (Ljava/lang/String;)V
+}
+
 public final class dev/rubentxu/pipeline/v2/dsl/BranchScope {
 	public fun <init> ()V
 	public final fun dir (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
@@ -119,6 +124,7 @@ public final class dev/rubentxu/pipeline/v2/dsl/PipelineScope {
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V
 	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun agent (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun agent (Lkotlin/jvm/functions/Function1;)V
 	public static synthetic fun agent$default (Ldev/rubentxu/pipeline/v2/dsl/PipelineScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun agentAny ()V
 	public final fun agentWithCapabilities ([Ljava/lang/String;)V
@@ -339,6 +345,7 @@ public final class dev/rubentxu/pipeline/v2/dsl/StageScope : dev/rubentxu/pipeli
 	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V
 	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun agent (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun agent (Lkotlin/jvm/functions/Function1;)V
 	public static synthetic fun agent$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun agentAny ()V
 	public final fun agentWithCapabilities ([Ljava/lang/String;)V

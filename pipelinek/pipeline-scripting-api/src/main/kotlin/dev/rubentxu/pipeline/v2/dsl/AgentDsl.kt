@@ -110,3 +110,92 @@ internal object AgentRequirements {
         )
     }
 }
+
+/**
+ * The scope an `agent { }` block opens.
+ *
+ * ## What the block holds
+ *
+ * The OPTIONS of the agent, and nothing else. The block of Jenkins holds the
+ * label, the container, the pod and their options, and admits no step at all;
+ * the restriction here is the same one, and it is carried by the TYPE of the
+ * block: the scope carries the marker of the step layer AND the marker of the
+ * pipeline layer, so the scope that opened the block is out of reach from
+ * inside it and the compiler refuses a step instead of declaring it.
+ *
+ * ## Why the vocabulary is the label and nothing else
+ *
+ * Because that is the whole of what a local target can be required to have: a
+ * NAME the target has to advertise. The remote selector of this product has
+ * its own spelling —`agent(remoteUri = ...)`— and it is NOT here: the block is
+ * the block of Jenkins, and a spelling of Jenkins that this product does not
+ * have would be a second way of saying the same thing.
+ *
+ * ## Why the block declares ONE label
+ *
+ * Because the block of Jenkins has ONE `label` option, and because the block
+ * and the call have to declare the same agent: the requirement of a call
+ * carries one label, and a block that carried two would be a declaration the
+ * call cannot make.
+ *
+ * ## What this scope does NOT do
+ *
+ * It does not resolve anything: the requirement it builds is a CONSTRAINT, and
+ * the runtime decides whether the machine the run is on satisfies it.
+ *
+ * ## Why the scope carries TWO markers
+ *
+ * Because the block opens at TWO levels —inside a stage and inside a
+ * pipeline— and it has to hide the scope that opened it at either of them. A
+ * DSL marker hides the outer receivers that carry the SAME marker (measured
+ * with the compiler of this product), so the scope carries the marker of the
+ * step layer AND the marker of the pipeline layer: inside a stage the step
+ * marker hides the stage, and inside a pipeline the pipeline marker hides the
+ * pipeline. A scope with one of the two would let the other level's calls
+ * through.
+ */
+@StepDslMarker
+@PipelineDslMarker
+class AgentScope {
+
+    /**
+     * The label the target has to advertise, or `null` when the block
+     * declared none.
+     */
+    private var declaredLabel: String? = null
+
+    /**
+     * The label the target has to advertise.
+     *
+     * The name is the one of Jenkins: the option of the block is `label`, and
+     * the block of a Jenkinsfile writes `agent { label 'linux' }`.
+     *
+     * @param label the label of a local target
+     * @throws IllegalArgumentException when the block already declared a
+     *   label, because the block declares one and the call declares one
+     */
+    fun label(label: String) {
+        require(declaredLabel == null) {
+            "the block declares ONE label: the block of Jenkins has one `label` option, and a " +
+                "target is required to carry the labels of ONE declaration. Declare one agent."
+        }
+        declaredLabel = label
+    }
+
+    /**
+     * The requirement the block declares.
+     *
+     * It is built by the SAME authority the call uses, so a block and a call
+     * that declare the same agent declare the same agent, and the directive
+     * that carries it is the same one.
+     *
+     * @throws IllegalArgumentException when the block declared no label
+     */
+    internal fun requirement(): ExecutionTargetRequirement {
+        val label = requireNotNull(declaredLabel) {
+            "the block declares a label: `agent { label(\"linux\") }`; an agent with no " +
+                "constraint at all is `agentAny()`"
+        }
+        return AgentRequirements.of(label, null)
+    }
+}

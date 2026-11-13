@@ -4,7 +4,6 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.dsl.StepBodyScope
 import dev.rubentxu.pipeline.v2.dsl.StepEmitter
-import dev.rubentxu.pipeline.v2.dsl.StageScope
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import org.junit.jupiter.api.Assertions.assertEquals

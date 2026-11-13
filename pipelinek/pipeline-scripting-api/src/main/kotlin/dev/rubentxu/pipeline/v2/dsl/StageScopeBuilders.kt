@@ -725,6 +725,17 @@ open class StageScopeTopSteps(
         sequence.declare(StepSpec.WriteFile(file = file, text = text, encoding = encoding))
     }
 
+    /**
+     * Declares a step the plugin's own handler runs.
+     *
+     * The HISTORIC form: it names the version of the envelope the payload is
+     * in, and it is the form every published script and every precompiled
+     * plugin names. The value by default of the version lives HERE and not in
+     * [StepEmitter]: the synthetic that carries it is a member of the class
+     * that declares it, and moving it to the contract would move that
+     * synthetic to the holder of the interface's defaults and would leave
+     * every compiled consumer of this form without the method it calls.
+     */
     fun registryStep(
         stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
         encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
@@ -733,6 +744,28 @@ open class StageScopeTopSteps(
         sequence.declare(StepSpec.RegistryStepSpec(stepKey, schemaVersion, encodedInput))
     }
 
+    /**
+     * The form the contract declares: the same step, without the version.
+     *
+     * The version of the envelope is the DSL's business, so a constructor of
+     * steps states the STEP and the PAYLOAD and not the envelope. The two
+     * forms declare the SAME step: this one delegates to the historic form,
+     * and the step that comes out is the step that form declares.
+     */
+    fun registryStep(
+        stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
+        encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+    ) {
+        registryStep(stepKey, encodedInput, "dsl-v1")
+    }
+
+    /**
+     * Declares a step that carries a body of steps.
+     *
+     * The HISTORIC form: it names the version of the envelope and it takes
+     * the body in the scope of the stage. The value by default of the version
+     * lives HERE for the reason the one of [registryStep] explains.
+     */
     fun registryBlock(
         stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
         encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
@@ -742,6 +775,21 @@ open class StageScopeTopSteps(
         val inner = blockScope("registryBlock")
         inner.block()
         sequence.declare(StepSpec.RegistryBlockSpec(stepKey, schemaVersion, encodedInput, inner.steps()))
+    }
+
+    /**
+     * The form the contract declares: the same block, without the version.
+     *
+     * The body is written in the scope that hosts it, and that scope is the
+     * stage: the body of a plugin's block is a body of steps of the stage
+     * that carries it.
+     */
+    fun registryBlock(
+        stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
+        encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+        block: StageScope.() -> Unit,
+    ) {
+        registryBlock(stepKey, encodedInput, "dsl-v1", block)
     }
 
     /**

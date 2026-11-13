@@ -825,6 +825,33 @@ El SDK viaja con cada release como `pipelinek-<version>.sdk.zip`: ocho artefacto
 
 Un plugin se carga desde `--plugin-jar`. Con `--plugin-trust <file>` solo se admite si sus bytes coinciden con el SHA-256 fijado por el operador y llevan una firma Ed25519 válida; con `--require-plugin-trust`, un plugin que nadie ha avalado se rechaza antes de que corra su código.
 
+**Declarar un paso: el contrato `StepEmitter`.** Un plugin que enseña al DSL su propio paso lo declara a través de `dev.rubentxu.pipeline.v2.dsl.StepEmitter`, una interfaz pública con dos miembros: `registryStep` declara un paso y `registryBlock` declara un paso que lleva un cuerpo. No hay nada más — ni agent, ni options, ni condiciones de post, ni predicados `when` — así que el paso de un plugin no depende de cómo se configura un stage.
+
+El contrato tiene dos rutas, y un plugin publica las dos:
+
+```kotlin
+// la ruta del contrato: la acepta todo scope que admite pasos
+fun <B : StepEmitter<B>> StepEmitter<B>.uppercase(text: String) {
+    registryStep(
+        stepKey = UppercaseStepDefinition.KEY,
+        encodedInput = UppercaseCodec.encode(UppercaseInput(text)),
+    )
+}
+
+// la ruta histórica: el receptor que nombra un script publicado y un
+// plugin precompilado
+fun StageScope.uppercase(text: String) {
+    val emitter: StepEmitter<StageScope> = this
+    emitter.uppercase(text)
+}
+```
+
+**El receptor es parte del descriptor — conserva el histórico.** El receptor de una extensión de Kotlin es el PRIMER parámetro de su firma JVM, así que un consumidor compilado nombra el descriptor, receptor incluido. Un consumidor compilado contra `uppercase(StageScope, String)` lanza `NoSuchMethodError` si la fachada se mueve a otro receptor, aunque el fuente se lea igual. Por eso un plugin conserva su ruta histórica tal cual y AÑADE la ruta del contrato: las dos declaran el mismo paso, y el que corre es el del contrato.
+
+**La ruta del contrato toma los argumentos del propio plugin.** Un plugin cuyo paso tiene más opciones de las que una función debería nombrar una a una pasa su valor tipado — `httpRequest(HttpRequestInput(...))` — y la ruta que nombra las opciones una a una se queda donde siempre estuvo, en un stage.
+
+**Dónde puede ir el paso de un plugin.** Un stage, un bloque `steps { }`, un bloque `script { }`, un wrapper y una rama de un bloque `parallel { }` lo admiten. Las condiciones que cierran un stage no: ellas ejecutan los pasos que provee el DSL, y el paso de un plugin ahí se rechaza con un mensaje que nombra el paso rechazado y la restricción. Los cuatro plugins de `examples/` están escritos así.
+
 ---
 
 ## Pensado para desarrolladores, agentes y plataformas

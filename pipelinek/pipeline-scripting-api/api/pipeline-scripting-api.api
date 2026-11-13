@@ -1,4 +1,4 @@
-public final class dev/rubentxu/pipeline/v2/dsl/BranchScope {
+public final class dev/rubentxu/pipeline/v2/dsl/BranchScope : dev/rubentxu/pipeline/v2/dsl/StepEmitter {
 	public fun <init> ()V
 	public final fun dir (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public final fun echo (Ljava/lang/String;)V
@@ -8,6 +8,8 @@ public final class dev/rubentxu/pipeline/v2/dsl/BranchScope {
 	public final fun getSteps ()Ljava/util/List;
 	public final fun lock (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)V
 	public static synthetic fun lock$default (Ldev/rubentxu/pipeline/v2/dsl/BranchScope;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public fun registryBlock-TmLEHys (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun registryStep-l-U9F2w (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun sh (Ljava/lang/String;)V
 	public final fun sleep (J)V
 }
@@ -176,13 +178,15 @@ public final class dev/rubentxu/pipeline/v2/dsl/PostScope {
 	public final fun unsuccessful (Lkotlin/jvm/functions/Function1;)V
 }
 
-public final class dev/rubentxu/pipeline/v2/dsl/PostStepsScope {
+public final class dev/rubentxu/pipeline/v2/dsl/PostStepsScope : dev/rubentxu/pipeline/v2/dsl/StepEmitter {
 	public fun <init> ()V
 	public final fun echo (Ljava/lang/String;)V
 	public final fun error (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;)V
 	public final fun error (Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun error$default (Ldev/rubentxu/pipeline/v2/dsl/PostStepsScope;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;ILjava/lang/Object;)V
 	public final fun getSteps ()Ljava/util/List;
+	public fun registryBlock-TmLEHys (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun registryStep-l-U9F2w (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun sh (Ljava/lang/String;)V
 	public final fun sleep (J)V
 }
@@ -330,7 +334,7 @@ public final class dev/rubentxu/pipeline/v2/dsl/StageBuilder {
 public abstract interface annotation class dev/rubentxu/pipeline/v2/dsl/StageDslMarker : java/lang/annotation/Annotation {
 }
 
-public final class dev/rubentxu/pipeline/v2/dsl/StageScope : dev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps {
+public final class dev/rubentxu/pipeline/v2/dsl/StageScope : dev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps, dev/rubentxu/pipeline/v2/dsl/StepEmitter {
 	public static final field RUNTIME_VALUE_PLACEHOLDER Ljava/lang/String;
 	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V
 	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -434,8 +438,10 @@ public class dev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps : dev/rubentxu/pipe
 	public static synthetic fun readFile$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun registryBlock-8FtRcd8 (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public static synthetic fun registryBlock-8FtRcd8$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun registryBlock-TmLEHys (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public final fun registryStep-TmLEHys (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun registryStep-TmLEHys$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun registryStep-l-U9F2w (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun retry (ILjava/lang/Long;)Ljava/lang/Void;
 	public static synthetic fun retry$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;ILjava/lang/Long;ILjava/lang/Object;)Ljava/lang/Void;
 	public final fun withEnv (Ljava/util/List;Lkotlin/jvm/functions/Function1;)V
@@ -476,6 +482,11 @@ public final class dev/rubentxu/pipeline/v2/dsl/StagesScope {
 }
 
 public abstract interface annotation class dev/rubentxu/pipeline/v2/dsl/StepDslMarker : java/lang/annotation/Annotation {
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/dsl/StepEmitter {
+	public abstract fun registryBlock-TmLEHys (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun registryStep-l-U9F2w (Ljava/lang/String;Ljava/lang/String;)V
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/dsl/StepSpec : dev/rubentxu/pipeline/v2/domain/durable/StepSpec {

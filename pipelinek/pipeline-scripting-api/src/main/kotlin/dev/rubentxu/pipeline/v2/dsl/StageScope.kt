@@ -71,7 +71,7 @@ class DirectivesScope {
 class StageScope(
     stageName: String,
     runtimeConfig: RuntimeConfig = currentRuntimeConfig(),
-) : StageScopeTopSteps(stageName, runtimeConfig) {
+) : StageScopeTopSteps(stageName, runtimeConfig), StepEmitter<StageScope> {
 
     /**
      * `slot("name") { ... }` — NAMES one step of the body it is written in.

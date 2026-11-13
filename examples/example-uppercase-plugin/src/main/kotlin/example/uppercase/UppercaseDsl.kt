@@ -1,5 +1,6 @@
 package example.uppercase
 
+import dev.rubentxu.pipeline.v2.dsl.StepEmitter
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 
 /**
@@ -20,12 +21,31 @@ import dev.rubentxu.pipeline.v2.dsl.StageScope
  * It lowers to `StepSpec.RegistryStepSpec` (declarative IR) and is executed by
  * the canonical spine; nothing here touches PipelineRun or any direct-execution
  * path.
+ *
+ * This is the route of the CONTRACT: it applies in every scope that hosts steps, and the
+ * historic route on `StageScope` —the one a published script and a precompiled plugin name—
+ * delegates to it, so the two declare the SAME step.
 */
-fun StageScope.uppercase(text: String) {
+fun <B : StepEmitter<B>> StepEmitter<B>.uppercase(text: String) {
     registryStep(
         stepKey = UppercaseStepDefinition.KEY,
         encodedInput = UppercaseCodec.encode(UppercaseInput(text)),
     )
+}
+
+/**
+ * The HISTORIC route of `uppercase`, and the one a published script and a
+ * precompiled plugin name.
+ *
+ * The receiver of a Kotlin extension is the FIRST parameter of its JVM
+ * signature, so the receiver of this function IS part of the descriptor a
+ * compiled consumer names. This route keeps the receiver `StageScope` and the
+ * descriptor it had, and it delegates to the route of the contract: the two
+ * declare the SAME step, and the one that runs is the one of the contract.
+ */
+fun StageScope.uppercase(text: String) {
+    val emitter: StepEmitter<StageScope> = this
+    emitter.uppercase(text)
 }
 
 /**
@@ -44,11 +64,26 @@ fun StageScope.uppercase(text: String) {
  * }
  * ```
 */
-fun StageScope.uppercaseObserved(text: String) {
+fun <B : StepEmitter<B>> StepEmitter<B>.uppercaseObserved(text: String) {
     registryStep(
         stepKey = UppercaseObservedStepDefinition.KEY,
         encodedInput = UppercaseCodec.encode(UppercaseInput(text)),
     )
+}
+
+/**
+ * The HISTORIC route of `uppercaseObserved`, and the one a published script and a
+ * precompiled plugin name.
+ *
+ * The receiver of a Kotlin extension is the FIRST parameter of its JVM
+ * signature, so the receiver of this function IS part of the descriptor a
+ * compiled consumer names. This route keeps the receiver `StageScope` and the
+ * descriptor it had, and it delegates to the route of the contract: the two
+ * declare the SAME step, and the one that runs is the one of the contract.
+ */
+fun StageScope.uppercaseObserved(text: String) {
+    val emitter: StepEmitter<StageScope> = this
+    emitter.uppercaseObserved(text)
 }
 
 /**
@@ -69,9 +104,24 @@ fun StageScope.uppercaseObserved(text: String) {
  * }
  * ```
 */
-fun StageScope.uppercaseMeasured(text: String) {
+fun <B : StepEmitter<B>> StepEmitter<B>.uppercaseMeasured(text: String) {
     registryStep(
         stepKey = UppercaseMeasuredStepDefinition.KEY,
         encodedInput = UppercaseCodec.encode(UppercaseInput(text)),
     )
+}
+
+/**
+ * The HISTORIC route of `uppercaseMeasured`, and the one a published script and a
+ * precompiled plugin name.
+ *
+ * The receiver of a Kotlin extension is the FIRST parameter of its JVM
+ * signature, so the receiver of this function IS part of the descriptor a
+ * compiled consumer names. This route keeps the receiver `StageScope` and the
+ * descriptor it had, and it delegates to the route of the contract: the two
+ * declare the SAME step, and the one that runs is the one of the contract.
+ */
+fun StageScope.uppercaseMeasured(text: String) {
+    val emitter: StepEmitter<StageScope> = this
+    emitter.uppercaseMeasured(text)
 }

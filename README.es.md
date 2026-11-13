@@ -174,6 +174,20 @@ El bloque lleva el receptor de un stage, así que tiene todo el vocabulario (`ec
 
 Lo que el bloque aporta es el control de flujo de Kotlin del autor, y ese control de flujo se evalúa **mientras se construye el plan**: el `if` de arriba decide qué brazo se declara, antes de que corra el primer paso. Una condición que hay que decidir mientras corre la ejecución se escribe con las puertas `when*`.
 
+### El bloque `steps { }` contiene los pasos de un stage
+
+```kotlin
+stage("build") {
+    steps {
+        sh("make")
+    }
+}
+```
+
+`steps { }` es el bloque que escribe un Jenkinsfile, y aquí está con ese nombre y esa forma: los pasos declarados dentro de él son los pasos del stage que los declara, en el orden en que se declararon, y el bloque no declara ningún paso propio.
+
+El cuerpo del stage declara pasos también, y los dos son **una sola lista**: los pasos del cuerpo y los pasos del bloque, en el orden en que el autor los escribió. Ninguna de las dos formas es la que el producto exige, y ninguna es la que rechaza.
+
 ### Editar pipelines en IntelliJ IDEA
 
 El editor resuelve un script contra el classpath del módulo al que pertenece, y un `.pipeline.kts` fuera de cualquier módulo no tiene DSL ni diagnósticos. `ide init` escribe ese módulo, como un proyecto Gradle, a partir de la instalación con la que lo ejecutas:

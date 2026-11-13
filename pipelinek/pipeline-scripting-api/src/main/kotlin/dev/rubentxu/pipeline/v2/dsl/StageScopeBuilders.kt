@@ -476,6 +476,55 @@ open class StageScopeCore(
         steps.addAll(inner.steps())
     }
 
+    /**
+     * The block of the STEPS of a stage, as a Jenkinsfile writes it.
+     *
+     * A Jenkinsfile declares the steps of a stage inside a `steps { }` block:
+     *
+     * ```groovy
+     * stage('build') {
+     *     steps {
+     *         sh 'make'
+     *     }
+     * }
+     * ```
+     *
+     * That block is THIS one, and it is here with the name and the shape of
+     * Jenkins: a reader who comes from Jenkins writes it, and it compiles.
+     *
+     * The block holds STEPS, the way a stage holds them: every call inside it is a
+     * step of its own, with its own identity and its own descriptor, and those steps
+     * are the steps of the stage that opened the block, in the order they were
+     * declared. The block is an ENVELOPE: it declares no step of its own, and it
+     * opens no scope of its own while the run runs.
+     *
+     * The body of the stage declares steps too, and the two are ONE list: the
+     * steps of the body and the steps of the block, in the order the author wrote
+     * them. Neither form is the one the product requires, and neither is the one it
+     * refuses.
+     *
+     * The receiver is the receiver of a stage, so the block carries the whole
+     * vocabulary: `echo`, `sh`, `dir`, `retry` and the rest. It does NOT carry a
+     * recorder of shell lines: a block of shell lines is ONE step, written with
+     * `sh("""…""")`.
+     *
+     * The `@StepDslMarker` of the scope hides the scope that opened the block
+     * inside it, so a call inside the block resolves against the block's own
+     * scope and never against the stage that opened it.
+     */
+    fun steps(block: StageScope.() -> Unit) {
+        val inner = nestedScope()
+        inner.block()
+        steps.addAll(inner.steps())
+    }
+
+    /**
+     * The steps the scope declares, as they are.
+     *
+     * It is the accessor the scope itself uses to hand its steps to the stage that
+     * opened it, and it shares its name with the block of [steps] because the two
+     * are about the same thing: the steps of a scope. The arity tells them apart.
+     */
     fun steps(): List<StepSpec> = steps.toList()
 
 }

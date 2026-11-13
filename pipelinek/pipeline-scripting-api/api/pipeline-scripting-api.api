@@ -424,6 +424,7 @@ public class dev/rubentxu/pipeline/v2/dsl/StageScopeCore {
 	public static synthetic fun sh$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeCore;Ljava/lang/String;ZZILjava/lang/Object;)V
 	public final fun sleep (J)V
 	public final fun steps ()Ljava/util/List;
+	public final fun steps (Lkotlin/jvm/functions/Function1;)V
 	public final fun withCredentials (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;Lkotlin/jvm/functions/Function1;)V
 	public final fun withCredentials (Ljava/util/List;Lkotlin/jvm/functions/Function1;)V
 	public final fun withCredentials ([Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;Lkotlin/jvm/functions/Function1;)V

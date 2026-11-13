@@ -131,6 +131,29 @@ Un segundo bloque `environment { }` a nivel de pipeline **añade** al primero: l
 
 Las variables del pipeline son también lo que lee el **gate** de un stage: el stage `deploy` de arriba se condiciona con el mismo `TARGET=production` con el que corren sus pasos, y el `REGISTRY` del pipeline es visible para ese gate también.
 
+### El `post { }` cierra el pipeline, no sólo un stage
+
+```kotlin
+pipeline {
+    stages {
+        stage("build") { sh("make") }
+    }
+    post {
+        always { echo("the run ended") }
+        success { echo("the run succeeded") }
+        failure { echo("the run failed") }
+    }
+}
+```
+
+El `post { }` existe también a **nivel de pipeline**, con la misma forma y las mismas siete condiciones que tiene dentro de un stage (`always`, `success`, `failure`, `unstable`, `aborted`, `unsuccessful`, `cleanup`). El `post` de un stage cierra **ese stage**; el del pipeline cierra **el pipeline**, y sus condiciones se deciden sobre el resultado del **run completo**: `success` significa que todos los stages terminaron bien, `failure` que el run falló, y `aborted` que el run fue detenido — que es una afirmación distinta de la de que falló.
+
+El motor tiene un **punto de cierre** del pipeline, y ahí se ejecuta el `post` del pipeline: después de los stages y antes del propio libro del run. Un finalizador que falla hace fallar el run, igual que el finalizador de un stage hace fallar el run al que pertenece.
+
+Los finalizadores del pipeline llevan su propia identidad durable — el índice de stage **uno más allá del último stage** — así que nunca comparten fila de journal con los de un stage, y el segundo intento de un run los encuentra donde el primer intento los dejó: el `post` del pipeline no se vuelve a ejecutar desde el principio, el modelo durable sirve la finalización que ya escribió.
+
+Un pipeline que no declara `post` cierra sin nada que ejecutar.
+
 ### El bloque `script { }` contiene pasos
 
 ```kotlin

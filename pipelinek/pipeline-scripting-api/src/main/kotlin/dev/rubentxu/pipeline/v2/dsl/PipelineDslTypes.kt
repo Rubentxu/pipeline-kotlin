@@ -11,6 +11,34 @@ package dev.rubentxu.pipeline.v2.dsl
 data class PipelineSpec(
     val stages: List<StageSpec>,
     val parameters: List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> = emptyList(),
+
+    /**
+     * The variables the PIPELINE declares, as the declaration itself.
+     *
+     * The stages carry them too — a stage that declares none inherits them,
+     * and a stage that declares one of its own keeps it — but the declaration
+     * is the PIPELINE's, so it is carried here as well: the parts of the run
+     * that belong to no stage (the pipeline's own `post`) run with the
+     * variables the pipeline declared.
+     *
+     * `null` means the pipeline declares none, which is a different statement
+     * from declaring an empty set.
+     */
+    val environment: Map<String, String>? = null,
+
+    /**
+     * `post` blocks declared on this PIPELINE.
+     *
+     * Carried as DATA from the DSL to the compiler, exactly as a stage's
+     * `post` is: the DSL never decides which block runs. The difference is
+     * WHERE it runs — a stage's `post` closes that stage, and the pipeline's
+     * closes the PIPELINE, over the result of the whole run.
+     *
+     * A pipeline that declares none is the pipeline it always was: the field
+     * defaults to an empty declaration, and an empty declaration produces no
+     * entry at all.
+     */
+    val post: PostConditionSpec = PostConditionSpec(),
 )
 
 /**

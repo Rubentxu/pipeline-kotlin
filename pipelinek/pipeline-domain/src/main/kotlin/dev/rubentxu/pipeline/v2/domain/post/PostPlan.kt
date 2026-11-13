@@ -144,6 +144,29 @@ enum class PostCondition {
 }
 
 /**
+ * The outcome a PIPELINE's `post` reacts to.
+ *
+ * A stage's `post` reacts to how ITS OWN stage finished, and that is a fact
+ * the coordinator knows at the stage boundary. The pipeline's `post` reacts to
+ * how the WHOLE RUN finished, and that is the run's own result: the four
+ * words of [dev.rubentxu.pipeline.v2.domain.RunOutcome] projected onto the
+ * vocabulary the planner consumes.
+ *
+ * The projection is TOTAL and it never guesses: every word of the run's
+ * vocabulary names exactly one outcome of the post's. `Aborted` maps to
+ * [StageOutcome.Aborted] and not to `Failed`, because a run that was stopped
+ * is not a run that failed, and a `failure` block that fired for an aborted
+ * run would report a cause nobody observed.
+ */
+fun dev.rubentxu.pipeline.v2.domain.RunOutcome.postOutcome(): StageOutcome =
+    when (this) {
+        dev.rubentxu.pipeline.v2.domain.RunOutcome.Success -> StageOutcome.Succeeded
+        dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable -> StageOutcome.Unstable
+        is dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure -> StageOutcome.Failed
+        dev.rubentxu.pipeline.v2.domain.RunOutcome.Aborted -> StageOutcome.Aborted
+    }
+
+/**
  * Which blocks a given [StageOutcome] selects.
  * A total, pure membership question — no sequencing, no effects. Keeping it
  * separate from [PostPlanner] means the Jenkins semantics of "which blocks fire"

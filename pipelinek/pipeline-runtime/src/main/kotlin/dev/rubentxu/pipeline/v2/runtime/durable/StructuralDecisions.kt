@@ -199,6 +199,22 @@ internal fun StageNode.projectShellOptions(base: ShOptions): ShOptions {
     }
 }
 
+/**
+ * The variables a PIPELINE declares, projected onto the run's shell options.
+ *
+ * The stages project their own environment the same way ([StageNode.projectShellOptions]),
+ * and a stage that declares none inherits the pipeline's — the pipeline's declaration is
+ * the stages' default. What belongs to NO stage — the pipeline's own `post` — runs with the
+ * pipeline's variables, because those are the variables the pipeline declared.
+ */
+internal fun dev.rubentxu.pipeline.v2.domain.EnvironmentSpec.withDeclaredEnvironment(
+    base: ShOptions,
+): ShOptions {
+    val declared: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle> =
+        values.mapValues { dev.rubentxu.pipeline.v2.domain.SecretHandle.plain(it.value) }
+    return base.copy(env = base.env + declared)
+}
+
 internal fun StageNode.timeoutProjection(): StageTimeoutProjection {
     // A CLOSED match over the typed carrier.
     // The previous shape discriminated on a name string and re-parsed the value:

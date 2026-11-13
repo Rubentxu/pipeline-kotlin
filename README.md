@@ -129,6 +129,29 @@ A second `environment { }` block at pipeline level **adds** to the first one: th
 
 The pipeline's variables are also what a stage's **gate** reads: the `deploy` stage above is gated with the same `TARGET=production` its steps run with, and the pipeline's `REGISTRY` is visible to that gate too.
 
+### `post { }` closes the pipeline, not only a stage
+
+```kotlin
+pipeline {
+    stages {
+        stage("build") { sh("make") }
+    }
+    post {
+        always { echo("the run ended") }
+        success { echo("the run succeeded") }
+        failure { echo("the run failed") }
+    }
+}
+```
+
+`post { }` also exists at **pipeline level**, with the same spelling and the same seven conditions it has inside a stage (`always`, `success`, `failure`, `unstable`, `aborted`, `unsuccessful`, `cleanup`). A stage's `post` closes **that stage**; the pipeline's closes **the pipeline**, and its conditions are decided over the result of the **whole run**: `success` means that every stage succeeded, `failure` that the run failed, and `aborted` that the run was stopped — which is a different statement from failing.
+
+The engine has a **close point** for the pipeline, and the pipeline's `post` runs there: after the stages, before the run's own bookend. A finalizer that fails fails the run, exactly as a stage's finalizer fails the run it belongs to.
+
+The pipeline's finalizers carry their own durable identity — the stage index **one past the last stage** — so they never share a journal row with a stage's finalizers, and the second attempt of a run finds them where the first attempt left them: the pipeline's `post` is not run again from scratch, the durable model serves the completion it already wrote.
+
+A pipeline that declares no `post` closes with nothing to run.
+
 ### The `script { }` block holds steps
 
 ```kotlin

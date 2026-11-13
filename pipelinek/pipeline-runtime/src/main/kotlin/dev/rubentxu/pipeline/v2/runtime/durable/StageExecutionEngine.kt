@@ -421,13 +421,92 @@ internal class StageExecutionEngine(
         runId: RunId,
         stageShOptions: ShOptions,
         ambient: ExecutionContext,
+    ): PipelineFailure? = runPostOf(
+        postSpec = stage.post,
+        stageIndex = stageIndex,
+        stageName = stage.name,
+        outcome = stageOutcome,
+        owner = "stage '${stage.name}'",
+        runId = runId,
+        shOptions = stageShOptions,
+        ambient = ambient,
+    )
+
+    /**
+     * The `post` of the PIPELINE, at the pipeline's close.
+     *
+     * It is the SAME machinery a stage's `post` runs on — the same pure
+     * planner, the same selection event, the same dispatch spine — with two
+     * differences, and both are facts about WHERE it runs:
+     *
+     *  - the OUTCOME is the run's, not a stage's: the caller projects the run's
+     *    result onto the post vocabulary, and the planner selects from that;
+     *  - the INDEX is one past the last stage. The index is part of the durable
+     *    identity of every dispatched step, so the pipeline's finalizers can
+     *    never collide with a stage's — and it is what tells a reader that the
+     *    post is not one of the stages.
+     *
+     * The name is the pipeline's own: the run's source path. The event
+     * vocabulary of `post` is stage-shaped because every `post` used to belong
+     * to a stage, and the pipeline's post belongs to the RUN, whose name in
+     * the event plane is its source path.
+     */
+    suspend fun runPipelinePostBlock(
+        post: dev.rubentxu.pipeline.v2.domain.PostSpec?,
+        closeIndex: Int,
+        pipelineName: String,
+        outcome: StageOutcome,
+        runId: RunId,
+        shOptions: ShOptions,
+        ambient: ExecutionContext,
+    ): PipelineFailure? = runPostOf(
+        postSpec = post,
+        stageIndex = closeIndex,
+        stageName = pipelineName,
+        outcome = outcome,
+        owner = "the pipeline",
+        runId = runId,
+        shOptions = shOptions,
+        ambient = ambient,
+    )
+
+    /**
+     * The ONE place a `post` block runs.
+     *
+     * A stage's `post` and the pipeline's `post` are the same decision over
+     * the same pure planner, so they run here, once: two copies of this walk
+     * would be two places where the selected conditions and the executed nodes
+     * could disagree.
+     *
+     * The DURABLE IDENTITY of every dispatched finalizer is
+     * `(runId, stageIndex, stepIndex, bodyPath)`. The body path carries the
+     * block identity — `post:<CONDITION>:<i>` — and the index is the stage's
+     * own, or, for the pipeline's post, the index one past the last stage. Two
+     * finalizers of the same condition in the same run therefore never share
+     * an identity, and the pipeline's finalizers never share one with a
+     * stage's.
+     *
+     * That identity is also what makes a RESUME honest: the second attempt of
+     * a run dispatches the same finalizers under the same identity, and the
+     * durable model — not this method — decides whether the journalled
+     * completion is served again or the step runs afresh. The close point
+     * does not decide "already ran"; it dispatches, and the journal answers.
+     */
+    private suspend fun runPostOf(
+        postSpec: dev.rubentxu.pipeline.v2.domain.PostSpec?,
+        stageIndex: Int,
+        stageName: String,
+        outcome: StageOutcome,
+        owner: String,
+        runId: RunId,
+        shOptions: ShOptions,
+        ambient: ExecutionContext,
     ): PipelineFailure? {
-        val postSpec = stage.post ?: return null
-        if (postSpec.isEmpty) return null
+        if (postSpec == null || postSpec.isEmpty) return null
         val plan = postSpec.toPostPlan()
         // The pure decision, made ONCE: if the planner selects nothing for this
         // outcome, the block is inert for this stage and emits nothing.
-        if (PostPlanner.plan(plan, stageOutcome).isEmpty()) return null
+        if (PostPlanner.plan(plan, outcome).isEmpty()) return null
 
         eventSink.append(
             dev.rubentxu.pipeline.v2.events.PostConditionSelected(
@@ -436,10 +515,10 @@ internal class StageExecutionEngine(
                 sequence = 0L,
                 occurredAt = clock.now(),
                 stageIndex = stageIndex,
-                stageName = stage.name,
-                stageOutcome = stageOutcome.wire().wire,
-                selectedConditions = PostPlanner.selectedConditions(plan, stageOutcome).map { it.name },
-                skippedConditions = PostPlanner.skippedConditions(plan, stageOutcome).map { it.name },
+                stageName = stageName,
+                stageOutcome = outcome.wire().wire,
+                selectedConditions = PostPlanner.selectedConditions(plan, outcome).map { it.name },
+                skippedConditions = PostPlanner.skippedConditions(plan, outcome).map { it.name },
             ),
         )
 
@@ -449,9 +528,10 @@ internal class StageExecutionEngine(
         var dispatched = 0
         // A finalizer belongs to the stage it finalises, so it hangs under
         // that stage's span — and under the run's span when the stage never
-        // opened one, which is the case of a stage that was skipped.
+        // opened one, which is the case of a stage that was skipped, and of
+        // the pipeline's close, which belongs to no stage at all.
         val stageScope = SpanScope(ambient, runLifecycle.parentFor(stageIndex))
-        for (condition in PostPlanner.selectedConditions(plan, stageOutcome)) {
+        for (condition in PostPlanner.selectedConditions(plan, outcome)) {
             val nodes = plan.bodies[condition].orEmpty()
             for ((index, node) in nodes.withIndex()) {
                 val bodyPath = listOf(BlockSegment("post:${condition.name}:$index"))
@@ -459,24 +539,25 @@ internal class StageExecutionEngine(
                     StepDispatchRequest(
                         step = node,
                         runId = runId,
-                        stageName = stage.name,
+                        stageName = stageName,
                         stageIndex = stageIndex,
                         stepIndex = POST_BASE_STEP_INDEX + dispatched,
-                        shOptions = stageShOptions,
+                        shOptions = shOptions,
                         bodyPath = bodyPath,
                         spanScope = stageScope,
                     ),
                 )
                 dispatched++
                 if (dispatchedStep.result.outcome !is StepOutcome.Success) {
-                    val reason = "post ${condition.name} finalizer of stage '${stage.name}' failed"
+                    val reason = "post ${condition.name} finalizer of $owner failed"
                     return PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.USER, reason)
                 }
             }
         }
         return null
     }
-    private companion object {
+
+    internal companion object {
         /**
          * Post finalizers dispatch at step indices AFTER every declared body
          * step (the DSL cap is 512), with the `post:<CONDITION>:<i>` body path

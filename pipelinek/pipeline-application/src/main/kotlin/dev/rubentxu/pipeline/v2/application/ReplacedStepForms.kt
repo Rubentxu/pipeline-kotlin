@@ -18,7 +18,7 @@ package dev.rubentxu.pipeline.v2.application
  * It is not the reason the two products differ. That reason is PUBLISHED, and
  * it lives in the divergence of the entry that declares the form: the
  * divergence of the `agent` directive, for the node of Jenkins. This table
- * names only the FORM, so the two texts cannot drift apart and the catalogue
+ * says what to WRITE, so the two texts cannot drift apart and the catalogue
  * does not publish the same sentence twice.
  *
  * ## WHY IT LIVES HERE AND NOT IN THE DOMAIN
@@ -32,10 +32,10 @@ internal data class ReplacedStepForm(
     /** The key of the refused step, as the compiled step carries it. */
     val pluginStepId: String,
 
-    /** How Jenkins writes the form this product replaces. */
+    /** How Jenkins writes the form this product does not have. */
     val jenkinsForm: String,
 
-    /** How this product writes the form that replaces it. */
+    /** What this product does with the form, when it has no form of its own. */
     val pipelineKForm: String,
 
     /** What the refusal says, after the line that names the step. */
@@ -47,18 +47,26 @@ internal data class ReplacedStepForm(
  *
  * ## WHY THE LIST IS SHORT
  *
- * Because a row here is a PROMISE: the form it names has to WORK. The table
+ * Because a row here is a PROMISE: what it names has to WORK. The table
  * carries only the forms that were measured running, and a form that was not
  * measured does not go in: a suggestion that names a form that fails is worse
  * than no suggestion, because the author trusts it and loses a second time.
+ *
+ * The same rule, in the other direction: a suggestion that names a form this
+ * product DOES NOT HAVE is the same defect wearing a different hat. The
+ * author of a migrated script reads the sentence and writes the form, and a
+ * form that is not there is a second refusal they did not ask for. So a step
+ * this product refuses because it has no counterpart says SO, and it says what
+ * to write instead.
  *
  * ## WHY A REFUSED STEP CAN HAVE A FORM AT ALL
  *
  * Because the refusal is about the STEP, not about the form. The node of
  * Jenkins lowers to a key no registered definition owns, so the bridge refuses
- * it — and the agent of a stage, which is the form that replaces it, is a
- * DIRECTIVE and not a step: it is resolved before the body runs and it never
- * reaches the bridge.
+ * it — and what replaced it in this product was a DIRECTIVE of the stage, not a
+ * step: it was resolved before the body ran and it never reached the bridge.
+ * The language does not author that directive any more, so the refusal names
+ * the ABSENCE and the way out.
  */
 internal object ReplacedStepForms {
 
@@ -79,9 +87,10 @@ internal object ReplacedStepForms {
         ReplacedStepForm(
             pluginStepId = "core.node",
             jenkinsForm = "node { ... }",
-            pipelineKForm = "agent(...)",
-            suggestion = "In PipelineK: the node { ... } of Jenkins is the agent directive of the " +
-                "stage: write agent(...) on the stage.",
+            pipelineKForm = "no agent block: the stage runs on the machine where the run started",
+            suggestion = "In PipelineK: this product does not allocate an executor on an agent, " +
+                "and there is no `node { ... }` block to write. The stage runs on the machine " +
+                "where the run started: write the steps of the stage directly.",
         ),
     )
 }

@@ -15,9 +15,10 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * Nothing` — a stub that always threw, because the compiled definition used to
  * store a label that no runtime component ever read. The reason it had to throw
  * is the reason it is now modelled this way: a Jenkins agent declaration is
- * not a name, it is a CONSTRAINT. `agent { label 'linux' }` does not mean "run
- * somewhere called linux"; it means "the target must satisfy this", and the
- * honest shapes for that constraint are not variations of a string.
+ * not a name, it is a CONSTRAINT. The `agent { label 'linux' }` of Jenkins
+ * does not mean "run somewhere called linux"; it means "the target must
+ * satisfy this", and the honest shapes for that constraint are not variations
+ * of a string.
  * Carrying the constraint as data also makes the fail-closed case expressible
  * instead of implicit. [Remote] is a legitimate declaration that this runtime
  * cannot honour. Under a string model that situation would have to be encoded
@@ -27,10 +28,17 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * ## Why these cases and not more
  * [LocalAny], [LocalLabels] and [CapabilitySet] are what a single-host runtime
  * can actually decide, so they are executable today. [Remote] is declared
- * because the DSL surface is Jenkins-familiar and authors will write it, but
- * There is no remote allocator until; it is carried, decoded and then
- * refused with a diagnostic that says why, rather than rejected at the syntax
- * level where the author would learn nothing.
+ * because the DIRECTIVE is open and a plan may carry it, but There is no
+ * remote allocator until; it is carried, decoded and then refused with a
+ * diagnostic that says why, rather than dropped where the author would learn
+ * nothing.
+ * ## Who declares a requirement today
+ * The language does not offer a way to write one: the authoring forms of the
+ * agent are not part of the DSL. The DIRECTIVE survived, and with it this
+ * carrier — a plan that carries `core.agent`, whether it was composed before
+ * the removal or composed through the open seam, still carries a requirement,
+ * and the run that honours it still has to HONOUR it. That is why the carrier
+ * is published contract and not a leftover.
 */
 
 /** A node label a target may carry, e.g. `linux`, `docker`, `ssd`. */

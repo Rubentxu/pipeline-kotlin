@@ -107,29 +107,25 @@ pipeline {
         env("TARGET", "staging")
         env("REGISTRY", "registry.internal")
     }
-    agent(label = "linux")
     stages {
         stage("build") {
             sh("echo " + env("TARGET"))
         }
         stage("deploy") {
             environment { env("TARGET", "production") }
-            agent(label = "linux-arm")
+            sh("echo " + env("TARGET"))
         }
     }
 }
 ```
 
-`environment { }` y `agent(…)` existen también a **nivel de pipeline**, con la misma grafía que tienen dentro de un stage. Lo que declara el pipeline es el POR DEFECTO de sus stages: un stage que declara una variable propia la conserva, y un stage que declara un agente propio lo conserva también. La precedencia es la que ya usa el gate —una declaración gana sobre un valor que llega de fuera— y se decide **nombre por nombre**: el stage `deploy` de arriba corre con `TARGET=production` y con `REGISTRY=registry.internal`, el `TARGET` del pipeline no le llega, y su agente es `linux-arm` y no el `linux` del pipeline.
+`environment { }` existe también a **nivel de pipeline**, con la misma grafía que tiene dentro de un stage. Lo que declara el pipeline es el POR DEFECTO de sus stages: un stage que declara una variable propia la conserva. La precedencia es la que ya usa el gate —una declaración gana sobre un valor que llega de fuera— y se decide **nombre por nombre**: el stage `deploy` de arriba corre con `TARGET=production` y con `REGISTRY=registry.internal`, y el `TARGET` del pipeline no le llega.
 
-El agente tiene dos grafías, y declaran lo mismo: la llamada `agent(label = "linux")` y el bloque que escribe un Jenkinsfile, `agent { label("linux") }`. Lo que declara el agente es una EXIGENCIA sobre la máquina en la que corre el stage, y la exigencia se comprueba antes de que corra el cuerpo: un stage que pide una etiqueta que la máquina no anuncia es rechazado, y el rechazo nombra las etiquetas pedidas y las que la máquina anuncia. PipelineK no levanta agentes —corre en la máquina donde lo invocaste—, así que el agente dice lo que el pipeline NECESITA, no a dónde mudarse. El bloque contiene las opciones del agente y ningún paso, como el bloque de Jenkins.
+En el DSL **no hay `agent`**, y eso es una decisión sobre el modelo y no sobre la grafía: PipelineK no reserva un ejecutor en un agente, y la ejecución corre en la máquina donde la invocaste. El `agent { … }` de un Jenkinsfile no tiene contrapartida aquí —escribe los pasos del stage directamente— y el paso `node { … }` de Jenkins se rechaza con esa misma razón. Lo que sobrevive del agente no es una forma sino una **directiva**: un plan que lleva `core.agent` sigue llevando la exigencia, y una ejecución que lo reanuda sigue comprobándola, así que un stage que pide una etiqueta que la máquina no anuncia sigue siendo rechazado antes de que corra su cuerpo.
 
-Dos reglas sobre el orden, y se diferencian porque son sobre cosas distintas:
+El orden importa para una **lectura**: el bloque `environment { }` del pipeline tiene que estar escrito **antes** del bloque `stages { }` para que una lectura dentro de un stage la vea. Una lectura de una variable declarada más tarde responde con el valor que tiene la máquina, y no con `null`: la variable está declarada, sólo que demasiado tarde para esa lectura. Las variables llegan a los pasos igual: son el entorno con el que corren los pasos de esos stages.
 
-- las **variables** se leen mientras corre el script, así que el bloque `environment { }` del pipeline tiene que estar escrito **antes** del bloque `stages { }` para que una lectura dentro de un stage la vea. Una lectura de una variable declarada más tarde responde con el valor que tiene la máquina, y no con `null`: la variable está declarada, sólo que demasiado tarde para esa lectura. Las variables llegan a los pasos igual: son el entorno con el que corren los pasos de esos stages;
-- el **agente** se aplica al final del bloque del pipeline, así que el sitio donde está escrita la declaración `agent(…)` no cambia qué agente corre un stage.
-
-Un segundo bloque `environment { }` a nivel de pipeline **añade** al primero: las variables de los dos llegan a los stages, y el nombre que declaran los dos es el del bloque posterior. Un pipeline declara **un** agente: un segundo `agent(…)` se rechaza donde se escribe, porque pondría dos exigencias de la misma directiva en cada stage que no declara ninguno.
+Un segundo bloque `environment { }` a nivel de pipeline **añade** al primero: las variables de los dos llegan a los stages, y el nombre que declaran los dos es el del bloque posterior.
 
 Las variables del pipeline son también lo que lee el **gate** de un stage: el stage `deploy` de arriba se condiciona con el mismo `TARGET=production` con el que corren sus pasos, y el `REGISTRY` del pipeline es visible para ese gate también.
 
@@ -170,7 +166,7 @@ stage("build") {
 }
 ```
 
-`script { }` es un **bloque de pasos**, como lo escribe un Jenkinsfile: `echo("…")` dentro de él es un `core.echo` y `sh("…")` es un `core.sh`, cada uno un paso con su propia identidad y su propia política. No es un bloque de líneas de shell: un `core.sh` corre en un agente, ejecuta un subproceso y replayea desde el principio, mientras que un `core.echo` corre en el controlador, no lee nada y replayea desde su resultado. La identidad de los pasos es la identidad de Jenkins.
+`script { }` es un **bloque de pasos**, como lo escribe un Jenkinsfile: `echo("…")` dentro de él es un `core.echo` y `sh("…")` es un `core.sh`, cada uno un paso con su propia identidad y su propia política. No es un bloque de líneas de shell: un `core.sh` ejecuta un subproceso y replayea desde el principio, mientras que un `core.echo` no lee nada y replayea desde su resultado. La identidad de los pasos es la identidad de Jenkins.
 
 El bloque lleva el receptor de un stage, así que tiene todo el vocabulario (`echo`, `sh`, `dir`, `retry`, …). Un bloque de **líneas** de shell es un paso, escrito con `sh("""…""")`.
 
@@ -190,7 +186,7 @@ stage("build") {
 
 El cuerpo del stage declara pasos también, y los dos son **una sola lista**: los pasos del cuerpo y los pasos del bloque, en el orden en que el autor los escribió. Ninguna de las dos formas es la que el producto exige, y ninguna es la que rechaza.
 
-Un bloque que lleva pasos **no tiene autoridad sobre el stage**: una declaración que pertenece al stage —el `agent`, las puertas `when*`, el `environment` declarativo, las `options`, el `post` y las `directives`— se rechaza donde se escribe, y el rechazo nombra la declaración, el bloque en el que se escribió y el sitio donde pertenece. Una puerta que un bloque anidado se comiera en silencio sería una puerta que no puerta, y el stage correría sin condición.
+Un bloque que lleva pasos **no tiene autoridad sobre el stage**: una declaración que pertenece al stage —las puertas `when*`, el `environment` declarativo, las `options`, el `post` y las `directives`— se rechaza donde se escribe, y el rechazo nombra la declaración, el bloque en el que se escribió y el sitio donde pertenece. Una puerta que un bloque anidado se comiera en silencio sería una puerta que no puerta, y el stage correría sin condición.
 
 ### Editar pipelines en IntelliJ IDEA
 
@@ -869,11 +865,11 @@ flowchart LR
 
 ### Ejecución distribuida
 
-**No está en este runtime.** `agent(remoteUri = …)` lo transporta el DSL y se rechaza en la resolución, porque aquí no hay un asignador remoto. La ejecución distribuida vive en **pipelinek-fabric**, un proyecto aparte con su propia línea de releases y cuyo repositorio aún no es público.
+**No está en este runtime.** Aquí no hay un asignador remoto, y el DSL no tiene manera de pedir uno: la ejecución corre en la máquina donde la invocaste. Un plan que lleva una exigencia remota se rechaza en la resolución, nombrando el selector que pidió. La ejecución distribuida vive en **pipelinek-fabric**, un proyecto aparte con su propia línea de releases y cuyo repositorio aún no es público.
 
 ```mermaid
 flowchart LR
-    L[runtime local] -->|se pide un agente remoto| X[rechazado en la resolución]
+    L[runtime local] -->|se exige un destino remoto| X[rechazado en la resolución]
     F[plano de control de Fabric] --> W[workers]
     W --> P[PipelineK en cada worker]
 ```

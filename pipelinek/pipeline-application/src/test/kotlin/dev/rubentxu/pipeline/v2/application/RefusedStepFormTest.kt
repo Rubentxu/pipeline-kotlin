@@ -37,9 +37,10 @@ import java.util.concurrent.TimeUnit
  *
  * Because the author of a Jenkins script writes the `node` of Jenkins, the
  * script COMPILES, and the run refuses it with a rule and an id the author
- * never wrote. The form of this product is the `agent` directive, and it
- * WORKS. A refusal that does not say so leaves the author with a list of
- * steps the product does not have.
+ * never wrote. This product does NOT allocate an executor on an agent: the
+ * run executes on the machine where it started. A refusal that says so tells
+ * the author what to do with the form they wrote; a refusal that names a form
+ * this product does not have sends the author looking for it.
  *
  * ## What this file does NOT affirm
  *
@@ -51,14 +52,20 @@ import java.util.concurrent.TimeUnit
 class RefusedStepFormTest {
 
     /**
-     * The refusal of the node of Jenkins names the form that replaces it.
+     * The refusal of the node of Jenkins says that there is no agent to
+     * allocate.
      *
      * The chain is walked whole: the DSL lowers the node to its key, the
-     * admission refuses that key, and the refusal says which form to write.
+     * admission refuses that key, and the refusal says what this product
+     * does with the form.
+     *
+     * The refusal names NO form to write, because there is none: the language
+     * does not offer a way to declare an agent, and a refusal that named one
+     * would send the author looking for a form this product does not have.
      */
     @Test
-    @DisplayName("the refusal of the node of Jenkins names the form that replaces it")
-    fun theRefusalOfTheNodeOfJenkinsNamesTheFormThatReplacesIt() {
+    @DisplayName("the refusal of the node of Jenkins says there is no agent to allocate")
+    fun theRefusalOfTheNodeOfJenkinsSaysThereIsNoAgentToAllocate() {
         val refused = refusedStepsOf(
             StepSpec.NodeNoOp(label = null, steps = listOf(StepSpec.Echo("hola"))),
         )
@@ -72,11 +79,17 @@ class RefusedStepFormTest {
 
         val lines = nonCanonicalRefusalLines(refused)
 
-        assertTrue(
+        assertFalse(
             lines.any { line -> line.contains("agent(...)") },
-            "the refusal names the form of this product that replaces the node: the author " +
-                "wrote the node of Jenkins and the product has the agent directive. The " +
+            "the refusal names a form the language does not have: an author who reads " +
+                "'write agent(...)' on a version that removed it loses a second time. The " +
                 "lines were $lines",
+        )
+        assertTrue(
+            lines.any { line -> line.contains("does not allocate") },
+            "the refusal says the truth about what this product does with a node: it does not " +
+                "allocate an executor on an agent, and the run executes on the machine where it " +
+                "started. The lines were $lines",
         )
         assertTrue(
             lines.any { line -> line.contains("node") },

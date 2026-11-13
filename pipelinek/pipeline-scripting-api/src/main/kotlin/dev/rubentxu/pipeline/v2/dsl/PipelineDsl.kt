@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
-import dev.rubentxu.pipeline.v2.domain.directivekey.AGENT_DIRECTIVE_KEY
 
 /**
  * Top-level `pipeline { }` DSL entry point.
@@ -150,17 +149,14 @@ class PipelineScope(
     private val parameterSpecs = mutableListOf<dev.rubentxu.pipeline.v2.domain.ParameterSpec>()
 
     /**
-     * The variables the pipeline declares, and the agent it declares as the
-     * default of the stages that declare none.
+     * The variables the pipeline declares, and the default the stages that
+     * declare none run with.
      *
-     * Both are handed to every stage the pipeline opens, and a stage that
-     * declares its own keeps it: the pipeline's variables are the DEFAULT of a
-     * stage, and the pipeline's agent is the agent of a stage that declares
-     * none.
+     * The variables are handed to every stage the pipeline opens, and a stage
+     * that declares its own keeps it: the pipeline's variables are the DEFAULT
+     * of a stage.
      */
     private var pipelineEnvironment: EnvironmentSpec? = null
-    private val pipelineAgentDirectives =
-        mutableListOf<dev.rubentxu.pipeline.v2.domain.StageDirective>()
     private var pipelinePost: PostConditionSpec = PostConditionSpec()
 
     fun stages(block: StagesScope.() -> Unit) {
@@ -172,10 +168,6 @@ class PipelineScope(
         // plan is built while this block runs. That is the same order rule the
         // stage level already states — the `environment { }` block has to be
         // written BEFORE the step that reads the variable.
-        //
-        // The AGENT is not handed here: it is applied by [buildStages], at the
-        // end of the pipeline's block, so the place the declaration is written
-        // does not decide which agent a stage runs with.
         scope.pipelineEnvironment = pipelineEnvironment
         scope.block()
         scope.buildStageBuilders().forEach { stageBuilders.add(it) }
@@ -258,100 +250,6 @@ class PipelineScope(
     }
 
     /**
-     * Declare the execution target the stages of this pipeline require, unless
-     * they declare their own (Jenkins-familiar `agent`).
-     *
-     * The declaration is the same one a stage writes, with the same refusals:
-     * a target that is neither local nor remote is refused, and a target that
-     * is both is refused as a contradiction.
-     *
-     * @param label the label of a local target
-     * @param remoteUri the selector of a remote target
-     * @throws IllegalArgumentException if neither is supplied, if both are, or
-     *   if the pipeline already declared an agent
-     */
-    fun agent(label: String? = null, remoteUri: String? = null) {
-        declareAgent(AgentRequirements.of(label, remoteUri))
-    }
-
-    /**
-     * Declare the execution target the stages of this pipeline require, the way
-     * a Jenkinsfile writes it: `agent { label("linux") }`.
-     *
-     * The block and the call are TWO SPELLINGS OF ONE DECLARATION: the block
-     * builds the requirement with the same authority the call uses, and it is
-     * carried by the same directive (`core.agent`). A pipeline that declares
-     * its agent with the block declares the agent the same pipeline would
-     * declare with the call, and it is the default of the stages that declare
-     * none.
-     *
-     * The refusal of a second agent is the refusal of the call: the pipeline
-     * declares ONE agent, and the second declaration is refused where it is
-     * written, whichever of the two spellings carries it.
-     *
-     * The block holds the OPTIONS of the agent and no step, because the block
-     * of Jenkins holds no step either: the scope it opens carries a marker of
-     * its own, so the calls of the pipeline are out of reach from inside it.
-     *
-     * @param block the options of the agent, written with [AgentScope.label]
-     * @throws IllegalArgumentException when the block declares no label, or
-     *   declares two, or when the pipeline already declared an agent
-     */
-    fun agent(block: AgentScope.() -> Unit) {
-        val scope = AgentScope()
-        scope.block()
-        declareAgent(scope.requirement())
-    }
-
-    /**
-     * Declare that the stages of this pipeline run on any local target, unless
-     * they declare their own.
-     *
-     * @throws IllegalArgumentException if the pipeline already declared an agent
-     */
-    fun agentAny() {
-        declareAgent(AgentRequirements.any())
-    }
-
-    /**
-     * Declare that the target of the stages of this pipeline must provide the
-     * given capabilities, unless they declare their own.
-     *
-     * @param capabilities the capability keys the target must provide
-     * @throws IllegalArgumentException if the set is empty, because an empty
-     *   set is indistinguishable from [agentAny], or if the pipeline already
-     *   declared an agent
-     */
-    fun agentWithCapabilities(vararg capabilities: String) {
-        declareAgent(AgentRequirements.withCapabilities(capabilities))
-    }
-
-    /**
-     * The agent the pipeline declares, and the refusal of a second one.
-     *
-     * The pipeline declares ONE agent, and the refusal says so where the second
-     * declaration is written: it would put two requirements of the same
-     * directive on EVERY stage that declares none, and a plan that carries the
-     * same directive key twice is refused by the planner. Refusing it here
-     * names the mistake in the line that makes it, instead of letting it
-     * surface as a refusal of the plan, one stage at a time.
-     *
-     * The stage level does not refuse a second agent of its own: there the two
-     * requirements are a contradiction WITHIN one stage, and the planner is
-     * what refuses a stage that carries the same directive twice.
-     */
-    private fun declareAgent(
-        requirement: dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement,
-    ) {
-        require(pipelineAgentDirectives.isEmpty()) {
-            "the pipeline declares ONE agent: a second declaration would put two requirements of " +
-                "the same directive on every stage that declares none, and a plan that carries the " +
-                "same directive twice is refused. Declare one agent, or none."
-        }
-        pipelineAgentDirectives += appendAgentRequirement(requirement)
-    }
-
-    /**
      * The value of the environment variable named [name].
      *
      * The value is the one the pipeline declares with `environment { }` when it
@@ -389,7 +287,7 @@ class PipelineScope(
      * The application happens HERE, at the end of the pipeline's block, so a
      * declaration written after the `stages { }` block still reaches the
      * stages. The stage's own declaration wins over the pipeline's, name by
-     * name, and the stage's own agent wins over the pipeline's entirely.
+     * name.
      *
      * It is the ONE place where the pipeline's declarations reach a stage, and
      * the rule of the variables is the one of [DeclaredVariables] — the same
@@ -400,25 +298,7 @@ class PipelineScope(
         val stage = builder.build()
         stage.copy(
             environment = DeclaredVariables.merged(pipelineEnvironment?.values, stage.environment),
-            directives = mergeDirectives(stage.directives, pipelineAgentDirectives),
         )
-    }
-
-    /**
-     * The directives of a stage, with the pipeline's agent under them.
-     *
-     * A stage that declares an agent of its own keeps it and the pipeline's
-     * does not reach it: two requirements of the same directive on one stage
-     * are a contradiction, and the planner refuses a plan that carries the
-     * same directive key twice.
-     */
-    private fun mergeDirectives(
-        stage: List<dev.rubentxu.pipeline.v2.domain.StageDirective>,
-        pipeline: List<dev.rubentxu.pipeline.v2.domain.StageDirective>,
-    ): List<dev.rubentxu.pipeline.v2.domain.StageDirective> {
-        if (pipeline.isEmpty()) return stage
-        if (stage.any { it.key == AGENT_DIRECTIVE_KEY.value }) return stage
-        return stage + pipeline
     }
 
     fun buildParameters(): List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> =
@@ -613,9 +493,9 @@ class StagesScope(
      * The VARIABLES of the PIPELINE, handed to every stage this scope opens.
      *
      * They are the DEFAULT of a stage: a stage that declares a variable of its
-     * own keeps it. The agent of the pipeline does NOT travel this way — it is
-     * applied at the end of the pipeline's block, so the place its declaration
-     * is written does not decide which agent a stage runs with.
+     * own keeps it. What the pipeline declares is applied at the end of the
+     * pipeline's block, so the place the declaration is written does not
+     * decide which variables a stage runs with.
      */
     internal var pipelineEnvironment: EnvironmentSpec? = null
 

@@ -54,7 +54,7 @@ object ResourceCompositionPlanner {
                     "and a resource request names ONE thing the stage depends on. Two " +
                     "declarations do not narrow a target, they describe two of them and leave " +
                     "the runtime to pick one. Declare it once — a target that needs several " +
-                    "labels belongs in a single agent(label = \"…\") declaration.",
+                    "labels belongs in a single requirement that carries all of them.",
             )
         }
 

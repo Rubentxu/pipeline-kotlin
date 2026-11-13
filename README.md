@@ -105,29 +105,25 @@ pipeline {
         env("TARGET", "staging")
         env("REGISTRY", "registry.internal")
     }
-    agent(label = "linux")
     stages {
         stage("build") {
             sh("echo " + env("TARGET"))
         }
         stage("deploy") {
             environment { env("TARGET", "production") }
-            agent(label = "linux-arm")
+            sh("echo " + env("TARGET"))
         }
     }
 }
 ```
 
-`environment { }` and `agent(…)` also exist at **pipeline level**, with the same spelling they have inside a stage. What the pipeline declares is the DEFAULT of its stages: a stage that declares a variable of its own keeps it, and a stage that declares an agent of its own keeps it too. The precedence is the one the gate already uses — a declaration beats a value that arrives from outside — and it is decided **name by name**: the `deploy` stage above runs with `TARGET=production` and with `REGISTRY=registry.internal`, the pipeline's `TARGET` does not reach it, and its agent is `linux-arm` and not the pipeline's `linux`.
+`environment { }` also exists at **pipeline level**, with the same spelling it has inside a stage. What the pipeline declares is the DEFAULT of its stages: a stage that declares a variable of its own keeps it. The precedence is the one the gate already uses — a declaration beats a value that arrives from outside — and it is decided **name by name**: the `deploy` stage above runs with `TARGET=production` and with `REGISTRY=registry.internal`, and the pipeline's `TARGET` does not reach it.
 
-The agent has two spellings, and they declare the same thing: the call `agent(label = "linux")` and the block a Jenkinsfile writes, `agent { label("linux") }`. What the agent declares is a REQUIREMENT on the machine the stage runs on, and the requirement is checked before the body runs: a stage that asks for a label the machine does not advertise is refused, and the refusal names the labels asked for and the ones the machine advertises. PipelineK does not start agents — it runs on the machine you invoked it on — so the agent says what the pipeline NEEDS, not where to move it. The block holds the options of the agent and no step, the way the block of Jenkins does.
+There is **no `agent`** in the DSL, and that is a decision about the model and not about the spelling: PipelineK does not allocate an executor on an agent, and the run executes on the machine you invoked it on. The `agent { … }` of a Jenkinsfile has no counterpart here —write the steps of the stage directly— and the `node { … }` step of Jenkins is refused with that same reason. What survives of the agent is not a form but a **directive**: a plan that carries `core.agent` still carries the requirement, and a run that resumes it still checks it, so a stage that asks for a label the machine does not advertise is still refused before its body runs.
 
-Two rules about the order, and they differ because they are about different things:
+The order matters for a **read**: the pipeline's `environment { }` block has to be written **before** the `stages { }` block for a read inside a stage to see it. A read of a variable that is declared later answers the value the machine has, and not `null`: the variable is declared, only too late for that read. The variables reach the steps either way — they are the environment the steps of those stages run with.
 
-- the **variables** are read as the script runs, so the pipeline's `environment { }` block has to be written **before** the `stages { }` block for a read inside a stage to see it. A read of a variable that is declared later answers the value the machine has, and not `null`: the variable is declared, only too late for that read. The variables reach the steps either way — they are the environment the steps of those stages run with;
-- the **agent** is applied at the end of the pipeline's block, so the place the `agent(…)` declaration is written does not change which agent a stage runs with.
-
-A second `environment { }` block at pipeline level **adds** to the first one: the variables of both reach the stages, and the name both of them declare is the one of the later block. A pipeline declares **one** agent: a second `agent(…)` is refused where it is written, because it would put two requirements of the same directive on every stage that declares none.
+A second `environment { }` block at pipeline level **adds** to the first one: the variables of both reach the stages, and the name both of them declare is the one of the later block.
 
 The pipeline's variables are also what a stage's **gate** reads: the `deploy` stage above is gated with the same `TARGET=production` its steps run with, and the pipeline's `REGISTRY` is visible to that gate too.
 
@@ -168,7 +164,7 @@ stage("build") {
 }
 ```
 
-`script { }` is a **block of steps**, the way a Jenkinsfile writes it: `echo("…")` inside it is a `core.echo` and `sh("…")` is a `core.sh`, each one a step of its own, with its own identity and its own policy. It is not a block of shell lines: a `core.sh` runs on an agent, executes a subprocess and replays from the beginning, while a `core.echo` runs on the controller, reads nothing and replays from its result. The identity of the steps is the identity of Jenkins.
+`script { }` is a **block of steps**, the way a Jenkinsfile writes it: `echo("…")` inside it is a `core.echo` and `sh("…")` is a `core.sh`, each one a step of its own, with its own identity and its own policy. It is not a block of shell lines: a `core.sh` executes a subprocess and replays from the beginning, while a `core.echo` reads nothing and replays from its result. The identity of the steps is the identity of Jenkins.
 
 The block carries the receiver of a stage, so it has the whole vocabulary (`echo`, `sh`, `dir`, `retry`, …). A block of shell **lines** is one step, written with `sh("""…""")`.
 
@@ -188,7 +184,7 @@ stage("build") {
 
 The body of the stage declares steps too, and the two are **one list**: the steps of the body and the steps of the block, in the order the author wrote them. Neither form is the one the product requires, and neither is the one it refuses.
 
-A block that carries steps has **no authority over the stage**: a declaration that belongs to the stage —the `agent`, the `when*` gates, the declarative `environment`, the `options`, the `post` and the `directives`— is refused where it is written, and the refusal names the declaration, the block it was written in and the place where it belongs. A gate that a nested block dropped in silence would be a gate that does not gate, and the stage would run unconditionally.
+A block that carries steps has **no authority over the stage**: a declaration that belongs to the stage —the `when*` gates, the declarative `environment`, the `options`, the `post` and the `directives`— is refused where it is written, and the refusal names the declaration, the block it was written in and the place where it belongs. A gate that a nested block dropped in silence would be a gate that does not gate, and the stage would run unconditionally.
 
 ### Edit pipelines in IntelliJ IDEA
 
@@ -1023,11 +1019,11 @@ flowchart LR
 
 ### Distributed execution
 
-**Not in this runtime.** `agent(remoteUri = …)` is carried by the DSL and refused at resolution, because there is no remote allocator here. Distributed execution lives in **pipelinek-fabric**, a separate project on its own release line whose repository is not public yet.
+**Not in this runtime.** There is no remote allocator here, and the DSL has no way to ask for one: the run executes on the machine you invoked it on. A plan that carries a remote requirement is refused at resolution, naming the selector it asked for. Distributed execution lives in **pipelinek-fabric**, a separate project on its own release line whose repository is not public yet.
 
 ```mermaid
 flowchart LR
-    L[local runtime] -->|remote agent requested| X[refused at resolution]
+    L[local runtime] -->|a remote target is required| X[refused at resolution]
     F[Fabric control plane] --> W[workers]
     W --> P[PipelineK on each worker]
 ```

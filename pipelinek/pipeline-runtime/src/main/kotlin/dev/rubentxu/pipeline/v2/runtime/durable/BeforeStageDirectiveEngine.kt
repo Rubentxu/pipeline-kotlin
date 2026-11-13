@@ -85,7 +85,7 @@ internal class BeforeStageDirectiveEngine(
      * `CapabilitySet` requirement loudly instead of granting it speculatively.
      * The default is no longer the empty set
      * unconditionally — it is the KEYS of [capabilityContributor], this run's own
-     * composed capability authority, so `agentWithCapabilities` is granted exactly
+     * composed capability authority, so a requirement of capabilities is granted exactly
      * when the capability is real for this run. A static table of "capabilities
      * PipelineK can provide" is deliberately NOT used: it would grant a target for
      * a capability no composition supplies.

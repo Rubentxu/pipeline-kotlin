@@ -117,8 +117,13 @@ internal object MainStepsCli {
      * The suggestion travels with it because it is the sentence the compiler
      * prints: a reader of the document can see the exact text the author will
      * read, instead of a form they have to imagine.
+     *
+     * It is INTERNAL and not private because the report of the migration
+     * renders the forms with it: two documents that carry the same form have
+     * to say the same thing about it, and two renderings of one form are two
+     * texts that can drift.
      */
-    private fun formOf(form: JenkinsForm): JsonObject = buildJsonObject {
+    internal fun formOf(form: JenkinsForm): JsonObject = buildJsonObject {
         put("shape", JsonPrimitive(form.shape.name.lowercase()))
         put("jenkinsForm", JsonPrimitive(form.jenkinsForm))
         put("pipelineKForm", JsonPrimitive(form.pipelineKForm))
@@ -339,7 +344,7 @@ internal object MainDescribeCli {
             err.println(DESCRIBE_USAGE)
             return error.toCliExit().code
         }
-        val catalogue = when (val read = readCatalogue(accepted, err)) {
+        val catalogue = when (val read = readCatalogue(accepted, err, "describe")) {
             is CatalogueRead.Refused -> return read.exit.code
             is CatalogueRead.Read -> read
         }
@@ -431,14 +436,23 @@ internal sealed interface CatalogueRead {
  * The composition is composed through the SAME admission a run goes through,
  * so a plugin the admission refuses is refused here with the same words, and
  * the catalogue never describes a composition a run would refuse.
+ *
+ * The refusals it prints name the [verb] that asked for the catalogue: a verb
+ * that read the catalogue and refused a plugin of it said so with the name of
+ * another verb, and the operator read a refusal of a request they had not
+ * made.
  */
-internal fun readCatalogue(accepted: CliAdmission.Admitted, err: PrintStream): CatalogueRead {
+internal fun readCatalogue(
+    accepted: CliAdmission.Admitted,
+    err: PrintStream,
+    verb: String = "steps",
+): CatalogueRead {
     val pluginJars = try {
         operatorPluginJars(accepted.repeated["--plugin-jar"].orEmpty(), PROCESS_WORKING_DIRECTORY)
     } catch (invalid: InvalidPathException) {
         err.println(
             CliError.InvalidOptionValue("--plugin-jar", "not a path: ${invalid.message}")
-                .refusalLines("steps")
+                .refusalLines(verb)
                 .joinToString("\n"),
         )
         return CatalogueRead.Refused(CliExit.INVALID_ARGUMENT)
@@ -450,7 +464,7 @@ internal fun readCatalogue(accepted: CliAdmission.Admitted, err: PrintStream): C
     } catch (invalid: InvalidPathException) {
         err.println(
             CliError.InvalidOptionValue("--plugin-trust", "not a path: ${invalid.message}")
-                .refusalLines("steps")
+                .refusalLines(verb)
                 .joinToString("\n"),
         )
         return CatalogueRead.Refused(CliExit.INVALID_ARGUMENT)

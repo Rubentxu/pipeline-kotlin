@@ -173,6 +173,13 @@ internal val CLI_VERBS: List<CliVerb> = buildList {
     )
     add(
         CliVerb(
+            "migrate",
+            "read what this build offers for the steps of Jenkins (--jenkins, --json)",
+            ::runMigrateVerb,
+        ),
+    )
+    add(
+        CliVerb(
             "serve",
             "run the local service on a Unix socket (--db, --control-root, --socket)",
             ::runServeVerb,

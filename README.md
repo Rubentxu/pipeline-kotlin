@@ -371,7 +371,7 @@ needs none.
 | **Local execution** | One run per CLI invocation, in your own working directory. No controller, no agent, no daemon that starts itself | Available |
 | **Durable journal** | A SQLite journal (`--db`) plus a control root: a killed run leaves a record you can inspect, resume, cancel or recover | Available |
 | **Typed events** | `CompilationStarted`, `RunStarted`, `StageStarted`, `StepStarted`, `StepFinished`, `StepFailed`, `RunFinished`, `EchoOutputCaptured` — with the failure's stage attached to the failure event | Available |
-| **Structured CLI** | `validate`, `run`, `observe`, `console`, `events`, `inspect`, `credentials`, `doctor`, `version`, `capabilities`, `sdk-info`, `steps`, `describe`, `serve`, `runs cancel`, `runs recover` — each verb prints its own usage | Available |
+| **Structured CLI** | `validate`, `run`, `observe`, `console`, `events`, `inspect`, `credentials`, `doctor`, `version`, `capabilities`, `sdk-info`, `steps`, `describe`, `migrate`, `serve`, `runs cancel`, `runs recover` — each verb prints its own usage | Available |
 | **Plugin SDK** | `StepContract`, typed codecs, declared capabilities, a manifest with an API range. Plugin authors build against the published SDK alone | Available |
 | **Plugin trust** | `--plugin-trust` admits a plugin only if its bytes match the pinned SHA-256 and carry a valid detached Ed25519 signature; `--require-plugin-trust` refuses anything unvouched, before its code runs | Available |
 | **OpenTelemetry** | Optional OTLP export of timing, counts and buckets — never payloads. Off unless `PIPELINEK_OTEL_ENABLED=true` | Available |
@@ -436,9 +436,47 @@ core.sh
 
 The payload schema is the one the step's codec declares, and the core steps declare none yet: their schema is `{}` until a codec says what the payload looks like.
 
-The table of equivalences with Jenkins is NOT written here, and that is the point: it lives in the catalogue, which is built from the code —every step declares its equivalent and its divergence in the descriptor that describes it, and the catalogue reads them. A table written in a document is a second authority for a fact the code already owns, and it drifts the first time a step is added. This README names the two verbs that publish it (`pipelinek steps` for the index, `pipelinek describe` for the card of one entry) and the document that carries it; the readable table is generated from that same code for the web.
+The table of equivalences with Jenkins is NOT written here, and that is the point: it lives in the catalogue, which is built from the code —every step declares its equivalent and its divergence in the descriptor that describes it, and the catalogue reads them. A table written in a document is a second authority for a fact the code already owns, and it drifts the first time a step is added. This README names the verbs that read it (`pipelinek steps` for the index, `pipelinek describe` for the card of one entry, `pipelinek migrate` for what it offers for a step of Jenkins) and the document that carries it; the readable table is generated from that same code for the web.
 
 A name nobody carries is refused with the entries that come close, and a name two entries carry is refused with both of them named — `core.pwd` and `core.pwd.tmp` are two different steps, and answering with one of them would be a coin toss dressed as an answer.
+
+`pipelinek migrate` answers the question a migration starts with: for each step of Jenkins, WHAT does this product offer? It reads the same catalogue —the classification is a function of the entries the catalogue publishes and it adds nothing to them— and it says, for every name, the equivalent (the key the runtime resolves and the name the author writes), the divergence of that equivalent with its motive, and the forms a migrated script has to be written in.
+
+```bash
+$ pipelinek migrate --jenkins sh --jenkins pwd --jenkins bat
+sh
+  status        the catalogue declares an equivalent
+  equivalent    core.sh  (name: sh)
+  divergence    (none)
+
+pwd
+  status        the catalogue declares an equivalent
+  equivalent    core.pwd  (name: pwd)
+  divergence    (none)
+  equivalent    core.pwd.tmp  (name: pwd.tmp)
+  divergence    Jenkins has ONE pwd step and the temporary directory is its tmp argument; here the temporary directory is a key of its own, core.pwd.tmp, and the plan carries it separately.
+
+bat
+  status        the catalogue declares no equivalent
+  equivalent    (none)
+  divergence    (none)
+
+3 names: 2 with an equivalent, 1 without one
+
+the forms a migrated script has to write:
+  'make' -> "make"
+    Groovy writes a string between single quotes, and Kotlin reads a single-quoted literal as a character: ...
+  time: 30 -> time = 30
+    A named argument is `name: value` in Groovy and `name = value` in Kotlin: ...
+  env.BRANCH_NAME -> env("BRANCH_NAME")
+    Kotlin cannot express a dynamic property, so there is no `env` object to read a property of: ...
+```
+
+A name the catalogue does not declare is reported as a name the catalogue does not declare, and NOT as a step that cannot be migrated: the catalogue is silent about the steps of the plugins that are not installed, and the product cannot say what Jenkins publishes. The report counts NAMES and not entries —`pwd` is declared by two entries, and the report shows both of them with the divergence of each.
+
+`pipelinek migrate --json` publishes the same facts as the document of the schema `pipelinek.migrate/1`: one row per name with its status and its equivalents, the aggregate of the names, and the forms.
+
+The INVENTORY of the steps a Jenkinsfile uses is not the product's work: the report starts from the names it is given, and the reading of a Jenkinsfile belongs to the tool that asks the question.
 
 ### The local service
 

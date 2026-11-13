@@ -81,7 +81,16 @@ internal object MainStepsCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.steps/6` since the reason of the DIVERGENCE of the dollar
+     * It is `pipelinek.steps/7` since the reason of the DIVERGENCE of the gate
+     * says what the gate does with a variable that nobody declares: the stage
+     * does not run, and the gate does not fail the run. The reason of the
+     * DIVERGENCE of the branch says that the product has no branch of its own,
+     * and that the variable of the branch is one the SCRIPT declares — the
+     * text that sent the reader to a variable the product does not declare
+     * published a promise the code does not keep. A consumer that matched on
+     * the text it read has to read it again.
+     *
+     * It was `pipelinek.steps/6` since the reason of the DIVERGENCE of the dollar
      * says what the compiler does: a string of several lines is a raw string,
      * and a raw string reads a dollar as a template, so the text that said the
      * opposite published a fact the compiler does not keep. The reason also
@@ -112,7 +121,7 @@ internal object MainStepsCli {
      * in `forms` that said what `divergences` says; the version names that
      * change.
      */
-    const val SCHEMA: String = "pipelinek.steps/6"
+    const val SCHEMA: String = "pipelinek.steps/7"
 
     /**
      * The published document, as a value.

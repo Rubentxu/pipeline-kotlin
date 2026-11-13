@@ -111,13 +111,16 @@ object JenkinsDivergences {
         JenkinsDivergence(
             name = "the gate compares against what is declared",
             reason = "A `when*` gate compares the value the stage DECLARED, and not the value the agent " +
-                "has at runtime: a variable that only the agent has is not visible to the gate.",
+                "has at runtime: a variable that only the agent has is not visible to the gate. A " +
+                "variable that NOBODY declares leaves the gate in a decided NEGATIVE: the stage does " +
+                "not run, and the gate does not fail the run.",
             scope = JenkinsDivergence.Scope.PRODUCT,
         ),
         JenkinsDivergence(
             name = "the predicate of the branch",
-            reason = "There is no `branch('main')`: the condition on the branch is written with the " +
-                "variable of the branch, because a gate only sees what is declared.",
+            reason = "There is no `branch('main')`: the product has no branch of its own, and the " +
+                "condition on the branch is written with a variable that the SCRIPT declares. The gate " +
+                "compares that declaration, and not the branch the remote had.",
             scope = JenkinsDivergence.Scope.PRODUCT,
         ),
         JenkinsDivergence(

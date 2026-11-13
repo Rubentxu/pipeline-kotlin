@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.step.StepCatalogue
 import dev.rubentxu.pipeline.v2.runtime.telemetry.OTEL_SEMCONV_CICD_VERSION
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryIdentityTable
 import java.io.File
@@ -15,6 +16,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 
 /**
@@ -290,6 +292,38 @@ class DocumentationDriftTest {
                 schema,
                 "a document names a schema this build does not publish",
             )
+        }
+    }
+
+    /**
+     * The documents quote the reasons the catalogue publishes.
+     *
+     * The README shows the report of the migration with the reason of each
+     * difference truncated, and the truncation is written BY HAND: a document
+     * that quotes a reason the catalogue no longer publishes sends the reader
+     * to a text that is not the one they will read. The fact is taken from the
+     * catalogue —the reasons it publishes, with their scope and their name—
+     * and the documents have to quote a PREFIX of that text.
+     *
+     * A prefix, and not the whole reason: the report truncates it, and the
+     * document truncates it the same way. A quote that is not a prefix is a
+     * quote of a text that does not exist.
+     */
+    @Test
+    fun `the documents quote the reasons the catalogue publishes`() {
+        val divergences = StepCatalogue.divergences()
+        val documents = listOfNotNull(readme(), readmeInSpanish())
+
+        divergences.forEach { divergence ->
+            val scope = divergence.scope.name.lowercase()
+            documents.forEach { document ->
+                val quoted = quotedReason(document, scope, divergence.name)
+                    ?: fail("a document does not quote the divergence '${divergence.name}'")
+                assertTrue(
+                    divergence.reason.startsWith(quoted),
+                    "a document quotes a reason that is not the one published: '$quoted'",
+                )
+            }
         }
     }
 
@@ -672,6 +706,21 @@ class DocumentationDriftTest {
     private fun readmeInSpanish(): String? {
         val file = repositoryRoot().resolve("README.es.md")
         return if (Files.isRegularFile(file)) Files.readString(file) else null
+    }
+
+    /**
+     * The reason a document quotes for the divergence named [name], or null when
+     * the document does not quote it.
+     *
+     * The report prints the divergence as a header line —its scope and its
+     * name— and the reason under it, so the quote is the line that follows
+     * the header.
+     */
+    private fun quotedReason(document: String, scope: String, name: String): String? {
+        val lines = document.lines()
+        val index = lines.indexOf("  [$scope] $name")
+        if (index < 0 || index + 1 >= lines.size) return null
+        return lines[index + 1].trim().removeSuffix(" ...").trim()
     }
 
     private fun agents(): String = Files.readString(repositoryRoot().resolve("AGENTS.md"))

@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.domain.step
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import dev.rubentxu.pipeline.v2.domain.StepSchema
 import kotlin.reflect.KClass
 
 /**
@@ -81,8 +82,19 @@ interface StepCodec<T : Any> {
 
     fun decode(encoded: EncodedStepValue): T
 
-    /** JSON Schema fragment describing the payload. Reconciles descriptor input/output schema. */
-    fun schema(): String = "{}"
+    /**
+     * The JSON Schema fragment describing the payload. Reconciles descriptor
+     * input/output schema.
+     *
+     * A codec that declares the arguments of its step overrides this and
+     * returns the schema of those arguments
+     * ([dev.rubentxu.pipeline.v2.domain.StepArguments.jsonSchema]). A
+     * codec that does not override it declares NOTHING, and the catalogue
+     * publishes no schema for the step: the reader can tell "this step takes
+     * no arguments" from "nobody said", because a step that takes no
+     * arguments publishes a schema of its own.
+     */
+    fun schema(): String = StepSchema.UNDECLARED
 }
 
 /**

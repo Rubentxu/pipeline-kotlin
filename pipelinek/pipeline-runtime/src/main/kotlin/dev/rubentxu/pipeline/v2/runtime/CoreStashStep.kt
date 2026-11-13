@@ -3,6 +3,9 @@ package dev.rubentxu.pipeline.v2.runtime
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
@@ -91,6 +94,30 @@ object CoreStashStep {
                 excludes = obj["excludes"]?.jsonPrimitive?.content ?: "",
             )
         }
+
+        /** The arguments this step accepts, as the catalogue publishes them. */
+        override fun schema(): String = StepArguments(
+            arguments = listOf(
+                StepArgument(
+                    name = "name",
+                    type = StepArgumentType.STRING,
+                    required = true,
+                    description = "the name the stash is kept with",
+                ),
+                StepArgument(
+                    name = "includes",
+                    type = StepArgumentType.STRING,
+                    required = true,
+                    description = "the comma-separated patterns of the files the stash keeps",
+                ),
+                StepArgument(
+                    name = "excludes",
+                    type = StepArgumentType.STRING,
+                    required = false,
+                    description = "the comma-separated patterns of the files the stash leaves out",
+                ),
+            ),
+        ).jsonSchema("core.stash")
     }
 
     private val outputCodec = object : StepCodec<TypedStepOutput> {
@@ -239,6 +266,24 @@ object CoreUnstashStep {
                 into = obj["into"]?.jsonPrimitive?.content,
             )
         }
+
+        /** The arguments this step accepts, as the catalogue publishes them. */
+        override fun schema(): String = StepArguments(
+            arguments = listOf(
+                StepArgument(
+                    name = "name",
+                    type = StepArgumentType.STRING,
+                    required = true,
+                    description = "the name of the stash to restore",
+                ),
+                StepArgument(
+                    name = "into",
+                    type = StepArgumentType.STRING,
+                    required = false,
+                    description = "the subdirectory the files are restored into, relative to the workspace",
+                ),
+            ),
+        ).jsonSchema("core.unstash")
     }
 
     private val outputCodec = object : StepCodec<TypedStepOutput> {

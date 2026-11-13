@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.v2.runtime
 
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import kotlinx.serialization.json.Json
@@ -66,4 +69,28 @@ object CoreWriteFileWireCodec : StepCodec<CoreWriteFileInput> {
             encoding = obj.getValue("encoding").jsonPrimitive.content,
         )
     }
+
+    /** The arguments this step accepts, as the catalogue publishes them. */
+    override fun schema(): String = StepArguments(
+        arguments = listOf(
+            StepArgument(
+                name = "file",
+                type = StepArgumentType.STRING,
+                required = true,
+                description = "the path of the file to write, relative to the workspace",
+            ),
+            StepArgument(
+                name = "text",
+                type = StepArgumentType.STRING,
+                required = true,
+                description = "the text the file carries",
+            ),
+            StepArgument(
+                name = "encoding",
+                type = StepArgumentType.STRING,
+                required = true,
+                description = "the encoding the text is written with",
+            ),
+        ),
+    ).jsonSchema("core.file.writeFile")
 }

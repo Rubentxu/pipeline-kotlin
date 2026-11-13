@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.v2.runtime
 
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import kotlinx.serialization.json.Json
@@ -77,6 +80,36 @@ object CoreLockWireCodec : StepCodec<CoreLockInput> {
             skipIfLocked = skipIfLocked,
         )
     }
+
+    /** The arguments this step accepts, as the catalogue publishes them. */
+    override fun schema(): String = StepArguments(
+        arguments = listOf(
+            StepArgument(
+                name = "resource",
+                type = StepArgumentType.STRING,
+                required = true,
+                description = "the name of the resource the body locks",
+            ),
+            StepArgument(
+                name = "skipIfLocked",
+                type = StepArgumentType.BOOLEAN,
+                required = false,
+                description = "whether the body is skipped instead of waiting for the resource",
+            ),
+            StepArgument(
+                name = "timeoutSeconds",
+                type = StepArgumentType.INTEGER,
+                required = false,
+                description = "how long the step waits for the resource, in seconds",
+            ),
+            StepArgument(
+                name = "reason",
+                type = StepArgumentType.STRING,
+                required = false,
+                description = "the text the lock records as its motive",
+            ),
+        ),
+    ).jsonSchema("core.lock")
 }
 
 /**

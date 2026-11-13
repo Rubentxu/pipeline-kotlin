@@ -4,6 +4,9 @@ import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -84,6 +87,24 @@ object CoreErrorStep {
                 ?: throw IllegalArgumentException("Unknown failure kind '$kindName' for core.error")
             return CoreErrorInput(message, kind)
         }
+
+        /** The arguments this step accepts, as the catalogue publishes them. */
+        override fun schema(): String = StepArguments(
+            arguments = listOf(
+                StepArgument(
+                    name = "message",
+                    type = StepArgumentType.STRING,
+                    required = true,
+                    description = "the message the step fails with",
+                ),
+                StepArgument(
+                    name = "failureKind",
+                    type = StepArgumentType.STRING,
+                    required = true,
+                    description = "the kind of failure the step raises, a FailureKind of the product",
+                ),
+            ),
+        ).jsonSchema("core.error")
     }
 
     /**

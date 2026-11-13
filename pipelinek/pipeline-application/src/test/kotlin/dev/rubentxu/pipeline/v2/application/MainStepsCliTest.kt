@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
+import dev.rubentxu.pipeline.v2.domain.StepSchema
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry
 import dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition
 import dev.rubentxu.pipeline.v2.domain.step.JenkinsForms
@@ -116,7 +118,7 @@ class MainStepsCliTest {
 
         val parsed = Json.parseToJsonElement(document.toString()).jsonObject
         assertEquals(
-            "pipelinek.steps/4",
+            "pipelinek.steps/5",
             parsed["schema"]?.jsonPrimitive?.content,
             "the document names the schema a consumer parses it by",
         )
@@ -228,6 +230,107 @@ class MainStepsCliTest {
     }
 
     @Test
+    fun `the entry of the directory scope names the argument the DSL exposes`() {
+        val document = MainStepsCli.document(coreEntries())
+
+        val parsed = Json.parseToJsonElement(document.toString()).jsonObject
+        val entries = parsed["entries"]?.jsonArray ?: fail("the document carries the entries")
+        val dir = entries.first { it.jsonObject["key"]?.jsonPrimitive?.content == "core.dir" }
+        val schema = dir.jsonObject["inputSchema"]?.jsonPrimitive?.content
+            ?: fail("the entry of core.dir publishes the schema of the arguments it accepts")
+        val properties = Json.parseToJsonElement(schema).jsonObject["properties"]?.jsonObject
+            ?: fail("the schema of core.dir names its arguments")
+
+        assertTrue(
+            properties.containsKey("path"),
+            "the entry of core.dir names the argument the DSL exposes: $schema",
+        )
+        assertEquals(
+            "string",
+            properties["path"]?.jsonObject?.get("type")?.jsonPrimitive?.content,
+            "the argument of core.dir is the text the DSL passes",
+        )
+        assertEquals(
+            listOf("path"),
+            Json.parseToJsonElement(schema).jsonObject["required"]?.jsonArray?.map { it.jsonPrimitive.content },
+            "the argument of core.dir is required: the body cannot run without it",
+        )
+    }
+
+    @Test
+    fun `the document tells a step that takes no arguments from a step nobody declared`() {
+        val document = MainStepsCli.document(coreEntries())
+
+        val parsed = Json.parseToJsonElement(document.toString()).jsonObject
+        val entries = parsed["entries"]?.jsonArray ?: fail("the document carries the entries")
+        val isUnix = entries.first { it.jsonObject["key"]?.jsonPrimitive?.content == "core.isUnix" }.jsonObject
+        val schema = isUnix["inputSchema"]?.jsonPrimitive?.content
+            ?: fail("a step that takes no arguments publishes a schema of its own")
+        val properties = Json.parseToJsonElement(schema).jsonObject["properties"]?.jsonObject
+            ?: fail("the schema of a step that takes no arguments names none")
+
+        assertEquals(
+            0,
+            properties.size,
+            "the schema of a step that takes no arguments names none: $schema",
+        )
+
+        val undeclared = MainStepsCli.document(listOf(stepEntry(key = "other.undeclared", name = "undeclared")))
+        val published = Json.parseToJsonElement(undeclared.toString()).jsonObject["entries"]?.jsonArray
+            ?: fail("the document carries the entries")
+        val entry = published.first().jsonObject
+
+        assertFalse(
+            entry.containsKey("inputSchema"),
+            "a step whose arguments nobody declared publishes NO schema: the reader tells it from a " +
+                "step that takes no arguments, because the latter publishes one",
+        )
+    }
+
+    @Test
+    fun `the schema the document publishes is the one the product declares`() {
+        val registry = coreRegistry()
+        val declared = StepDescriptorRegistry.standard()
+        val document = MainStepsCli.document(coreEntries())
+
+        val parsed = Json.parseToJsonElement(document.toString()).jsonObject
+        val entries = parsed["entries"]?.jsonArray ?: fail("the document carries the entries")
+
+        entries.forEach { published ->
+            val entry = published.jsonObject
+            val key = entry["key"]?.jsonPrimitive?.content ?: fail("every entry names its key")
+            val expected = registry.definition(PluginStepId(key))?.contract?.inputCodec?.schema()
+                ?: declared.get(PluginStepId(key))?.inputSchema
+                ?: return@forEach
+
+            assertEquals(
+                expected,
+                entry["inputSchema"]?.jsonPrimitive?.content,
+                "the entry of $key publishes the schema the product declares, and not a text of its own",
+            )
+        }
+    }
+
+    @Test
+    fun `the document names the version of the shape that omits an undeclared schema`() {
+        val document = MainStepsCli.document(listOf(stepEntry(key = "other.undeclared", name = "undeclared")))
+
+        val parsed = Json.parseToJsonElement(document.toString()).jsonObject
+
+        assertEquals(
+            "pipelinek.steps/5",
+            parsed["schema"]?.jsonPrimitive?.content,
+            "the document names the version a consumer parses it by, and the version moved with the " +
+                "meaning of the field",
+        )
+        val entry = parsed["entries"]?.jsonArray?.first()?.jsonObject ?: fail("the document carries the entries")
+        assertFalse(
+            entry.containsKey("inputSchema"),
+            "the shape of this version omits the schema of a step nobody declared the arguments of",
+        )
+    }
+
+    @Test
     fun `the entry of the workspace declares the sentinel the eager DSL answers`() {
         val document = MainStepsCli.document(coreEntries())
 
@@ -331,7 +434,7 @@ class MainStepsCliTest {
         assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
         val parsed = Json.parseToJsonElement(out.toString(Charsets.UTF_8.name())).jsonObject
         assertEquals(
-            "pipelinek.steps/4",
+            "pipelinek.steps/5",
             parsed["schema"]?.jsonPrimitive?.content,
             "what the verb publishes is the document the schema names",
         )
@@ -436,7 +539,11 @@ class MainStepsCliTest {
     }.build()
 
     /** An entry built by hand, for the rows that need a shape the core does not have. */
-    private fun stepEntry(key: String, name: String): StepCatalogueEntry.Step = StepCatalogueEntry.Step(
+    private fun stepEntry(
+        key: String,
+        name: String,
+        inputSchema: String = StepSchema.UNDECLARED,
+    ): StepCatalogueEntry.Step = StepCatalogueEntry.Step(
         key = key,
         name = name,
         provider = "core",
@@ -448,7 +555,7 @@ class MainStepsCliTest {
         requiredCapabilities = emptyList(),
         executionLocation = "CONTROLLER",
         body = dev.rubentxu.pipeline.v2.domain.step.StepCatalogueBody(kind = "none"),
-        inputSchema = "{}",
-        outputSchema = "{}",
+        inputSchema = inputSchema,
+        outputSchema = StepSchema.UNDECLARED,
     )
 }

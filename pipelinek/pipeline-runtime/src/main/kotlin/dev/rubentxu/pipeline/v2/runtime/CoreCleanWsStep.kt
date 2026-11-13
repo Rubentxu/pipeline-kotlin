@@ -2,6 +2,9 @@ package dev.rubentxu.pipeline.v2.runtime
 
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
@@ -117,6 +120,24 @@ object CoreCleanWsStep {
                 ?: emptyList()
             return CleanWsInput(deleteDirs = deleteDirs, patterns = patterns)
         }
+
+        /** The arguments this step accepts, as the catalogue publishes them. */
+        override fun schema(): String = StepArguments(
+            arguments = listOf(
+                StepArgument(
+                    name = "deleteDirs",
+                    type = StepArgumentType.BOOLEAN,
+                    required = false,
+                    description = "whether the directories of the workspace are deleted too",
+                ),
+                StepArgument(
+                    name = "patterns",
+                    type = StepArgumentType.ARRAY,
+                    required = false,
+                    description = "the patterns of the files the step deletes",
+                ),
+            ),
+        ).jsonSchema("core.cleanWs")
     }
 
     private val outputCodec = object : StepCodec<CleanWsOutput> {

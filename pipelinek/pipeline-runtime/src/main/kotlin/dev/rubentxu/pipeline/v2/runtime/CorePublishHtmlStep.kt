@@ -4,6 +4,9 @@ import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
@@ -99,6 +102,48 @@ object CorePublishHtmlStep {
                 escapeUnderscores = obj["escapeUnderscores"]?.jsonPrimitive?.content?.toBoolean() ?: false,
             )
         }
+
+        /** The arguments this step accepts, as the catalogue publishes them. */
+        override fun schema(): String = StepArguments(
+            arguments = listOf(
+                StepArgument(
+                    name = "name",
+                    type = StepArgumentType.STRING,
+                    required = true,
+                    description = "the name the report is published with",
+                ),
+                StepArgument(
+                    name = "reportDir",
+                    type = StepArgumentType.STRING,
+                    required = true,
+                    description = "the directory of the report, relative to the workspace",
+                ),
+                StepArgument(
+                    name = "reportFiles",
+                    type = StepArgumentType.STRING,
+                    required = true,
+                    description = "the pattern of the files the report is made of",
+                ),
+                StepArgument(
+                    name = "keepAll",
+                    type = StepArgumentType.BOOLEAN,
+                    required = false,
+                    description = "whether every file of the report is published, and not only the ones that changed",
+                ),
+                StepArgument(
+                    name = "allowMissing",
+                    type = StepArgumentType.BOOLEAN,
+                    required = false,
+                    description = "whether a report with no files is published instead of refused",
+                ),
+                StepArgument(
+                    name = "escapeUnderscores",
+                    type = StepArgumentType.BOOLEAN,
+                    required = false,
+                    description = "whether the underscores of the names are escaped",
+                ),
+            ),
+        ).jsonSchema("core.publishHTML")
     }
 
     private val outputCodec = object : StepCodec<TypedStepOutput> {

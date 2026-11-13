@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.v2.runtime
 
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import kotlinx.serialization.json.Json
@@ -64,4 +67,17 @@ object CoreDeleteDirWireCodec : StepCodec<DeleteDirInput> {
         val path = obj["path"]?.jsonPrimitive?.content ?: "."
         return DeleteDirInput(path = path)
     }
+
+    /** The arguments this step accepts, as the catalogue publishes them. */
+    override fun schema(): String = StepArguments(
+        arguments = listOf(
+            StepArgument(
+                name = "path",
+                type = StepArgumentType.STRING,
+                required = false,
+                description = "the path of the directory to delete, relative to the workspace; the root " +
+                    "of the workspace when the payload omits it",
+            ),
+        ),
+    ).jsonSchema("core.deleteDir")
 }

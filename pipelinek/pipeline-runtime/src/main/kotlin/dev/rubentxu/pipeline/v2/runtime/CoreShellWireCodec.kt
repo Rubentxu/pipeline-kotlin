@@ -2,6 +2,9 @@ package dev.rubentxu.pipeline.v2.runtime
 
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.decideShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
@@ -135,6 +138,37 @@ object CoreShellWireCodec : StepCodec<CoreShellInput> {
             isScriptBlock = obj.booleanOrNull("isScriptBlock") ?: false,
         )
     }
+
+    /** The arguments this step accepts, as the catalogue publishes them. */
+    override fun schema(): String = StepArguments(
+        arguments = listOf(
+            StepArgument(
+                name = "script",
+                type = StepArgumentType.STRING,
+                required = true,
+                description = "the script the shell runs",
+            ),
+            StepArgument(
+                name = "encoding",
+                type = StepArgumentType.STRING,
+                required = false,
+                description = "the encoding the output is read with",
+            ),
+            StepArgument(
+                name = "label",
+                type = StepArgumentType.STRING,
+                required = false,
+                description = "the label the invocation carries",
+            ),
+            StepArgument(
+                name = "returnMode",
+                type = StepArgumentType.STRING,
+                required = false,
+                description = "what the step returns: the nothing, the output or the exit code, a " +
+                    "ShellReturnMode of the product; the nothing when the payload omits it",
+            ),
+        ),
+    ).jsonSchema("core.sh")
 
     /**
      * The return mode, in whichever vocabulary the payload was written.

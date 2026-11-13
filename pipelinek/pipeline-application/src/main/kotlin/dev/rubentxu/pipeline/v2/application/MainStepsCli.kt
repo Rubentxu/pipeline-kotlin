@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.StepSchema
 import dev.rubentxu.pipeline.v2.domain.step.JenkinsDivergence
 import dev.rubentxu.pipeline.v2.domain.step.JenkinsForm
 import dev.rubentxu.pipeline.v2.domain.step.JenkinsForms
@@ -80,7 +81,16 @@ internal object MainStepsCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.steps/4` since the reason of a FORM says why the
+     * It is `pipelinek.steps/5` since a schema of a step is PUBLISHED only
+     * when the product declares it: the key `inputSchema` is ABSENT from the
+     * entry of a step whose arguments nobody declared, and it is PRESENT —
+     * with the arguments it names, or with none at all — when the codec or
+     * the descriptor declares them. Before `/5` the key was always there, and
+     * its empty value said two things at once: "this step takes no
+     * arguments" and "nobody said". A reader could not tell them apart, and a
+     * document that cannot tell them apart publishes an empty fact.
+     *
+     * It was `pipelinek.steps/4` since the reason of a FORM says why the
      * compiler stops at that shape, and not why the two products differ: the
      * divergences own that reason, and a document that printed the same
      * sentence in both sections would publish one fact twice. It was
@@ -95,7 +105,7 @@ internal object MainStepsCli {
      * in `forms` that said what `divergences` says; the version names that
      * change.
      */
-    const val SCHEMA: String = "pipelinek.steps/4"
+    const val SCHEMA: String = "pipelinek.steps/5"
 
     /**
      * The published document, as a value.
@@ -166,6 +176,12 @@ internal object MainStepsCli {
      * not copied. The schema of the payload is carried as the TEXT the codec
      * declares, because that is the contract the product itself carries: a
      * consumer that wants an object parses it.
+     *
+     * The schema is carried ONLY when the product declares one. The ABSENCE
+     * of the key says that nobody declared the arguments of the step, and a
+     * schema that is present says what they are — including the case of a
+     * step that takes none, whose schema carries no arguments at all. The
+     * two are different facts and the document tells them apart.
      */
     private fun entryOf(entry: StepCatalogueEntry): JsonObject = buildJsonObject {
         put("key", JsonPrimitive(entry.key))
@@ -183,8 +199,8 @@ internal object MainStepsCli {
                 )
                 put("executionLocation", JsonPrimitive(entry.executionLocation))
                 put("body", bodyOf(entry))
-                put("inputSchema", JsonPrimitive(entry.inputSchema))
-                put("outputSchema", JsonPrimitive(entry.outputSchema))
+                StepSchema.declared(entry.inputSchema)?.let { put("inputSchema", JsonPrimitive(it)) }
+                StepSchema.declared(entry.outputSchema)?.let { put("outputSchema", JsonPrimitive(it)) }
             }
             is StepCatalogueEntry.Directive -> {
                 put("phase", JsonPrimitive(entry.phase))

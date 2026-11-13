@@ -2,6 +2,9 @@ package dev.rubentxu.pipeline.v2.runtime
 
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepArgument
+import dev.rubentxu.pipeline.v2.domain.StepArgumentType
+import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
@@ -71,6 +74,18 @@ object CoreSleepStep {
             }
             return CoreSleepInput(obj.getValue("seconds").jsonPrimitive.content.toLong())
         }
+
+        /** The arguments this step accepts, as the catalogue publishes them. */
+        override fun schema(): String = StepArguments(
+            arguments = listOf(
+                StepArgument(
+                    name = "seconds",
+                    type = StepArgumentType.INTEGER,
+                    required = true,
+                    description = "how long the step waits, in seconds",
+                ),
+            ),
+        ).jsonSchema("core.sleep")
     }
 
     private val outputCodec = object : StepCodec<CoreSleepOutput> {

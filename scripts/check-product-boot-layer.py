@@ -534,6 +534,13 @@ DECLARED_TREE_BOOT_CHECKS = {
     "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/SubstrateInitIntegrationTest.kt": (
         "the rows that prepare a substrate and serve it"
     ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ServiceSharedArchiveIntegrationTest.kt": (
+        "the rows that start a run through the service with the SHARED CLASS "
+        "ARCHIVE of the distribution and check that the child ACCEPTS it: a "
+        "JVM told to map an archive and to write one at the same time refuses "
+        "to start, and it says so on its stdout, where the service does not "
+        "read it, so only a real child says so. The gate calls them"
+    ),
 }
 
 

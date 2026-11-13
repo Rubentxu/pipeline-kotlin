@@ -401,6 +401,8 @@ The last row is the honest one: the capabilities `runtime.inspect.v1`, `runtime.
 
 It also carries the scopes the DSL writes —`retry`, `timeout`, `catchError`, `dir`, `withEnv`, `withCredentials`, `timestamps` and `warnError`—, which the engine executes from their declaration instead of from a registered handler.
 
+Five entries publish a Jenkins equivalent that behaves differently here, and the card of each one says so: `timestamps` announces its scope with the `TimestampsEntered` and `TimestampsExited` events and decorates nothing; `milestone` observes the ordinal within the run and coordinates no builds; `publishHTML` writes the archive of reports per run and refuses `keepAll = true`; `input` treats the `submitter` as an attribution and not as an authorization; and `waitUntil` uses as its predicate the outcome of the steps its body declares.
+
 ```bash
 $ pipelinek steps
 directive  core.agent                        agent

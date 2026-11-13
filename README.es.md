@@ -275,6 +275,8 @@ La última fila es la honesta: las capacidades `runtime.inspect.v1`, `runtime.ca
 
 También lleva los scopes que escribe el DSL —`retry`, `timeout`, `catchError`, `dir`, `withEnv`, `withCredentials`, `timestamps` y `warnError`—, que el motor ejecuta desde su declaración y no desde un manejador registrado.
 
+Cinco entradas publican un equivalente de Jenkins que aquí se comporta de otra manera, y la ficha de cada una lo dice: `timestamps` anuncia su ámbito con los eventos `TimestampsEntered` y `TimestampsExited` y no decora nada; `milestone` observa el ordinal dentro de la ejecución y no coordina builds; `publishHTML` escribe el archivo de informes por ejecución y rechaza `keepAll = true`; `input` trata el `submitter` como atribución y no como autorización; y `waitUntil` usa como predicado el resultado de los pasos que declara el cuerpo.
+
 ```bash
 $ pipelinek steps
 directive  core.agent                        agent

@@ -20,7 +20,12 @@ import dev.rubentxu.pipeline.v2.domain.directivekey.AGENT_DIRECTIVE_KEY
 fun pipeline(block: PipelineScope.() -> Unit): PipelineSpec {
     val scope = PipelineScope(currentRuntimeConfig())
     scope.block()
-    return PipelineSpec(stages = scope.buildStages(), parameters = scope.buildParameters())
+    return PipelineSpec(
+        stages = scope.buildStages(),
+        parameters = scope.buildParameters(),
+        environment = scope.buildEnvironment(),
+        post = scope.buildPost(),
+    )
 }
 
 /**
@@ -69,7 +74,12 @@ fun pipeline(
 ): PipelineSpec {
     val scope = PipelineScope(runtimeConfig)
     scope.block()
-    return PipelineSpec(stages = scope.buildStages(), parameters = scope.buildParameters())
+    return PipelineSpec(
+        stages = scope.buildStages(),
+        parameters = scope.buildParameters(),
+        environment = scope.buildEnvironment(),
+        post = scope.buildPost(),
+    )
 }
 
 /**
@@ -151,6 +161,7 @@ class PipelineScope(
     private var pipelineEnvironment: EnvironmentSpec? = null
     private val pipelineAgentDirectives =
         mutableListOf<dev.rubentxu.pipeline.v2.domain.StageDirective>()
+    private var pipelinePost: PostConditionSpec = PostConditionSpec()
 
     fun stages(block: StagesScope.() -> Unit) {
         val scope = StagesScope(runtimeConfig)
@@ -203,6 +214,33 @@ class PipelineScope(
         pipelineEnvironment = EnvironmentSpec(
             if (previous == null) declared else previous + declared,
         )
+    }
+
+    /**
+     * The `post` blocks the pipeline declares, which run when the PIPELINE
+     * closes.
+     *
+     * The block is the SAME one a stage writes, on the SAME [PostScope], with
+     * the same seven conditions: `always`, `success`, `failure`, `unstable`,
+     * `aborted`, `unsuccessful` and `cleanup`. There is no second vocabulary
+     * for the pipeline level, so what an author knows about a stage's `post`
+     * is exactly what an author knows about the pipeline's.
+     *
+     * The difference is the OUTCOME the conditions are decided over. A stage's
+     * `post` reacts to how ITS OWN stage finished; the pipeline's reacts to
+     * how the WHOLE RUN finished, so `success` means that every stage
+     * succeeded and `failure` that the run failed.
+     *
+     * A second `post { }` block REPLACES the first, exactly as a stage's does:
+     * the pipeline declares one block, and the second one is the declaration.
+     *
+     * @param block the declaration, written with the seven conditions of
+     *   [PostScope]
+     */
+    fun post(block: PostScope.() -> Unit) {
+        val scope = PostScope()
+        scope.block()
+        pipelinePost = scope.build()
     }
 
     /**
@@ -356,6 +394,22 @@ class PipelineScope(
 
     fun buildParameters(): List<dev.rubentxu.pipeline.v2.domain.ParameterSpec> =
         parameterSpecs.toList()
+
+    /**
+     * The `post` the pipeline declares, or an empty declaration when it
+     * declares none.
+     */
+    fun buildPost(): PostConditionSpec = pipelinePost
+
+    /**
+     * The variables the pipeline declares, or `null` when it declares none.
+     *
+     * `null` and an empty map are different statements: the first says the
+     * pipeline declared no variables, and the second says it declared a
+     * variable whose name is empty — which the declaration itself cannot
+     * express, so the distinction is kept.
+     */
+    fun buildEnvironment(): Map<String, String>? = pipelineEnvironment?.values
 }
 
 /**

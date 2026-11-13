@@ -82,6 +82,18 @@ object DslCompiledPipelineCompiler {
     private const val COMPILER_VERSION = "dsl-compiler-v1"
     private const val PAYLOAD_SCHEMA_VERSION = "dsl-v1"
 
+    /**
+     * The parent token the pipeline's `post` steps mint their identities into.
+     *
+     * It carries the CONDITION NAME, and the condition names are UPPERCASE
+     * while every stage token is lowercased by [stableToken]. So no stage —
+     * whatever its name — can mint the identity of a pipeline's finalizer: a
+     * stage's body step is `<lowercased stage token>/<step>-<n>` and a stage's
+     * finalizer is `<lowercased stage token>/post-<CONDITION>/<step>-<n>`, and
+     * neither of them can be this one.
+     */
+    private const val PIPELINE_POST_TOKEN_PREFIX = "pipeline-post"
+
     fun compile(
         spec: PipelineSpec,
         sourcePath: String,
@@ -107,6 +119,24 @@ object DslCompiledPipelineCompiler {
             source = SourceDescriptor(sourcePath, Digest(sha256(sourceContent))),
             parameters = spec.parameters,
             stages = stages,
+            // The variables the pipeline declares are the pipeline's own. The
+            // stages carry them as their default, but the parts of the run that
+            // belong to no stage — the pipeline's `post` — run with them too, so
+            // the declaration is carried here as well.
+            environment = spec.environment?.let { EnvironmentSpec(it) } ?: EnvironmentSpec.empty(),
+            // The pipeline's `post` block becomes typed IR data, exactly as a
+            // stage's does. The COMPILER only projects; it never decides which
+            // finalizer runs — that is the pure PostPlanner's job at execution
+            // time, and it is the same job for the pipeline's close.
+            post = spec.post.conditions
+                .takeIf { it.isNotEmpty() }
+                ?.let { declared ->
+                    PostSpec(
+                        conditions = declared.mapValues { (condition, steps) ->
+                            stepNodes(steps, "$PIPELINE_POST_TOKEN_PREFIX-${condition.name}")
+                        },
+                    )
+                },
             pluginLockDigest = pluginLockDigest,
         )
     }

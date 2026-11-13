@@ -25,6 +25,7 @@ import dev.rubentxu.pipeline.v2.domain.step.RegistryBodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
+import dev.rubentxu.pipeline.v2.domain.post.postOutcome
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.runtime.durable.credentials.CredentialLeaseAdmission
 import dev.rubentxu.pipeline.v2.runtime.durable.credentials.CredentialScopePort
@@ -443,147 +444,145 @@ class DurableRunCoordinator(
 
 
         try {
-            stagesLoop@ for (stageIndex in pipeline.stages.indices) {
-                val stage = pipeline.stages[stageIndex]
+            try {
+                stagesLoop@ for (stageIndex in pipeline.stages.indices) {
+                    val stage = pipeline.stages[stageIndex]
 
-                // The BEFORE_STAGE directive seam is interpreted by
-                // BeforeStageDirectiveEngine, which admits, decodes, composes, evaluates and
-                // OBSERVES, then returns a closed verdict. Only this loop owns the run's control
-                // flow: a collaborator may not write `return@runBody` or `continue@stagesLoop`.
-                when (
-                    val verdict = beforeStageDirectives.interpret(stage, stageIndex, runId, directiveRegistry)
-                ) {
-                    BeforeStageDirectiveEngine.Verdict.Admitted -> Unit
+                    // The BEFORE_STAGE directive seam is interpreted by
+                    // BeforeStageDirectiveEngine, which admits, decodes, composes, evaluates and
+                    // OBSERVES, then returns a closed verdict. Only this loop owns the run's control
+                    // flow: a collaborator may not write `return@runBody` or `continue@stagesLoop`.
+                    when (
+                        val verdict = beforeStageDirectives.interpret(stage, stageIndex, runId, directiveRegistry)
+                    ) {
+                        BeforeStageDirectiveEngine.Verdict.Admitted -> Unit
 
-                    is BeforeStageDirectiveEngine.Verdict.Denied -> {
-                        runLifecycle.fold(RunOutcome.Failure(PipelineFailure(
-                            verdict.kind,
-                            verdict.reason,
-                        )))
-                        return@runBody runLifecycle.outcome()
+                        is BeforeStageDirectiveEngine.Verdict.Denied -> {
+                            runLifecycle.fold(RunOutcome.Failure(PipelineFailure(
+                                verdict.kind,
+                                verdict.reason,
+                            )))
+                            break@stagesLoop
+                        }
+
+                        is BeforeStageDirectiveEngine.Verdict.SkipStage -> {
+                            // A skip is itself a stage outcome. The finalizers that fire for
+                            // it are exactly the ones the pure planner selects for Skipped
+                            // (always + cleanup); if the author declared none, this is a no-op.
+                            val skippedPostFailure = closeSkippedStage(stage, stageIndex, runId, ambient)
+                            if (skippedPostFailure != null) {
+                                runLifecycle.fold(RunOutcome.Failure(skippedPostFailure))
+                                break@stagesLoop
+                            }
+                            continue@stagesLoop
+                        }
                     }
 
-                    is BeforeStageDirectiveEngine.Verdict.SkipStage -> {
-                        // A skip is itself a stage outcome. The finalizers that fire for
-                        // it are exactly the ones the pure planner selects for Skipped
-                        // (always + cleanup); if the author declared none, this is a no-op.
-                        stageExecution.runPostBlock(
-                            stage = stage,
-                            stageIndex = stageIndex,
-                            stageOutcome = StageOutcome.Skipped,
-                            runId = runId,
-                            // The stage never ran, so its workspace was never created;
-                            // finalizers run on the base options with the stage's
-                            // env/timeout projection applied. Using raw `shOptions` here
-                            // would silently drop the stage environment from a skipped
-                            // stage's post.
-                            stageShOptions = stage.projectShellOptions(shOptions),
-                            ambient = ambient,
-                        )?.let { failure ->
-                            runLifecycle.fold(RunOutcome.Failure(failure))
-                            return@runBody runLifecycle.outcome()
+                    // Stage boundary: ambient context must be structurally empty when entering a stage
+                    check(ambient.overlays.isEmpty()) {
+                        "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${ambient.overlays.size} frame(s) remaining"
+                    }
+                    val steps = (stage.body as? StageBody.Steps)?.steps
+                    // The control directory root always exists, so the stage
+                    // workspace always does too: there is no stage that runs
+                    // without one.
+                    val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
+                    val workspacePath = resolver.resolve(stage.name, stageIndex)
+                    try {
+                        resolver.ensureCreated(workspacePath)
+                    } catch (e: java.io.IOException) {
+                        runLifecycle.fold(RunOutcome.Failure(
+                            PipelineFailure(
+                                FailureKind.INFRASTRUCTURE,
+                                "Failed to create stage workspace '${workspacePath}': ${e.message}"
+                            ),
+                        ))
+                        break@stagesLoop
+                    }
+                    val stageBaseOptions = shOptions.copy(workspaceRoot = workspacePath)
+                    val stageShOptions = stage.projectShellOptions(stageBaseOptions)
+                    // Parallel stages re-enter the SAME dispatch spine —
+                    // each branch is dispatched as a bodyPath-rooted branch with its
+                    // own branchIndex (deterministic durable identity via OpId -b{N}
+                    // journal keys). No second engine, no ParallelFrameExecutor.
+                    if (steps == null && stage.body is StageBody.Parallel) {
+                        // Workspace creation is required before branch dispatch
+                        val parallelOutcome = parallelStages.runParallelStage(stage, stageIndex, stageShOptions, runId, ambient)
+                        // Post-block + StageFinished are ONE rule, in StageExecutionEngine, and
+                        // this arm used to spell it out with outcome STRINGS while the engine passed
+                        // StageOutcome — a copy that had already drifted. It is a call now, and it is
+                        // the SAME call the scripted body makes.
+                        when (val verdict = stageExecution.finalizeStageOutcome(
+                            parallelOutcome, stage, stageIndex, runId, stageShOptions, ambient,
+                        )) {
+                            is StageExecutionEngine.StageVerdict.Completed -> ambient = verdict.context
+                            is StageExecutionEngine.StageVerdict.Abort -> {
+                                runLifecycle.fold(RunOutcome.Failure(verdict.failure))
+                                break@stagesLoop
+                            }
                         }
                         continue@stagesLoop
                     }
-                }
-
-                // Stage boundary: ambient context must be structurally empty when entering a stage
-                check(ambient.overlays.isEmpty()) {
-                    "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${ambient.overlays.size} frame(s) remaining"
-                }
-                val steps = (stage.body as? StageBody.Steps)?.steps
-                // The control directory root always exists, so the stage
-                // workspace always does too: there is no stage that runs
-                // without one.
-                val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
-                val workspacePath = resolver.resolve(stage.name, stageIndex)
-                try {
-                    resolver.ensureCreated(workspacePath)
-                } catch (e: java.io.IOException) {
-                    runLifecycle.fold(RunOutcome.Failure(
-                        PipelineFailure(
-                            FailureKind.INFRASTRUCTURE,
-                            "Failed to create stage workspace '${workspacePath}': ${e.message}"
-                        ),
-                    ))
-                    return@runBody runLifecycle.outcome()
-                }
-                val stageBaseOptions = shOptions.copy(workspaceRoot = workspacePath)
-                val stageShOptions = stage.projectShellOptions(stageBaseOptions)
-                // Parallel stages re-enter the SAME dispatch spine —
-                // each branch is dispatched as a bodyPath-rooted branch with its
-                // own branchIndex (deterministic durable identity via OpId -b{N}
-                // journal keys). No second engine, no ParallelFrameExecutor.
-                if (steps == null && stage.body is StageBody.Parallel) {
-                    // Workspace creation is required before branch dispatch
-                    val parallelOutcome = parallelStages.runParallelStage(stage, stageIndex, stageShOptions, runId, ambient)
-                    // Post-block + StageFinished are ONE rule, in StageExecutionEngine, and
-                    // this arm used to spell it out with outcome STRINGS while the engine passed
-                    // StageOutcome — a copy that had already drifted. It is a call now, and it is
-                    // the SAME call the scripted body makes.
-                    when (val verdict = stageExecution.finalizeStageOutcome(
-                        parallelOutcome, stage, stageIndex, runId, stageShOptions, ambient,
-                    )) {
+                    // A scripted body enters the SAME spine. The continuation rule and the
+                    // finalisation live in StageExecutionEngine, so this arm is a call, not a copy.
+                    if (steps == null && stage.body is StageBody.Scripted) {
+                        val scripted = scriptedStageExecution ?: throw EngineInvariantViolation(
+                            "stage '${stage.name}' has a scripted body but this run carries no " +
+                                "ScriptedStageExecution, so it cannot be resolved to an artifact. The " +
+                                "scripted frontend runs on its own runner, which composes the same " +
+                                "durable authorities; a scripted body inside a canonical run needs " +
+                                "this seam bound.",
+                        )
+                        when (val verdict = stageExecution.runScriptedStage(
+                            stage, stageIndex, scripted, stageShOptions, runId, ambient,
+                        )) {
+                            is StageExecutionEngine.StageVerdict.Completed -> ambient = verdict.context
+                            is StageExecutionEngine.StageVerdict.Abort -> {
+                                runLifecycle.fold(RunOutcome.Failure(verdict.failure))
+                                break@stagesLoop
+                            }
+                        }
+                        continue@stagesLoop
+                    }
+                    // Fail closed on a body shape this spine does not run, and NAME the shape.
+                    val steps1 = steps ?: throw IllegalArgumentException("Unsupported ${stage.body::class.simpleName} in '${stage.name}'")
+                    // Per-stage workspaceRoot override at dispatch boundary
+                    // Workspace pre-creation - ensure stage workspace exists before shell dispatch
+                    // Restore stage bookends lost in the spine migration.
+                    // The canonical coordinator emits StageStarted at entry and StageFinished on normal
+                    // completion (success/unstable). An aborting stage returns before StageFinished;
+                    // RunFinished carries the failure.
+                    // The stage body, its continuation and its `post`
+                    // finalizers live in StageExecutionEngine. The run loop keeps only the two
+                    // things a stage may say to a run: carry on carrying this context, or abort
+                    // with this typed reason. A collaborator may not write return@runBody.
+                    when (val verdict = stageExecution.runLinearStage(stage, stageIndex, steps1, stageShOptions, runId, ambient)) {
                         is StageExecutionEngine.StageVerdict.Completed -> ambient = verdict.context
+
                         is StageExecutionEngine.StageVerdict.Abort -> {
                             runLifecycle.fold(RunOutcome.Failure(verdict.failure))
-                            return@runBody runLifecycle.outcome()
+                            break@stagesLoop
                         }
                     }
-                    continue@stagesLoop
                 }
-                // A scripted body enters the SAME spine. The continuation rule and the
-                // finalisation live in StageExecutionEngine, so this arm is a call, not a copy.
-                if (steps == null && stage.body is StageBody.Scripted) {
-                    val scripted = scriptedStageExecution ?: throw EngineInvariantViolation(
-                        "stage '${stage.name}' has a scripted body but this run carries no " +
-                            "ScriptedStageExecution, so it cannot be resolved to an artifact. The " +
-                            "scripted frontend runs on its own runner, which composes the same " +
-                            "durable authorities; a scripted body inside a canonical run needs " +
-                            "this seam bound.",
-                    )
-                    when (val verdict = stageExecution.runScriptedStage(
-                        stage, stageIndex, scripted, stageShOptions, runId, ambient,
-                    )) {
-                        is StageExecutionEngine.StageVerdict.Completed -> ambient = verdict.context
-                        is StageExecutionEngine.StageVerdict.Abort -> {
-                            runLifecycle.fold(RunOutcome.Failure(verdict.failure))
-                            return@runBody runLifecycle.outcome()
-                        }
-                    }
-                    continue@stagesLoop
-                }
-                // Fail closed on a body shape this spine does not run, and NAME the shape.
-                val steps1 = steps ?: throw IllegalArgumentException("Unsupported ${stage.body::class.simpleName} in '${stage.name}'")
-                // Per-stage workspaceRoot override at dispatch boundary
-                // Workspace pre-creation - ensure stage workspace exists before shell dispatch
-                // Restore stage bookends lost in the spine migration.
-                // The canonical coordinator emits StageStarted at entry and StageFinished on normal
-                // completion (success/unstable). An aborting stage returns before StageFinished;
-                // RunFinished carries the failure.
-                // The stage body, its continuation and its `post`
-                // finalizers live in StageExecutionEngine. The run loop keeps only the two
-                // things a stage may say to a run: carry on carrying this context, or abort
-                // with this typed reason. A collaborator may not write return@runBody.
-                when (val verdict = stageExecution.runLinearStage(stage, stageIndex, steps1, stageShOptions, runId, ambient)) {
-                    is StageExecutionEngine.StageVerdict.Completed -> ambient = verdict.context
-
-                    is StageExecutionEngine.StageVerdict.Abort -> {
-                        runLifecycle.fold(RunOutcome.Failure(verdict.failure))
-                        return@runBody runLifecycle.outcome()
-                    }
-                }
+                // THE CLOSE POINT OF THE PIPELINE.
+                //
+                // It is reached by every path that ends the run in a state: the stages
+                // finished, a stage failed, or a stage threw. The `post` the pipeline
+                // declares runs HERE, over the result of the whole run — and before
+                // the run's own bookend, so the finalizers are part of the run and not
+                // work that happened after it ended.
+                closePipeline(pipeline, runId, ambient)
+            } catch (e: Exception) {
+                // Invariants are engine failures, never ordinary infrastructure outcomes.
+                if (e is IllegalStateException || e is EngineInvariantViolation) throw e
+                runLifecycle.fold(RunOutcome.Failure(
+                    PipelineFailure(
+                        FailureKind.INFRASTRUCTURE,
+                        "Unexpected error during pipeline run: ${e.message}"
+                    ),
+                ))
             }
-            // Success: fall through to finally and return
-        } catch (e: Exception) {
-            // Invariants are engine failures, never ordinary infrastructure outcomes.
-            if (e is IllegalStateException || e is EngineInvariantViolation) throw e
-            runLifecycle.fold(RunOutcome.Failure(
-                PipelineFailure(
-                    FailureKind.INFRASTRUCTURE,
-                    "Unexpected error during pipeline run: ${e.message}"
-                ),
-            ))
         } finally {
             // A stage that threw before its finalizer ran still has an OPEN
             // span. Closing them here is what keeps the trace from showing a
@@ -598,5 +597,81 @@ class DurableRunCoordinator(
             outputRetention.onRunTerminal(runId, liveSpanParentOf(runSpan))
         }
         return runLifecycle.outcome()
+    }
+
+    /**
+     * The finalizers of a stage that was SKIPPED.
+     *
+     * A skip is a stage outcome like any other, and the finalizers that fire
+     * for it are exactly the ones the pure planner selects for
+     * [StageOutcome.Skipped] (`always` and `cleanup`).
+     *
+     * The stage never ran, so its workspace was never created: the finalizers
+     * run on the base options with the stage's env/timeout projection applied.
+     * Using the raw `shOptions` here would silently drop the stage environment
+     * from a skipped stage's post.
+     */
+    private suspend fun closeSkippedStage(
+        stage: dev.rubentxu.pipeline.v2.domain.StageNode,
+        stageIndex: Int,
+        runId: RunId,
+        ambient: ExecutionContext,
+    ): PipelineFailure? = stageExecution.runPostBlock(
+        stage = stage,
+        stageIndex = stageIndex,
+        stageOutcome = StageOutcome.Skipped,
+        runId = runId,
+        stageShOptions = stage.projectShellOptions(shOptions),
+        ambient = ambient,
+    )
+
+    /**
+     * THE CLOSE POINT OF THE PIPELINE.
+     *
+     * A stage's `post` runs when that stage closes; the pipeline's `post` runs
+     * HERE, when the RUN closes. The engine knew the close of a stage and had
+     * no close of its own: this is that close.
+     *
+     * ## The outcome is the run's
+     *
+     * The conditions are decided over the result of the WHOLE run, projected
+     * onto the post vocabulary by
+     * [dev.rubentxu.pipeline.v2.domain.post.postOutcome]. So `success` means
+     * that every stage succeeded, `failure` that the run failed, and `aborted`
+     * that the run was stopped — which is a different statement from failing,
+     * and is projected as such.
+     *
+     * ## The identity of the finalizers
+     *
+     * The finalizers are dispatched under the index ONE PAST the last stage,
+     * which is what makes them the run's and not a stage's: the index is part
+     * of the durable identity of every dispatched step, so the pipeline's
+     * finalizers can never collide with a stage's, and the second attempt of a
+     * run dispatches them under the SAME identity. Whether that second attempt
+     * executes them again or serves the journalled completion is the durable
+     * model's decision, not this method's: the close point dispatches, and the
+     * journal answers.
+     *
+     * A finalizer that fails fails the RUN, and the run's own bookend says so.
+     */
+    private suspend fun closePipeline(
+        pipeline: CompiledPipeline,
+        runId: RunId,
+        ambient: ExecutionContext,
+    ) {
+        val post = pipeline.post ?: return
+        if (post.isEmpty) return
+        val failure = stageExecution.runPipelinePostBlock(
+            post = post,
+            closeIndex = pipeline.stages.size,
+            pipelineName = pipeline.source.path,
+            outcome = runLifecycle.outcome().postOutcome(),
+            runId = runId,
+            shOptions = pipeline.environment.withDeclaredEnvironment(shOptions),
+            ambient = ambient,
+        )
+        if (failure != null) {
+            runLifecycle.fold(RunOutcome.Failure(failure))
+        }
     }
 }

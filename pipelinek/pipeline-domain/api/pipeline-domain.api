@@ -5665,6 +5665,7 @@ public final class dev/rubentxu/pipeline/v2/domain/post/PostPlan$Companion {
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/post/PostPlanKt {
+	public static final fun postOutcome (Ldev/rubentxu/pipeline/v2/domain/RunOutcome;)Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome;
 	public static final fun selects (Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome;)Z
 }
 

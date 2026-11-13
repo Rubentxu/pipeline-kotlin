@@ -134,6 +134,33 @@ class RefusedStepFormTest {
     }
 
     /**
+     * A plan composed before the retirement is still refused.
+     *
+     * The retirement removed the AUTHORING surface, not the representation: a
+     * plan composed before it — a journal, a plan on disk, a plan a plugin
+     * composed — still carries the key, and the admission still refuses it in
+     * closed. The refusal has to be the one that plan always got: a plan that
+     * opened and then ran the steps the wrapper wrapped would be the silent
+     * semantic drop this product exists to remove.
+     */
+    @Test
+    @DisplayName("a plan composed before the retirement is still refused")
+    fun aPlanComposedBeforeTheRetirementIsStillRefused() {
+        val refused = listOf(
+            StepSpec.NodeNoOp(label = null, steps = listOf(StepSpec.Echo("hola"))),
+            StepSpec.AnsiColor(colorMapName = "xterm", steps = listOf(StepSpec.Echo("hola"))),
+            StepSpec.Load(path = "otro.pipeline.kts"),
+        ).flatMap { step -> refusedStepsOf(step) }
+
+        assertEquals(
+            listOf("core.ansiColor", "core.load", "core.node"),
+            refused.map { step -> step.pluginStepId }.sorted(),
+            "a plan composed before the retirement is not refused the way it always was: the " +
+                "retirement has to move the rejection to the authoring, not remove it",
+        )
+    }
+
+    /**
      * The steps the canonical admission refuses, for a script that writes ONE step.
      *
      * The script is compiled the way the product compiles it, and the analysis

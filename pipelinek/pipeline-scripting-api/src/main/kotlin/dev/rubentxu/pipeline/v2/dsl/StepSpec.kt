@@ -595,6 +595,12 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * The path is resolved against the stage workspace. No registered
      * definition owns the key this shape lowers to, so admission refuses the
      * step instead of running the file.
+     *
+     * The language does not AUTHOR this shape any more: the DSL retired the
+     * `load(path)` form, because a form the run always refuses is not a form
+     * an author can use. What stays published is the REPRESENTATION, so a
+     * plan composed before the retirement keeps decoding and keeps being
+     * refused at admission.
      */
     data class Load(
         val path: String,
@@ -641,6 +647,12 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * `xterm` is the default. Only the colour map reaches the compiled step,
      * and no registered definition owns the key it lowers to, so admission
      * refuses the step.
+     *
+     * The language does not AUTHOR this shape any more: the DSL retired the
+     * `ansiColor(...) { ... }` form, because a form the run always refuses is
+     * not a form an author can use. What stays published is the
+     * REPRESENTATION, so a plan composed before the retirement keeps decoding
+     * and keeps being refused at admission.
      */
     data class AnsiColor(
         val colorMapName: String = "xterm",
@@ -657,6 +669,18 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * asks for any target the run has. Only the label reaches the compiled
      * step, and no registered definition owns the key it lowers to, so
      * admission refuses the step.
+     *
+     * The language does not AUTHOR this shape any more: the DSL retired the
+     * `node(...) { ... }` form, because a form the run always refuses is not a
+     * form an author can use. What stays published is the REPRESENTATION, so
+     * a plan composed before the retirement keeps decoding and keeps being
+     * refused at admission.
+     *
+     * What remains of the agent is the `core.agent` DIRECTIVE of the stage: a
+     * plan that carries the requirement has it resolved before its body runs,
+     * and it is a declaration of the stage and not a block that wraps one. The
+     * language offers no way to author it —the requirement reaches the plan
+     * through the generic seam— but the runtime still decides it.
      */
     data class NodeNoOp(
         val label: String? = null,

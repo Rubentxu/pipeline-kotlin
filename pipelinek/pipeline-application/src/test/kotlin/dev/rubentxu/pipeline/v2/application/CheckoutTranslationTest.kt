@@ -155,6 +155,43 @@ class CheckoutTranslationTest {
     }
 
     /**
+     * La forma CORTA y la forma EXPLICITA son el mismo step.
+     *
+     * `git(url, branch)` es el atajo y `checkout(scmGit(url, branch))` es la
+     * grafía explícita de lo mismo: la MISMA clave y los MISMOS bytes. Un
+     * atajo que se bajara a un step distinto sería una segunda traducción de
+     * la misma intención, y las dos podrían divergir sin que nadie lo viera.
+     *
+     * La fila mide las dos formas porque el atajo es la que el autor escribe
+     * y la explícita es la que el catálogo nombra: si dejaran de ser el mismo
+     * step, el autor del atajo y el lector del catálogo estarían hablando de
+     * dos cosas distintas con el mismo nombre.
+     */
+    @Test
+    fun `la forma corta y la forma explicita se bajan al mismo step`() {
+        val short = StageScope("stage")
+        short.git(url = URL, branch = "main")
+        val shortNode = compileNode(short.steps().single())
+
+        val explicit = StageScope("stage")
+        explicit.checkout(explicit.scmGit(url = URL, branch = "main"))
+        val explicitNode = compileNode(explicit.steps().single())
+
+        assertEquals(
+            explicitNode.pluginStepId,
+            shortNode.pluginStepId,
+            "el atajo y la grafía explícita se bajan a claves distintas: hay dos traducciones " +
+                "de la misma intención",
+        )
+        assertEquals(
+            explicitNode.payload,
+            shortNode.payload,
+            "el atajo y la grafía explícita se bajan a payloads distintos: el atajo escribe el " +
+                "payload por su cuenta y la forma explícita lo escribe el codec del plugin",
+        )
+    }
+
+    /**
      * Los rechazos siguen siendo de quien los emite: el DSL rechaza lo que el
      * autor escribió mal y el codec rechaza un payload que no describe un
      * checkout. Ninguna traducción se traga un rechazo ni lo fabrica.

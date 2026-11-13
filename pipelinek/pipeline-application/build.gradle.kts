@@ -508,7 +508,14 @@ tasks.test {
     // task that checks it.
     inputs.files(
         rootProject.file("../README.md"),
+        rootProject.file("../README.es.md"),
         rootProject.file("../AGENTS.md"),
+        // The maturity manifest is the OTHER document the drift rules read: it
+        // classifies the published surfaces, and the rule that compares it with
+        // the product asks the product. A manifest that changed without the
+        // lane noticing would leave a report about a classification that is
+        // no longer the one in the tree.
+        rootProject.file("contract/published-contract-maturity.json"),
         rootProject.file("../examples/observability"),
         // The OCI profile is a file of the tree and not a document about it,
         // and the rules that read its shape read these two. Without the

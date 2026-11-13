@@ -399,18 +399,6 @@ class StageScope(
     }
 
     /**
-     * Loads and executes steps from an external pipeline script file.
-     * Jenkins verbatim:
-     * `load(path: String)`
-     * The path is resolved relative to the workspace root. On successful load,
-     * the file is compiled and its steps are appended to the current execution scope.
-     * @param path Workspace-relative path.pipeline.kts file
-*/
-    fun load(path: String) {
-        steps.add(StepSpec.Load(path = path))
-    }
-
-    /**
      * Polls a condition closure until it returns true or the backoff ceiling is reached.
      * Jenkins verbatim:
      * `waitUntil(initialRecurrencePeriod: Long = 1) { condition }`
@@ -489,44 +477,6 @@ class StageScope(
         val inner = blockScope("timestamps")
         inner.block()
         steps.add(StepSpec.Timestamps(steps = inner.steps()))
-    }
-
-    /**
-     * Decorates captured stdout/stderr with ANSI color codes.
-     * Jenkins verbatim: `ansiColor(colorMapName: String = "xterm") { block }`
-     * @param colorMapName Color map name (default "xterm")
-     * @param block Nested steps to execute with ANSI color decoration
-*/
-    fun ansiColor(colorMapName: String = "xterm", block: StageScope.() -> Unit) {
-        val inner = blockScope("ansiColor")
-        inner.block()
-        steps.add(StepSpec.AnsiColor(colorMapName = colorMapName, steps = inner.steps()))
-    }
-
-    /**
-     * The node of Jenkins, and a step this product REFUSES.
-     *
-     * Jenkins verbatim: `node(label?: String) { block }`
-     *
-     * The step lowers to the key `core.node`, and NO registered definition owns
-     * that key: the canonical admission refuses the step, in the RUN and not in
-     * the compilation. The script compiles, and the run refuses it saying the
-     * truth: this product does not allocate an executor on an agent, and the
-     * stage runs on the machine where the run started.
-     *
-     * What remains of the agent is the `core.agent` DIRECTIVE of the stage: a
-     * plan that carries the requirement has it resolved before its body runs,
-     * and it is a declaration of the stage and not a block that wraps one. The
-     * language offers no way to author it —the requirement reaches the plan
-     * through the generic seam— but the runtime still decides it.
-     *
-     * @param label Agent label (optional)
-     * @param block Nested steps to execute
-*/
-    fun node(label: String? = null, block: StageScope.() -> Unit) {
-        val inner = blockScope("node")
-        inner.block()
-        steps.add(StepSpec.NodeNoOp(label = label, steps = inner.steps()))
     }
 
     // =============================================================================
@@ -708,6 +658,16 @@ class StageScope(
     /**
      * Executes the inner block with retry on failure.
      * Jenkins verbatim: `retry(count: Int) { block }`
+     *
+     * This is the form of `retry` this product EXECUTES: it lowers to the
+     * `core.retry` block step, and the coordinator reads the attempts of that
+     * payload. The step-level overload —`retry(count, delaySeconds)`, which
+     * projected a retry policy onto the preceding step— is NOT a form this
+     * product executes: no runtime consumer ever read the delay and the
+     * jitter it declared, and a surface that offers a delay nothing honours
+     * is a promise the product does not keep. A call to that overload is
+     * REFUSED, and the refusal names this form.
+     *
      * @param count Maximum retry attempts
      * @param block Nested steps to execute with retry
 */

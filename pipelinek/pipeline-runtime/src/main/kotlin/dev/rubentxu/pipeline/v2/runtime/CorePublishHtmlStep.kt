@@ -202,6 +202,9 @@ object CorePublishHtmlStep {
         stepId = "core.publishHTML",
         name = "publishHTML",
         jenkinsSurface = "publishHTML",
+        jenkinsDivergence = "Jenkins keeps the reports of the previous runs when keepAll is " +
+            "true. Here the reports archive is written per run and the flag has no " +
+            "interpreter: a call that asks for it is refused while the script is written.",
         configRef = "",
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.WRITES_WORKSPACE),

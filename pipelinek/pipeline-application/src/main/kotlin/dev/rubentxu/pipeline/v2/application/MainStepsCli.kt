@@ -80,17 +80,22 @@ internal object MainStepsCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.steps/3` since the document carries the FORMS: the
-     * shapes of Jenkins that a script can be written in, the shape of this
-     * product that replaces each one, and the suggestion the compiler prints
-     * when a diagnostic lands on one of them. It was `pipelinek.steps/2` when
-     * the document carried the divergences: the entries carry the equivalent in
-     * Jenkins and the divergence of THAT entry, and the document carries the
-     * section of the divergences that are the same for every script. A consumer
-     * that parses `/1` reads an entry without its divergence, and a consumer
-     * that parses `/2` does not read the forms; the version names that change.
+     * It is `pipelinek.steps/4` since the reason of a FORM says why the
+     * compiler stops at that shape, and not why the two products differ: the
+     * divergences own that reason, and a document that printed the same
+     * sentence in both sections would publish one fact twice. It was
+     * `pipelinek.steps/3` when the document carried the forms WITH the reason
+     * of the divergence they realise, and the two sections said the same
+     * thing. It was `pipelinek.steps/2` when the document carried the
+     * divergences: the entries carry the equivalent in Jenkins and the
+     * divergence of THAT entry, and the document carries the section of the
+     * divergences that are the same for every script. A consumer that parses
+     * `/1` reads an entry without its divergence, a consumer that parses `/2`
+     * does not read the forms, and a consumer that parses `/3` reads a reason
+     * in `forms` that said what `divergences` says; the version names that
+     * change.
      */
-    const val SCHEMA: String = "pipelinek.steps/3"
+    const val SCHEMA: String = "pipelinek.steps/4"
 
     /**
      * The published document, as a value.
@@ -117,6 +122,11 @@ internal object MainStepsCli {
      * The suggestion travels with it because it is the sentence the compiler
      * prints: a reader of the document can see the exact text the author will
      * read, instead of a form they have to imagine.
+     *
+     * The reason travels with it too, and it is the reason the COMPILER stops
+     * at that shape: the reason the two products differ is published with the
+     * divergences, and a document that carried the same sentence in the two
+     * sections would publish one fact twice.
      *
      * It is INTERNAL and not private because the report of the migration
      * renders the forms with it: two documents that carry the same form have

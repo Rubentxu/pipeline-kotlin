@@ -15,6 +15,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
@@ -115,7 +116,7 @@ class MainStepsCliTest {
 
         val parsed = Json.parseToJsonElement(document.toString()).jsonObject
         assertEquals(
-            "pipelinek.steps/3",
+            "pipelinek.steps/4",
             parsed["schema"]?.jsonPrimitive?.content,
             "the document names the schema a consumer parses it by",
         )
@@ -175,8 +176,39 @@ class MainStepsCliTest {
                     entry["reason"]?.jsonPrimitive?.content?.isNotBlank() == true &&
                     entry["suggestion"]?.jsonPrimitive?.content?.isNotBlank() == true
             },
-            "every form says how Jenkins writes it, how this product writes it, why and what the compiler prints",
+            "every form says how Jenkins writes it, how this product writes it, why the compiler " +
+                "stops there and what the compiler prints",
         )
+    }
+
+    @Test
+    fun `the document says every fact once, and no reason of a form repeats one of a difference`() {
+        val document = MainStepsCli.document(coreEntries())
+
+        val parsed = Json.parseToJsonElement(document.toString()).jsonObject
+        val divergences = parsed["divergences"]?.jsonArray ?: fail("the document carries the divergences")
+        val forms = parsed["forms"]?.jsonArray ?: fail("the document carries the forms")
+        val divergenceReasons = divergences.map { it.jsonObject["reason"]?.jsonPrimitive?.content.orEmpty() }
+        val formReasons = forms.map { it.jsonObject["reason"]?.jsonPrimitive?.content.orEmpty() }
+
+        formReasons.forEach { formReason ->
+            divergenceReasons.forEach { divergenceReason ->
+                assertFalse(
+                    formReason.contains(divergenceReason),
+                    "the reason of a form repeats the reason of a difference, and a fact published " +
+                        "in two sections is a fact published twice:\n  $formReason\n  $divergenceReason",
+                )
+            }
+        }
+        divergenceReasons.forEach { divergenceReason ->
+            formReasons.forEach { formReason ->
+                assertFalse(
+                    divergenceReason.contains(formReason),
+                    "the reason of a difference repeats the reason of a form, and a fact published " +
+                        "in two sections is a fact published twice:\n  $divergenceReason\n  $formReason",
+                )
+            }
+        }
     }
 
     @Test
@@ -280,7 +312,7 @@ class MainStepsCliTest {
         assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
         val parsed = Json.parseToJsonElement(out.toString(Charsets.UTF_8.name())).jsonObject
         assertEquals(
-            "pipelinek.steps/3",
+            "pipelinek.steps/4",
             parsed["schema"]?.jsonPrimitive?.content,
             "what the verb publishes is the document the schema names",
         )

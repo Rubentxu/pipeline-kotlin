@@ -366,6 +366,45 @@ class MainStepsCliTest {
         assertTrue(card.contains("divergence"), "the card names the divergence of the entry: $card")
     }
 
+    /**
+     * The card of an entry does not publish the marker of a schema that nobody
+     * declared.
+     *
+     * `{}` is what the domain uses to say "nobody declared the arguments", and
+     * the catalogue does not publish it: the ABSENCE of the key is what tells
+     * the reader that nobody declared it. A card that prints the marker
+     * publishes the marker of another contract as if it were a schema, and a
+     * reader cannot tell a step that declares nothing from a step that nobody
+     * said anything about.
+     */
+    @Test
+    fun `the card of an entry does not publish the marker of a schema that nobody declared`() {
+        val out = ByteArrayOutputStream()
+        val err = ByteArrayOutputStream()
+
+        val code = MainDescribeCli.main(
+            arrayOf("core.sh"),
+            PrintStream(out, true, Charsets.UTF_8.name()),
+            PrintStream(err, true, Charsets.UTF_8.name()),
+        )
+
+        assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
+        val lines = out.toString(Charsets.UTF_8.name()).lines()
+        assertFalse(
+            lines.any { it.trim() == StepSchema.UNDECLARED },
+            "the card does not publish the marker that says 'nobody declared the arguments' as if " +
+                "it were a schema: $lines",
+        )
+        val output = lines.indexOfFirst { it.trim() == "output schema:" }
+        assertTrue(output >= 0, "the card names the schema of the output: $lines")
+        assertEquals(
+            "(none)",
+            lines.getOrNull(output + 1)?.trim(),
+            "the card says that the output schema is not declared, in the words the other empty " +
+                "fields use: $lines",
+        )
+    }
+
     @Test
     fun `the index has one line per entry of the document`() {
         val entries = coreEntries()

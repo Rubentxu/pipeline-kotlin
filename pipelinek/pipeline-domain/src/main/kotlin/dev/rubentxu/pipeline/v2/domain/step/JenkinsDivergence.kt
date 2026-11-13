@@ -134,19 +134,24 @@ object JenkinsDivergences {
                 "Here the read happens while the PLAN is BUILT, on the host that compiles the " +
                 "script: the value travels inside the plan, so a replay reproduces it, and a " +
                 "variable that only the agent has at runtime is not visible to the script. The " +
-                "variable the stage DECLARES is visible; the one the agent happens to have is not.",
+                "variable the stage DECLARES is visible; the one the agent happens to have is not. " +
+                "A read sees the variables DECLARED BEFORE it: a declaration of the PIPELINE " +
+                "written after the `stages { }` block is not seen by a read inside a stage.",
             scope = JenkinsDivergence.Scope.PRODUCT,
         ),
         JenkinsDivergence(
             name = "the declaration of a variable",
             reason = "Jenkins declares a variable with an ASSIGNMENT inside the `environment { }` " +
-                "block (`FOO = 'x'`), and this product declares it with a CALL: " +
-                "`environment { env(\"FOO\", \"x\") }`. The assignment of Jenkins does not compile " +
-                "here: the compiler answers `Unresolved reference 'FOO'`, because the block of an " +
-                "environment is Kotlin, and an assignment does not DECLARE the name it assigns: " +
-                "the name has to be declared, and the call above is how this product declares it. " +
-                "The variable declared this way reaches the steps of the stage that declares it, " +
-                "and the one the pipeline declares reaches the steps of every stage.",
+                "block (`FOO = 'x'`), and this product declares it with a CALL — " +
+                "`env(\"FOO\", \"x\")` — inside that same block. The assignment of Jenkins does not " +
+                "compile here: the compiler answers `Unresolved reference 'FOO'.`, because the " +
+                "`environment { }` block is Kotlin and an assignment does not DECLARE the name it " +
+                "assigns. A `val` written in the block does not declare it either: it declares a " +
+                "local of the block and nothing else, and only the `env(name, value)` call declares " +
+                "a variable the stage, its gate and its steps can see. The variable declared this " +
+                "way reaches the environment the steps of the stage that declares it RUN WITH, and " +
+                "the one the pipeline declares reaches the steps of every stage that declares no " +
+                "variable of the same name: the declaration of a stage wins, name by name.",
             scope = JenkinsDivergence.Scope.PRODUCT,
         ),
     )

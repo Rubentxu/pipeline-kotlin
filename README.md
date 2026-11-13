@@ -979,7 +979,7 @@ The SDK ships with every release as `pipelinek-<version>.sdk.zip`: eight artifac
 
 A plugin is loaded from `--plugin-jar`. With `--plugin-trust <file>` it is admitted only if its bytes match the SHA-256 the operator pinned and it carries a valid detached Ed25519 signature; with `--require-plugin-trust`, a plugin nobody vouched for is refused before any of its code runs.
 
-**Declaring a step: the `StepEmitter` contract.** A plugin that teaches the DSL its own step declares it through `dev.rubentxu.pipeline.v2.dsl.StepEmitter`, a public interface with two members: `registryStep` declares a step, `registryBlock` declares a step that carries a body. Nothing else is on it — no agent, no options, no post conditions, no `when` predicate — so a plugin's step does not depend on how a stage is configured.
+**Declaring a step: the `StepEmitter` contract.** A plugin that teaches the DSL its own step declares it through `StepEmitter`, the public interface of the scripting API with two members: `registryStep` declares a step, `registryBlock` declares a step that carries a body. Nothing else is on it — no agent, no options, no post conditions, no `when` predicate — so a plugin's step does not depend on how a stage is configured.
 
 The contract has two routes, and a plugin publishes both:
 

@@ -825,7 +825,7 @@ El SDK viaja con cada release como `pipelinek-<version>.sdk.zip`: ocho artefacto
 
 Un plugin se carga desde `--plugin-jar`. Con `--plugin-trust <file>` solo se admite si sus bytes coinciden con el SHA-256 fijado por el operador y llevan una firma Ed25519 válida; con `--require-plugin-trust`, un plugin que nadie ha avalado se rechaza antes de que corra su código.
 
-**Declarar un paso: el contrato `StepEmitter`.** Un plugin que enseña al DSL su propio paso lo declara a través de `dev.rubentxu.pipeline.v2.dsl.StepEmitter`, una interfaz pública con dos miembros: `registryStep` declara un paso y `registryBlock` declara un paso que lleva un cuerpo. No hay nada más — ni agent, ni options, ni condiciones de post, ni predicados `when` — así que el paso de un plugin no depende de cómo se configura un stage.
+**Declarar un paso: el contrato `StepEmitter`.** Un plugin que enseña al DSL su propio paso lo declara a través de `StepEmitter`, la interfaz pública de la API de scripting, con dos miembros: `registryStep` declara un paso y `registryBlock` declara un paso que lleva un cuerpo. No hay nada más — ni agent, ni options, ni condiciones de post, ni predicados `when` — así que el paso de un plugin no depende de cómo se configura un stage.
 
 El contrato tiene dos rutas, y un plugin publica las dos:
 

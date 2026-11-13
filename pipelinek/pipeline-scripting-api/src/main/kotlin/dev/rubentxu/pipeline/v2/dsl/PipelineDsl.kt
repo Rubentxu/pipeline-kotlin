@@ -734,7 +734,7 @@ class PostScope {
  * Steps within post condition blocks.
 */
 @PostDslMarker
-class PostStepsScope {
+class PostStepsScope : StepEmitter<PostStepsScope> {
     /**
      * The owner of this scope's sequence of steps.
      *
@@ -784,6 +784,41 @@ class PostStepsScope {
     fun sleep(seconds: Long) {
         sequence.sleep(seconds)
     }
+
+    /**
+     * REFUSED: a post condition hosts no step of a plugin.
+     *
+     * @throws IllegalArgumentException always, and the message names the
+     *   restriction and the step it refused.
+     */
+    override fun registryStep(
+        stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
+        encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+    ) {
+        throw IllegalArgumentException(refusesAPluginStep(stepKey))
+    }
+
+    /**
+     * REFUSED: a post condition hosts no block of a plugin.
+     *
+     * @throws IllegalArgumentException always, and the message names the
+     *   restriction and the step it refused.
+     */
+    override fun registryBlock(
+        stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
+        encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+        block: PostStepsScope.() -> Unit,
+    ) {
+        throw IllegalArgumentException(refusesAPluginStep(stepKey))
+    }
+
+    /**
+     * The refusal, and it says WHAT was refused and WHY.
+     */
+    private fun refusesAPluginStep(stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId): String =
+        "a post condition hosts no step of a plugin: '$stepKey' was refused. The conditions " +
+            "that close a stage run the steps the DSL provides (echo, sh, error, sleep) and " +
+            "not the steps a plugin contributes."
 }
 
 /**
@@ -804,9 +839,13 @@ class ParallelScope {
 
 /**
  * Branch scope within parallel block.
+ *
+ * The scope implements the [StepEmitter] contract: a branch is a body of
+ * steps of its own, and a plugin's step belongs in a branch as much as it
+ * belongs in a stage.
 */
 @StepDslMarker
-class BranchScope {
+class BranchScope : StepEmitter<BranchScope> {
     /**
      * The owner of this scope's sequence of steps.
      *
@@ -869,6 +908,44 @@ class BranchScope {
         val inner = BranchScope()
         inner.block()
         sequence.dir(path, inner.capture())
+    }
+
+    /**
+     * Declares a step the plugin's own handler runs.
+     *
+     * @param stepKey the key the plugin registered its step under.
+     * @param encodedInput the step's input, in the plugin's own encoding.
+     */
+    override fun registryStep(
+        stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
+        encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+    ) {
+        sequence.declare(
+            StepSpec.RegistryStepSpec(stepKey, "dsl-v1", encodedInput),
+        )
+    }
+
+    /**
+     * Declares a step that carries a body of steps.
+     *
+     * The body is written in the branch, and the branch is the scope that
+     * hosts it: the body of a plugin's block inside a branch is a body of
+     * steps of that branch.
+     *
+     * @param stepKey the key the plugin registered its step under.
+     * @param encodedInput the step's input, in the plugin's own encoding.
+     * @param block the steps the block governs.
+     */
+    override fun registryBlock(
+        stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
+        encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+        block: BranchScope.() -> Unit,
+    ) {
+        val inner = BranchScope()
+        inner.block()
+        sequence.declare(
+            StepSpec.RegistryBlockSpec(stepKey, "dsl-v1", encodedInput, inner.capture()),
+        )
     }
 
     /**

@@ -3,7 +3,32 @@ package dev.rubentxu.pipeline.v2.sdk.http
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.dsl.StepEmitter
 import dev.rubentxu.pipeline.v2.dsl.StageScope
+
+/**
+ * The route of the CONTRACT: `http.request`, declared from the plugin's own
+ * value.
+ *
+ * The receiver of this function is the [StepEmitter] contract, so the step can
+ * be declared wherever steps are declared —a stage, a `steps { }` block, a
+ * `script { }` block, a wrapper, or a branch of a `parallel { }` block— and
+ * not only in a stage.
+ *
+ * The argument is the plugin's OWN value, [HttpRequestInput], and not the
+ * nine options of the Jenkins reference one by one: a function that names nine
+ * arguments is a function nobody can read, and the value the plugin's codec
+ * encodes is already the whole truth of the request. The route that names the
+ * options one by one is `httpRequest` on a stage, and it has always been there.
+ * It delegates to this one, so the two declare the SAME step.
+ */
+fun <B : StepEmitter<B>> StepEmitter<B>.httpRequest(input: HttpRequestInput) {
+    val encoded: EncodedStepValue = HttpRequestCodec.encode(input)
+    registryStep(
+        stepKey = httpRequestStepKey(),
+        encodedInput = encoded,
+    )
+}
 
 /**
  * `httpRequest(url, …)` — one request to a remote service
@@ -38,7 +63,14 @@ import dev.rubentxu.pipeline.v2.dsl.StageScope
  * one that parses late and fails at a different time. One door, typed. The
  * Jenkins spellings stay reachable where a migration genuinely needs them, as
  * the pure total functions [HttpMethod.fromWire] and [StatusRange.parse], both
- * of which return `null` rather than guess.
+ * of which return `null` rather guess.
+ * ## The route of the contract
+ * This is the HISTORIC route: its receiver is [StageScope], and the receiver of
+ * a Kotlin extension is the FIRST parameter of its JVM signature, so a compiled
+ * consumer names this descriptor and not the one of the contract. It therefore
+ * keeps the receiver and the descriptor it had, and it delegates to the route of
+ * the contract — the two declare the SAME step, and the one that runs is the
+ * one of the contract.
  * @param url the absolute URL to request. Blank is a typed rejection.
  * @param method defaults to GET, as in Jenkins.
  * @param customHeaders a LIST, not a map: a header may legitimately repeat
@@ -50,7 +82,7 @@ import dev.rubentxu.pipeline.v2.dsl.StageScope
  *   the Jenkins default of anything below 400.
  * @param timeoutSeconds bound on the request; `0` means no bound at all.
  * @param authentication a credentials id. Rejected as a typed failure until
- * Credential resolution lands in — the request is NOT silently sent
+ *   Credential resolution lands in — the request is NOT silently sent
  *   unauthenticated.
 */
 fun StageScope.httpRequest(
@@ -64,21 +96,19 @@ fun StageScope.httpRequest(
     timeoutSeconds: Int = HttpDefaults.DEFAULT_TIMEOUT_SECONDS,
     authentication: CredentialsId? = null,
 ) {
-    val input = HttpRequestInput(
-        url = url,
-        method = method,
-        customHeaders = customHeaders,
-        body = body,
-        contentType = contentType,
-        acceptType = acceptType,
-        validResponseCodes = validResponseCodes,
-        timeoutSeconds = timeoutSeconds,
-        authentication = authentication,
-    )
-    val encoded: EncodedStepValue = HttpRequestCodec.encode(input)
-    registryStep(
-        stepKey = httpRequestStepKey(),
-        encodedInput = encoded,
+    val emitter: StepEmitter<StageScope> = this
+    emitter.httpRequest(
+        HttpRequestInput(
+            url = url,
+            method = method,
+            customHeaders = customHeaders,
+            body = body,
+            contentType = contentType,
+            acceptType = acceptType,
+            validResponseCodes = validResponseCodes,
+            timeoutSeconds = timeoutSeconds,
+            authentication = authentication,
+        ),
     )
 }
 

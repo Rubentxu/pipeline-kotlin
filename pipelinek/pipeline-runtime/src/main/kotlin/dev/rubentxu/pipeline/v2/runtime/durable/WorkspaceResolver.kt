@@ -5,10 +5,22 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Resolves per-stage workspace directories with deterministic naming.
- * Each stage gets a workspace under `<controlRoot>/workspace/<stageName>-<stageIndex>/`.
- * The deterministic naming ensures parallel stages with the same name get different
+ * Resolves the workspace directory of a stage.
+ *
+ * ## The two cases, and which one is the default
+ *
+ * With NO base, every stage gets a workspace of its own, under
+ * `<controlRoot>/workspace/<stageName>-<stageIndex>/`. The deterministic
+ * naming ensures parallel stages with the same name get different
  * directories (collision-safe per).
+ *
+ * With a base —the directory the run was invoked in, or the one the operator
+ * named with `--workspace`— EVERY STAGE GETS THAT SAME DIRECTORY: the stages
+ * of the run SHARE the workspace, the way a Jenkins run shares the workspace
+ * of its node. The base is what the CLI attaches by default; the run that
+ * asks for isolation is the one that attaches none, and only that run gives
+ * each stage a workspace of its own.
+ *
  * ## Workspace Lifecycle
  * | Event | Action |
  * |-------|--------|
@@ -47,7 +59,8 @@ class WorkspaceResolver(
      * Resolves the workspace path for a given stage.
      * @param stageName The name of the stage.
      * @param stageIndex The index of the stage (for disambiguation in parallel).
-     * @return The deterministic workspace path: `<controlDirRoot>/workspace/<stageName>-<stageIndex>/`
+     * @return The workspace of the stage: the shared base when the run has one,
+     *   and `<controlDirRoot>/workspace/<stageName>-<stageIndex>/` when it has none.
 */
     fun resolve(stageName: String, stageIndex: Int): Path {
         // With an explicit project workspace (--workspace), stages SHARE

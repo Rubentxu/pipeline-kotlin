@@ -199,7 +199,7 @@ class MainMigrateCliTest {
         val parsed = Json.parseToJsonElement(MainMigrateCli.document(migrations).toString()).jsonObject
 
         assertEquals(
-            "pipelinek.migrate/4",
+            "pipelinek.migrate/5",
             parsed["schema"]?.jsonPrimitive?.content,
             "the document names the schema a consumer parses it by",
         )
@@ -314,7 +314,7 @@ class MainMigrateCliTest {
         assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
         val parsed = Json.parseToJsonElement(out.toString(Charsets.UTF_8.name())).jsonObject
         assertEquals(
-            "pipelinek.migrate/4",
+            "pipelinek.migrate/5",
             parsed["schema"]?.jsonPrimitive?.content,
             "what the verb publishes is the document the schema names",
         )

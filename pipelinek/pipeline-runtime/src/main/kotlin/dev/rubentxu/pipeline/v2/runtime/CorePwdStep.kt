@@ -158,6 +158,10 @@ object CorePwdStep {
         stepId = "core.pwd",
         name = "pwd",
         jenkinsSurface = "pwd",
+        jenkinsDivergence = "Jenkins hands back the path of the workspace when the step runs; here the " +
+            "path is the typed output of the step, and the eager DSL — whose plan is built before the " +
+            "workspace exists — answers the sentinel `<workspace>`. The real path arrives as the " +
+            "`PwdResolved` event of the step.",
         configRef = "",
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.READ_ONLY),

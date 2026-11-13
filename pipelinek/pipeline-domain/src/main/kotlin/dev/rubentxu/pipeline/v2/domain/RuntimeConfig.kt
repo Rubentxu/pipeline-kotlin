@@ -78,12 +78,18 @@ interface RuntimeConfig {
     fun osName(): String
 
     /**
-     * Returns the current working directory of the user. Exposed as a port
-     * method so DSL `pwd()` / `isUnix()` synchronous return values do not
-     * couple the `:pipeline-scripting-api` adapter to global JVM state.
+     * Returns the current working directory of the process.
      *
      * No production site other than `SystemRuntimeConfig` should read the JVM
      * user-dir property directly; nothing enforces that today.
+     *
+     * The DSL does NOT read it, and that is a decision: the eager DSL used to
+     * be wired to answer `pwd()` with this value, and it would have been a
+     * path that looks real and is wrong. The directory of the process that
+     * compiles the script is not the workspace of the stage — the workspace is
+     * allocated when the run happens — so the answer of `pwd()` is the
+     * sentinel that names the workspace, and the real path is the typed
+     * output of the step that resolves it.
      */
     fun userDir(): String
 }

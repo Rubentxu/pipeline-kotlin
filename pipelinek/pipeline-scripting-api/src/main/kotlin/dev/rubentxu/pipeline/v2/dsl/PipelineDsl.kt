@@ -671,13 +671,13 @@ class OptionsScope {
 */
 @PostDslMarker
 class PostScope {
-    private val alwaysSteps = mutableListOf<StepSpec>()
-    private val successSteps = mutableListOf<StepSpec>()
-    private val failureSteps = mutableListOf<StepSpec>()
-    private val unstableSteps = mutableListOf<StepSpec>()
-    private val abortedSteps = mutableListOf<StepSpec>()
-    private val unsuccessfulSteps = mutableListOf<StepSpec>()
-    private val cleanupSteps = mutableListOf<StepSpec>()
+    private val alwaysSteps = StepSequence()
+    private val successSteps = StepSequence()
+    private val failureSteps = StepSequence()
+    private val unstableSteps = StepSequence()
+    private val abortedSteps = StepSequence()
+    private val unsuccessfulSteps = StepSequence()
+    private val cleanupSteps = StepSequence()
 
     fun always(block: PostStepsScope.() -> Unit) = record(alwaysSteps, block)
 
@@ -693,10 +693,10 @@ class PostScope {
 
     fun cleanup(block: PostStepsScope.() -> Unit) = record(cleanupSteps, block)
 
-    private fun record(into: MutableList<StepSpec>, block: PostStepsScope.() -> Unit) {
+    private fun record(into: StepSequence, block: PostStepsScope.() -> Unit) {
         val scope = PostStepsScope()
         scope.block()
-        into.addAll(scope.steps)
+        into.declareAll(scope.capture())
     }
 
     /**
@@ -723,9 +723,10 @@ class PostScope {
 
     private fun MutableMap<dev.rubentxu.pipeline.v2.domain.post.PostCondition, List<StepSpec>>.putIfNotEmpty(
         condition: dev.rubentxu.pipeline.v2.domain.post.PostCondition,
-        steps: List<StepSpec>,
+        steps: StepSequence,
     ) {
-        if (steps.isNotEmpty()) put(condition, steps.toList())
+        val captured = steps.capture()
+        if (captured.isNotEmpty()) put(condition, captured)
     }
 }
 
@@ -734,18 +735,36 @@ class PostScope {
 */
 @PostDslMarker
 class PostStepsScope {
-    val steps = mutableListOf<StepSpec>()
+    /**
+     * The owner of this scope's sequence of steps.
+     *
+     * The list it writes into is the one this scope publishes: the scope and
+     * the owner hold ONE list, and the scope declares into it through the
+     * owner.
+     */
+    private val sequence = StepSequence()
+
+    /**
+     * The steps this scope declares.
+     *
+     * The list belongs to the OWNER and this scope publishes it, so the two are
+     * one list and not two.
+     */
+    val steps: MutableList<StepSpec> get() = sequence.published()
+
+    /** The steps declared so far, as they are: a snapshot. */
+    internal fun capture(): List<StepSpec> = sequence.capture()
 
     fun echo(text: String) {
-        steps.add(StepSpec.Echo(text))
+        sequence.echo(text)
     }
 
     fun sh(command: String) {
-        steps.add(StepSpec.Shell(command))
+        sequence.shell(command)
     }
 
     fun error(message: String, failureKind: FailureKind = FailureKind.USER) {
-        steps.add(StepSpec.Error(message, failureKind))
+        sequence.error(message, failureKind)
     }
 
     /**
@@ -759,11 +778,11 @@ class PostStepsScope {
      * one and the legacy spelling is only reachable by actually passing a token.
 */
     fun error(message: String, failureKind: String) {
-        steps.add(StepSpec.Error(message, LegacyResultVocabulary.failureKind(failureKind)))
+        sequence.error(message, LegacyResultVocabulary.failureKind(failureKind))
     }
 
     fun sleep(seconds: Long) {
-        steps.add(StepSpec.Sleep(seconds))
+        sequence.sleep(seconds)
     }
 }
 
@@ -777,7 +796,7 @@ class ParallelScope {
     fun branch(name: String, block: BranchScope.() -> Unit) {
         val scope = BranchScope()
         scope.block()
-        branches.add(StepSpec.BranchSpec(name, scope.steps))
+        branches.add(StepSpec.BranchSpec(name, scope.capture()))
     }
 
     fun build(): List<StepSpec.BranchSpec> = branches.toList()
@@ -788,18 +807,36 @@ class ParallelScope {
 */
 @StepDslMarker
 class BranchScope {
-    val steps = mutableListOf<StepSpec>()
+    /**
+     * The owner of this scope's sequence of steps.
+     *
+     * The list it writes into is the one this scope publishes: the scope and
+     * the owner hold ONE list, and the scope declares into it through the
+     * owner.
+     */
+    private val sequence = StepSequence()
+
+    /**
+     * The steps this scope declares.
+     *
+     * The list belongs to the OWNER and this scope publishes it, so the two are
+     * one list and not two.
+     */
+    val steps: MutableList<StepSpec> get() = sequence.published()
+
+    /** The steps declared so far, as they are: a snapshot. */
+    internal fun capture(): List<StepSpec> = sequence.capture()
 
     fun echo(text: String) {
-        steps.add(StepSpec.Echo(text))
+        sequence.echo(text)
     }
 
     fun sh(command: String) {
-        steps.add(StepSpec.Shell(command))
+        sequence.shell(command)
     }
 
     fun error(message: String, failureKind: FailureKind = FailureKind.USER) {
-        steps.add(StepSpec.Error(message, failureKind))
+        sequence.error(message, failureKind)
     }
 
     /**
@@ -813,11 +850,11 @@ class BranchScope {
      * one and the legacy spelling is only reachable by actually passing a token.
 */
     fun error(message: String, failureKind: String) {
-        steps.add(StepSpec.Error(message, LegacyResultVocabulary.failureKind(failureKind)))
+        sequence.error(message, LegacyResultVocabulary.failureKind(failureKind))
     }
 
     fun sleep(seconds: Long) {
-        steps.add(StepSpec.Sleep(seconds))
+        sequence.sleep(seconds)
     }
 
     /**
@@ -831,7 +868,7 @@ class BranchScope {
     fun dir(path: String, block: BranchScope.() -> Unit) {
         val inner = BranchScope()
         inner.block()
-        steps.add(StepSpec.Dir(path = path, steps = inner.steps.toList()))
+        sequence.dir(path, inner.capture())
     }
 
     /**
@@ -851,14 +888,12 @@ class BranchScope {
     ) {
         val inner = BranchScope()
         inner.block()
-        steps.add(
-            StepSpec.Lock(
-                resource = resource,
-                timeoutSeconds = timeoutSeconds,
-                reason = reason,
-                skipIfLocked = skipIfLocked,
-                steps = inner.steps.toList(),
-            ),
+        sequence.lock(
+            resource = resource,
+            timeoutSeconds = timeoutSeconds,
+            reason = reason,
+            skipIfLocked = skipIfLocked,
+            body = inner.capture(),
         )
     }
 }

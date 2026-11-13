@@ -148,7 +148,24 @@ open class StageScopeCore(
     protected val stageName: String,
     protected val runtimeConfig: RuntimeConfig,
 ) {
-    protected val steps = mutableListOf<StepSpec>()
+    /**
+     * The owner of this scope's sequence of steps.
+     *
+     * It is INTERNAL on purpose: the published surface of the scope does not
+     * move, and where a step is built is not a consumer's business. The
+     * scope writes into the owner and never into a list of its own.
+     */
+    internal val sequence = StepSequence()
+
+    /**
+     * The steps this scope declares.
+     *
+     * The list belongs to the OWNER and this scope publishes it: the two are
+     * ONE list, and the scope declares into it through the owner. A scope that
+     * kept a list of its own beside the published one had two lists, and a
+     * step could land in the one nobody reads.
+     */
+    protected val steps: MutableList<StepSpec> get() = sequence.published()
 
     // ------------------------------------------------------------------
     // Admission-time enforcement
@@ -260,7 +277,7 @@ open class StageScopeCore(
         }
 
     fun echo(text: String) {
-        steps.add(StepSpec.Echo(text))
+        sequence.echo(text)
     }
 
     /**
@@ -274,7 +291,7 @@ open class StageScopeCore(
      * @param command the command the shell runs
      */
     fun sh(command: String) {
-        steps.add(StepSpec.Shell(command))
+        sequence.shell(command)
     }
 
     /**
@@ -294,17 +311,11 @@ open class StageScopeCore(
      * @param returnStdout whether the step asks for the captured standard output
      */
     fun sh(script: String, isScriptBlock: Boolean = false, returnStdout: Boolean = false) {
-        steps.add(
-            StepSpec.Shell(
-                command = script,
-                isScriptBlock = isScriptBlock,
-                returnStdout = returnStdout,
-            ),
-        )
+        sequence.shell(script, isScriptBlock, returnStdout)
     }
 
     fun error(message: String, failureKind: FailureKind = FailureKind.USER) {
-        steps.add(StepSpec.Error(message, failureKind))
+        sequence.error(message, failureKind)
     }
 
     /**
@@ -317,15 +328,15 @@ open class StageScopeCore(
      * overloads; the bare call resolves to the typed one.
 */
     fun error(message: String, failureKind: String) {
-        steps.add(StepSpec.Error(message, LegacyResultVocabulary.failureKind(failureKind)))
+        sequence.error(message, LegacyResultVocabulary.failureKind(failureKind))
     }
 
     fun sleep(seconds: Long) {
-        steps.add(StepSpec.Sleep(seconds))
+        sequence.sleep(seconds)
     }
 
     fun checkout(scm: Scm) {
-        steps.add(StepSpec.Checkout(scm))
+        sequence.declare(StepSpec.Checkout(scm))
     }
 
     /**
@@ -546,7 +557,7 @@ open class StageScopeCore(
     fun parallel(block: ParallelScope.() -> Unit) {
         val scope = ParallelScope()
         scope.block()
-        steps.add(StepSpec.Parallel(scope.build().map { StepSpec.BranchSpec(it.name, it.steps) }))
+        sequence.declare(StepSpec.Parallel(scope.build().map { StepSpec.BranchSpec(it.name, it.steps) }))
     }
 
     fun withCredentials(binding: StepSpec.CredentialsBinding, block: StageScope.() -> Unit) {
@@ -567,7 +578,7 @@ open class StageScopeCore(
         val purpose = bindings.firstOrNull()?.variable
             ?: bindings.firstOrNull()?.usernameVariable
             ?: ""
-        steps.add(
+        sequence.declare(
             StepSpec.WithCredentialsBlock(
                 credentialsId = primaryId,
                 purpose = purpose,
@@ -616,7 +627,7 @@ open class StageScopeCore(
     fun script(block: StageScope.() -> Unit) {
         val inner = blockScope("script")
         inner.block()
-        steps.addAll(inner.steps())
+        sequence.declareAll(inner.steps())
     }
 
     /**
@@ -665,7 +676,7 @@ open class StageScopeCore(
     fun steps(block: StageScope.() -> Unit) {
         val inner = blockScope("steps")
         inner.block()
-        steps.addAll(inner.steps())
+        sequence.declareAll(inner.steps())
     }
 
     /**
@@ -675,7 +686,7 @@ open class StageScopeCore(
      * opened it, and it shares its name with the block of [steps] because the two
      * are about the same thing: the steps of a scope. The arity tells them apart.
      */
-    fun steps(): List<StepSpec> = steps.toList()
+    fun steps(): List<StepSpec> = sequence.capture()
 
 }
 
@@ -711,7 +722,7 @@ open class StageScopeTopSteps(
     )
 
     fun writeFile(file: String, text: String, encoding: String = "UTF-8") {
-        steps.add(StepSpec.WriteFile(file = file, text = text, encoding = encoding))
+        sequence.declare(StepSpec.WriteFile(file = file, text = text, encoding = encoding))
     }
 
     fun registryStep(
@@ -719,7 +730,7 @@ open class StageScopeTopSteps(
         encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
         schemaVersion: String = "dsl-v1",
     ) {
-        steps.add(StepSpec.RegistryStepSpec(stepKey, schemaVersion, encodedInput))
+        sequence.declare(StepSpec.RegistryStepSpec(stepKey, schemaVersion, encodedInput))
     }
 
     fun registryBlock(
@@ -730,7 +741,7 @@ open class StageScopeTopSteps(
     ) {
         val inner = blockScope("registryBlock")
         inner.block()
-        steps.add(StepSpec.RegistryBlockSpec(stepKey, schemaVersion, encodedInput, inner.steps()))
+        sequence.declare(StepSpec.RegistryBlockSpec(stepKey, schemaVersion, encodedInput, inner.steps()))
     }
 
     /**
@@ -747,7 +758,7 @@ open class StageScopeTopSteps(
      * @param encoding the encoding the file is read with
      */
     fun readFile(file: String, encoding: String = "UTF-8") {
-        steps.add(StepSpec.ReadFile(file = file, encoding = encoding))
+        sequence.declare(StepSpec.ReadFile(file = file, encoding = encoding))
     }
 
     /**
@@ -763,7 +774,7 @@ open class StageScopeTopSteps(
      * @param file the file, relative to the workspace of the stage
      */
     fun fileExists(file: String) {
-        steps.add(StepSpec.FileExists(file = file))
+        sequence.declare(StepSpec.FileExists(file = file))
     }
 
     /**
@@ -801,7 +812,7 @@ open class StageScopeTopSteps(
             inner.inheritedEnvironment?.values.orEmpty() + declaredOverrides(overrides),
         )
         inner.block()
-        steps.add(StepSpec.WithEnv(overrides = overrides, steps = inner.steps()))
+        sequence.declare(StepSpec.WithEnv(overrides = overrides, steps = inner.steps()))
     }
 
     fun withEnv(overrides: Array<String>, block: StageScope.() -> Unit) {
@@ -840,7 +851,7 @@ open class StageScopeTopSteps(
         fingerprint: Boolean = false,
         name: String? = null,
     ) {
-        steps.add(
+        sequence.declare(
             StepSpec.ArchiveArtifacts(
                 artifacts = artifacts,
                 allowEmptyArchive = allowEmptyArchive,
@@ -853,7 +864,7 @@ open class StageScopeTopSteps(
 
     fun artifactQuery(name: String) {
         val encoded = "{\"kind\":\"artifactQuery\",\"name\":\"${escapeJsonString(name)}\"}"
-        steps.add(
+        sequence.declare(
             StepSpec.RegistryStepSpec(
                 stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.artifact.query"),
                 schemaVersion = "dsl-v1",
@@ -888,7 +899,7 @@ open class StageScopeTopSteps(
             "a parameter read needs the name of the parameter it reads"
         }
         val encoded = "{\"kind\":\"param\",\"name\":\"${escapeJsonString(name)}\"}"
-        steps.add(
+        sequence.declare(
             StepSpec.RegistryStepSpec(
                 stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.param"),
                 schemaVersion = "dsl-v1",
@@ -900,7 +911,7 @@ open class StageScopeTopSteps(
     fun dir(path: String, block: StageScope.() -> Unit) {
         val inner = blockScope("dir")
         inner.block()
-        steps.add(StepSpec.Dir(path = path, steps = inner.steps()))
+        sequence.dir(path, inner.steps())
     }
 
     /**
@@ -927,14 +938,12 @@ open class StageScopeTopSteps(
     ) {
         val inner = blockScope("lock")
         inner.block()
-        steps.add(
-            StepSpec.Lock(
-                resource = resource,
-                timeoutSeconds = timeoutSeconds,
-                reason = reason,
-                skipIfLocked = skipIfLocked,
-                steps = inner.steps(),
-            ),
+        sequence.lock(
+            resource = resource,
+            timeoutSeconds = timeoutSeconds,
+            reason = reason,
+            skipIfLocked = skipIfLocked,
+            body = inner.steps(),
         )
     }
 
@@ -963,7 +972,7 @@ open class StageScopeTopSteps(
     ) {
         val inner = blockScope("input")
         inner.block()
-        steps.add(
+        sequence.declare(
             StepSpec.Input(
                 message = message,
                 ok = ok,

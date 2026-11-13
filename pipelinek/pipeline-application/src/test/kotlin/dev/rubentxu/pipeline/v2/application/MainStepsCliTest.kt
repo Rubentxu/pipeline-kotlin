@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry
 import dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition
+import dev.rubentxu.pipeline.v2.domain.step.JenkinsForms
 import dev.rubentxu.pipeline.v2.domain.step.StepCatalogue
 import dev.rubentxu.pipeline.v2.domain.step.StepCatalogueEntry
 import dev.rubentxu.pipeline.v2.runtime.AgentDirectiveDefinition
@@ -114,7 +115,7 @@ class MainStepsCliTest {
 
         val parsed = Json.parseToJsonElement(document.toString()).jsonObject
         assertEquals(
-            "pipelinek.steps/2",
+            "pipelinek.steps/3",
             parsed["schema"]?.jsonPrimitive?.content,
             "the document names the schema a consumer parses it by",
         )
@@ -147,6 +148,34 @@ class MainStepsCliTest {
         assertTrue(
             divergences.all { it.jsonObject["reason"]?.jsonPrimitive?.content?.isNotBlank() == true },
             "every divergence says WHY the two products differ",
+        )
+    }
+
+    @Test
+    fun `the document carries the forms of Jenkins and what the compiler prints for each one`() {
+        val document = MainStepsCli.document(coreEntries())
+
+        val parsed = Json.parseToJsonElement(document.toString()).jsonObject
+        val forms = parsed["forms"]?.jsonArray ?: fail("the document carries the forms")
+        assertEquals(
+            JenkinsForms.global().size,
+            forms.size,
+            "the document carries one form for every shape the recognition can name",
+        )
+        assertEquals(
+            JenkinsForms.global().map { form -> form.shape.name.lowercase() },
+            forms.map { form -> form.jsonObject["shape"]?.jsonPrimitive?.content },
+            "the forms of the document are the ones the code declares, in the same order",
+        )
+        assertTrue(
+            forms.all { form ->
+                val entry = form.jsonObject
+                entry["jenkinsForm"]?.jsonPrimitive?.content?.isNotBlank() == true &&
+                    entry["pipelineKForm"]?.jsonPrimitive?.content?.isNotBlank() == true &&
+                    entry["reason"]?.jsonPrimitive?.content?.isNotBlank() == true &&
+                    entry["suggestion"]?.jsonPrimitive?.content?.isNotBlank() == true
+            },
+            "every form says how Jenkins writes it, how this product writes it, why and what the compiler prints",
         )
     }
 
@@ -251,7 +280,7 @@ class MainStepsCliTest {
         assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
         val parsed = Json.parseToJsonElement(out.toString(Charsets.UTF_8.name())).jsonObject
         assertEquals(
-            "pipelinek.steps/2",
+            "pipelinek.steps/3",
             parsed["schema"]?.jsonPrimitive?.content,
             "what the verb publishes is the document the schema names",
         )

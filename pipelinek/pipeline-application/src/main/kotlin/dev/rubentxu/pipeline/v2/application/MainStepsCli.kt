@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.step.JenkinsDivergence
+import dev.rubentxu.pipeline.v2.domain.step.JenkinsForm
+import dev.rubentxu.pipeline.v2.domain.step.JenkinsForms
 import dev.rubentxu.pipeline.v2.domain.step.StepCatalogue
 import dev.rubentxu.pipeline.v2.domain.step.StepCatalogueEntry
 import dev.rubentxu.pipeline.v2.runtime.NoopPipelineTelemetry
@@ -78,14 +80,17 @@ internal object MainStepsCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.steps/2` since the document carries the divergences: the
-     * entries carry the equivalent in Jenkins and the divergence of THAT entry,
-     * and the document carries the section of the divergences that are the same
-     * for every script. A consumer that parses `/1` reads an entry without its
-     * divergence, and a document without a section cannot say what the product
-     * does; the version names that change.
+     * It is `pipelinek.steps/3` since the document carries the FORMS: the
+     * shapes of Jenkins that a script can be written in, the shape of this
+     * product that replaces each one, and the suggestion the compiler prints
+     * when a diagnostic lands on one of them. It was `pipelinek.steps/2` when
+     * the document carried the divergences: the entries carry the equivalent in
+     * Jenkins and the divergence of THAT entry, and the document carries the
+     * section of the divergences that are the same for every script. A consumer
+     * that parses `/1` reads an entry without its divergence, and a consumer
+     * that parses `/2` does not read the forms; the version names that change.
      */
-    const val SCHEMA: String = "pipelinek.steps/2"
+    const val SCHEMA: String = "pipelinek.steps/3"
 
     /**
      * The published document, as a value.
@@ -97,11 +102,28 @@ internal object MainStepsCli {
     fun document(
         entries: List<StepCatalogueEntry>,
         divergences: List<JenkinsDivergence> = StepCatalogue.divergences(),
+        forms: List<JenkinsForm> = JenkinsForms.global(),
     ): JsonObject = buildJsonObject {
         put("schema", JsonPrimitive(SCHEMA))
         put("version", JsonPrimitive(RuntimeApiVersion.readImplementationVersion() ?: "unknown"))
         put("entries", JsonArray(entries.map { entry -> entryOf(entry) }))
         put("divergences", JsonArray(divergences.map { divergence -> divergenceOf(divergence) }))
+        put("forms", JsonArray(forms.map { form -> formOf(form) }))
+    }
+
+    /**
+     * One form of Jenkins, as the document carries it.
+     *
+     * The suggestion travels with it because it is the sentence the compiler
+     * prints: a reader of the document can see the exact text the author will
+     * read, instead of a form they have to imagine.
+     */
+    private fun formOf(form: JenkinsForm): JsonObject = buildJsonObject {
+        put("shape", JsonPrimitive(form.shape.name.lowercase()))
+        put("jenkinsForm", JsonPrimitive(form.jenkinsForm))
+        put("pipelineKForm", JsonPrimitive(form.pipelineKForm))
+        put("reason", JsonPrimitive(form.reason))
+        put("suggestion", JsonPrimitive(form.suggestion))
     }
 
     /**

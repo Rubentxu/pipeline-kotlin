@@ -305,7 +305,7 @@ class Kotlin24ScriptingHost(
         val diagnostics = rwd.reports
             .filter { it.severity >= ScriptDiagnostic.Severity.INFO }
             .filterNot(::isJarFileSystemNote)
-            .map(::mapDiagnostic)
+            .map { report -> mapDiagnostic(report, escapedText) }
         val result = if (rwd is ResultWithDiagnostics.Success) {
             @Suppress("UNCHECKED_CAST")
             val evalResult = rwd.value as kotlin.script.experimental.api.EvaluationResult
@@ -566,7 +566,28 @@ class Kotlin24ScriptingHost(
             report.location == null &&
             report.message.startsWith(JAR_FILE_SYSTEM_NOTE)
 
-    private fun mapDiagnostic(diag: ScriptDiagnostic): ScriptingDiagnostic {
+    /**
+     * The diagnostic the compiler raised, with the suggestion of the form of
+     * Jenkins it holds.
+     *
+     * The suggestion is APPENDED to the message the compiler gave, and it
+     * changes nothing else: the severity stays the one of the error, the
+     * position stays the one the compiler pointed at, and the count of the
+     * diagnostics stays the count of what the compiler said. A diagnostic that
+     * holds no form of Jenkins keeps the words it came with.
+     *
+     * The suggestion rides only on a diagnostic that STOPPED the compilation.
+     * A warning did not stop anything, and the compiler may have had something
+     * else to say about that token: a `Char` of Kotlin is legal, and a warning
+     * about a template that holds one is not a complaint about the form of
+     * Jenkins.
+     *
+     * The [source] is the text the compiler saw, because that is where the
+     * positions point. The cache keeps the reports of the compiler RAW, and
+     * this mapping happens on every compilation, the reused ones included, so
+     * the script says the same thing the first time and the second.
+     */
+    private fun mapDiagnostic(diag: ScriptDiagnostic, source: String): ScriptingDiagnostic {
         val severity = when (diag.severity) {
             ScriptDiagnostic.Severity.DEBUG -> ScriptDiagnosticSeverity.DEBUG
             ScriptDiagnostic.Severity.INFO -> ScriptDiagnosticSeverity.INFO
@@ -580,9 +601,13 @@ class Kotlin24ScriptingHost(
         val column = location?.start?.col ?: 0
         val path = diag.sourcePath ?: "<synthetic>"
 
+        val stopped = severity >= ScriptDiagnosticSeverity.ERROR
+        val suggestion = if (stopped) JenkinsFormSuggestions.suggestionFor(source, line, column) else null
+        val message = if (suggestion == null) diag.message else "${diag.message} $suggestion"
+
         return ScriptingDiagnostic(
             severity = severity,
-            message = diag.message,
+            message = message,
             line = line,
             column = column,
             path = path

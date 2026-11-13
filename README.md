@@ -397,7 +397,19 @@ step       core.sh                           sh
 step       scm-git.checkout                  scm-git.checkout
 ```
 
-`pipelinek steps --json` publishes the same catalogue as one document of the schema `pipelinek.steps/2`: one entry per key, with the effects the step declares, what a replay does with it, what the engine does with it when the run died with it still RUNNING, the capabilities it needs, the JSON Schema of its payload, the equivalent in Jenkins and the divergence of THAT entry. The document also carries a `divergences` section: the differences that are the same for every script —the ones the language imposes and the ones the product decides— each with its name and its motive.
+`pipelinek steps --json` publishes the same catalogue as one document of the schema `pipelinek.steps/3`: one entry per key, with the effects the step declares, what a replay does with it, what the engine does with it when the run died with it still RUNNING, the capabilities it needs, the JSON Schema of its payload, the equivalent in Jenkins and the divergence of THAT entry. The document also carries a `divergences` section: the differences that are the same for every script —the ones the language imposes and the ones the product decides— each with its name and its motive. And a `forms` section: the shapes of Jenkins a script can be written in, the shape of PipelineK that replaces each one, and the sentence the compiler prints when a diagnostic lands on one of them.
+
+When a `.pipeline.kts` is written in the form of Jenkins, the diagnostic says what to write instead. The compiler points at the token that is wrong —the quote of a Groovy string, the colon of a Groovy named argument, the `env` of `env.BRANCH_NAME`— and the suggestion names the form of PipelineK that replaces it:
+
+```bash
+$ pipelinek validate jenkins.pipeline.kts
+[PipelineK] Compiling pipeline
+[PipelineK] Compilation finished with 1 error (compiled)
+jenkins.pipeline.kts:4:16: Too many characters in a character literal. In PipelineK: a string is written between double quotes: "make".
+VALIDATION FAILED: 1 error
+```
+
+The suggestion is the sentence of the `forms` section of the catalogue, and it reaches the runner: the console, `validate` and `run`. It does not reach the IDE, which compiles the script with its own compiler and never passes through the runner's host.
 
 `pipelinek describe sh` prints the card of one entry, named by its key (`core.sh`) or by its name (`sh`):
 

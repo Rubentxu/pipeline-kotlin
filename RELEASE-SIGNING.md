@@ -216,7 +216,7 @@ channel, and the guard never asks an account whether it holds a key.
 ## How a consumer verifies a published artifact
 
 Every artifact of the bundle carries a detached signature beside it:
-`pipelinek-domain-0.97.0.jar` and `pipelinek-domain-0.97.0.jar.asc`. The
+`pipelinek-domain-0.98.0.jar` and `pipelinek-domain-0.98.0.jar.asc`. The
 signature is made with the key declared for the Maven artifacts, and the check
 is the same one this repository runs over its own bundle before it travels.
 
@@ -226,7 +226,7 @@ is the same one this repository runs over its own bundle before it travels.
 gpg --import pipelinek-maven-artifacts.asc
 
 # 2. the signature verifies, and it carries the published fingerprint.
-gpg --verify pipelinek-domain-0.97.0.jar.asc pipelinek-domain-0.97.0.jar
+gpg --verify pipelinek-domain-0.98.0.jar.asc pipelinek-domain-0.98.0.jar
 ```
 
 A good signature prints `Good signature` and the fingerprint of the key that
@@ -245,7 +245,7 @@ equivalent: the `.asc` that sits beside the artifact is what a consumer can
 check, with `gpg --verify`, before it trusts the bytes.
 
 **The Maven channel carries 0.97.0 today.** The release this tree declares is
-0.97.0 (`pipelinek/build.gradle.kts`), and it is published; the newest
+0.98.0 (`pipelinek/build.gradle.kts`), and it is not published yet; the newest
 release the channel serves is 0.97.0, in Maven Central under the group
 `dev.rubentxu.pipelinek`, together with 0.95.0 and 0.96.0, which share those
 coordinates. The release before them, 0.94.2, was published under the

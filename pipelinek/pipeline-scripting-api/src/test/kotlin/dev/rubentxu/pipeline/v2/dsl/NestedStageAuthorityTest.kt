@@ -17,11 +17,10 @@ import org.junit.jupiter.api.Timeout
  *
  * ## The guarantee under trial
  *
- * That a declaration that belongs to the STAGE —the agent, the gate, the
- * declarative environment, the options, the post conditions and the
- * directives— is REFUSED where it is written when it is written inside a
- * block that carries steps, and that the stage itself keeps every one of
- * those declarations.
+ * That a declaration that belongs to the STAGE —the gate, the declarative
+ * environment, the options, the post conditions and the directives— is
+ * REFUSED where it is written when it is written inside a block that carries
+ * steps, and that the stage itself keeps every one of those declarations.
  *
  * ## Why the refusal and not the MERGE
  *
@@ -36,9 +35,9 @@ import org.junit.jupiter.api.Timeout
  * ## What this file does NOT affirm
  *
  * It does not affirm that the stage's own declarations work at RUN time: the
- * gate is decided by the coordinator, and the agent by the resolver. What it
- * affirms is that the declaration REACHES the plan, and that the one written
- * in the wrong place never reaches anything.
+ * gate is decided by the coordinator. What it affirms is that the declaration
+ * REACHES the plan, and that the one written in the wrong place never reaches
+ * anything.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class NestedStageAuthorityTest {
@@ -142,49 +141,6 @@ class NestedStageAuthorityTest {
             gates.size,
             "the gate the stage declares reaches the plan: the stage is where the gate has " +
                 "authority",
-        )
-    }
-
-    /**
-     * The agent of the BODY of the stage still reaches the plan, and the agent
-     * declared inside a block is refused.
-     */
-    @Test
-    @DisplayName("the agent of the body of the stage reaches the plan, and the one of a block is refused")
-    fun theAgentOfTheBodyOfTheStageReachesThePlanAndTheOneOfABlockIsRefused() {
-        val spec = pipeline {
-            stages {
-                stage("deploy") {
-                    agent(label = "linux")
-                    sh("./deploy.sh")
-                }
-            }
-        }
-
-        assertEquals(
-            1,
-            spec.stages.single().directives.count { directive ->
-                directive.key == dev.rubentxu.pipeline.v2.domain.directivekey.AGENT_DIRECTIVE_KEY.value
-            },
-            "the agent the stage declares reaches the plan",
-        )
-
-        val refusal = assertThrows(IllegalArgumentException::class.java) {
-            pipeline {
-                stages {
-                    stage("deploy") {
-                        steps {
-                            agent(label = "linux")
-                            sh("./deploy.sh")
-                        }
-                    }
-                }
-            }
-        }
-        assertTrue(
-            refusal.message?.contains("`agent`") == true,
-            "the refusal names the declaration that is refused: the message was " +
-                "'${refusal.message}'",
         )
     }
 

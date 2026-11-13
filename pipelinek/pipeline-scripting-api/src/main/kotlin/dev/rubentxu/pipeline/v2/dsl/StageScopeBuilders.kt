@@ -86,8 +86,7 @@ internal class CarrierRegistry {
  * received the declaration reaches only the members of THAT scope — and the
  * scope that holds the rule is declared in another file. The rule therefore
  * lives in an object of its own, and every declaration that has to refuse
- * calls it by its name. It is the same reason the requirement of the agent
- * lives in [AgentRequirements].
+ * calls it by its name.
  */
 internal object StageAuthority {
 

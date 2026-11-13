@@ -42,15 +42,16 @@ class AgentDirectiveDefinition :
     /**
      * The divergence with the Jenkins `node`, with its motive.
      *
-     * In Jenkins the step ALLOCATES an executor on an agent. Here the agent is a
-     * DIRECTIVE of the stage, resolved before the body runs, and the `node` step
-     * of the DSL refuses itself: no registered definition owns the key it
-     * lowers to, so the admission of the step refuses it.
+     * In Jenkins the step ALLOCATES an executor on an agent. Here nothing is
+     * allocated: the run executes on the machine where it started. The agent
+     * survives only as a DIRECTIVE of the stage — resolved before the body
+     * runs, and carried by the plans composed before the language stopped
+     * authoring it — and the language does not author it any more.
      */
     override val jenkinsDivergence: String get() =
-        "in Jenkins the node step ALLOCATES an executor on an agent; here the agent is a " +
-            "DIRECTIVE of the stage, and the node step of the DSL refuses itself: no " +
-            "definition owns the key it lowers to."
+        "in Jenkins the node step ALLOCATES an executor on an agent; here nothing is allocated: " +
+            "the run executes on the machine where it started. The agent survives only as a " +
+            "DIRECTIVE of the stage, and the language no longer authors it."
 
     /**
      * Resolved before the stage body runs.

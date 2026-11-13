@@ -18,8 +18,8 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * [ExecutionTargetRequirement.LocalLabels] is decided against the labels the
  * host actually advertises, derived from [RuntimeConfig.osName]. This is
  * deliberately a real, observable property of the machine and not a
- * configuration file: `agent { label 'linux' }` succeeds on Linux and is
- * refused on Windows, which is what a Jenkins user expects and what a
+ * configuration file: a requirement of the label `linux` succeeds on Linux and
+ * is refused on Windows, which is what a Jenkins user expects and what a
  * hard-coded label list would only simulate.
  * [ExecutionTargetRequirement.CapabilitySet] is decided against the
  * capabilities the runtime was actually granted, not against a static table of
@@ -43,7 +43,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * that reads the host. It is not the only one — no gate says it is — so this
  * resolver earns its single authority by asking the port instead of reading
  * `System.getenv` itself. It asks the port for the platform and never reads
- * the host directly, so `agent(label = ...)`
+ * the host directly, so the agent requirement
  * and `core.isUnix` cannot disagree about which machine they are on: there is
  * one platform authority and this is not a second one. It is also read at
  * acquire time rather than construction time, which is what [RuntimeConfig]
@@ -117,8 +117,8 @@ class LocalExecutionTargetResolver(
      * Labels the local host advertises.
      * `unix` is added for every non-Windows platform because that is the label
      * Jenkins authors actually write, and a label set that only ever contains
-     * the raw os.name would refuse `agent { label 'unix' }` on a machine that
-     * obviously is one.
+     * the raw os.name would refuse a requirement of the label `unix` on a
+     * machine that obviously is one.
 */
     private fun advertisedLabels(osName: String): Set<AgentLabel> = buildSet {
         add(AgentLabel(osName.lowercase()))

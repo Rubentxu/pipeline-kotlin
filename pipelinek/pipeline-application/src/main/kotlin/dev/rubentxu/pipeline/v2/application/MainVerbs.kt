@@ -255,6 +255,16 @@ internal fun runDescribeVerb(args: Array<String>, out: PrintStream, err: PrintSt
     verbExit(MainDescribeCli.main(args, out, err))
 
 /**
+ * `migrate` — what this product offers for the steps of Jenkins.
+ *
+ * Side-effect free, and it reads the same catalogue `steps` and `describe`
+ * read: the classification is a function of the entries the catalogue
+ * publishes, and it adds nothing to them.
+ */
+internal fun runMigrateVerb(args: Array<String>, out: PrintStream, err: PrintStream): CliExit =
+    verbExit(MainMigrateCli.main(args, out, err))
+
+/**
  * `doctor` — local-only health diagnostics.
  *
  * JDK version, operating system, working directory writability probe. Exits 0

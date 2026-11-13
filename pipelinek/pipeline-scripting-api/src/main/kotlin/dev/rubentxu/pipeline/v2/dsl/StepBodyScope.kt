@@ -66,9 +66,11 @@ import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
  *
  * So the values by default STAY in the concrete scopes, where the published
  * surface already carries them, and the forms that OMIT them are offered as
- * extensions over this type (see [StepBodyScopeExtensions]).
+ * extensions over this type: the package [dev.rubentxu.pipeline.v2.dsl]
+ * declares them.
  *
- * @see StepBodyScopeExtensions for the forms that omit a value by default.
+ * @see [dev.rubentxu.pipeline.v2.dsl.deleteDir] for an extension that omits a
+ *   value by default.
  */
 @StepDslMarker
 interface StepBodyScope :

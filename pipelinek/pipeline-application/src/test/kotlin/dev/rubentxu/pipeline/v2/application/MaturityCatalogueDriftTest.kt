@@ -147,7 +147,7 @@ class MaturityCatalogueDriftTest {
             ?: error("the manifest declares no surface for pipeline-scripting-api")
         val entry = scriptingApi["self-refusing-constructs"]?.jsonObject
             ?: error("the manifest declares no self-refusing surface for pipeline-scripting-api")
-        return entry["covers"]?.jsonArray?.map { element -> element.jsonPrimitive.content } ?: emptyList()
+        return entry["covers"]?.jsonArray?.map { element -> element.jsonPrimitive.content }.orEmpty()
     }
 
     /**

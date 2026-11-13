@@ -19,8 +19,11 @@ The steps of the DSL, one by one, and what each of them guarantees
 - `isUnix` — a step this example declares
 - `echo` — `"is unix: " + unix.toString()`
 - `timestamps` — a block
-  - `echo` — `timestamped output`
+  - `echo` — `output inside the announced scope`
+- `sh` — `touch marker-workspace-helpers`
 - `waitUntil(initialRecurrencePeriod = 100)` — a wait block
+  - `sh` — `test -f marker-workspace-helpers && echo READY`
+- `sh` — `rm marker-workspace-helpers`
 - `echo` — `waitUntil done`
 
 ## What it expects
@@ -46,5 +49,5 @@ pipelinek run      examples/catalogue/features/steps/workspace-helpers/workspace
 
 - **Historical name:** `13-workspace-helpers.pipeline.kts`
 - **Origin path:** `examples/steps/13-workspace-helpers.pipeline.kts`
-- **Body digest:** `sha256:65512e5476a331742ba11436de51f2d17eeabf81c8bfb26e9e98628e6ee05b00`
+- **Body digest:** `sha256:cd3343e943c63507643bcad501368a06bab4cc650596f68865aa8a261b10bb9a`
 - **Origin digest:** `sha256:9a87f6458cf7721c0867983e74a48834b50e452bc949b29606b36f9651bd3ff5`

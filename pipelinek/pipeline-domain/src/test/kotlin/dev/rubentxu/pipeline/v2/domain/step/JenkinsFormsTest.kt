@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
  * The compiler prints a suggestion and the catalogue publishes the form it
  * comes from, and both read this table. A shape the recognition can name has
  * exactly one form, and every form says what it is, what replaces it, why the
- * two differ and what the compiler prints.
+ * compiler stops there and what the compiler prints.
  *
  * ## Why each row is here
  *
@@ -24,8 +24,8 @@ import java.util.concurrent.TimeUnit
  *   fact unless a row says they agree: a shape with no form would produce no
  *   suggestion, and a form with no shape would publish a row nobody can ask
  *   for.
- * - A form that does not say why the two differ is a form that names a
- *   difference the reader has to discover by failing.
+ * - A form that does not say why the compiler stops there is a form that names
+ *   a difference the reader has to discover by failing.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class JenkinsFormsTest {
@@ -59,7 +59,7 @@ class JenkinsFormsTest {
             )
             assertTrue(
                 form.reason.isNotBlank(),
-                "the form ${form.shape} does not say why the two differ",
+                "the form ${form.shape} does not say why the compiler stops there",
             )
             assertTrue(
                 form.suggestion.isNotBlank(),

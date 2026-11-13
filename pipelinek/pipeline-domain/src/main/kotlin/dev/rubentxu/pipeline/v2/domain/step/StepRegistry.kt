@@ -87,7 +87,8 @@ interface StepCodec<T : Any> {
      * input/output schema.
      *
      * A codec that declares the arguments of its step overrides this and
-     * returns the schema of those arguments ([StepArguments.jsonSchema]). A
+     * returns the schema of those arguments
+     * ([dev.rubentxu.pipeline.v2.domain.StepArguments.jsonSchema]). A
      * codec that does not override it declares NOTHING, and the catalogue
      * publishes no schema for the step: the reader can tell "this step takes
      * no arguments" from "nobody said", because a step that takes no

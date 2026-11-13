@@ -24,9 +24,9 @@ import java.nio.file.Path
  * ## Workspace Lifecycle
  * | Event | Action |
  * |-------|--------|
- * | Stage starts | `ensureCreated()` — lazy creation only when stage has shell steps |
- * | Stage completes (SUCCESS) | `cleanupAfterComplete()` — remove workspace |
- * | Stage fails/LOST/FAILED_TIMEOUT | `retainOnFailure()` — no-op (already retained) |
+ * | Stage starts | `ensureCreated()` — the directory of the stage is created when the stage is dispatched |
+ * | Stage completes (SUCCESS) | the workspace SURVIVES the stage: `cleanupAfterComplete()` removes it, and the run does not call it |
+ * | Stage fails/LOST/FAILED_TIMEOUT | nothing is removed either: `retainOnFailure()` is a no-op |
  * @param controlDirRoot The root directory for all control directories.
  * Durable sh Pattern</a>
 */
@@ -115,11 +115,29 @@ class WorkspaceResolver(
 
     /**
      * Cleans up the workspace directory after successful completion.
-     * Removes the workspace directory recursively.
+     *
+     * It removes the workspace of a stage, which is the run's own scratch
+     * under the control root, and it REFUSES the workspace the stages SHARE —
+     *and any directory inside it—: that one is the directory of the
+     * OPERATOR, their project and their code, and removing it would remove
+     * their project.
+     *
+     * The refusal is loud on purpose: a cleanup that does nothing in silence
+     * is indistinguishable from a cleanup that found nothing to remove, and
+     * the caller that asked has to learn that the directory it named is not
+     * the run's to remove.
+     *
      * Idempotent — safe to call even if directory doesn't exist.
      * @param path The workspace path to clean up.
+     * @throws IllegalArgumentException when [path] is the shared workspace.
 */
     fun cleanupAfterComplete(path: Path) {
+        val target = path.toAbsolutePath().normalize()
+        val shared = workspaceBase
+        require(shared == null || (target != shared && !target.startsWith(shared))) {
+            "the workspace '$target' is shared with the operator: it belongs to the directory " +
+                "the run was given, and the cleanup of a stage does not remove it"
+        }
         if (Files.exists(path)) {
             // `use`, not a bare chain: `Files.walk` returns a Stream that holds an open
             // directory handle for the duration of the walk, and this runs once per completed
@@ -141,13 +159,14 @@ class WorkspaceResolver(
 
     /**
      * Retains the workspace directory after failure.
-     * This is a no-op because workspace directories are already retained on failure
-     * by default (no deletion occurs on non-success outcomes).
-     * This method exists for API symmetry and explicit documentation.
+     *
+     * This is a no-op, and not only on failure: the run removes no workspace
+     * of a stage, on any outcome. The method exists for API symmetry and
+     * explicit documentation.
 */
     fun retainOnFailure() {
-        // No-op: workspaces are retained on failure by default
-        // Retention happens automatically because cleanupAfterComplete
-        // is only called on SUCCESS outcomes
+        // No-op: the run removes no workspace. The cleanup exists for a caller
+        // that wants to remove the scratch of a stage, and it refuses the
+        // workspace the stages share.
     }
 }

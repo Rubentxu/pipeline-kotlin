@@ -537,8 +537,40 @@ open class StageScopeTopSteps(
         steps.add(StepSpec.FileExists(file = file))
     }
 
+    /**
+     * A `withEnv` block: the steps it wraps run with the variables it declares.
+     *
+     * The block declares those variables for ITS OWN steps, and the runtime
+     * applies them to them — `scope.parentEnv + envOverrides`, in the body
+     * engine. A read inside the block that did not see them would bake the
+     * value of the host into the plan while the child ran with the value of
+     * the block, and the plan would say one thing about a variable the runtime
+     * answers differently.
+     *
+     * The scope the block opens therefore reads with the overrides on top of
+     * the variables the scope that opens the block declares: the declaration
+     * wins, name by name, with the precedence the gate already uses. The
+     * declaration does not travel back to the scope that opens the block: the
+     * block declares the variables of its steps, and not the ones of its
+     * parent.
+     *
+     * The name and the value are the ones the runtime reads, because the two
+     * have to answer the same thing: the FIRST `=` separates them, and an
+     * override without one declares the name with an empty value.
+     *
+     * What the runtime COMPOSES around those variables is not part of the
+     * declaration: the child of the block runs with the environment the
+     * model composes — the directories the toolchain adds to `PATH`, the
+     * `PATH+=` prepends — and a read answers the value the block declares.
+     *
+     * @param overrides the variables the block declares, as `NAME=VALUE`.
+     * @param block the steps that run with them.
+     */
     fun withEnv(overrides: List<String>, block: StageScope.() -> Unit) {
         val inner = nestedScope()
+        inner.inheritedEnvironment = EnvironmentSpec(
+            inner.inheritedEnvironment?.values.orEmpty() + declaredOverrides(overrides),
+        )
         inner.block()
         steps.add(StepSpec.WithEnv(overrides = overrides, steps = inner.steps()))
     }
@@ -550,6 +582,27 @@ open class StageScopeTopSteps(
     fun withEnv(overrides: Map<String, String>, block: StageScope.() -> Unit) {
         withEnv(overrides.map { "${it.key}=${it.value}" }, block)
     }
+
+    /**
+     * The name and the value each override declares.
+     *
+     * The rule is the one the runtime applies to the children of the block,
+     * because the read and the environment have to answer the same thing: the
+     * FIRST `=` separates the name from the value, and an override without one
+     * declares the name with an empty value.
+     *
+     * @param overrides the overrides the block declares.
+     * @return the variable each override declares, by name.
+     */
+    private fun declaredOverrides(overrides: List<String>): Map<String, String> =
+        overrides.associate { override ->
+            val separator = override.indexOf('=')
+            if (separator < 0) {
+                override to ""
+            } else {
+                override.substring(0, separator) to override.substring(separator + 1)
+            }
+        }
 
     fun archiveArtifacts(
         artifacts: String,

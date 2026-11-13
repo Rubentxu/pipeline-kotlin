@@ -136,6 +136,18 @@ object JenkinsDivergences {
                 "variable the stage DECLARES is visible; the one the agent happens to have is not.",
             scope = JenkinsDivergence.Scope.PRODUCT,
         ),
+        JenkinsDivergence(
+            name = "the declaration of a variable",
+            reason = "Jenkins declares a variable with an ASSIGNMENT inside the `environment { }` " +
+                "block (`FOO = 'x'`), and this product declares it with a CALL: " +
+                "`environment { env(\"FOO\", \"x\") }`. The assignment of Jenkins does not compile " +
+                "here: the compiler answers `Unresolved reference 'FOO'`, because the block of an " +
+                "environment is Kotlin, and an assignment does not DECLARE the name it assigns: " +
+                "the name has to be declared, and the call above is how this product declares it. " +
+                "The variable declared this way reaches the steps of the stage that declares it, " +
+                "and the one the pipeline declares reaches the steps of every stage.",
+            scope = JenkinsDivergence.Scope.PRODUCT,
+        ),
     )
 
     /**

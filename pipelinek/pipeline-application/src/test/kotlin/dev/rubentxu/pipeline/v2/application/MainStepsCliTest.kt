@@ -118,7 +118,7 @@ class MainStepsCliTest {
 
         val parsed = Json.parseToJsonElement(document.toString()).jsonObject
         assertEquals(
-            "pipelinek.steps/8",
+            "pipelinek.steps/9",
             parsed["schema"]?.jsonPrimitive?.content,
             "the document names the schema a consumer parses it by",
         )
@@ -130,15 +130,15 @@ class MainStepsCliTest {
     }
 
     @Test
-    fun `the document carries the global divergences, four of the language and five of the product`() {
+    fun `the document carries the global divergences, four of the language and six of the product`() {
         val document = MainStepsCli.document(coreEntries())
 
         val parsed = Json.parseToJsonElement(document.toString()).jsonObject
         val divergences = parsed["divergences"]?.jsonArray ?: fail("the document carries the divergences")
         assertEquals(
-            9,
+            10,
             divergences.size,
-            "the document carries the nine differences that are the same for every script",
+            "the document carries the ten differences that are the same for every script",
         )
         val byScope = divergences.groupBy { it.jsonObject["scope"]?.jsonPrimitive?.content.orEmpty() }
         assertEquals(
@@ -147,7 +147,7 @@ class MainStepsCliTest {
             "a divergence says whether the language or the product imposes it",
         )
         assertEquals(4, byScope.getValue("language").size, "four of the differences the language imposes")
-        assertEquals(5, byScope.getValue("product").size, "five of the differences the product decides")
+        assertEquals(6, byScope.getValue("product").size, "six of the differences the product decides")
         assertTrue(
             divergences.all { it.jsonObject["reason"]?.jsonPrimitive?.content?.isNotBlank() == true },
             "every divergence says WHY the two products differ",
@@ -318,7 +318,7 @@ class MainStepsCliTest {
         val parsed = Json.parseToJsonElement(document.toString()).jsonObject
 
         assertEquals(
-            "pipelinek.steps/8",
+            "pipelinek.steps/9",
             parsed["schema"]?.jsonPrimitive?.content,
             "the document names the version a consumer parses it by, and the version moved with the " +
                 "meaning of the field",
@@ -434,7 +434,7 @@ class MainStepsCliTest {
         assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
         val parsed = Json.parseToJsonElement(out.toString(Charsets.UTF_8.name())).jsonObject
         assertEquals(
-            "pipelinek.steps/8",
+            "pipelinek.steps/9",
             parsed["schema"]?.jsonPrimitive?.content,
             "what the verb publishes is the document the schema names",
         )

@@ -81,7 +81,15 @@ internal object MainStepsCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.steps/8` since the reason of the DIVERGENCE of the
+     * It is `pipelinek.steps/9` since the reason of the DIVERGENCE of the
+     * DECLARATION of a variable says the form of Jenkins and the form of this
+     * product: the assignment `FOO = 'x'` does not compile, and the compiler
+     * answers `Unresolved reference 'FOO'`. The document that did not carry
+     * that difference sent the reader to a diagnostic with no pointer to the
+     * form that works, and a consumer that matched on the text it read has to
+     * read it again.
+     *
+     * It was `pipelinek.steps/8` since the reason of the DIVERGENCE of the
      * workspace says what the product does with the workspace of a stage: the
      * stages of a run SHARE one workspace by default, and the run that gives
      * every stage a workspace of its own is the one that asks for it with
@@ -131,7 +139,7 @@ internal object MainStepsCli {
      * in `forms` that said what `divergences` says; the version names that
      * change.
      */
-    const val SCHEMA: String = "pipelinek.steps/8"
+    const val SCHEMA: String = "pipelinek.steps/9"
 
     /**
      * The published document, as a value.

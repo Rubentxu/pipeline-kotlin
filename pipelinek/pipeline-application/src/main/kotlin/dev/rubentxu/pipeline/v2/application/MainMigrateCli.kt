@@ -68,11 +68,15 @@ internal object MainMigrateCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.migrate/5`: the document carries the DIFFERENCES with
-     * their reason, and the reason of the divergence of the workspace changed
-     * what it says — the stages of a run share one workspace by default, and
-     * `--isolated` is the run that gives each stage its own — so the version
-     * is the warning to the consumer that reads it again. It was
+     * It is `pipelinek.migrate/6`: the document carries the DIFFERENCES with
+     * their reason, and the reason of the divergence of the DECLARATION of a
+     * variable changed what it says — the assignment of Jenkins does not
+     * compile and the product declares with a call — so the version is the
+     * warning to the consumer that reads it again. It was
+     * `pipelinek.migrate/5`: the reason of the divergence of the workspace
+     * changed what it says — the stages of a run share one workspace by
+     * default, and `--isolated` is the run that gives each stage its own — so
+     * the version was the warning to the consumer that reads it again. It was
      * `pipelinek.migrate/4`: the reasons of the divergence of the gate and of
      * the divergence of the branch changed what they say, so the version was
      * the warning to the consumer that reads them again. It was
@@ -87,7 +91,7 @@ internal object MainMigrateCli {
      * the form of the named argument is byte-identical to the reason of the
      * difference of the named arguments.
      */
-    const val SCHEMA: String = "pipelinek.migrate/5"
+    const val SCHEMA: String = "pipelinek.migrate/6"
 
     /**
      * The classification of the names the operator asked about.

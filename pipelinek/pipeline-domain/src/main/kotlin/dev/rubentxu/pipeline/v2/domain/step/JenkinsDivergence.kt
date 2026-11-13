@@ -96,9 +96,13 @@ object JenkinsDivergences {
         ),
         JenkinsDivergence(
             name = "the workspace of a stage",
-            reason = "Every stage runs in its OWN workspace, and a stage does not see the files another " +
-                "stage wrote. A Jenkins run shares the workspace of its node across the stages, and that " +
-                "is why `stash` and `unstash` exist there.",
+            reason = "The stages of a run SHARE one workspace by default: the directory the run was " +
+                "invoked in, or the one the operator named with `--workspace`. A stage sees the files " +
+                "another stage wrote, the way a Jenkins run shares the workspace of its node. The run " +
+                "that gives every stage a workspace of its own is the one that ASKS for it: " +
+                "`pipelinek run --isolated` allocates one per stage, and there a stage does not see the " +
+                "files another stage wrote. `stash` and `unstash` exist in both products: they are how " +
+                "a file is put aside and restored later.",
             scope = JenkinsDivergence.Scope.PRODUCT,
         ),
         JenkinsDivergence(

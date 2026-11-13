@@ -81,7 +81,17 @@ internal object MainStepsCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.steps/7` since the reason of the DIVERGENCE of the gate
+     * It is `pipelinek.steps/8` since the reason of the DIVERGENCE of the
+     * workspace says what the product does with the workspace of a stage: the
+     * stages of a run SHARE one workspace by default, and the run that gives
+     * every stage a workspace of its own is the one that asks for it with
+     * `--isolated`. The text that said the opposite published a fact the code
+     * does not keep: a reader who migrated a Jenkinsfile against it expected
+     * a stage not to see the files another stage wrote, and the product lets
+     * it see them. A consumer that matched on the text it read has to read it
+     * again.
+     *
+     * It was `pipelinek.steps/7` since the reason of the DIVERGENCE of the gate
      * says what the gate does with a variable that nobody declares: the stage
      * does not run, and the gate does not fail the run. The reason of the
      * DIVERGENCE of the branch says that the product has no branch of its own,
@@ -121,7 +131,7 @@ internal object MainStepsCli {
      * in `forms` that said what `divergences` says; the version names that
      * change.
      */
-    const val SCHEMA: String = "pipelinek.steps/7"
+    const val SCHEMA: String = "pipelinek.steps/8"
 
     /**
      * The published document, as a value.

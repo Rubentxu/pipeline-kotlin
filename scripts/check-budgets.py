@@ -73,6 +73,12 @@ RULES: list[tuple[str, str, str]] = [
     # The audit of the tags this repository has already published. It reads
     # the remote's own listing and reports; it publishes nothing.
     ("verify", "published tag audit", "scripts/release/verify-published-tags.sh"),
+    # The acceptance gate of the packaged commands, and the control that
+    # proves it can refuse. Both run on the publisher's machine during the
+    # publication and neither ships anything: they measure the PUBLISHED
+    # archive and not the behaviour of the tree, so they are the numerator.
+    ("verify", "packaged command check", "scripts/release/verify-packaged-commands.sh"),
+    ("verify", "packaged command control", "scripts/release/check-packaged-commands-control.sh"),
     # Permanent unit tests. Two module depths: pipelinek/<m> and pipelinek/<g>/<m>.
     ("verify", "unit tests", "pipelinek/*/src/test/*"),
     ("verify", "unit tests", "pipelinek/*/*/src/test/*"),

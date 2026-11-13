@@ -276,6 +276,12 @@ DECLARED_EXECUTABLES = {
         "bundle whose Gradle module metadata resolves a file the bundle does not carry, "
         "and it starts nothing of the product"
     ),
+    "scripts/release/check-packaged-commands-control.sh": (
+        "the negative control of the packaged-command gate: it starts the PACKED "
+        "distribution with a broken launcher to prove that the gate refuses it, so "
+        "what is under test is the publication contract and not the behaviour of this "
+        "tree; it is not part of this gate"
+    ),
     "scripts/release/emit-certification-requested.sh": (
         "the emitter of the certification request: it composes the event that crosses the "
         "boundary between the repositories and leaves it beside the publication, so what "
@@ -322,6 +328,12 @@ DECLARED_EXECUTABLES = {
         "artifact against the PREVIOUSLY published one, so what is under test "
         "is the publication contract and not the behaviour of this tree; it is "
         "not part of this gate"
+    ),
+    "scripts/release/verify-packaged-commands.sh": (
+        "the acceptance gate of the packaged commands: it asks the PUBLISHED "
+        "distribution for the answers a consumer asks it, with their exit codes, "
+        "so what is under test is the publication contract and not the behaviour "
+        "of this tree; it is not part of this gate"
     ),
     "scripts/release/verify-maven-publication.sh": (
         "the publication gate of the Maven channel: it decides whether a request "

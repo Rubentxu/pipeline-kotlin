@@ -3,7 +3,7 @@
 # corrective: a release MUST NOT be published unless the
 # releaseGate produced a PASS receipt bound to the SHA of the ZIP the script
 # then uploads. This script is the only path that calls `gh release create`;
-# it refuses to advance without the eight signals:
+# it refuses to advance without the nine signals:
 #   1. Gradle:pipeline-release:releaseGate exits 0 (admission passed)
 #   2. The candidateAdmission receipt (build/candidate/distribution-manifest.json)
 #      names a candidate_id whose sha256 matches the distZip artifact the
@@ -34,6 +34,13 @@
 #      about bytes the receiver cannot download yet. The event carries the
 #      very request the admission gate evaluated, so the receiver is asked
 #      about the same bytes and the same battery that were admitted.
+#   9. The PACKAGED distribution answers the commands a consumer asks it,
+#      with the exit codes and the results the product promises, and it
+#      answers with the identity this release publishes. The gate runs over
+#      the STAGED archive, whose digest was measured against the gate's own
+#      receipt, and its negative control runs too: a gate that never refuses
+#      a broken distribution certifies nothing, so a release refuses to
+#      publish until the gate has been seen to refuse one.
 # Usage:
 #   PIPELINEK_RELEASE_TAG=v0.56.0-rc5 PIPELINEK_RELEASE_TRAIN=0.56.0 \
 #./scripts/release-pipelinek.sh
@@ -636,7 +643,59 @@ if ! timeout "${EXT_COMPAT_TIMEOUT_SECONDS}" \
 fi
 
 # ----------------------------------------------------------------------------
-# 5d. The handoff.
+# 5d. The packaged commands.
+#     The archive a consumer downloads is a set of files, and a set of files
+#     can be complete and still answer nothing: the launcher can be there, the
+#     jars can be there, and the command can exit 0 while it prints no answer
+#     at all. The publication path measured the bytes of this release (the
+#     digests), the external consumer measured that a plugin built against the
+#     published SDK loads into them, and neither of them asked the packaged
+#     command a question.
+#
+#     So it is asked, here, over the STAGED archive: the copy whose digest was
+#     measured against the gate's own receipt and re-measured by this script.
+#     Six commands, each with its exit code AND its answer, and the identity
+#     of the bytes: the archive has to report the version and the commit this
+#     release publishes, because a release whose launcher answers with another
+#     release's identity is not this release.
+#
+#     The negative control runs right after, and it is what makes the green
+#     mean something: the control hands the gate a distribution whose launcher
+#     answers nothing, and another whose launcher answers another version, and
+#     the gate has to refuse both, naming the rows that saw the breakage. A
+#     gate that has never refused anything certifies nothing.
+# ----------------------------------------------------------------------------
+
+PACKAGED_COMMANDS_VERDICT="${EVIDENCE_DIR}/packaged-commands.txt"
+
+echo "release-pipelinek: running the packaged-command gate over the staged archive"
+
+if ! "${REPO_ROOT}/scripts/release/verify-packaged-commands.sh" \
+    --candidate-zip "${EVIDENCE_DIR}/${DIST_NAME}" \
+    --expect-version "${PIPELINEK_RELEASE_TRAIN}" \
+    --expect-commit "${ARTIFACT_BUILD_COMMIT}" \
+    --out "$PACKAGED_COMMANDS_VERDICT"; then
+    echo "release-pipelinek: refusing to publish — the packaged commands did not answer." >&2
+    echo "    the distribution this release publishes does not answer what a consumer" >&2
+    echo "    asks it, or answers with another identity. The verdict is at" >&2
+    echo "    ${PACKAGED_COMMANDS_VERDICT}. No tag was created." >&2
+    rm -rf "$EVIDENCE_DIR"
+    exit 1
+fi
+
+if ! "${REPO_ROOT}/scripts/release/check-packaged-commands-control.sh" \
+    --candidate-zip "${EVIDENCE_DIR}/${DIST_NAME}" \
+    --expect-version "${PIPELINEK_RELEASE_TRAIN}" \
+    --expect-commit "${ARTIFACT_BUILD_COMMIT}"; then
+    echo "release-pipelinek: refusing to publish — the packaged-command gate does not refuse a broken distribution." >&2
+    echo "    a gate that accepts everything certifies nothing, and this release would" >&2
+    echo "    publish a green that was never seen red. No tag was created." >&2
+    rm -rf "$EVIDENCE_DIR"
+    exit 1
+fi
+
+# ----------------------------------------------------------------------------
+# 5e. The handoff.
 #     It lists what the release carries, generated from the files that were
 #     actually staged. A handoff that names an asset the release does not
 #     carry is worse than no handoff: it is the document a certifier reads to
@@ -701,6 +760,18 @@ done
     printf '```\n'
 } >> "${EVIDENCE_DIR}/HANDOFF.md"
 
+{
+    printf '\n## The packaged commands\n\n'
+    printf 'A consumer of this release asks the installed command questions, and the\n'
+    printf 'archive was asked all of them before the tag was cut: the catalogue of the\n'
+    printf 'steps, the card of one step, what this build offers for the steps of\n'
+    printf 'Jenkins, the usage, and the identity of the bytes. The rows below are what\n'
+    printf 'that run observed, and each one carries the exit code as well as the answer.\n\n'
+    printf '```\n'
+    cat "$PACKAGED_COMMANDS_VERDICT"
+    printf '```\n'
+} >> "${EVIDENCE_DIR}/HANDOFF.md"
+
 cat >> "${EVIDENCE_DIR}/HANDOFF.md" <<HANDOFF_EOF
 
 ## What the certifier must do
@@ -714,7 +785,10 @@ cat >> "${EVIDENCE_DIR}/HANDOFF.md" <<HANDOFF_EOF
 4. Re-run \`scripts/release/verify-external-compatibility.sh\` against the
    downloaded assets and confirm the rows above are reproduced. The SDK archives
    it consumes are verified against the \`SHA256SUMS\` published with them.
-5. Import the public key in the \`Tag signature\` section above and check the
+5. Re-run \`scripts/release/verify-packaged-commands.sh\` against the downloaded
+   archive and confirm the rows of \`The packaged commands\` above are
+   reproduced, with the version and the commit this release publishes.
+6. Import the public key in the \`Tag signature\` section above and check the
    tag yourself:
 
    \`\`\`

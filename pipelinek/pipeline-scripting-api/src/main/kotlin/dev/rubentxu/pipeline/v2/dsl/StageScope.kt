@@ -798,6 +798,31 @@ class StageScope(
     }
 
     /**
+     * Declare the execution target this stage requires, the way a Jenkinsfile
+     * writes it: `agent { label("linux") }`.
+     *
+     * The block and the call are TWO SPELLINGS OF ONE DECLARATION: the block
+     * builds the requirement with the same authority the call uses, and it is
+     * carried by the same directive (`core.agent`), so a stage that declares
+     * its agent with the block runs with the agent a stage that declares it
+     * with the call declares. The block is not a second path: it is the path
+     * Jenkins writes, and this product accepts it.
+     *
+     * The block holds the OPTIONS of the agent and no step, because the block
+     * of Jenkins holds no step either: the scope it opens carries a marker of
+     * its own, so the calls of this stage are out of reach from inside it.
+     *
+     * @param block the options of the agent, written with [AgentScope.label]
+     * @throws IllegalArgumentException when the block declares no label, or
+     *   declares two
+     */
+    fun agent(block: AgentScope.() -> Unit) {
+        val scope = AgentScope()
+        scope.block()
+        stageDirectives = stageDirectives + appendAgentRequirement(scope.requirement())
+    }
+
+    /**
      * Declare an execution target with no constraint beyond "somewhere local".
      * Distinct from leaving the field blank: the author said "any local target",
      * and it encodes differently, so an observer can tell a deliberate

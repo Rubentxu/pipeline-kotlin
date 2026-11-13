@@ -567,16 +567,20 @@ class Kotlin24ScriptingHost(
             report.message.startsWith(JAR_FILE_SYSTEM_NOTE)
 
     /**
-     * The diagnostic the compiler raised, with the suggestion of the form of
-     * Jenkins it holds.
+     * The diagnostic the compiler raised, with the advice it holds.
      *
-     * The suggestion is APPENDED to the message the compiler gave, and it
-     * changes nothing else: the severity stays the one of the error, the
-     * position stays the one the compiler pointed at, and the count of the
-     * diagnostics stays the count of what the compiler said. A diagnostic that
-     * holds no form of Jenkins keeps the words it came with.
+     * There are TWO advices, and they answer two different questions. The one
+     * about a DECLARATION written in the wrong place says which declaration of
+     * the stage was written inside a body that carries steps, and it comes from
+     * [StageDirectiveAdvice]. The one about a FORM OF JENKINS says which
+     * spelling to write instead, and it comes from [JenkinsFormSuggestions].
+     * The advice is APPENDED to the message the compiler gave, and it changes
+     * nothing else: the severity stays the one of the error, the position stays
+     * the one the compiler pointed at, and the count of the diagnostics stays
+     * the count of what the compiler said. A diagnostic that holds neither
+     * keeps the words it came with.
      *
-     * The suggestion rides only on a diagnostic that STOPPED the compilation.
+     * The advice rides only on a diagnostic that STOPPED the compilation.
      * A warning did not stop anything, and the compiler may have had something
      * else to say about that token: a `Char` of Kotlin is legal, and a warning
      * about a template that holds one is not a complaint about the form of
@@ -602,7 +606,17 @@ class Kotlin24ScriptingHost(
         val path = diag.sourcePath ?: "<synthetic>"
 
         val stopped = severity >= ScriptDiagnosticSeverity.ERROR
-        val suggestion = if (stopped) JenkinsFormSuggestions.suggestionFor(source, line, column) else null
+        val suggestion = if (stopped) {
+            // Two advices, and never both: the one about a declaration written
+            // in the wrong place comes first because it names the declaration,
+            // and the one about a form of Jenkins comes second because it names
+            // the spelling to write instead. A diagnostic that is about neither
+            // keeps the words the compiler gave it.
+            StageDirectiveAdvice.adviceFor(source, line, column)
+                ?: JenkinsFormSuggestions.suggestionFor(source, line, column)
+        } else {
+            null
+        }
         val message = if (suggestion == null) diag.message else "${diag.message} $suggestion"
 
         return ScriptingDiagnostic(

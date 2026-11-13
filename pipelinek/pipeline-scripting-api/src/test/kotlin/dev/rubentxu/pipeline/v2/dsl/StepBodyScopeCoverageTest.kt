@@ -7,7 +7,9 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.api.Timeout
 
 /**
@@ -325,6 +327,48 @@ class StepBodyScopeCoverageTest {
             "the refusal does not name the block where it was written: the message was " +
                 "'${refusal.message}'",
         )
+    }
+
+    /**
+     * The refusal of the CONFIGURATION of the stage happens for every
+     * declaration of it.
+     *
+     * The compiler refuses the configuration of the stage written inside a
+     * body, and the refusal of the PLAN refuses it too. The second one is the
+     * real defence: it does not need a compilation, and a plan that arrives
+     * from anywhere is refused by it. This row says so for every declaration
+     * the configuration holds, and it says it without compiling anything.
+     */
+    @TestFactory
+    fun `the refusal of the configuration of the stage happens for every declaration of it`():
+        List<DynamicTest> {
+        val declarations = listOf(
+            "directives" to { scope: StageScope -> scope.directives { } },
+            "environment" to { scope: StageScope -> scope.environment { } },
+            "options" to { scope: StageScope -> scope.options { } },
+            "post" to { scope: StageScope -> scope.post { } },
+            "whenEnvIs" to { scope: StageScope -> scope.whenEnvIs("A", "B") },
+            "whenEnvPresent" to { scope: StageScope -> scope.whenEnvPresent("A") },
+            "whenGate" to { scope: StageScope ->
+                scope.whenGate(dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate.AlwaysTrue)
+            },
+        )
+
+        return declarations.map { (name, declaration) ->
+            DynamicTest.dynamicTest(name) {
+                val body = StageScope("stage").blockScope("steps")
+
+                val refusal = assertThrows(IllegalArgumentException::class.java) {
+                    declaration(body as StageScope)
+                }
+
+                assertTrue(
+                    refusal.message?.contains("`$name`") == true,
+                    "the refusal does not name the declaration that is refused: the message was " +
+                        "'${refusal.message}'",
+                )
+            }
+        }
     }
 
     /**

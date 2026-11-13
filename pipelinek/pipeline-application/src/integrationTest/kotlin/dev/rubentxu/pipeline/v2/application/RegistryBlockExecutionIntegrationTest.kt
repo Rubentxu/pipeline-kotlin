@@ -69,8 +69,10 @@ import org.junit.jupiter.api.io.TempDir
  * contract is the interesting one: the plugin decides HOW MANY times the body
  * runs, and each iteration carries its own attempt segment, so each one has
  * its own durable identity and its own journal rows. The body is written
- * through the generic `registryBlock { }` form — the form a plugin's own
- * façade uses — with the key the plugin declared.
+ * through the generic `registryBlock { }` form with the key the plugin
+ * declared, and in the form the CONTRACT of a body declares: a body that
+ * carries steps does not reach the form that names the version of the
+ * envelope, and both forms declare the same step.
  *
  * ## What this row does NOT freeze
  *
@@ -100,7 +102,6 @@ class RegistryBlockExecutionIntegrationTest {
                         registryBlock(
                             PluginStepId(REPEAT_KEY),
                             EncodedStepValue("{\"times\":2}"),
-                            schemaVersion = "dsl-v1",
                         ) {
                             sh("printf '%s\\n' \"\$TARGET\" >> '$marker'")
                         }

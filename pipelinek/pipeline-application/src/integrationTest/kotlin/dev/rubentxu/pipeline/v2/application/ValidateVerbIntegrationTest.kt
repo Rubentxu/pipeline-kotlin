@@ -53,7 +53,12 @@ import java.util.concurrent.TimeUnit
  *   the only thing that tells the author which carrier they dropped.
  * - The declaration of the stage written inside a block of steps: a gate that a nested scope
  *   drops in silence is a gate that does not gate, so the product refuses it where it is
- *   written, and the step that follows it never runs.
+ *   written, and the step that follows it never runs. The refusal is the COMPILER's now, and
+ *   the advice that rides on it names the declaration and the alternative.
+ * - The declaration of the stage written inside a body, validated WITHOUT running it: the
+ *   compile-only form refuses it at the source, and the document has to name the declaration, the
+ *   place it was written and what to write instead. The refusal of the plan is the real defence
+ *   and it needs a body that runs; this one speaks to an author who never ran anything.
  * - The compile error is the control: it already reached the document, and it must still reach it
  *   exactly once, with no evaluation error added to it.
  * - The warning is a real one from the compiler, on a script that validates. The summary used to
@@ -168,11 +173,29 @@ class ValidateVerbIntegrationTest {
             "the document did not name the refusal once:\n$out",
         )
         assertTrue("`whenEnvIs`" in out, "the refusal does not name the declaration:\n$out")
-        assertTrue("`steps { }`" in out, "the refusal does not name the context:\n$out")
-        assertTrue("body of the stage" in out, "the refusal does not name the alternative:\n$out")
+        assertTrue(
+            "outside every block that carries steps" in out,
+            "the refusal does not name the alternative:\n$out",
+        )
         assertFalse(
             Files.exists(marker),
             "the step of the block ran: the refusal came before the block admitted any step",
+        )
+    }
+
+    @Test
+    fun `a declaration written inside a body is named with its place and its action`() {
+        val script = dir.resolve("misplaced.pipeline.kts")
+        val (exit, out, err) = validate("misplaced.pipeline.kts", MISPLACED, "--compile-only")
+
+        assertEquals(CliExit.INVALID_ARGUMENT, exit, out + err)
+        assertTrue(
+            "${script}:5:17:" in out,
+            "the document does not point at the place the declaration was written in:\n$out",
+        )
+        assertTrue(
+            "In PipelineK: `whenEnvIs` belongs to the STAGE" in out,
+            "the document does not name the declaration and the action:\n$out",
         )
     }
 
@@ -290,10 +313,10 @@ class ValidateVerbIntegrationTest {
         const val GATE_PREFIX = "Pure builder consumption gate: "
 
         /**
-         * The text every refusal of a declaration that belongs to the stage
+         * The text the advice of a declaration that belongs to the stage
          * carries.
          */
-        const val STAGE_AUTHORITY_PREFIX = "belongs to the STAGE, and it is refused inside"
+        const val STAGE_AUTHORITY_PREFIX = "belongs to the STAGE"
 
         /**
          * A script that declares the gate of the STAGE inside a block that
@@ -310,6 +333,23 @@ class ValidateVerbIntegrationTest {
                         steps {
                             whenEnvIs("APPROVED", "true")
                             sh("touch $marker")
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+
+        /**
+         * A script that declares the gate of the STAGE inside a body that
+         * carries steps.
+         */
+        val MISPLACED = """
+            pipeline {
+                stages {
+                    stage("deploy") {
+                        steps {
+                            whenEnvIs("APPROVED", "true")
+                            sh("echo hello")
                         }
                     }
                 }

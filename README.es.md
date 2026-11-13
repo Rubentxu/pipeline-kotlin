@@ -197,6 +197,8 @@ El cuerpo de un bloque `steps { }` —y de cualquier otro bloque que lleva pasos
 - la configuración del stage escrita dentro de un cuerpo —las puertas `when*`, el `environment` declarativo, las `options`, el `post` y las `directives`— deja de compilar. Tampoco corría antes: el rechazo ya estaba, donde se escribía, y nombraba la declaración y el bloque. Llévala fuera del bloque, al cuerpo del stage.
 - la forma versionada del paso de un plugin —la que nombra explícitamente la versión del sobre— no se alcanza desde un cuerpo. La forma que no la nombra declara el mismo paso, y es la que escribe un plugin.
 
+**Qué dice el diagnóstico.** Una validación que compila el script nombra la declaración que se escribió en el sitio equivocado, el archivo y la línea en que se escribió, y qué escribir en su lugar: las `options` pertenecen al STAGE, así que se declaran en el cuerpo del stage, fuera de todo bloque que lleve pasos. Lo que el compilador resolvió no recibe ese consejo —un paso, un texto, un comentario, una función propia con el mismo nombre, el paso de un plugin— porque nada de eso está mal.
+
 Un consumidor compilado contra la release anterior sigue enlazando y sigue corriendo: el objeto que el runtime entrega a un cuerpo es el propio stage, así que un bloque que compiló la release anterior sigue recibiendo lo que esperaba.
 
 ### Editar pipelines en IntelliJ IDEA

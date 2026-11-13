@@ -137,8 +137,13 @@ internal object MainStepsCli {
      * The scope is carried because a reader who has to guess whether a
      * difference is imposed by the language or by the product cannot tell
      * whether a workaround applies to their script.
+     *
+     * It is INTERNAL and not private because the report of the migration
+     * renders the differences with it: two documents that carry the same
+     * difference have to say the same thing about it, and two renderings of
+     * one difference are two texts that can drift.
      */
-    private fun divergenceOf(divergence: JenkinsDivergence): JsonObject = buildJsonObject {
+    internal fun divergenceOf(divergence: JenkinsDivergence): JsonObject = buildJsonObject {
         put("name", JsonPrimitive(divergence.name))
         put("scope", JsonPrimitive(divergence.scope.name.lowercase()))
         put("reason", JsonPrimitive(divergence.reason))

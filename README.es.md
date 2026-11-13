@@ -314,7 +314,7 @@ La tabla de equivalencias con Jenkins NO está escrita aquí, y ese es el punto:
 
 Un nombre que nadie lleva se rechaza nombrando las entradas que se le parecen, y un nombre que llevan dos entradas se rechaza nombrando las dos: `core.pwd` y `core.pwd.tmp` son dos steps distintos, y responder con uno de ellos sería un azar disfrazado de respuesta.
 
-`pipelinek migrate` responde a la pregunta con la que empieza una migración: por cada step de Jenkins, ¿QUÉ ofrece este producto? Lee el mismo catálogo —la clasificación es una función de las entradas que el catálogo publica y no añade nada a ellas— y dice, por cada nombre, el equivalente (la clave que el motor resuelve y el nombre que escribe el autor), la divergencia de ese equivalente con su motivo, y las formas en las que hay que escribir un script migrado.
+`pipelinek migrate` responde a la pregunta con la que empieza una migración: por cada step de Jenkins, ¿QUÉ ofrece este producto? Lee el mismo catálogo —la clasificación es una función de las entradas que el catálogo publica y no añade nada a ellas— y dice, por cada nombre, el equivalente (la clave que el motor resuelve y el nombre que escribe el autor) y la divergencia de ese equivalente con su motivo. Y termina con las DIFERENCIAS que se aplican a todo script: las nueve que declara el catálogo, cuatro impuestas por el lenguaje y cinco decididas por el producto.
 
 ```bash
 $ pipelinek migrate --jenkins sh --jenkins pwd --jenkins bat
@@ -337,18 +337,34 @@ bat
 
 3 names: 2 with an equivalent, 1 without one
 
-the forms a migrated script has to write:
-  'make' -> "make"
-    Groovy writes a string between single quotes, and Kotlin reads a single-quoted literal as a character: ...
-  time: 30 -> time = 30
+the differences that apply to every script:
+  [language] when is a reserved word
+    Kotlin reserves `when` as a keyword of the language, so the condition of a gate cannot be written `when(...)`: ...
+  [language] the command of a shell step
+    Groovy writes the command of a shell step between single quotes (`sh 'ls'`), and Kotlin writes it between double quotes. ...
+  [language] the named arguments of a step
     A named argument is `name: value` in Groovy and `name = value` in Kotlin: ...
-  env.BRANCH_NAME -> env("BRANCH_NAME")
-    Kotlin cannot express a dynamic property, so there is no `env` object to read a property of: ...
+  [language] the dollar of a string
+    Groovy has a single-quoted string that does not interpolate, and Kotlin has a triple-quoted one. ...
+  [product] the workspace of a stage
+    Every stage runs in its OWN workspace, and a stage does not see the files another stage wrote. ...
+  [product] the control flow of the body of a script
+    The Kotlin of a `script { }` block is evaluated while the PLAN is built: ...
+  [product] the gate compares against what is declared
+    A `when*` gate compares the value the stage DECLARED, and not the value the agent has at runtime: ...
+  [product] the predicate of the branch
+    There is no `branch('main')`: the condition on the branch is written with the variable of the branch. ...
+  [product] the environment a script reads
+    Jenkins evaluates `env.X` when the step RUNS, on the agent that runs it. ...
+
+the forms the compiler recognizes, and the sentence it prints for each one, are published with the catalogue: pipelinek steps --json
 ```
 
 Un nombre que el catálogo no declara se informa como un nombre que el catálogo no declara, y NO como un step que no se puede migrar: el catálogo calla sobre los steps de los plugins que no están instalados, y el producto no puede afirmar qué publica Jenkins. El informe cuenta NOMBRES y no entradas —`pwd` lo declaran dos entradas, y el informe muestra las dos con la divergencia de cada una.
 
-`pipelinek migrate --json` publica los mismos hechos como el documento del esquema `pipelinek.migrate/1`: una fila por nombre con su estado y sus equivalentes, el agregado de los nombres, y las formas.
+Las FORMAS de Jenkins —las formas en las que un script puede estar escrito, y la frase que el compilador imprime cuando un diagnóstico cae sobre una de ellas— NO se repiten en el informe: son tres de esas nueve diferencias escritas de otra manera, y el informe dice cada diferencia una vez. Se publican con el catálogo, que es también de donde el compilador las lee.
+
+`pipelinek migrate --json` publica los mismos hechos como el documento del esquema `pipelinek.migrate/2`: una fila por nombre con su estado y sus equivalentes, el agregado de los nombres, y la sección de las diferencias.
 
 El INVENTARIO de los steps que usa un Jenkinsfile no es trabajo del producto: el informe empieza por los nombres que se le dan, y la lectura de un Jenkinsfile pertenece a la herramienta que hace la pregunta.
 

@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.domain.step.JenkinsForm
-import dev.rubentxu.pipeline.v2.domain.step.JenkinsForms
+import dev.rubentxu.pipeline.v2.domain.step.JenkinsDivergence
+import dev.rubentxu.pipeline.v2.domain.step.StepCatalogue
 import dev.rubentxu.pipeline.v2.domain.step.StepCatalogueEntry
 import dev.rubentxu.pipeline.v2.runtime.RuntimeApiVersion
 import kotlinx.serialization.json.Json
@@ -68,13 +68,16 @@ internal object MainMigrateCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.migrate/1`: the document carries the classification of
+     * It is `pipelinek.migrate/2`: the document carries the classification of
      * the names the operator asked about, the aggregate of that
-     * classification and the forms of Jenkins a migrated script has to be
-     * written in. A consumer that parses it reads the same facts the text
-     * report prints.
+     * classification and the DIFFERENCES that apply to every script. It was
+     * `pipelinek.migrate/1` when the document carried the forms: the forms are
+     * three of those differences written in another way, and a document that
+     * carried both would carry one sentence twice —MEASURED, the reason of the
+     * form of the named argument is byte-identical to the reason of the
+     * difference of the named arguments.
      */
-    const val SCHEMA: String = "pipelinek.migrate/1"
+    const val SCHEMA: String = "pipelinek.migrate/2"
 
     /**
      * The classification of the names the operator asked about.
@@ -98,12 +101,18 @@ internal object MainMigrateCli {
     /**
      * The report, one line per fact.
      *
-     * The facts of a name come first, and the forms come after: a reader asks
-     * "what do I write instead" before it asks "in what shape".
+     * The facts of a name come first, and the differences come after: a reader
+     * asks "what do I write instead" before it asks "what else is different".
+     *
+     * The differences are the ONES that apply to every script, and they are
+     * all of them: the ones that are imposed by the language and the ones the
+     * product decides. The forms of Jenkins are not repeated here —they are
+     * three of these differences in another wording, and the sentence the
+     * compiler prints for each one belongs to the compiler.
      */
     fun report(
         migrations: List<Migration>,
-        forms: List<JenkinsForm> = JenkinsForms.global(),
+        divergences: List<JenkinsDivergence> = StepCatalogue.divergences(),
     ): List<String> {
         val lines = mutableListOf<String>()
         migrations.forEachIndexed { index, migration ->
@@ -123,29 +132,31 @@ internal object MainMigrateCli {
         lines += ""
         lines += aggregate(migrations)
         lines += ""
-        lines += FORMS_HEADING
-        forms.forEach { form ->
-            lines += "  ${form.jenkinsForm} -> ${form.pipelineKForm}"
-            lines += "    ${form.reason}"
+        lines += DIVERGENCES_HEADING
+        divergences.forEach { divergence ->
+            lines += "  [${divergence.scope.name.lowercase()}] ${divergence.name}"
+            lines += "    ${divergence.reason}"
         }
+        lines += ""
+        lines += FORMS_HEADING
         return lines
     }
 
     /**
      * The report as a document.
      *
-     * The forms are rendered by the catalogue's own renderer, so the text of a
-     * form cannot differ between the two documents that carry it.
+     * The differences are rendered by the catalogue's own renderer, so the text
+     * of a difference cannot differ between the two documents that carry it.
      */
     fun document(
         migrations: List<Migration>,
-        forms: List<JenkinsForm> = JenkinsForms.global(),
+        divergences: List<JenkinsDivergence> = StepCatalogue.divergences(),
     ): JsonObject = buildJsonObject {
         put("schema", JsonPrimitive(SCHEMA))
         put("version", JsonPrimitive(RuntimeApiVersion.readImplementationVersion() ?: "unknown"))
         put("names", JsonArray(migrations.map { migration -> nameOf(migration) }))
         put("summary", summaryOf(migrations))
-        put("forms", JsonArray(forms.map { form -> MainStepsCli.formOf(form) }))
+        put("divergences", JsonArray(divergences.map { divergence -> MainStepsCli.divergenceOf(divergence) }))
     }
 
     /** One name of Jenkins, as the document carries it. */
@@ -266,8 +277,20 @@ internal object MainMigrateCli {
     /** The status a consumer of the document reads for a name without one. */
     private const val STATUS_ABSENT = "not-declared"
 
-    /** The heading of the section that carries the forms. */
-    private const val FORMS_HEADING = "the forms a migrated script has to write:"
+    /** The heading of the section that carries the differences of every script. */
+    private const val DIVERGENCES_HEADING = "the differences that apply to every script:"
+
+    /**
+     * The heading of the section that says where the forms are.
+     *
+     * The forms are three of the differences written in another way, and the
+     * sentence the compiler prints for each one belongs to the compiler: the
+     * catalogue publishes both, and the report names where they live instead
+     * of carrying a second copy.
+     */
+    private const val FORMS_HEADING =
+        "the forms the compiler recognizes, and the sentence it prints for each one, " +
+            "are published with the catalogue: pipelinek steps --json"
 }
 
 /**

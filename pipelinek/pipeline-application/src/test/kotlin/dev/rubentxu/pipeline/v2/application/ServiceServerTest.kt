@@ -24,6 +24,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import dev.rubentxu.pipeline.v2.service.ServiceCodec
 import dev.rubentxu.pipeline.v2.service.ServiceProtocol
 import dev.rubentxu.pipeline.v2.service.ServiceRefusal
@@ -481,7 +482,7 @@ class ServiceServerTest {
      */
     @Test
     fun `the slot of a subscription is given back when the street ends`() {
-        val streetEnded = CountDownLatch(1)
+        val slotGivenBack = CountDownLatch(1)
         val first = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
         val second = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
         val served = mutableListOf<ServiceSubscriptionRequest>()
@@ -495,25 +496,31 @@ class ServiceServerTest {
                         hasMore = false,
                     ),
                 )
-                streetEnded.countDown()
             }
         }
         // The second connection is handed out only after the first street
-        // ended, so the row measures the budget and not the order in which
-        // two workers happened to run.
+        // ended AND the service gave its slot back, so the row measures the
+        // budget and not the order in which two workers happened to run.
         val transport = object : ServiceTransport {
             private val pending = ArrayDeque(listOf(first, second))
 
             override fun accept(): ServiceConnection? {
                 val next = pending.removeFirstOrNull() ?: return null
-                if (next === second) streetEnded.await(5, TimeUnit.SECONDS)
+                if (next === second) slotGivenBack.await(5, TimeUnit.SECONDS)
                 return next
             }
 
             override fun close() = Unit
         }
 
-        val server = ServiceServer(transport, operations(), streets, authorizations(), ServiceLimits(maxSubscriptions = 1))
+        val server = ServiceServer(
+            transport,
+            operations(),
+            streets,
+            authorizations(),
+            ServiceLimits(maxSubscriptions = 1),
+            observerOfSubscriptions(slotGivenBack),
+        )
         try {
             server.serve()
             second.awaitAnswered()
@@ -538,7 +545,7 @@ class ServiceServerTest {
      */
     @Test
     fun `the slot of a subscription is given back when the street refuses`() {
-        val streetEnded = CountDownLatch(1)
+        val slotGivenBack = CountDownLatch(1)
         val first = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
         val second = ScriptedConnection(ServiceRead.Line(EVENTS_REQUEST))
         val served = mutableListOf<ServiceSubscriptionRequest>()
@@ -553,25 +560,31 @@ class ServiceServerTest {
                         ),
                     ),
                 )
-                streetEnded.countDown()
             }
         }
         // The second connection is handed out only after the first street
-        // ended, so the row measures the budget and not the order in which
-        // two workers happened to run.
+        // ended AND the service gave its slot back, so the row measures the
+        // budget and not the order in which two workers happened to run.
         val transport = object : ServiceTransport {
             private val pending = ArrayDeque(listOf(first, second))
 
             override fun accept(): ServiceConnection? {
                 val next = pending.removeFirstOrNull() ?: return null
-                if (next === second) streetEnded.await(5, TimeUnit.SECONDS)
+                if (next === second) slotGivenBack.await(5, TimeUnit.SECONDS)
                 return next
             }
 
             override fun close() = Unit
         }
 
-        val server = ServiceServer(transport, operations(), streets, authorizations(), ServiceLimits(maxSubscriptions = 1))
+        val server = ServiceServer(
+            transport,
+            operations(),
+            streets,
+            authorizations(),
+            ServiceLimits(maxSubscriptions = 1),
+            observerOfSubscriptions(slotGivenBack),
+        )
         try {
             server.serve()
             second.awaitAnswered()
@@ -981,6 +994,28 @@ class ServiceServerTest {
      */
     private fun authorizations(scope: ServiceScope = ServiceScope.All): ServiceAuthorizations =
         ServiceAuthorizations.of(listOf(ServiceAuthorization(TOKEN, "operator", scope)))
+
+    /**
+     * An observer that says when the FIRST subscription ended.
+     *
+     * The service gives the slot of a subscription back BEFORE it ends the
+     * observation of that subscription, so the latch this observer counts down
+     * is a signal that the slot is already free. A row that waits on it
+     * measures the budget of the subscriptions and not the order in which two
+     * workers happened to run.
+     */
+    private fun observerOfSubscriptions(slotGivenBack: CountDownLatch): ServiceObserver =
+        object : ServiceObserver {
+            private val subscriptions = AtomicInteger(0)
+
+            override fun begin(kind: ServiceRequestKind, runId: String?): ServiceObservation {
+                if (kind != ServiceRequestKind.Subscription) return NoServiceObserver.begin(kind, runId)
+                val number = subscriptions.incrementAndGet()
+                return ServiceObservation {
+                    if (number == 1) slotGivenBack.countDown()
+                }
+            }
+        }
 
     /**
      * The operations the service answers with.

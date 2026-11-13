@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.domain.step.JenkinsForms
+import dev.rubentxu.pipeline.v2.domain.step.StepCatalogue
 import dev.rubentxu.pipeline.v2.domain.step.StepCatalogueBody
 import dev.rubentxu.pipeline.v2.domain.step.StepCatalogueEntry
 import kotlinx.serialization.json.Json
@@ -134,16 +134,58 @@ class MainMigrateCliTest {
     }
 
     @Test
-    fun `the report carries the forms a migrated script has to be written in`() {
+    fun `the report carries the differences that apply to every script`() {
         val report = MainMigrateCli.report(MainMigrateCli.classify(listOf("sh"), emptyList())).joinToString("\n")
 
-        for (form in JenkinsForms.global()) {
+        for (divergence in StepCatalogue.divergences()) {
             assertTrue(
-                report.contains("${form.jenkinsForm} -> ${form.pipelineKForm}"),
-                "the report names the form of Jenkins and the form that replaces it: $report",
+                report.contains(divergence.name),
+                "the report names the difference '${divergence.name}': $report",
             )
-            assertTrue(report.contains(form.reason), "the report says why the two differ: $report")
+            assertTrue(
+                report.contains(divergence.reason),
+                "the report says why the two products differ on '${divergence.name}': $report",
+            )
         }
+    }
+
+    @Test
+    fun `the report says the scope of every difference`() {
+        val report = MainMigrateCli.report(MainMigrateCli.classify(listOf("sh"), emptyList())).joinToString("\n")
+
+        assertEquals(
+            4,
+            occurrences(report, LANGUAGE),
+            "four of the differences are imposed by the language",
+        )
+        assertEquals(
+            5,
+            occurrences(report, PRODUCT),
+            "five of the differences are decided by the product",
+        )
+    }
+
+    @Test
+    fun `a difference is written once and not twice`() {
+        val report = MainMigrateCli.report(MainMigrateCli.classify(listOf("sh"), emptyList())).joinToString("\n")
+
+        for (divergence in StepCatalogue.divergences()) {
+            assertEquals(
+                1,
+                occurrences(report, divergence.reason),
+                "the reason of '${divergence.name}' is written once, and not once per section: $report",
+            )
+        }
+    }
+
+    @Test
+    fun `the report names where the forms and the sentence of the compiler are`() {
+        val report = MainMigrateCli.report(MainMigrateCli.classify(listOf("sh"), emptyList())).joinToString("\n")
+
+        assertTrue(
+            report.contains("pipelinek steps --json"),
+            "the report says where the forms are published: $report",
+        )
     }
 
     @Test
@@ -157,7 +199,7 @@ class MainMigrateCliTest {
         val parsed = Json.parseToJsonElement(MainMigrateCli.document(migrations).toString()).jsonObject
 
         assertEquals(
-            "pipelinek.migrate/1",
+            "pipelinek.migrate/2",
             parsed["schema"]?.jsonPrimitive?.content,
             "the document names the schema a consumer parses it by",
         )
@@ -188,9 +230,20 @@ class MainMigrateCliTest {
         assertEquals(2, summary["withEquivalent"]?.jsonPrimitive?.content?.toInt(), "two of them have one")
         assertEquals(1, summary["withoutEquivalent"]?.jsonPrimitive?.content?.toInt(), "one of them has none")
         assertEquals(
-            JenkinsForms.global().size,
-            parsed["forms"]?.jsonArray?.size,
-            "the document carries the same forms the report carries",
+            StepCatalogue.divergences().size,
+            parsed["divergences"]?.jsonArray?.size,
+            "the document carries the same differences the report carries",
+        )
+        assertEquals(
+            StepCatalogue.divergences().map { divergence -> divergence.name },
+            parsed["divergences"]?.jsonArray?.map { divergence ->
+                divergence.jsonObject["name"]?.jsonPrimitive?.content
+            },
+            "the differences of the document are the ones the catalogue declares, in the same order",
+        )
+        assertTrue(
+            parsed["forms"] == null,
+            "the document carries no second copy of the forms: they are published with the catalogue",
         )
     }
 
@@ -261,7 +314,7 @@ class MainMigrateCliTest {
         assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
         val parsed = Json.parseToJsonElement(out.toString(Charsets.UTF_8.name())).jsonObject
         assertEquals(
-            "pipelinek.migrate/1",
+            "pipelinek.migrate/2",
             parsed["schema"]?.jsonPrimitive?.content,
             "what the verb publishes is the document the schema names",
         )
@@ -301,10 +354,24 @@ class MainMigrateCliTest {
         jenkinsDivergence = divergence,
     )
 
+    /** How many times [text] carries [needle]. */
+    private fun occurrences(text: String, needle: String): Int {
+        if (needle.isEmpty()) return 0
+        var count = 0
+        var index = text.indexOf(needle)
+        while (index >= 0) {
+            count += 1
+            index = text.indexOf(needle, index + needle.length)
+        }
+        return count
+    }
+
     private companion object {
         const val DIVERGENCE = "the temporary directory is a key of its own"
         const val EQUIVALENT = "equivalent"
         const val DIVERGENCE_LABEL = "divergence"
         const val NONE = "(none)"
+        const val LANGUAGE = "[language]"
+        const val PRODUCT = "[product]"
     }
 }

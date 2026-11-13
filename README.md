@@ -440,7 +440,7 @@ The table of equivalences with Jenkins is NOT written here, and that is the poin
 
 A name nobody carries is refused with the entries that come close, and a name two entries carry is refused with both of them named — `core.pwd` and `core.pwd.tmp` are two different steps, and answering with one of them would be a coin toss dressed as an answer.
 
-`pipelinek migrate` answers the question a migration starts with: for each step of Jenkins, WHAT does this product offer? It reads the same catalogue —the classification is a function of the entries the catalogue publishes and it adds nothing to them— and it says, for every name, the equivalent (the key the runtime resolves and the name the author writes), the divergence of that equivalent with its motive, and the forms a migrated script has to be written in.
+`pipelinek migrate` answers the question a migration starts with: for each step of Jenkins, WHAT does this product offer? It reads the same catalogue —the classification is a function of the entries the catalogue publishes and it adds nothing to them— and it says, for every name, the equivalent (the key the runtime resolves and the name the author writes) and the divergence of that equivalent with its motive. And it ends with the DIFFERENCES that apply to every script: the nine the catalogue declares, four of them imposed by the language and five decided by the product.
 
 ```bash
 $ pipelinek migrate --jenkins sh --jenkins pwd --jenkins bat
@@ -463,18 +463,34 @@ bat
 
 3 names: 2 with an equivalent, 1 without one
 
-the forms a migrated script has to write:
-  'make' -> "make"
-    Groovy writes a string between single quotes, and Kotlin reads a single-quoted literal as a character: ...
-  time: 30 -> time = 30
+the differences that apply to every script:
+  [language] when is a reserved word
+    Kotlin reserves `when` as a keyword of the language, so the condition of a gate cannot be written `when(...)`: ...
+  [language] the command of a shell step
+    Groovy writes the command of a shell step between single quotes (`sh 'ls'`), and Kotlin writes it between double quotes. ...
+  [language] the named arguments of a step
     A named argument is `name: value` in Groovy and `name = value` in Kotlin: ...
-  env.BRANCH_NAME -> env("BRANCH_NAME")
-    Kotlin cannot express a dynamic property, so there is no `env` object to read a property of: ...
+  [language] the dollar of a string
+    Groovy has a single-quoted string that does not interpolate, and Kotlin has a triple-quoted one. ...
+  [product] the workspace of a stage
+    Every stage runs in its OWN workspace, and a stage does not see the files another stage wrote. ...
+  [product] the control flow of the body of a script
+    The Kotlin of a `script { }` block is evaluated while the PLAN is built: ...
+  [product] the gate compares against what is declared
+    A `when*` gate compares the value the stage DECLARED, and not the value the agent has at runtime: ...
+  [product] the predicate of the branch
+    There is no `branch('main')`: the condition on the branch is written with the variable of the branch. ...
+  [product] the environment a script reads
+    Jenkins evaluates `env.X` when the step RUNS, on the agent that runs it. ...
+
+the forms the compiler recognizes, and the sentence it prints for each one, are published with the catalogue: pipelinek steps --json
 ```
 
 A name the catalogue does not declare is reported as a name the catalogue does not declare, and NOT as a step that cannot be migrated: the catalogue is silent about the steps of the plugins that are not installed, and the product cannot say what Jenkins publishes. The report counts NAMES and not entries —`pwd` is declared by two entries, and the report shows both of them with the divergence of each.
 
-`pipelinek migrate --json` publishes the same facts as the document of the schema `pipelinek.migrate/1`: one row per name with its status and its equivalents, the aggregate of the names, and the forms.
+The FORMS of Jenkins —the shapes a script can be written in, and the sentence the compiler prints when a diagnostic lands on one of them— are not repeated in the report: they are three of those nine differences written in another way, and the report says each difference once. They are published with the catalogue, which is where the compiler reads them from too.
+
+`pipelinek migrate --json` publishes the same facts as the document of the schema `pipelinek.migrate/2`: one row per name with its status and its equivalents, the aggregate of the names, and the section of the differences.
 
 The INVENTORY of the steps a Jenkinsfile uses is not the product's work: the report starts from the names it is given, and the reading of a Jenkinsfile belongs to the tool that asks the question.
 

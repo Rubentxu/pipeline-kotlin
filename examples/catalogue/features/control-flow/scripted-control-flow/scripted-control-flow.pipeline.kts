@@ -19,9 +19,9 @@ pipeline {
             script {
                 val x = 1
                 if (x > 0) {
-                    echo("x is positive")
+                    sh("echo 'x is positive'")
                 } else {
-                    echo("x is not positive")
+                    sh("echo 'x is not positive'")
                 }
             }
             sh("""for i in 1 2 3; do echo "iteration ${'$'}i"; done > iterations.txt""", isScriptBlock = true, returnStdout = false)

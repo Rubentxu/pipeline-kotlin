@@ -271,7 +271,7 @@ step       core.sh                           sh
 step       scm-git.checkout                  scm-git.checkout
 ```
 
-`pipelinek steps --json` publica el mismo catálogo como un documento del esquema `pipelinek.steps/8`: una entrada por clave, con los efectos que declara el step, qué hace un replay con él, qué hace el motor con él cuando la ejecución murió con él todavía en RUNNING, las capacidades que necesita, el JSON Schema de su carga útil, el equivalente en Jenkins y la divergencia de ESA entrada. El documento lleva además una sección `divergences`: las diferencias que son las mismas para todo script —las que impone el lenguaje y las que decide el producto—, cada una con su nombre y su motivo. Y una sección `forms`: las formas de Jenkins en las que un script puede estar escrito, la forma de PipelineK que sustituye a cada una, por qué se detiene el compilador en cada una, y la frase que el compilador imprime cuando un diagnóstico cae sobre una de ellas. Las dos secciones contestan dos preguntas distintas, y cada hecho se dice una vez: una diferencia dice en qué se diferencian los dos productos, y una forma dice qué hace el compilador con una forma que reconoce.
+`pipelinek steps --json` publica el mismo catálogo como un documento del esquema `pipelinek.steps/9`: una entrada por clave, con los efectos que declara el step, qué hace un replay con él, qué hace el motor con él cuando la ejecución murió con él todavía en RUNNING, las capacidades que necesita, el JSON Schema de su carga útil, el equivalente en Jenkins y la divergencia de ESA entrada. El documento lleva además una sección `divergences`: las diferencias que son las mismas para todo script —las que impone el lenguaje y las que decide el producto—, cada una con su nombre y su motivo. Y una sección `forms`: las formas de Jenkins en las que un script puede estar escrito, la forma de PipelineK que sustituye a cada una, por qué se detiene el compilador en cada una, y la frase que el compilador imprime cuando un diagnóstico cae sobre una de ellas. Las dos secciones contestan dos preguntas distintas, y cada hecho se dice una vez: una diferencia dice en qué se diferencian los dos productos, y una forma dice qué hace el compilador con una forma que reconoce.
 
 Cuando un `.pipeline.kts` está escrito en la forma de Jenkins, el diagnóstico dice qué escribir en su lugar. El compilador apunta al token que está mal —la comilla de una cadena de Groovy, el dos puntos de un argumento nombrado de Groovy, el `env` de `env.BRANCH_NAME`— y la sugerencia nombra la forma de PipelineK que la sustituye:
 
@@ -314,7 +314,7 @@ La tabla de equivalencias con Jenkins NO está escrita aquí, y ese es el punto:
 
 Un nombre que nadie lleva se rechaza nombrando las entradas que se le parecen, y un nombre que llevan dos entradas se rechaza nombrando las dos: `core.pwd` y `core.pwd.tmp` son dos steps distintos, y responder con uno de ellos sería un azar disfrazado de respuesta.
 
-`pipelinek migrate` responde a la pregunta con la que empieza una migración: por cada step de Jenkins, ¿QUÉ ofrece este producto? Lee el mismo catálogo —la clasificación es una función de las entradas que el catálogo publica y no añade nada a ellas— y dice, por cada nombre, el equivalente (la clave que el motor resuelve y el nombre que escribe el autor) y la divergencia de ese equivalente con su motivo. Y termina con las DIFERENCIAS que se aplican a todo script: las nueve que declara el catálogo, cuatro impuestas por el lenguaje y cinco decididas por el producto.
+`pipelinek migrate` responde a la pregunta con la que empieza una migración: por cada step de Jenkins, ¿QUÉ ofrece este producto? Lee el mismo catálogo —la clasificación es una función de las entradas que el catálogo publica y no añade nada a ellas— y dice, por cada nombre, el equivalente (la clave que el motor resuelve y el nombre que escribe el autor) y la divergencia de ese equivalente con su motivo. Y termina con las DIFERENCIAS que se aplican a todo script: las diez que declara el catálogo, cuatro impuestas por el lenguaje y seis decididas por el producto.
 
 ```bash
 $ pipelinek migrate --jenkins sh --jenkins pwd --jenkins bat
@@ -356,15 +356,17 @@ the differences that apply to every script:
     There is no `branch('main')`: the product has no branch of its own, and the condition on the branch is written with a variable that the SCRIPT declares. ...
   [product] the environment a script reads
     Jenkins evaluates `env.X` when the step RUNS, on the agent that runs it. ...
+  [product] the declaration of a variable
+    Jenkins declares a variable with an ASSIGNMENT inside the `environment { }` block (`FOO = 'x'`), and this product declares it with a CALL: `environment { env("FOO", "x") }`. ...
 
 the forms the compiler recognizes, and the sentence it prints for each one, are published with the catalogue: pipelinek steps --json
 ```
 
 Un nombre que el catálogo no declara se informa como un nombre que el catálogo no declara, y NO como un step que no se puede migrar: el catálogo calla sobre los steps de los plugins que no están instalados, y el producto no puede afirmar qué publica Jenkins. El informe cuenta NOMBRES y no entradas —`pwd` lo declaran dos entradas, y el informe muestra las dos con la divergencia de cada una.
 
-Las FORMAS de Jenkins —las formas en las que un script puede estar escrito, y la frase que el compilador imprime cuando un diagnóstico cae sobre una de ellas— NO se repiten en el informe: son tres de esas nueve diferencias escritas de otra manera, y el informe dice cada diferencia una vez. Se publican con el catálogo, que es también de donde el compilador las lee.
+Las FORMAS de Jenkins —las formas en las que un script puede estar escrito, y la frase que el compilador imprime cuando un diagnóstico cae sobre una de ellas— NO se repiten en el informe: son tres de esas diez diferencias escritas de otra manera, y el informe dice cada diferencia una vez. Se publican con el catálogo, que es también de donde el compilador las lee.
 
-`pipelinek migrate --json` publica los mismos hechos como el documento del esquema `pipelinek.migrate/5`: una fila por nombre con su estado y sus equivalentes, el agregado de los nombres, y la sección de las diferencias.
+`pipelinek migrate --json` publica los mismos hechos como el documento del esquema `pipelinek.migrate/6`: una fila por nombre con su estado y sus equivalentes, el agregado de los nombres, y la sección de las diferencias.
 
 El INVENTARIO de los steps que usa un Jenkinsfile no es trabajo del producto: el informe empieza por los nombres que se le dan, y la lectura de un Jenkinsfile pertenece a la herramienta que hace la pregunta.
 

@@ -397,7 +397,7 @@ step       core.sh                           sh
 step       scm-git.checkout                  scm-git.checkout
 ```
 
-`pipelinek steps --json` publishes the same catalogue as one document of the schema `pipelinek.steps/8`: one entry per key, with the effects the step declares, what a replay does with it, what the engine does with it when the run died with it still RUNNING, the capabilities it needs, the JSON Schema of its payload, the equivalent in Jenkins and the divergence of THAT entry. The document also carries a `divergences` section: the differences that are the same for every script —the ones the language imposes and the ones the product decides— each with its name and its motive. And a `forms` section: the shapes of Jenkins a script can be written in, the shape of PipelineK that replaces each one, why the compiler stops at each one, and the sentence the compiler prints when a diagnostic lands on one of them. The two sections answer two different questions, and each fact is said once: a divergence says how the two products differ, and a form says what the compiler does with a shape it recognizes.
+`pipelinek steps --json` publishes the same catalogue as one document of the schema `pipelinek.steps/9`: one entry per key, with the effects the step declares, what a replay does with it, what the engine does with it when the run died with it still RUNNING, the capabilities it needs, the JSON Schema of its payload, the equivalent in Jenkins and the divergence of THAT entry. The document also carries a `divergences` section: the differences that are the same for every script —the ones the language imposes and the ones the product decides— each with its name and its motive. And a `forms` section: the shapes of Jenkins a script can be written in, the shape of PipelineK that replaces each one, why the compiler stops at each one, and the sentence the compiler prints when a diagnostic lands on one of them. The two sections answer two different questions, and each fact is said once: a divergence says how the two products differ, and a form says what the compiler does with a shape it recognizes.
 
 When a `.pipeline.kts` is written in the form of Jenkins, the diagnostic says what to write instead. The compiler points at the token that is wrong —the quote of a Groovy string, the colon of a Groovy named argument, the `env` of `env.BRANCH_NAME`— and the suggestion names the form of PipelineK that replaces it:
 
@@ -440,7 +440,7 @@ The table of equivalences with Jenkins is NOT written here, and that is the poin
 
 A name nobody carries is refused with the entries that come close, and a name two entries carry is refused with both of them named — `core.pwd` and `core.pwd.tmp` are two different steps, and answering with one of them would be a coin toss dressed as an answer.
 
-`pipelinek migrate` answers the question a migration starts with: for each step of Jenkins, WHAT does this product offer? It reads the same catalogue —the classification is a function of the entries the catalogue publishes and it adds nothing to them— and it says, for every name, the equivalent (the key the runtime resolves and the name the author writes) and the divergence of that equivalent with its motive. And it ends with the DIFFERENCES that apply to every script: the nine the catalogue declares, four of them imposed by the language and five decided by the product.
+`pipelinek migrate` answers the question a migration starts with: for each step of Jenkins, WHAT does this product offer? It reads the same catalogue —the classification is a function of the entries the catalogue publishes and it adds nothing to them— and it says, for every name, the equivalent (the key the runtime resolves and the name the author writes) and the divergence of that equivalent with its motive. And it ends with the DIFFERENCES that apply to every script: the ten the catalogue declares, four of them imposed by the language and six decided by the product.
 
 ```bash
 $ pipelinek migrate --jenkins sh --jenkins pwd --jenkins bat
@@ -482,15 +482,17 @@ the differences that apply to every script:
     There is no `branch('main')`: the product has no branch of its own, and the condition on the branch is written with a variable that the SCRIPT declares. ...
   [product] the environment a script reads
     Jenkins evaluates `env.X` when the step RUNS, on the agent that runs it. ...
+  [product] the declaration of a variable
+    Jenkins declares a variable with an ASSIGNMENT inside the `environment { }` block (`FOO = 'x'`), and this product declares it with a CALL: `environment { env("FOO", "x") }`. ...
 
 the forms the compiler recognizes, and the sentence it prints for each one, are published with the catalogue: pipelinek steps --json
 ```
 
 A name the catalogue does not declare is reported as a name the catalogue does not declare, and NOT as a step that cannot be migrated: the catalogue is silent about the steps of the plugins that are not installed, and the product cannot say what Jenkins publishes. The report counts NAMES and not entries —`pwd` is declared by two entries, and the report shows both of them with the divergence of each.
 
-The FORMS of Jenkins —the shapes a script can be written in, and the sentence the compiler prints when a diagnostic lands on one of them— are not repeated in the report: they are three of those nine differences written in another way, and the report says each difference once. They are published with the catalogue, which is where the compiler reads them from too.
+The FORMS of Jenkins —the shapes a script can be written in, and the sentence the compiler prints when a diagnostic lands on one of them— are not repeated in the report: they are three of those ten differences written in another way, and the report says each difference once. They are published with the catalogue, which is where the compiler reads them from too.
 
-`pipelinek migrate --json` publishes the same facts as the document of the schema `pipelinek.migrate/5`: one row per name with its status and its equivalents, the aggregate of the names, and the section of the differences.
+`pipelinek migrate --json` publishes the same facts as the document of the schema `pipelinek.migrate/6`: one row per name with its status and its equivalents, the aggregate of the names, and the section of the differences.
 
 The INVENTORY of the steps a Jenkinsfile uses is not the product's work: the report starts from the names it is given, and the reading of a Jenkinsfile belongs to the tool that asks the question.
 

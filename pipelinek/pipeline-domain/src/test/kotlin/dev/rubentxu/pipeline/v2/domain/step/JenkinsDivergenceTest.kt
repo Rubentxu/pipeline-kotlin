@@ -58,10 +58,11 @@ class JenkinsDivergenceTest {
                 "the gate compares against what is declared",
                 "the predicate of the branch",
                 "the environment a script reads",
+                "the declaration of a variable",
             ),
             product.map { it.name },
-            "the product decides five differences: the four the card names and the one the " +
-                "map adds, the environment a script reads",
+            "the product decides six differences: the five the card names and the one the " +
+                "map adds, the declaration of a variable",
         )
     }
 

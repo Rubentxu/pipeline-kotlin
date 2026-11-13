@@ -51,7 +51,7 @@ enum class JenkinsFormShape {
  * The reason of a form is WHY THE COMPILER STOPS at that shape, and not why
  * the two products differ: that difference is a fact of its own, it belongs to
  * the divergence that realises the shape, and it is published with the
- * divergences. The three forms of Jenkins are three of the nine differences,
+ * divergences. The three forms of Jenkins are three of the ten differences,
  * written the way the compiler meets them, and a catalogue that printed the
  * same sentence in both sections would publish one fact twice.
  *

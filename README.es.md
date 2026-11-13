@@ -190,6 +190,8 @@ stage("build") {
 
 El cuerpo del stage declara pasos también, y los dos son **una sola lista**: los pasos del cuerpo y los pasos del bloque, en el orden en que el autor los escribió. Ninguna de las dos formas es la que el producto exige, y ninguna es la que rechaza.
 
+Un bloque que lleva pasos **no tiene autoridad sobre el stage**: una declaración que pertenece al stage —el `agent`, las puertas `when*`, el `environment` declarativo, las `options`, el `post` y las `directives`— se rechaza donde se escribe, y el rechazo nombra la declaración, el bloque en el que se escribió y el sitio donde pertenece. Una puerta que un bloque anidado se comiera en silencio sería una puerta que no puerta, y el stage correría sin condición.
+
 ### Editar pipelines en IntelliJ IDEA
 
 El editor resuelve un script contra el classpath del módulo al que pertenece, y un `.pipeline.kts` fuera de cualquier módulo no tiene DSL ni diagnósticos. `ide init` escribe ese módulo, como un proyecto Gradle, a partir de la instalación con la que lo ejecutas:

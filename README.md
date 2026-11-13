@@ -188,6 +188,8 @@ stage("build") {
 
 The body of the stage declares steps too, and the two are **one list**: the steps of the body and the steps of the block, in the order the author wrote them. Neither form is the one the product requires, and neither is the one it refuses.
 
+A block that carries steps has **no authority over the stage**: a declaration that belongs to the stage —the `agent`, the `when*` gates, the declarative `environment`, the `options`, the `post` and the `directives`— is refused where it is written, and the refusal names the declaration, the block it was written in and the place where it belongs. A gate that a nested block dropped in silence would be a gate that does not gate, and the stage would run unconditionally.
+
 ### Edit pipelines in IntelliJ IDEA
 
 The editor resolves a script against the classpath of the module it belongs to, and a `.pipeline.kts` outside any module gets no DSL and no diagnostics. `ide init` writes that module, as a Gradle project, from the installation you run it with:

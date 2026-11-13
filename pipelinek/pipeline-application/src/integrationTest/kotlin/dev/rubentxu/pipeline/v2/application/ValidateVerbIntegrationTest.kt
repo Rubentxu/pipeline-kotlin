@@ -51,6 +51,9 @@ import java.util.concurrent.TimeUnit
  * - The thrown body, in text and in JSON: the case the verb used to count without naming.
  * - The discarded carrier: the refusal the DSL raises while the pipeline is built, whose text is
  *   the only thing that tells the author which carrier they dropped.
+ * - The declaration of the stage written inside a block of steps: a gate that a nested scope
+ *   drops in silence is a gate that does not gate, so the product refuses it where it is
+ *   written, and the step that follows it never runs.
  * - The compile error is the control: it already reached the document, and it must still reach it
  *   exactly once, with no evaluation error added to it.
  * - The warning is a real one from the compiler, on a script that validates. The summary used to
@@ -151,6 +154,26 @@ class ValidateVerbIntegrationTest {
         val messages = errorMessagesOf(json.out)
         assertEquals(1, messages.size, json.out)
         assertTrue(messages.single().startsWith(GATE_PREFIX), "the JSON document lost the refusal's text:\n${json.out}")
+    }
+
+    @Test
+    fun `a gate of the stage declared inside a block of steps is refused with the refusal's text`() {
+        val marker = dir.resolve("the-deploy-ran")
+        val (exit, out, err) = validate("gated.pipeline.kts", gatedInsideABlock(marker))
+
+        assertEquals(CliExit.INVALID_ARGUMENT, exit, out + err)
+        assertEquals(
+            1,
+            occurrences(out, STAGE_AUTHORITY_PREFIX),
+            "the document did not name the refusal once:\n$out",
+        )
+        assertTrue("`whenEnvIs`" in out, "the refusal does not name the declaration:\n$out")
+        assertTrue("`steps { }`" in out, "the refusal does not name the context:\n$out")
+        assertTrue("body of the stage" in out, "the refusal does not name the alternative:\n$out")
+        assertFalse(
+            Files.exists(marker),
+            "the step of the block ran: the refusal came before the block admitted any step",
+        )
     }
 
     @Test
@@ -265,6 +288,33 @@ class ValidateVerbIntegrationTest {
     private companion object {
         const val THROWN_REASON = "boom: evaluation failed here"
         const val GATE_PREFIX = "Pure builder consumption gate: "
+
+        /**
+         * The text every refusal of a declaration that belongs to the stage
+         * carries.
+         */
+        const val STAGE_AUTHORITY_PREFIX = "belongs to the STAGE, and it is refused inside"
+
+        /**
+         * A script that declares the gate of the STAGE inside a block that
+         * carries steps, and a step that would leave a marker behind.
+         *
+         * The marker is what makes the order observable: the step is written
+         * AFTER the refused declaration, so a product that admitted it would
+         * leave the file behind.
+         */
+        fun gatedInsideABlock(marker: Path): String = """
+            pipeline {
+                stages {
+                    stage("deploy") {
+                        steps {
+                            whenEnvIs("APPROVED", "true")
+                            sh("touch $marker")
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
 
         val PIPELINE_ONLY = """
             pipeline {

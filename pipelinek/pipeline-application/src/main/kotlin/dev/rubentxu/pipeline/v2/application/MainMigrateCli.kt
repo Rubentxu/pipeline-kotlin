@@ -68,16 +68,19 @@ internal object MainMigrateCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.migrate/2`: the document carries the classification of
-     * the names the operator asked about, the aggregate of that
-     * classification and the DIFFERENCES that apply to every script. It was
-     * `pipelinek.migrate/1` when the document carried the forms: the forms are
-     * three of those differences written in another way, and a document that
-     * carried both would carry one sentence twice —MEASURED, the reason of the
-     * form of the named argument is byte-identical to the reason of the
+     * It is `pipelinek.migrate/3`: the document carries the DIFFERENCES with
+     * their reason, and the reason of the divergence of the dollar changed what
+     * it says, so the version is the warning to the consumer that reads it
+     * again. It was `pipelinek.migrate/2`: the document carries the
+     * classification of the names the operator asked about, the aggregate of
+     * that classification and the DIFFERENCES that apply to every script. It
+     * was `pipelinek.migrate/1` when the document carried the forms: the forms
+     * are three of those differences written in another way, and a document
+     * that carried both would carry one sentence twice —MEASURED, the reason of
+     * the form of the named argument is byte-identical to the reason of the
      * difference of the named arguments.
      */
-    const val SCHEMA: String = "pipelinek.migrate/2"
+    const val SCHEMA: String = "pipelinek.migrate/3"
 
     /**
      * The classification of the names the operator asked about.

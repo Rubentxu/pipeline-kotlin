@@ -87,8 +87,11 @@ object JenkinsDivergences {
         JenkinsDivergence(
             name = "the dollar of a string",
             reason = "Groovy has a single-quoted string that does not interpolate, and Kotlin has a " +
-                "triple-quoted one. A `\$` that has to reach the shell is written `\\$` inside a " +
-                "double-quoted string, and the string of several lines of the DSL does not interpolate at all.",
+                "triple-quoted one that interpolates. A string of several lines is a RAW string, and a " +
+                "raw string reads a `\$NAME` as a template of Kotlin, the same way a string between " +
+                "double quotes does. A dollar that has to reach the shell is written " +
+                "`$ESCAPED_DOLLAR` inside a string between double quotes, and `$LITERAL_DOLLAR` " +
+                "inside a string of several lines, where no escape is processed.",
             scope = JenkinsDivergence.Scope.LANGUAGE,
         ),
         JenkinsDivergence(
@@ -127,4 +130,24 @@ object JenkinsDivergences {
             scope = JenkinsDivergence.Scope.PRODUCT,
         ),
     )
+
+    /**
+     * The characters a dollar has when it is written ESCAPED in a string
+     * between double quotes.
+     *
+     * They are built out of pieces because the text that spells them IS the
+     * trap: a dollar that a backtick follows opens a template of Kotlin, and
+     * the published text has to SHOW the escape.
+     */
+    private const val ESCAPED_DOLLAR: String = "\\" + "\$"
+
+    /**
+     * The characters a dollar has when it is written as a LITERAL inside a
+     * string of several lines.
+     *
+     * A raw string processes no escape, so the dollar cannot be escaped there:
+     * it is written as a dollar literal, in braces, next to a dollar literal in
+     * quotes.
+     */
+    private const val LITERAL_DOLLAR: String = "\$" + "{'" + "\$" + "'}"
 }

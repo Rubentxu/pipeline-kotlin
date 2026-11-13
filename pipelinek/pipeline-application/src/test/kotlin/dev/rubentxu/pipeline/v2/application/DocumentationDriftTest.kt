@@ -13,6 +13,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -246,6 +247,50 @@ class DocumentationDriftTest {
             section.contains("`$OTEL_SEMCONV_CICD_VERSION`"),
             "the README does not state the version of the semantic conventions this build pins",
         )
+    }
+
+    /**
+     * The documents name the schema this build publishes.
+     *
+     * The schema number is the warning a consumer gets when the shape of a
+     * document changes, so a document that names another number sends the
+     * reader to a shape that no longer exists. The fact is taken from the code
+     * —the two constants the CLIs publish— and the documents have to state it.
+     *
+     * The Spanish README is read when it is here: a document that is
+     * translated has to be corrected too, and a rule that only read one of the
+     * two would let the other rot.
+     */
+    @Test
+    fun `the documents name the schema this build publishes`() {
+        val published = mapOf(
+            "pipelinek.steps" to MainStepsCli.SCHEMA,
+            "pipelinek.migrate" to MainMigrateCli.SCHEMA,
+        )
+
+        val documents = listOfNotNull(readme(), readmeInSpanish())
+
+        val named = documents.flatMap { document ->
+            SCHEMA_NAME.findAll(document).map { it.value }.distinct().toList()
+        }
+
+        assertTrue(
+            named.isNotEmpty(),
+            "the documents name no schema, so this rule proves nothing",
+        )
+
+        named.forEach { schema ->
+            val expected = published[schema.substringBefore('/')]
+            assertNotNull(
+                expected,
+                "a document names the schema '$schema', which this build does not publish",
+            )
+            assertEquals(
+                expected,
+                schema,
+                "a document names a schema this build does not publish",
+            )
+        }
     }
 
     /**
@@ -618,6 +663,17 @@ class DocumentationDriftTest {
 
     private fun readme(): String = Files.readString(repositoryRoot().resolve("README.md"))
 
+    /**
+     * The Spanish README, when this repository has it.
+     *
+     * It is optional, and nothing here asks for it: the rule reads it when it
+     * is there and finds nothing when it is not.
+     */
+    private fun readmeInSpanish(): String? {
+        val file = repositoryRoot().resolve("README.es.md")
+        return if (Files.isRegularFile(file)) Files.readString(file) else null
+    }
+
     private fun agents(): String = Files.readString(repositoryRoot().resolve("AGENTS.md"))
 
     /**
@@ -767,6 +823,15 @@ class DocumentationDriftTest {
 
         /** A Kotlin source file the README names, with the path it names it under. */
         val KOTLIN_FILE = Regex("`([A-Za-z0-9_./-]+\\.kt)`")
+
+        /**
+         * The schema of a published document, as a document names it.
+         *
+         * The name of the schema and its number travel together: the number is
+         * what says which shape the document has, and a document that names
+         * another number names another shape.
+         */
+        val SCHEMA_NAME = Regex("pipelinek\\.(?:steps|migrate)/\\d+")
 
         /** The section of the README that states the telemetry contract. */
         const val TELEMETRY_HEADING = "### Telemetry"

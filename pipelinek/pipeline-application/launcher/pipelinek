@@ -483,6 +483,29 @@ read_classpath_fingerprint
 prepare_archive
 write_state
 
+# --- the archive, published for the children ---------------------------------
+#
+# The product starts one child process per run when it serves runs over a
+# socket, and a child that does not map the archive reads the Kotlin compiler
+# from the jar: more than a second before the run starts, for the very same
+# classes the command line reads from the archive in half that time. The
+# launcher knows which file it mapped, so it says so, and the product reads
+# that answer instead of guessing the name of a file the launcher owns.
+#
+# The variable names the archive this launcher MAPPED, and only that one:
+#
+#   - An archive that is being WRITTEN is not published. The file is empty
+#     until the JVM that fills it exits, and a child that maps an empty
+#     archive maps nothing and warns about it. It is also an archive the
+#     launcher is about to replace, and a child that trained over it would
+#     lose its work to the dump this run leaves behind.
+#   - An archive that is MAPPED is published, because it is the one the
+#     launcher checked against the jars: a child that maps it maps the same
+#     classes this run mapped, and the JVM does not refuse it.
+case "$ARCHIVE_FLAGS" in
+    -XX:SharedArchiveFile=*) export PIPELINEK_SHARED_ARCHIVE="$ARCHIVE_FILE" ;;
+esac
+
 # --- run ---------------------------------------------------------------------
 
 # The JVM options, as words and not as text: an option that contains a

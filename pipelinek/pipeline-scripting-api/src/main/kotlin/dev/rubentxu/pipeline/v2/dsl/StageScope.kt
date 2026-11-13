@@ -662,10 +662,11 @@ class StageScope(
      * This is the form of `retry` this product EXECUTES: it lowers to the
      * `core.retry` block step, and the coordinator reads the attempts of that
      * payload. The step-level overload —`retry(count, delaySeconds)`, which
-     * projected a retry policy onto the preceding step— is gone from the
-     * language: no runtime consumer ever read the delay and the jitter it
-     * declared, and a surface that offers a delay nothing honours is a
-     * promise the product does not keep.
+     * projected a retry policy onto the preceding step— is NOT a form this
+     * product executes: no runtime consumer ever read the delay and the
+     * jitter it declared, and a surface that offers a delay nothing honours
+     * is a promise the product does not keep. A call to that overload is
+     * REFUSED, and the refusal names this form.
      *
      * @param count Maximum retry attempts
      * @param block Nested steps to execute with retry

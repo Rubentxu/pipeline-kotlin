@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Timeout
  *
  * ## The guarantee under trial
  *
- * That the manifest does not classify as SELF-REFUSING anything this product
+ * That the manifest does not classify as self-refusing anything this product
  * offers or executes: a form the language publishes is a form an author can
  * write, and a key the production registry owns is a step a run can execute.
  * A manifest that says otherwise is a catalogue that contradicts the code, and

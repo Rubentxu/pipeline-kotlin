@@ -1009,9 +1009,14 @@ internal class ServiceRunSupervisor(
             // was cancelled. The run's own terminal is written by whoever
             // asked for the stop, and NOT here.
             end = SupervisedRunEnd.Cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
             // The child's failure is the RUN's failure and not the service's.
-            end = SupervisedRunEnd.Failed
+            // The CAUSE travels with it: a run that closed without saying what
+            // failed is a run whose reader has nowhere to look. The failure
+            // that comes out of here is the one the port raised —a child whose
+            // pipes broke, a control directory that was swept from under it—
+            // and its own words are what name the resource that gave way.
+            end = SupervisedRunEnd.Failed(causeOf(failure))
         } finally {
             closeLease(lease)
             closeRunWithoutTerminal(supervision, end)
@@ -1026,6 +1031,21 @@ internal class ServiceRunSupervisor(
             liveRuns.decrementAndGet()
             watcher.signalFinished()
         }
+    }
+
+    /**
+     * What failed, in the words of the failure itself.
+     *
+     * The KIND first, because it is the fact that does not depend on the
+     * message being there: a failure with no message still says what kind of
+     * failure it was. The message follows, when it says anything: it is the
+     * part that names the resource —"error=0, Cannot allocate memory"— and
+     * that is the part the reader of the run cannot do without.
+     */
+    private fun causeOf(failure: Exception): String {
+        val kind = failure.javaClass.simpleName
+        val message = failure.message?.trim().orEmpty()
+        return if (message.isBlank()) kind else "$kind: $message"
     }
 
     /**

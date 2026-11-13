@@ -41,8 +41,16 @@ internal sealed interface SupervisedRunEnd {
      */
     data class Ended(val exitCode: Int) : SupervisedRunEnd
 
-    /** The child could not be run to its end: the port failed under it. */
-    data object Failed : SupervisedRunEnd
+    /**
+     * The child could not be run to its end: the port failed under it.
+     *
+     * @property cause what failed, in the words of the failure itself: the
+     *   kind of the failure and its message. The client that reads the run
+     *   afterwards needs to know WHICH resource or deadline gave way, and a
+     *   failure that names no cause is a run that failed for no reason the
+     *   reader can see.
+     */
+    data class Failed(val cause: String) : SupervisedRunEnd
 
     /** The word the run's terminal carries for this end. */
     fun outcomeToken(): String = when (this) {
@@ -55,7 +63,7 @@ internal sealed interface SupervisedRunEnd {
         // failure of the run, not a stop from the outside. The bare word is
         // the one the wire carries: it names the outcome and not the cause,
         // and the cause is in the diagnostic below.
-        is Ended, Failed -> RunOutcome.FAILURE_TOKEN
+        is Ended, is Failed -> RunOutcome.FAILURE_TOKEN
     }
 
     /** The diagnostic that says WHY the run ended this way. */
@@ -67,8 +75,9 @@ internal sealed interface SupervisedRunEnd {
                 "the run was stopped: its child was cancelled before it ended"
             is Ended ->
                 "the run ended without a terminal of its own: its child ended with the exit code $exitCode"
-            Failed ->
-                "the run ended without a terminal of its own: its child could not be run to its end"
+            is Failed ->
+                "the run ended without a terminal of its own: its child could not be run to its " +
+                    "end: $cause"
         }
         return ScriptingDiagnostic(
             severity = ScriptDiagnosticSeverity.ERROR,

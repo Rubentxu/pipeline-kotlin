@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -102,6 +103,23 @@ class SupervisedRunCloserDiagnosticsIntegrationTest {
         )
     }
 
+    @Test
+    fun `the terminal of a run whose child could not be run names the cause`() {
+        val terminal = close(RUN, SupervisedRunEnd.Failed(CAUSE))
+
+        assertEquals(
+            listOf(SupervisedRunEnd.Failed(CAUSE).diagnostic()),
+            terminal.diagnostics,
+            "the terminal carries the close of the run, and nothing else: this run had no " +
+                "compilation of its own to explain it",
+        )
+        assertTrue(
+            terminal.diagnostics.single().message.contains(CAUSE),
+            "the reader of the run finds WHY it failed in the terminal: " +
+                terminal.diagnostics.single().message,
+        )
+    }
+
     /** Writes a `CompilationFinished` of [runId] with [diagnostics] through the product's writing door. */
     private fun compiled(runId: String, diagnostics: List<ScriptingDiagnostic>) {
         val admission = admitEventStore(db.toString(), EventStorePurpose.Write)
@@ -141,6 +159,12 @@ class SupervisedRunCloserDiagnosticsIntegrationTest {
         const val RUN: String = "run-1"
         const val OTHER_RUN: String = "run-2"
         const val SCRIPT: String = "/work/config.pipeline.kts"
+
+        /**
+         * The cause of a failure, in the words of the failure itself: the kind
+         * of the failure and the message that names the resource that gave way.
+         */
+        const val CAUSE: String = "IOException: error=0, Cannot allocate memory"
 
         val UNRESOLVED = ScriptingDiagnostic(
             ScriptDiagnosticSeverity.ERROR, "Unresolved reference 'undefinedThing'.", 3, 13, SCRIPT,

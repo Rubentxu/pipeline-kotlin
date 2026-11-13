@@ -15,8 +15,10 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -134,6 +136,54 @@ class ServiceRunSupervisorTest {
             ),
             refused.refusal,
             "a child that said nothing is not a run that started",
+        )
+    }
+
+    @Test
+    fun `a child whose execution fails says why in the close the supervisor asks for`(@TempDir root: Path) {
+        // The child owns itself BEFORE it fails: a child that dies before it owns
+        // itself is REFUSED, and a refusal is not a run that ended. The latch is
+        // what orders the two facts —the run is registered before the failure
+        // arrives— so the closer is asked about a run it can name.
+        val fails = CountDownLatch(1)
+        val port = FakePort { request, sink ->
+            sink.append(receiptOf(request))
+            if (!fails.await(5, TimeUnit.SECONDS)) {
+                // The lane never released the child: the failure this row is
+                // about did not happen, and the close the supervisor asks for is
+                // about a child that is still alive.
+                throw IOException("the lane did not release the child to fail")
+            }
+            throw IOException("error=0, Cannot allocate memory")
+        }
+        val closer = RecordingCloser()
+        val supervisor = supervisor(root, port, closer = closer)
+
+        val outcome = supervisor.start(request("build.kts"))
+
+        assertInstanceOf(
+            ServiceStartOutcome.Accepted::class.java,
+            outcome,
+            "the run owned itself before it failed",
+        )
+        fails.countDown()
+        awaitNoRunInFlight(supervisor)
+
+        val end = closer.endOf(RUN_ID)
+        val failed = assertInstanceOf(
+            SupervisedRunEnd.Failed::class.java,
+            end,
+            "the child that failed is not a child that ended: the close says $end",
+        )
+        assertEquals(
+            "IOException: error=0, Cannot allocate memory",
+            failed.cause,
+            "the close says WHAT failed, in the words of the failure itself: a close that " +
+                "names no cause is a run that failed for no reason the reader can see",
+        )
+        assertTrue(
+            failed.diagnostic().message.contains("Cannot allocate memory"),
+            "the diagnostic a reader of the run sees names the cause: ${failed.diagnostic().message}",
         )
     }
 
@@ -563,6 +613,7 @@ class ServiceRunSupervisorTest {
         registry: ServiceStartRegistry = registryAt(root),
         credentialSessions: CredentialProviderSessions? = null,
         brokers: RunBrokerFactory? = null,
+        closer: SupervisedRunCloser = RecordingCloser(),
     ): ServiceRunSupervisor {
         val scripts = Files.createDirectories(root.resolve("scripts"))
         Files.writeString(scripts.resolve("build.kts"), "print(1)")
@@ -588,6 +639,7 @@ class ServiceRunSupervisorTest {
             ),
             supervisionRoot = root.resolve("supervisions"),
             collaborators = ServiceCollaborators(brokers = brokers, credentialSessions = credentialSessions),
+            closer = closer,
         )
     }
 
@@ -679,6 +731,32 @@ class ServiceRunSupervisorTest {
                     """"ownerId":"","startedAtMs":1700,"status":"Refused:$reason"}""" + "\n"
                 ).toByteArray(),
         )
+
+    /**
+     * A closer that keeps what it was asked to write, so a row can read the end
+     * the supervisor chose.
+     *
+     * The closer is a DOOR of the supervisor, and this lane asks about the
+     * supervisor: what it asks that door to write, and what it says in it. The
+     * door that writes for real lives in the integration lane, against a real
+     * store, and its own guarantees are not this lane's business.
+     */
+    private class RecordingCloser : SupervisedRunCloser {
+
+        /** The ends the supervisor asked to be written, by the run they are about. */
+        private val ends = ConcurrentHashMap<String, SupervisedRunEnd>()
+
+        override fun closeWithoutTerminal(runId: String, end: SupervisedRunEnd): SupervisedRunClosure {
+            ends[runId] = end
+            return SupervisedRunClosure.Closed("event-of-the-lane")
+        }
+
+        /**
+         * The end the supervisor asked to be written for [runId], or null when it
+         * asked for none.
+         */
+        fun endOf(runId: String): SupervisedRunEnd? = ends[runId]
+    }
 
     /**
      * A port that launches a child that behaves the way the test says.

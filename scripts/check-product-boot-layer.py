@@ -517,6 +517,12 @@ DECLARED_TREE_BOOT_CHECKS = {
         "to END with a terminal that says why: a run whose writer is gone "
         "cannot write its own bookend"
     ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/SupervisedRunFailureIntegrationTest.kt": (
+        "the rows that start the runs of a service under the load of "
+        "SIMULTANEOUS starts and check that every run the service accepted "
+        "ends with its terminal, and that a run whose child fails says WHY "
+        "it failed"
+    ),
     "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ServiceSubstrateSchemaIntegrationTest.kt": (
         "the rows that serve a substrate and check that a substrate whose table "
         "of promises is missing is refused by name"

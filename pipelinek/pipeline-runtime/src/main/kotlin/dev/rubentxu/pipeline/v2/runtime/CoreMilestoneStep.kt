@@ -206,6 +206,11 @@ object CoreMilestoneStep {
         stepId = "core.milestone",
         name = "milestone",
         jenkinsSurface = "milestone",
+        jenkinsDivergence = "Jenkins coordinates the ordinal of a milestone between builds: a " +
+            "build that reaches an ordinal waits for the build that reached the previous one. " +
+            "Here the ordinal is observed within the run: the state of the mark lives in the " +
+            "run, an ordinal that is not strictly greater aborts the mark (the step ends " +
+            "UNSTABLE and the run continues), and nothing here coordinates two builds.",
         configRef = "",
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.READ_ONLY),

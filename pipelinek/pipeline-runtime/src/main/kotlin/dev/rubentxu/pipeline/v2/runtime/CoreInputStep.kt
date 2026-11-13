@@ -51,6 +51,10 @@ object CoreInputStep {
         stepId = KEY.value,
         name = "input",
         jenkinsSurface = "input",
+        jenkinsDivergence = "Jenkins enforces the submitter against the authenticated user. " +
+            "Here the submitter is the attribution of who is expected to answer, and not an " +
+            "authorization boundary: this runner is headless and has no user database to " +
+            "authorize against.",
         configRef = "",
         pluginId = "core",
         pluginVersion = "0.1.0",

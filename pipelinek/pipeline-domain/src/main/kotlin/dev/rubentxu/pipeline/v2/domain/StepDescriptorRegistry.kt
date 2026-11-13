@@ -323,6 +323,10 @@ class StepDescriptorRegistry private constructor(
                 stepId = "core.timestamps",
                 name = "timestamps",
                 jenkinsSurface = "timestamps",
+                jenkinsDivergence = "Jenkins prefixes every line of the output of the body with " +
+                    "the time it was produced. Here the scope ANNOUNCES itself: it publishes " +
+                    "the TimestampsEntered and TimestampsExited events of the scope and " +
+                    "decorates nothing — the captured output travels as the process produced it.",
                 configRef = "",
                 inputSchema = StepArguments.of().jsonSchema("core.timestamps"),
                 body = StepBody.Declared(
@@ -380,6 +384,10 @@ class StepDescriptorRegistry private constructor(
                 stepId = "core.waitUntil",
                 name = "waitUntil",
                 jenkinsSurface = "waitUntil",
+                jenkinsDivergence = "Jenkins waits for the predicate of the block to hold. Here " +
+                    "the predicate is the outcome of the steps the body declares: a body that " +
+                    "declares no step is refused while the script is written, and the wait " +
+                    "polls the body with the durable backoff.",
                 configRef = "",
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.ZERO_OR_MORE,

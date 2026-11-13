@@ -311,6 +311,10 @@ object CoreWaitUntilStep {
         stepId = "core.waitUntil",
         name = "waitUntil",
         jenkinsSurface = "waitUntil",
+        jenkinsDivergence = "Jenkins waits for the predicate of the block to hold. Here " +
+            "the predicate is the outcome of the steps the body declares: a body that " +
+            "declares no step is refused while the script is written, and the wait " +
+            "polls the body with the durable backoff.",
         configRef = "",
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.READ_ONLY),

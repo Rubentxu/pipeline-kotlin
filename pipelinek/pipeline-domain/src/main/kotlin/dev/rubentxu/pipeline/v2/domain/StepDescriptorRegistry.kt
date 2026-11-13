@@ -205,12 +205,22 @@ class StepDescriptorRegistry private constructor(
         )
 
         /**
-         * Body rows executed by the canonical body engine that project a scope.
-         * Each row names the scope it projects or the retry shape it polls under. The
-         * coordinator derives eligibility from [BodyExecutionOwner.CANONICAL_ENGINE], so
+         * Body rows executed by the canonical body engine.
+         *
+         * The rows are split by the POLICY that runs the body: a row that projects
+         * a scope and a row that retries one are two different contracts, and one
+         * list that holds both grows with the product until no one can read it.
+         *
+         * The coordinator derives eligibility from [BodyExecutionOwner.CANONICAL_ENGINE], so
          * adding a row here is what makes a body Step routable.
-*/
-        private fun canonicalEngineBodyRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
+         */
+        private fun canonicalEngineBodyRows(): List<Pair<PluginStepId, StepDescriptor>> =
+            canonicalScopedBodyRows() + canonicalRetryingBodyRows()
+
+        /**
+         * The rows that project a scope around the body they run.
+         */
+        private fun canonicalScopedBodyRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
             PluginStepId("core.withEnv") to StepDescriptor(
                 stepId = "core.withEnv",
                 name = "withEnv",
@@ -329,6 +339,12 @@ class StepDescriptorRegistry private constructor(
                     introduces = null,
                 ),
             ),
+        )
+
+        /**
+         * The rows whose body runs again until it succeeds or the policy gives up.
+         */
+        private fun canonicalRetryingBodyRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
             PluginStepId("core.retry") to StepDescriptor(
                 stepId = "core.retry",
                 name = "retry",

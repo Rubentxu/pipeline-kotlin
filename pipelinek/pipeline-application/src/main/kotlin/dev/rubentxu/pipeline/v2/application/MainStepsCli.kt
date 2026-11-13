@@ -81,7 +81,16 @@ internal object MainStepsCli {
     /**
      * The schema of the document `--json` publishes.
      *
-     * It is `pipelinek.steps/9` since the reason of the DIVERGENCE of the
+     * It is `pipelinek.steps/10` since the reason of the DIVERGENCE of the
+     * CONTROL FLOW names the block `steps { }` beside the block `script { }`:
+     * the block a Jenkinsfile writes declares the steps of a stage, and its
+     * Kotlin is evaluated while the PLAN is built, the same way the body of a
+     * `script { }` block is. The reason that named only the `script { }` block
+     * sent the reader of a `steps { }` block to the wrong conclusion about
+     * when his `if` decides, and a consumer that matched on the text it read
+     * has to read it again.
+     *
+     * It was `pipelinek.steps/9` since the reason of the DIVERGENCE of the
      * DECLARATION of a variable says the form of Jenkins and the form of this
      * product: the assignment `FOO = 'x'` does not compile, and the compiler
      * answers `Unresolved reference 'FOO'`. The document that did not carry
@@ -139,7 +148,7 @@ internal object MainStepsCli {
      * in `forms` that said what `divergences` says; the version names that
      * change.
      */
-    const val SCHEMA: String = "pipelinek.steps/9"
+    const val SCHEMA: String = "pipelinek.steps/10"
 
     /**
      * The published document, as a value.

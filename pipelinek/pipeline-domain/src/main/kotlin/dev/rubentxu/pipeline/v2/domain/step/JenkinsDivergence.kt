@@ -107,9 +107,10 @@ object JenkinsDivergences {
         ),
         JenkinsDivergence(
             name = "the control flow of the body of a script",
-            reason = "The Kotlin of a `script { }` block is evaluated while the PLAN is built: its `if` " +
-                "decides which arm is declared, before the first step runs. The Groovy of a Jenkinsfile " +
-                "runs during the run, so its `if` decides while the run goes on.",
+            reason = "The Kotlin of a stage is evaluated while the PLAN is built: the `if` of its body, " +
+                "of a `script { }` block and of a `steps { }` block decides which arm is declared, " +
+                "before the first step runs. The Groovy of a Jenkinsfile runs during the run, so its " +
+                "`if` decides while the run goes on.",
             scope = JenkinsDivergence.Scope.PRODUCT,
         ),
         JenkinsDivergence(

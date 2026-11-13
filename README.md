@@ -411,7 +411,7 @@ step       core.sh                           sh
 step       scm-git.checkout                  scm-git.checkout
 ```
 
-`pipelinek steps --json` publishes the same catalogue as one document of the schema `pipelinek.steps/9`: one entry per key, with the effects the step declares, what a replay does with it, what the engine does with it when the run died with it still RUNNING, the capabilities it needs, the JSON Schema of its payload, the equivalent in Jenkins and the divergence of THAT entry. The document also carries a `divergences` section: the differences that are the same for every script —the ones the language imposes and the ones the product decides— each with its name and its motive. And a `forms` section: the shapes of Jenkins a script can be written in, the shape of PipelineK that replaces each one, why the compiler stops at each one, and the sentence the compiler prints when a diagnostic lands on one of them. The two sections answer two different questions, and each fact is said once: a divergence says how the two products differ, and a form says what the compiler does with a shape it recognizes.
+`pipelinek steps --json` publishes the same catalogue as one document of the schema `pipelinek.steps/10`: one entry per key, with the effects the step declares, what a replay does with it, what the engine does with it when the run died with it still RUNNING, the capabilities it needs, the JSON Schema of its payload, the equivalent in Jenkins and the divergence of THAT entry. The document also carries a `divergences` section: the differences that are the same for every script —the ones the language imposes and the ones the product decides— each with its name and its motive. And a `forms` section: the shapes of Jenkins a script can be written in, the shape of PipelineK that replaces each one, why the compiler stops at each one, and the sentence the compiler prints when a diagnostic lands on one of them. The two sections answer two different questions, and each fact is said once: a divergence says how the two products differ, and a form says what the compiler does with a shape it recognizes.
 
 When a `.pipeline.kts` is written in the form of Jenkins, the diagnostic says what to write instead. The compiler points at the token that is wrong —the quote of a Groovy string, the colon of a Groovy named argument, the `env` of `env.BRANCH_NAME`— and the suggestion names the form of PipelineK that replaces it:
 
@@ -489,7 +489,7 @@ the differences that apply to every script:
   [product] the workspace of a stage
     The stages of a run SHARE one workspace by default: the directory the run was invoked in, or the one the operator named with `--workspace`. ...
   [product] the control flow of the body of a script
-    The Kotlin of a `script { }` block is evaluated while the PLAN is built: ...
+    The Kotlin of a stage is evaluated while the PLAN is built: ...
   [product] the gate compares against what is declared
     A `when*` gate compares the value the stage DECLARED, and not the value the agent has at runtime: ...
   [product] the predicate of the branch
@@ -506,7 +506,7 @@ A name the catalogue does not declare is reported as a name the catalogue does n
 
 The FORMS of Jenkins —the shapes a script can be written in, and the sentence the compiler prints when a diagnostic lands on one of them— are not repeated in the report: they are three of those ten differences written in another way, and the report says each difference once. They are published with the catalogue, which is where the compiler reads them from too.
 
-`pipelinek migrate --json` publishes the same facts as the document of the schema `pipelinek.migrate/6`: one row per name with its status and its equivalents, the aggregate of the names, and the section of the differences.
+`pipelinek migrate --json` publishes the same facts as the document of the schema `pipelinek.migrate/7`: one row per name with its status and its equivalents, the aggregate of the names, and the section of the differences.
 
 The INVENTORY of the steps a Jenkinsfile uses is not the product's work: the report starts from the names it is given, and the reading of a Jenkinsfile belongs to the tool that asks the question.
 

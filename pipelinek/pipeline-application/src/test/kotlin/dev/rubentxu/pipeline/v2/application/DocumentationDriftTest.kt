@@ -3,7 +3,9 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.step.StepCatalogue
 import dev.rubentxu.pipeline.v2.runtime.telemetry.OTEL_SEMCONV_CICD_VERSION
 import dev.rubentxu.pipeline.v2.runtime.telemetry.TelemetryIdentityTable
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -291,6 +293,57 @@ class DocumentationDriftTest {
                 expected,
                 schema,
                 "a document names a schema this build does not publish",
+            )
+        }
+    }
+
+    /**
+     * The READMEs publish the card of a step AS THE TOOL PRINTS IT.
+     *
+     * The card is a sample of a terminal, and a sample that says another
+     * thing than the tool is a second truth: the reader who copies it into
+     * their own comparison is comparing against a card that nobody prints.
+     *
+     * The card of the tool is the tool itself and not a text written here:
+     * the fact the document has to agree with is the one the product
+     * publishes, and a fact written down here would drift the day the card
+     * changed.
+     */
+    @Test
+    fun `the READMEs publish the card of a step as the tool prints it`() {
+        val card = cardOfTheTool("core.sh")
+
+        listOfNotNull(readme(), readmeInSpanish()).forEach { document ->
+            assertEquals(
+                card,
+                cardSample(document),
+                "the README publishes a card of core.sh that the tool does not print",
+            )
+        }
+    }
+
+    /**
+     * The READMEs say HOW MANY core steps declare a schema.
+     *
+     * The sentence that said "the core steps declare none yet" was false, and
+     * the truth is a COUNT: how many of the core steps declare an input
+     * schema. The count is taken from the document the tool publishes, and
+     * the documents have to state it — a reader that is told the core steps
+     * declare no schema stops looking for the schema that most of them do
+     * declare.
+     */
+    @Test
+    fun `the READMEs say how many core steps declare a schema`() {
+        val core = entriesOfTheCatalogue().filter { it.first.startsWith("core.") }
+        val declared = core.count { it.second != null }
+        val total = core.size
+        val stated = Regex("$declared\\D{0,12}$total\\D{0,40}(core|n[uú]cleo)", RegexOption.IGNORE_CASE)
+
+        listOfNotNull(readme(), readmeInSpanish()).forEach { document ->
+            assertTrue(
+                stated.containsMatchIn(document),
+                "the document does not say that $declared of the $total core steps declare a " +
+                    "schema, and a reader that is told they declare none stops looking",
             )
         }
     }
@@ -693,6 +746,64 @@ class DocumentationDriftTest {
         error(
             "the repository root was not found from '${Paths.get("").toAbsolutePath()}'",
         )
+    }
+
+    /**
+     * The card that the tool prints for [key].
+     *
+     * It is the tool itself and not a text written here: the fact the
+     * documents have to agree with is the one the product publishes.
+     */
+    private fun cardOfTheTool(key: String): String {
+        val out = ByteArrayOutputStream()
+        val err = ByteArrayOutputStream()
+        val code = MainDescribeCli.main(
+            arrayOf(key),
+            PrintStream(out, true, Charsets.UTF_8.name()),
+            PrintStream(err, true, Charsets.UTF_8.name()),
+        )
+        assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
+        return out.toString(Charsets.UTF_8.name()).trimEnd()
+    }
+
+    /**
+     * The card that the document publishes as the sample of `describe`.
+     *
+     * It is the block that follows the line that names the command, up to the
+     * fence that closes it.
+     */
+    private fun cardSample(document: String): String? {
+        val lines = document.lines()
+        val header = lines.indexOfFirst { it.trim() == "$ pipelinek describe sh" }
+        if (header < 0) return null
+        val card = mutableListOf<String>()
+        for (line in lines.drop(header + 1)) {
+            if (line.trim() == "```") break
+            card += line
+        }
+        return card.joinToString("\n").trimEnd()
+    }
+
+    /**
+     * The entries of the catalogue the tool publishes, with the schema of the
+     * input of each one, or null when it declares none.
+     */
+    private fun entriesOfTheCatalogue(): List<Pair<String, String?>> {
+        val out = ByteArrayOutputStream()
+        val err = ByteArrayOutputStream()
+        val code = MainStepsCli.main(
+            arrayOf("--json"),
+            PrintStream(out, true, Charsets.UTF_8.name()),
+            PrintStream(err, true, Charsets.UTF_8.name()),
+        )
+        assertEquals(CliExit.SUCCESS.code, code, "the verb answers with success: ${err.toString()}")
+        val parsed = Json.parseToJsonElement(out.toString(Charsets.UTF_8.name())).jsonObject
+        val entries = parsed["entries"]?.jsonArray ?: fail("the document carries the entries")
+        return entries.map { entry ->
+            val fields = entry.jsonObject
+            val key = fields["key"]?.jsonPrimitive?.content ?: fail("an entry carries no key")
+            key to fields["inputSchema"]?.jsonPrimitive?.content
+        }
     }
 
     private fun readme(): String = Files.readString(repositoryRoot().resolve("README.md"))

@@ -455,15 +455,15 @@ core.sh
   location      AGENT
   body          none
   input schema:
-    {}
+    {"$schema":"https://json-schema.org/draft/2020-12/schema","title":"core.sh input","type":"object","properties":{"script":{"type":"string","description":"the script the shell runs"},"encoding":{"type":"string","description":"the encoding the output is read with"},"label":{"type":"string","description":"the label the invocation carries"},"returnMode":{"type":"string","description":"what the step returns: the nothing, the output or the exit code, a ShellReturnMode of the product; the nothing when the payload omits it"}},"required":["script"]}
   output schema:
-    {}
+    (none)
   jenkins       sh
   divergence    Jenkins hands the captured standard output back to the script that wrote the call. Here the eager DSL DECLARES the shell and returns nothing: the captured output stays inside the typed output of the step, and the scripted form is the one that decodes it back to a String. A shell that exits non-zero under this mode is a failure and not an empty output.
   deprecation   (none)
 ```
 
-The payload schema is the one the step's codec declares, and the core steps declare none yet: their schema is `{}` until a codec says what the payload looks like.
+The payload schema is the one the step's codec declares: 31 of the 33 core steps declare an input schema —only `core.agent` and `core.when` declare none— and nine entries declare a schema of the output, the eight of `core-utils` and `http.request`. A step that declares no schema publishes none, and its card says `(none)`.
 
 The table of equivalences with Jenkins is NOT written here, and that is the point: it lives in the catalogue, which is built from the code —every step declares its equivalent and its divergence in the descriptor that describes it, and the catalogue reads them. A table written in a document is a second authority for a fact the code already owns, and it drifts the first time a step is added. This README names the verbs that read it (`pipelinek steps` for the index, `pipelinek describe` for the card of one entry, `pipelinek migrate` for what it offers for a step of Jenkins) and the document that carries it; the readable table is generated from that same code for the web.
 

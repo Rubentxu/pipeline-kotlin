@@ -391,9 +391,23 @@ internal object MainDescribeCli {
         return "${entry.body.invocation} body, ${entry.body.policy}, owner ${entry.body.owner}"
     }
 
-    /** The schema of a payload, as the codec declared it, indented under its label. */
-    private fun schemaLines(schema: String): List<String> =
-        schema.trim().lines().map { "    $it" }
+    /**
+     * The schema of a payload, as the codec declared it, indented under its label.
+     *
+     * A schema that nobody declared is NOT a schema: `{}` is the marker the
+     * domain uses to say so, and publishing it would publish a marker of
+     * another contract as if it were a schema. The card says what the other
+     * empty fields say: `(none)`.
+     *
+     * The criterion is the one of the DOMAIN, so the card and the document
+     * `pipelinek steps --json` publishes cannot disagree about which entries
+     * declare a schema: the document omits the key of the ones that do not,
+     * and the card says that it is absent.
+     */
+    private fun schemaLines(schema: String): List<String> {
+        val declared = StepSchema.declared(schema) ?: return listOf("    $NONE")
+        return declared.trim().lines().map { "    $it" }
+    }
 
     /** One field of the card, with its label padded so the values line up. */
     private fun field(label: String, value: String): String =

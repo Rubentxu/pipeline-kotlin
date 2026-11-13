@@ -31,7 +31,8 @@ import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
  *
  * So the values by default STAY in the concrete scopes, where the published
  * surface already carries them, and the forms that OMIT them are offered as
- * extensions over the contract (see [StepBodyScopeExtensions]).
+ * extensions over the contract: the package [dev.rubentxu.pipeline.v2.dsl]
+ * declares them.
  */
 interface StepBodyScopeWrappers {
 

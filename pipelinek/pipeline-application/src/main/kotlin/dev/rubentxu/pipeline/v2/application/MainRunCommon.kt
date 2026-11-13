@@ -91,6 +91,38 @@ internal fun emitCorrelationAndReceipt(
 }
 
 /**
+ * The lines of the refusal, as words, and nothing else.
+ *
+ * ## WHY THE LINES ARE A FUNCTION AND NOT A PRINT
+ *
+ * Because the refusal is what the operator READS, and a function that returns
+ * its words is the cheapest instrument that can fail: a row can look at the
+ * lines without starting a process, capturing a stream, or writing to a file.
+ * The printing stays at the boundary that owns the stream.
+ *
+ * ## THE ORDER OF THE LINES
+ *
+ * The header names the RULE, and the lines that follow name the STEPS that
+ * broke it. A step whose form this product HAS is followed by the line that
+ * says which form to write: a refusal that can be answered with a form the
+ * product owns is not answered with a list of steps the product does not have.
+ *
+ * @param steps the offending steps, as the eligibility analysis reported them.
+ * @return the lines of the refusal, in the order they are printed.
+ */
+internal fun nonCanonicalRefusalLines(steps: List<NonCanonicalStep>): List<String> {
+    val lines = mutableListOf(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
+    for (step in steps) {
+        lines += "  - Step '${step.stepId}' (${step.pluginStepId}): ${step.reason}"
+        val form = ReplacedStepForms.of(step.pluginStepId)
+        if (form != null) {
+            lines += "      ${form.suggestion}"
+        }
+    }
+    return lines
+}
+
+/**
  * Refuse a pipeline the canonical engine cannot execute, and say WHICH step.
  *
  * ## Why this refusal is said ONCE
@@ -130,10 +162,7 @@ internal fun emitCorrelationAndReceipt(
  *   refuse.
  */
 internal fun refuseNonCanonicalExecution(steps: List<NonCanonicalStep>): Nothing {
-    System.err.println(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
-    for (step in steps) {
-        System.err.println("  - Step '${step.stepId}' (${step.pluginStepId}): ${step.reason}")
-    }
+    nonCanonicalRefusalLines(steps).forEach { line -> System.err.println(line) }
     // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
     // event store has to give them back before the process ends, and ending here would skip
     // that release. The branch that owns nothing turns the refusal into the exit.

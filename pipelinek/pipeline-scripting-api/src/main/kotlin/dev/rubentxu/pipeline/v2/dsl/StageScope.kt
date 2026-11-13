@@ -498,8 +498,19 @@ class StageScope(
     }
 
     /**
-     * No-op step that emits AgentResolved.
+     * The node of Jenkins, and a step this product REFUSES.
+     *
      * Jenkins verbatim: `node(label?: String) { block }`
+     *
+     * The step lowers to the key `core.node`, and NO registered definition owns
+     * that key: the canonical admission refuses the step, in the RUN and not in
+     * the compilation. The script compiles, and the run refuses it naming the
+     * form of this product that replaces it.
+     *
+     * The form that replaces it is the `agent` DIRECTIVE of the stage: the
+     * agent of a stage is resolved before its body runs, and it is a
+     * declaration of the stage and not a block that wraps one.
+     *
      * @param label Agent label (optional)
      * @param block Nested steps to execute
 */

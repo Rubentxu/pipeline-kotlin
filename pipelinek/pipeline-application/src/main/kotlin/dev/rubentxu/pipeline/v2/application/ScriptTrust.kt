@@ -61,6 +61,8 @@ internal object ScriptTrust {
         "script's body runs there too. It starts no step of the pipeline, but the",
         "body it runs is the author's own code and may do whatever the author wrote.",
         "Use 'validate --compile-only' to check that a script COMPILES without running it.",
+        "It builds NO plan: it checks no shape of the pipeline, because the body that",
+        "declares the pipeline is the body that did not run.",
     )
 
     /**

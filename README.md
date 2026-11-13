@@ -195,6 +195,8 @@ The body of a `steps { }` block —and of every other block that carries steps�
 - the configuration of the stage written inside a body —the `when*` gates, the declarative `environment`, the `options`, the `post` and the `directives`— no longer compiles. It never ran either: the refusal was already there, where it was written, and it named the declaration and the block. Move the declaration out of the block, to the body of the stage.
 - the versioned form of a plugin's step —the one that names the version of the envelope explicitly— is not reachable from a body. The form that does not name it declares the same step, and it is the one a plugin writes.
 
+**What the diagnostic says.** A validation that compiles the script names the declaration that was written in the wrong place, the file and the line it was written in, and what to write instead: `options` belongs to the STAGE, so it is declared in the body of the stage, outside every block that carries steps. What the compiler resolved earns no such advice —a step, a text, a comment, a function of your own with the same name, a plugin's step— because there is nothing wrong with any of them.
+
 A consumer compiled against the previous release keeps linking and keeps running: the object the runtime hands to a body is the stage itself, so a block that a previous release compiled still receives what it expected.
 
 ### Edit pipelines in IntelliJ IDEA

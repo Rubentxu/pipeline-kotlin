@@ -74,6 +74,49 @@ internal class CarrierRegistry {
 }
 
 /**
+ * The rule that a declaration of the STAGE is refused inside a block that
+ * carries steps.
+ *
+ * ## Why an OBJECT and not a member of the scope
+ *
+ * Because the promise of the refusal has to be VISIBLE from every function
+ * that makes it, and the guard that measures the promises
+ * (`check-kdoc-throws.py`) follows a call by RECEIVER: a call on a type it
+ * knows reaches the members of that type, while a call on the scope that
+ * received the declaration reaches only the members of THAT scope — and the
+ * scope that holds the rule is declared in another file. The rule therefore
+ * lives in an object of its own, and every declaration that has to refuse
+ * calls it by its name. It is the same reason the requirement of the agent
+ * lives in [AgentRequirements].
+ */
+internal object StageAuthority {
+
+    /**
+     * Refuses [declaration] when the scope that received it was opened by a
+     * block that carries steps.
+     *
+     * The refusal happens HERE, where the declaration is written, and BEFORE
+     * the scope is mutated: a declaration that is refused leaves nothing
+     * behind, and no step of the block is admitted.
+     *
+     * @param openingBlock the name of the block that opened the scope, or
+     *   `null` when the scope IS the stage
+     * @param declaration the name of the declaration that is refused, as the
+     *   author wrote it
+     * @throws IllegalArgumentException when the scope was opened by a block
+     *   that carries steps
+     */
+    fun require(openingBlock: String?, declaration: String) {
+        val block = openingBlock ?: return
+        throw IllegalArgumentException(
+            "`$declaration` belongs to the STAGE, and it is refused inside `$block { }`: a " +
+                "block that carries steps has no authority over the stage. Declare " +
+                "`$declaration` in the body of the stage, outside every block.",
+        )
+    }
+}
+
+/**
  * Shared mutable state for the stage DSL builders.
  * `[MustUseReturnValues]` is applied at
  * CLASS level, not per function, because Kotlin 2.4 restricts the annotation to
@@ -176,6 +219,40 @@ open class StageScopeCore(
         // gate that reports its verdict as a step is not a gate.
         kotlin.error("Pure builder consumption gate: $detail")
     }
+
+    /**
+     * The block that opened this scope, or `null` when this scope IS the stage.
+     *
+     * ## Why the scope knows the NAME of its block
+     *
+     * A nested scope is a lexical block of the stage that opened it, and only
+     * its STEPS reach the plan. A declaration that belongs to the STAGE —the
+     * agent, the gate, the declarative environment, the options, the post
+     * conditions, the directives— would be DROPPED in silence, and a gate that
+     * is dropped is a gate that does not gate: the stage runs
+     * unconditionally. The scope therefore carries the name of the block that
+     * opened it, so the refusal can say WHERE the declaration was written.
+     */
+    internal var openingBlock: String? = null
+
+    /**
+     * The scope a block of steps opens, with the NAME of the block.
+     *
+     * The scope carries the name, and with it the fact that the block has no
+     * authority over the stage: the declarations that belong to the stage are
+     * refused inside it, where they are written.
+     *
+     * It is a function of its own and not a parameter of [nestedScope]
+     * because that one is PUBLISHED: it is `protected`, it is in the ABI dump,
+     * and a change of its signature is a break for whoever extends the scope
+     * outside this module. The name of the block is a fact of THIS module, so
+     * it travels in a function the ABI does not carry.
+     *
+     * @param blockName the name of the block that opens the scope, as the
+     *   author wrote it.
+     */
+    internal fun blockScope(blockName: String): StageScope =
+        nestedScope().also { it.openingBlock = blockName }
 
     protected fun nestedScope(): StageScope =
         StageScope(stageName, runtimeConfig).also {
@@ -383,7 +460,19 @@ open class StageScopeCore(
     fun env(name: String): String? =
         visibleEnvironment().values[name] ?: runtimeConfig.env(name)
 
+    /**
+     * The variables the STAGE declares.
+     *
+     * The declaration belongs to the stage, so it is refused inside a block
+     * that carries steps: a nested block has no authority over the stage, and
+     * a declaration that never reaches the plan is a declaration that lies.
+     *
+     * @param block the declaration, written with [EnvironmentScope.env]
+     * @throws IllegalArgumentException when this scope was opened by a block
+     *   that carries steps
+     */
     fun environment(block: EnvironmentScope.() -> Unit) {
+        StageAuthority.require(openingBlock, "environment")
         val scope = EnvironmentScope()
         scope.block()
         stageEnvironment = EnvironmentSpec(scope.build())
@@ -391,7 +480,18 @@ open class StageScopeCore(
 
     protected var stageEnvironment: EnvironmentSpec? = null
 
+    /**
+     * The options the STAGE declares.
+     *
+     * The declaration belongs to the stage, so it is refused inside a block
+     * that carries steps.
+     *
+     * @param block the declaration, written with [OptionsScope]
+     * @throws IllegalArgumentException when this scope was opened by a block
+     *   that carries steps
+     */
     fun options(block: OptionsScope.() -> Unit) {
+        StageAuthority.require(openingBlock, "options")
         val scope = OptionsScope()
         scope.block()
         stageOptions = scope.build()
@@ -399,7 +499,18 @@ open class StageScopeCore(
 
     protected var stageOptions: OptionsSpec? = null
 
+    /**
+     * The conditions the STAGE closes with.
+     *
+     * The declaration belongs to the stage, so it is refused inside a block
+     * that carries steps.
+     *
+     * @param block the declaration, written with [PostScope]
+     * @throws IllegalArgumentException when this scope was opened by a block
+     *   that carries steps
+     */
     fun post(block: PostScope.() -> Unit) {
+        StageAuthority.require(openingBlock, "post")
         val scope = PostScope()
         scope.block()
         stagePost = scope.build()
@@ -425,7 +536,7 @@ open class StageScopeCore(
     }
 
     fun withCredentials(bindings: List<StepSpec.CredentialsBinding>, block: StageScope.() -> Unit) {
-        val innerScope = nestedScope()
+        val innerScope = blockScope("withCredentials")
         innerScope.block()
         val primaryId = bindings.firstOrNull()?.credentialsId ?: CredentialsId("")
         val purpose = bindings.firstOrNull()?.variable
@@ -469,9 +580,16 @@ open class StageScopeCore(
      * The `@StepDslMarker` of the scope hides the scope that opened the block
      * inside it, so a call inside the block resolves against the block's own
      * scope and never against the stage that opened it.
+     *
+     * The block carries STEPS and no authority over the stage: a declaration
+     * that belongs to the stage —the agent, the gate, the declarative
+     * environment, the options, the post conditions and the directives— is
+     * refused where it is written, naming the declaration, the block and the
+     * place where it belongs. A gate that the block dropped in silence would
+     * be a gate that does not gate.
      */
     fun script(block: StageScope.() -> Unit) {
-        val inner = nestedScope()
+        val inner = blockScope("script")
         inner.block()
         steps.addAll(inner.steps())
     }
@@ -511,9 +629,16 @@ open class StageScopeCore(
      * The `@StepDslMarker` of the scope hides the scope that opened the block
      * inside it, so a call inside the block resolves against the block's own
      * scope and never against the stage that opened it.
+     *
+     * The block carries STEPS and no authority over the stage: a declaration
+     * that belongs to the stage —the agent, the gate, the declarative
+     * environment, the options, the post conditions and the directives— is
+     * refused where it is written, naming the declaration, the block and the
+     * place where it belongs. A gate that the block dropped in silence would
+     * be a gate that does not gate.
      */
     fun steps(block: StageScope.() -> Unit) {
-        val inner = nestedScope()
+        val inner = blockScope("steps")
         inner.block()
         steps.addAll(inner.steps())
     }
@@ -573,7 +698,7 @@ open class StageScopeTopSteps(
         schemaVersion: String = "dsl-v1",
         block: StageScope.() -> Unit,
     ) {
-        val inner = nestedScope()
+        val inner = blockScope("registryBlock")
         inner.block()
         steps.add(StepSpec.RegistryBlockSpec(stepKey, schemaVersion, encodedInput, inner.steps()))
     }
@@ -616,7 +741,7 @@ open class StageScopeTopSteps(
      * @param block the steps that run with them.
      */
     fun withEnv(overrides: List<String>, block: StageScope.() -> Unit) {
-        val inner = nestedScope()
+        val inner = blockScope("withEnv")
         inner.inheritedEnvironment = EnvironmentSpec(
             inner.inheritedEnvironment?.values.orEmpty() + declaredOverrides(overrides),
         )
@@ -718,7 +843,7 @@ open class StageScopeTopSteps(
     }
 
     fun dir(path: String, block: StageScope.() -> Unit) {
-        val inner = nestedScope()
+        val inner = blockScope("dir")
         inner.block()
         steps.add(StepSpec.Dir(path = path, steps = inner.steps()))
     }
@@ -745,7 +870,7 @@ open class StageScopeTopSteps(
         skipIfLocked: Boolean = false,
         block: StageScope.() -> Unit,
     ) {
-        val inner = nestedScope()
+        val inner = blockScope("lock")
         inner.block()
         steps.add(
             StepSpec.Lock(
@@ -781,7 +906,7 @@ open class StageScopeTopSteps(
         timeoutSeconds: Int? = null,
         block: StageScope.() -> Unit,
     ) {
-        val inner = nestedScope()
+        val inner = blockScope("input")
         inner.block()
         steps.add(
             StepSpec.Input(

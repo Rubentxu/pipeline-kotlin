@@ -50,7 +50,13 @@ class DirectivesScope {
         whenGate(dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate.VariableEquals(variable, expected))
     }
 
-    /** Gate on a variable being set and non-empty. */
+    /**
+     * Gate on a variable being set and non-empty.
+     *
+     * @throws IllegalArgumentException when this scope was opened by a
+     *   block that carries steps, because a declaration of the stage has no
+     *   authority there
+     */
     fun whenEnvPresent(variable: String) {
         whenGate(dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate.VariablePresent(variable))
     }
@@ -83,7 +89,7 @@ class StageScope(
      * @throws IllegalArgumentException when the block does not declare exactly one step
      */
     fun slot(name: String, block: StageScope.() -> Unit) {
-        val inner = nestedScope()
+        val inner = blockScope("slot")
         inner.block()
         val declared = inner.steps()
         require(declared.size == 1) {
@@ -171,7 +177,7 @@ class StageScope(
         message: String? = null,
         block: StageScope.() -> Unit,
     ) {
-        val inner = nestedScope()
+        val inner = blockScope("catchError")
         inner.block()
         steps.add(StepSpec.CatchError(
             buildResult = buildResult,
@@ -206,7 +212,7 @@ class StageScope(
         message: String? = null,
         block: StageScope.() -> Unit,
     ) {
-        val inner = nestedScope()
+        val inner = blockScope("catchError")
         inner.block()
         steps.add(StepSpec.CatchError(
             buildResult = LegacyResultVocabulary.catchBuildResult(buildResult, "buildResult"),
@@ -237,7 +243,7 @@ class StageScope(
         catchInterruptions: Boolean = true,
         block: StageScope.() -> Unit,
     ) {
-        val inner = nestedScope()
+        val inner = blockScope("warnError")
         inner.block()
         steps.add(StepSpec.WarnError(
             message = message,
@@ -461,7 +467,7 @@ class StageScope(
         // then snapshot that list as data on the structural StepSpec.
         // This is the same shape used by retry/timeout/timestamps/dir
         // (see AGENTS.md DSL-vs-runtime section + receipt)
-        val inner = nestedScope()
+        val inner = blockScope("waitUntil")
         inner.body()
         steps.add(StepSpec.WaitUntilBlock(
             initialRecurrencePeriod = initialRecurrencePeriod,
@@ -480,7 +486,7 @@ class StageScope(
      * @param block Nested steps to execute with timestamp decoration
 */
     fun timestamps(block: StageScope.() -> Unit) {
-        val inner = nestedScope()
+        val inner = blockScope("timestamps")
         inner.block()
         steps.add(StepSpec.Timestamps(steps = inner.steps()))
     }
@@ -492,7 +498,7 @@ class StageScope(
      * @param block Nested steps to execute with ANSI color decoration
 */
     fun ansiColor(colorMapName: String = "xterm", block: StageScope.() -> Unit) {
-        val inner = nestedScope()
+        val inner = blockScope("ansiColor")
         inner.block()
         steps.add(StepSpec.AnsiColor(colorMapName = colorMapName, steps = inner.steps()))
     }
@@ -515,7 +521,7 @@ class StageScope(
      * @param block Nested steps to execute
 */
     fun node(label: String? = null, block: StageScope.() -> Unit) {
-        val inner = nestedScope()
+        val inner = blockScope("node")
         inner.block()
         steps.add(StepSpec.NodeNoOp(label = label, steps = inner.steps()))
     }
@@ -691,7 +697,7 @@ class StageScope(
      * @param block Nested steps to execute with timeout
 */
     fun timeout(time: Long, unit: String, block: StageScope.() -> Unit) {
-        val inner = nestedScope()
+        val inner = blockScope("timeout")
         inner.block()
         steps.add(StepSpec.TimeoutBlock(time = time, unit = unit, steps = inner.steps()))
     }
@@ -703,7 +709,7 @@ class StageScope(
      * @param block Nested steps to execute with retry
 */
     fun retry(count: Int, block: StageScope.() -> Unit) {
-        val inner = nestedScope()
+        val inner = blockScope("retry")
         inner.block()
         steps.add(StepSpec.RetryBlock(count = count, conditions = null, steps = inner.steps()))
     }
@@ -736,8 +742,12 @@ class StageScope(
      *     sh("./deploy.sh")
      * }
      * ```
+     * @throws IllegalArgumentException when this scope was opened by a
+     *   block that carries steps, because a declaration of the stage has no
+     *   authority there
 */
     fun directives(block: DirectivesScope.() -> Unit) {
+        StageAuthority.require(openingBlock, "directives")
         val scope = DirectivesScope()
         scope.block()
         // ACCUMULATE, do not assign. Two paths declare stage directives
@@ -768,8 +778,12 @@ class StageScope(
      * it never pretends to know what the variable currently holds.
      * They APPEND rather than replace, so a `directives { }` block and these
      * shorthands can be combined without one silently discarding the other.
+     * @throws IllegalArgumentException when this scope was opened by a
+     *   block that carries steps, because a declaration of the stage has no
+     *   authority there
 */
     fun whenGate(predicate: dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate) {
+        StageAuthority.require(openingBlock, "whenGate")
         stageDirectives = stageDirectives + appendWhenGate(predicate)
     }
 
@@ -792,8 +806,12 @@ class StageScope(
      * the local host and ignoring the selector the author wrote.
      * @throws IllegalArgumentException if neither is supplied, or if both are,
      *   which is a contradiction rather than a stricter constraint.
+     * @throws IllegalArgumentException when this scope was opened by a
+     *   block that carries steps, because a declaration of the stage has no
+     *   authority there
 */
     fun agent(label: String? = null, remoteUri: String? = null) {
+        StageAuthority.require(openingBlock, "agent")
         stageDirectives = stageDirectives + appendAgentRequirement(AgentRequirements.of(label, remoteUri))
     }
 
@@ -815,8 +833,12 @@ class StageScope(
      * @param block the options of the agent, written with [AgentScope.label]
      * @throws IllegalArgumentException when the block declares no label, or
      *   declares two
+     * @throws IllegalArgumentException when this scope was opened by a block
+     *   that carries steps, because a declaration of the stage has no
+     *   authority there
      */
     fun agent(block: AgentScope.() -> Unit) {
+        StageAuthority.require(openingBlock, "agent")
         val scope = AgentScope()
         scope.block()
         stageDirectives = stageDirectives + appendAgentRequirement(scope.requirement())
@@ -828,8 +850,12 @@ class StageScope(
      * and it encodes differently, so an observer can tell a deliberate
      * [dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.LocalAny]
      * from a stage that never mentioned an agent at all.
+     * @throws IllegalArgumentException when this scope was opened by a
+     *   block that carries steps, because a declaration of the stage has no
+     *   authority there
 */
     fun agentAny() {
+        StageAuthority.require(openingBlock, "agentAny")
         stageDirectives = stageDirectives + appendAgentRequirement(AgentRequirements.any())
     }
 
@@ -838,8 +864,12 @@ class StageScope(
      * The requirement is checked against what the run was actually GRANTED, not
      * against what the runtime could provide in principle, so a stage cannot ask
      * for a capability nobody bound and be told yes.
+     * @throws IllegalArgumentException when this scope was opened by a
+     *   block that carries steps, because a declaration of the stage has no
+     *   authority there
 */
     fun agentWithCapabilities(vararg capabilities: String) {
+        StageAuthority.require(openingBlock, "agentWithCapabilities")
         stageDirectives = stageDirectives +
             appendAgentRequirement(AgentRequirements.withCapabilities(capabilities))
     }
@@ -848,8 +878,12 @@ class StageScope(
      * Jenkins-familiar form: gate a stage on an exact variable value.
      * This is a DECLARATION: the comparison happens at run time against the
      * real context, never during script construction.
+     * @throws IllegalArgumentException when this scope was opened by a
+     *   block that carries steps, because a declaration of the stage has no
+     *   authority there
 */
     fun whenEnvIs(variable: String, expected: String) {
+        StageAuthority.require(openingBlock, "whenEnvIs")
         whenGate(
             dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate.VariableEquals(variable, expected)
         )
@@ -857,6 +891,7 @@ class StageScope(
 
     /** Gate on a variable being set and non-empty. */
     fun whenEnvPresent(variable: String) {
+        StageAuthority.require(openingBlock, "whenEnvPresent")
         whenGate(
             dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate.VariablePresent(variable)
         )

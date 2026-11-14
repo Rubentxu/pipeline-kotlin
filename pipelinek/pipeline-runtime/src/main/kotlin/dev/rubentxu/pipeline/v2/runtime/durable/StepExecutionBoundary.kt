@@ -21,6 +21,14 @@ data class StepLifecycleContext(
     val stepIndex: Int,
     val stepName: String,
     val stepType: String,
+    /**
+     * The durable identity of the operation the step runs as, when the step runs inside a
+     * parallel branch.
+     *
+     * Null for a step outside a branch, where the run id, the stage index and the step index
+     * already name the step, and where the event lane keeps reading the way it always read.
+     */
+    val opId: String? = null,
 )
 
 /**
@@ -74,6 +82,7 @@ class StepExecutionBoundary(
         stepIndex = stepIndex,
         stepName = stepName,
         stepType = stepType,
+        opId = opId,
     )
 
     private fun StepLifecycleContext.stepFailed(outcome: StepOutcome.Failure) = StepFailed(
@@ -90,6 +99,7 @@ class StepExecutionBoundary(
         stepType = stepType,
         failureKind = outcome.failure.kind,
         message = outcome.failure.message,
+        opId = opId,
     )
 
     /**
@@ -108,5 +118,6 @@ class StepExecutionBoundary(
         stepName = stepName,
         stepType = stepType,
         outcome = verdict?.wireToken,
+        opId = opId,
     )
 }

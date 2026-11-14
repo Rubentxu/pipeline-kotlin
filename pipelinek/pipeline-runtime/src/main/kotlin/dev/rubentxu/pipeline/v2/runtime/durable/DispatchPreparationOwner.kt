@@ -181,6 +181,12 @@ internal class DispatchPreparationOwner(
                 stepIndex = coordinates.stepIndex,
                 stepName = step.id.value,
                 stepType = PluginStepType.shortType(step.pluginStepId.value),
+                // The operation identity travels with the event ONLY where the indices do not
+                // name the step: inside a parallel branch, two branches of one stage run steps
+                // with the same stage index and the same step index, and the identity is what
+                // tells them apart. A step outside a branch is already named by the run, the
+                // stage and the step, and its events keep reading the way they always read.
+                opId = operationId.takeIf { opId.parallelLineage.isNotEmpty() },
             ),
         )
     }

@@ -64,9 +64,12 @@ internal object InspectionSelection {
      * `StageSkipped` needs no case: a skipped stage never opened a step, so `open` is already null.
      *
      * What the fold cannot decide: a `StepFailed` from a PARALLEL branch that reports after a
-     * sibling started. The event carries nothing to resolve it with, so it inherits the sibling.
-     * Stated rather than hidden, because wrong-but-present attribution is precisely what the
-     * measurement above removes.
+     * sibling started, when the failure was written by an OLDER build — that event carries
+     * nothing to resolve it with, so it inherits the sibling. Stated rather than hidden, because
+     * wrong-but-present attribution is precisely what the measurement above removes.
+     *
+     * A step of a parallel branch now carries its own operation identity, so the fold does not
+     * have to decide that case any more: the event says which operation it is about.
      *
      * Pure: no clock, no filesystem, no reader. [OpId] is the typed authority for the format —
      * this never re-templates the string.
@@ -79,13 +82,40 @@ internal object InspectionSelection {
                 // closing only the opening end leaves the stage's own summary row holding the last
                 // step's transcript.
                 is StageStarted, is StageFinished -> null
-                is StepStarted -> OpId(runId, event.stageIndex, event.stepIndex)
-                is StepFinished -> OpId(runId, event.stageIndex, event.stepIndex)
+                is StepStarted -> operationOf(event.opId, runId, event.stageIndex, event.stepIndex)
+                is StepFinished -> operationOf(event.opId, runId, event.stageIndex, event.stepIndex)
+                // A failure of a step of a parallel branch carries the operation it happened in,
+                // and that is the failure's OWN operation: the step that failed is not the step
+                // the fold happens to have open, and in a parallel stage the open one is a
+                // sibling's. A failure without an identity keeps inheriting the open step, the
+                // way it always did.
+                is StepFailed -> {
+                    val identity = event.opId
+                    if (identity == null) open else OpId.parse(identity)
+                }
                 else -> open
             }
             open
         }
     }
+
+    /**
+     * The operation a step's event belongs to.
+     *
+     * A step that runs inside a parallel branch carries its own operation identity, and that
+     * identity IS the operation the event belongs to: the sibling branch runs a step with the
+     * same stage index and the same step index, so an operation derived from the indices would
+     * name the sibling's bytes.
+     *
+     * A step outside a branch carries no identity, and its operation is derived from the indices:
+     * the same operation it always was.
+     *
+     * An identity this build cannot read names NO operation. The row then says which step it is
+     * about and says nothing about which bytes, and that is better than a row that borrows the
+     * bytes of the sibling branch.
+     */
+    private fun operationOf(opId: String?, runId: String, stageIndex: Int, stepIndex: Int): OpId? =
+        if (opId == null) OpId(runId, stageIndex, stepIndex) else OpId.parse(opId)
 
     /**
      * Translate one [DomainEvent] into the row shape that [MainInspectCli.InspectField] extractors

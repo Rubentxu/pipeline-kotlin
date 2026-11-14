@@ -364,6 +364,18 @@ internal class BodyDispatch(
      * emit a typed [dev.rubentxu.pipeline.v2.events.StepFailed] for a credential-lease
      * admission failure. The lease rejection happens BEFORE any child StepStarted, so
      * this event is the only per-step observability the outcome has.
+     *
+     * ## Why this event carries no operation identity
+     *
+     * A step of a parallel branch publishes the operation it runs as, because the indices do
+     * not name it: two branches of one stage run steps with the same stage index and the same
+     * step index. This event publishes NO operation, and that is not an omission.
+     *
+     * The step whose lease was refused is a BODY owner: `core.withCredentials` is dispatched
+     * by the canonical engine, so the body owner is not a durable operation of its own — its
+     * CHILDREN are. The rejection happens before any child exists, so there is no operation to
+     * name: naming one would publish an identity nothing answers to, and a consumer would look
+     * for bytes that were never written.
      */
     private fun emitCredentialLeaseAdmissionFailure(
         runId: RunId,

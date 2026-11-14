@@ -250,10 +250,23 @@ object ConsoleOperationSelection {
             (stageIndexes.isEmpty() || step.stageIndex in stageIndexes) &&
                 (stepKeys.isEmpty() || StepKey(step.stageIndex, step.stepIndex) in stepKeys) &&
                 (kindKeys.isEmpty() || StepKey(step.stageIndex, step.stepIndex) in kindKeys)
-        }.map { OpId(runId = runId, stageIndex = it.stageIndex, stepIndex = it.stepIndex).format() }
+        }.map { step -> operationOf(step, runId) }
 
         return SelectionOutcome.Selected(OperationSelection.Operations(selected.toSet()))
     }
+
+    /**
+     * The operation a step runs as.
+     *
+     * A step of a parallel branch is NOT named by its indices: two branches of one stage run
+     * steps with the same stage index and the same step index, so an operation derived from them
+     * names a step that does not exist. The event carries the operation the step runs as, and
+     * that is the operation whose bytes the console reads.
+     *
+     * A step outside a branch is named by its indices, and its operation is the one it always was.
+     */
+    private fun operationOf(step: StepStarted, runId: String): String =
+        step.opId ?: OpId(runId = runId, stageIndex = step.stageIndex, stepIndex = step.stepIndex).format()
 
     /**
      * Index-only resolution: no journal, so every token must be an index.

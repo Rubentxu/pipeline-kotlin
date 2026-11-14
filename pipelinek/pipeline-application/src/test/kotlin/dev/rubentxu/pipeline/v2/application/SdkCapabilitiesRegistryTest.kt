@@ -51,6 +51,7 @@ class SdkCapabilitiesRegistryTest {
         Triple("runtime.eventshape.v2", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.62.0"),
         Triple("events.stepoutcome.v1", SdkCapabilities.CapabilityStatus.PUBLISHED, "v0.62.0"),
         Triple("events.failurestage.v1", SdkCapabilities.CapabilityStatus.PUBLISHED, "v0.62.0"),
+        Triple("events.stepoperation.v1", SdkCapabilities.CapabilityStatus.PUBLISHED, "v0.98.0"),
     )
 
     @Test
@@ -164,9 +165,28 @@ class SdkCapabilitiesRegistryTest {
     }
 
     @Test
-    @DisplayName("each follow vocabulary is delivered under exactly one id")
-    fun `each follow vocabulary is delivered under one id`() {
+    @DisplayName("the step's operation is delivered under the id this build announces")
+    fun `the step's operation is delivered under the announced id`() {
         val announced = SdkCapabilities.ALL.map { it.id }
+
+        assertTrue(
+            announced.contains("events.stepoperation.v1"),
+            "the build publishes the operation a step runs as in the step's own events, so it " +
+                "must announce the id that names it",
+        )
+        assertTrue(
+            SdkCapabilities.ALL.none {
+                it.id.startsWith("events.stepoperation.") && it.status == SdkCapabilities.CapabilityStatus.PUBLISHED &&
+                    it.id != "events.stepoperation.v1"
+            },
+            "only the id this build delivers may claim to be delivered; two ids for one " +
+                "vocabulary leave the consumer choosing between them",
+        )
+    }
+
+    @Test
+    @DisplayName("each follow vocabulary is delivered under exactly one id")
+    fun `each follow vocabulary is delivered under one id`() {        val announced = SdkCapabilities.ALL.map { it.id }
         val delivered = mapOf(
             "events.follow." to "events.follow.v3",
             "output.follow." to "output.follow.v2",

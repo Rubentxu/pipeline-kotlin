@@ -80,6 +80,19 @@ class BranchStepSubjectTest {
     }
 
     @Test
+    @DisplayName("una operacion que no cabe en un segmento proyecta el sujeto de coordenadas")
+    fun `an operation that cannot fit a segment projects the coordinate subject`() {
+        // A reference segment holds at most 256 characters, and the projection does not trim
+        // an identity to fit: the operation's reference cannot exist, and the honest subject
+        // is the coordinates — the same subject a step without an identity carries — rather
+        // than a read side that throws the whole run away because one step has a long name.
+        val longOpId = "$RUN-s$STAGE-$STEP-bp2-b1:branch-0:" + "p".repeat(300)
+        val envelope = EnvelopeProjector.project(branchStepStarted(opId = longOpId))
+
+        assertEquals(ResourceRefs.step(RUN, STAGE, STEP), envelope.subject)
+    }
+
+    @Test
     @DisplayName("un paso fuera de una rama conserva el sujeto que tiene hoy")
     fun `a step outside a branch keeps the subject it has today`() {
         val started = EnvelopeProjector.project(branchStepStarted(opId = null))

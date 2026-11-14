@@ -45,9 +45,11 @@ import dev.rubentxu.pipeline.v2.harness.model.ViolationRule
  * into one. The step events of a branch carry the durable identity of the operation the
  * step runs as (`opId`), and that identity DOES tell the branches apart, so when an event
  * brings one it takes over: the identity is the operation's, under the step's scope. The
- * two identity spaces cannot collide — the operation's space is namespaced by an `op:`
- * prefix the branch slug never reaches, because the slug has already been applied to the
- * name that space reads.
+ * two identity spaces are namespaced apart — the operation's carries an `op:` prefix the
+ * slug never applies to a step NAME, because the slug has already run on the name that
+ * space reads; the one text that could reach the `op:` space is a step NAME written
+ * literally as `op:<an operation identity>`, which takes an author naming a step after a
+ * run's own durable identity, and the slug would still have folded most names first.
  *
  * This is a declared limit, not a fix for history: a row written before the events carried
  * the operation identity brings none, and the law keeps reading it by name, with the name's

@@ -59,6 +59,42 @@ class OperationKeyEncodingTest {
     }
 
     @Test
+    @DisplayName("un caracter fuera del BMP codifica entero y se lee de vuelta")
+    fun `a character beyond two hex digits encodes whole and reads back`() {
+        // RunId and PluginStepId are kept VERBATIM with no alphabet, so an operation text can
+        // carry any character, and one with a code above 0xFF needs more hex than two digits.
+        // The encoding covers the whole UTF-16 range with a fixed four-digit width: a euro
+        // sign, an accented letter, and an emoji (a surrogate PAIR of code units) all
+        // round-trip, and none of them can fold onto a text that spells its hex literally.
+        val texts = listOf(
+            "run-1-s0-0-bp2-b1:branch-0:paso€",
+            "run-1-s0-0-bp2-b1:branch-0:año",
+            "run-1-s0-0-bp2-b1:branch-0:😀",
+        )
+
+        val keys = texts.map { ResourceRefs.operationKey(it) }
+        assertEquals(texts.size, keys.toSet().size) { "two distinct texts encoded alike: $keys" }
+        assertEquals(texts, keys.map { ResourceRefs.decodeOperationKey(it) })
+        keys.forEach { key ->
+            assertTrue(key.none { it == ':' }) { "the encoded segment still carries a colon: $key" }
+        }
+    }
+
+    @Test
+    @DisplayName("el par que el escape de dos digitos plegaba ahora distingue")
+    fun `the pair the two-digit escape folded now distinguishes`() {
+        // The counterexample the independent review derived: with a two-digit escape,
+        // "paso ac" (space -> x20) and "paso€" (euro -> x20ac) both encoded to
+        // "pasox20ac" and two operations shared one subject. Four digits keep them apart.
+        val first = ResourceRefs.operationKey("paso ac")
+        val second = ResourceRefs.operationKey("paso€")
+
+        assertNotEquals(first, second)
+        assertEquals("pasox0020ac", first)
+        assertEquals("pasox20ac", second)
+    }
+
+    @Test
     @DisplayName("una referencia construida con el segmento codificado es valida")
     fun `a reference built with the encoded segment is valid`() {
         // The property the encoding exists for: the operation's reference constructs without
@@ -66,7 +102,7 @@ class OperationKeyEncodingTest {
         val ref = ResourceRefs.operation("run-1", 0, 0, ResourceRefs.operationKey("run-1-s0-0-bp2-b1:branch-0:core.sh"))
 
         assertEquals(ResourceKind.OPERATION, ref.kind)
-        assertEquals("run-1-s0-0-bp2-b1x3abranch-0x3acore.sh", ref.segments.last())
+        assertEquals("run-1-s0-0-bp2-b1x003abranch-0x003acore.sh", ref.segments.last())
     }
 
     @Test

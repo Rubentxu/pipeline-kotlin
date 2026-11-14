@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.identity
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.identity.InvalidResourceRefException
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
@@ -305,13 +306,24 @@ object EnvelopeProjector {
      * by [ResourceRefs.operationKey] — the durable OpId names the branch frames it runs in
      * with colons, and a segment may not carry them — so a consumer joins the `opId` the
      * event publishes with the subject of its envelope through that one declared encoding.
+     *
+     * A declared limit, not a silent fallback: a reference segment may hold at most 256
+     * characters, and an operation whose encoded text exceeds it cannot become a segment —
+     * the reference law is fail-closed and the projection does not trim an identity to fit.
+     * Such a step projects the STEP subject, exactly like a step that brings no operation
+     * identity, and a deep `parallel` nesting with long plugin keys is where that limit is
+     * reachable. The alternative — throwing from the READ side — would make the whole run
+     * unreadable for every consumer because one of its steps has a long name, and a
+     * projection that cannot answer must not take the history down with it.
      */
-    private fun stepSubject(runId: String, stageIndex: Int, stepIndex: Int, opId: String?): ResourceRef =
-        if (opId != null) {
+    private fun stepSubject(runId: String, stageIndex: Int, stepIndex: Int, opId: String?): ResourceRef {
+        if (opId == null) return ResourceRefs.step(runId, stageIndex, stepIndex)
+        return try {
             ResourceRefs.operation(runId, stageIndex, stepIndex, ResourceRefs.operationKey(opId))
-        } else {
+        } catch (_: InvalidResourceRefException) {
             ResourceRefs.step(runId, stageIndex, stepIndex)
         }
+    }
 }
 
 /**

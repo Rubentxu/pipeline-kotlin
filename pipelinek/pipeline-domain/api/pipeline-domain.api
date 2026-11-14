@@ -5281,7 +5281,9 @@ public final class dev/rubentxu/pipeline/v2/domain/identity/ResourceRef$Companio
 public final class dev/rubentxu/pipeline/v2/domain/identity/ResourceRefs {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRefs;
 	public static final field NAMESPACE Ljava/lang/String;
+	public final fun decodeOperationKey (Ljava/lang/String;)Ljava/lang/String;
 	public final fun operation (Ljava/lang/String;IILjava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;
+	public final fun operationKey (Ljava/lang/String;)Ljava/lang/String;
 	public final fun pipeline (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;
 	public final fun plugin (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;
 	public final fun pluginFamily (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;

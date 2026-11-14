@@ -61,8 +61,11 @@ object ResourceRefs {
      * reversible:
      *
      * - `x` encodes as `xx`, so the escape marker can never be confused with a literal;
-     * - every character outside `a-z A-Z 0-9 . _ -` encodes as `x` followed by its two-digit
-     *   hexadecimal code — `:` becomes `x3a`.
+     * - every character outside `a-z A-Z 0-9 . _ -` encodes as `x` followed by its FOUR-digit
+     *   hexadecimal code — `:` becomes `x003a`, a euro sign `x20ac`. Four digits cover the
+     *   whole UTF-16 range a `Char` can carry (a character outside the BMP travels as its
+     *   surrogate pair, and each surrogate is encoded whole), so the segment is reversible
+     *   for ANY text, not only the ASCII ones.
      *
      * Deterministic, and total: a text that is already a valid segment encodes to itself.
      * A consumer that reads an `op/` segment can recover the operation's canonical text with
@@ -75,7 +78,7 @@ object ResourceRefs {
                 ch == 'x' -> append("xx")
                 ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9' || ch == '.' || ch == '_' || ch == '-' ->
                     append(ch)
-                else -> append("x%02x".format(ch.code))
+                else -> append("x%04x".format(ch.code))
             }
         }
     }
@@ -101,10 +104,10 @@ object ResourceRefs {
                         out.append('x')
                         i += 2
                     } else {
-                        if (i + 2 >= key.length) return null
-                        val code = key.substring(i + 1, i + 3).toIntOrNull(16) ?: return null
+                        if (i + 4 >= key.length) return null
+                        val code = key.substring(i + 1, i + 5).toIntOrNull(16) ?: return null
                         out.append(code.toChar())
-                        i += 3
+                        i += 5
                     }
                 }
                 else -> {

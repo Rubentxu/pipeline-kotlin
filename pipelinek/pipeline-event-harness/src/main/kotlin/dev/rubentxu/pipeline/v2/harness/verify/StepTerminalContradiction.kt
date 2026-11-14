@@ -37,6 +37,24 @@ import dev.rubentxu.pipeline.v2.harness.model.ViolationRule
  * first one just to make it comparable. A failure in the first stage and a failure whose
  * stage nobody recorded are two different facts.
  *
+ * ## When the event carries an operation identity, the operation is the identity
+ *
+ * In a parallel stage two branches run steps with the same stage, the same index and —
+ * after the branch is slugified into the step name — sometimes the same NAME: the branches
+ * `a b` and `a-b` produce the same step name, and a name-only identity folds two real steps
+ * into one. The step events of a branch carry the durable identity of the operation the
+ * step runs as (`opId`), and that identity DOES tell the branches apart, so when an event
+ * brings one it takes over: the identity is the operation's, under the step's scope. The
+ * two identity spaces cannot collide — the operation's space is namespaced by an `op:`
+ * prefix the branch slug never reaches, because the slug has already been applied to the
+ * name that space reads.
+ *
+ * This is a declared limit, not a fix for history: a row written before the events carried
+ * the operation identity brings none, and the law keeps reading it by name, with the name's
+ * blindness — two branches whose names slug to the same text stay one step for the law, and
+ * a failure in one beside a success in the other keeps being a declared contradiction. The
+ * harness does not invent an identity the plane does not carry.
+ *
  * ## How an attempt is delimited, and why
  *
  * An attempt runs from the `StepStarted` of that step to the next `StepStarted` of the same
@@ -86,15 +104,18 @@ internal object StepTerminalContradiction {
         return violations
     }
 
-    /** The identity of a step: its scope key — the stage and the index — and its name. */
+    /**
+     * The identity of a step: its scope key — the stage and the index — and, when the event
+     * brings the operation the step runs as, that operation; only a row with no operation
+     * identity falls back to the step's name.
+     */
     private fun identity(e: TypedEvent): String? {
         val scope = EventPayloadAccessor.scopeKey(e, KeyKind.STEP) ?: return null
-        val name = when (val event = e.event) {
-            is StepStarted -> event.stepName
-            is StepFinished -> event.stepName
-            is StepFailed -> event.stepName
+        return when (val event = e.event) {
+            is StepStarted -> event.opId?.let { "$scope:op:$it" } ?: "$scope:${event.stepName}"
+            is StepFinished -> event.opId?.let { "$scope:op:$it" } ?: "$scope:${event.stepName}"
+            is StepFailed -> event.opId?.let { "$scope:op:$it" } ?: "$scope:${event.stepName}"
             else -> return null
         }
-        return "$scope:$name"
     }
 }

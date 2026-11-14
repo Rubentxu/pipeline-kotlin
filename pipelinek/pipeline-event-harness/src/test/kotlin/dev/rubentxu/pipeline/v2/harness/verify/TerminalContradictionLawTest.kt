@@ -168,6 +168,51 @@ class TerminalContradictionLawTest {
     }
 
     @Test
+    @DisplayName("dos ramas que se convierten en el mismo texto son dos pasos cuando el evento trae la operación")
+    fun `two branches whose names slug to the same text are two steps when the event carries the operation`() {
+        // El plano medido de un stage paralelo con las ramas "a b" y "a-b": el slug las vuelve
+        // el mismo texto, así que el stage, el índice y el nombre son idénticos en los dos
+        // pasos. El orden del plano real publica los dos `StepStarted` antes de los terminales,
+        // y con la identidad del nombre el segundo arranque sube el intento del paso-fantasma:
+        // el fallo de una rama y el éxito de la otra caerían en el mismo intento. La identidad
+        // de la operación que el evento publica separa las ramas: son dos pasos, y el plano no
+        // se contradice.
+        val plane = listOf(
+            stageStarted(2, 0),
+            stepStarted(3, 0, 0, "fan/branch-a-b/sh-0", opId = "op-branch-1"),
+            stepStarted(4, 0, 0, "fan/branch-a-b/sh-0", opId = "op-branch-2"),
+            stepFailed(5, 0, 0, "fan/branch-a-b/sh-0", opId = "op-branch-1"),
+            stepFinished(6, 0, 0, "fan/branch-a-b/sh-0", StepOutcome.SUCCESS_TOKEN, opId = "op-branch-2"),
+        )
+
+        assertEquals(
+            VerificationResult.Valid,
+            verify(plane, runOutcome = "failure", expect = ExpectedRunOutcome.FAILURE),
+        )
+    }
+
+    @Test
+    @DisplayName("una fila que no trae la operación conserva la identidad del nombre y su contradicción")
+    fun `a row written before the operation identity keeps the name identity and its contradiction`() {
+        // El mismo plano sin `opId`: una fila escrita antes de que los eventos publicaran la
+        // operación. El límite es deliberado: sin identidad que separe las ramas, la ley las
+        // sigue tomando por un paso, y el fallo de una junto al éxito de la otra sigue siendo
+        // una contradicción declarada. El arnés no inventa una identidad que el plano no trae.
+        val plane = listOf(
+            stageStarted(2, 0),
+            stepStarted(3, 0, 0, "fan/branch-a-b/sh-0"),
+            stepStarted(4, 0, 0, "fan/branch-a-b/sh-0"),
+            stepFailed(5, 0, 0, "fan/branch-a-b/sh-0"),
+            stepFinished(6, 0, 0, "fan/branch-a-b/sh-0", StepOutcome.SUCCESS_TOKEN),
+        )
+
+        assertEquals(
+            ViolationRule.LAW_CONTRADICTORY_TERMINAL,
+            onlyRule(verify(plane, runOutcome = "failure", expect = ExpectedRunOutcome.FAILURE)),
+        )
+    }
+
+    @Test
     @DisplayName("un fallo que no dice su stage no se atribuye al stage 0")
     fun `a failure that names no stage is not attributed to stage 0`() {
         // El step del stage 0 sale bien. El fallo no dice su stage: un lector que lo atribuyera
@@ -219,18 +264,25 @@ class TerminalContradictionLawTest {
         StageStarted("e$sequence", runId, sequence, Instant.ofEpochMilli(sequence), stage, "stage$stage"),
     )
 
-    private fun stepStarted(sequence: Long, stage: Int, step: Int, name: String) = typed(
-        StepStarted("e$sequence", runId, sequence, Instant.ofEpochMilli(sequence), stage, step, name, "sh"),
+    private fun stepStarted(sequence: Long, stage: Int, step: Int, name: String, opId: String? = null) = typed(
+        StepStarted("e$sequence", runId, sequence, Instant.ofEpochMilli(sequence), stage, step, name, "sh", opId),
     )
 
-    private fun stepFinished(sequence: Long, stage: Int, step: Int, name: String, outcome: String) = typed(
-        StepFinished("e$sequence", runId, sequence, Instant.ofEpochMilli(sequence), stage, step, name, "sh", outcome),
+    private fun stepFinished(
+        sequence: Long,
+        stage: Int,
+        step: Int,
+        name: String,
+        outcome: String,
+        opId: String? = null,
+    ) = typed(
+        StepFinished("e$sequence", runId, sequence, Instant.ofEpochMilli(sequence), stage, step, name, "sh", outcome, opId),
     )
 
-    private fun stepFailed(sequence: Long, stage: Int, step: Int, name: String) = typed(
+    private fun stepFailed(sequence: Long, stage: Int, step: Int, name: String, opId: String? = null) = typed(
         StepFailed(
             "e$sequence", runId, sequence, Instant.ofEpochMilli(sequence),
-            stage, step, name, "sh", FailureKind.SCRIPT, "shell exited with code 1",
+            stage, step, name, "sh", FailureKind.SCRIPT, "shell exited with code 1", opId,
         ),
     )
 

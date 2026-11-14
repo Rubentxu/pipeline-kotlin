@@ -170,11 +170,22 @@ object EnvelopeProjector {
         )
     }
 
-    /** Exhaustive subject resolution over the closed DomainEvent family. */
+    /**
+     * Exhaustive subject resolution over the closed DomainEvent family.
+     *
+     * A step that runs inside a parallel branch carries the durable identity of the operation
+     * it runs as (`opId`), and its subject is that OPERATION's: two sibling branches run steps
+     * with the same stage index and the same step index, so a subject derived from the indices
+     * alone names both branches and neither, and a consumer that resolves events by subject
+     * attributes one branch's rows to the other. A step that brings no operation identity — a
+     * step outside a branch, or a row written before the identity was published — keeps the
+     * STEP subject it has always had: the indices are its only coordinates, and there they are
+     * enough.
+     */
     private fun subjectOf(event: DomainEvent, runRef: ResourceRef): ResourceRef = when (event) {
-        // STEP subject: stage + step identity
-        is StepStarted -> ResourceRefs.step(event.runId, event.stageIndex, event.stepIndex)
-        is StepFinished -> ResourceRefs.step(event.runId, event.stageIndex, event.stepIndex)
+        // STEP subject: stage + step identity, or the OPERATION's when the step runs as one
+        is StepStarted -> stepSubject(event.runId, event.stageIndex, event.stepIndex, event.opId)
+        is StepFinished -> stepSubject(event.runId, event.stageIndex, event.stepIndex, event.opId)
         is RetryAttemptStarted -> ResourceRefs.step(event.runId, event.stageIndex, event.stepIndex)
         is RetryAttemptFinished -> ResourceRefs.step(event.runId, event.stageIndex, event.stepIndex)
         is TimeoutScheduled ->
@@ -198,7 +209,7 @@ object EnvelopeProjector {
         // attach the failure to a stage nobody said it belonged to.
         is StepFailed ->
             if (event.stageIndex != null) {
-                ResourceRefs.step(event.runId, event.stageIndex, event.stepIndex)
+                stepSubject(event.runId, event.stageIndex, event.stepIndex, event.opId)
             } else {
                 runRef
             }
@@ -287,6 +298,20 @@ object EnvelopeProjector {
         is SagaTerminal,
         -> runRef
     }.let { it }
+
+    /**
+     * The subject of a step: its OPERATION when the step runs as one, its coordinates alone
+     * otherwise. The `op/` segment is the operation's canonical text encoded into a segment
+     * by [ResourceRefs.operationKey] — the durable OpId names the branch frames it runs in
+     * with colons, and a segment may not carry them — so a consumer joins the `opId` the
+     * event publishes with the subject of its envelope through that one declared encoding.
+     */
+    private fun stepSubject(runId: String, stageIndex: Int, stepIndex: Int, opId: String?): ResourceRef =
+        if (opId != null) {
+            ResourceRefs.operation(runId, stageIndex, stepIndex, ResourceRefs.operationKey(opId))
+        } else {
+            ResourceRefs.step(runId, stageIndex, stepIndex)
+        }
 }
 
 /**

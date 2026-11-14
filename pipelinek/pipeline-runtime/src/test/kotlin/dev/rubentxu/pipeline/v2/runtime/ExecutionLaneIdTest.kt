@@ -24,8 +24,9 @@ import org.junit.jupiter.api.Test
  *
  * It used to be false: the lineage was read as `"{branchIndex}:branch"`, a shape nobody writes —
  * the parallel engine writes `"b{branchIndex}:branch"` — so the lineage came back empty for every
- * branch, every branch was the linear lane, and the sibling branch RE-ENTERED the lock its
- * sibling held. The mutual exclusion was gone in exactly the situation it is relied upon.
+ * branch, every branch was the linear lane, and the sibling branch took the lock its sibling
+ * held as if it were its own. The mutual exclusion was gone in exactly the situation it is
+ * relied upon.
  *
  * Pure: an operation id and a lane are values, and nothing here touches a disk, a clock or a
  * process.

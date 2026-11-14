@@ -2341,6 +2341,46 @@
         "dev/rubentxu/pipeline/v2/events/StepFailed#<init>(Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V"
       ],
       "evidence": "THE WINDOW IS MEASURED, NOT ASSUMED. The class files `dev/rubentxu/pipeline/v2/events/StepFinished.class` and `dev/rubentxu/pipeline/v2/events/StepFailed.class` were read out of the events JAR of the published SDK bundle of each release, and the synthetic constructor that takes the `DefaultConstructorMarker` is published by BOTH classes from 0.94.0 to 0.98.0 - it appeared with the build that made the properties of the two classes defaulted - and by NEITHER class before that. The class `StepStarted` publishes no synthetic constructor in any of the versions, which is why this change breaks three members of it and not four. THE COMPARATOR NAMED THE BREAKS: `dev.rubentxu.pipeline.v2.release.PublishedApiCompatibilityMain`, run over the published artifact of 0.98.0 and the API dump of this tree with a ledger that does not carry these entries, reports `pipeline-events: INCOMPATIBLE - 11 break(s) with no approval in the exception ledger`, names the eleven keys that these four entries approve, and ends with `FATAL - 11 unauthorized break(s) against the previously published artifact` (exit code 1); with these four entries in the ledger the same comparison closes as `pipeline-events: COMPATIBLE WITH APPROVED BREAKS - 11 break(s), each approved by an entry of the exception ledger that names its version and its evidence` (exit code 0). THE CONTROL OF THAT GREEN IS THE SAME COMPARISON WITH THE LEDGER WITHOUT THESE ENTRIES: it exits 1 and names exactly those eleven keys, and every other published module of the comparison reads COMPATIBLE - `pipeline-domain`, `pipeline-scripting-api`, `pipeline-output`, `pipeline-runtime-api`, `pipeline-service-client`, `pipeline-scripting-definition`, `pipeline-credentials-api` and `pipeline-step-sdk:api`. THE PREVIOUS SIDE IS THE PUBLISHED ARTIFACT, NOT A REBUILD: the events JAR that the release v0.98.0 published in `pipelinek-0.98.0.sdk.zip` and that the distribution `pipelinek-0.98.0.zip` ships as `lib/pipeline-events-0.98.0.jar`, whose digest `542d238c9d63a6873bca102a298ece233e44406787f77b53a4727125fb246317` the release names in its `SHA256SUMS`. The class file of `StepStarted` read out of that JAR carries no `getOpId` accessor, and the candidate carries one."
+    },
+    {
+      "module": "pipeline-events",
+      "sha": "f8ad8607fe5a8ee27adc8aaca5ea0768be48bd54",
+      "surface": "the `subject` the projector resolves for the step events of a parallel branch (StepStarted, StepFinished, StepFailed): the kind of the ResourceRef and its segments",
+      "change": "a step that carries the durable identity of the operation it runs as (`opId`, published by the same tree's events) now projects an OPERATION subject - the step's coordinates plus an `op/` segment carrying the WHOLE operation's canonical text, encoded into a segment by the reference authority itself (ResourceRefs.operationKey) - where it used to project a STEP subject derived from the coordinates alone. A step that brings no operation identity keeps the STEP subject it has always had. No published member is added, removed or retyped; the break is the projected VALUE.",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "THE COORDINATES DO NOT NAME THE BRANCH. In a parallel stage two branches run steps with",
+        "the SAME stage index and the SAME step index, so a subject derived from the indices alone",
+        "names both branches and neither: the two envelopes carried the SAME subject, and a consumer",
+        "that resolves events by subject attributed one branch's rows to the other.",
+        "",
+        "THE IDENTITY IS THE ONE THE PRODUCT ALREADY PUBLISHES. The opId of a branch step is the one",
+        "the journal writes, `pipelinek operations` lists and `pipelinek console <run> <opId>` reads,",
+        "so the subject of the envelope and the opId of the event now name the same operation. The",
+        "durable OpId writes its branch frames with colons (run-1-s0-0-bp2-b1:branch-0:core.sh) and a",
+        "reference segment may not carry one - the colon is the canonical text's own separator - so",
+        "the identity is not trimmed to fit: the reference authority declares the encoding that puts",
+        "the whole text into the segment, injective and reversible, and a consumer joins event.opId",
+        "with a subject through that one pair of functions. The real-run row caught the first draft",
+        "putting the raw opId into the segment: the reference law refused it.",
+        "",
+        "THE ROW DOES NOT CHANGE; THE PROJECTION DOES. The subject is derived at read time and never",
+        "stored: no journal byte, no wire row, no codec changes. Rows already written project under",
+        "the new subject when they carry the identity and keep the old subject when they do not, so",
+        "the rows a consumer already holds keep reading the way they read.",
+        "",
+        "THE WINDOW IS MEASURED, NOT ASSUMED. For EACH published train, the events JAR shipped in",
+        "that train's published SDK bundle was loaded in an isolated classloader, and that train's",
+        "OWN projector was asked what subject it produces for a parallel-branch step event: every",
+        "train from 0.91.0 through 0.98.0 answers subject-kind=STEP over",
+        "v1:step:pipeline/run/<runId>/stage/0/step/0, and in every one of them the published",
+        "StepStarted carries NO opId constructor parameter - the identity reached this tree after the",
+        "0.98.0 train. A consumer of ANY published version can therefore depend on the branch step's",
+        "STEP subject, which is why this entry covers every published train and why the subject a",
+        "branch step used to carry is not coming back."
+      ],
+      "removal_boundary": "no binary member of the published artifact is removed or retyped: the step events keep every member they had, and the projector keeps its signature. The break this entry authorises is the subject VALUE of a branch step's envelopes: the kind and segments change from this build onward, and the STEP subject those rows used to project is not coming back for a step that runs as an operation. What this entry does NOT authorise: any change to the subject of a step that carries no operation identity; any change to the subjects of stage, run or branch events; any removal or retype of a published member; or the change for a version this entry does not name.",
+      "supersedes": null
     }
   ]
 }

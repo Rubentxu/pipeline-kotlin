@@ -50,6 +50,7 @@ package dev.rubentxu.pipeline.v2.application
  * | `runtime.eventshape.v2`       | DEPRECATED | `v0.62.0`       |
  * | `events.stepoutcome.v1`       | PUBLISHED  | `v0.62.0`       |
  * | `events.failurestage.v1`      | PUBLISHED  | `v0.62.0`       |
+ * | `events.stepoperation.v1`     | PUBLISHED  | `v0.98.0`       |
  *
  * The table used to live in a second file, inside the module that implements
  * the runtime ports, and that file claimed to be the canonical one. It was a
@@ -151,6 +152,21 @@ package dev.rubentxu.pipeline.v2.application
  * So the stage travels in the failure event, and `events.failurestage.v1` is the id that names
  * that vocabulary. It is not a new verdict and not a second model of results: the failure already
  * carried the evidence, and what it could not say was **where** it happened.
+ *
+ * ## Why the step's operation has its own id
+ *
+ * A step that runs inside a `parallel` branch publishes the durable operation it runs as, and
+ * `events.stepoperation.v1` is the id that names that fact. The indices do not identify such a
+ * step: two branches of one stage run steps with the same stage index and the same step index,
+ * so the only thing that told them apart was the step NAME — a slug, which is a text and not a
+ * fact, because two branches named `a b` and `a-b` spell the same one. A consumer that wanted
+ * the console of one branch's step had to rebuild the operation id out of that slug and out of
+ * the private spelling of the id.
+ *
+ * The operation is ABSENT for a step outside a branch: there the run, the stage and the step
+ * already name the step, and the rows a reader already has keep reading the same way. So the
+ * absence is a fact of its own — "this step does not run in a branch" — and a consumer that has
+ * to tell it apart from "this build publishes no operation at all" negotiates this id.
  *
  * ## Why the structure and operation ids are announced and not delivered
  *
@@ -323,6 +339,16 @@ object SdkCapabilities {
             id = "events.failurestage.v1",
             status = CapabilityStatus.PUBLISHED,
             firstPublished = "v0.62.0",
+        ),
+        CapabilityEntry(
+            // The operation a step runs as, published in the step's own events for a step that runs
+            // inside a parallel branch. The indices do not identify such a step: two branches of one
+            // stage run steps with the same stage index and the same step index, and only this
+            // identity tells them apart. It is absent for a step outside a branch, where the run,
+            // the stage and the step already name the step.
+            id = "events.stepoperation.v1",
+            status = CapabilityStatus.PUBLISHED,
+            firstPublished = "v0.98.0",
         ),
     )
 

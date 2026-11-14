@@ -3054,10 +3054,11 @@ public final class dev/rubentxu/pipeline/v2/events/StepAdmissionObserved$Compani
 
 public final class dev/rubentxu/pipeline/v2/events/StepFailed : dev/rubentxu/pipeline/v2/events/DomainEvent {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StepFailed$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()Ljava/lang/String;
+	public final fun component11 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
 	public final fun component4 ()Ljava/time/Instant;
@@ -3066,14 +3067,15 @@ public final class dev/rubentxu/pipeline/v2/events/StepFailed : dev/rubentxu/pip
 	public final fun component7 ()Ljava/lang/String;
 	public final fun component8 ()Ljava/lang/String;
 	public final fun component9 ()Ldev/rubentxu/pipeline/v2/domain/FailureKind;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepFailed;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/StepFailed;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepFailed;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepFailed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/StepFailed;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepFailed;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getEventId ()Ljava/lang/String;
 	public final fun getFailureKind ()Ldev/rubentxu/pipeline/v2/domain/FailureKind;
 	public fun getKind ()Ljava/lang/String;
 	public final fun getMessage ()Ljava/lang/String;
 	public fun getOccurredAt ()Ljava/time/Instant;
+	public final fun getOpId ()Ljava/lang/String;
 	public fun getRunId ()Ljava/lang/String;
 	public fun getSequence ()J
 	public final fun getStageIndex ()Ljava/lang/Integer;
@@ -3103,9 +3105,10 @@ public final class dev/rubentxu/pipeline/v2/events/StepFailed$Companion {
 
 public final class dev/rubentxu/pipeline/v2/events/StepFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StepFinished$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
 	public final fun component4 ()Ljava/time/Instant;
@@ -3114,12 +3117,13 @@ public final class dev/rubentxu/pipeline/v2/events/StepFinished : dev/rubentxu/p
 	public final fun component7 ()Ljava/lang/String;
 	public final fun component8 ()Ljava/lang/String;
 	public final fun component9 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepFinished;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/StepFinished;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepFinished;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepFinished;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/StepFinished;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepFinished;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getEventId ()Ljava/lang/String;
 	public fun getKind ()Ljava/lang/String;
 	public fun getOccurredAt ()Ljava/time/Instant;
+	public final fun getOpId ()Ljava/lang/String;
 	public final fun getOutcome ()Ljava/lang/String;
 	public fun getRunId ()Ljava/lang/String;
 	public fun getSequence ()J
@@ -3150,7 +3154,8 @@ public final class dev/rubentxu/pipeline/v2/events/StepFinished$Companion {
 
 public final class dev/rubentxu/pipeline/v2/events/StepStarted : dev/rubentxu/pipeline/v2/events/DomainEvent {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/events/StepStarted$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -3159,12 +3164,14 @@ public final class dev/rubentxu/pipeline/v2/events/StepStarted : dev/rubentxu/pi
 	public final fun component6 ()I
 	public final fun component7 ()Ljava/lang/String;
 	public final fun component8 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepStarted;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/StepStarted;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepStarted;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepStarted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/StepStarted;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepStarted;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getEventId ()Ljava/lang/String;
 	public fun getKind ()Ljava/lang/String;
 	public fun getOccurredAt ()Ljava/time/Instant;
+	public final fun getOpId ()Ljava/lang/String;
 	public fun getRunId ()Ljava/lang/String;
 	public fun getSequence ()J
 	public final fun getStageIndex ()I

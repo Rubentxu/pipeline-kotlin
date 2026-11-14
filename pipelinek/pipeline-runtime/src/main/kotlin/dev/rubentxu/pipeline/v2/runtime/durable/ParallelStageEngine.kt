@@ -107,7 +107,7 @@ internal class ParallelStageEngine(
                 // Branch durable identity lives in the FIRST bodyPath segment
                 // ("b{N}:branch"), never in an OpId -b{N} suffix (the canonical
                 // parallel child key has no -b segment). Parse it deterministically.
-                val branchIndex = Regex("-bp\\d+-b(\\d+):branch(-|$)").find(op.id)
+                val branchIndex = BRANCH_FRAME_IN_TEXT.find(op.id)
                     ?.groupValues?.get(1)?.toIntOrNull() ?: return@mapNotNull null
                 ParallelBranchChildSnapshot(
                     branchIndex = branchIndex,
@@ -465,8 +465,10 @@ internal class ParallelStageEngine(
             // bodyPath it is handed, so the branch index is encoded as the FIRST
             // deterministic BlockSegment ("b{branchIndex}:branch"). Two branches'
             // children can never collide; a durable rerun reuses the same keys.
+            // The frame is written with the constants the reader of a frame uses,
+            // so the writer and the reader of the frame cannot drift apart.
             val bodyPath = listOf(
-                BlockSegment("b$branchIndex:branch"),
+                BlockSegment("${OpId.BRANCH_FRAME_PREFIX}$branchIndex:${OpId.PARALLEL_BRANCH_SEGMENT}"),
                 BlockSegment(stepIndex, step.pluginStepId),
             )
             val dispatchedBranch = stepDispatch.dispatch(
@@ -491,6 +493,17 @@ internal class ParallelStageEngine(
             }
         }
         return outcome
+    }
+
+    private companion object {
+        /**
+         * The branch frame as it appears in the TEXT of an operation id: the body path's first
+         * segment, spelled with the constants the writer of the frame and the reader of the
+         * lineage use, so the shape of a frame is written down in one place.
+         */
+        val BRANCH_FRAME_IN_TEXT: Regex = Regex(
+            "-bp\\d+-${OpId.BRANCH_FRAME_PREFIX}(\\d+):${OpId.PARALLEL_BRANCH_SEGMENT}(-|$)",
+        )
     }
 }
 

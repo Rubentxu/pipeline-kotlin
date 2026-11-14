@@ -33,6 +33,16 @@ data class OpId(
      * parallel impossible to represent without a breaking change, and a lane
      * identity that cannot express nesting is a lane identity that will be
      * wrong the moment nesting exists.
+     *
+     * ## The frame it reads
+     *
+     * A branch frame is the segment `"b{branchIndex}:branch"` — the shape the parallel engine
+     * writes and the shape the round trip of an operation id preserves. It used to be read as
+     * `"{branchIndex}:branch"`, and a segment of that shape is written by nobody: the reader
+     * asked for a number where the frame carries the letter `b` in front of it, so the lineage
+     * came back EMPTY for every branch the product ran. An empty lineage is the LINEAR lane, and
+     * two branches of one `parallel` were one lane — the mutual exclusion a `lock` exists to
+     * provide, gone in exactly the situation where it is relied upon.
     */
     val parallelLineage: List<Int>
         get() = bodyPath.mapNotNull { segment ->
@@ -41,7 +51,9 @@ data class OpId(
             // not exist on the type.
             val encoded = segment.encoded
             if (!encoded.endsWith(":$PARALLEL_BRANCH_SEGMENT")) return@mapNotNull null
-            encoded.substringBeforeLast(':').toIntOrNull()
+            val frame = encoded.substringBeforeLast(':')
+            if (!frame.startsWith(BRANCH_FRAME_PREFIX)) return@mapNotNull null
+            frame.removePrefix(BRANCH_FRAME_PREFIX).toIntOrNull()
         }
 
     /**
@@ -69,6 +81,15 @@ data class OpId(
          * cannot drift apart.
     */
         const val PARALLEL_BRANCH_SEGMENT = "branch"
+
+        /**
+         * The letter a branch frame's index carries in front of it: the frame is
+         * `"b{branchIndex}:branch"`, and the letter is what tells a branch frame
+         * apart from a child segment, whose index carries no letter.
+         *
+         * Named here so the reader of the frame and the writer of it cannot drift apart.
+         */
+        const val BRANCH_FRAME_PREFIX = "b"
 
         /**
          * The root of an operation id: the run, the stage, the step and, when the

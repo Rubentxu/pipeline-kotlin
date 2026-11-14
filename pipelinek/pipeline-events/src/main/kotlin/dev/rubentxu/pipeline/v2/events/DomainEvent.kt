@@ -234,7 +234,14 @@ data class StageSkipped(
 
 /**
  * Emitted when a step within a stage starts.
-*/
+ *
+ * ## The operation this step runs as
+ *
+ * [opId] names the durable operation the step runs as, in the canonical text form the journal
+ * row and the Output Plane use. It is published for a step that runs inside a PARALLEL BRANCH,
+ * where the stage index and the step index do not identify the step: two branches of one stage
+ * run steps with the same indices, and only this identity tells them apart.
+ */
 @Serializable
 @SerialName("StepStarted")
 data class StepStarted(
@@ -247,6 +254,13 @@ data class StepStarted(
     val stepIndex: Int,
     val stepName: String,
     val stepType: String,
+    /**
+     * The operation identity of a step that runs inside a parallel branch.
+     *
+     * Absent for a step outside a branch, where the run id, the stage index and the step index
+     * already name the step, and where the rows a reader already has keep reading the same way.
+     */
+    val opId: String? = null,
 ) : DomainEvent {
     override val kind: String get() = "StepStarted"
     override fun withSequence(sequence: Long): StepStarted = copy(sequence = sequence)
@@ -284,6 +298,13 @@ data class StepStarted(
  * [StepFailed] — which carries the evidence: the failure kind and its message — and this one,
  * which carries the verdict. The two are written from the same
  * [dev.rubentxu.pipeline.v2.domain.StepOutcome], so they cannot disagree.
+ *
+ * ## The operation this step ran as
+ *
+ * [opId] names the durable operation the step ran as, in the canonical text form the journal row
+ * and the Output Plane use. It is published for a step that runs inside a PARALLEL BRANCH, where
+ * the stage index and the step index do not identify the step: two branches of one stage run
+ * steps with the same indices, and only this identity tells them apart.
  */
 @Serializable
 @SerialName("StepFinished")
@@ -299,6 +320,13 @@ data class StepFinished(
     val stepType: String,
     @Serializable(with = OptionalStringWireSerializer::class)
     val outcome: String? = null,
+    /**
+     * The operation identity of a step that runs inside a parallel branch.
+     *
+     * Absent for a step outside a branch, where the run id, the stage index and the step index
+     * already name the step, and where the rows a reader already has keep reading the same way.
+     */
+    val opId: String? = null,
 ) : DomainEvent {
     override val kind: String get() = "StepFinished"
     override fun withSequence(sequence: Long): StepFinished = copy(sequence = sequence)
@@ -503,6 +531,14 @@ data class TimeoutScheduled(
  * `null` is also what a row written by an older build decodes to, because that build published
  * no stage. A consumer that has to tell "this build says unknown" from "this build says
  * nothing" negotiates the capability `events.failurestage.v1`.
+ *
+ * ## The operation this step ran as
+ *
+ * [opId] names the durable operation the step ran as, in the canonical text form the journal row
+ * and the Output Plane use. It is published for a step that runs inside a PARALLEL BRANCH, where
+ * the stage index and the step index do not identify the step: two branches of one stage run
+ * steps with the same indices, and only this identity tells them apart. It is what tells a
+ * consumer WHICH branch failed, and it is the identity the console of that step is read with.
  */
 @Serializable
 @SerialName("StepFailed")
@@ -520,6 +556,13 @@ data class StepFailed(
     @Serializable(with = FailureKindWireSerializer::class)
     val failureKind: FailureKind,
     val message: String,
+    /**
+     * The operation identity of a step that runs inside a parallel branch.
+     *
+     * Absent for a step outside a branch, where the run id, the stage index and the step index
+     * already name the step, and where the rows a reader already has keep reading the same way.
+     */
+    val opId: String? = null,
 ) : DomainEvent {
     override val kind: String get() = "StepFailed"
     override fun withSequence(sequence: Long): StepFailed = copy(sequence = sequence)

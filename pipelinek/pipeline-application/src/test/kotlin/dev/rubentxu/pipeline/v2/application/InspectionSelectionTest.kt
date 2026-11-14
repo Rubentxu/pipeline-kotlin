@@ -113,6 +113,89 @@ class InspectionSelectionTest {
     }
 
     /**
+     * Cada fila responde por una decisión de ATRIBUCIÓN dentro de una etapa PARALELA, y ninguna
+     * comparte eje con otra.
+     *
+     * En una etapa paralela, dos ramas ejecutan pasos con el MISMO índice de etapa y el MISMO
+     * índice de paso: los índices no identifican el paso, y lo único que los distinguía era el
+     * nombre del paso — un texto, no un dato. Por eso el paso de una rama publica la operación
+     * que ejecuta, y por eso el fallo de una rama dice en qué rama ocurrió en vez de heredar la
+     * operación que el pliegue tenía abierta, que es la de la hermana.
+     */
+    @TestFactory
+    fun `each attribution decision inside a parallel stage answers exactly one thing`(): List<DynamicTest> {
+        val branchA = "run-7-s0-0-bp2-b0:branch-0:core.sh"
+        val branchB = "run-7-s0-0-bp2-b1:branch-0:core.sh"
+        val branchEvents = listOf(
+            StepStarted(
+                "evt-1", RUN_ID, 1, EPOCH,
+                stageIndex = 0, stepIndex = 0, stepName = "fan/branch-a/sh-0", stepType = "shell",
+                opId = branchA,
+            ),
+            StepStarted(
+                "evt-2", RUN_ID, 2, EPOCH,
+                stageIndex = 0, stepIndex = 0, stepName = "fan/branch-b/sh-0", stepType = "shell",
+                opId = branchB,
+            ),
+            StepFailed(
+                "evt-3", RUN_ID, 3, EPOCH,
+                stageIndex = 0, stepIndex = 0, stepName = "fan/branch-a/sh-0", stepType = "shell",
+                failureKind = FailureKind.SCRIPT, message = "boom",
+                opId = branchA,
+            ),
+        )
+        // The same failure as an OLDER build wrote it: the branch frame was not published, and
+        // the event carries nothing to resolve it with.
+        val legacyEvents = branchEvents.take(2) + StepFailed(
+            "evt-3", RUN_ID, 3, EPOCH,
+            stageIndex = 0, stepIndex = 0, stepName = "fan/branch-a/sh-0", stepType = "shell",
+            failureKind = FailureKind.SCRIPT, message = "boom",
+        )
+        val ops = InspectionSelection.operationIdPerEvent(branchEvents, RUN_ID)
+        val legacyOps = InspectionSelection.operationIdPerEvent(legacyEvents, RUN_ID)
+        val cases = listOf(
+            Case(
+                "el paso de una rama es dueño de la operación que ejecuta",
+            ) {
+                assertEquals(
+                    OpId.parse(branchA),
+                    ops[0],
+                    "la operación del paso de una rama es la que dice el paso, no la que dicen sus índices",
+                )
+            },
+            Case(
+                "la rama hermana es dueña de la suya",
+            ) {
+                assertEquals(
+                    OpId.parse(branchB),
+                    ops[1],
+                    "cada rama ejecuta una operación distinta",
+                )
+            },
+            Case(
+                "el fallo de una rama dice en qué rama ocurrió",
+            ) {
+                assertEquals(
+                    OpId.parse(branchA),
+                    ops[2],
+                    "el fallo pertenece a la rama que falló, no a la hermana que estaba abierta",
+                )
+            },
+            Case(
+                "un fallo escrito por una build anterior hereda la operación abierta",
+            ) {
+                assertEquals(
+                    OpId.parse(branchB),
+                    legacyOps[2],
+                    "sin identidad propia, el fallo hereda lo que el pliegue tenía abierto: la limitación " +
+                        "que queda, y que el evento escrito por esta build ya no tiene",
+                )
+            },
+        )
+        return cases.asDynamicTests()
+    }
+
+    /**
      * Cada fila responde por una decisión de FILTRO, y ninguna comparte eje con otra.
      */
     @TestFactory

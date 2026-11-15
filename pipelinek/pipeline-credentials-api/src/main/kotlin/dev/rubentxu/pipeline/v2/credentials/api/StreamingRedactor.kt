@@ -167,7 +167,7 @@ class StreamingRedactor(
         var i = 0
         while (i < len) {
             // 1. Drain whatever was already decided before adding more.
-            drainOneHead(state)
+            drainDecidedHeads(state)
             // 2. Add a byte to the lookahead (if there's room).
             if (state.ringCount < state.maxLiteral) {
                 state.ring[(state.ringHead + state.ringCount) % state.ring.size] = bytes[off + i]
@@ -182,8 +182,9 @@ class StreamingRedactor(
             emitHeadAsPlain(state)
         }
         // One more pass to drain any decision that became possible after the
-        // last byte was added.
-        drainOneHead(state)
+        // last byte was added: the last byte of a write is decided now when nothing can start
+        // with it, and not when the next write happens to arrive.
+        drainDecidedHeads(state)
         return state
     }
 
@@ -229,17 +230,9 @@ class StreamingRedactor(
         // loop as [feed] until the ring is empty.
         while (state.ringCount > 0) {
             // `atEof = true`: no more bytes can arrive, so a literal longer than what is buffered
-            // must be matched by the prefix that IS present rather than deferred forever.
-            if (!drainOneHead(state, atEof = true)) {
-                // No seam literal starts with this byte; emit it as-is.
-                state.reserveOutput(1)
-                state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] =
-                    state.ring[state.ringHead]
-                state.outputHead = state.outputHead // unchanged
-                state.outputCount++
-                state.ringHead = (state.ringHead + 1) % state.ring.size
-                state.ringCount--
-            }
+            // must be matched by the prefix that IS present rather than deferred forever, and
+            // every head is decided one way or the other.
+            drainOneHead(state, atEof = true)
         }
         val out = ByteArray(state.outputCount)
         for (i in 0 until state.outputCount) {
@@ -298,10 +291,23 @@ class StreamingRedactor(
         state.ringCount--
     }
 
+    /** Decide heads until one is undecided or the ring is empty. */
+    private fun drainDecidedHeads(state: RedactorState) {
+        while (drainOneHead(state)) Unit
+    }
+
     /**
-     * Try to match a seam literal at the ring head. If matched, the literal
-     * bytes are consumed from the ring and the SCRUB_MARKER is enqueued.
-     * @return true if a literal was matched (one head byte was decided).
+     * Decide the ring head, when it can be decided.
+     *
+     * The head is a secret when a seam literal matches at it, and the literal is replaced by the
+     * SCRUB_MARKER. It is plain text when no literal can match at it any more, and it is then
+     * released at once: **a byte that cannot begin a secret has nothing to wait for**, and a
+     * lookahead that keeps it anyway holds the terminator of every line until the step writes the
+     * next one. It stays undecided only while a literal that agrees with every byte seen so far
+     * has not arrived whole yet.
+     *
+     * @return true if the head was decided (a marker or a plain byte left the ring), false if it is
+     *   still undecided or the ring is empty.
 */
     private fun drainOneHead(state: RedactorState, atEof: Boolean = false): Boolean {
         if (state.ringCount == 0) return false
@@ -309,8 +315,19 @@ class StreamingRedactor(
         for (li in state.seam.indices) {
             if (state.seamFirstBytes[li] != first) continue
             val literal = state.seam[li]
+            // How much of the literal the ring can already contradict.
+            val comparable = minOf(literal.size, state.ringCount)
+            var agrees = true
+            for (i in 1 until comparable) {
+                if (state.ring[(state.ringHead + i) % state.ring.size] != literal[i]) {
+                    agrees = false
+                    break
+                }
+            }
+            // A literal the bytes seen already contradict cannot match, whatever follows.
+            if (!agrees) continue
             if (literal.size > state.ringCount) {
-                // A literal that does not FIT yet means the head is UNDECIDED, and
+                // A literal that agrees so far but does not FIT yet means the head is UNDECIDED, and
                 // undecided must not fall through to a shorter literal.
                 // This used to `continue`, so the scan went on to the next literal. When two
                 // secrets share a prefix (`SECRET-AB` and `SECRET-ABCDEFGH`) and the ring held
@@ -326,28 +343,21 @@ class StreamingRedactor(
                 if (!atEof) return false
                 continue
             }
-            var match = true
-            for (i in 1 until literal.size) {
-                if (state.ring[(state.ringHead + i) % state.ring.size] != literal[i]) {
-                    match = false
-                    break
-                }
+            repeat(literal.size) {
+                state.ringHead = (state.ringHead + 1) % state.ring.size
+                state.ringCount--
             }
-            if (match) {
-                repeat(literal.size) {
-                    state.ringHead = (state.ringHead + 1) % state.ring.size
-                    state.ringCount--
-                }
-                val marker = SecretPatternRegistry.SCRUB_MARKER.toByteArray(StandardCharsets.UTF_8)
-                state.reserveOutput(marker.size)
-                for (byte in marker) {
-                    state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] = byte
-                    state.outputCount++
-                }
-                return true
+            val marker = SecretPatternRegistry.SCRUB_MARKER.toByteArray(StandardCharsets.UTF_8)
+            state.reserveOutput(marker.size)
+            for (byte in marker) {
+                state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] = byte
+                state.outputCount++
             }
+            return true
         }
-        return false
+        // No literal can match at this byte, so no secret can span it.
+        emitHeadAsPlain(state)
+        return true
     }
 
     /**

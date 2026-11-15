@@ -92,9 +92,9 @@ class StreamingRedactorTest {
         redactor.feed(state, bytes, 1, 1)
 
         assertEquals(
-            1,
+            2,
             redactor.available(state),
-            "with nothing to mask the first byte must be decided as soon as it arrives",
+            "with nothing to mask every byte must be decided as soon as it arrives, the last one too",
         )
 
         val out = ByteArrayOutputStream()
@@ -225,6 +225,49 @@ class StreamingRedactorTest {
             state.outputQueue.toList().any { it.toInt() != 0 },
             "the output queue still holds bytes after the transcript was finished",
         )
+    }
+
+    @Test
+    @DisplayName("a line is decided with its terminator while the step is still running")
+    fun `a byte that cannot begin a secret is decided when it arrives`() {
+        val redactor = StreamingRedactor(registryOf(SECRET))
+        val state = redactor.initialState()
+        val line = "building\n".toByteArray()
+
+        // Nothing here can be the start of the secret, so there is nothing to wait for: a
+        // terminator held back until the next write shows a reader a line that is not finished
+        // for as long as the step takes to print another one.
+        redactor.feed(state, line, 0, line.size)
+
+        val out = ByteArrayOutputStream()
+        takeAll(redactor, state, out)
+        assertEquals(
+            "building\n",
+            out.toString(Charsets.UTF_8.name()),
+            "the line was not decided with its terminator before the step wrote anything else",
+        )
+    }
+
+    @Test
+    @DisplayName("a byte that could begin a secret is still held until it is decidable")
+    fun `a byte that may begin a secret is held and the secret is still masked`() {
+        val redactor = StreamingRedactor(registryOf(SECRET))
+        val state = redactor.initialState()
+        val first = "ok f".toByteArray()
+        val rest = "ixture-secret-value".toByteArray()
+
+        redactor.feed(state, first, 0, first.size)
+        val early = ByteArrayOutputStream()
+        takeAll(redactor, state, early)
+        // The near miss: only what cannot start the secret is released. A rule that released
+        // every byte would let the first byte of a secret out before the rest of it arrived.
+        assertEquals("ok ", early.toString(Charsets.UTF_8.name()), "the byte that may start a secret was not held")
+
+        redactor.feed(state, rest, 0, rest.size)
+        val late = ByteArrayOutputStream()
+        takeAll(redactor, state, late)
+        late.write(redactor.finish(state))
+        assertEquals(SecretPatternRegistry.SCRUB_MARKER, late.toString(Charsets.UTF_8.name()))
     }
 
     @Test

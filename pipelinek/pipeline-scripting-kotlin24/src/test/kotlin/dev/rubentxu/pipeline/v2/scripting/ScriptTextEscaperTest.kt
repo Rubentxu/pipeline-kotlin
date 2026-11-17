@@ -114,6 +114,39 @@ class ScriptTextEscaperTest {
     }
 
     @Test
+    fun `a dollar the author already escaped stays as the author wrote it`() {
+        // A backslash the author placed before the dollar is the author's own
+        // escape: the compiler resolves `\$` to a literal `$`, so the shell
+        // receives `$USERNAME` and reads the bound value. Rewriting that dollar
+        // anyway hands the shell the literal text `${'$'}` — which bash rejects
+        // as a bad substitution, and every body of a withCredentials that
+        // escaped its bound name died before its first command ran.
+        // A raw string cannot write the escaped dollar as `\$` — it would not
+        // process the backslash as an escape, and the dollar would open a
+        // template. The idiom below builds the text the author writes: a
+        // backslash, then the dollar, then the name.
+        val script = """sh("echo \${'$'}USERNAME")"""
+
+        assertEquals(script, ScriptTextEscaper.escape(script, credentials))
+    }
+
+    @Test
+    fun `a dollar behind two backslashes still gets escaped`() {
+        // The guard must read the parity of the backslashes, not their presence:
+        // two backslashes are a literal backslash followed by a live template,
+        // so this dollar still needs the escaper's protection — a guard that
+        // switched itself off at any backslash would leave this reference to be
+        // consumed by the compiler as a template of a value nobody bound.
+        // The subject holds TWO backslashes and a live dollar; the answer
+        // holds the same two backslashes and the escaper's own `${'$'}` text.
+        val script = """sh("echo \\${'$'}USERNAME")"""
+
+        val escaped = ScriptTextEscaper.escape(script, credentials)
+
+        assertEquals("""sh("echo \\${'$'}{'$'}USERNAME")""", escaped)
+    }
+
+    @Test
     fun `escaping twice changes nothing the second time`() {
         // The escaper runs on text that may already carry an escaped reference,
         // and its own output is such text. If the second pass rewrote anything,

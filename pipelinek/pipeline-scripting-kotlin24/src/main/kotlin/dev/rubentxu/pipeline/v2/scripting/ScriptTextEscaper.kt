@@ -17,6 +17,11 @@ package dev.rubentxu.pipeline.v2.scripting
  * - `$$` → left as-is (literal dollar)
  * - `$_` → left as-is (not a valid identifier)
  * - `${'$'}VAR` → depth=1, left as-is
+ * - `\$VAR` (an ODD number of backslashes before the `$`) → left as-is — the
+ *   author's escape already makes the dollar literal; rewriting it would plant
+ *   the `${'$'}` text in the compiled string, which the shell reads verbatim
+ * - `\\$VAR` (an EVEN number of backslashes) → escaped: the backslashes are a
+ *   literal, and the dollar behind them is still a live template
  */
 internal object ScriptTextEscaper {
 
@@ -54,6 +59,20 @@ internal object ScriptTextEscaper {
                 if (idPair != null) {
                     val (identifier, identifierEnd) = idPair
                     if (identifier in envVars && braceDepth == 0) {
+                        if (authorAlreadyEscaped(scriptText, i)) {
+                            // The author's backslash already makes this dollar
+                            // literal: the compiler consumes `\$` as an escape,
+                            // and a rewrite inserted AFTER that backslash would
+                            // never form a template — the `${'$'}` text itself
+                            // would reach the shell and bash would reject it as
+                            // a bad substitution. The pair of backslashes case
+                            // is what keeps this a parity rule: two backslashes
+                            // are a literal backslash followed by a live dollar
+                            // that still needs protection.
+                            result.append(c)
+                            i++
+                            continue
+                        }
                         // Escape: $VAR -> ${'$'}VAR
                         result.append("\${'$'}")
                         result.append(identifier)
@@ -78,6 +97,23 @@ internal object ScriptTextEscaper {
         }
 
         return result.toString()
+    }
+
+    /**
+     * Returns true if the `$` at [pos] is protected by the author's own escape:
+     * an ODD number of consecutive backslashes immediately before it. One
+     * backslash is the author's `\$` — the compiler resolves it to a literal
+     * dollar and no protection is needed; an even count (including none) leaves
+     * a live dollar behind the backslashes, which still needs the escaper.
+*/
+    private fun authorAlreadyEscaped(text: String, pos: Int): Boolean {
+        var backslashes = 0
+        var i = pos - 1
+        while (i >= 0 && text[i] == '\\') {
+            backslashes++
+            i--
+        }
+        return backslashes % 2 == 1
     }
 
     /**

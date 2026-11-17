@@ -78,7 +78,10 @@ object ResourceRefs {
                 ch == 'x' -> append("xx")
                 ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9' || ch == '.' || ch == '_' || ch == '-' ->
                     append(ch)
-                else -> append("x%04x".format(ch.code))
+                // Hex by explicit radix and padding: the same lowercase,
+                // zero-padded form %04x produced, without borrowing the
+                // platform's default locale to decide it.
+                else -> append("x" + ch.code.toString(16).padStart(4, '0'))
             }
         }
     }

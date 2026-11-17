@@ -366,6 +366,11 @@ DECLARED_SCENARIO_ROOTS = {
         "see what a capability does. The release harness runs them, against "
         "the published candidate, and this tree runs none of them"
     ),
+    "examples/ci-cd": (
+        "the worked-out example of a CI/CD pipeline for readers to copy: this "
+        "tree runs none of it, and the PetClinic laboratory that boots the "
+        "published product lives in the harness repository"
+    ),
 }
 
 # The tag that marks a row that STARTS the product.

@@ -70,13 +70,22 @@ class ScriptBlockCompilationTest {
 
         assertTrue(result.isSuccess, "the example did not compile: ${result.diagnostics}")
         val spec = result.value as PipelineSpec
-        val echoes = spec.stages.single().steps.filterIsInstance<StepSpec.Echo>()
-        assertEquals(
-            1,
-            echoes.size,
-            "the example declares the arm that was taken, and only that arm: ${spec.stages.single().steps}",
+        // The author called `sh(...)`, so the step the taken arm declares is a
+        // Shell, not an Echo: the step type says what the author wrote, and an
+        // Echo here would mean the block rewrote the author's call. The
+        // guarantee is about WHICH arm, not about the type: the taken arm's
+        // command is in the plan, the arm that was not taken is not in it at
+        // all, and the two sibling steps outside the block are there besides.
+        val shells = spec.stages.single().steps.filterIsInstance<StepSpec.Shell>()
+        assertEquals(3, shells.size, "the plan declares every step the example wrote: ${spec.stages.single().steps}")
+        assertTrue(
+            shells.any { it.command.contains("x is positive") },
+            "the arm that was taken is a step of its own: ${spec.stages.single().steps}",
         )
-        assertEquals("x is positive", echoes.single().text)
+        assertFalse(
+            shells.any { it.command.contains("x is not positive") },
+            "the arm that was not taken is not in the plan at all: ${spec.stages.single().steps}",
+        )
     }
 
     /**

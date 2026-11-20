@@ -54,11 +54,41 @@ import java.util.regex.Pattern
  *   runs once per free-text field of an event.
  * - The streaming redactor matches the fragments of the variants through their bytes, so
  *   the number of patterns a value contributes does not multiply the cost of a byte.
+ * ## The seam version
+ * The registry declares WHEN its seam changed: the seam version moves every time the
+ * registered values change, and it does not move when they do not. A consumer that
+ * captured the seam can therefore tell, with one read, that what it holds is no longer
+ * what the registry holds — which is what lets a redactor that must hold its state
+ * across fragments reload the seam instead of rebuilding itself.
+ * The version is a NUMBER and not a snapshot: the snapshot is what the redactor rebuilds
+ * when the number moves, and the number is what it reads on every fragment.
+ * ## The values and the readers
+ * The registered values are written by the thread that resolves a binding and read by
+ * the threads that scrub transcripts, and those are not the same thread: a value that is
+ * registered while a transcript is being scrubbed must not tear the set the scrubber
+ * walks. Every read and every write of the values goes through one lock, and the
+ * version moves under that lock, after the values have moved.
  * @see RedactingEventSink for the decorator that applies these patterns
 */
 class SecretPatternRegistry {
 
+    /**
+     * The lock that guards the registered values and their version.
+     */
+    private val lock = Any()
+
     private val registeredSecrets = mutableSetOf<String>()
+
+    /**
+     * The version of the seam: it moves when the registered values change, and it stays
+     * where it is when a registration changes nothing.
+     *
+     * It is read on every fragment a redactor scrubs, so it is a plain read of a
+     * volatile field and not a walk of the values.
+     */
+    @Volatile
+    internal var seamVersion: Int = 0
+        private set
 
     /**
      * Registers a secret for masking.
@@ -89,7 +119,11 @@ class SecretPatternRegistry {
             return
         }
 
-        registeredSecrets.add(secretValue)
+        synchronized(lock) {
+            // The version moves only when the seam moved: a value that was already
+            // registered leaves the seam exactly as it was.
+            if (registeredSecrets.add(secretValue)) seamVersion++
+        }
     }
 
     /**
@@ -111,10 +145,14 @@ class SecretPatternRegistry {
      * re-chunking redactor, not a bigger literal.
 */
     fun addSecretRecords(content: String) {
-        for (record in content.lineSequence()) {
-            if (record.length >= MIN_MASKABLE_LENGTH) {
-                registeredSecrets.add(record)
+        synchronized(lock) {
+            var changed = false
+            for (record in content.lineSequence()) {
+                if (record.length >= MIN_MASKABLE_LENGTH) {
+                    if (registeredSecrets.add(record)) changed = true
+                }
             }
+            if (changed) seamVersion++
         }
     }
 
@@ -126,7 +164,9 @@ class SecretPatternRegistry {
         val secretValue = handle.use { bytes ->
             String(bytes, Charsets.UTF_8)
         }
-        registeredSecrets.remove(secretValue)
+        synchronized(lock) {
+            if (registeredSecrets.remove(secretValue)) seamVersion++
+        }
     }
 
     /**
@@ -206,6 +246,15 @@ class SecretPatternRegistry {
      * @return Ordered list of literal byte arrays, empty when no secrets are registered
 */
     internal fun literalSeam(): List<ByteArray> {
+        synchronized(lock) {
+            return literalSeamOfRegisteredValues()
+        }
+    }
+
+    /**
+     * The seam of the registered values, read under the lock that guards them.
+     */
+    private fun literalSeamOfRegisteredValues(): List<ByteArray> {
         if (registeredSecrets.isEmpty()) {
             // An EMPTY registry is a PASSTHROUGH, and it says so by having no
             // literals at all.
@@ -275,6 +324,15 @@ class SecretPatternRegistry {
         require(fragmentThresholdBytes > 0) {
             "a fragment threshold of $fragmentThresholdBytes bytes masks nothing"
         }
+        synchronized(lock) {
+            return fragmentSeamOfRegisteredValues(fragmentThresholdBytes)
+        }
+    }
+
+    /**
+     * The fragments of the registered values, read under the lock that guards them.
+     */
+    private fun fragmentSeamOfRegisteredValues(fragmentThresholdBytes: Int): List<ByteArray> {
         if (registeredSecrets.isEmpty()) return emptyList()
 
         val fragments = mutableListOf<ByteArray>()
@@ -321,6 +379,15 @@ class SecretPatternRegistry {
      * @return Maximum literal byte length, floored at [MIN_SECRET_WINDOW]
 */
     internal fun maxLiteralByteLength(): Int {
+        synchronized(lock) {
+            return maxLiteralByteLengthOfRegisteredValues()
+        }
+    }
+
+    /**
+     * The window the registered values need, read under the lock that guards them.
+     */
+    private fun maxLiteralByteLengthOfRegisteredValues(): Int {
         // With no literals the lookahead is ONE byte, not MIN_SECRET_WINDOW.
         // A one-byte ring is fully decided the moment its byte arrives (no literal can start
         // with it, because there are no literals), so the ring never fills and never withholds.
@@ -341,7 +408,7 @@ class SecretPatternRegistry {
     /**
      * Returns the number of registered secrets.
 */
-    fun size(): Int = registeredSecrets.size
+    fun size(): Int = synchronized(lock) { registeredSecrets.size }
 
     /**
      * Computes the rolling secret-window size for [StreamingRedactor].
@@ -359,6 +426,15 @@ class SecretPatternRegistry {
      * @return the maximum encoded pattern literal length minus 1, floored at 7
 */
     internal fun maxPatternLength(): Int {
+        synchronized(lock) {
+            return maxPatternLengthOfRegisteredValues()
+        }
+    }
+
+    /**
+     * The rolling window of the registered values, read under the lock that guards them.
+     */
+    private fun maxPatternLengthOfRegisteredValues(): Int {
         if (registeredSecrets.isEmpty()) return MIN_SECRET_WINDOW
 
         var maxLen = 0
@@ -417,6 +493,40 @@ class SecretPatternRegistry {
         }
         return result
     }
+
+    /**
+     * The seam of the registry as it is NOW, read in one step.
+     *
+     * The three things a redactor needs travel together because a redactor that read
+     * them in two steps could pair the version of one seam with the fragments of
+     * another, and would then believe it had reloaded when it had not.
+     *
+     * @param fragmentThresholdBytes The number of bytes a fragment must have to be matched.
+     * @return The fragments, the window they need and the version they belong to.
+     */
+    internal fun seamSnapshot(fragmentThresholdBytes: Int): SeamSnapshot = synchronized(lock) {
+        SeamSnapshot(
+            version = seamVersion,
+            fragments = fragmentSeamOfRegisteredValues(fragmentThresholdBytes),
+            maxLiteralByteLength = maxLiteralByteLengthOfRegisteredValues(),
+        )
+    }
+
+    /**
+     * The seam of the registry at one moment: the fragments a redactor matches, the
+     * window they need to hold, and the version that says which seam this is.
+     *
+     * The version is what a redactor compares against the one it captured: when they
+     * differ, the seam moved, and the redactor reloads it.
+     */
+    internal data class SeamSnapshot(
+        /** The version of the seam this snapshot belongs to. */
+        val version: Int,
+        /** The fragments of the registered values, each of them a window of the threshold. */
+        val fragments: List<ByteArray>,
+        /** The window the longest encoded literal needs. */
+        val maxLiteralByteLength: Int,
+    )
 
     /**
      * The thresholds and the marker the registry works by.

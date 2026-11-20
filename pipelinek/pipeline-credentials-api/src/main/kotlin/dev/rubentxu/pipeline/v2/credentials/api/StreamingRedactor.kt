@@ -27,9 +27,8 @@ class RedactorState internal constructor(
     internal var ringHead = 0
     internal var ringCount = 0
 
-    /** Seam literals: longest-first, deduplicated first-byte filter. */
-    internal lateinit var seam: List<ByteArray>
-    internal lateinit var seamFirstBytes: ByteArray
+    /** The fragments this pass matches, captured when the pass starts. */
+    internal lateinit var matcher: FragmentMatcher
 
     /**
      * The DECIDED bytes waiting for the caller to take them.
@@ -77,6 +76,25 @@ class RedactorState internal constructor(
 /**
  * Stateful stream redaction decorator that scrubs secrets split across arbitrary
  * read boundaries using a bounded prefix-scanner algorithm.
+ *
+ * ## What it guarantees
+ * A registered secret is masked wherever it appears, and so is every piece of it that
+ * has at least `fragmentThresholdBytes` bytes - even when the flow delivers the value in
+ * pieces separated by bytes that are not part of it. The bytes that are not part of the
+ * value come out as they went in.
+ *
+ * ## What it does not promise, and says so here
+ * - **A piece shorter than the threshold is not protected.** The threshold counts BYTES,
+ *   because the seam is bytes. A piece of fewer bytes than the threshold is not masked,
+ *   and that is the price of a redactor that does not destroy ordinary output.
+ * - **A transformation of the value that is not one of the encoded variants is not
+ *   detected.** The masked forms are the value itself, its base64 forms, its hexadecimal
+ *   forms and its URL-encoded form. A value that reaches the transcript in a shape this
+ *   product does not know about is not masked by this class.
+ * - **Text that holds a piece of the threshold length is masked, whether it is part of
+ *   the secret or not.** That is the known false positive of a fragment-aware redactor,
+ *   and it is the reason the threshold exists.
+ *
  * ## Bounded Prefix-Scanner Algorithm
  * Unlike the failed carry-prefix approach that used scrub-and-slice on a shrinking
  * String, this implementation:
@@ -115,10 +133,15 @@ class RedactorState internal constructor(
  *                  pending buffer size.
  * @param chunkSize The number of bytes to read from the underlying source
  *                  per `read()` call. Default 8192.
+ * @param fragmentThresholdBytes The number of bytes a piece of a secret must have to
+ *                  be masked. Defaults to [SecretPatternRegistry.MIN_MASKABLE_LENGTH].
+ *                  A value shorter than this is not masked at all, and neither is any
+ *                  piece of it.
 */
 class StreamingRedactor(
     registry: SecretPatternRegistry,
     private val chunkSize: Int = 8192,
+    fragmentThresholdBytes: Int = SecretPatternRegistry.MIN_MASKABLE_LENGTH,
 ) {
 
     /**
@@ -126,27 +149,28 @@ class StreamingRedactor(
      * This is the bound for the pending buffer: we need to hold at most this many
      * bytes to have sufficient lookahead to rule out any secret match at the
      * pending head.
-*/
+    */
     val maxLiteralByteLength: Int = registry.maxLiteralByteLength()
 
     /**
-     * The seam literals (longest-first) for this redactor, deduplicated by
-     * first byte. Exposed for the state-machine API: [initialState] copies
-     * the array references into the [RedactorState] so the per-pass state
-     * does not need to re-scan the registry on every call.
-*/
-    private val seamLiterals: List<ByteArray> = registry.literalSeam()
-    private val seamFirstBytes: ByteArray = ByteArray(seamLiterals.size) { seamLiterals[it][0] }
+     * The fragments of the registered secrets, and the questions the redactor asks
+     * about them. The fragments are captured here, when the redactor is built: the
+     * registry may grow afterwards, and a redactor that re-read it would decide
+     * different bytes at different moments of the same pass.
+    */
+    private val matcher: FragmentMatcher = FragmentMatcher.of(
+        fragmentThresholdBytes,
+        registry.fragmentSeam(fragmentThresholdBytes),
+    )
 
     /**
      * A fresh, independent [RedactorState] for one redaction pass.
      * Each call returns a state with its own buffers, lookahead, and output
-     * queue. The seam literal table is shared (read-only) with the redactor.
+     * queue. The fragment matcher is shared (read-only) with the redactor.
 */
     fun initialState(chunkSize: Int = this.chunkSize): RedactorState {
         val state = RedactorState(maxLiteralByteLength, chunkSize)
-        state.seam = seamLiterals
-        state.seamFirstBytes = seamFirstBytes
+        state.matcher = matcher
         return state
     }
 
@@ -175,11 +199,11 @@ class StreamingRedactor(
                 i++
                 continue
             }
-            // 3. Ring is full but no decision was made. The seam table does
-            //    not cover this prefix, so the head byte is NOT the start of
-            //    a secret. Emit it as plain text and drop it, then re-try
-            //    the new head on the next iteration.
-            emitHeadAsPlain(state)
+            // 3. Ring is full but no decision was made. The head is decided
+            //    here, and it is masked when a fragment covers it: the ring
+            //    cannot grow, so waiting for bytes that cannot arrive would
+            //    stall the transcript.
+            relieveFullRing(state)
         }
         // One more pass to drain any decision that became possible after the
         // last byte was added: the last byte of a write is decided now when nothing can start
@@ -266,18 +290,26 @@ class StreamingRedactor(
     }
 
     /**
-     * The only way out of a full ring with nothing decidable.
-     * Emit the ring head as plain text. It is emitted rather than dropped because a byte inside
-     * the lookahead has to reach the Output Plane eventually, and it is emitted NOW because the
-     * alternative is a stall: see [RedactingInputStream.read].
+     * The only way out of a full ring.
+     *
+     * A full ring means the lookahead holds as many bytes as it can, and the head has to be
+     * decided to make room for the next one. The head is always decidable at that point: a
+     * head no fragment begins with is plain text, and a head a fragment begins with is masked
+     * together with the run that fragment covers, even when the run may still grow - the ring
+     * cannot grow, and a redactor that waits for bytes that cannot arrive stalls the
+     * transcript forever.
+     *
      * Called from two places, and that is the whole point. [feed] reached it while it still had
      * input to consume; the InputStream wrapper needs it too, because the wrapper's feed is
-     * bounded by the ring's FREE SPACE — so when the ring is already full the wrapper can never
+     * bounded by the ring's FREE SPACE - so when the ring is already full the wrapper can never
      * call `feed` at all, and without this method it has no branch that makes progress.
 */
     private fun relieveFullRing(state: RedactorState) {
         if (state.ringCount < state.maxLiteral) return
         if (drainOneHead(state)) return
+        // The head could not be decided, which the design above says cannot happen. The head is
+        // released as plain text anyway: a redactor that cannot decide must not spin on a full
+        // ring, and the transcript has to reach the Output Plane.
         emitHeadAsPlain(state)
     }
 
@@ -299,65 +331,106 @@ class StreamingRedactor(
     /**
      * Decide the ring head, when it can be decided.
      *
-     * The head is a secret when a seam literal matches at it, and the literal is replaced by the
-     * SCRUB_MARKER. It is plain text when no literal can match at it any more, and it is then
-     * released at once: **a byte that cannot begin a secret has nothing to wait for**, and a
-     * lookahead that keeps it anyway holds the terminator of every line until the step writes the
-     * next one. It stays undecided only while a literal that agrees with every byte seen so far
-     * has not arrived whole yet.
+     * The head is masked when a fragment of a secret matches at it: the bytes the fragments
+     * cover, taken as ONE run, are replaced by the SCRUB_MARKER. The run is what makes a
+     * value that arrives in pieces come out as one marker and not as one marker per piece,
+     * and it is why the fragments that overlap are consumed together instead of one after
+     * another: consuming them one by one would leave the tail of the last one in the clear.
+     *
+     * The head is plain text when no fragment can match at it, and it is then released at
+     * once: **a byte that cannot begin a secret has nothing to wait for**, and a lookahead
+     * that keeps it anyway holds the terminator of every line until the step writes the
+     * next one. It stays undecided only while the bytes that would settle it have not
+     * arrived.
      *
      * @return true if the head was decided (a marker or a plain byte left the ring), false if it is
      *   still undecided or the ring is empty.
 */
     private fun drainOneHead(state: RedactorState, atEof: Boolean = false): Boolean {
         if (state.ringCount == 0) return false
-        val first = state.ring[state.ringHead]
-        for (li in state.seam.indices) {
-            if (state.seamFirstBytes[li] != first) continue
-            val literal = state.seam[li]
-            // How much of the literal the ring can already contradict.
-            val comparable = minOf(literal.size, state.ringCount)
-            var agrees = true
-            for (i in 1 until comparable) {
-                if (state.ring[(state.ringHead + i) % state.ring.size] != literal[i]) {
-                    agrees = false
-                    break
-                }
+        val matcher = state.matcher
+        val available = minOf(matcher.threshold, state.ringCount)
+        when (matcher.matchAt(state.ring, state.ringHead, state.ring.size, 0, available)) {
+            FragmentMatcher.Match.NONE -> {
+                // No fragment begins with this byte, so no secret can span it.
+                emitHeadAsPlain(state)
+                return true
             }
-            // A literal the bytes seen already contradict cannot match, whatever follows.
-            if (!agrees) continue
-            if (literal.size > state.ringCount) {
-                // A literal that agrees so far but does not FIT yet means the head is UNDECIDED, and
-                // undecided must not fall through to a shorter literal.
-                // This used to `continue`, so the scan went on to the next literal. When two
-                // secrets share a prefix (`SECRET-AB` and `SECRET-ABCDEFGH`) and the ring held
-                // fewer bytes than the longer one, the longer was skipped and the SHORTER matched
-                // — so the real secret was replaced by `****` and its own tail, `CDEFGH`, was
-                // written to the Output Plane in the clear:
-                //   input   SECRET-ABCDEFGH;SECRET-AB;SECRET-ABCDEFGH
-                //   output  ****CDEFGH;****;****          <- the tail of a real secret, in clear
-                // The ring is sized to the LONGEST literal, so a full ring is always decidable and
-                // this arm is only reachable with a partly filled ring — which is the normal state
-                // while the source is still producing. At EOF no more bytes can arrive, so the
-                // scan proceeds and takes the longest literal that fits; `finish` passes atEof.
+            FragmentMatcher.Match.UNDECIDED -> {
                 if (!atEof) return false
-                continue
+                // No more bytes are coming, so no fragment can begin here either.
+                emitHeadAsPlain(state)
+                return true
             }
-            repeat(literal.size) {
-                state.ringHead = (state.ringHead + 1) % state.ring.size
-                state.ringCount--
-            }
-            val marker = SecretPatternRegistry.SCRUB_MARKER.toByteArray(StandardCharsets.UTF_8)
-            state.reserveOutput(marker.size)
-            for (byte in marker) {
-                state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] = byte
-                state.outputCount++
-            }
-            return true
+            FragmentMatcher.Match.MATCH -> Unit
         }
-        // No literal can match at this byte, so no secret can span it.
-        emitHeadAsPlain(state)
+
+        val run = coveredRun(state, matcher, atEof)
+        if (!run.settled && !atEof && state.ringCount < state.maxLiteral) {
+            // The run may still grow: a fragment that starts inside it and ends after it has
+            // not arrived yet, and consuming the run now would leave that tail in the clear.
+            // The bytes that settle it are the ones that follow, so the head waits for them.
+            return false
+        }
+        maskRun(state, run.length)
         return true
+    }
+
+    /**
+     * The run the fragments cover from the head, and whether that run is settled.
+     *
+     * The fragments that overlap form a run, and the run is what a masked value is: one
+     * marker for the whole run, not one marker for each fragment. The run ends where no
+     * fragment that starts inside it reaches any further, and only the bytes that are in the
+     * lookahead can say so.
+     *
+     * A run that is NOT settled may still grow: a fragment that starts inside it and ends
+     * after it has not arrived yet. At the end of the stream nothing more arrives, so the
+     * run is settled there: a fragment that cannot fit in the bytes that are left cannot
+     * begin at all.
+     */
+    private fun coveredRun(state: RedactorState, matcher: FragmentMatcher, atEof: Boolean): CoveredRun {
+        var end = matcher.threshold
+        var settled = true
+        var offset = 1
+        while (offset < end) {
+            val available = minOf(matcher.threshold, state.ringCount - offset)
+            if (available <= 0) break
+            when (matcher.matchAt(state.ring, state.ringHead, state.ring.size, offset, available)) {
+                FragmentMatcher.Match.MATCH ->
+                    if (offset + matcher.threshold > end) end = offset + matcher.threshold
+                FragmentMatcher.Match.NONE -> Unit
+                FragmentMatcher.Match.UNDECIDED ->
+                    if (!atEof && offset + matcher.threshold > end) settled = false
+            }
+            offset++
+        }
+        return CoveredRun(end, settled)
+    }
+
+    /**
+     * A run of covered bytes, and whether that run has stopped growing.
+     */
+    private class CoveredRun(val length: Int, val settled: Boolean)
+
+    /**
+     * Replace the first [length] bytes of the lookahead with the SCRUB_MARKER.
+     *
+     * The bytes are consumed from the ring and the marker goes to the output queue: the
+     * marker is four bytes long and the run it stands for may be longer or shorter, and the
+     * queue is what lets a reader take the decided bytes in pieces.
+    */
+    private fun maskRun(state: RedactorState, length: Int) {
+        repeat(length) {
+            state.ringHead = (state.ringHead + 1) % state.ring.size
+            state.ringCount--
+        }
+        val marker = SecretPatternRegistry.SCRUB_MARKER.toByteArray(StandardCharsets.UTF_8)
+        state.reserveOutput(marker.size)
+        for (byte in marker) {
+            state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] = byte
+            state.outputCount++
+        }
     }
 
     /**
@@ -391,10 +464,9 @@ class StreamingRedactor(
      * - a byte is only emitted once maxLiteral lookahead rules out every seam literal;
      * - at EOF remaining pending bytes are emitted as-is;
      * - close drains pending, clears buffers, closes the source.
-     * Implementation: ring buffer of primitive bytes with incremental
-     * longest-first literal matching. Per emitted byte the cost is
-     * O(seam_literals x literal_length) only for bytes that share a prefix with
-     * a literal; the common path is a single first-byte comparison per literal.
+     * Implementation: ring buffer of primitive bytes with the fragments addressed by
+     * their bytes. Per emitted byte the cost is one table lookup for the bytes that
+     * can begin a fragment, and nothing at all for the bytes that cannot.
 */
     internal inner class RedactingInputStream(
         private val source: InputStream,

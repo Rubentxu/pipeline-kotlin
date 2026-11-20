@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.credentials.api
 
 import java.io.ByteArrayOutputStream
 import java.util.Base64
+import java.util.HexFormat
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -186,8 +187,7 @@ class StreamingRedactorFragmentTest {
         val forms = listOf(
             "the literal form" to ENCODED_SECRET,
             "the base64 form" to Base64.getEncoder().encodeToString(ENCODED_SECRET.toByteArray()),
-            "the hexadecimal form" to ENCODED_SECRET.toByteArray()
-                .joinToString("") { "%02x".format(it) },
+            "the hexadecimal form" to HexFormat.of().formatHex(ENCODED_SECRET.toByteArray()),
             "the URL-encoded form" to ENCODED_SECRET
                 .replace("@", "%40").replace(" ", "%20"),
         )

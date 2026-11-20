@@ -17,18 +17,57 @@ import java.nio.charset.StandardCharsets
  * The agent creates one per FIFO channel and feeds it as bytes arrive.
 */
 class RedactorState internal constructor(
-    /** The maximum encoded literal byte length, copied at construction. */
-    val maxLiteral: Int,
+    maxLiteral: Int,
     /** Scratch buffer length (caller's preferred chunk size). */
     val chunkSize: Int,
 ) {
+    /**
+     * The window of this pass: the maximum encoded literal byte length the pass holds.
+     *
+     * The window FOLLOWS the registry: a value that is registered while the pass is
+     * running makes the window wider, because the window is what lets a whole value be
+     * masked as ONE marker instead of one marker per piece of it. The window only grows:
+     * a narrower window would drop the bytes that are still pending, and a byte that
+     * leaves the transcript is worse than a byte that stays in it.
+     */
+    var maxLiteral: Int = maxLiteral
+        private set
+
     /** Ring buffer holding the pending lookahead window (capacity [maxLiteral]). */
-    internal val ring = ByteArray(maxLiteral)
+    internal var ring = ByteArray(maxLiteral)
     internal var ringHead = 0
     internal var ringCount = 0
 
     /** The fragments this pass matches, captured when the pass starts. */
     internal lateinit var matcher: FragmentMatcher
+
+    /**
+     * The version of the registry's seam this pass captured.
+     *
+     * It is what tells the pass that the seam it holds is no longer the seam of the
+     * registry, and it is compared with one read per fragment.
+     */
+    internal var seamVersion: Int = 0
+
+    /**
+     * Widens the window of this pass to [newWindow] bytes, keeping the bytes that are
+     * still pending.
+     *
+     * The pending bytes are copied in order, because they are bytes of the transcript
+     * that nobody has decided yet, and a window that dropped them would take them out of
+     * the transcript. A window that is already wide enough is left alone.
+     */
+    internal fun widenWindow(newWindow: Int) {
+        if (newWindow <= maxLiteral) return
+        val widened = ByteArray(newWindow)
+        for (i in 0 until ringCount) {
+            widened[i] = ring[(ringHead + i) % ring.size]
+        }
+        java.util.Arrays.fill(ring, 0.toByte())
+        ring = widened
+        ringHead = 0
+        maxLiteral = newWindow
+    }
 
     /**
      * The DECIDED bytes waiting for the caller to take them.
@@ -124,13 +163,34 @@ class RedactorState internal constructor(
  *   transcript at all.
  * - At EOF, the remaining pending buffer is drained by applying the same rule
  *   (but no match is possible since no more data will arrive).
+ * ## When the seam is captured, and what a later registration does
+ * A pass captures the seam of the registry when it starts, and it does NOT keep that
+ * capture for the whole of its life: the registry declares when its seam changed, and
+ * the pass reloads it as soon as it sees that. So a value that is registered AFTER the
+ * pass started is masked in the bytes that arrive after the registration.
+ *
+ * The reload keeps the state of the pass, and that is the whole point of it:
+ * - The bytes that are still PENDING were never decided, so the new seam decides
+ *   them. A value split across two fragments stays masked across a registration that
+ *   happens between them.
+ * - The bytes that were DECIDED are the transcript, and they are never rewritten. A
+ *   registration cannot un-say what the transcript already said.
+ * - The window only grows. A registration that makes the window wider widens the
+ *   lookahead and keeps the pending bytes in it; a registration that would make it
+ *   narrower leaves it alone, because a narrower window would drop bytes that are
+ *   still pending.
+ *
+ * What a registration cannot do is reach the bytes that were decided before it
+ * happened: those bytes were the transcript before the value was registered, and the
+ * pass does not rewrite them.
  * ## Re-entrancy
  * Each `wrap()` returns a new `RedactingInputStream` instance with independent state.
  * Multiple concurrent `wrap()` calls on the same `StreamingRedactor` are fully
  * independent. `close()` clears all buffers and closes the source.
  * @param registry The [SecretPatternRegistry] providing the active patterns.
  *                  Its [SecretPatternRegistry.maxLiteralByteLength] determines the
- *                  pending buffer size.
+ *                  pending buffer size, and the pass follows it when the registry
+ *                  changes.
  * @param chunkSize The number of bytes to read from the underlying source
  *                  per `read()` call. Default 8192.
  * @param fragmentThresholdBytes The number of bytes a piece of a secret must have to
@@ -139,9 +199,9 @@ class RedactorState internal constructor(
  *                  piece of it.
 */
 class StreamingRedactor(
-    registry: SecretPatternRegistry,
+    private val registry: SecretPatternRegistry,
     private val chunkSize: Int = 8192,
-    fragmentThresholdBytes: Int = SecretPatternRegistry.MIN_MASKABLE_LENGTH,
+    private val fragmentThresholdBytes: Int = SecretPatternRegistry.MIN_MASKABLE_LENGTH,
 ) {
 
     /**
@@ -149,29 +209,42 @@ class StreamingRedactor(
      * This is the bound for the pending buffer: we need to hold at most this many
      * bytes to have sufficient lookahead to rule out any secret match at the
      * pending head.
+     *
+     * It is the window of the registry AS IT IS NOW, and not the window of the
+     * registry when the redactor was built: a value registered later makes the
+     * window wider, and the pass follows it.
     */
-    val maxLiteralByteLength: Int = registry.maxLiteralByteLength()
-
-    /**
-     * The fragments of the registered secrets, and the questions the redactor asks
-     * about them. The fragments are captured here, when the redactor is built: the
-     * registry may grow afterwards, and a redactor that re-read it would decide
-     * different bytes at different moments of the same pass.
-    */
-    private val matcher: FragmentMatcher = FragmentMatcher.of(
-        fragmentThresholdBytes,
-        registry.fragmentSeam(fragmentThresholdBytes),
-    )
+    val maxLiteralByteLength: Int
+        get() = registry.maxLiteralByteLength()
 
     /**
      * A fresh, independent [RedactorState] for one redaction pass.
      * Each call returns a state with its own buffers, lookahead, and output
-     * queue. The fragment matcher is shared (read-only) with the redactor.
+     * queue, and with its own copy of the seam: the state of one pass is not the
+     * state of another, and neither is the seam they hold.
 */
     fun initialState(chunkSize: Int = this.chunkSize): RedactorState {
-        val state = RedactorState(maxLiteralByteLength, chunkSize)
-        state.matcher = matcher
+        val seam = registry.seamSnapshot(fragmentThresholdBytes)
+        val state = RedactorState(seam.maxLiteralByteLength, chunkSize)
+        state.matcher = FragmentMatcher.of(fragmentThresholdBytes, seam.fragments)
+        state.seamVersion = seam.version
         return state
+    }
+
+    /**
+     * Reloads the seam of the registry into [state] when the registry has changed
+     * since the pass captured it.
+     *
+     * The check is one read of the registry's version, and the seam is rebuilt only
+     * when that read says the seam moved: a pass that scrubs a megabyte of transcript
+     * pays for the reload once per registration and not once per fragment.
+     */
+    private fun refreshSeam(state: RedactorState) {
+        if (registry.seamVersion == state.seamVersion) return
+        val seam = registry.seamSnapshot(fragmentThresholdBytes)
+        state.matcher = FragmentMatcher.of(fragmentThresholdBytes, seam.fragments)
+        state.seamVersion = seam.version
+        state.widenWindow(seam.maxLiteralByteLength)
     }
 
     /**
@@ -188,6 +261,11 @@ class StreamingRedactor(
         require(off >= 0 && len >= 0 && off + len <= bytes.size) {
             "feed($off, $len) is outside a ${bytes.size}-byte array"
         }
+        // The seam is reloaded BEFORE any byte of this fragment is decided: a value that
+        // was registered after the pass started must be masked by the bytes that arrive
+        // after the registration, and the bytes that are still pending are decided by
+        // the seam that is current when they are decided.
+        refreshSeam(state)
         var i = 0
         while (i < len) {
             // 1. Drain whatever was already decided before adding more.
@@ -249,6 +327,9 @@ class StreamingRedactor(
 */
     fun finish(state: RedactorState): ByteArray {
         if (state.sourceExhausted) return ByteArray(0)
+        // The tail is decided by the seam that is current NOW: a value registered
+        // after the last fragment is still masked in the bytes that are still pending.
+        refreshSeam(state)
         state.sourceExhausted = true
         // The lookahead is now decidable. Run the same one-head decision
         // loop as [feed] until the ring is empty.

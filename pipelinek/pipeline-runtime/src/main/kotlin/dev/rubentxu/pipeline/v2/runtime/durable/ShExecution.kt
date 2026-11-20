@@ -698,8 +698,30 @@ private class FallbackChannels(
  * It holds the state that carries a secret split across two fragments, and it hands the
  * SANITIZED bytes to the sink. With no registry there is nothing to sanitize, and the bytes are
  * the bytes.
+ *
+ * ## When the registry is captured, and what a later registration does
+ * The redactor is built when the channel opens, and it captures the seam of the registry at
+ * that moment. It does not KEEP that capture: the registry declares when its seam changed, and
+ * the redactor reloads it on the next fragment. So a credential that is registered AFTER the
+ * channel opened is masked in the transcript of that channel, and the text that surrounds it
+ * comes out intact.
+ *
+ * The registration happens while the child is running — the binding of a credential is resolved
+ * during the execution — so the channel is always open before the values it must mask are
+ * known. The sanitizer that took a snapshot of the registry and kept it for the whole run was
+ * the wrong shape: a snapshot of the registry is a snapshot of what was known when the channel
+ * opened, and the credentials that arrive later were not in it.
+ *
+ * ## What the reload does to the state
+ * The reload keeps the state of the channel, and that is why the sanitizer holds a redactor
+ * instead of building one per fragment:
+ * - The bytes that are still PENDING were never decided, so the new seam decides them. A value
+ *   split across two fragments stays masked when the seam changes between the two fragments.
+ * - The bytes that were DECIDED are the transcript, and they are never rewritten.
+ * - The window only grows, because a narrower window would drop the bytes that are still
+ *   pending.
  */
-private class ChannelSanitizer(
+internal class ChannelSanitizer(
     registry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
     private val sink: (ByteArray, Int, Int) -> Unit,
 ) {

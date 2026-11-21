@@ -2,6 +2,7 @@
 // imports are what make the unqualified names below mean the JDK's own.
 import java.io.File
 import java.security.MessageDigest
+import java.util.HexFormat
 import java.util.zip.ZipFile
 
 plugins {
@@ -187,6 +188,10 @@ val upstreamClassesTheSdkNames: List<String> = listOf(
 
 /**
  * The digest of the bytes of [file], in hexadecimal.
+ *
+ * The text is formed by `HexFormat`, and not by a format string: a format
+ * string carries the locale of the machine that formats it, and the digest of
+ * a file is a fact that does not depend on the machine that measures it.
  */
 fun sha256Of(file: File): String {
     val digest = MessageDigest.getInstance("SHA-256")
@@ -198,7 +203,7 @@ fun sha256Of(file: File): String {
             digest.update(buffer, 0, read)
         }
     }
-    return digest.digest().joinToString("") { "%02x".format(it) }
+    return HexFormat.of().formatHex(digest.digest())
 }
 
 /**

@@ -244,16 +244,23 @@ artifact arrives with bytes nobody pinned. In a Maven build there is no built-in
 equivalent: the `.asc` that sits beside the artifact is what a consumer can
 check, with `gpg --verify`, before it trusts the bytes.
 
-**The Maven channel carries 0.98.0 today.** The release this tree declares is
-0.99.0 (`pipelinek/build.gradle.kts`), and it is not published yet; the newest
-release the channel serves is 0.98.0, in Maven Central under the group
-`dev.rubentxu.pipelinek`, together with 0.95.0 and 0.96.0, which share those
-coordinates. The release before them, 0.94.2, was published under the
-group `dev.rubentxu.pipeline.v2` and under the artifact names `pipeline-domain`
-and the rest of that set, and it is STILL SERVED: a published version is never
-replaced, and the coordinates of 0.94.2 answer today exactly as they answered
-when they were published. The measurement that says so, with the commands that
-produce it, is in "What the channel carries today" below.
+**What the Maven channel carries is a measurement, and it has a date.**
+Measured on 2026-11-21, the newest release Maven Central serves under the group
+`dev.rubentxu.pipelinek` is 0.99.0, together with 0.95.0, 0.96.0, 0.97.0 and
+0.98.0, which share those coordinates. The source is the `maven-metadata.xml`
+the registry serves for those coordinates, and the commands that read it are in
+"What the channel carries today" below. The release before them, 0.94.2, was
+published under the group `dev.rubentxu.pipeline.v2` and under the artifact
+names `pipeline-domain` and the rest of that set, and on that date it was STILL
+SERVED: a published version is never replaced, and the coordinates of 0.94.2
+answered exactly as they answered when they were published.
+
+This document does not say whether the version this tree declares
+(`pipelinek/build.gradle.kts`) is published. That is a fact of the registry and
+not of the tree: it changes with every publication while this file stays the
+same, so a sentence here that said "not published yet" would turn false without
+anybody editing it. Whoever needs the answer for a version runs the command
+below for that version and reads what the registry says on that day.
 
 The bytes a consumer resolves in Central are the bytes this repository signed,
 and the key that signed them is the one named above. The paragraph below is how
@@ -491,9 +498,20 @@ absent package from a private one.
 
 ### What the channel carries today
 
-Measured on 2026-11-11, with the commands that produce it:
+Measured on 2026-11-21, with the commands that produce it. What follows is what
+the registries answered on that date, and it says nothing about a later one: a
+reader who needs the state of today runs the same commands today.
 
 ```bash
+$ curl -s https://repo1.maven.org/maven2/dev/rubentxu/pipelinek/pipelinek-sdk-bom/maven-metadata.xml \
+    | grep -E '<(latest|release|version)>'
+    <latest>0.99.0</latest>
+    <release>0.99.0</release>
+      <version>0.95.0</version>
+      <version>0.96.0</version>
+      <version>0.97.0</version>
+      <version>0.98.0</version>
+      <version>0.99.0</version>
 $ curl -s -o /dev/null -w '%{http_code}\n' \
     https://repo1.maven.org/maven2/dev/rubentxu/pipeline/v2/pipeline-domain/0.94.2/pipeline-domain-0.94.2.jar
 200
@@ -507,6 +525,15 @@ $ curl -s -o /dev/null -w '%{http_code}\n' \
     https://repo1.maven.org/maven2/dev/rubentxu/pipelinek/pipelinek-domain/0.97.0/pipelinek-domain-0.97.0.jar
 200
 $ curl -s -o /dev/null -w '%{http_code}\n' \
+    https://repo1.maven.org/maven2/dev/rubentxu/pipelinek/pipelinek-domain/0.98.0/pipelinek-domain-0.98.0.jar
+200
+$ curl -s -o /dev/null -w '%{http_code}\n' \
+    https://repo1.maven.org/maven2/dev/rubentxu/pipelinek/pipelinek-domain/0.99.0/pipelinek-domain-0.99.0.jar
+200
+$ curl -s -o /dev/null -w '%{http_code}\n' \
+    https://repo1.maven.org/maven2/dev/rubentxu/pipelinek/pipelinek-sdk-bom/0.99.0/pipelinek-sdk-bom-0.99.0.pom
+200
+$ curl -s -o /dev/null -w '%{http_code}\n' \
     https://maven.pkg.github.com/Rubentxu/pipeline-kotlin/dev/rubentxu/pipelinek/pipelinek-domain/0.97.0/pipelinek-domain-0.97.0.jar
 401
 $ curl -s -o /dev/null -w '%{http_code}\n' \
@@ -516,8 +543,9 @@ $ curl -s -o /dev/null -w '%{http_code}\n' \
 
 The versions each group carries are the ones its `maven-metadata.xml` lists:
 `dev/rubentxu/pipeline/v2/pipeline-domain/` holds `0.94.2` and nothing else,
-and `dev/rubentxu/pipelinek/pipelinek-domain/maven-metadata.xml` lists `0.95.0`,
-`0.96.0` and `0.97.0`, with `0.97.0` as both `latest` and `release`. The HTML
+and both `dev/rubentxu/pipelinek/pipelinek-domain/maven-metadata.xml` and the
+one of `pipelinek-sdk-bom` printed above list `0.95.0`, `0.96.0`, `0.97.0`,
+`0.98.0` and `0.99.0`, with `0.99.0` as both `latest` and `release`. The HTML
 index of that directory is a page the registry caches, and for a while after a
 publication it still shows the versions it showed before: read the metadata
 file, not the index.

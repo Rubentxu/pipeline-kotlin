@@ -29,12 +29,42 @@ import kotlin.system.exitProcess
  * refuses that question with `unknown-op`. Each negative names what the
  * operator does next, and none of them is read as an answer.
  *
- * ## What this does NOT do
+ * ## What it does NOT do
  *
  * It does not re-implement the wire, and it does not re-implement the
  * command line's parser. The client answers a question about a run and
  * returns a value; the words this example prints are ITS OWN, because a
  * consumer renders the value it receives with the renderer it has.
+ *
+ * ## What it prints
+ *
+ * One line per question, and every line is a `QUERY` with named fields:
+ *
+ * ```
+ * QUERY version schema=<schema> product=<version>
+ * QUERY run id=<runId> state=<state> outcome=<outcome>
+ * ```
+ *
+ * The lines are the ANSWER of the program and not a decoration: the gate that
+ * runs this example reads them, and a program that asked nothing prints
+ * neither of them. A question the service refused is written to the standard
+ * error and the program ends with a non-zero code, so a refusal can never be
+ * read as an answer.
+ *
+ * The line under the second `QUERY` is this example's own rendering of the
+ * value it received, and the gate does not read it: two consumers may print
+ * the same value differently, and the fields above are the ones a program can
+ * count on.
+ *
+ * ## Which version this consumer resolves
+ *
+ * The version of the PipelineK SDK, and only that one: the coordinates below
+ * carry the version of the contract they publish, and this example asks for
+ * it by name because a default could only be one that fails to resolve. The
+ * version of the Fabric product, the consumer of the SDK that drives this
+ * service, is a version of its own and is not named here: the two version
+ * lines move at their own pace, and a consumer that resolved the SDK would
+ * have no way to name the other one.
  *
  * ## How to run it
  *
@@ -83,14 +113,46 @@ fun main(args: Array<String>) {
         System.err.println(negative(version, socket))
         exitProcess(1)
     }
-    println("service ${version.value.productVersion}, protocol ${version.value.schema}")
+    println("QUERY version schema=${version.value.schema} product=${version.value.productVersion}")
 
     val state = client.runState(runId)
     if (state !is ServiceAnswer.Answered) {
+        System.err.println("QUERY run id=$runId refused=${refusalKind(state)}")
         System.err.println(negative(state, socket))
         exitProcess(1)
     }
+    println("QUERY run id=$runId state=${stateOf(state.value)} outcome=${outcomeOf(state.value)}")
     println("run $runId: ${describe(state.value)}")
+}
+
+/**
+ * The state [observation] is in, in this example's own words.
+ */
+private fun stateOf(observation: RuntimeObservation): String = when (observation) {
+    is RuntimeObservation.Running -> "running"
+    is RuntimeObservation.Terminal -> "terminal"
+    is RuntimeObservation.LiveButEmpty -> "live-but-empty"
+    is RuntimeObservation.Unobservable -> "unobservable"
+}
+
+/**
+ * The outcome [observation] carries, and `none` for a run that has not ended.
+ */
+private fun outcomeOf(observation: RuntimeObservation): String = when (observation) {
+    is RuntimeObservation.Terminal -> outcome(observation.terminal)
+    else -> "none"
+}
+
+/**
+ * The name of the refusal [answer] carries, or `unreachable` when the service
+ * was not there at all.
+ */
+private fun refusalKind(answer: ServiceAnswer<*>): String = when (answer) {
+    is ServiceAnswer.Answered -> "answered"
+    is ServiceAnswer.Refused -> answer.refusal.kind
+    is ServiceAnswer.Unreachable -> "unreachable"
+    is ServiceAnswer.Unreadable -> "unreadable"
+    ServiceAnswer.TimedOut -> "timed-out"
 }
 
 /**

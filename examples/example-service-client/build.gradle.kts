@@ -96,6 +96,12 @@ dependencies {
     // the SDK: the wire's vocabulary, the codec and the typed client arrive
     // together, and the consumer writes no copy of any of them.
     implementation("dev.rubentxu.pipelinek:pipelinek-service-client")
+    // The step contract, and the human-decision port a step declares to ask a
+    // person. A plugin outside this repository writes its steps against these
+    // two contracts, and a bundle that did not carry them would not compile
+    // this example at all.
+    implementation("dev.rubentxu.pipelinek:pipelinek-domain")
+    implementation("dev.rubentxu.pipelinek:pipelinek-runtime-api")
 }
 
 kotlin {
@@ -200,6 +206,8 @@ val clientArtifactName: String = "pipelinek-service-client"
 val upstreamClassesTheSdkNames: List<String> = listOf(
     "dev.rubentxu.pipeline.v2.domain.RunId",
     "dev.rubentxu.pipeline.v2.events.identity.EventCursor",
+    "dev.rubentxu.pipeline.v2.runtime.input.InputDecisions",
+    "dev.rubentxu.pipeline.v2.runtime.input.InputDecisionsKt",
     "dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation",
     "dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation",
     "dev.rubentxu.pipeline.v2.service.ServiceAnswer",

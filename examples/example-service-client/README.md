@@ -10,7 +10,7 @@ program. It asks the service for its version, asks it about a run, and prints
 one `QUERY` line per question:
 
 ```
-QUERY version schema=pipelinek.service/2 product=0.98.0
+QUERY version schema=pipelinek.service/2 product=0.99.0
 QUERY run id=<runId> state=terminal outcome=succeeded
 ```
 

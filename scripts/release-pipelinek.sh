@@ -656,6 +656,12 @@ fi
 #     repository it resolves from is a temporary one, so the REMOTE
 #     publication stays a decision with an authorization.
 #
+#     It resolves the SDK of THIS release and not another one: the version is
+#     NAMED here, the gate refuses a repository that does not carry it, and
+#     the copy the consumer resolves from carries that version alone. A gate
+#     that measured whichever version it found first would certify a consumer
+#     running with an SDK this release does not publish.
+#
 #     It runs BEFORE the tag, for the same reason the check above does.
 # ----------------------------------------------------------------------------
 
@@ -666,10 +672,29 @@ echo "release-pipelinek: running the isolated-consumer check (timeout ${ISOLATED
 
 if ! timeout "${ISOLATED_CONSUMER_TIMEOUT_SECONDS}" \
     "${REPO_ROOT}/scripts/release/verify-external-consumer.sh" \
+    --expect-version "${PIPELINEK_RELEASE_TRAIN}" \
     --out "$ISOLATED_CONSUMER_VERDICT"; then
     echo "release-pipelinek: refusing to publish — the isolated consumer did not pass." >&2
     echo "    a program outside this repository could not resolve the published SDK," >&2
     echo "    compile against it and ask a service a real question. No tag was created." >&2
+    rm -rf "$EVIDENCE_DIR"
+    exit 1
+fi
+
+# The control of that gate: it breaks a COPY of the repository the consumer
+# resolves from and expects the gate and the consumer's own law to refuse it.
+# A gate that has never refused anything certifies nothing, and this release
+# would publish a green that was never seen red.
+ISOLATED_CONSUMER_CONTROL_TIMEOUT_SECONDS="${PIPELINEK_ISOLATED_CONSUMER_CONTROL_TIMEOUT_SECONDS:-900}"
+
+echo "release-pipelinek: running the isolated-consumer control (timeout ${ISOLATED_CONSUMER_CONTROL_TIMEOUT_SECONDS}s)"
+
+if ! timeout "${ISOLATED_CONSUMER_CONTROL_TIMEOUT_SECONDS}" \
+    "${REPO_ROOT}/scripts/release/check-external-consumer-control.sh" \
+    --expect-version "${PIPELINEK_RELEASE_TRAIN}"; then
+    echo "release-pipelinek: refusing to publish — the isolated-consumer gate does not refuse a broken repository." >&2
+    echo "    a gate that accepts everything certifies nothing, and this release would" >&2
+    echo "    publish a green that was never seen red. No tag was created." >&2
     rm -rf "$EVIDENCE_DIR"
     exit 1
 fi

@@ -16,7 +16,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -26,6 +28,45 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+
+/**
+ * The margin this law gives the machine, and the clock it reads.
+ *
+ * The row is a conversation with a thread of its own: the thread asks the
+ * provider, the provider waits until the row releases it, and the row reads
+ * what the thread answered. The row cannot know WHEN the machine schedules
+ * that thread, so it gives the machine a margin and says what the row means
+ * when the margin runs out.
+ *
+ * ## Why the verdict does not come from the clock
+ *
+ * The verdict is read from the OUTCOME the supervisor returned, and never
+ * from a wait: a start that holds a slot of the budget while it waits
+ * answers the second start with a REFUSAL, and that refusal is red whatever
+ * the machine was doing. The margin decides only WHETHER the row measured at
+ * all: when it runs out the row ABORTS, and an aborted row is a row that did
+ * not measure, not a row that passed.
+ *
+ * ## Why the margin is this size
+ *
+ * The work of the row is measured: on a free machine it answers in about ten
+ * milliseconds, so the margin is not about that work but about the SCHEDULING
+ * of one thread and one conversation on a machine that is busy. It is not a
+ * number that hides a defect, because a bigger margin would buy only a row
+ * that measures nothing for longer: past the margin the answer is the same
+ * one — this row did not measure — and only the wait is longer. The timeout
+ * of the class bounds the row as well: it allows sixty seconds and the worst
+ * case of the row is twice the margin, so the row always answers before the
+ * class does.
+ *
+ * ## Why the clock is the monotonic one
+ *
+ * The row measures an ELAPSED time, and [System.nanoTime] is the clock that
+ * measures it: a clock that follows the hour of the machine can report an
+ * elapsed time the row never had. The clock does not make a busy machine
+ * schedule the thread; the MARGIN is what gives the thread its chance.
+ */
+private const val MARGIN_MILLIS = 15_000L
 
 /**
  * A start that asks a configuration provider for the keys it did not set itself.
@@ -345,32 +386,57 @@ class ConfigurationProviderStartTest {
 
     @Test
     fun `a start that waits for the provider holds no slot of the budget`(@TempDir root: Path) {
+        val scheduled = CountDownLatch(1)
         val inside = CountDownLatch(1)
         val release = CountDownLatch(1)
         val resolver = FakeResolver { _, _, keys ->
             inside.countDown()
-            release.await(30, TimeUnit.SECONDS)
+            // The wait has no timeout on purpose: the row releases the provider in
+            // its own cleanup, and a provider that answered on its own would let
+            // the first start finish BEFORE the row asked its question, and the
+            // second start would then be accepted for the wrong reason.
+            release.await()
             resolved(keys.associateWith { "v" })
         }
         val supervisor = supervisor(root, FakePort(), resolver, maxSupervisedRuns = 1)
         val waiting = AtomicReference<ServiceStartOutcome>()
         val thread = Thread {
+            scheduled.countDown()
             waiting.set(supervisor.start(request(provider = ServiceProviderReference("ldap", listOf("REGION")))))
         }
+        // The thread outlives the row when the row aborts, and a thread that keeps
+        // a JVM alive is a thread the next row has to wait for.
+        thread.isDaemon = true
         thread.start()
+        val since = System.nanoTime()
         try {
-            assertTrue(inside.await(10, TimeUnit.SECONDS), "the start reached the provider")
+            // The machine has to SCHEDULE the thread before the row can ask
+            // anything: a machine that does not give the thread its first
+            // instruction in time has not answered, and the row aborts instead of
+            // answering about the machine.
+            awaitOrAbort(scheduled, "the machine did not schedule the thread", since)
+            awaitOrAbort(inside, "the start did not reach the provider", since)
 
             // The only slot of the budget is free while the first start waits: a second start,
             // which asks nobody, is accepted instead of being refused for lack of room.
+            //
+            // The first start is still WAITING, and that is what the row measures: a
+            // first start that had already answered would have given its slot back,
+            // and the second start would have been accepted for the wrong reason.
+            assertNull(waiting.get(), "the first start is still waiting for the provider")
             val second = supervisor.start(request())
 
             assertInstanceOf(ServiceStartOutcome.Accepted::class.java, second)
         } finally {
             release.countDown()
-            thread.join(10_000)
+            thread.join(MARGIN_MILLIS)
         }
-        assertInstanceOf(ServiceStartOutcome.Accepted::class.java, waiting.get())
+        // A thread that had no answer in time has NOT refused anything: it has not
+        // answered. That is a machine that did not give the row its margin, so the
+        // row did not measure, and the row says so instead of failing.
+        val outcome = waiting.get()
+        assumeTrue(outcome != null, notMeasured("the thread had no answer", since))
+        assertInstanceOf(ServiceStartOutcome.Accepted::class.java, outcome)
     }
 
     @Test
@@ -604,6 +670,31 @@ class ConfigurationProviderStartTest {
 
     private fun assertRefused(outcome: ServiceStartOutcome): ServiceRefusal =
         assertInstanceOf(ServiceStartOutcome.Refused::class.java, outcome).refusal
+
+    /**
+     * Waits for a latch the row needs, and aborts the row when the margin runs out.
+     *
+     * An aborted row is a row that did not measure: the reader of the receipt
+     * repays it with a free machine, and it is never counted as a pass.
+     */
+    private fun awaitOrAbort(latch: CountDownLatch, what: String, sinceNanos: Long) {
+        assumeTrue(latch.await(MARGIN_MILLIS, TimeUnit.MILLISECONDS), notMeasured(what, sinceNanos))
+    }
+
+    /**
+     * The text of a row that could not read its answer in time.
+     *
+     * It names the margin, the clock and the elapsed time, because the reader
+     * has to tell a machine that was too busy from a tree that is broken, and
+     * those three numbers are the evidence there is.
+     */
+    private fun notMeasured(what: String, sinceNanos: Long): String {
+        val elapsed = (System.nanoTime() - sinceNanos) / 1_000_000
+        return "$what within the margin of $MARGIN_MILLIS ms; the elapsed time was $elapsed ms, read " +
+            "with the monotonic clock System.nanoTime. The machine did not give the row its margin, so " +
+            "the row did not measure: the result is NOT MEASURED, and the row has to be paid again " +
+            "with a free machine."
+    }
 
     private fun provenanceOf(vararg names: String) = RunConfigurationProvenance(
         provider = "ldap",

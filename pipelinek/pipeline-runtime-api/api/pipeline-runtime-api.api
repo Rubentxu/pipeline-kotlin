@@ -154,6 +154,33 @@ public final class dev/rubentxu/pipeline/v2/runtime/durable/BranchExecutionResul
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/durable/DurableOperationFacts {
+	public abstract fun begin ()V
+	public abstract fun getIdentity ()Ldev/rubentxu/pipeline/v2/runtime/durable/DurableOperationIdentity;
+	public abstract fun record (Ldev/rubentxu/pipeline/v2/domain/durable/DurableTaskTerminal;)V
+	public abstract fun recordedStatus ()Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
+	public abstract fun recordedTerminal ()Ldev/rubentxu/pipeline/v2/domain/durable/DurableTaskTerminal;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/DurableOperationFactsKt {
+	public static final fun getDURABLE_OPERATION_CAPABILITY ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/durable/DurableOperationIdentity {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;I)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;I)Ldev/rubentxu/pipeline/v2/runtime/durable/DurableOperationIdentity;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/durable/DurableOperationIdentity;Ljava/lang/String;Ljava/lang/String;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/durable/DurableOperationIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttempt ()I
+	public final fun getOpId ()Ljava/lang/String;
+	public final fun getRunId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/runtime/durable/FencingToken {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/durable/FencingToken$Companion;
 	public static final synthetic fun box-impl (J)Ldev/rubentxu/pipeline/v2/runtime/durable/FencingToken;

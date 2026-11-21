@@ -64,23 +64,35 @@ val uppercaseApiRangeMin: String = providers.gradleProperty("uppercaseApiRangeMi
 val uppercaseApiRangeCeiling: String = nextMinor
 
 repositories {
-    // The SDK of the SAME revision comes FIRST, and Central comes second.
+    // The SDK is resolved from ONE repository, and from that one ONLY.
     //
-    // The order is the guarantee, and not a detail: the build produces the SDK
-    // of this revision in `sdkRepo` and asks this plugin to compile against it,
-    // and a published artifact of the SAME version would satisfy the resolution
-    // silently. That is the failure this build is supposed to make LOUD: a
-    // plugin compiled against a stale SDK does not fail at the resolution, it
-    // fails at the compile with an error that names a missing member instead of
-    // naming the stale artifact.
+    // The build produces the SDK of this revision in `sdkRepo` and asks this
+    // plugin to compile against it, and Maven Central serves the product's
+    // coordinates too: the version of the tree is the version of a release, so
+    // a published artifact of the SAME version exists and would satisfy the
+    // resolution silently. The order of the repositories is not the guarantee;
+    // the EXCLUSIVITY is. An order only decides who answers first: when
+    // `sdkRepo` does not hold the artifact, a build that may still ask Central
+    // finds it there, compiles against the release and not against this tree,
+    // and passes for the wrong reason.
     //
-    // It is not a hypothetical: the version of the tree is the version of the
-    // last release while the next one is being built, so Central holds an
-    // artifact of that version and it is the published one. With Central first,
-    // the plugin would compile against the release and not against this tree.
-    maven {
-        name = "sdk"
-        url = uri(sdkRepo)
+    // With the product's groups bound to `sdkRepo`, an artifact that is absent
+    // from it is ABSENT for this build, and the failure is a resolution error
+    // that names the artifact instead of a compile error that names a missing
+    // member. Every other group —the Kotlin standard library among them—
+    // comes from Central, which is where the artifacts that are not the
+    // product's live.
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "sdk"
+                url = uri(sdkRepo)
+            }
+        }
+        filter {
+            includeGroup("dev.rubentxu.pipelinek")
+            includeGroup("dev.rubentxu.pipeline.v2")
+        }
     }
     mavenCentral()
 }

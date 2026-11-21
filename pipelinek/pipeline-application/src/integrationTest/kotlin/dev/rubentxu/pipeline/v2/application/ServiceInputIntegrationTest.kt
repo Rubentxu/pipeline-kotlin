@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.InputAborted
@@ -8,6 +10,8 @@ import dev.rubentxu.pipeline.v2.events.durable.DurableStores
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
+import dev.rubentxu.pipeline.v2.runtime.CoreStepRegistryFactory
+import dev.rubentxu.pipeline.v2.runtime.input.INPUT_DECISIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import dev.rubentxu.pipeline.v2.service.ServiceAnswer
@@ -166,6 +170,55 @@ class ServiceInputIntegrationTest {
                 events.indexOf(proceeded.single()) < events.indexOf(echoes.single()),
                 "the body ran AFTER the proceed and not before",
             )
+        } finally {
+            service.stop()
+        }
+    }
+
+    @Test
+    fun theQuestionOfAStepThatDeclaresTheCapabilityReachesTheSocketAndItsAnswerReachesTheHandler() {
+        val asking = assertInstanceOf(
+            StepDefinition::class.java,
+            CoreStepRegistryFactory.registry().definition(PluginStepId(ASKING_STEP)),
+            "the run asks through a step the registry carries",
+        )
+        assertTrue(
+            asking.contract.requiredCapabilities.contains(INPUT_DECISIONS_CAPABILITY),
+            "the step that publishes the question declares the human-decision capability: " +
+                asking.contract.requiredCapabilities.map { it.key },
+        )
+
+        val service = start()
+        try {
+            val run = startRun(GATE)
+            val question = awaitQuestion(run.runId)
+
+            assertEquals(QUESTION, question.message, "the client reads the question the script asked")
+            assertEquals(
+                listOf(question.opId),
+                pendingOpIds(run.runId),
+                "the question waits in the socket of the service until it is answered",
+            )
+
+            val answered = assertInstanceOf(
+                ServiceAnswer.Answered::class.java,
+                client(ANSWERER_TOKEN).answerInput(run.runId, question.opId, ServiceInputDecision.PROCEED),
+            )
+            assertEquals("answered", (answered.value as ServiceInputAnswer).outcome)
+
+            val terminal = awaitTerminal(run.runId)
+            assertInstanceOf(TerminalObservation.Succeeded::class.java, terminal.terminal)
+
+            val events = service.eventsOf(run.runId)
+            val proceeded = events.filterIsInstance<InputProceed>()
+            assertEquals(1, proceeded.size, "one answer, one continuation: $events")
+            assertEquals(
+                ANSWERER_LABEL,
+                proceeded.single().submitter,
+                "the facts name the responder the service authenticated, not one the client claimed",
+            )
+            val echoes = events.filterIsInstance<EchoOutputCaptured>().filter { BODY_TEXT in it.content }
+            assertEquals(1, echoes.size, "the handler ran the body once the answer arrived: $events")
         } finally {
             service.stop()
         }
@@ -448,6 +501,9 @@ class ServiceInputIntegrationTest {
 
         /** The script of the run that asks. */
         private const val GATE: String = "gate.pipeline.kts"
+
+        /** The step whose contract declares the human-decision capability. */
+        private const val ASKING_STEP: String = "core.input"
 
         /** The question the script asks. */
         private const val QUESTION: String = "Deploy to production?"

@@ -108,6 +108,11 @@ fun main(args: Array<String>) {
 
     val client = ServiceClient(socket, token, Duration.ofSeconds(10))
 
+    // The capability this consumer's own step declares, read from the PUBLISHED
+    // bundle. A bundle that did not carry it would not have compiled this file,
+    // and the line says which key the declaration names.
+    println("DECLARED capability=${HumanDecisionStep.declaredCapability}")
+
     val version = client.version()
     if (version !is ServiceAnswer.Answered) {
         System.err.println(negative(version, socket))

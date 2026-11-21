@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.StepArgumentType
 import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
+import dev.rubentxu.pipeline.v2.runtime.input.InputDecision
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject

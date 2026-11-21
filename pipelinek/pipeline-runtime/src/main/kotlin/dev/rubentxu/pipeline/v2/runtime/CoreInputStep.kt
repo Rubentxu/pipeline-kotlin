@@ -26,6 +26,12 @@ import dev.rubentxu.pipeline.v2.events.InputAborted
 import dev.rubentxu.pipeline.v2.events.InputDenied
 import dev.rubentxu.pipeline.v2.events.InputProceed
 import dev.rubentxu.pipeline.v2.events.InputRequested
+import dev.rubentxu.pipeline.v2.runtime.input.INPUT_DECISIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.runtime.input.InputDecision
+import dev.rubentxu.pipeline.v2.runtime.input.InputDecisions
+import dev.rubentxu.pipeline.v2.runtime.input.InputDenialReason
+import dev.rubentxu.pipeline.v2.runtime.input.InputRequest
+import dev.rubentxu.pipeline.v2.runtime.input.InputResolution
 import java.time.Instant
 import java.util.UUID
 

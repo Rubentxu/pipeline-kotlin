@@ -1,5 +1,11 @@
 package dev.rubentxu.pipeline.v2.runtime
 
+import dev.rubentxu.pipeline.v2.runtime.input.InputDecision
+import dev.rubentxu.pipeline.v2.runtime.input.InputDecisions
+import dev.rubentxu.pipeline.v2.runtime.input.InputDenialReason
+import dev.rubentxu.pipeline.v2.runtime.input.InputOperation
+import dev.rubentxu.pipeline.v2.runtime.input.InputRequest
+import dev.rubentxu.pipeline.v2.runtime.input.InputResolution
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption

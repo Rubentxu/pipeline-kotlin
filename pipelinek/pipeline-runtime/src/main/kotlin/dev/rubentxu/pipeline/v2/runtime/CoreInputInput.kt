@@ -4,6 +4,8 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
+import dev.rubentxu.pipeline.v2.runtime.input.InputDecision
+import dev.rubentxu.pipeline.v2.runtime.input.InputDenialReason
 
 /**
  * Typed input of `core.input`
@@ -28,30 +30,6 @@ data class CoreInputInput(
     val id: String? = null,
     val timeoutSeconds: Int? = null,
 )
-
-/**
- * A human answer. Closed: there are exactly two possible answers, and the pipeline
- * author cannot express a third one. [message] is the answer's own free text
- * (Jenkins returns `input`'s value to the caller), not the question.
-*/
-sealed interface InputDecision {
-    data class Proceed(val submitter: String?, val message: String?) : InputDecision
-    data class Abort(val submitter: String?, val message: String?) : InputDecision
-}
-
-/**
- * Why there is no answer. Closed, and every case carries the evidence needed to
- * act on it: how long we waited, whether we were cancelled, or what made the
- * question unaskable.
- * A malformed response and a lost race are deliberately NOT cases here. A
- * malformed file is ignored and the wait continues; a lost race is a filesystem
- * Fact on the answering side. Neither can be an outcome of the Step
-*/
-sealed interface InputDenialReason {
-    data class TimedOut(val waitedMillis: Long) : InputDenialReason
-    data object Cancelled : InputDenialReason
-    data class Unanswerable(val diagnostic: String) : InputDenialReason
-}
 
 /**
  * The Step's result. [decision] and [denial] are mutually exclusive by

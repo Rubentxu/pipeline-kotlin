@@ -294,7 +294,7 @@ class DurableOperationFactsRecoveryTest {
             projected += terminal
             return when (terminal) {
                 is DurableTaskTerminal.Exited -> RecoveredProjection.Materialised(
-                    value = terminal.output.capturedStdout ?: "",
+                    value = terminal.output.capturedStdout.orEmpty(),
                     outcome = StepOutcome.Success,
                 )
                 else -> RecoveredProjection.InsufficientEvidence(

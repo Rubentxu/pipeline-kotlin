@@ -52,6 +52,14 @@
 #   decision somebody else makes with an authorization this script does not
 #   carry.
 #
+# WHAT IT KEEPS, AND WHY
+#
+#   The temporary repository the consumer resolved from outlives the run: it
+#   is the EVIDENCE of what the consumer resolved from, and a reader that has
+#   to check that declaration —the gate that reads this script's own output, or
+#   a person—needs the directory to be there after the run. Everything else
+#   the run builds is transient and goes away with it.
+#
 # Usage:
 #   verify-external-consumer.sh [--sdk-repo <dir>] [--out <file>]
 #
@@ -97,6 +105,13 @@ if [[ ! -d "$CONSUMER_SOURCES/src" ]]; then
 fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/pipelinek-consumer.XXXXXX")"
+# The temporary repository lives in a directory of its OWN, and that directory
+# outlives the run on purpose: it is the EVIDENCE of what the consumer
+# resolved from, and a reader that has to check that declaration —the gate
+# that reads this script's own output, or a person —needs the directory to be
+# there after the run. Everything else this run builds is transient and goes
+# away with it.
+EVIDENCE="$(mktemp -d "${TMPDIR:-/tmp}/pipelinek-sdk-repo.XXXXXX")"
 SERVICE_PID=""
 
 stop_service() {
@@ -122,6 +137,9 @@ fail() {
     exit 1
 }
 
+# One row, one shape: a label and its measurement, separated by a single
+# space. The rows are read by a program, and a program that reads a row with
+# a column of spaces in it reads spaces where the measurement should be.
 row() {
     printf 'consumer: %s\n' "$1"
 }
@@ -150,7 +168,7 @@ else
     SOURCE_REPO="$repo_root/pipelinek/build/sdk-repo"
 fi
 
-REPO="$WORK/sdk-repo"
+REPO="$EVIDENCE/repository"
 cp -r "$SOURCE_REPO" "$REPO"
 
 # The group the SDK is published under. The publication before the rename
@@ -171,8 +189,8 @@ done
 VERSION="$(find "$REPO/$GROUP_PATH/pipelinek-service-client" -mindepth 1 -maxdepth 1 -type d \
     -printf '%f\n' 2>/dev/null | sort -u | head -1)"
 [[ -n "$VERSION" ]] || fail "the repository holds no version of the SDK the consumer needs"
-row "sdk repository       $REPO"
-row "sdk version          $VERSION"
+row "sdk repository $REPO"
+row "sdk version $VERSION"
 
 # ── 2. the consumer, in an isolated copy ───────────────────────────────────────
 #
@@ -317,7 +335,7 @@ grep -q '^QUERY version schema=[^ ]* product=[^ ]*$' "$WORK/query.log" \
     || fail "the consumer asked the service for no version"
 grep -q "^QUERY run id=$RUN_ID state=[^ ]* outcome=[^ ]*$" "$WORK/query.log" \
     || fail "the consumer received no state for the run it asked about"
-row "question              the service answered about run $RUN_ID"
+row "question the service answered about run $RUN_ID"
 
 # ── 6. the negatives ──────────────────────────────────────────────────────────
 #
@@ -330,7 +348,7 @@ if consumer_build "$CONSUMER_EMPTY" "$EMPTY_REPO" --refresh-dependencies install
     > "$WORK/negative-empty.log" 2>&1; then
     fail "the consumer compiled against a repository with no artifacts; this gate cannot tell a working repository from a lucky one"
 fi
-row "negative              the same consumer failed against an empty repository, as it must"
+row "empty repository the same consumer failed against it, as it must"
 
 # The withdrawn dependency: the same repository with the CLIENT artifact gone.
 # The dependency the consumer needs is a real one and not decoration, and the
@@ -345,7 +363,7 @@ if consumer_build "$CONSUMER_WITHDRAWN" "$WITHDRAWN_REPO" --refresh-dependencies
     > "$WORK/negative-withdrawn.log" 2>&1; then
     fail "the consumer compiled with the client artifact withdrawn; the dependency it needs is not a real one"
 fi
-row "negative              the same consumer failed with the client artifact withdrawn, as it must"
+row "withdrawn dependency the same consumer failed with the client artifact withdrawn, as it must"
 
 # ── the receipt ───────────────────────────────────────────────────────────────
 if [[ -n "$OUT_FILE" ]]; then

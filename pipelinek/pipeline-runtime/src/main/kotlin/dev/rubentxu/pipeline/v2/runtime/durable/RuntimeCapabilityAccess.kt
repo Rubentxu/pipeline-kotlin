@@ -113,6 +113,15 @@ class RuntimeCapabilityAccess internal constructor(
      * own SEAM (`http.transport`); neither names the other's types.
 */
     private val capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
+    // The run's operation journal. It is the store the durable facts of an
+    // operation are kept in, and it is NOT part of the runtime context: the
+    // context carries what the invocation may OBSERVE, and the journal is the
+    // run's own durable territory, bound once per run.
+    //
+    // Null for every surface that binds no journal at all, so the capability
+    // stays unexposed there and a Step that declares it is refused at ADMISSION
+    // instead of reaching a handler that could not keep its promise.
+    private val journal: OperationJournal? = null,
 ) : StepCapabilityAccess {
 
     private val provided: Map<StepCapability, CapabilitySlot> = buildProvided(context)
@@ -384,6 +393,29 @@ class RuntimeCapabilityAccess internal constructor(
                 operation = InputOperation(runId = context.runId, opId = context.opId.format()),
             ),
         )
+        // The durable facts of THIS invocation's own operation.
+        //
+        // Exposed ONLY when the run bound a journal, for the same reason as the
+        // ports below: a Step that asks about the facts of its own operation
+        // must not reach a handler that has no store to read them from.
+        //
+        // The identity handed over is the identity the runtime already
+        // calculated for this dispatch: the operation's own id, formatted by
+        // the runtime, and the attempt the durable protocol knows. The Step
+        // names the row through it instead of reconstructing one.
+        journal?.let { store ->
+            builder[DURABLE_OPERATION_CAPABILITY] = CapabilitySlot.of(
+                JournalBackedOperationFacts(
+                    journal = store,
+                    clock = context.clock,
+                    identity = DurableOperationIdentity(
+                        runId = context.runId,
+                        opId = context.opId.format(),
+                        attempt = DurableInvocationRecord.ATTEMPT,
+                    ),
+                ),
+            )
+        }
         // the compensation intent port.
         //
         // Exposed ONLY when the engine bound one for this invocation. The port is the only

@@ -113,6 +113,11 @@ fun main(args: Array<String>) {
     // and the line says which key the declaration names.
     println("DECLARED capability=${HumanDecisionStep.declaredCapability}")
 
+    // The durable-facts capability, read from the PUBLISHED bundle as well: a step of
+    // an outside plugin names it and declares it in its contract, and the bundle that
+    // did not carry it would not have compiled this file.
+    println("DECLARED capability=${DurableFactsStep.declaredCapability}")
+
     val version = client.version()
     if (version !is ServiceAnswer.Answered) {
         System.err.println(negative(version, socket))

@@ -14,7 +14,7 @@ import dev.rubentxu.pipeline.v2.runtime.RunConfigurationOutcome
 import dev.rubentxu.pipeline.v2.runtime.RunPolicy
 import dev.rubentxu.pipeline.v2.runtime.RuntimeWorkspaceTransport
 import dev.rubentxu.pipeline.v2.runtime.SequentialIdGenerator
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue

@@ -30,7 +30,7 @@ import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.runtime.durable.RunLeasePort
 import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.runtime.durable.SagaObligationStore
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.DefaultEffectReplayPolicy
 import java.nio.file.Path
 import java.nio.file.Paths
 

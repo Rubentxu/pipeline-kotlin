@@ -26,7 +26,7 @@ import dev.rubentxu.pipeline.v2.runtime.durable.SagaCompensationBinding
 import dev.rubentxu.pipeline.v2.runtime.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.runtime.durable.credentials.CredentialScopeOutcome
 import dev.rubentxu.pipeline.v2.runtime.durable.credentials.CredentialScopePort
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream

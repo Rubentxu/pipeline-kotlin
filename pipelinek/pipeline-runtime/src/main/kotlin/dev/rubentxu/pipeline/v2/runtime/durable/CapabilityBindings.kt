@@ -46,6 +46,18 @@ class CapabilityBindings(
      * ambient configuration.
      */
     private val capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
+    /**
+     * The run's operation journal: the store the durable facts of an operation are kept in.
+     *
+     * It is a collaborator of the RUN and not of the invocation, and it is bound here for
+     * the same reason the other three are: the capability table is built once per run and
+     * every consumer of it asks this holder, so the journal that backs the durable facts
+     * cannot be one surface's and another's.
+     *
+     * Null for the surfaces that bind no durable store at all, so the capability stays
+     * unexposed there and a Step that declares it is refused at admission.
+     */
+    private val journal: OperationJournal? = null,
 ) {
 
     /**
@@ -58,5 +70,6 @@ class CapabilityBindings(
             milestoneStateStore = milestoneStateStore,
             artifactIndex = artifactIndex,
             capabilityContributor = capabilityContributor,
+            journal = journal,
         )
 }

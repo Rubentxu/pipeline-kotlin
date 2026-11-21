@@ -1,8 +1,4 @@
-package dev.rubentxu.pipeline.v2.sdk.runtime.durable
-
-import dev.rubentxu.pipeline.v2.domain.durable.Effect
-import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
-import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+package dev.rubentxu.pipeline.v2.domain.durable
 
 /**
  * Interface for effect-aware replay decisions.

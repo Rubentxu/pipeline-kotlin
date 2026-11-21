@@ -4,7 +4,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * Replay policy DECLARED by a durable operation.
  * This enum is the declared INPUT to the replay decision, not the decision itself.
  * The single authority that decides is the ordered table in
- * `dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy.decide`
+ * [DefaultEffectReplayPolicy.decide]
  * "the table is normative and its ORDER is the contract"), which is why the
  * rows below describe the policy's meaning WITHIN that table rather than claiming to be it.
  * ## The names do not all mean what they say, and that is deliberate

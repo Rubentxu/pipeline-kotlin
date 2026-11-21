@@ -30,7 +30,7 @@ import java.nio.file.Path
  * replay cursor. Those are [StageExecutionEngine]'s, and taking any of them here would create the
  * Second authority that was written to prevent. The cursor is named in that sentence
  * deliberately: a scripted stage's operations do not advance the canonical cursor, so a resumed run
- * re-enters the body and reuses each operation by its own [dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy].
+ * re-enters the body and reuses each operation by its own [dev.rubentxu.pipeline.v2.domain.durable.EffectReplayPolicy].
  * That is the whole-program scripted guarantee, unchanged, and it needs no new durable operation
  * kind.
  * ## Why the projection is a projection and not a second precedence

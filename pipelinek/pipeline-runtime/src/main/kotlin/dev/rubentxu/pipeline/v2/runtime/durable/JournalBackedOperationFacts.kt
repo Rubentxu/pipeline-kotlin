@@ -9,8 +9,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
-import dev.rubentxu.pipeline.v2.runtime.durable.DurableOperationFacts
-import dev.rubentxu.pipeline.v2.runtime.durable.DurableOperationIdentity
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -60,7 +58,6 @@ internal class JournalBackedOperationFacts(
     override fun begin() {
         DurableOperationFactsStore.write(
             journal = journal,
-            clock = clock,
             runId = identity.runId,
             operationId = identity.opId,
             status = OperationStatus.RUNNING,
@@ -71,7 +68,6 @@ internal class JournalBackedOperationFacts(
     override fun record(terminal: DurableTaskTerminal) {
         DurableOperationFactsStore.write(
             journal = journal,
-            clock = clock,
             runId = identity.runId,
             operationId = identity.opId,
             status = OperationStatus.SUCCEEDED,
@@ -145,10 +141,13 @@ internal object DurableOperationFactsStore {
 
     /**
      * Writes the row of the facts of an operation, in the ONE shape every write uses.
+     *
+     * The row's clock reading belongs to the caller: the caller owns the output it
+     * writes, and the output carries the moment the turn finished. The store does not
+     * read a clock of its own, so nothing it writes says when it wrote it.
      */
     fun write(
         journal: OperationJournal,
-        clock: Clock,
         runId: String,
         operationId: String,
         status: OperationStatus,

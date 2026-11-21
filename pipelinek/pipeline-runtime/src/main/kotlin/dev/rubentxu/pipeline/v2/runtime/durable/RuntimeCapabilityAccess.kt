@@ -13,8 +13,6 @@ import dev.rubentxu.pipeline.v2.runtime.ExecutionLaneId
 import dev.rubentxu.pipeline.v2.runtime.FileLockCoordinator
 import dev.rubentxu.pipeline.v2.runtime.FileInputDecisions
 import dev.rubentxu.pipeline.v2.runtime.input.INPUT_DECISIONS_CAPABILITY
-import dev.rubentxu.pipeline.v2.runtime.durable.DURABLE_OPERATION_CAPABILITY
-import dev.rubentxu.pipeline.v2.runtime.durable.DurableOperationIdentity
 import dev.rubentxu.pipeline.v2.runtime.input.InputOperation
 import dev.rubentxu.pipeline.v2.runtime.LOCK_COORDINATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.runtime.SHELL_OPERATIONS_CAPABILITY

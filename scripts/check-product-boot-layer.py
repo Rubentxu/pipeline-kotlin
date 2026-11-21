@@ -323,6 +323,13 @@ DECLARED_EXECUTABLES = {
         "is under test is the publication contract and not the behaviour of "
         "this tree; it is not part of this gate"
     ),
+    "scripts/release/verify-external-consumer.sh": (
+        "the isolated-consumer gate of the publication: it resolves the SDK this "
+        "revision publishes from a temporary repository, compiles a consumer that "
+        "lives outside this tree and asks a service this tree builds a real "
+        "question, so what is under test is the publication contract and not the "
+        "behaviour of this tree; it is not part of this gate"
+    ),
     "scripts/release/verify-external-compatibility.sh": (
         "the compatibility gate of the publication: it compares the PUBLISHED "
         "artifact against the PREVIOUSLY published one, so what is under test "

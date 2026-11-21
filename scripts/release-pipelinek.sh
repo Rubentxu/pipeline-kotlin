@@ -643,6 +643,38 @@ if ! timeout "${EXT_COMPAT_TIMEOUT_SECONDS}" \
 fi
 
 # ----------------------------------------------------------------------------
+# 5c-bis. The isolated consumer.
+#     The check above asks whether a plugin BUILDS against the published SDK and
+#     LOADS into the distribution this release publishes. Neither of those
+#     asks the SDK a question: a plugin can load and never speak to a service,
+#     and a service can answer with a protocol the plugin does not hold.
+#
+#     This one asks. A program outside this repository resolves the published
+#     SDK by its coordinates, compiles against it, and asks a service this
+#     product hosts about a real run. The answer has to be a typed answer: the
+#     gate reads it, and a program that asked nothing prints nothing. The
+#     repository it resolves from is a temporary one, so the REMOTE
+#     publication stays a decision with an authorization.
+#
+#     It runs BEFORE the tag, for the same reason the check above does.
+# ----------------------------------------------------------------------------
+
+ISOLATED_CONSUMER_VERDICT="${EVIDENCE_DIR}/external-consumer.txt"
+ISOLATED_CONSUMER_TIMEOUT_SECONDS="${PIPELINEK_ISOLATED_CONSUMER_TIMEOUT_SECONDS:-900}"
+
+echo "release-pipelinek: running the isolated-consumer check (timeout ${ISOLATED_CONSUMER_TIMEOUT_SECONDS}s)"
+
+if ! timeout "${ISOLATED_CONSUMER_TIMEOUT_SECONDS}" \
+    "${REPO_ROOT}/scripts/release/verify-external-consumer.sh" \
+    --out "$ISOLATED_CONSUMER_VERDICT"; then
+    echo "release-pipelinek: refusing to publish — the isolated consumer did not pass." >&2
+    echo "    a program outside this repository could not resolve the published SDK," >&2
+    echo "    compile against it and ask a service a real question. No tag was created." >&2
+    rm -rf "$EVIDENCE_DIR"
+    exit 1
+fi
+
+# ----------------------------------------------------------------------------
 # 5d. The packaged commands.
 #     The archive a consumer downloads is a set of files, and a set of files
 #     can be complete and still answer nothing: the launcher can be there, the

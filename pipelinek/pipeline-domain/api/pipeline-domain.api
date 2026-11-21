@@ -3719,6 +3719,11 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/DefaultDurableControl
 	public fun directiveFor (Ldev/rubentxu/pipeline/v2/domain/durable/RetryReconciliationDecision;I)Ldev/rubentxu/pipeline/v2/domain/durable/EngineDirective;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/durable/DefaultEffectReplayPolicy : dev/rubentxu/pipeline/v2/domain/durable/EffectReplayPolicy {
+	public fun <init> ()V
+	public fun decide (Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;Ljava/util/Set;ZLdev/rubentxu/pipeline/v2/domain/durable/OperationStatus;)Ldev/rubentxu/pipeline/v2/domain/durable/ReplayDecision;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/domain/durable/DivergenceDetector {
 	public abstract fun check-gIAlu-s (Ldev/rubentxu/pipeline/v2/domain/durable/DurableOperation;Ldev/rubentxu/pipeline/v2/domain/durable/DurableOperation;)Ljava/lang/Object;
 }
@@ -3987,6 +3992,14 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/Effect : java/lang/En
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
 	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/durable/EffectReplayPolicy {
+	public abstract fun decide (Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;Ljava/util/Set;ZLdev/rubentxu/pipeline/v2/domain/durable/OperationStatus;)Ldev/rubentxu/pipeline/v2/domain/durable/ReplayDecision;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/EffectReplayPolicyKt {
+	public static final fun isReusableCompletion (Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;)Z
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/durable/EngineDirective {
@@ -4611,6 +4624,15 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/RecoveryPolicy$None :
 	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/ReplayDecision : java/lang/Enum {
+	public static final field ABORT Ldev/rubentxu/pipeline/v2/domain/durable/ReplayDecision;
+	public static final field RERUN Ldev/rubentxu/pipeline/v2/domain/durable/ReplayDecision;
+	public static final field SKIP Ldev/rubentxu/pipeline/v2/domain/durable/ReplayDecision;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/durable/ReplayDecision;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/durable/ReplayDecision;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy : java/lang/Enum {

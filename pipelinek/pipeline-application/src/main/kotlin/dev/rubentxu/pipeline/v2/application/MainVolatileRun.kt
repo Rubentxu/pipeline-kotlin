@@ -21,7 +21,7 @@ import dev.rubentxu.pipeline.v2.events.durable.InMemorySagaObligationStore
 import dev.rubentxu.pipeline.v2.runtime.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.runtime.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.runtime.durable.ReplayCursorStore
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.DefaultEffectReplayPolicy
 import java.nio.file.Files
 import java.nio.file.Path
 

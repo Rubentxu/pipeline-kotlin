@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.sdk.runtime.durable
+package dev.rubentxu.pipeline.v2.domain.durable
 
 /**
  * Decision returned by [EffectReplayPolicy.decide].

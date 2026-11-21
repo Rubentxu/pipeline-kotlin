@@ -122,6 +122,10 @@ class RedactorState internal constructor(
  * pieces separated by bytes that are not part of it. The bytes that are not part of the
  * value come out as they went in.
  *
+ * The threshold is the one the constructor names. A redactor built without naming one
+ * masks the pieces that are at least [SecretPatternRegistry.MIN_MASKABLE_LENGTH] bytes
+ * long.
+ *
  * ## What it does not promise, and says so here
  * - **A piece shorter than the threshold is not protected.** The threshold counts BYTES,
  *   because the seam is bytes. A piece of fewer bytes than the threshold is not masked,
@@ -193,16 +197,47 @@ class RedactorState internal constructor(
  *                  changes.
  * @param chunkSize The number of bytes to read from the underlying source
  *                  per `read()` call. Default 8192.
- * @param fragmentThresholdBytes The number of bytes a piece of a secret must have to
- *                  be masked. Defaults to [SecretPatternRegistry.MIN_MASKABLE_LENGTH].
- *                  A value shorter than this is not masked at all, and neither is any
- *                  piece of it.
 */
 class StreamingRedactor(
     private val registry: SecretPatternRegistry,
     private val chunkSize: Int = 8192,
-    private val fragmentThresholdBytes: Int = SecretPatternRegistry.MIN_MASKABLE_LENGTH,
 ) {
+
+    /**
+     * The number of bytes a piece of a secret must have to be masked.
+     *
+     * The default is [SecretPatternRegistry.MIN_MASKABLE_LENGTH], which is the
+     * threshold a redactor built without an explicit one uses. A caller that wants
+     * another threshold names it in the constructor that takes it, and the value is
+     * fixed from that moment: the property is private, so neither a caller nor a
+     * pass can change it.
+     */
+    private var fragmentThresholdBytes: Int = SecretPatternRegistry.MIN_MASKABLE_LENGTH
+
+    /**
+     * Creates a redactor that masks the pieces of a secret that are at least
+     * `fragmentThresholdBytes` bytes long.
+     *
+     * This is the constructor that lets a caller choose the threshold. Its three
+     * arguments are explicit and carry no default: a redactor built without them
+     * masks the pieces that are at least
+     * [SecretPatternRegistry.MIN_MASKABLE_LENGTH] bytes long, and a caller that
+     * wants another threshold says so here.
+     *
+     * @param registry The [SecretPatternRegistry] providing the active patterns.
+     * @param chunkSize The number of bytes to read from the underlying source
+     *                  per `read()` call.
+     * @param fragmentThresholdBytes The number of bytes a piece of a secret must have to
+     *                  be masked. A value shorter than this is not masked at all, and
+     *                  neither is any piece of it.
+     */
+    constructor(
+        registry: SecretPatternRegistry,
+        chunkSize: Int,
+        fragmentThresholdBytes: Int,
+    ) : this(registry, chunkSize) {
+        this.fragmentThresholdBytes = fragmentThresholdBytes
+    }
 
     /**
      * The maximum encoded literal byte length.

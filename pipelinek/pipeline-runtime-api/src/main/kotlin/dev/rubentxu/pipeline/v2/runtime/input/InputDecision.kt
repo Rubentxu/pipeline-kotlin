@@ -2,8 +2,8 @@ package dev.rubentxu.pipeline.v2.runtime.input
 
 /**
  * A human answer. Closed: there are exactly two possible answers, and the pipeline
- * author cannot express a third one. [message] is the answer's own free text
- * (Jenkins returns `input`'s value to the caller), not the question.
+ * author cannot express a third one. The free text a case carries is the answer's
+ * own text (Jenkins returns `input`'s value to the caller), not the question.
  */
 sealed interface InputDecision {
 

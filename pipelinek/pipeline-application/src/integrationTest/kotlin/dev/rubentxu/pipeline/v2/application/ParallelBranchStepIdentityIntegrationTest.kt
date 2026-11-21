@@ -34,7 +34,6 @@ import java.nio.file.Path
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -116,7 +115,13 @@ class ParallelBranchStepIdentityIntegrationTest {
             "the operation the event publishes is the operation the product lists",
         )
 
-        val transcripts = published.associateWith { run.console(it!!) }
+        val transcripts = published.associateWith { operation ->
+            run.console(
+                requireNotNull(operation) {
+                    "every step of a branch publishes the operation it runs as: $published"
+                }
+            )
+        }
         assertEquals(
             setOf("rama-a", "rama-b"),
             transcripts.values.map { it.trim() }.toSet(),
@@ -133,14 +138,15 @@ class ParallelBranchStepIdentityIntegrationTest {
 
         val failed = run.events.filterIsInstance<StepFailed>()
         assertEquals(1, failed.size, "one branch failed: ${run.events}")
-        val opId = failed.single().opId
-        assertNotNull(opId, "the failure of a branch step publishes the operation it happened in")
+        val opId = requireNotNull(failed.single().opId) {
+            "the failure of a branch step publishes the operation it happened in"
+        }
         assertTrue(
             opId in run.operations(),
             "the published operation is one the product lists: $opId of ${run.operations()}",
         )
         assertTrue(
-            run.console(opId!!).contains("rama-falla"),
+            run.console(opId).contains("rama-falla"),
             "the console of the failing operation reads the bytes of the branch that failed",
         )
     }

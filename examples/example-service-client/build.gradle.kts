@@ -134,6 +134,13 @@ tasks.named("compileKotlin") {
 // as well as the right one. So the two facts are stated here, as tasks that
 // REFUSE, and the release gate runs them.
 //
+// The identity a consumer runs with has two halves, and both are checked: the
+// DIGEST of every artifact, which says WHICH BYTES they are, and the VERSION
+// of every artifact, which says WHICH PUBLICATION they come from. A resolution
+// that carries the right bytes of the wrong publication is an SDK this
+// release does not publish, and a digest alone cannot see it: the repository
+// declares the digest of the old publication too.
+//
 // The lists below are the CONSUMER's own policy, and not a second authority
 // about what the product publishes: this build is independent of the product's
 // build, so it cannot read the product's list, and it does not try. What it
@@ -330,6 +337,13 @@ val verifyResolvedIdentity by tasks.registering {
     val productGroups = setOf("dev.rubentxu.pipelinek", "dev.rubentxu.pipeline.v2")
     val groupPaths = listOf("dev/rubentxu/pipelinek", "dev/rubentxu/pipeline/v2")
     val client = clientArtifactName
+    // The version this build was asked to resolve. Every artifact of the SDK
+    // it resolved has to be that version: the digest says which BYTES the
+    // consumer ran with, and the version says which PUBLICATION they come
+    // from. The repository declares the digest of every publication it
+    // carries, so the digest alone cannot tell a consumer that ran with the
+    // SDK of an earlier release from one that ran with the SDK of this one.
+    val requestedVersion = sdkVersion
     // The file the measurement is written to, when the caller names one. The
     // gate asks for it because the receipt it writes has to carry the
     // measurement without a reader having to look at a directory the gate is
@@ -345,7 +359,25 @@ val verifyResolvedIdentity by tasks.registering {
         // and a count that counted it twice would report a number of
         // measurements where the reader expects a number of artifacts.
         val matched = mutableSetOf<String>()
+        val resolvedVersions = mutableSetOf<String>()
         var clientDigest: String? = null
+
+        // The version of every artifact of the SDK the consumer RESOLVED. The
+        // resolution document is one of them: it is what pins the rest, and a
+        // resolution document of another publication pins the contracts of
+        // that publication.
+        configuration.incoming.resolutionResult.allComponents
+            .mapNotNull { it.id as? ModuleComponentIdentifier }
+            .filter { it.group in productGroups }
+            .forEach { id ->
+                resolvedVersions.add(id.version)
+                if (id.version != requestedVersion) {
+                    mismatches.add(
+                        "${id.module}: the consumer resolved version ${id.version} " +
+                            "and the version it asked for is $requestedVersion",
+                    )
+                }
+            }
 
         // Every artifact of the SDK that the consumer RESOLVED has to be one the
         // repository carries, with the digest the repository declares.
@@ -424,10 +456,12 @@ val verifyResolvedIdentity by tasks.registering {
         if (measurement != null) {
             File(measurement).writeText(
                 "artifacts_matched=${matched.size}\n" +
-                    "client_digest=${clientDigest ?: ""}\n",
+                    "client_digest=${clientDigest ?: ""}\n" +
+                    "resolved_version=${resolvedVersions.sorted().joinToString(",")}\n",
             )
         }
         println("consumer: ${matched.size} artifact(s) match the digests the repository declares")
+        println("consumer: the SDK the consumer resolved is version ${resolvedVersions.sorted().joinToString(",")}")
     }
 }
 

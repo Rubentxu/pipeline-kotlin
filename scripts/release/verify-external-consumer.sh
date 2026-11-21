@@ -6,6 +6,27 @@
 #   Can a program OUTSIDE this repository resolve the published SDK by its
 #   coordinates, compile against it, and ask a running service a real question?
 #
+# WHICH SDK IT MEASURES
+#
+#   The one THIS release publishes. The release names the version, and the
+#   gate refuses a repository that does not carry it: a gate that measured
+#   whichever version it found first would certify a consumer running with an
+#   SDK this release does not publish.
+#
+#   The repository the consumer resolves from is a COPY, and the copy carries
+#   ONLY the version under test. The repository the publication lands in
+#   accumulates: every release adds its artifacts beside the ones of the
+#   releases before it, and a consumer that resolves from such a copy can end
+#   up running the SDK of an earlier release.
+#
+# WHERE THE LAW LIVES
+#
+#   The version the consumer RESOLVED is compared with the version it ASKED
+#   FOR inside the consumer's own build, because that is where the resolution
+#   happens: a law written anywhere else would measure a classpath that no
+#   consumer runs with. The digests are compared there too, and the gate
+#   refuses a receipt that carries no version the consumer resolved.
+#
 # WHY IT IS A GATE AND NOT A TEST
 #
 #   The answer is about BYTES that leave this repository: the artifacts a
@@ -17,13 +38,15 @@
 #
 # THE ROWS, IN THE ORDER THEY ARE PAID
 #
-#   1  the SDK of THIS revision, published to a TEMPORARY Maven repository
+#   1  the SDK of THIS release, at the version the release names, published to
+#      a TEMPORARY Maven repository that carries only that version
 #   2  the consumer, in an ISOLATED COPY of its sources, resolved by
 #      coordinates: the copy has no access to this tree's projects, so a
 #      consumer that needed one would not build at all
 #   3  the classpath the consumer runs with: no server, no provider, no
 #      Jenkins, and every upstream class the SDK names
-#   4  the bytes the consumer resolved: the ones the repository declares
+#   4  the bytes the consumer resolved: the ones the repository declares, at
+#      the version the release names
 #   5  a REAL question: the consumer asks a hosted service about a real run
 #   6  the negatives: an empty repository, and a necessary dependency withdrawn
 #
@@ -59,12 +82,18 @@
 #   a gate that leaves a directory behind on every run is a leak, and leaks
 #   accumulate. The evidence of what the consumer resolved from travels in
 #   the receipt, which is a small file the reader decides where to put: the
-#   version it resolved, the repository it resolved from, how many artifacts
-#   matched the digests that repository declares, and the digest of the client
-#   artifact the consumer ran with.
+#   version it resolved, the version the release named, the versions the copy
+#   it resolved from carried, the repository it resolved from, how many
+#   artifacts matched the digests that repository declares, and the digest of
+#   the client artifact the consumer ran with.
 #
 # Usage:
-#   verify-external-consumer.sh [--sdk-repo <dir>] [--out <file>]
+#   verify-external-consumer.sh --expect-version <v> [--sdk-repo <dir>]
+#       [--out <file>]
+#
+# --expect-version names the version of the SDK the consumer resolves. It is
+# required: the release declares it, and a version a gate DISCOVERS in the
+# repository is a version the repository happens to carry.
 #
 # --sdk-repo names a Maven repository that already holds the SDK. Without it,
 # the SDK of this revision is published into the build tree and copied into the
@@ -79,6 +108,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 SDK_REPO=""
 OUT_FILE=""
+EXPECT_VERSION=""
 
 usage() {
     # The header is printed as it is written, up to the first line that is
@@ -91,6 +121,7 @@ usage() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --sdk-repo) SDK_REPO="${2:-}"; shift 2 ;;
+        --expect-version) EXPECT_VERSION="${2:-}"; shift 2 ;;
         --out)      OUT_FILE="${2:-}"; shift 2 ;;
         -h|--help)  usage ;;
         *)
@@ -99,6 +130,11 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [[ -z "$EXPECT_VERSION" ]]; then
+    printf 'verify-external-consumer: --expect-version is required: the release names the SDK the consumer resolves\n' >&2
+    usage
+fi
 
 CONSUMER_SOURCES="$repo_root/examples/example-service-client"
 if [[ ! -d "$CONSUMER_SOURCES/src" ]]; then
@@ -147,7 +183,7 @@ row() {
     printf 'consumer: %s\n' "$1"
 }
 
-# ── 1. the SDK of this revision, in a temporary repository ──────────────────────
+# ── 1. the SDK of this release, at the version it names, in a temporary repository ─
 #
 # The publication is the one the build already declares: the task that publishes
 # the published contracts into the build tree. The copy is what makes the
@@ -171,29 +207,86 @@ else
     SOURCE_REPO="$repo_root/pipelinek/build/sdk-repo"
 fi
 
+# The repository the consumer resolves from is a COPY, and the copy carries
+# ONLY the version under test.
+#
+# The repository the publication lands in accumulates: every release adds its
+# artifacts beside the ones of the releases before it, and nothing empties it
+# between them. A consumer that resolves from a copy of such a repository can
+# end up running the SDK of an earlier release — the bytes of a release that
+# does not publish what this one publishes. The copy is therefore BUILT with
+# the version under test and not repaired afterwards: the artifact of an
+# earlier release is not in it, not even when the resolution is not pinned by
+# the resolution document.
 REPO="$EVIDENCE/repository"
-cp -r "$SOURCE_REPO" "$REPO"
 
-# The group the SDK is published under. The publication before the rename
+# The groups the SDK is published under. The publication before the rename
 # carried another one, and both are looked for: a reader that knew only the
 # current one would answer "there is nothing here" about a repository of a
 # previous release, and that answer would be a lie about the repository.
+GROUP_PATHS=("dev/rubentxu/pipelinek" "dev/rubentxu/pipeline/v2")
 GROUP_PATH=""
-for candidate in dev/rubentxu/pipelinek dev/rubentxu/pipeline/v2; do
-    if [[ -d "$REPO/$candidate" ]]; then
+for candidate in "${GROUP_PATHS[@]}"; do
+    if [[ -d "$SOURCE_REPO/$candidate" ]]; then
         GROUP_PATH="$candidate"
         break
     fi
 done
 [[ -n "$GROUP_PATH" ]] || fail "the repository carries no SDK group at all"
 
-# The version the consumer resolves. It is read from the repository and not
-# asked for: a version somebody typed in is a version nobody measured.
-VERSION="$(find "$REPO/$GROUP_PATH/pipelinek-service-client" -mindepth 1 -maxdepth 1 -type d \
-    -printf '%f\n' 2>/dev/null | sort -u | head -1)"
-[[ -n "$VERSION" ]] || fail "the repository holds no version of the SDK the consumer needs"
+# The version under test: the one the release publishes. It is NAMED and not
+# found, because a version found in the repository is a version the
+# repository happens to carry, and the repository accumulates publications.
+VERSION="$EXPECT_VERSION"
+
+# The repository has to carry it. The refusal names the version, because the
+# reader has to know which one is missing to go and look for it.
+CLIENT_ARTIFACT="pipelinek-service-client"
+RESOLUTION_DOCUMENT="pipelinek-sdk-bom"
+if [[ ! -d "$SOURCE_REPO/$GROUP_PATH/$CLIENT_ARTIFACT/$VERSION" ]]; then
+    fail "the repository carries no version $VERSION of the SDK the consumer needs"
+fi
+if [[ ! -d "$SOURCE_REPO/$GROUP_PATH/$RESOLUTION_DOCUMENT/$VERSION" ]]; then
+    fail "the repository carries no version $VERSION of the resolution document the consumer resolves through"
+fi
 row "sdk repository $REPO"
 row "sdk version $VERSION"
+
+# The copy: every artifact of every group, at the version under test and at
+# no other version. The metadata that lists the versions of an artifact is
+# not copied either: a repository that advertises a version it does not carry
+# answers a question about a publication that is not there.
+copy_version_under_test() {
+    local source="$1" target="$2" version="$3" group_path artifact_directory artifact_name
+    for group_path in "${GROUP_PATHS[@]}"; do
+        local group_source="$source/$group_path"
+        [[ -d "$group_source" ]] || continue
+        for artifact_directory in "$group_source"/*; do
+            [[ -d "$artifact_directory" ]] || continue
+            [[ -d "$artifact_directory/$version" ]] || continue
+            artifact_name="$(basename -- "$artifact_directory")"
+            mkdir -p "$target/$group_path/$artifact_name"
+            cp -r "$artifact_directory/$version" "$target/$group_path/$artifact_name/"
+        done
+    done
+}
+copy_version_under_test "$SOURCE_REPO" "$REPO" "$VERSION"
+
+# The copy carries ONE version, and the gate MEASURES it instead of assuming
+# it: a copy that carried another version would be a copy the consumer could
+# resolve an artifact of an earlier release from, and the receipt has to say
+# what the consumer could resolve.
+REPOSITORY_VERSIONS="$(
+    for group_path in "${GROUP_PATHS[@]}"; do
+        group_directory="$REPO/$group_path"
+        [[ -d "$group_directory" ]] || continue
+        find "$group_directory" -mindepth 2 -maxdepth 2 -type d -printf '%f\n' 2>/dev/null
+    done | sort -u | tr '\n' ',' | sed 's/,$//'
+)"
+if [[ "$REPOSITORY_VERSIONS" != "$VERSION" ]]; then
+    fail "the copy the consumer resolves from carries versions other than $VERSION: ${REPOSITORY_VERSIONS:-<none>}"
+fi
+row "sdk repository versions $REPOSITORY_VERSIONS"
 
 # ── 2. the consumer, in an isolated copy ───────────────────────────────────────
 #
@@ -377,22 +470,28 @@ row "withdrawn dependency the same consumer failed with the client artifact with
 # wants to know what the consumer resolved from reads the receipt.
 #
 # The receipt carries the MEASUREMENT and not a claim about it: how many
-# artifacts matched the digests the repository declares, and the digest of the
-# client artifact the consumer ran with. A receipt without them is refused
-# before it is written: a receipt that says nothing measured is a receipt that
-# reads like a green.
+# artifacts matched the digests the repository declares, the digest of the
+# client artifact the consumer ran with, and the version the consumer
+# resolved. A receipt without them is refused before it is written: a receipt
+# that says nothing measured is a receipt that reads like a green.
 if [[ -n "$OUT_FILE" ]]; then
     MATCHED="$(sed -n 's/^artifacts_matched=//p' "$MEASUREMENT" | head -1)"
     CLIENT_DIGEST="$(sed -n 's/^client_digest=//p' "$MEASUREMENT" | head -1)"
+    RESOLVED_VERSION="$(sed -n 's/^resolved_version=//p' "$MEASUREMENT" | head -1)"
     if [[ ! "$MATCHED" =~ ^[0-9]+$ ]] || [[ "$MATCHED" -le 0 ]]; then
         fail "the consumer resolved no artifact whose digest the repository declares; the receipt would say nothing measured"
     fi
     if [[ ! "$CLIENT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
         fail "the receipt carries no digest of the client artifact the consumer ran with"
     fi
+    if [[ -z "$RESOLVED_VERSION" ]]; then
+        fail "the receipt carries no version the consumer resolved; it would say nothing measured"
+    fi
     {
         printf 'consumer=1\n'
-        printf 'sdk_version=%s\n' "$VERSION"
+        printf 'sdk_version=%s\n' "$RESOLVED_VERSION"
+        printf 'sdk_requested_version=%s\n' "$VERSION"
+        printf 'sdk_repository_versions=%s\n' "$REPOSITORY_VERSIONS"
         printf 'sdk_repository=%s\n' "$REPO"
         printf 'run_id=%s\n' "$RUN_ID"
         printf 'question=answered\n'

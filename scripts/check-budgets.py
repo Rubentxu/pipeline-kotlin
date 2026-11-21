@@ -79,6 +79,12 @@ RULES: list[tuple[str, str, str]] = [
     # archive and not the behaviour of the tree, so they are the numerator.
     ("verify", "packaged command check", "scripts/release/verify-packaged-commands.sh"),
     ("verify", "packaged command control", "scripts/release/check-packaged-commands-control.sh"),
+    # The isolated-consumer gate of the publication, and the control that
+    # proves it can refuse. Both run on the publisher's machine during the
+    # publication and neither ships anything: they measure the PUBLISHED SDK
+    # and the consumer that resolves it, so they are the numerator.
+    ("verify", "external consumer check", "scripts/release/verify-external-consumer.sh"),
+    ("verify", "external consumer control", "scripts/release/check-external-consumer-control.sh"),
     # Permanent unit tests. Two module depths: pipelinek/<m> and pipelinek/<g>/<m>.
     ("verify", "unit tests", "pipelinek/*/src/test/*"),
     ("verify", "unit tests", "pipelinek/*/*/src/test/*"),

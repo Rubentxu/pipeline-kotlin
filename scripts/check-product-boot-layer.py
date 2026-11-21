@@ -282,6 +282,14 @@ DECLARED_EXECUTABLES = {
         "what is under test is the publication contract and not the behaviour of this "
         "tree; it is not part of this gate"
     ),
+    "scripts/release/check-external-consumer-control.sh": (
+        "the negative control of the isolated-consumer gate: it breaks a COPY of the "
+        "repository the consumer resolves from to prove that the gate refuses a "
+        "repository that does not carry the SDK of this release, and that the "
+        "consumer refuses a resolution at another version, so what is under test is "
+        "the publication contract and not the behaviour of this tree; it is not part "
+        "of this gate"
+    ),
     "scripts/release/emit-certification-requested.sh": (
         "the emitter of the certification request: it composes the event that crosses the "
         "boundary between the repositories and leaves it beside the publication, so what "

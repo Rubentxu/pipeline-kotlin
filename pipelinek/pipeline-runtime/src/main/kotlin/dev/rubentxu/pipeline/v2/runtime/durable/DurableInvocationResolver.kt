@@ -7,12 +7,12 @@ import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin
 import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayDecision
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
@@ -46,6 +46,13 @@ internal class DurableInvocationResolver(
     // constructs StepReconcilerL1 / DurableShellExecutor, so this class stays free of process
     // and control-directory knowledge and remains testable with no filesystem.
     private val runningSubprocessRecovery: RunningSubprocessRecovery,
+    // The reader of the durable facts an operation left behind.
+    //
+    // It is a PORT and not the journal: the resolver asks for the terminal of an
+    // operation, and the store that holds it is the runtime's business. Null for a
+    // surface that binds no durable store, and then an operation has no facts of its
+    // own to recover from.
+    private val durableFacts: DurableOperationFactsReader? = null,
 ) {
 
     /**
@@ -136,6 +143,22 @@ internal class DurableInvocationResolver(
         operationId: String,
     ): InvocationReconciliation {
         deterministicGate(currentOperation, journaled, operationId)?.let { return it }
+        // The facts the operation left behind, when it left any.
+        //
+        // A step whose effect happened OUTSIDE the engine's durable substrate recorded
+        // what that effect produced before the process that ran it died. That record
+        // IS the observed terminal of the operation: the step saw its own effect
+        // finish, and no observation of the substrate can be more specific than that.
+        //
+        // It is consulted ONLY for a row that is still RUNNING, which is the row of an
+        // operation that was interrupted. A terminal row has already been decided by
+        // the replay kernel below.
+        if (journaled?.status == OperationStatus.RUNNING) {
+            val recorded = durableFacts?.recordedTerminal(operationId)
+            if (recorded != null) {
+                return InvocationReconciliation.RecoverRunning(recorded)
+            }
+        }
         if (recoveryRequirement(metadata.recoveryPolicy, journaled) == RecoveryRequirement.Required) {
             when (val observation = runningSubprocessRecovery.observe(operationId)) {
                 is RunningSubprocessObservation.Observed ->

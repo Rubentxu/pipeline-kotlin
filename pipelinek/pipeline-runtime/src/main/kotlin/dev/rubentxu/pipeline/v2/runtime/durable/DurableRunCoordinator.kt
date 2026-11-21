@@ -189,6 +189,8 @@ class DurableRunCoordinator(
         milestoneStateStore = milestoneStateStore,
         artifactIndex = artifactIndex,
         capabilityContributor = capabilityContributor,
+        // The run's own journal: the store the durable facts of an operation are kept in.
+        journal = journal,
     )
 
     // The body execution policy authority. The production default
@@ -233,6 +235,12 @@ class DurableRunCoordinator(
         // reaches the resolver only as a port. The resolver decides when recovery applies; this
         // adapter owns the only place that knows a control directory and a live process exist.
         runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot),
+        // The facts an operation left behind, read from the run's own journal. A step
+        // whose effect happened outside the durable substrate recorded its terminal
+        // there, and the recovery of an interrupted operation uses it.
+        durableFacts = DurableOperationFactsReader { operationId ->
+            DurableOperationFactsStore.recordedTerminal(journal, operationId)
+        },
     )
 
     // Typed input preparation behind a narrow collaborator.

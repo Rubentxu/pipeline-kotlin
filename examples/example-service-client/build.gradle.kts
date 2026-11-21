@@ -67,12 +67,25 @@ repositories {
     mavenCentral()
 }
 
-// The SDK is published as a SNAPSHOT. Gradle's default snapshot cache TTL is 24h,
-// which would let this build compile against an SDK that no longer matches the
-// repository. Re-resolve on every build instead.
-configurations.all {
-    resolutionStrategy.cacheChangingModulesFor(0, "seconds")
-}
+// The version this build resolves is FIXED: the caller names it, and the
+// release it names is a release and not a moving target.
+//
+// The rule the dependencies below declare therefore has to hold on its own
+// terms: a stale SDK must fail this build rather than silently satisfy it.
+// Two mechanisms pay it, and neither of them is a cache policy:
+//
+//   - the identity law below, which runs with EVERY build of this example
+//     and compares the bytes the build resolved with the digest the
+//     repository declares NOW. A resolution that is not the repository's own
+//     bytes fails the build: a local copy, a different repository, or a
+//     resolution that answers with what a previous build remembered.
+//   - the refresh the release gate asks for, which asks the repository again
+//     instead of answering out of what a previous build remembered, and so
+//     covers the METADATA of the resolution as well as its bytes.
+//
+// The cache policy of a CHANGING version —a SNAPSHOT, a `-dev`— is not here:
+// it applies to a version that changes, and this build resolves one that
+// does not. A mechanism that does not apply is not a mechanism.
 
 dependencies {
     // The published BOM is the SDK's single resolution document: ONE platform
@@ -378,4 +391,17 @@ val verifyResolvedIdentity by tasks.registering {
         }
         println("consumer: ${measured} artifact(s) match the digests the repository declares")
     }
+}
+
+// The laws run with EVERY build of this example, and not only when a gate
+// asks for them: a consumer that could be built against bytes the repository
+// does not declare is a consumer whose own build says nothing about what it
+// runs with. The two ways to use this example —the installed program and the
+// program Gradle runs— both go through them.
+tasks.named("installDist") {
+    dependsOn("verifyRuntimeClasspath", "verifyResolvedIdentity")
+}
+
+tasks.named("run") {
+    dependsOn("verifyRuntimeClasspath", "verifyResolvedIdentity")
 }

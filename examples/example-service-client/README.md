@@ -55,6 +55,20 @@ the artifacts that are not the product's live. The resolution is reproducible
 with the artifacts that are available: the same revision and the same
 repository produce the same coordinates and the same digests.
 
+## What the build refuses
+
+The version is a fixed one, and a fixed version is not a moving target: the
+build asks the repository for it and the repository answers with the bytes it
+publishes.
+
+The build also refuses a resolution that is not the repository's own bytes.
+Every build of this example compares the bytes it resolved with the digest the
+repository declares NOW, and fails when they differ: a local copy of the SDK,
+a resolution that answered from another repository, or one that answered with
+what a previous build remembered. To ask the repository again about the
+metadata of the resolution as well as about its bytes, pass
+`--refresh-dependencies`; the release gate does.
+
 ## The gate
 
 `scripts/release/verify-external-consumer.sh` runs this example as a release

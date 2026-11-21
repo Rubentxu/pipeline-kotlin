@@ -213,7 +213,11 @@ consumer_build() {
 # The two laws live in the consumer's own build, and the consumer's build is
 # the thing that resolves: a law written anywhere else would measure a
 # classpath that no consumer runs with.
-if ! consumer_build "$CONSUMER" "$REPO" \
+#
+# The refresh is here because the gate has to measure the repository as it is
+# NOW: without it the resolution may answer with what a previous build
+# remembered, and the gate would measure that instead of the repository.
+if ! consumer_build "$CONSUMER" "$REPO" --refresh-dependencies \
     installDist verifyRuntimeClasspath verifyResolvedIdentity > "$WORK/consumer.log" 2>&1; then
     tail -30 "$WORK/consumer.log" >&2
     fail "the consumer could not resolve the published SDK, compile against it and pass its own laws"

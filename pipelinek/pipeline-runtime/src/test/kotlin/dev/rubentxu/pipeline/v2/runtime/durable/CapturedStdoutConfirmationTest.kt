@@ -24,7 +24,7 @@ import dev.rubentxu.pipeline.v2.runtime.NoopPipelineTelemetry
 import dev.rubentxu.pipeline.v2.runtime.SequentialIdGenerator
 import dev.rubentxu.pipeline.v2.runtime.StepMetadata
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.CapturedStdoutRead
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShellProtocolLayout

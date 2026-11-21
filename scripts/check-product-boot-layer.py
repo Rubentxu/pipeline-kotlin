@@ -525,6 +525,15 @@ DECLARED_TREE_BOOT_CHECKS = {
         "the rows where a controller keeps the credentials of a run over the "
         "socket and the step of that run receives the secret it answered"
     ),
+    "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/ProducerOutputRedactionIntegrationTest.kt": (
+        "the rows that start a run through the CLI's own entry and through the "
+        "service, with a secret the step prints SPLIT between two writes, and "
+        "check that the producer persisted the REDUCED bytes and assigned the "
+        "ranges of those bytes. These are the two paths a consumer of the Output "
+        "Plane reaches, and a producer that persisted the raw bytes while "
+        "assigning the ranges of the reduced ones would look right to every "
+        "reader that only checks the offsets"
+    ),
     "pipelinek/pipeline-application/src/integrationTest/kotlin/dev/rubentxu/pipeline/v2/application/RunConfigurationIntegrationTest.kt": (
         "the rows that deliver a configuration to a run and check that each run "
         "sees its own and not the one next to it"

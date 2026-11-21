@@ -79,6 +79,12 @@ real run, and pays two negatives: the same consumer against an empty
 repository, and the same consumer against a repository whose client artifact
 has been withdrawn. Both have to fail.
 
+The run leaves nothing alive: the temporary repository goes away with it. What
+the gate leaves is the receipt, which names the version it resolved, the
+repository it resolved from, how many artifacts matched the digests that
+repository declares, and the digest of the client artifact the consumer ran
+with.
+
 ## The remote publication
 
 The example resolves from a temporary repository. Publishing the SDK to a

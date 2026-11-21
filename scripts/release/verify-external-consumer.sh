@@ -52,13 +52,16 @@
 #   decision somebody else makes with an authorization this script does not
 #   carry.
 #
-# WHAT IT KEEPS, AND WHY
+# WHAT IT LEAVES BEHIND
 #
-#   The temporary repository the consumer resolved from outlives the run: it
-#   is the EVIDENCE of what the consumer resolved from, and a reader that has
-#   to check that declaration —the gate that reads this script's own output, or
-#   a person—needs the directory to be there after the run. Everything else
-#   the run builds is transient and goes away with it.
+#   The receipt, and nothing else. The temporary repository the consumer
+#   resolved from goes away with the run, because what is used is released:
+#   a gate that leaves a directory behind on every run is a leak, and leaks
+#   accumulate. The evidence of what the consumer resolved from travels in
+#   the receipt, which is a small file the reader decides where to put: the
+#   version it resolved, the repository it resolved from, how many artifacts
+#   matched the digests that repository declares, and the digest of the client
+#   artifact the consumer ran with.
 #
 # Usage:
 #   verify-external-consumer.sh [--sdk-repo <dir>] [--out <file>]
@@ -106,11 +109,9 @@ fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/pipelinek-consumer.XXXXXX")"
 # The temporary repository lives in a directory of its OWN, and that directory
-# outlives the run on purpose: it is the EVIDENCE of what the consumer
-# resolved from, and a reader that has to check that declaration —the gate
-# that reads this script's own output, or a person —needs the directory to be
-# there after the run. Everything else this run builds is transient and goes
-# away with it.
+# goes away with the run: what is used is released. The evidence of what the
+# consumer resolved from travels in the receipt, which is a small file the
+# reader decides where to put.
 EVIDENCE="$(mktemp -d "${TMPDIR:-/tmp}/pipelinek-sdk-repo.XXXXXX")"
 SERVICE_PID=""
 
@@ -124,10 +125,12 @@ stop_service() {
 
 cleanup() {
     stop_service
-    case "$WORK" in
-        /tmp/*|/var/tmp/*|"${TMPDIR:-/tmp}"/*) rm -rf "$WORK" ;;
-        *) printf 'verify-external-consumer: refusing to delete %s\n' "$WORK" >&2 ;;
-    esac
+    for directory in "$WORK" "$EVIDENCE"; do
+        case "$directory" in
+            /tmp/*|/var/tmp/*|"${TMPDIR:-/tmp}"/*) rm -rf "$directory" ;;
+            *) printf 'verify-external-consumer: refusing to delete %s\n' "$directory" >&2 ;;
+        esac
+    done
 }
 trap cleanup EXIT
 
@@ -235,7 +238,9 @@ consumer_build() {
 # The refresh is here because the gate has to measure the repository as it is
 # NOW: without it the resolution may answer with what a previous build
 # remembered, and the gate would measure that instead of the repository.
+MEASUREMENT="$WORK/identity-measurement.txt"
 if ! consumer_build "$CONSUMER" "$REPO" --refresh-dependencies \
+    -PidentityMeasurement="$MEASUREMENT" \
     installDist verifyRuntimeClasspath verifyResolvedIdentity > "$WORK/consumer.log" 2>&1; then
     tail -30 "$WORK/consumer.log" >&2
     fail "the consumer could not resolve the published SDK, compile against it and pass its own laws"
@@ -366,13 +371,33 @@ fi
 row "withdrawn dependency the same consumer failed with the client artifact withdrawn, as it must"
 
 # ── the receipt ───────────────────────────────────────────────────────────────
+#
+# The receipt is what the run leaves behind, because the run leaves NOTHING
+# else alive: the temporary repository goes away with it, and a reader that
+# wants to know what the consumer resolved from reads the receipt.
+#
+# The receipt carries the MEASUREMENT and not a claim about it: how many
+# artifacts matched the digests the repository declares, and the digest of the
+# client artifact the consumer ran with. A receipt without them is refused
+# before it is written: a receipt that says nothing measured is a receipt that
+# reads like a green.
 if [[ -n "$OUT_FILE" ]]; then
+    MATCHED="$(sed -n 's/^artifacts_matched=//p' "$MEASUREMENT" | head -1)"
+    CLIENT_DIGEST="$(sed -n 's/^client_digest=//p' "$MEASUREMENT" | head -1)"
+    if [[ ! "$MATCHED" =~ ^[0-9]+$ ]] || [[ "$MATCHED" -le 0 ]]; then
+        fail "the consumer resolved no artifact whose digest the repository declares; the receipt would say nothing measured"
+    fi
+    if [[ ! "$CLIENT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+        fail "the receipt carries no digest of the client artifact the consumer ran with"
+    fi
     {
         printf 'consumer=1\n'
         printf 'sdk_version=%s\n' "$VERSION"
         printf 'sdk_repository=%s\n' "$REPO"
         printf 'run_id=%s\n' "$RUN_ID"
         printf 'question=answered\n'
+        printf 'artifacts_matched=%s\n' "$MATCHED"
+        printf 'client_digest=%s\n' "$CLIENT_DIGEST"
         printf 'negative_empty_repository=refused\n'
         printf 'negative_withdrawn_dependency=refused\n'
     } > "$OUT_FILE"

@@ -179,6 +179,15 @@ val forbiddenRuntimeGroups: List<String> = listOf(
 )
 
 /**
+ * The artifact the consumer talks to the service with.
+ *
+ * Its digest is the identity of what the consumer ran with: the receipt of the
+ * gate names it, so a reader knows which bytes the consumer had without
+ * having to look at a directory the gate is about to delete.
+ */
+val clientArtifactName: String = "pipelinek-service-client"
+
+/**
  * The upstream classes the SDK's published surface names.
  *
  * A consumer that compiles against `ServiceClient` compiles against the
@@ -312,12 +321,23 @@ val verifyResolvedIdentity by tasks.registering {
     val repository = sdkRepo
     val productGroups = setOf("dev.rubentxu.pipelinek", "dev.rubentxu.pipeline.v2")
     val groupPaths = listOf("dev/rubentxu/pipelinek", "dev/rubentxu/pipeline/v2")
+    val client = clientArtifactName
+    // The file the measurement is written to, when the caller names one. The
+    // gate asks for it because the receipt it writes has to carry the
+    // measurement without a reader having to look at a directory the gate is
+    // about to delete.
+    val measurement = providers.gradleProperty("identityMeasurement").orNull
     doLast {
         val root = File(repository)
         val configuration = classpath.get()
         val files = configuration.files.filter { it.isFile }
         val mismatches = mutableListOf<String>()
-        var measured = 0
+        // The artifacts are counted ONCE each: the same artifact is measured
+        // twice —once as the resolution and once as a file of the classpath—
+        // and a count that counted it twice would report a number of
+        // measurements where the reader expects a number of artifacts.
+        val matched = mutableSetOf<String>()
+        var clientDigest: String? = null
 
         // Every artifact of the SDK that the consumer RESOLVED has to be one the
         // repository carries, with the digest the repository declares.
@@ -339,13 +359,17 @@ val verifyResolvedIdentity by tasks.registering {
                 }
                 val declaredDigest = declared.readText().trim()
                 val publishedDigest = sha256Of(published)
+                val resolvedDigest = sha256Of(artifact.file)
                 if (declaredDigest != publishedDigest) {
                     mismatches.add("${id.name}: the digest the repository declares is not the digest of its own bytes")
                 }
-                if (sha256Of(artifact.file) != publishedDigest) {
+                if (resolvedDigest != publishedDigest) {
                     mismatches.add("${id.name}: the consumer resolved bytes the repository does not declare")
                 }
-                measured++
+                matched.add("${id.name}-${id.version}.jar")
+                if (id.name == client) {
+                    clientDigest = resolvedDigest
+                }
             }
 
         // Every FILE of the classpath that names a published artifact has to BE
@@ -373,7 +397,7 @@ val verifyResolvedIdentity by tasks.registering {
                                     "${jar.name}: the classpath carries bytes the repository does not declare",
                                 )
                             }
-                            measured++
+                            matched.add(jar.name)
                         }
                     }
                 }
@@ -386,10 +410,16 @@ val verifyResolvedIdentity by tasks.registering {
                     mismatches.joinToString("\n  "),
             )
         }
-        if (measured == 0) {
+        if (matched.isEmpty()) {
             throw GradleException("the consumer resolved no artifact of the SDK; nothing was measured")
         }
-        println("consumer: ${measured} artifact(s) match the digests the repository declares")
+        if (measurement != null) {
+            File(measurement).writeText(
+                "artifacts_matched=${matched.size}\n" +
+                    "client_digest=${clientDigest ?: ""}\n",
+            )
+        }
+        println("consumer: ${matched.size} artifact(s) match the digests the repository declares")
     }
 }
 

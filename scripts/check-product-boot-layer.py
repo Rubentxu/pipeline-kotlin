@@ -256,6 +256,11 @@ DECLARED_EXECUTABLES = {
         "the installer of a published release: it installs the archive for a "
         "user and asks the installed command for its version"
     ),
+    "scripts/list-skipped-rows.py": (
+        "the namer of the rows that did not measure: it parses the JUnit "
+        "reports of a lane, names the rows those reports declare as skipped, "
+        "and starts nothing"
+    ),
     "scripts/read-junit-reports.py": (
         "the reader of the gate's census: it parses the JUnit reports of a "
         "lane and starts nothing"

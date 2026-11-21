@@ -246,6 +246,11 @@ reference_summary=""
 # The stage and the reason of the failure, when there is one.
 gate_failed_stage=""
 gate_failed_reason=""
+# Whether the run ended because a row did not measure. A run that did not
+# measure is not a green and it is not a red stage either: the lane ran, it
+# measured what it could, and it says in its receipt how many rows it could
+# not measure.
+gate_not_measured=0
 
 # Whether this run measured less than the whole gate. A stage filter measures
 # less than the whole just as a module filter does, and a run that measured
@@ -287,7 +292,7 @@ reference_field() {
 }
 
 tests_field() {
-    if [[ "$gate_failed_stage" == "3" ]]; then
+    if [[ "$gate_failed_stage" == "3" && "$gate_not_measured" != "1" ]]; then
         printf 'tests=FAILED'
     elif [[ "$unit_tests_ran" == 1 ]]; then
         printf 'tests=executed:%d failed:%d skipped:%d rewritten:%d read:%d' \
@@ -298,7 +303,7 @@ tests_field() {
 }
 
 integration_field() {
-    if [[ "$gate_failed_stage" == "4" ]]; then
+    if [[ "$gate_failed_stage" == "4" && "$gate_not_measured" != "1" ]]; then
         printf 'integration=FAILED'
     elif [[ "$integration_tests_ran" == 1 ]]; then
         printf 'integration=executed:%d failed:%d skipped:%d rewritten:%d read:%d' \
@@ -343,9 +348,9 @@ stages_field() {
 print_verdict() {
     local status="$1"
     printf '\n'
-    if [[ "$status" == "FAIL" ]]; then
-        printf 'FAIL %s stage=%s reason="%s" %s %s %s %s %s\n' \
-            "$(identity_fields)" "$gate_failed_stage" "$gate_failed_reason" \
+    if [[ "$status" == "FAIL" || "$status" == "NOT_MEASURED" ]]; then
+        printf '%s %s stage=%s reason="%s" %s %s %s %s %s\n' \
+            "$status" "$(identity_fields)" "$gate_failed_stage" "$gate_failed_reason" \
             "$(reference_field)" "$(tests_field)" "$(integration_field)" \
             "$(mutants_field)" "$(stages_field)"
         return
@@ -367,12 +372,12 @@ print_verdict() {
     fi
 }
 
-# A red run names the stage that is red and prints the verdict of the run.
+# The stage that is red and the reason of the failure, recorded once.
 #
 # The stage is the FIRST word of the message, so it can be read back from it:
 # the verdict says which stage failed without the caller having to say it
 # twice.
-fail() {
+record_failure() {
     local rest="${1#stage }"
     gate_failed_stage="${rest%%[^0-9]*}"
     if [[ "$rest" == *": "* ]]; then
@@ -387,8 +392,26 @@ fail() {
         4) stage4_wall_ms=$(( $(now_ms) - stage4_started_ms )); stage4_ran=1 ;;
         5) stage5_wall_ms=$(( $(now_ms) - stage5_started_ms )); stage5_ran=1 ;;
     esac
+}
+
+fail() {
+    record_failure "$1"
     printf 'verify-all: FAILED at %s\n' "$1" >&2
     print_verdict FAIL
+    exit 1
+}
+
+# A run that did not measure everything it asked is not a green.
+#
+# The run names the stage whose rows did not measure and the COUNT of those
+# rows, and the receipt of that lane keeps its counters: a reader of the
+# receipt has to be able to tell a run that measured everything from a run
+# that did not, and a field that reads FAILED says nothing about the rows.
+not_measured() {
+    record_failure "$1"
+    gate_not_measured=1
+    printf 'verify-all: NOT MEASURED at %s\n' "$1" >&2
+    print_verdict NOT_MEASURED
     exit 1
 }
 
@@ -950,6 +973,27 @@ census_reports() {
         "$reports" "$total" "$failed" "$skipped" "$rewritten" "$module"
 }
 
+# The rows of a lane that did not measure, named by the class and the name the
+# report gives them.
+#
+# The reader is asked only when the census counted a row that did not measure,
+# so a run that measured everything pays nothing for the naming. A run whose
+# reports cannot be read names nothing and says so: the law is armed on the
+# COUNT the census read, and the naming is what makes the count actionable.
+name_unmeasured_rows() {
+    local results_dir="$1"
+    local paths=()
+    local xml
+    while IFS= read -r xml; do
+        [[ -n "$xml" ]] || continue
+        paths+=("$xml")
+    done < <(find "$results_dir" -name 'TEST-*.xml' 2>/dev/null | LC_ALL=C sort)
+    if [[ ${#paths[@]} -eq 0 ]]; then
+        return 0
+    fi
+    python3 scripts/list-skipped-rows.py "${paths[@]}"
+}
+
 # --- The instrument of a FILTERED run --------------------------------------------
 #
 # A filter that matches nothing is not a defect of the tree: it is a fact
@@ -990,6 +1034,7 @@ silent_modules=()
 undeclared_modules=()
 empty_modules=()
 selected_out_unit_modules=()
+unmeasured_unit_modules=()
 
 if want_stage 3; then
     stage3_ran=1
@@ -1063,6 +1108,9 @@ if want_stage 3; then
             unit_skipped=$((unit_skipped + skipped))
             unit_rewritten=$((unit_rewritten + rewritten))
             unit_read=$((unit_read + reports - rewritten))
+            if [[ "$skipped" -gt 0 ]]; then
+                unmeasured_unit_modules+=("$m")
+            fi
         done
 
         if [[ ${#silent_modules[@]} -gt 0 ]]; then
@@ -1103,6 +1151,31 @@ if want_stage 3; then
                 "$unit_selected_out"
             printf '  %s\n' "${selected_out_unit_modules[@]}"
         fi
+
+        # A row that did not measure is not a pass.
+        #
+        # The census counted the rows the reports declare as skipped, and the
+        # COUNT is what this law is armed on: the message of a row is the row's
+        # own prose and it changes with the platform, while the count is what
+        # the reports DECLARE. A lane that declares a row that did not measure
+        # is NOT MEASURED, and the gate says so instead of saying PASS.
+        #
+        # The rows are named below, because a reader who is told that a row did
+        # not measure has to know which one to pay again, and the reader pays
+        # it with the lane of its module and a FREE machine.
+        if [[ "$unit_skipped" -gt 0 ]]; then
+            printf '    the unit lane declares rows that did NOT measure (skipped:%d).\n' \
+                "$unit_skipped" >&2
+            printf '    A row that did not measure is an absence and not a pass: the\n' >&2
+            printf '    gate refuses the run instead of saying PASS, and the reader\n' >&2
+            printf '    repays each of them with the lane of its module and a FREE\n' >&2
+            printf '    machine.\n' >&2
+            for m in "${unmeasured_unit_modules[@]}"; do
+                printf '  %s\n' "$m" >&2
+                name_unmeasured_rows "$m/build/test-results/test" >&2
+            done
+            not_measured "stage 3: the unit lane did not measure $unit_skipped of its rows (skipped:$unit_skipped); repay the lane of the module with a free machine"
+        fi
     fi
 fi
 
@@ -1120,6 +1193,7 @@ silent_integration_modules=()
 undeclared_integration_modules=()
 empty_integration_modules=()
 selected_out_integration_modules=()
+unmeasured_integration_modules=()
 
 if want_stage 4; then
     stage4_ran=1
@@ -1187,6 +1261,9 @@ if want_stage 4; then
             integration_skipped=$((integration_skipped + skipped))
             integration_rewritten=$((integration_rewritten + rewritten))
             integration_read=$((integration_read + reports - rewritten))
+            if [[ "$skipped" -gt 0 ]]; then
+                unmeasured_integration_modules+=("$m")
+            fi
         done
 
         if [[ ${#silent_integration_modules[@]} -gt 0 ]]; then
@@ -1224,6 +1301,23 @@ if want_stage 4; then
             printf '    %d modules the filter selected out (they hold no test it names)\n' \
                 "$integration_selected_out"
             printf '  %s\n' "${selected_out_integration_modules[@]}"
+        fi
+
+        # The same law as the unit lane, on the same shape: the COUNT of the
+        # rows the reports declare as skipped, and the rows named for the
+        # reader who has to repay them.
+        if [[ "$integration_skipped" -gt 0 ]]; then
+            printf '    the integration lane declares rows that did NOT measure\n' >&2
+            printf '    (skipped:%d). A row that did not measure is an absence and not\n' \
+                "$integration_skipped" >&2
+            printf '    a pass: the gate refuses the run instead of saying PASS, and the\n' >&2
+            printf '    reader repays each of them with the lane of its module and a\n' >&2
+            printf '    FREE machine.\n' >&2
+            for m in "${unmeasured_integration_modules[@]}"; do
+                printf '  %s\n' "$m" >&2
+                name_unmeasured_rows "$m/build/test-results/integrationTest" >&2
+            done
+            not_measured "stage 4: the integration lane did not measure $integration_skipped of its rows (skipped:$integration_skipped); repay the lane of the module with a free machine"
         fi
     fi
 fi

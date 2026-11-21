@@ -63,6 +63,13 @@ RULES: list[tuple[str, str, str]] = [
     # the reference of the published contracts, and it ships nothing: it is
     # the numerator too.
     ("verify", "source guard", "scripts/check-published-reference.py"),
+    # The readers of the JUnit reports the lanes of the gate wrote. They read
+    # the reports and report; they produce no artifact and ship nothing, so
+    # they are the numerator and not the denominator. The catch-all rule below
+    # calls every other script a release tool, and a reader caught by it would
+    # make the ratio look better than the truth.
+    ("verify", "junit report reader", "scripts/read-junit-reports.py"),
+    ("verify", "junit report reader", "scripts/list-skipped-rows.py"),
     # The external-consumer check verifies the published artifacts against a
     # consumer outside this repository. It does not ship them: it runs on the
     # publisher's machine during publication. Counting it as production would

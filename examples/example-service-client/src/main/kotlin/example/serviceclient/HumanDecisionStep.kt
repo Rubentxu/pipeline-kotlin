@@ -54,6 +54,13 @@ object HumanDecisionStep {
         descriptor = StepDescriptor(
             stepId = KEY.value,
             name = "humanDecision",
+            // The equivalent in Jenkins is its `input` step: both ask a person and continue
+            // only on the affirmative answer.
+            jenkinsSurface = "input",
+            // The divergence, with its motive: this step asks through the port of the
+            // published SDK, and the submitter it carries is attribution and not
+            // authorization.
+            jenkinsDivergence = "it asks through the port of the published SDK, and the submitter it carries is attribution and not authorization",
             configRef = "",
         ),
         inputCodec = StringCodec,

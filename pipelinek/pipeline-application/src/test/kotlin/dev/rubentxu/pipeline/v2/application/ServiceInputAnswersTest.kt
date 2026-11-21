@@ -3,12 +3,12 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.runtime.FileInputDecisions
 import dev.rubentxu.pipeline.v2.runtime.InputAnswerCodec
-import dev.rubentxu.pipeline.v2.runtime.InputDecision
-import dev.rubentxu.pipeline.v2.runtime.InputOperation
+import dev.rubentxu.pipeline.v2.runtime.input.InputDecision
+import dev.rubentxu.pipeline.v2.runtime.input.InputOperation
 import dev.rubentxu.pipeline.v2.runtime.InputQuestionCodec
 import dev.rubentxu.pipeline.v2.runtime.InputQuestionLayout
-import dev.rubentxu.pipeline.v2.runtime.InputRequest
-import dev.rubentxu.pipeline.v2.runtime.InputResolution
+import dev.rubentxu.pipeline.v2.runtime.input.InputRequest
+import dev.rubentxu.pipeline.v2.runtime.input.InputResolution
 import dev.rubentxu.pipeline.v2.runtime.PublishedInputQuestion
 import dev.rubentxu.pipeline.v2.runtime.durable.OpId
 import dev.rubentxu.pipeline.v2.runtime.inspect.IntrospectionFailure

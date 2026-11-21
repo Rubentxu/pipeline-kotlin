@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.runtime.InputAnswerCodec
-import dev.rubentxu.pipeline.v2.runtime.InputDecision
+import dev.rubentxu.pipeline.v2.runtime.input.InputDecision
 import dev.rubentxu.pipeline.v2.runtime.InputQuestionCodec
 import dev.rubentxu.pipeline.v2.runtime.InputQuestionLayout
 import dev.rubentxu.pipeline.v2.runtime.PublishedInputQuestion

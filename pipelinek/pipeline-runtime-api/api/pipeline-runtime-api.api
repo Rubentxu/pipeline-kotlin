@@ -861,6 +861,130 @@ public final class dev/rubentxu/pipeline/v2/runtime/explain/RunDiagnosisKt {
 	public static final fun classify (Ldev/rubentxu/pipeline/v2/runtime/explain/DiagnosisFacts;Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness;)Ldev/rubentxu/pipeline/v2/runtime/explain/Diagnosis;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/input/InputDecision {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/input/InputDecision$Abort : dev/rubentxu/pipeline/v2/runtime/input/InputDecision {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/input/InputDecision$Abort;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/input/InputDecision$Abort;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/input/InputDecision$Abort;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getSubmitter ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/input/InputDecision$Proceed : dev/rubentxu/pipeline/v2/runtime/input/InputDecision {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/input/InputDecision$Proceed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/input/InputDecision$Proceed;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/input/InputDecision$Proceed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getSubmitter ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/input/InputDecisions {
+	public abstract fun awaitDecision (Ldev/rubentxu/pipeline/v2/runtime/input/InputRequest;Ljava/lang/Long;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/input/InputDecisionsKt {
+	public static final fun getINPUT_DECISIONS_CAPABILITY ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/input/InputDenialReason {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/input/InputDenialReason$Cancelled : dev/rubentxu/pipeline/v2/runtime/input/InputDenialReason {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason$Cancelled;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/input/InputDenialReason$TimedOut : dev/rubentxu/pipeline/v2/runtime/input/InputDenialReason {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason$TimedOut;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason$TimedOut;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason$TimedOut;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getWaitedMillis ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/input/InputDenialReason$Unanswerable : dev/rubentxu/pipeline/v2/runtime/input/InputDenialReason {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason$Unanswerable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason$Unanswerable;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason$Unanswerable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDiagnostic ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/input/InputOperation {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/input/InputOperation;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/input/InputOperation;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/input/InputOperation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOpId ()Ljava/lang/String;
+	public final fun getRunId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/input/InputRequest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/input/InputRequest;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/input/InputRequest;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/input/InputRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()Ljava/lang/String;
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getOk ()Ljava/lang/String;
+	public final fun getSubmitter ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/input/InputResolution {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/input/InputResolution$Answered : dev/rubentxu/pipeline/v2/runtime/input/InputResolution {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/input/InputDecision;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/input/InputDecision;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/input/InputDecision;)Ldev/rubentxu/pipeline/v2/runtime/input/InputResolution$Answered;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/input/InputResolution$Answered;Ldev/rubentxu/pipeline/v2/runtime/input/InputDecision;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/input/InputResolution$Answered;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDecision ()Ldev/rubentxu/pipeline/v2/runtime/input/InputDecision;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/input/InputResolution$Denied : dev/rubentxu/pipeline/v2/runtime/input/InputResolution {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason;)Ldev/rubentxu/pipeline/v2/runtime/input/InputResolution$Denied;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/input/InputResolution$Denied;Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/input/InputResolution$Denied;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/runtime/input/InputDenialReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionFailure {
 }
 

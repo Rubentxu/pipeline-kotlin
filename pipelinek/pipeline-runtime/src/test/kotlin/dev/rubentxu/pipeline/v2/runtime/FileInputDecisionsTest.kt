@@ -1,6 +1,10 @@
 package dev.rubentxu.pipeline.v2.runtime
 
 import dev.rubentxu.pipeline.v2.runtime.durable.OpId
+import dev.rubentxu.pipeline.v2.runtime.input.InputDecision
+import dev.rubentxu.pipeline.v2.runtime.input.InputOperation
+import dev.rubentxu.pipeline.v2.runtime.input.InputRequest
+import dev.rubentxu.pipeline.v2.runtime.input.InputResolution
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Assertions.assertEquals

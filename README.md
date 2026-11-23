@@ -1037,8 +1037,9 @@ The repository now includes small, dependency-free local adapters in `scripts/`:
 
 - [DSL signature index](docs/local-automation.md#1-índice-de-firmas-dsl): source-derived Kotlin signatures, receivers and KDoc, cross-referenced with `pipelinek steps --json` without inventing one-to-one runtime bindings.
 - [Local performance reports](docs/local-automation.md#3-datos-locales-de-tiempo-y-recursos): typed events → private per-run JSON, per-stage/step timings, pre-run CPU/memory/disk/cgroup snapshot, and an offline static HTML trend dashboard.
+- [Crash-safe local continuation](docs/local-automation.md#5-reanudación-local-tras-reinicio-caída-del-proceso-o-pérdida-de-alimentación): the installed distribution includes a universal `tools/pipelinek-run-with-metrics.py` with `--status`, `--resume` and `--resume-or-new`. Its private journal and OS lock survive process crashes; PipelineK's native durable cursor, leases and replay policy decide whether effects can actually resume. No re-execution of an uncertain external effect is promised.
 
-These are scripts, not yet new `pipelinek` subcommands. They never require GitHub Actions or hosted telemetry. Run `python3 scripts/test_pipelinek_automation_tools.py` to exercise their local behavioral checks. The authoritative pipeline engine, `inspect --profile` and build/test policy are unchanged.
+The helper scripts are distributed under `tools/`, not required by the JVM CLI. The `pipelinek dsl index` and `pipelinek dsl describe <symbol>` verbs query the packaged core Kotlin signature index; `pipelinek steps --json` remains authoritative for installed runtime/plugin capabilities. No GitHub Actions or hosted telemetry is required. Run `python3 scripts/test_pipelinek_automation_tools.py` and `python3 scripts/test_pipelinek_metrics_runner.py` to exercise the local behavioral checks. The authoritative pipeline engine, `inspect --profile` and build/test policy are unchanged.
 
 ---
 

@@ -38,6 +38,9 @@ if mode == 'version':
     print(json.dumps({'schema':'pipelinek.version/test','version':os.environ.get('FAKE_VERSION','test-1')}))
     sys.exit(0)
 if mode == 'inspect':
+    if os.environ.get('FAKE_INSPECT_STATE') == 'unobservable':
+        print('run-state unobservable')
+        sys.exit(0)
     if Path('completed.marker').exists():
         print('run-state terminal outcome=succeeded at=0')
     else:
@@ -183,6 +186,43 @@ sys.exit(93)
             denied = self.invoke(flags=("--resume", "--accept-unverified-inputs"))
             self.assertEqual(denied.returncode, 2)
             self.assertIn("already owns", denied.stderr)
+
+    def test_resume_or_new_starts_and_then_resumes_only_when_needed(self):
+        crash = self.invoke({"FAKE_RUN_EXIT": "7"}, flags=("--resume-or-new",))
+        self.assertEqual(crash.returncode, 7)
+        resumed = self.invoke(flags=("--resume-or-new", "--accept-unverified-inputs"))
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        self.assertTrue((self.project / "resumed.marker").exists())
+        manifests = list(self.state.glob("pipelinek/projects/*/reports/executions/*/session.json"))
+        self.assertEqual(len(manifests), 1)
+        self.assertEqual(json.loads(manifests[0].read_text())["attempts"], 2)
+
+    def test_explicit_new_cannot_duplicate_unfinished_effect(self):
+        self.assertEqual(self.invoke({"FAKE_RUN_EXIT": "7"}).returncode, 7)
+        other = self.invoke(flags=("--new",))
+        self.assertEqual(other.returncode, 2)
+        self.assertIn("no verified terminal", other.stderr)
+        manifests = list(self.state.glob("pipelinek/projects/*/reports/executions/*/session.json"))
+        self.assertEqual(len(manifests), 1)
+
+    def test_unobservable_journal_refuses_replay(self):
+        self.assertEqual(self.invoke({"FAKE_RUN_EXIT": "7"}).returncode, 7)
+        denied = self.invoke(
+            {"FAKE_INSPECT_STATE": "unobservable"},
+            flags=("--resume", "--accept-unverified-inputs")
+        )
+        self.assertEqual(denied.returncode, 2)
+        self.assertIn("unobservable", denied.stderr)
+        self.assertFalse((self.project / "resumed.marker").exists())
+
+    def test_manifest_does_not_serialize_run_args_or_credentials(self):
+        first = self.invoke({"FAKE_RUN_EXIT": "7"})
+        self.assertEqual(first.returncode, 7)
+        manifest = next(self.state.glob("pipelinek/projects/*/reports/executions/*/session.json"))
+        content = manifest.read_text(encoding="utf-8")
+        self.assertIn("pipelinek.local-session/v1", content)
+        self.assertNotIn("FAKE_RUN_EXIT", content)
+        self.assertNotIn("PIPELINE_CREDENTIALS_MASKING", content)
 
     def test_conflicting_db_flag_is_refused(self):
         runner = self._load_runner()

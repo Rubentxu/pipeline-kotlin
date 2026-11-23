@@ -264,7 +264,7 @@ sys.exit(93)
         session = next(self.state.glob("pipelinek/projects/*/reports/executions/*/session.json"))
         mapping = session.parent / "control" / "last-run"
         mapping.mkdir(parents=True)
-        (mapping / "definition-1").write_text("different-run-id\\n")
+        (mapping / "definition-1").write_text("different-run-id\n")
         denied = self.invoke(flags=("--resume", "--accept-unverified-inputs"))
         self.assertEqual(denied.returncode, 2)
         self.assertIn("disagree", denied.stderr)

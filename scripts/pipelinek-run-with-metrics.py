@@ -90,14 +90,16 @@ def consume_launch(stream, on_launch=None):
             if len(raw) <= MAX_LINE:
                 try:
                     item = json.loads(raw)
-                    if item.get("schema") == "pipelinek.launch/1" and item.get("status") == "Launched":
-                        value = item.get("runId")
-                        if isinstance(value, str) and ID.fullmatch(value):
-                            run_id = value
-                            if on_launch is not None:
-                                on_launch(value)
-                except (UnicodeError, ValueError, AttributeError):
-                    pass
+                except (UnicodeError, ValueError):
+                    continue
+                if isinstance(item, dict) and item.get("schema") == "pipelinek.launch/1" and item.get("status") == "Launched":
+                    value = item.get("runId")
+                    if isinstance(value, str) and ID.fullmatch(value):
+                        run_id = value
+                        if on_launch is not None:
+                            # Persisting the launch receipt is part of crash safety:
+                            # an I/O failure must propagate, never be masked as parsing.
+                            on_launch(value)
         if len(pending) > MAX_LINE:
             pending.clear()
     return run_id
@@ -218,13 +220,13 @@ def execute(args):
         attempt = int(manifest.get("attempts", 0)) + 1
         attempt_snapshot = active / ("resources-at-attempt-" + str(attempt) + ".json")
         report.json_write(attempt_snapshot, report.resources(str(project)))
+        command = launch_command(
+            executable, script, journal, control_root, args.pipelinek_args, resume=is_resume
+        )
         manifest["attempts"] = attempt
         manifest["status"] = "LAUNCH_REQUESTED"
         manifest["lastAttemptStartedAt"] = datetime.now(timezone.utc).isoformat()
         report.json_write(active / "session.json", manifest)
-        command = launch_command(
-            executable, script, journal, control_root, args.pipelinek_args, resume=is_resume
-        )
         environment = os.environ.copy()
         environment["PIPELINE_CREDENTIALS_MASKING"] = "required"
         before = resource.getrusage(resource.RUSAGE_CHILDREN) if resource else None

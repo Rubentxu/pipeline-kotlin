@@ -91,6 +91,44 @@ def executable_identity(binary):
     return sha(json.dumps(doc, sort_keys=True, separators=(",", ":")).encode())
 
 
+def declared_file_inputs(project, extra):
+    """Pin trusted local plugin bytes, without persisting filenames or plaintext."""
+    pin_flags = {"--plugin-jar", "--plugin-trust"}
+    sensitive_flags = {"--run-inputs", "--run-config", "--credential-broker"}
+    pins = []
+    unresolved = []
+    index = 0
+    while index < len(extra):
+        token = extra[index]
+        key, delimiter, inline = token.partition("=")
+        if key in pin_flags | sensitive_flags:
+            if delimiter:
+                value = inline
+            else:
+                if index + 1 >= len(extra):
+                    raise ValueError("file option missing a value: " + key)
+                index += 1
+                value = extra[index]
+            if not value or value.startswith("--"):
+                raise ValueError("file option requires a nonblank path: " + key)
+            if key in sensitive_flags:
+                # Secrets/parameter files must not be hashed into a persisted
+                # public identifier (low-entropy secret dictionary exposure).
+                unresolved.append(key)
+            else:
+                path = Path(value).expanduser()
+                path = path if path.is_absolute() else project / path
+                if not path.is_file():
+                    raise ValueError("cannot verify local plugin/trust file: " + key)
+                digest = hashlib.sha256()
+                with path.open("rb") as handle:
+                    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                pins.append({"option": key, "sha256": digest.hexdigest()})
+        index += 1
+    return pins, sorted(set(unresolved))
+
+
 def session_identity(project, script, workflow, binary_digest, extra, source):
     return {
         "project": sha(str(project.resolve()).encode()),
@@ -98,6 +136,8 @@ def session_identity(project, script, workflow, binary_digest, extra, source):
         "workflow": workflow,
         "runtime": binary_digest,
         "invocation": sha(json.dumps(extra, ensure_ascii=False, separators=(",", ":")).encode()),
+        "localFilePins": declared_file_inputs(project, extra)[0],
+        "unverifiedInputs": declared_file_inputs(project, extra)[1],
         "source": source,
     }
 

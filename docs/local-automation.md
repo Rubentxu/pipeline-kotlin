@@ -76,3 +76,44 @@ La CLI `events` tiene límite por defecto de 100 registros. Exigir una ventana s
 ## 4. Alcance y verificación
 
 Una ejecución afectada (`SUBSET`) solo mide el subconjunto ejecutado. Un gate FULL lo decide el proyecto consumidor y una certificación de release requiere comprobar el artefacto distribuido. Los adaptadores de reportes no cambian esas políticas, el scheduler ni el resultado del motor; son observadores independientes de hechos existentes.
+
+## 5. Reanudación local tras reinicio, caída del proceso o pérdida de alimentación
+
+**Se reutilizan las capacidades durables del motor; no se reimplementa el replay.** El journal SQLite, el control root, los cursores, el lease/fencing y las políticas de replay siguen siendo autoridad de PipelineK. El helper `pipelinek-run-with-metrics.py` añade sesiones persistidas y una interfaz reproducible a partir de cualquier proyecto que tenga un `.pipeline.kts`.
+
+Herramientas entregadas junto a la distribución instalada (no requieren checkout de PipelineK):
+
+```bash
+PIPELINEK_BIN="$(command -v pipelinek)"
+PIPELINEK_HOME="$(cd "$(dirname "$(readlink -f "$PIPELINEK_BIN")")/.." && pwd)"
+RUNNER="$PIPELINEK_HOME/tools/pipelinek-run-with-metrics.py"
+
+# Tras iniciar el proyecto: si no existe una sesión pendiente crea un run;
+# si ya existe una interrumpida y segura, pide a PipelineK que la reanude.
+python3 "$RUNNER" --project . --script pipeline.kts --workflow ci --resume-or-new
+
+# Después de reiniciar la máquina, revisar el estado antes de actuar:
+python3 "$RUNNER" --project . --script pipeline.kts --workflow ci --status
+
+# Continuar estrictamente la sesión interrumpida, sin abrir una nueva:
+python3 "$RUNNER" --project . --script pipeline.kts --workflow ci --resume
+```
+
+Los ejemplos presuponen el layout estándar de distribución (`bin/pipelinek` y `tools/`) y POSIX con `fcntl`. El script del proyecto puede estar bajo `pipelines/` con `--script pipelines/ci/affected.pipeline.kts`; la herramienta no presupone lenguaje ni estructura del código. Cada workflow usa un lock OS local, sesiones separadas, directorios privados y journal/control root persistentes fuera del repositorio bajo XDG State. El helper no necesita GitHub Actions, una base de datos externa ni un proceso residente.
+
+**La selección es conservadora.** La reanudación exige exactamente una sesión elegible, igual identidad de PipelineK instalado, mismos argumentos (comparados por hash), mismo script y los mismos inputs visibles para Git. Un proyecto sin Git se admite para ejecutar, pero solo puede reanudarse con la aceptación expresa `--accept-unverified-inputs`: no podemos certificar sus inputs por defecto. Los ficheros ignorados, secretos, caches, herramientas externas y servicios no se capturan íntegramente; sus cambios deben controlarse mediante la política del proyecto. Para varios runs pendientes, usar `--session <uuid>` después de revisar `--status`, nunca seleccionar arbitrariamente.
+
+**Un cierre observado es definitivo.** Si el run tiene un terminal, `--resume` se niega: no sería recuperación tras caída. Si los resultados externos son inciertos, no se vuelve a ejecutar un publish/deploy/saga como si fuera un test idempotente. Una operación cuyo terminal ya está en el journal puede reconciliarse mediante:
+
+```bash
+pipelinek runs recover <runId> --db <journal.db> --control-root <control-dir> --dry-run
+# Si el resultado es admisible, el operador puede autorizar la recuperación real.
+```
+
+`runs recover` **no relanza efectos**; reconcilia exclusivamente hechos ya persistidos. `pipelinek run --resume --db ... --control-root ... <script>` es la vía nativa que reusa resultados y aplica la política de recuperación de operaciones. Un lease OS de otro proceso o una operación externa con estado ambiguo debe provocar rechazo y diagnóstico, no doble ejecución.
+
+El helper guarda `session.json` de forma atómica con sincronización a disco, más un snapshot de recursos y una muestra de uso de proceso por intento. Recupera la identidad de lanzamiento desde el comprobante `pipelinek.launch/1` o, tras una caída temprana, desde el registro durable `last-run`, únicamente si este es inequívoco. No guarda comandos, variables ni credenciales; persiste digests de la identidad. La pérdida/corrupción del propio journal o de los datos fuera de sus garantías de persistencia no se arregla inventando un checkpoint: se informa como `BLOCKED`.
+
+**Métricas tras interrupción:** el tiempo de calendario entre eventos puede incluir un periodo con la máquina apagada. Las duraciones deben etiquetarse como observadas con huecos; no presentarlas como CPU activa ni sumar stages paralelos. Un dashboard no decide si una recuperación es segura.
+
+Un timer o servicio `systemd --user` local puede invocar `--resume-or-new` tras iniciar sesión, solo con autorización del responsable del proyecto y secretos disponibles. El runner no instala servicios ni intenta automatizar permisos o autorizaciones humanas.

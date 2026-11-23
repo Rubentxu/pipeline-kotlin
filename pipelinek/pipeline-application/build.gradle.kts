@@ -32,6 +32,9 @@ distributions {
             from(rootProject.file("../scripts/pipelinek-run-with-metrics.py")) {
                 into("tools")
             }
+            from(rootProject.file("../scripts/pipelinek-resume-state.py")) {
+                into("tools")
+            }
         }
     }
 }

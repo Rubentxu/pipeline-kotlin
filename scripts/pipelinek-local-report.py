@@ -243,8 +243,17 @@ def dashboard(rows):
     run_rows = []
     stages = defaultdict(list)
     for row in rows:
+        initial = row.get("resourcesAtStart", {})
+        cpu = initial.get("cpu", {})
+        memory = initial.get("memory", {})
+        configuration = (
+            row.get("workflow", "workflow"),
+            str(cpu.get("affinityCount", "unknown")),
+            str(cpu.get("quotaCores", "unknown")),
+            str(memory.get("cgroupLimitBytes", "unknown")),
+        )
         for stage in row.get("stages", []):
-            stages[stage["name"]].append(stage["durationMs"])
+            stages[configuration + (stage["name"],)].append(stage["durationMs"])
     for row in rows[-100:]:
         cpu = row.get("resourcesAtStart", {}).get("cpu", {})
         mem = row.get("resourcesAtStart", {}).get("memory", {})
@@ -255,7 +264,9 @@ def dashboard(rows):
             mem.get("cgroupLimitBytes", "—"),
         ])) + "</tr>")
     stage_rows = []
-    for name, samples in sorted(stages.items()):
+    for key, samples in sorted(stages.items()):
+        workflow, affinity, quota, memory_limit, name = key
+        label = f"{workflow} / {name} (CPU affinity={affinity}, quota={quota}, memory.max={memory_limit})"
         samples = samples[-50:]
         minimum, maximum = min(samples), max(samples)
         scale = max(maximum - minimum, 1)
@@ -268,7 +279,7 @@ def dashboard(rows):
             progression = f"{change:+.1f}%"
         else:
             progression = "muestras insuficientes"
-        stage_rows.append("<tr>" + cell(name) + cell(len(samples)) +
+        stage_rows.append("<tr>" + cell(label) + cell(len(samples)) +
                           cell(str(round(statistics.median(samples)/1000,2)) + " s") +
                           cell(progression) + "<td>" + trend + "</td></tr>")
     return """<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
@@ -276,7 +287,7 @@ def dashboard(rows):
 <h1>PipelineK · métricas locales</h1>
 <p>Duraciones derivadas de eventos durables; recursos de inicio = capacidad/carga previa, no consumo del run. No incluye logs, variables de entorno ni servicios externos.</p>
 <h2>Histórico de ejecuciones</h2><section><table><tr><th>Inicio</th><th>Workflow</th><th>Resultado</th><th>Duración</th><th>Run ID</th><th>CPU afinidad</th><th>Memoria límite cgroup (bytes)</th></tr>""" + "\n".join(run_rows) + """</table></section>
-<h2>Evolución de duración por fase</h2><section><table><tr><th>Fase</th><th>Muestras (hasta 50)</th><th>Mediana</th><th>Últimas 5 frente a 5 anteriores</th><th>Evolución</th></tr>""" + "\n".join(stage_rows) + "</table></section></html>"
+<h2>Evolución de duración por fase y capacidad inicial</h2><section><table><tr><th>Fase</th><th>Muestras (hasta 50)</th><th>Mediana</th><th>Últimas 5 frente a 5 anteriores</th><th>Evolución</th></tr>""" + "\n".join(stage_rows) + "</table></section></html>"
 
 
 def main():

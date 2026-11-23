@@ -37,7 +37,9 @@ import os, sys, time
 from pathlib import Path
 mode = sys.argv[1]
 if mode == 'version':
-    print(json.dumps({'schema':'pipelinek.version/test','version':os.environ.get('FAKE_VERSION','test-1')}))
+    print(json.dumps({'schema':'pipelinek.version/test','version':os.environ.get('FAKE_VERSION','test-1')}), flush=True)
+    if os.environ.get('FAKE_SELF_DELETE') == '1':
+        Path(__file__).unlink()
     sys.exit(0)
 if mode == 'inspect':
     if os.environ.get('FAKE_INSPECT_STATE') == 'unobservable':
@@ -288,6 +290,14 @@ sys.exit(93)
         refused = self.invoke(flags=("--resume-or-new", "--accept-unverified-inputs"))
         self.assertEqual(refused.returncode, 2)
         self.assertIn("found 2", refused.stderr)
+
+    def test_failed_process_spawn_marks_session_abandoned(self):
+        refused = self.invoke({"FAKE_SELF_DELETE": "1"})
+        self.assertEqual(refused.returncode, 2, refused.stderr)
+        sessions = list(self.state.glob("pipelinek/projects/*/reports/executions/*/session.json"))
+        self.assertEqual(len(sessions), 1)
+        row = json.loads(sessions[0].read_text(encoding="utf-8"))
+        self.assertEqual(row["status"], "ABANDONED")
 
     def test_conflicting_db_flag_is_refused(self):
         runner = self._load_runner()

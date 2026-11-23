@@ -226,8 +226,17 @@ def atomic(path, content):
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as output:
             output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
         os.chmod(temp, 0o600)
         os.replace(temp, path)
+        # On POSIX, syncing the parent preserves the rename on abrupt power loss.
+        if os.name == "posix":
+            folder_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(folder_fd)
+            finally:
+                os.close(folder_fd)
     finally:
         if os.path.exists(temp):
             os.unlink(temp)

@@ -75,6 +75,29 @@ class MetricsTest(unittest.TestCase):
         self.assertNotIn("<script>", rendered)
         self.assertNotIn("https://", rendered)
 
+    def test_untrusted_snapshot_data_cannot_enter_report(self):
+        with tempfile.TemporaryDirectory() as location:
+            snap = metrics.resources(".")
+            snap["cpu"]["affinityCount"] = "TOKEN-WOULD-LEAK"
+            file = Path(location) / "snapshot.json"
+            file.write_text(json.dumps(snap), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                metrics.approved_snapshot(file)
+            snap["cpu"]["affinityCount"] = 2
+            snap["EXTRA_SECRET"] = "never-copy-this"
+            file.write_text(json.dumps(snap), encoding="utf-8")
+            safe = metrics.approved_snapshot(file)
+            self.assertNotIn("never-copy-this", json.dumps(safe))
+
+    def test_distinct_workflows_do_not_share_stage_trend(self):
+        first = metrics.project(self.events())
+        first["workflow"] = "ci"
+        second = dict(first)
+        second["workflow"] = "certify"
+        dash = metrics.dashboard([first, second])
+        self.assertIn("ci / stage-0", dash)
+        self.assertIn("certify / stage-0", dash)
+
     def test_snapshot_is_capacity_not_usage(self):
         snapshot = metrics.resources(".")
         self.assertEqual(snapshot["measurement"], "start-capacity-not-process-consumption")
@@ -108,6 +131,15 @@ class DslIndexTest(unittest.TestCase):
             """, encoding="utf-8"
         )
         return base
+
+    def test_signature_description_is_derived_from_kdoc(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            self.fixture(root)
+            index = dsl.generate(root)
+            entry = next(e for e in index["entries"] if e["name"] == "sh")
+            self.assertEqual(entry["description"], "Execute a command safely.")
+            self.assertEqual(entry["returnType"], "Unit")
 
     def test_signatures_and_receivers(self):
         with tempfile.TemporaryDirectory() as name:

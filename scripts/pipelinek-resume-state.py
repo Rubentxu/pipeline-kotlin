@@ -180,8 +180,9 @@ def prior_run_id(folder, manifest):
     return value
 
 
-def preflight(binary, folder, run_id):
-    """Read journal authority before reusing a run ID; never auto-cancel/recover."""
+def run_state(binary, folder, run_id):
+    """Read-only durable state; it cannot decide an external side effect."""
+
     command = [str(binary), "inspect", run_id, "--state",
                "--db", str(folder / "journal.db"),
                "--control-root", str(folder / "control")]
@@ -193,8 +194,17 @@ def preflight(binary, folder, run_id):
     if result.returncode:
         raise ValueError("inspect --state refused the previous run; manual diagnosis required")
     line = result.stdout.decode("utf-8", "replace").strip()
-    if line.startswith("run-state terminal "):
-        raise ValueError("run has a terminal outcome; starting --resume would not be crash recovery")
-    if line not in ("run-state running", "run-state empty", "run-state unobservable"):
+    if not (line.startswith("run-state terminal ") or
+            line in ("run-state running", "run-state empty", "run-state unobservable")):
         raise ValueError("unexpected run-state: refuse automatic resume")
     return line
+
+
+def preflight(binary, folder, run_id):
+    """Only an incomplete run is eligible for PipelineK's native --resume."""
+    line = run_state(binary, folder, run_id)
+    if line.startswith("run-state terminal "):
+        raise ValueError("run has a terminal outcome; starting --resume would not be crash recovery")
+    return line
+
+

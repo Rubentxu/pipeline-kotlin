@@ -36,11 +36,20 @@ def strip_comments_and_strings(source):
             elif two == "/*":
                 state = "block"
             elif chunk == '"""':
+                chars[i:i+3] = [" ", " ", " "]
+                i += 3
                 state = "triple"
+                continue
             elif char == '"':
+                chars[i] = " "
+                i += 1
                 state = "string"
+                continue
             elif char == "'":
+                chars[i] = " "
+                i += 1
                 state = "character"
+                continue
             else:
                 i += 1
                 continue

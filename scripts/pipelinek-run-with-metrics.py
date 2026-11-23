@@ -309,11 +309,36 @@ def execute(args):
             manifest["status"] = "RUNNING"
             report.json_write(active / "session.json", manifest)
 
-        with subprocess.Popen(command, cwd=project, env=environment,
-                              stdout=subprocess.PIPE, stderr=None) as process:
-            reported_run_id = consume_launch(process.stdout, on_launch=on_launch)
-            exit_code = process.wait()
+        try:
+            with subprocess.Popen(command, cwd=project, env=environment,
+                                  stdout=subprocess.PIPE, stderr=None) as process:
+                try:
+                    reported_run_id = consume_launch(process.stdout, on_launch=on_launch)
+                except BaseException:
+                    # The manifest may have been published already. Do not
+                    # abandon a child that could still have effects in flight.
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    raise
+                exit_code = process.wait()
+        except OSError:
+            # The child never started. No durable run or effect can exist
+            # from this invocation; leave no phantom pending session.
+            manifest["status"] = "ABANDONED"
+            report.json_write(active / "session.json", manifest)
+            raise
         run_id = reported_run_id or run_id
+        if run_id is None:
+            try:
+                run_id = recovery.prior_run_id(active, manifest)
+            except (OSError, ValueError):
+                # No receipt does not PROVE there were no effects. Keep UNKNOWN
+                # until operator inspection; do not silently start a new run.
+                pass
         if resource:
             usage = child_resources(before, resource.getrusage(resource.RUSAGE_CHILDREN),
                                     time.monotonic() - started, exit_code)

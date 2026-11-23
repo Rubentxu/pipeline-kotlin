@@ -66,7 +66,7 @@ val generateDslSignatures by tasks.registering(Exec::class) {
         "--out", generatedDslSignatures.get().asFile.absolutePath,
     )
 }
-tasks.named<ProcessResources>("processResources") {
+tasks.named<org.gradle.language.jvm.tasks.ProcessResources>("processResources") {
     dependsOn(generateDslSignatures)
     from(generatedDslSignatures) {
         into("pipelinek")

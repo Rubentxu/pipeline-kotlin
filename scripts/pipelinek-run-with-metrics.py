@@ -218,10 +218,14 @@ def execute(args):
     if not executable:
         raise ValueError("pipelinek executable not installed (or use --pipelinek)")
     executable = str(Path(executable).expanduser().resolve())
+    if not ID.fullmatch(args.workflow):
+        raise ValueError("workflow must be a stable non-secret ID (letters/digits/._-)")
     report = reporter()
     recovery = recovery_module()
-    history = safe_dir(Path(args.history_dir).expanduser().resolve()
-                       if args.history_dir else project_history(project))
+    history_path = Path(args.history_dir).expanduser().resolve() if args.history_dir else project_history(project)
+    if not args.status and (history_path == project or project in history_path.parents):
+        raise ValueError("durable history must live outside project inputs; use XDG state and export HTML separately")
+    history = safe_dir(history_path)
     if args.status:
         return show_status(project, script, args.workflow, executable, history, recovery)
     source = recovery.source_identity(project, script)
@@ -247,6 +251,9 @@ def execute(args):
             active, manifest = recovery.pending(history, identity, args.resume_session)
             if source["mode"] != "git-visible" and not args.accept_unverified_inputs:
                 raise ValueError("non-Git workspace has only a script fingerprint; "
+                                 "explicit --accept-unverified-inputs required")
+            if identity.get("unverifiedInputs") and not args.accept_unverified_inputs:
+                raise ValueError("run uses configuration/credential files not verified by session identity; "
                                  "explicit --accept-unverified-inputs required")
             run_id = recovery.prior_run_id(active, manifest)
             recovery.preflight(executable, active, run_id)

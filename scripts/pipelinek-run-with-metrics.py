@@ -13,7 +13,10 @@ import json
 import os
 from pathlib import Path
 import re
-import resource
+try:
+    import resource
+except ImportError:
+    resource = None
 import shutil
 import subprocess
 import sys
@@ -23,6 +26,7 @@ import uuid
 from importlib.util import module_from_spec, spec_from_file_location
 
 REPORTER_PATH = Path(__file__).with_name("pipelinek-local-report.py")
+RECOVERY_PATH = Path(__file__).with_name("pipelinek-resume-state.py")
 ID = re.compile(r"^[a-zA-Z0-9_.-]{1,128}$")
 MAX_LINE = 32_768
 
@@ -31,6 +35,15 @@ def reporter():
     if not REPORTER_PATH.is_file():
         raise ValueError("missing installed PipelineK local report tool")
     spec = spec_from_file_location("pipelinek_local_report", REPORTER_PATH)
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def recovery_module():
+    if not RECOVERY_PATH.is_file():
+        raise ValueError("installed distribution missing pipelinek-resume-state.py")
+    spec = spec_from_file_location("pipelinek_resume_state", RECOVERY_PATH)
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -48,17 +61,20 @@ def safe_dir(folder):
     return folder
 
 
-def launch_command(pipelinek, script, journal, control_root, extra):
-    forbidden = {"--db", "--control-root", "--format", "--receipt", "--output-protocol"}
+def launch_command(pipelinek, script, journal, control_root, extra, resume=False):
+    forbidden = {"--db", "--control-root", "--format", "--receipt",
+                 "--output-protocol", "--resume", "--rerun"}
     if any(word.split("=", 1)[0] in forbidden for word in extra):
-        raise ValueError("journal, control-root and output protocol are controlled by the metrics runner")
+        raise ValueError("journal, control-root and replay policy are controlled by the local runner")
+    if "--plugin-jar" in extra and "--require-plugin-trust" not in extra:
+        raise ValueError("external plugins require --require-plugin-trust")
     return [pipelinek, "run", "--format", "json",
             "--db", str(journal), "--control-root", str(control_root),
-            *extra, str(script)]
+            *(["--resume"] if resume else []), *extra, str(script)]
 
 
-def consume_launch(stream):
-    """Relay stdout unmodified; inspect at most one bounded JSON line for launch ID."""
+def consume_launch(stream, on_launch=None):
+    """Relay stdout unmodified; persist the launch ID as soon as observed."""
     pending = bytearray()
     run_id = None
     while True:
@@ -78,6 +94,8 @@ def consume_launch(stream):
                         value = item.get("runId")
                         if isinstance(value, str) and ID.fullmatch(value):
                             run_id = value
+                            if on_launch is not None:
+                                on_launch(value)
                 except (UnicodeError, ValueError, AttributeError):
                     pass
         if len(pending) > MAX_LINE:
@@ -144,49 +162,143 @@ def execute(args):
         raise ValueError("project directory does not exist")
     script = Path(args.script)
     script = (project / script).resolve() if not script.is_absolute() else script.resolve()
-    if not script.is_file():
-        raise ValueError("pipeline script does not exist")
-    if not (script == project or project in script.parents):
-        raise ValueError("pipeline must be contained within the selected project")
+    if not script.is_file() or project not in script.parents:
+        raise ValueError("pipeline script must be contained within the selected project")
+    if args.resume_session and not args.resume:
+        raise ValueError("--session requires --resume")
+    if args.resume and args.new:
+        raise ValueError("--resume and --new are mutually exclusive")
+
     executable = args.pipelinek or shutil.which("pipelinek")
     if not executable:
         raise ValueError("pipelinek executable not installed (or use --pipelinek)")
+    executable = str(Path(executable).expanduser().resolve())
     report = reporter()
+    recovery = recovery_module()
     history = safe_dir(Path(args.history_dir).expanduser().resolve()
                        if args.history_dir else project_history(project))
-    active = safe_dir(history / "executions" / str(uuid.uuid4()))
-    journal = active / "journal.db"
-    control_root = safe_dir(active / "control")
-    snapshot = active / "resources-at-start.json"
-    report.json_write(snapshot, report.resources(str(project)))
-    command = launch_command(executable, script, journal, control_root, args.pipelinek_args)
-    environment = os.environ.copy()
-    environment["PIPELINE_CREDENTIALS_MASKING"] = "required"
-    before = resource.getrusage(resource.RUSAGE_CHILDREN)
-    started = time.monotonic()
-    with subprocess.Popen(command, cwd=project, env=environment,
-                          stdout=subprocess.PIPE, stderr=None) as process:
-        run_id = consume_launch(process.stdout)
-        exit_code = process.wait()
-    usage = child_resources(before, resource.getrusage(resource.RUSAGE_CHILDREN),
-                            time.monotonic() - started, exit_code)
-    report.json_write(active / "process-usage.json", usage)
-    if run_id:
-        try:
-            summary = collect_typed_events(
-                executable, journal, run_id, history, args.workflow, usage, snapshot
-            )
-            if summary is not None:
-                html_out = history / "dashboard.html"
-                report.atomic(html_out, report.dashboard(report.history(history)))
-                sys.stderr.write("PipelineK local metrics: " + str(summary) + "\n")
-                sys.stderr.write("PipelineK local dashboard: " + str(html_out) + "\n")
-        except (OSError, ValueError) as failure:
-            sys.stderr.write("Metrics unavailable (pipeline exit retained): " + type(failure).__name__ + "\n")
-    else:
-        sys.stderr.write("No validated pipelinek.launch/1 receipt; metrics status UNKNOWN\n")
-    return exit_code
+    source = recovery.source_identity(project, script)
+    version_hash = recovery.executable_identity(executable)
+    identity = recovery.session_identity(
+        project, script, args.workflow, version_hash, args.pipelinek_args, source
+    )
 
+    # The lock is held for the entire pipeline and its reporting lifecycle.
+    # A crash releases it. A surviving child must still pass PipelineK's lease.
+    with recovery.exclusive(history, args.workflow):
+        if args.resume:
+            active, manifest = recovery.pending(history, identity, args.resume_session)
+            if source["mode"] != "git-visible" and not args.accept_unverified_inputs:
+                raise ValueError("non-Git workspace has only a script fingerprint; "
+                                 "explicit --accept-unverified-inputs required")
+            run_id = recovery.prior_run_id(active, manifest)
+            recovery.preflight(executable, active, run_id)
+            is_resume = True
+        else:
+            if not args.new:
+                try:
+                    recovery.pending(history, identity)
+                except ValueError as error:
+                    if "found 0" not in str(error):
+                        raise ValueError("unfinished session exists or has changed; use --resume, "
+                                         "or --new to explicitly start a new run")
+                else:
+                    raise ValueError("unfinished session exists: use --resume or --new")
+            session_id = str(uuid.uuid4())
+            active = safe_dir(history / "executions" / session_id)
+            manifest = recovery.new_manifest(identity, session_id)
+            run_id = None
+            is_resume = False
+
+        journal = active / "journal.db"
+        control_root = safe_dir(active / "control")
+        snapshot = active / "resources-at-start.json"
+        if not is_resume:
+            report.json_write(snapshot, report.resources(str(project)))
+        attempt = int(manifest.get("attempts", 0)) + 1
+        attempt_snapshot = active / ("resources-at-attempt-" + str(attempt) + ".json")
+        report.json_write(attempt_snapshot, report.resources(str(project)))
+        manifest["attempts"] = attempt
+        manifest["status"] = "LAUNCH_REQUESTED"
+        manifest["lastAttemptStartedAt"] = datetime.now(timezone.utc).isoformat()
+        report.json_write(active / "session.json", manifest)
+        command = launch_command(
+            executable, script, journal, control_root, args.pipelinek_args, resume=is_resume
+        )
+        environment = os.environ.copy()
+        environment["PIPELINE_CREDENTIALS_MASKING"] = "required"
+        before = resource.getrusage(resource.RUSAGE_CHILDREN) if resource else None
+        started = time.monotonic()
+
+        def on_launch(value):
+            manifest["runId"] = value
+            manifest["status"] = "RUNNING"
+            report.json_write(active / "session.json", manifest)
+
+        with subprocess.Popen(command, cwd=project, env=environment,
+                              stdout=subprocess.PIPE, stderr=None) as process:
+            reported_run_id = consume_launch(process.stdout, on_launch=on_launch)
+            exit_code = process.wait()
+        run_id = reported_run_id or run_id
+        if resource:
+            usage = child_resources(before, resource.getrusage(resource.RUSAGE_CHILDREN),
+                                    time.monotonic() - started, exit_code)
+        else:
+            usage = {
+                "measurement": "wall-time-only-process-rusage-unavailable",
+                "capturedAt": datetime.now(timezone.utc).isoformat(),
+                "elapsedWallMs": max(0, round((time.monotonic() - started) * 1000)),
+                "cpuUserMs": None, "cpuSystemMs": None,
+                "maxSingleProcessRssKiB": None, "exitCode": exit_code,
+            }
+        report.json_write(active / ("process-usage-attempt-" + str(attempt) + ".json"), usage)
+        manifest["lastExitCode"] = exit_code
+        manifest["lastAttemptFinishedAt"] = datetime.now(timezone.utc).isoformat()
+        manifest["runId"] = run_id
+        manifest["status"] = "UNKNOWN"
+        if run_id:
+            try:
+                result = subprocess.run(
+                    [executable, "inspect", run_id, "--state", "--db", str(journal),
+                     "--control-root", str(control_root)],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30,
+                    check=False,
+                )
+                if result.returncode == 0:
+                    state = result.stdout.decode("utf-8", "replace").strip()
+                    if state.startswith("run-state terminal "):
+                        manifest["status"] = "TERMINAL"
+                    elif state in ("run-state running", "run-state empty", "run-state unobservable"):
+                        manifest["status"] = "INTERRUPTED"
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        report.json_write(active / "session.json", manifest)
+
+        if run_id:
+            try:
+                summary = collect_typed_events(
+                    executable, journal, run_id, history, args.workflow, usage, snapshot
+                )
+                if summary is not None:
+                    summary_data = json.loads(Path(summary).read_text(encoding="utf-8"))
+                    summary_data["resumeAttempts"] = attempt
+                    # Durations spanning a crash may include offline downtime.
+                    if attempt > 1:
+                        summary_data["timingCaveat"] = "possible-gap-between-resume-attempts"
+                    report.json_write(summary, summary_data)
+                    html_out = history / "dashboard.html"
+                    report.atomic(html_out, report.dashboard(report.history(history)))
+                    sys.stderr.write("PipelineK local metrics: " + str(summary) + "\n")
+                    sys.stderr.write("PipelineK local dashboard: " + str(html_out) + "\n")
+            except (OSError, ValueError) as failure:
+                sys.stderr.write("Metrics unavailable (pipeline exit retained): " +
+                                 type(failure).__name__ + "\n")
+        else:
+            sys.stderr.write("No validated pipelinek.launch/1 receipt; metrics status UNKNOWN\n")
+        if manifest["status"] != "TERMINAL":
+            sys.stderr.write("Run has no verified terminal; resume with --resume after diagnosing "
+                             "the durable journal (session " + active.name + ")\n")
+        return exit_code
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -195,6 +307,11 @@ def main():
     parser.add_argument("--workflow", default="ci", help="stable workflow name, no secrets")
     parser.add_argument("--pipelinek", help="installed PipelineK binary; otherwise search PATH")
     parser.add_argument("--history-dir", help="override XDG state history location")
+    parser.add_argument("--resume", action="store_true", help="continue the interrupted durable run; never start a new one")
+    parser.add_argument("--session", dest="resume_session", help="specific incomplete session UUID if several exist")
+    parser.add_argument("--new", action="store_true", help="explicitly start a fresh run even when prior ones are unfinished")
+    parser.add_argument("--accept-unverified-inputs", action="store_true",
+                        help="allow resume in a non-Git project with only the script fingerprint")
     parser.add_argument("pipelinek_args", nargs="*", help="extra PipelineK run flags after --")
     args = parser.parse_args()
     if args.pipelinek_args and args.pipelinek_args[0] == "--":

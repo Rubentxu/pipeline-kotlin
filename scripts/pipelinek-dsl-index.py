@@ -93,6 +93,26 @@ def match_closer(clean, start, opening="(", closing=")"):
     raise ValueError("unbalanced Kotlin signature or block")
 
 
+def summary_for(source, offset):
+    prefix = source[:offset].rstrip()
+    # Allow one or more single-line annotations between KDoc and declaration.
+    lines = prefix.splitlines()
+    while lines and lines[-1].lstrip().startswith("@"):
+        lines.pop()
+    preceding = "\n".join(lines).rstrip()
+    if not preceding.endswith("*/"):
+        return ""
+    begin = preceding.rfind("/**")
+    if begin < 0:
+        return ""
+    comment = preceding[begin+3:-2]
+    for line in comment.splitlines():
+        text = line.strip().lstrip("*").strip()
+        if text and not text.startswith("@") and not text.startswith("```"):
+            return text[:240]
+    return ""
+
+
 def extract(file, root):
     source = file.read_text(encoding="utf-8")
     clean = strip_comments_and_strings(source)
@@ -121,13 +141,21 @@ def extract(file, root):
         receiver, _, function_name = qualified.rpartition(".")
         receiver = receiver or owner
         function_name = function_name or qualified
-        signature = "fun " + qualified + "(" + raw_params + ")"
+        suffix = source[end+1:end+260].lstrip()
+        explicit_return = None
+        if suffix.startswith(":"):
+            possible = re.match(r":\s*([^=\\{\n]+)", suffix)
+            if possible:
+                explicit_return = possible.group(1).strip()
+        signature = "fun " + qualified + "(" + raw_params + ")" + (": " + explicit_return if explicit_return else "")
         rows.append({
             "id": receiver + "." + function_name + "-" + hashlib.sha256(signature.encode()).hexdigest()[:12],
             "name": function_name,
             "receiver": receiver,
             "signature": signature,
             "owner": owner,
+            "description": summary_for(source, line_start),
+            "returnType": explicit_return or "inferred",
             "source": str(file.relative_to(root)),
             "line": source.count("\n", 0, fn.start()) + 1,
             "runtimeKeys": [],

@@ -47,6 +47,20 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual(report["steps"][0]["durationMs"], 2000)
         self.assertNotIn("secret-is-not-stored", json.dumps(report))
 
+    def test_compile_time_and_total_end_to_end_are_distinct(self):
+        rows = [
+            event("CompilationStarted", 1, 0),
+            event("CompilationFinished", 2, 2),
+            event("RunStarted", 3, 3, scriptPath="ignored"),
+            event("StageStarted", 4, 4, stageIndex=0, stageName="verify"),
+            event("StageFinished", 5, 8, stageIndex=0, stageName="verify", outcome="success"),
+            event("RunFinished", 6, 9, outcome="success", diagnostics=[]),
+        ]
+        report = metrics.project(rows)
+        self.assertEqual(report["compileMs"], 2000)
+        self.assertEqual(report["durationMs"], 6000)
+        self.assertEqual(report["endToEndMs"], 9000)
+
     def test_incomplete_run_never_claims_finished(self):
         report = metrics.project(self.events()[:-2])
         self.assertIsNone(report["durationMs"])

@@ -275,10 +275,14 @@ def dashboard(rows):
             str(cpu.get("quotaCores", "unknown")),
             str(memory.get("cgroupLimitBytes", "unknown")),
         )
-        if row.get("compileMs") is not None:
-            stages[configuration + ("compilación",)].append(row["compileMs"])
-        for stage in row.get("stages", []):
-            stages[configuration + (stage["name"],)].append(stage["durationMs"])
+        # A resumed run's stage interval may span machine downtime. It is
+        # listed in history, but withheld from performance baselines until
+        # per-attempt active timing can be proven.
+        if row.get("resumeAttempts", 1) == 1:
+            if row.get("compileMs") is not None:
+                stages[configuration + ("compilación",)].append(row["compileMs"])
+            for stage in row.get("stages", []):
+                stages[configuration + (stage["name"],)].append(stage["durationMs"])
     for row in rows[-100:]:
         cpu = row.get("resourcesAtStart", {}).get("cpu", {})
         mem = row.get("resourcesAtStart", {}).get("memory", {})
@@ -287,6 +291,7 @@ def dashboard(rows):
             str(round(row["durationMs"]/1000, 2)) + " s" if row.get("durationMs") is not None else "no medido",
             str(round(row["compileMs"]/1000, 2)) + " s" if row.get("compileMs") is not None else "—",
             str(round(row["endToEndMs"]/1000, 2)) + " s" if row.get("endToEndMs") is not None else "—",
+            row.get("resumeAttempts", 1),
             row.get("runId", "")[:18], cpu.get("affinityCount", "—"),
             mem.get("cgroupLimitBytes", "—"),
         ])) + "</tr>")
@@ -312,8 +317,8 @@ def dashboard(rows):
     return """<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>PipelineK · métricas locales</title><style>body{background:#121b23;color:#f1f5f9;font:15px system-ui;margin:2rem auto;max-width:1300px;padding:0 1rem}table{border-collapse:collapse;width:100%}td,th{padding:10px;border-bottom:1px solid #364650;text-align:left;font-size:13px}section{overflow-x:auto}p{color:#c4d0d9}</style>
 <h1>PipelineK · métricas locales</h1>
-<p>Duraciones derivadas de eventos durables; recursos de inicio = capacidad/carga previa, no consumo del run. No incluye logs, variables de entorno ni servicios externos.</p>
-<h2>Histórico de ejecuciones</h2><section><table><tr><th>Inicio</th><th>Workflow</th><th>Resultado</th><th>Duración run</th><th>Compilación</th><th>Extremo a extremo</th><th>Run ID</th><th>CPU afinidad</th><th>Memoria límite cgroup (bytes)</th></tr>""" + "\n".join(run_rows) + """</table></section>
+<p>Duraciones derivadas de eventos durables; los runs reanudados muestran sus intentos, pero no contaminan las tendencias por fase porque sus intervalos pueden incluir tiempo con el equipo apagado. Recursos iniciales = capacidad/carga previa, no consumo total del run. No incluye logs ni variables de entorno.</p>
+<h2>Histórico de ejecuciones</h2><section><table><tr><th>Inicio</th><th>Workflow</th><th>Resultado</th><th>Duración run</th><th>Compilación</th><th>Extremo a extremo</th><th>Intentos</th><th>Run ID</th><th>CPU afinidad</th><th>Memoria límite cgroup (bytes)</th></tr>""" + "\n".join(run_rows) + """</table></section>
 <h2>Evolución de duración por fase y capacidad inicial</h2><section><table><tr><th>Fase</th><th>Muestras (hasta 50)</th><th>Mediana</th><th>Últimas 5 frente a 5 anteriores</th><th>Evolución</th></tr>""" + "\n".join(stage_rows) + "</table></section></html>"
 
 

@@ -4,6 +4,8 @@ from datetime import datetime, timezone, timedelta
 import importlib.util
 import json
 import os
+import signal
+import time
 from pathlib import Path
 import subprocess
 import sys
@@ -31,7 +33,7 @@ class RunnerTest(unittest.TestCase):
             """#!/usr/bin/env python3
 import json
 from datetime import datetime, timedelta, timezone
-import os, sys
+import os, sys, time
 from pathlib import Path
 mode = sys.argv[1]
 if mode == 'version':
@@ -60,6 +62,8 @@ if mode == 'run':
                           startedAtMs=0)), flush=True)
     if '--resume' in sys.argv:
         Path('resumed.marker').write_text('yes')
+    if os.environ.get('FAKE_HANG') == '1':
+        time.sleep(60)
     exit_value = int(os.environ.get('FAKE_RUN_EXIT','0'))
     if exit_value == 0:
         Path('completed.marker').write_text('yes')
@@ -223,6 +227,37 @@ sys.exit(93)
         self.assertIn("pipelinek.local-session/v1", content)
         self.assertNotIn("FAKE_RUN_EXIT", content)
         self.assertNotIn("PIPELINE_CREDENTIALS_MASKING", content)
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX process-group kill")
+    def test_sigkill_of_wrapper_and_child_keeps_resume_state(self):
+        environment = os.environ.copy()
+        environment["XDG_STATE_HOME"] = str(self.state)
+        environment["FAKE_HANG"] = "1"
+        command = [
+            sys.executable, str(TOOL), "--project", str(self.project),
+            "--script", "pipelines/ci.pipeline.kts", "--workflow", "ci",
+            "--pipelinek", str(self.stub),
+        ]
+        process = subprocess.Popen(command, cwd=self.project, env=environment,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   start_new_session=True)
+        try:
+            ready = False
+            for _ in range(100):
+                manifests = list(self.state.glob("pipelinek/projects/*/reports/executions/*/session.json"))
+                if manifests:
+                    state = json.loads(manifests[0].read_text(encoding="utf-8"))
+                    if state.get("status") == "RUNNING" and state.get("runId"):
+                        ready = True
+                        break
+                time.sleep(0.1)
+            self.assertTrue(ready, "launch receipt was not durably saved")
+        finally:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=5)
+        resumed = self.invoke(flags=("--resume", "--accept-unverified-inputs"))
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        self.assertTrue((self.project / "resumed.marker").exists())
 
     def test_conflicting_db_flag_is_refused(self):
         runner = self._load_runner()

@@ -63,6 +63,13 @@ def project(lines_of_json, include_names=False):
         raise ValueError("event sequences must increase")
     started = next((e for e in events if e["kind"] == "RunStarted"), None)
     ended = next((e for e in reversed(events) if e["kind"] == "RunFinished"), None)
+    compilation_start = next((e for e in events if e["kind"] == "CompilationStarted"), None)
+    compilation_end = next((e for e in events if e["kind"] == "CompilationFinished"), None)
+    compile_ms = None
+    if compilation_start and compilation_end:
+        elapsed = stamp(compilation_end["occurredAt"]) - stamp(compilation_start["occurredAt"])
+        if elapsed >= 0:
+            compile_ms = round(elapsed * 1000)
     if started is None:
         raise ValueError("RunStarted missing (possibly truncated history)")
     opens = defaultdict(deque)
@@ -102,9 +109,16 @@ def project(lines_of_json, include_names=False):
     total = round((stamp(ended["occurredAt"]) - stamp(started["occurredAt"])) * 1000) if complete else None
     if total is not None and total < 0:
         complete, total = False, None
+    end_to_end_ms = None
+    if compilation_start and ended:
+        elapsed = stamp(ended["occurredAt"]) - stamp(compilation_start["occurredAt"])
+        if elapsed >= 0:
+            end_to_end_ms = round(elapsed * 1000)
     return {
         "schema": SCHEMA, "runId": str(started["runId"]),
         "startedAt": started["occurredAt"], "durationMs": total,
+        "compileMs": compile_ms,
+        "endToEndMs": end_to_end_ms,
         "outcome": safe(ended.get("outcome"), "unknown") if complete else "incomplete",
         "coverage": "COMPLETE" if complete else "PARTIAL",
         "stages": sorted(stages, key=lambda row: row["startedAt"]),
@@ -252,6 +266,8 @@ def dashboard(rows):
             str(cpu.get("quotaCores", "unknown")),
             str(memory.get("cgroupLimitBytes", "unknown")),
         )
+        if row.get("compileMs") is not None:
+            stages[configuration + ("compilación",)].append(row["compileMs"])
         for stage in row.get("stages", []):
             stages[configuration + (stage["name"],)].append(stage["durationMs"])
     for row in rows[-100:]:
@@ -260,6 +276,8 @@ def dashboard(rows):
         run_rows.append("<tr>" + "".join(map(cell, [
             row.get("startedAt"), row.get("workflow"), row.get("outcome"),
             str(round(row["durationMs"]/1000, 2)) + " s" if row.get("durationMs") is not None else "no medido",
+            str(round(row["compileMs"]/1000, 2)) + " s" if row.get("compileMs") is not None else "—",
+            str(round(row["endToEndMs"]/1000, 2)) + " s" if row.get("endToEndMs") is not None else "—",
             row.get("runId", "")[:18], cpu.get("affinityCount", "—"),
             mem.get("cgroupLimitBytes", "—"),
         ])) + "</tr>")
@@ -286,7 +304,7 @@ def dashboard(rows):
 <title>PipelineK · métricas locales</title><style>body{background:#121b23;color:#f1f5f9;font:15px system-ui;margin:2rem auto;max-width:1300px;padding:0 1rem}table{border-collapse:collapse;width:100%}td,th{padding:10px;border-bottom:1px solid #364650;text-align:left;font-size:13px}section{overflow-x:auto}p{color:#c4d0d9}</style>
 <h1>PipelineK · métricas locales</h1>
 <p>Duraciones derivadas de eventos durables; recursos de inicio = capacidad/carga previa, no consumo del run. No incluye logs, variables de entorno ni servicios externos.</p>
-<h2>Histórico de ejecuciones</h2><section><table><tr><th>Inicio</th><th>Workflow</th><th>Resultado</th><th>Duración</th><th>Run ID</th><th>CPU afinidad</th><th>Memoria límite cgroup (bytes)</th></tr>""" + "\n".join(run_rows) + """</table></section>
+<h2>Histórico de ejecuciones</h2><section><table><tr><th>Inicio</th><th>Workflow</th><th>Resultado</th><th>Duración run</th><th>Compilación</th><th>Extremo a extremo</th><th>Run ID</th><th>CPU afinidad</th><th>Memoria límite cgroup (bytes)</th></tr>""" + "\n".join(run_rows) + """</table></section>
 <h2>Evolución de duración por fase y capacidad inicial</h2><section><table><tr><th>Fase</th><th>Muestras (hasta 50)</th><th>Mediana</th><th>Últimas 5 frente a 5 anteriores</th><th>Evolución</th></tr>""" + "\n".join(stage_rows) + "</table></section></html>"
 
 

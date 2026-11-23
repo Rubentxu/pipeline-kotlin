@@ -165,10 +165,13 @@ def extract(file, root):
 
 
 def generate(root, catalog=None):
-    paths = [root / ROOT / name for name in SOURCES]
-    missing = [str(p) for p in paths if not p.is_file()]
-    if missing:
-        raise ValueError("missing Kotlin DSL source: " + ", ".join(missing))
+    source_root = root / ROOT
+    if not source_root.is_dir():
+        raise ValueError("missing Kotlin DSL directory: " + str(source_root))
+    # Include newly added DSL files without requiring a second handwritten list.
+    paths = sorted(source_root.rglob("*.kt"))
+    if not paths:
+        raise ValueError("no Kotlin DSL sources found")
     rows = [row for path in paths for row in extract(path, root)]
     if not rows:
         raise ValueError("no DSL functions discovered")

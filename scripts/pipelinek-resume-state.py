@@ -130,14 +130,15 @@ def declared_file_inputs(project, extra):
 
 
 def session_identity(project, script, workflow, binary_digest, extra, source):
+    pins, unresolved = declared_file_inputs(project, extra)
     return {
         "project": sha(str(project.resolve()).encode()),
         "script": str(script.relative_to(project)),
         "workflow": workflow,
         "runtime": binary_digest,
         "invocation": sha(json.dumps(extra, ensure_ascii=False, separators=(",", ":")).encode()),
-        "localFilePins": declared_file_inputs(project, extra)[0],
-        "unverifiedInputs": declared_file_inputs(project, extra)[1],
+        "localFilePins": pins,
+        "unverifiedInputs": unresolved,
         "source": source,
     }
 

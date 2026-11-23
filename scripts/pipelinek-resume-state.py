@@ -205,6 +205,8 @@ def preflight(binary, folder, run_id):
     line = run_state(binary, folder, run_id)
     if line.startswith("run-state terminal "):
         raise ValueError("run has a terminal outcome; starting --resume would not be crash recovery")
+    if line == "run-state unobservable":
+        raise ValueError("run state is unobservable; manual journal diagnosis required before replay")
     return line
 
 

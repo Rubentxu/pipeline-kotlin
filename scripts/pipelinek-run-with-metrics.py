@@ -252,15 +252,25 @@ def execute(args):
             recovery.preflight(executable, active, run_id)
             is_resume = True
         else:
-            if not args.new:
-                try:
-                    recovery.pending(history, identity)
-                except ValueError as error:
-                    if "found 0" not in str(error):
-                        raise ValueError("unfinished session exists or has changed; use --resume, "
-                                         "or --new to explicitly start a new run")
-                else:
-                    raise ValueError("unfinished session exists: use --resume or --new")
+            try:
+                previous_dir, previous = recovery.pending(history, identity)
+            except ValueError as error:
+                if "found 0" not in str(error):
+                    raise ValueError("unfinished or changed session requires manual reconciliation; "
+                                     "refusing to start another run")
+            else:
+                if not args.new:
+                    raise ValueError("unfinished session exists: use --resume or resolve it before starting fresh")
+                # An explicit --new cannot bypass an unclosed external effect.
+                # The older run must be terminal, either naturally or via
+                # an operator-authorized 'runs cancel' / 'runs recover' action.
+                previous_id = recovery.prior_run_id(previous_dir, previous)
+                state = recovery.run_state(executable, previous_dir, previous_id)
+                if not state.startswith("run-state terminal "):
+                    raise ValueError("cannot start a second run while the prior run has no verified "
+                                     "terminal; diagnose/cancel/recover it first")
+                previous["status"] = "TERMINAL"
+                report.json_write(previous_dir / "session.json", previous)
             session_id = str(uuid.uuid4())
             active = safe_dir(history / "executions" / session_id)
             manifest = recovery.new_manifest(identity, session_id)

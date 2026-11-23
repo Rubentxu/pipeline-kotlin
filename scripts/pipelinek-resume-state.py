@@ -209,16 +209,22 @@ def pending(history, identity, session=None):
 def prior_run_id(folder, manifest):
     """Recover launch ID from PipelineK's own atomic durable last-run record."""
     known = manifest.get("runId")
-    if isinstance(known, str) and RUN_ID.fullmatch(known):
-        return known
     records = [p for p in (folder / "control" / "last-run").glob("*") if p.is_file() and not p.is_symlink()]
-    if len(records) != 1:
-        raise ValueError("launch receipt missing and durable last-run mapping is ambiguous or absent")
-    raw = records[0].read_text(encoding="utf-8").splitlines()
-    value = raw[0].strip() if raw else ""
-    if not RUN_ID.fullmatch(value):
-        raise ValueError("corrupt durable last-run ID")
-    return value
+    recorded = None
+    if len(records) > 1:
+        raise ValueError("ambiguous durable last-run mapping")
+    if len(records) == 1:
+        raw = records[0].read_text(encoding="utf-8").splitlines()
+        recorded = raw[0].strip() if raw else ""
+        if not RUN_ID.fullmatch(recorded):
+            raise ValueError("corrupt durable last-run ID")
+    if isinstance(known, str) and RUN_ID.fullmatch(known):
+        if recorded is not None and recorded != known:
+            raise ValueError("launch receipt and durable last-run disagree; refuse replay")
+        return known
+    if recorded is None:
+        raise ValueError("launch receipt missing and durable last-run mapping absent")
+    return recorded
 
 
 def run_state(binary, folder, run_id):

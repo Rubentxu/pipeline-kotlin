@@ -123,4 +123,4 @@ El helper guarda `session.json` de forma atómica con sincronización a disco, m
 
 **Métricas tras interrupción:** el tiempo de calendario entre eventos puede incluir un periodo con la máquina apagada. Las duraciones deben etiquetarse como observadas con huecos; no presentarlas como CPU activa ni sumar stages paralelos. Un dashboard no decide si una recuperación es segura.
 
-Un timer o servicio `systemd --user` local puede invocar `--resume-or-new` tras iniciar sesión, solo con autorización del responsable del proyecto y secretos disponibles. El runner no instala servicios ni intenta automatizar permisos o autorizaciones humanas.
+Un timer o servicio `systemd --user` local puede invocar **`--resume`** tras el reinicio, con autorización del responsable del proyecto y secretos disponibles. `--resume-or-new` es para invocaciones cuyo contrato explícito también permite abrir un run nuevo; **no** debe instalarse con `Restart=always` ni usarse como autorrecuperación de publicaciones o despliegues no idempotentes. El runner no instala servicios ni automatiza aprobaciones humanas.

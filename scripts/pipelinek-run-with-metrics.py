@@ -207,12 +207,12 @@ def execute(args):
     script = (project / script).resolve() if not script.is_absolute() else script.resolve()
     if not script.is_file() or project not in script.parents:
         raise ValueError("pipeline script must be contained within the selected project")
-    if args.resume_session and not args.resume:
-        raise ValueError("--session requires --resume")
-    if args.status and (args.resume or args.new):
+    if args.resume_session and not (args.resume or args.resume_or_new):
+        raise ValueError("--session requires --resume or --resume-or-new")
+    if args.status and (args.resume or args.resume_or_new or args.new):
         raise ValueError("--status cannot also execute or resume")
-    if args.resume and args.new:
-        raise ValueError("--resume and --new are mutually exclusive")
+    if sum(bool(v) for v in (args.resume, args.resume_or_new, args.new)) > 1:
+        raise ValueError("--resume, --resume-or-new and --new are mutually exclusive")
 
     executable = args.pipelinek or shutil.which("pipelinek")
     if not executable:
@@ -233,6 +233,16 @@ def execute(args):
     # The lock is held for the entire pipeline and its reporting lifecycle.
     # A crash releases it. A surviving child must still pass PipelineK's lease.
     with recovery.exclusive(history, args.workflow):
+        if args.resume_or_new:
+            try:
+                recovery.pending(history, identity, args.resume_session)
+            except ValueError as error:
+                if "found 0" in str(error):
+                    args.resume = False
+                else:
+                    raise
+            else:
+                args.resume = True
         if args.resume:
             active, manifest = recovery.pending(history, identity, args.resume_session)
             if source["mode"] != "git-visible" and not args.accept_unverified_inputs:
@@ -356,6 +366,8 @@ def main():
     parser.add_argument("--history-dir", help="override XDG state history location")
     parser.add_argument("--resume", action="store_true", help="continue the interrupted durable run; never start a new one")
     parser.add_argument("--status", action="store_true", help="inspect local sessions and journal state without mutation")
+    parser.add_argument("--resume-or-new", action="store_true",
+                        help="resume the sole eligible interrupted session, otherwise start a fresh one; ambiguity refuses")
     parser.add_argument("--session", dest="resume_session", help="specific incomplete session UUID if several exist")
     parser.add_argument("--new", action="store_true", help="explicitly start a fresh run even when prior ones are unfinished")
     parser.add_argument("--accept-unverified-inputs", action="store_true",

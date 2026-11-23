@@ -42,7 +42,7 @@ No imponer plantillas vacías, imports Kotlin inexistentes ni un segundo workflo
 
 PipelineK ya expone `inspect <runId> --db <path> --profile` y señales de telemetría. `scripts/pipelinek-local-report.py` conserva además resúmenes históricos y genera `dashboard.html` **sin JavaScript ni acceso a Internet**, con:
 
-- duración observada del run y de cada stage; duración de steps emparejados;
+- duración observada de compilación, run desde RunStarted y extremo a extremo; duración de cada stage y de steps emparejados;
 - comparación temporal por stage: línea de las últimas 50 muestras, mediana y diferencia entre grupos de 5 runs;
 - snapshot de recursos *al iniciar*: número de CPU lógicos, afinidad, cuota cgroup, carga de sistema, memoria host y cgroup, espacio disponible;
 - marcadores `PARTIAL` en historiales sin terminal o incompletos; sin duraciones inventadas;

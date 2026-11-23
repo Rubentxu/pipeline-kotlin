@@ -112,6 +112,15 @@ class MetricsTest(unittest.TestCase):
         self.assertIn("ci / stage-0", dash)
         self.assertIn("certify / stage-0", dash)
 
+    def test_resumed_stage_interval_is_excluded_from_speed_trend(self):
+        report = metrics.project(self.events())
+        report["workflow"] = "ci"
+        report["resumeAttempts"] = 2
+        html = metrics.dashboard([report])
+        self.assertIn("Intentos", html)
+        self.assertNotIn("ci / stage-0", html)
+        self.assertIn("runs reanudados", html)
+
     def test_snapshot_is_capacity_not_usage(self):
         snapshot = metrics.resources(".")
         self.assertEqual(snapshot["measurement"], "start-capacity-not-process-consumption")

@@ -47,6 +47,33 @@ tasks.test {
     useJUnitPlatform()
 }
 
+/**
+ * The Kotlin public DSL index ships WITH the installed SDK, not with a checkout.
+ * Generation reads only source code, never evaluates scripts or loads plugins.
+ * Python is a BUILD-TIME tool in this repo; consumers need only PipelineK/JVM.
+ */
+val generatedDslSignatures = layout.buildDirectory.file("generated/dsl/pipelinek-dsl-signatures.json")
+val generateDslSignatures by tasks.registering(Exec::class) {
+    val dslFiles = fileTree("src/main/kotlin/dev/rubentxu/pipeline/v2/dsl") { include("**/*.kt") }
+    inputs.files(dslFiles)
+    inputs.file(rootProject.file("../scripts/pipelinek-dsl-index.py"))
+    outputs.file(generatedDslSignatures)
+    workingDir = rootProject.file("..")
+    commandLine(
+        "python3",
+        "scripts/pipelinek-dsl-index.py",
+        "--root", ".",
+        "--out", generatedDslSignatures.get().asFile.absolutePath,
+    )
+}
+tasks.named<org.gradle.language.jvm.tasks.ProcessResources>("processResources") {
+    dependsOn(generateDslSignatures)
+    from(generatedDslSignatures) {
+        into("pipelinek")
+        rename { "dsl-signatures.json" }
+    }
+}
+
 // Publish this SDK module into a build-local Maven repository so the
 // independent external plugin build can compile against artifacts produced from
 // THIS source revision. Replaces the committed libs/*.jar snapshots, which could

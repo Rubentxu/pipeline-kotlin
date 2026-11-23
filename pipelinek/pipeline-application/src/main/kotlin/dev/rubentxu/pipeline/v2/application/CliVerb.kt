@@ -164,6 +164,8 @@ internal val CLI_VERBS: List<CliVerb> = buildList {
             ::runStepsVerb,
         ),
     )
+    add(CliVerb("dsl index", "index the installed core Kotlin DSL signatures", ::runDslIndexVerb, MainDslCli.INDEX_USAGE))
+    add(CliVerb("dsl describe", "describe a core Kotlin DSL function by name", ::runDslDescribeVerb, MainDslCli.DESCRIBE_USAGE))
     add(
         CliVerb(
             "describe",

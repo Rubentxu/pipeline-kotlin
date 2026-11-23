@@ -16,6 +16,29 @@ kotlin {
     }
 }
 
+
+/**
+ * Portable local automation tools are shipped with EVERY installed PipelineK
+ * distribution. A consumer needs no PipelineK source checkout, no Actions,
+ * no hosted telemetry. Python3 is only needed when invoking the optional
+ * reporting sidecar; the core JVM executable stays independent.
+ */
+distributions {
+    main {
+        contents {
+            from(rootProject.file("../scripts/pipelinek-local-report.py")) {
+                into("tools")
+            }
+            from(rootProject.file("../scripts/pipelinek-run-with-metrics.py")) {
+                into("tools")
+            }
+            from(rootProject.file("../scripts/pipelinek-resume-state.py")) {
+                into("tools")
+            }
+        }
+    }
+}
+
 application {
     // Product name for the installed distribution (bin/pipelinek).
     applicationName = "pipelinek"

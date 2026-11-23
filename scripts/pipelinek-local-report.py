@@ -139,13 +139,30 @@ def approved_snapshot(path):
     disk = raw.get("workspaceDisk", {})
     if not all(isinstance(item, dict) for item in (cpu, mem, disk)):
         raise ValueError("invalid snapshot structure")
-    # Never copy arbitrary data from an external JSON file into report history.
+    # Never copy arbitrary content from a JSON supplied by another process.
+    stamp(raw.get("capturedAt"))
+    def numeric(value):
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value < 1e18:
+            raise ValueError("snapshot numeric resource field is invalid")
+        return value
+
+    load = cpu.get("loadAverage1m5m15m")
+    if load is not None and (not isinstance(load, list) or len(load) != 3):
+        raise ValueError("snapshot loadAverage shape is invalid")
     return {
-        "capturedAt": raw.get("capturedAt"),
+        "capturedAt": raw["capturedAt"],
         "measurement": "start-capacity-not-process-consumption",
-        "cpu": {k: cpu.get(k) for k in ("logicalHostCount", "affinityCount", "quotaCores", "loadAverage1m5m15m")},
-        "memory": {k: mem.get(k) for k in ("hostTotalBytes", "hostAvailableBytes", "cgroupLimitBytes", "cgroupCurrentBytes")},
-        "workspaceDisk": {k: disk.get(k) for k in ("totalBytes", "freeBytes")},
+        "cpu": {
+            "logicalHostCount": numeric(cpu.get("logicalHostCount")),
+            "affinityCount": numeric(cpu.get("affinityCount")),
+            "quotaCores": numeric(cpu.get("quotaCores")),
+            "loadAverage1m5m15m": [numeric(v) for v in load] if load is not None else None,
+        },
+        "memory": {k: numeric(mem.get(k)) for k in
+                   ("hostTotalBytes", "hostAvailableBytes", "cgroupLimitBytes", "cgroupCurrentBytes")},
+        "workspaceDisk": {k: numeric(disk.get(k)) for k in ("totalBytes", "freeBytes")},
     }
 
 
@@ -189,7 +206,8 @@ def resources(workspace):
 
 def atomic(path, content):
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(path.parent, 0o700)
     descriptor, temp = tempfile.mkstemp(prefix=".pipelinek-", dir=path.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as output:

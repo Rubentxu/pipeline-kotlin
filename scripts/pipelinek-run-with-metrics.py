@@ -158,6 +158,47 @@ def collect_typed_events(pipelinek, journal, run_id, store, profile, usage, snap
     return summary_path
 
 
+def show_status(project, script, workflow, executable, history, recovery):
+    """Diagnostic only. Never attempts a resume, cancel or recovery mutation."""
+    sessions = []
+    for path in sorted((history / "executions").glob("*/session.json")):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            ident = record.get("identity", {})
+            if record.get("schema") != recovery.SCHEMA or not isinstance(ident, dict):
+                continue
+            if ident.get("project") != hashlib.sha256(str(project.resolve()).encode()).hexdigest():
+                continue
+            if ident.get("workflow") != workflow or ident.get("script") != str(script.relative_to(project)):
+                continue
+            run_id = record.get("runId")
+            journal_state = "unknown"
+            if not run_id:
+                try:
+                    run_id = recovery.prior_run_id(path.parent, record)
+                except (ValueError, OSError):
+                    run_id = None
+            if isinstance(run_id, str) and recovery.RUN_ID.fullmatch(run_id):
+                try:
+                    journal_state = recovery.run_state(executable, path.parent, run_id)
+                except ValueError:
+                    journal_state = "unobservable-or-refused"
+            sessions.append({
+                "session": path.parent.name,
+                "runId": run_id,
+                "storedStatus": record.get("status"),
+                "journalState": journal_state,
+                "attempts": record.get("attempts"),
+                "workflow": workflow,
+            })
+        except (OSError, ValueError, TypeError):
+            continue
+    print(json.dumps({"schema": "pipelinek.local-sessions/v1",
+                      "project": hashlib.sha256(str(project.resolve()).encode()).hexdigest()[:16],
+                      "sessions": sessions}, sort_keys=True, ensure_ascii=False))
+    return 0
+
+
 def execute(args):
     project = Path(args.project).expanduser().resolve()
     if not project.is_dir():
@@ -168,6 +209,8 @@ def execute(args):
         raise ValueError("pipeline script must be contained within the selected project")
     if args.resume_session and not args.resume:
         raise ValueError("--session requires --resume")
+    if args.status and (args.resume or args.new):
+        raise ValueError("--status cannot also execute or resume")
     if args.resume and args.new:
         raise ValueError("--resume and --new are mutually exclusive")
 
@@ -179,6 +222,8 @@ def execute(args):
     recovery = recovery_module()
     history = safe_dir(Path(args.history_dir).expanduser().resolve()
                        if args.history_dir else project_history(project))
+    if args.status:
+        return show_status(project, script, args.workflow, executable, history, recovery)
     source = recovery.source_identity(project, script)
     version_hash = recovery.executable_identity(executable)
     identity = recovery.session_identity(
@@ -310,6 +355,7 @@ def main():
     parser.add_argument("--pipelinek", help="installed PipelineK binary; otherwise search PATH")
     parser.add_argument("--history-dir", help="override XDG state history location")
     parser.add_argument("--resume", action="store_true", help="continue the interrupted durable run; never start a new one")
+    parser.add_argument("--status", action="store_true", help="inspect local sessions and journal state without mutation")
     parser.add_argument("--session", dest="resume_session", help="specific incomplete session UUID if several exist")
     parser.add_argument("--new", action="store_true", help="explicitly start a fresh run even when prior ones are unfinished")
     parser.add_argument("--accept-unverified-inputs", action="store_true",

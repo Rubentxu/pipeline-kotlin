@@ -1031,6 +1031,17 @@ fun StageScope.uppercase(text: String) {
 
 ---
 
+## Offline automation tooling (source tree)
+
+The repository now includes small, dependency-free local adapters in `scripts/`:
+
+- [DSL signature index](docs/local-automation.md#1-índice-de-firmas-dsl): source-derived Kotlin signatures, receivers and KDoc, cross-referenced with `pipelinek steps --json` without inventing one-to-one runtime bindings.
+- [Local performance reports](docs/local-automation.md#3-datos-locales-de-tiempo-y-recursos): typed events → private per-run JSON, per-stage/step timings, pre-run CPU/memory/disk/cgroup snapshot, and an offline static HTML trend dashboard.
+
+These are scripts, not yet new `pipelinek` subcommands. They never require GitHub Actions or hosted telemetry. Run `python3 scripts/test_pipelinek_automation_tools.py` to exercise their local behavioral checks. The authoritative pipeline engine, `inspect --profile` and build/test policy are unchanged.
+
+---
+
 ## Real-world workflows
 
 ### Local CI

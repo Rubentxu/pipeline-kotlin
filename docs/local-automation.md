@@ -99,6 +99,13 @@ python3 "$RUNNER" --project . --script pipeline.kts --workflow ci --status
 python3 "$RUNNER" --project . --script pipeline.kts --workflow ci --resume
 ```
 
+Las pruebas locales de este adaptador, independientes de un servidor remoto, se ejecutan con:
+
+```bash
+python3 scripts/test_pipelinek_resume_state.py
+python3 scripts/test_pipelinek_metrics_runner.py
+```
+
 Los ejemplos presuponen el layout estándar de distribución (`bin/pipelinek` y `tools/`) y POSIX con `fcntl`. El script del proyecto puede estar bajo `pipelines/` con `--script pipelines/ci/affected.pipeline.kts`; la herramienta no presupone lenguaje ni estructura del código. Cada workflow usa un lock OS local, sesiones separadas, directorios privados y journal/control root persistentes fuera del repositorio bajo XDG State. El helper no necesita GitHub Actions, una base de datos externa ni un proceso residente.
 
 **La selección es conservadora.** La reanudación exige exactamente una sesión elegible, igual identidad de PipelineK instalado, mismos argumentos (comparados por hash), mismo script y los mismos inputs visibles para Git. Un proyecto sin Git se admite para ejecutar, pero solo puede reanudarse con la aceptación expresa `--accept-unverified-inputs`: no podemos certificar sus inputs por defecto. Los ficheros ignorados, secretos, caches, herramientas externas y servicios no se capturan íntegramente; sus cambios deben controlarse mediante la política del proyecto. Para varios runs pendientes, usar `--session <uuid>` después de revisar `--status`, nunca seleccionar arbitrariamente.

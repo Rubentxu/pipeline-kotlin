@@ -259,6 +259,36 @@ sys.exit(93)
         self.assertEqual(resumed.returncode, 0, resumed.stderr)
         self.assertTrue((self.project / "resumed.marker").exists())
 
+    def test_disagreement_between_durable_directory_and_launch_receipt_refuses(self):
+        self.assertEqual(self.invoke({"FAKE_RUN_EXIT": "7"}).returncode, 7)
+        session = next(self.state.glob("pipelinek/projects/*/reports/executions/*/session.json"))
+        mapping = session.parent / "control" / "last-run"
+        mapping.mkdir(parents=True)
+        (mapping / "definition-1").write_text("different-run-id\\n")
+        denied = self.invoke(flags=("--resume", "--accept-unverified-inputs"))
+        self.assertEqual(denied.returncode, 2)
+        self.assertIn("disagree", denied.stderr)
+
+    def test_new_requires_prior_terminal_even_if_manifest_stale(self):
+        self.assertEqual(self.invoke({"FAKE_RUN_EXIT": "7"}).returncode, 7)
+        # Simulate the product writing a terminal after the wrapper crashed.
+        (self.project / "completed.marker").write_text("terminal recorded")
+        fresh = self.invoke(flags=("--new",))
+        self.assertEqual(fresh.returncode, 0, fresh.stderr)
+        manifests = list(self.state.glob("pipelinek/projects/*/reports/executions/*/session.json"))
+        self.assertEqual(len(manifests), 2)
+        self.assertTrue(all(json.loads(p.read_text())["status"] == "TERMINAL" for p in manifests))
+
+    def test_multiple_pending_sessions_need_explicit_selection(self):
+        self.assertEqual(self.invoke({"FAKE_RUN_EXIT": "7"}).returncode, 7)
+        session = next(self.state.glob("pipelinek/projects/*/reports/executions/*/session.json"))
+        other = session.parent.parent / "second-session"
+        other.mkdir()
+        (other / "session.json").write_bytes(session.read_bytes())
+        refused = self.invoke(flags=("--resume-or-new", "--accept-unverified-inputs"))
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("found 2", refused.stderr)
+
     def test_conflicting_db_flag_is_refused(self):
         runner = self._load_runner()
         with self.assertRaises(ValueError):

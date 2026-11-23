@@ -242,15 +242,23 @@ def dashboard(rows):
         minimum, maximum = min(samples), max(samples)
         scale = max(maximum - minimum, 1)
         points = " ".join(f"{10 + i * 260/max(len(samples)-1,1):.1f},{60-(v-minimum)*45/scale:.1f}" for i,v in enumerate(samples))
-        trend = '<svg width="280" height="70" viewBox="0 0 280 70"><polyline fill="none" stroke="#7cd6ed" stroke-width="2" points="' + points + '"/></svg>'
+        trend = '<svg width="280" height="70" viewBox="0 0 280 70" role="img" aria-label="tendencia de duración"><polyline fill="none" stroke="#7cd6ed" stroke-width="2" points="' + points + '"/></svg>'
+        previous = samples[-10:-5]
+        current = samples[-5:]
+        if len(previous) == 5 and len(current) == 5 and statistics.median(previous) > 0:
+            change = (statistics.median(current) / statistics.median(previous) - 1.0) * 100
+            progression = f"{change:+.1f}%"
+        else:
+            progression = "muestras insuficientes"
         stage_rows.append("<tr>" + cell(name) + cell(len(samples)) +
-                          cell(str(round(statistics.median(samples)/1000,2)) + " s") + "<td>" + trend + "</td></tr>")
+                          cell(str(round(statistics.median(samples)/1000,2)) + " s") +
+                          cell(progression) + "<td>" + trend + "</td></tr>")
     return """<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>PipelineK · métricas locales</title><style>body{background:#121b23;color:#f1f5f9;font:15px system-ui;margin:2rem auto;max-width:1300px;padding:0 1rem}table{border-collapse:collapse;width:100%}td,th{padding:10px;border-bottom:1px solid #364650;text-align:left;font-size:13px}section{overflow-x:auto}p{color:#c4d0d9}</style>
 <h1>PipelineK · métricas locales</h1>
 <p>Duraciones derivadas de eventos durables; recursos de inicio = capacidad/carga previa, no consumo del run. No incluye logs, variables de entorno ni servicios externos.</p>
 <h2>Histórico de ejecuciones</h2><section><table><tr><th>Inicio</th><th>Workflow</th><th>Resultado</th><th>Duración</th><th>Run ID</th><th>CPU afinidad</th><th>Memoria límite cgroup (bytes)</th></tr>""" + "\n".join(run_rows) + """</table></section>
-<h2>Evolución de duración por fase</h2><section><table><tr><th>Fase</th><th>Muestras (hasta 50)</th><th>Mediana</th><th>Evolución</th></tr>""" + "\n".join(stage_rows) + "</table></section></html>"
+<h2>Evolución de duración por fase</h2><section><table><tr><th>Fase</th><th>Muestras (hasta 50)</th><th>Mediana</th><th>Últimas 5 frente a 5 anteriores</th><th>Evolución</th></tr>""" + "\n".join(stage_rows) + "</table></section></html>"
 
 
 def main():
@@ -276,7 +284,16 @@ def main():
         report = project(lines(args.events), include_names=args.include_names)
         report["workflow"] = safe(args.workflow, "workflow")
         if args.snapshot:
-            report["resourcesAtStart"] = approved_snapshot(args.snapshot)
+            snapshot = approved_snapshot(args.snapshot)
+            lag_seconds = stamp(report["startedAt"]) - stamp(snapshot["capturedAt"])
+            report["resourceSnapshotLagSeconds"] = round(lag_seconds, 2)
+            if 0 <= lag_seconds <= 900:
+                report["resourcesAtStart"] = snapshot
+                report["resourceSnapshotStatus"] = "BEFORE_RUN"
+            else:
+                report["resourceSnapshotStatus"] = "LATE_OR_STALE"
+                # Never label an old or late capture as the run's initial resources.
+                report["resourcesAtStart"] = {}
         dest = Path(args.history_dir) / "runs" / (hashlib.sha256(report["runId"].encode()).hexdigest() + ".json")
         json_write(dest, report)
         print(dest)

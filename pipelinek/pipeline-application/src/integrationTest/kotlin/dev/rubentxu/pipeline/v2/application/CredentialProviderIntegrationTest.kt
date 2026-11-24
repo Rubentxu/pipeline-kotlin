@@ -153,6 +153,18 @@ class CredentialProviderIntegrationTest {
             }
             """.trimIndent() + "\n",
         )
+        // The close-on-tail script prints the head of the credential on standard output and the
+        // tail of it as the LAST word the step writes, on standard error. The step ends on the
+        // final piece: whatever the redactor still holds when its channel closes has to be
+        // decided there, and never released in the clear (PKH-250).
+        Files.writeString(
+            scripts.resolve(CLOSE_ON_TAIL_SCRIPT_NAME),
+            "pipeline {\n    stages {\n        stage(\"eager\") {\n" +
+                "            environment(\"deploy-key\", \"TOKEN\") {\n" +
+                "                sh(\"printf 'head:'; printf '%s' \\\"\\${'$'}TOKEN\\\" | head -c $STDOUT_PIECE_LEN;" +
+                " sleep 1; printf '%s' \\\"\\${'$'}TOKEN\\\" | tail -c +" + (STDOUT_PIECE_LEN + 1) + " 1>&2\")\n" +
+                "            }\n        }\n    }\n}\n",
+        )
         val admission = admitEventStore(db.toString(), EventStorePurpose.Produce)
         val writable = (admission as EventStoreAdmission.Admitted).store
         DurableStores.open(writable, control, clock)
@@ -632,6 +644,58 @@ class CredentialProviderIntegrationTest {
     }
 
     /**
+     * PKH-250: a step that ENDS on the last piece of the credential, with the pieces split
+     * across the two channels. The red from the Fabric audit (2/5) showed the close releasing
+     * the whole value in the clear on BOTH channels; this row walks the same shape through the
+     * same machinery the audit walked: a real service, a brokered credential handed over the
+     * socket, a producer child of its own, and the console read over the street.
+     */
+    @Test
+    fun `a step ending on the last piece of the credential leaves no raw bytes at the close of either channel`() {
+        val service = start()
+        val pool = Executors.newFixedThreadPool(1)
+        try {
+            val session = registered(STARTER_TOKEN, PROVIDER)
+            repeat(CLOSE_ON_TAIL_ATTEMPTS) { attempt ->
+                val controller = pool.submit(
+                    Callable { grantWhenAsked(session.sessionId, STARTER_TOKEN, SECRET.copyOf()) },
+                )
+                val run = started(
+                    client(STARTER_TOKEN).startRun(
+                        script = CLOSE_ON_TAIL_SCRIPT_NAME,
+                        idempotencyKey = "key-close-tail-$attempt",
+                        credentialProvider = PROVIDER,
+                    ),
+                )
+                val terminal = awaitTerminal(run.runId)
+                assertTrue(
+                    controller.get(120, TimeUnit.SECONDS),
+                    "attempt $attempt: the controller was asked for the credential",
+                )
+                val output = outputOf(run.runId)
+                assertInstanceOf(
+                    TerminalObservation.Succeeded::class.java,
+                    terminal.terminal,
+                    "attempt $attempt: the close-on-tail run did not finish well: $output",
+                )
+                assertTrue(output.contains("head:"), "attempt $attempt: the console holds no transcript at all: $output")
+                assertFalse(
+                    output.contains(STDOUT_PIECE),
+                    "attempt $attempt: the standard-output piece of the credential reached the console in the clear: $output",
+                )
+                assertFalse(
+                    output.contains(STDERR_PIECE),
+                    "attempt $attempt: the standard-error piece of the credential — the word the step " +
+                        "ended on — reached the console in the clear: $output",
+                )
+            }
+        } finally {
+            pool.shutdownNow()
+            service.stop()
+        }
+    }
+
+    /**
      * The service, composed by the REAL composition root, and the way to stop it.
      *
      * The rows above build the service by hand; this one composes it the way the verb does, so
@@ -1071,6 +1135,21 @@ class CredentialProviderIntegrationTest {
          * The length the step prints: the secret plus the newline `printenv` writes.
          */
         private const val EXPECTED_LENGTH: String = "25"
+
+        /** The name of the script that ends on the last piece of the credential. */
+        private const val CLOSE_ON_TAIL_SCRIPT_NAME: String = "close-tail.pipeline.kts"
+
+        /** How many runs of that script the row walks (the red was intermittent, 2 of 5). */
+        private const val CLOSE_ON_TAIL_ATTEMPTS: Int = 4
+
+        /** How many bytes of the credential the standard output carries. */
+        private const val STDOUT_PIECE_LEN: Int = 14
+
+        /** The piece the standard output writes: the head of the secret. */
+        private const val STDOUT_PIECE: String = "s3cr3t-of-the-"
+
+        /** The piece the standard error writes LAST: the tail of the secret, the step's final word. */
+        private const val STDERR_PIECE: String = "controller"
 
         /** How long the test waits for a run to finish. */
         private const val TERMINAL_DEADLINE_MILLIS: Long = 180_000L

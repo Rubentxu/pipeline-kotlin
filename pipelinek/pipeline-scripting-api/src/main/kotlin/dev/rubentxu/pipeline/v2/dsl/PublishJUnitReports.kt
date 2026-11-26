@@ -13,7 +13,7 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
  *
  * The key order written here is the canonical form the runtime codec pins in
  * `CorePublishJUnitReportsWireCodec` (pipeline-runtime); the compatibility between the two is
- * measured by `CorePublishJUnitReportsWireTest`, so the façade and the step are ONE format
+ * measured by `CorePublishJUnitReportsStepTest`, so the façade and the step are ONE format
  * under test, not two hand-written ones.
  */
 object JUnitPublicationPayload {

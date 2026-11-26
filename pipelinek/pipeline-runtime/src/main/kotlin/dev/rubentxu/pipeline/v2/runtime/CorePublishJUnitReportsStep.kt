@@ -139,7 +139,7 @@ data class PublishJUnitReportsFailureOutput(
  * The single authority for the `core.junit.publishReports` wire format of the INPUT.
  *
  * The DSL façade in `pipeline-scripting-api` builds the payload with the same canonical key
- * order this codec writes (the compat assertion lives in `CorePublishJUnitReportsWireTest`), so
+ * order this codec writes (the compat assertion lives in `CorePublishJUnitReportsStepTest`), so
  * an author's declaration and the step's decode cannot drift unnoticed: the bytes are fixed by
  * this object and pinned against the façade by that test.
  */

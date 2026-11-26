@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -357,6 +358,22 @@ class CorePublishJUnitReportsStepTest {
         assertTrue(decoded.required, "an absent required means REQUIRED, never a silent pass")
         assertNull(decoded.expectedCount)
         assertNull(decoded.expectedGroup)
+    }
+
+    @Test
+    fun `declaring a format the step cannot verify is refused when decoding, never parsed`() {
+        // Fail-closed: a producer cannot claim testng-xml and get junit-xml verdicts. The
+        // refusal happens at decode — before the handler sees a file — and names the format
+        // the author declared, because the claim itself is the defect.
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            CorePublishJUnitReportsWireCodec.decode(
+                EncodedStepValue("""{"kind":"junitPublish","artifacts":"r/*.xml","reportFormat":"testng-xml"}"""),
+            )
+        }
+        assertTrue(
+            error.message!!.contains("testng-xml"),
+            "the refusal must name the declared format, got: ${error.message}",
+        )
     }
 
     @Test

@@ -34,7 +34,9 @@ import java.nio.file.Path
  * the author declared, [reportFormat] and [formatVersion] name the format version the reports
  * claim to carry, and [mediaType] is the transport spelling kept deliberately apart from that
  * semantics — a `.xml` under any name is only a candidate the pattern selected, and the parse
- * is what decides.
+ * is what decides whether the bytes hold that format. The kind itself is not a choice: this
+ * step verifies [JUnitXmlReportFormat.KIND] and declaring any other format fails closed at
+ * decode, before one file is read.
  *
  * The declaration carries the verdict rules too, and they are all declared-only:
  *  - `required` (default true): a publication whose pattern matched no report is NOT a pass.
@@ -60,7 +62,10 @@ data class PublishJUnitReportsInput(
 ) {
     init {
         require(artifacts.isNotBlank()) { "core.junit.publishReports requires a non-blank artifacts pattern" }
-        require(reportFormat.isNotBlank()) { "reportFormat must name the format the producer declares" }
+        require(reportFormat == JUnitXmlReportFormat.KIND) {
+            "core.junit.publishReports verifies only '${JUnitXmlReportFormat.KIND}'; the declared " +
+                "reportFormat '$reportFormat' names a format this step cannot verify — refusing to decode"
+        }
         require(formatVersion.isNotBlank()) { "formatVersion must be versionable: a format without a version cannot be pinned" }
         require(mediaType.isNotBlank()) { "mediaType must be declared apart from the report semantics" }
         require(expectedCount == null || expectedCount >= 0) { "expectedCount must be non-negative when declared" }
@@ -192,7 +197,8 @@ object CorePublishJUnitReportsWireCodec : StepCodec<PublishJUnitReportsInput> {
                 name = "reportFormat",
                 type = StepArgumentType.STRING,
                 required = false,
-                description = "the format the producer declares the reports carry (default junit-xml)",
+                description = "the format the producer declares the reports carry; only junit-xml is " +
+                    "verifiable and any other declared kind fails the decode (default junit-xml)",
             ),
             StepArgument(
                 name = "formatVersion",

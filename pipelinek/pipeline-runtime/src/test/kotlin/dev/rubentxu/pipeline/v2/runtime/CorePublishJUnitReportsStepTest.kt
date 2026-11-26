@@ -377,6 +377,35 @@ class CorePublishJUnitReportsStepTest {
     }
 
     @Test
+    fun `the output codec carries every publication form through a round-trip`() {
+        // The scripted form decodes this codec's text to hand the value back to the script, so
+        // every fact of the three forms must survive encode→decode: a renamed output key dies
+        // here and not silently in the consumer.
+        val codec = CorePublishJUnitReportsStep.definition.contract.outputCodec
+
+        val published = PublishedReportsOutput(
+            group = "unit",
+            receipts = listOf(
+                PublishedReport(
+                    relPath = "out/r.dat", sha256 = "café\"ded\\beef", sizeBytes = 512L,
+                    tests = 3, failures = 1, errors = 2, skipped = 4,
+                ),
+                PublishedReport(
+                    relPath = "out/otro.xml", sha256 = "def456", sizeBytes = 1L,
+                    tests = 0, failures = 0, errors = 0, skipped = 0,
+                ),
+            ),
+        )
+        assertEquals(published, codec.decode(codec.encode(published)))
+
+        val absent = AbsentOptionalReportsOutput(artifacts = "r/**/*.xml", group = null)
+        assertEquals(absent, codec.decode(codec.encode(absent)))
+
+        val failed = PublishJUnitReportsFailureOutput(FailureKind.USER, "no es válido \"junit-xml\"")
+        assertEquals(failed, codec.decode(codec.encode(failed)))
+    }
+
+    @Test
     fun `archiveArtifacts keeps its own wire format unchanged — existing clients are compatible`() {
         val legacy = """{"kind":"archiveArtifacts","artifacts":"build/**/*.jar","allowEmptyArchive":false,"excludes":"","fingerprint":false}"""
         val decoded = CoreArchiveArtifactsWireCodec.decode(EncodedStepValue(legacy))

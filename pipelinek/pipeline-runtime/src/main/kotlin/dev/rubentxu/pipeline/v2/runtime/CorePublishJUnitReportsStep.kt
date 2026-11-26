@@ -331,8 +331,12 @@ object CorePublishJUnitReportsStep {
         override fun decode(encoded: EncodedStepValue): TypedStepOutput {
             val obj = kotlinx.serialization.json.Json.parseToJsonElement(encoded.value)
                 .let { it as kotlinx.serialization.json.JsonObject }
+            // A JSON null is a JsonPrimitive whose content is the text "null": reading it as
+            // text turns an undeclared group into the group named "null". Only a primitive that
+            // is not the null literal carries a value.
             fun prim(name: String): String? =
-                (obj[name] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                (obj[name] as? kotlinx.serialization.json.JsonPrimitive)
+                    ?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.content
             require(prim("kind") == OUTPUT_KIND) {
                 "core.junit.publishReports output payload kind must be '$OUTPUT_KIND'"
             }

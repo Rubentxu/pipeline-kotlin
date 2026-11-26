@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.events.StashFailed as StashFailedEvent
 import dev.rubentxu.pipeline.v2.events.StashRestored
 import dev.rubentxu.pipeline.v2.events.StashedEntry
 import java.io.IOException
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -234,8 +235,22 @@ class StashOperationsAdapter(
             }
             Files.createDirectories(stashRoot)
 
-            val generation = nextGeneration(stashRoot)
-            val genDir = stashRoot.resolve(StashStoreLayout.generationDir(generation))
+            // The generation number is CLAIMED, not chosen: `createDirectory` fails when the
+            // name already exists, so two stashes racing on the same number cannot both write
+            // inside it — the loser takes the next number. nextGeneration alone only reads a
+            // stale-consistent view; the exclusive create is what makes "nothing here removes
+            // or rewrites a published generation" hold under the engine's parallel branches.
+            var generation = nextGeneration(stashRoot)
+            var genDir = stashRoot.resolve(StashStoreLayout.generationDir(generation))
+            while (true) {
+                try {
+                    Files.createDirectory(genDir)
+                    break
+                } catch (taken: FileAlreadyExistsException) {
+                    generation += 1
+                    genDir = stashRoot.resolve(StashStoreLayout.generationDir(generation))
+                }
+            }
             stagedGen = genDir
             val genDirReal = realPathOf(genDir)
             val snapshotDir = genDir.resolve(StashStoreLayout.SNAPSHOT_DIR)

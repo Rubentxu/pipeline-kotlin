@@ -17,6 +17,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * The generation contract of the stash adapter (PKH-351).
@@ -227,6 +229,63 @@ class StashGenerationManifestTest {
             "a generation that was never published cannot produce a restore event",
         )
         assertFalse(Files.exists(workspace.resolve("gen-2")), "no orphan tree leaked into the workspace")
+    }
+
+    @Test
+    fun `concurrent stashes of the same name claim distinct complete generations`() {
+        prepare()
+        Files.createDirectories(workspace.resolve("src"))
+        Files.writeString(workspace.resolve("src/a.txt"), "contenido")
+
+        // The reachable parallel shape: stage branches of one run share the store through
+        // per-stage adapters over the same runId. Every worker reaches the store with a
+        // barrier so the generation choice races on purpose.
+        val workerCount = 8
+        val start = CountDownLatch(1)
+        val finished = CountDownLatch(workerCount)
+        val outcomes = arrayOfNulls<StashResult>(workerCount)
+        val threads = (0 until workerCount).map { i ->
+            Thread {
+                try {
+                    start.await()
+                    outcomes[i] = adapter(RecordingSink()).stash(StashInput("files", "src/**"))
+                } finally {
+                    finished.countDown()
+                }
+            }.also(Thread::start)
+        }
+        start.countDown()
+        assertTrue(finished.await(60, TimeUnit.SECONDS), "every stash must return")
+        threads.forEach { it.join() }
+
+        for ((i, outcome) in outcomes.withIndex()) {
+            assertInstanceOf(StashSuccess::class.java, outcome, "stash worker $i")
+        }
+        val generations = Files.list(nameDir("files")).use { stream ->
+            stream.map { it.fileName.toString() }
+                .filter { StashStoreLayout.isGenerationDir(it) }
+                .toList()
+        }
+        assertEquals(
+            workerCount,
+            generations.size,
+            "two stashes sharing a generation number rewrite a published tree, the invariant this store exists for",
+        )
+        // Each claimed generation is self-describing and complete: its manifest names its
+        // own directory and the snapshot holds the captured file.
+        for (genName in generations) {
+            val genDir = nameDir("files").resolve(genName)
+            val manifest = StashManifest.readFrom(genDir)
+            assertEquals(
+                StashStoreLayout.pointerGeneration(genName),
+                manifest.generation,
+                "the manifest of '$genName' describes its own generation",
+            )
+            assertTrue(
+                Files.isRegularFile(genDir.resolve(StashStoreLayout.SNAPSHOT_DIR).resolve("src/a.txt")),
+                "generation '$genName' keeps the complete snapshot its manifest rows state",
+            )
+        }
     }
 
     @Test

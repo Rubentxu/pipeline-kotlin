@@ -786,6 +786,50 @@ class PostStepsScope : StepEmitter<PostStepsScope> {
     }
 
     /**
+     * Declares the publication of JUnit reports as a finalizer of this post condition.
+     *
+     * This is the publication-after-failure path: a post block runs whatever the stage
+     * outcome was, so declaring the publication under `always` publishes the reports even
+     * when the test steps failed. It is hosted here because it is a CORE step the DSL
+     * provides itself (`core.junit.publishReports`), not a step a plugin contributes — the
+     * plugin refusal below stands untouched, and this emitter delegates to the same payload
+     * and the same law as the body-level façade in [JUnitPublicationPayload]: the producer
+     * declares the pattern and the format, a glob that matched nothing is never a pass, and
+     * expectation and group apply only when declared.
+     *
+     * @param artifacts the Ant-style pattern declaring which workspace files are the reports.
+     * @param reportFormat the format kind the reports claim to carry.
+     * @param formatVersion the version of that format.
+     * @param mediaType the transport media type, apart from the report semantics.
+     * @param required whether a no-match fails the step (default true).
+     * @param expectedCount the number of reports the publication must find, when declared.
+     * @param expectedGroup the report group label, when declared.
+     * @param archiveName the logical name the archive is published with, when declared.
+     * @param maxReportBytes the hard cap on the size of a report the parser will read.
+     */
+    fun publishJUnitReports(
+        artifacts: String,
+        reportFormat: String = JUnitPublicationPayload.JUNIT_XML,
+        formatVersion: String = JUnitPublicationPayload.JUNIT_XML_VERSION,
+        mediaType: String = JUnitPublicationPayload.JUNIT_XML_MEDIA_TYPE,
+        required: Boolean = true,
+        expectedCount: Int? = null,
+        expectedGroup: String? = null,
+        archiveName: String? = null,
+        maxReportBytes: Long = JUnitPublicationPayload.DEFAULT_MAX_REPORT_BYTES,
+    ) {
+        sequence.declare(
+            StepSpec.RegistryStepSpec(
+                stepKey = JUnitPublicationPayload.STEP_KEY,
+                schemaVersion = "dsl-v1",
+                encodedInput = JUnitPublicationPayload.encode(
+                    artifacts, reportFormat, formatVersion, mediaType,
+                    required, expectedCount, expectedGroup, archiveName, maxReportBytes,
+                ),
+            ),
+        )
+    }
+    /**
      * REFUSED: a post condition hosts no step of a plugin.
      *
      * @throws IllegalArgumentException always, and the message names the

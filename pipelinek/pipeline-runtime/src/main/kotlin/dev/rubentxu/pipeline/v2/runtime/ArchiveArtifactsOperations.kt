@@ -42,9 +42,9 @@ interface ArchiveArtifactsOperations {
     fun archive(input: ArchiveArtifactsInput): ArchiveArtifactsResult
 }
 
-/** Successful archive outcome with deterministic per-file summaries (no timestamps). */
+/** Successful archive outcome with deterministic per-file receipts (no timestamps). */
 data class ArchiveArtifactsSuccess(
-    val files: List<ArchivedFileSummary>,
+    val files: List<CaptureReceipt>,
 ) : ArchiveArtifactsResult
 
 /** Typed archive failure carrying the legacy `FailureKind` (SCRIPT) and message. */
@@ -56,14 +56,38 @@ data class ArchiveArtifactsFailed(
 sealed interface ArchiveArtifactsResult
 
 /**
- * Deterministic summary of one archived file. Carries NO timestamps and NO content —
- * the durable `ArtifactArchived` event (with `archivedAt`) is the observability channel.
-*/
-data class ArchivedFileSummary(
+ * The verified local capture of one archived file.
+ *
+ * The digest and the size are read back FROM the stored target — never supplied by the
+ * producer — and the pair is what the durable `ArtifactArchived` event declares: a receipt
+ * never describes bytes other than the ones the retention directory held at capture time.
+ *
+ * The identity it carries is logical ([runId], [stageName], [relPath]) and deliberately
+ * holds no physical path: the retention location is resolved by [WorkspaceResolver] at
+ * read time, so the receipt survives a relocated control root. The seam binds a run and a
+ * stage and nothing finer, so step and attempt identity are explicitly absent — the event
+ * emission is what pairs this receipt with its place in the run's history.
+ */
+data class CaptureReceipt(
+    val runId: String,
+    val stageName: String,
     val relPath: String,
     val sha256: String,
     val size: Long,
-)
+) {
+    init {
+        require(runId.isNotBlank()) { "CaptureReceipt requires the run identity that produced the capture" }
+        require(stageName.isNotBlank()) { "CaptureReceipt requires the stage identity that produced the capture" }
+        require(relPath.isNotBlank()) { "CaptureReceipt requires the workspace-relative path of the captured file" }
+        // One predicate, owned by the class that mints the format: a receipt whose digest
+        // is not the canonical lowercase hex form could never match a re-read target.
+        require(Sha256.isSha256Hex(sha256)) {
+            "CaptureReceipt requires a verified 64-character lowercase hex digest; " +
+                "got '${sha256.take(8)}...' (${sha256.length} chars)"
+        }
+        require(size >= 0L) { "CaptureReceipt size must be non-negative, got $size" }
+    }
+}
 
 val ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY: StepCapability =
     StepCapability("artifact-archive.operations")
@@ -189,7 +213,7 @@ class ArchiveArtifactsOperationsAdapter(
         }
 
         val artifactDir = resolver.resolveArchiveDir(runIdString, stageIdentity.name)
-        val entries = mutableListOf<ArchivedFileSummary>()
+        val entries = mutableListOf<CaptureReceipt>()
 
         return try {
             for (file in matched) {
@@ -199,7 +223,9 @@ class ArchiveArtifactsOperationsAdapter(
                 val target = targetDir.resolve(relativePath.fileName)
                 java.nio.file.Files.copy(file, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
                 entries.add(
-                    ArchivedFileSummary(
+                    CaptureReceipt(
+                        runId = runIdString,
+                        stageName = stageIdentity.name,
                         relPath = relativePath.toString(),
                         sha256 = sha256Of(target),
                         size = java.nio.file.Files.size(target),

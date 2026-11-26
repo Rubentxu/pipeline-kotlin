@@ -104,7 +104,9 @@ data class PublishedReport(
 /**
  * The publication succeeded: every matched report was verified as [JUnitXmlReportFormat.KIND]
  * and captured through the PKH-339 port. [receipts] mirror the verified CaptureReceipts (digest
- * and size read back from the store by the adapter, never supplied here).
+ * and size read back from the store by the adapter, never supplied here): a verified report the
+ * port answered without a receipt fails the step instead, so no unverified digest is ever
+ * published under this output.
  */
 data class PublishedReportsOutput(
     val group: String?,
@@ -485,16 +487,23 @@ object CorePublishJUnitReportsStep {
                     name = input.archiveName,
                 ),
             )) {
-                is ArchiveArtifactsSuccess -> PublishedReportsOutput(
-                    group = input.expectedGroup,
-                    receipts = totals.map { report ->
+                is ArchiveArtifactsSuccess -> {
+                    // A success whose receipt is missing says nothing about the digest: the
+                    // pairing diverges when the port records a path the step cannot name (the
+                    // separators are platform's own), and the placeholder "" would then travel
+                    // as a verified digest. The lost receipt is the failure, not a silent pass.
+                    val mirrored = mutableListOf<PublishedReport>()
+                    for (report in totals) {
                         val receipt = result.files.firstOrNull { it.relPath == report.relPath }
-                        report.copy(
-                            sha256 = receipt?.sha256 ?: report.sha256,
-                            sizeBytes = receipt?.size ?: report.sizeBytes,
-                        )
-                    },
-                )
+                            ?: return@StepHandler PublishJUnitReportsFailureOutput(
+                                failureKind = FailureKind.ENGINE,
+                                message = "core.junit.publishReports: the capture port succeeded without a " +
+                                    "receipt for '${report.relPath}'; refusing to publish an unverified digest",
+                            )
+                        mirrored += report.copy(sha256 = receipt.sha256, sizeBytes = receipt.size)
+                    }
+                    PublishedReportsOutput(group = input.expectedGroup, receipts = mirrored)
+                }
                 is ArchiveArtifactsFailed -> PublishJUnitReportsFailureOutput(
                     failureKind = result.failureKind,
                     message = "core.junit.publishReports: capture failed: ${result.message}",

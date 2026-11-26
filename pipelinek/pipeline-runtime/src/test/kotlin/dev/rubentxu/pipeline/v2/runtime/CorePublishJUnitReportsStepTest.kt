@@ -340,6 +340,28 @@ class CorePublishJUnitReportsStepTest {
         )
     }
 
+    @Test
+    fun `a verified report whose receipt the port lost fails — never an empty digest`() {
+        // The pairing is by relPath: the step normalizes separators while a port on another
+        // platform records its own. A success whose receipt is missing says NOTHING about the
+        // digest, so publishing the placeholder "" as a verified digest is the lie this row
+        // forbids — the absence of the receipt is the failure.
+        Files.createDirectories(workspace.resolve("out"))
+        Files.writeString(workspace.resolve("out/r.dat"), surefireXml)
+        val ops = FakeArchiveOps(
+            ArchiveArtifactsSuccess(listOf(receipt("out\\r.dat", surefireXml.toByteArray()))),
+        )
+
+        val output = execute(PublishJUnitReportsInput(artifacts = "out/r.dat"), ops)
+
+        val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
+        assertEquals(FailureKind.ENGINE, failed.failureKind)
+        assertTrue(
+            failed.message.contains("out/r.dat"),
+            "the failure must name the report left without a receipt, got: ${failed.message}",
+        )
+    }
+
     // ---- AC #4: wire compatibility, registry presence, real local publication ----
 
     @Test

@@ -536,7 +536,7 @@ class StashOperationsAdapter(
         /** The store is corrupt where the reference or the generation it names is concerned. */
         data class Corrupt(val reason: String) : GenerationResolution
 
-        /** No pointer exists: the legacy flat layout, read directly. */
+        /** No pointer exists and the store holds no generation-shaped directory: the legacy flat layout, read directly. */
         data object Legacy : GenerationResolution
     }
 
@@ -549,7 +549,19 @@ class StashOperationsAdapter(
      */
     private fun resolveCurrentGeneration(stashRoot: Path, stashRootReal: Path): GenerationResolution {
         val pointer = stashRoot.resolve(StashStoreLayout.CURRENT_POINTER)
-        if (!Files.exists(pointer, LinkOption.NOFOLLOW_LINKS)) return GenerationResolution.Legacy
+        if (!Files.exists(pointer, LinkOption.NOFOLLOW_LINKS)) {
+            // A store holding generation-shaped directories but no pointer was never
+            // published: an abnormal death mid-capture leaves exactly that. Its tree is
+            // truncated content under `gen-N/snapshot/...` for a name no reader ever saw,
+            // so it is refused as corrupt — the flat legacy walk would present the internal
+            // generation paths as restored content.
+            if (hasGenerationDir(stashRoot)) {
+                return GenerationResolution.Corrupt(
+                    "the store carries generation directories but no published reference",
+                )
+            }
+            return GenerationResolution.Legacy
+        }
         if (Files.isSymbolicLink(pointer)) {
             return GenerationResolution.Corrupt("the stash reference is a symlink; refusing to follow it")
         }
@@ -578,6 +590,15 @@ class StashOperationsAdapter(
         }
         return GenerationResolution.Published(snapshot)
     }
+
+    /** True when the name directory holds at least one generation-shaped subdirectory. */
+    private fun hasGenerationDir(nameDir: Path): Boolean =
+        Files.list(nameDir).use { stream ->
+            stream.anyMatch { child ->
+                Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS) &&
+                    StashStoreLayout.isGenerationDir(child.fileName.toString())
+            }
+        }
 
     /** Removes a staged (never published) generation tree, deepest node first. */
     private fun deleteTree(root: Path) {

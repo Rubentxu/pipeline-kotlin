@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.StashCreated
+import dev.rubentxu.pipeline.v2.events.StashRestored
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -204,6 +205,28 @@ class StashGenerationManifestTest {
             Files.exists(controlRoot.resolve("artefacts")),
             "the stash writes no retention directory",
         )
+    }
+
+    @Test
+    fun `a store with an orphan generation and no pointer is refused, never restored as flat content`() {
+        val sink = prepare()
+        Files.createDirectories(workspace.resolve("src"))
+        // The disk state an abnormal death mid-first-capture leaves: a generation tree
+        // staged, no manifest, no CURRENT. The name was never published, so restoring it
+        // as flat legacy content would present truncated bytes under gen-N paths.
+        val orphanSnapshot = nameDir("files").resolve("gen-2").resolve(StashStoreLayout.SNAPSHOT_DIR)
+        Files.createDirectories(orphanSnapshot)
+        Files.writeString(orphanSnapshot.resolve("a.txt"), "truncado")
+
+        val result = adapter(sink).unstash(UnstashInput(name = "files"))
+
+        val failure = assertInstanceOf(StashFailed::class.java, result)
+        assertEquals(FailureKind.SCRIPT, failure.failureKind)
+        assertFalse(
+            sink.appended.any { it is StashRestored },
+            "a generation that was never published cannot produce a restore event",
+        )
+        assertFalse(Files.exists(workspace.resolve("gen-2")), "no orphan tree leaked into the workspace")
     }
 
     @Test

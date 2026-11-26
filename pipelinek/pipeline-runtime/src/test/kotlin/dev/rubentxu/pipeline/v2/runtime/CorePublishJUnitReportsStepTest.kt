@@ -255,6 +255,31 @@ class CorePublishJUnitReportsStepTest {
         assertTrue(failed.message.contains("empty"), failed.message)
     }
 
+    @Test
+    fun `a report over the declared cap is refused before it is parsed`() {
+        // The cap is the hard limit the schema documents, and it decides BEFORE the parse: a
+        // valid-but-oversized report must never reach the parser, and nothing reaches the port.
+        Files.createDirectories(workspace.resolve("r"))
+        Files.writeString(
+            workspace.resolve("r/fat.xml"),
+            "<!--" + "x".repeat(5 * 1024) + "-->" + surefireXml,
+        )
+        val ops = successOps("r/fat.xml")
+
+        val output = execute(
+            PublishJUnitReportsInput(artifacts = "r/*.xml", maxReportBytes = 4096),
+            ops,
+        )
+
+        val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
+        assertEquals(FailureKind.USER, failed.failureKind)
+        assertTrue(
+            failed.message.contains("r/fat.xml") && failed.message.contains("maxReportBytes=4096"),
+            "the refusal must name the oversized report and the cap that refused it, got: ${failed.message}",
+        )
+        assertTrue(ops.inputs.isEmpty(), "a byte the cap refuses must never reach the capture port")
+    }
+
     // ---- AC #3: expectation and group are declared-only; no-match never passes ----
 
     @Test

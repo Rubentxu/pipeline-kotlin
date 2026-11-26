@@ -48,6 +48,9 @@ object JUnitPublicationPayload {
      * @param archiveName the logical name the archive is published with; null archives unnamed.
      * @param maxReportBytes the hard cap on the size of a report the parser will read.
      * @return the encoded input, in the canonical form of the step's codec.
+     * @throws IllegalArgumentException when the declaration breaks the input law the runtime
+     *   decoder holds: a blank pattern, format, version or media type, a negative
+     *   [expectedCount], or a non-positive [maxReportBytes].
      */
     fun encode(
         artifacts: String,
@@ -64,6 +67,10 @@ object JUnitPublicationPayload {
         require(reportFormat.isNotBlank()) { "publishJUnitReports requires a declared reportFormat" }
         require(formatVersion.isNotBlank()) { "publishJUnitReports requires a declared formatVersion" }
         require(mediaType.isNotBlank()) { "publishJUnitReports requires a declared mediaType" }
+        // The same input law the runtime decoder holds: refusing here means an authoring
+        // mistake fails the declaration, not a run with a broken decode.
+        require(expectedCount == null || expectedCount >= 0) { "expectedCount must be non-negative when declared" }
+        require(maxReportBytes > 0L) { "maxReportBytes must be positive" }
         val fields = mutableListOf(
             "\"kind\":\"junitPublish\"",
             "\"artifacts\":${jsonString(artifacts)}",
@@ -119,6 +126,8 @@ object JUnitPublicationPayload {
  * @param expectedGroup the report group label, when declared.
  * @param archiveName the logical name the archive is published with, when declared.
  * @param maxReportBytes the hard cap on the size of a report the parser will read.
+ * @throws IllegalArgumentException when the declaration breaks the input law: a blank pattern,
+ *   format, version or media type, a negative [expectedCount], or a non-positive [maxReportBytes].
  */
 fun StageScope.publishJUnitReports(
     artifacts: String,

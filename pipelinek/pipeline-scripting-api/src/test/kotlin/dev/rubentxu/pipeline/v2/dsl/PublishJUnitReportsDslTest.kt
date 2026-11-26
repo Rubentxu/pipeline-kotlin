@@ -126,6 +126,21 @@ class PublishJUnitReportsDslTest {
     }
 
     @Test
+    fun `the façade refuses the same input invariants the runtime decoder holds`() {
+        // An authoring-time refusal, not a broken decode at run time: the façade declares only
+        // what the step can verify, so a negative expectation or a dead cap never ships.
+        val negative = assertThrows(IllegalArgumentException::class.java) {
+            JUnitPublicationPayload.encode(artifacts = "r/*.xml", expectedCount = -1)
+        }
+        assertTrue(negative.message!!.contains("expectedCount"), negative.message)
+
+        val deadCap = assertThrows(IllegalArgumentException::class.java) {
+            JUnitPublicationPayload.encode(artifacts = "r/*.xml", maxReportBytes = 0L)
+        }
+        assertTrue(deadCap.message!!.contains("maxReportBytes"), deadCap.message)
+    }
+
+    @Test
     fun `the façade declares the same payload at stage level and inside a body`() {
         val stage = StageScope("parity")
         val body = stage.blockScope("steps")

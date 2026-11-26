@@ -117,7 +117,12 @@ class PublishJUnitReportsDslTest {
                 }
             }
         }
-        assertTrue(error.message!!.contains("no step of a plugin"))
+        // The form of the refusal, not its prose: the restriction is IllegalArgumentException
+        // (asserted above) and its contract promises the message NAMES the step it refused.
+        assertTrue(
+            error.message!!.contains("junit.results"),
+            "the refusal must name the plugin step it refused, got: ${error.message}",
+        )
     }
 
     @Test

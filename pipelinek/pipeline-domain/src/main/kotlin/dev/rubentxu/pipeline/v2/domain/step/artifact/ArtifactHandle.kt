@@ -61,10 +61,10 @@ data class ArtifactHandle(
 
 /**
  * Single archived file entry within an [ArtifactHandle].
- * Mirrors the certified `ArchivedFileSummary`
+ * Mirrors the certified `CaptureReceipt`
  * shape (relPath / sha256 / size) without timestamps. The bridge from
  * `core.archiveArtifacts` to `core.artifact.query` materialises
- * `ArchivedFileSummary` records into these ADT entries.
+ * `CaptureReceipt` records into these ADT entries.
  * @property relPath  workspace-relative path of the archived file
  * @property sha256   sha256 of the file bytes
  * @property sizeBytes file size in bytes

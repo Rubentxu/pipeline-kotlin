@@ -6,7 +6,10 @@ import dev.rubentxu.pipeline.v2.runtime.durable.WorkspaceResolver
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 
 /**
  * Typed seam for `core.archiveArtifacts` (/ registry candidate)
@@ -42,9 +45,9 @@ interface ArchiveArtifactsOperations {
     fun archive(input: ArchiveArtifactsInput): ArchiveArtifactsResult
 }
 
-/** Successful archive outcome with deterministic per-file summaries (no timestamps). */
+/** Successful archive outcome with deterministic per-file receipts (no timestamps). */
 data class ArchiveArtifactsSuccess(
-    val files: List<ArchivedFileSummary>,
+    val files: List<CaptureReceipt>,
 ) : ArchiveArtifactsResult
 
 /** Typed archive failure carrying the legacy `FailureKind` (SCRIPT) and message. */
@@ -56,14 +59,38 @@ data class ArchiveArtifactsFailed(
 sealed interface ArchiveArtifactsResult
 
 /**
- * Deterministic summary of one archived file. Carries NO timestamps and NO content —
- * the durable `ArtifactArchived` event (with `archivedAt`) is the observability channel.
-*/
-data class ArchivedFileSummary(
+ * The verified local capture of one archived file.
+ *
+ * The digest and the size are read back FROM the stored target — never supplied by the
+ * producer — and the pair is what the durable `ArtifactArchived` event declares: a receipt
+ * never describes bytes other than the ones the retention directory held at capture time.
+ *
+ * The identity it carries is logical ([runId], [stageName], [relPath]) and deliberately
+ * holds no physical path: the retention location is resolved by [WorkspaceResolver] at
+ * read time, so the receipt survives a relocated control root. The seam binds a run and a
+ * stage and nothing finer, so step and attempt identity are explicitly absent — the event
+ * emission is what pairs this receipt with its place in the run's history.
+ */
+data class CaptureReceipt(
+    val runId: String,
+    val stageName: String,
     val relPath: String,
     val sha256: String,
     val size: Long,
-)
+) {
+    init {
+        require(runId.isNotBlank()) { "CaptureReceipt requires the run identity that produced the capture" }
+        require(stageName.isNotBlank()) { "CaptureReceipt requires the stage identity that produced the capture" }
+        require(relPath.isNotBlank()) { "CaptureReceipt requires the workspace-relative path of the captured file" }
+        // One predicate, owned by the class that mints the format: a receipt whose digest
+        // is not the canonical lowercase hex form could never match a re-read target.
+        require(Sha256.isSha256Hex(sha256)) {
+            "CaptureReceipt requires a verified 64-character lowercase hex digest; " +
+                "got '${sha256.take(8)}...' (${sha256.length} chars)"
+        }
+        require(size >= 0L) { "CaptureReceipt size must be non-negative, got $size" }
+    }
+}
 
 val ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY: StepCapability =
     StepCapability("artifact-archive.operations")
@@ -121,8 +148,12 @@ data class ArchiveArtifactsInput(
  * - per-file copy failure → `ArtifactArchiveFailed` + typed failure, no partial success.
  * The glob translation delegates to `AntStyleGlob` (the certified Ant engine) and
  * applies `excludes` after the Jenkins
- * 13-entry default excludes. `Files.copy(..., REPLACE_EXISTING)` makes fresh
- * Re-execution idempotent. The differential contract freeze owns this decision
+ * 13-entry default excludes. Each matched file is a verified capture: the source is
+ * digested before the copy, identical stored bytes are kept without reopening them, and a
+ * changed target is re-copied with the receipt minted only from the values read back from
+ * the store afterwards. A capture whose stored bytes do not match its source — or whose
+ * bytes would reach the store through a symbolic link leaving the workspace or the
+ * retention root — is a typed failure with no success event, never a partial success.
 */
 class ArchiveArtifactsOperationsAdapter(
     private val runIdString: String,
@@ -189,22 +220,32 @@ class ArchiveArtifactsOperationsAdapter(
         }
 
         val artifactDir = resolver.resolveArchiveDir(runIdString, stageIdentity.name)
-        val entries = mutableListOf<ArchivedFileSummary>()
+        val entries = mutableListOf<CaptureReceipt>()
 
         return try {
+            val workspaceReal = workspace.toRealPath()
+            // The containment base is the retention root, not the stage directory: a link
+            // planted at or above the stage directory makes that directory's own real path
+            // leave the store, so a base taken from it would approve the escape it must
+            // refuse. `resolveArchiveDir` fixes the lexical shape
+            // `<controlDirRoot>/artefacts/<runId>/<stage>`: two levels up is the root.
+            val retentionRoot = Files.createDirectories(artifactDir.parent!!.parent).toRealPath()
             for (file in matched) {
                 val relativePath = workspace.relativize(file)
+                if (relativePath.nameCount == 0 || relativePath.isAbsolute || relativePath.startsWith("..")) {
+                    throw IllegalStateException("archived path '$relativePath' escapes the workspace root")
+                }
+                // The walk bounded the NAME to the workspace, but a leaf symlink carries the
+                // BYTES from wherever it points: the resolved source must live inside the
+                // workspace root before any of its bytes are stored.
+                if (!file.toRealPath().startsWith(workspaceReal)) {
+                    throw IllegalStateException("archive source '$file' resolves outside the workspace root")
+                }
                 val targetDir = artifactDir.resolve(relativePath.parent ?: Path.of(""))
-                java.nio.file.Files.createDirectories(targetDir)
+                Files.createDirectories(targetDir)
+                requireStoredInsideRetention(targetDir, retentionRoot)
                 val target = targetDir.resolve(relativePath.fileName)
-                java.nio.file.Files.copy(file, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                entries.add(
-                    ArchivedFileSummary(
-                        relPath = relativePath.toString(),
-                        sha256 = sha256Of(target),
-                        size = java.nio.file.Files.size(target),
-                    ),
-                )
+                entries.add(captureVerified(file, target, relativePath.toString(), retentionRoot))
             }
             eventSink.append(
                 dev.rubentxu.pipeline.v2.events.ArtifactArchived(
@@ -214,8 +255,8 @@ class ArchiveArtifactsOperationsAdapter(
                     occurredAt = java.time.Instant.now(),
                     files = entries.map {
                         dev.rubentxu.pipeline.v2.events.ArtifactEntry(
-                            runId = runIdString,
-                            stageName = stageIdentity.name,
+                            runId = it.runId,
+                            stageName = it.stageName,
                             relPath = it.relPath,
                             sha256 = it.sha256,
                             size = it.size,
@@ -244,9 +285,77 @@ class ArchiveArtifactsOperationsAdapter(
             reason = reason,
         )
 
-    private fun sha256Of(file: Path): String {
-        // The same streaming loop with the same 8192-byte buffer, so the
-        // digest value is unchanged for every file already archived.
-        return Sha256.ofFile(file)
+    /**
+     * Captures one file and returns the receipt of what the store holds afterwards.
+     *
+     * The source is digested BEFORE the copy, and the receipt is only minted from values
+     * read back FROM the stored target afterwards: a target that ends holding anything
+     * else — a short write, a writer that raced the copy — is a refused capture, never a
+     * receipt that lies. When the target already stores exactly those bytes the copy is
+     * skipped: REPLACE_EXISTING truncates first, and a re-execution has no reason to open
+     * that window again over bytes it is about to write identically.
+     */
+    private fun captureVerified(
+        source: Path,
+        target: Path,
+        relativePath: String,
+        retentionRoot: Path,
+    ): CaptureReceipt {
+        val expectedSha = Sha256.ofFile(source)
+        val expectedSize = Files.size(source)
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            // NOFOLLOW: under that option a symbolic link is not `isRegularFile`, so one
+            // predicate refuses both the link — whose write would land outside the store —
+            // and any other special node at the position the capture wants for itself.
+            val stored = readAttributesNoFollow(target)
+            if (!stored.isRegularFile) {
+                throw IllegalStateException(
+                    "archive target for '$relativePath' is not a regular stored file: refusing to write through it",
+                )
+            }
+            if (Sha256.ofFile(target) == expectedSha && Files.size(target) == expectedSize) {
+                return verifiedReceipt(relativePath, expectedSha, expectedSize)
+            }
+        }
+        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
+        // Re-read the facts the receipt will state, and refuse the capture when the store
+        // does not carry what the source promised. The containment walk repeats too: a
+        // link planted between the copy and this read would otherwise leave the receipt
+        // describing bytes that are no longer under the retention root.
+        requireStoredInsideRetention(target.parent, retentionRoot)
+        if (!readAttributesNoFollow(target).isRegularFile) {
+            throw IllegalStateException("stored capture for '$relativePath' is not a regular file")
+        }
+        val capturedSha = Sha256.ofFile(target)
+        val capturedSize = Files.size(target)
+        if (capturedSha != expectedSha || capturedSize != expectedSize) {
+            throw IllegalStateException(
+                "captured bytes for '$relativePath' do not match the source after the copy",
+            )
+        }
+        return verifiedReceipt(relativePath, capturedSha, capturedSize)
+    }
+
+    private fun readAttributesNoFollow(path: Path): BasicFileAttributes =
+        Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+
+    private fun verifiedReceipt(relativePath: String, sha256: String, size: Long): CaptureReceipt =
+        CaptureReceipt(
+            runId = runIdString,
+            stageName = stageIdentity.name,
+            relPath = relativePath,
+            sha256 = sha256,
+            size = size,
+        )
+
+    /**
+     * The bytes of a capture must land under the retention root, physically: a link
+     * planted anywhere along the destination resolves the real path out of the store, and
+     * [Path.startsWith] over real paths is what says so.
+     */
+    private fun requireStoredInsideRetention(path: Path, retentionRoot: Path) {
+        if (!path.toRealPath().startsWith(retentionRoot)) {
+            throw IllegalStateException("archive destination under '$path' resolves outside the retention root")
+        }
     }
 }

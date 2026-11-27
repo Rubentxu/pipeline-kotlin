@@ -171,6 +171,28 @@ class ArchiveArtifactsOperationsAdapterTest {
     }
 
     @Test
+    fun `a link planted at a digest address refuses the capture and never writes through it`() {
+        val sink = prepare()
+        val content = "contenido-direccional"
+        Files.writeString(workspace.resolve("addr.txt"), content)
+        // The link points at bytes OUTSIDE the store whose digest matches the capture:
+        // only the no-follow regular-file check can refuse it, so a receipt is never
+        // minted over bytes the retention tree does not hold.
+        Files.writeString(controlRoot.resolve("fuera.txt"), content)
+        Files.createDirectories(artifactDir.resolve("_blobs"))
+        Files.createSymbolicLink(
+            artifactDir.resolve("_blobs").resolve(Sha256.ofText(content)),
+            controlRoot.resolve("fuera.txt"),
+        )
+
+        val result = adapter(sink).archive(ArchiveArtifactsInput(artifacts = "addr.txt"))
+
+        val address = artifactDir.resolve("_blobs").resolve(Sha256.ofText(content))
+        assertInstanceOf(ArchiveArtifactsFailed::class.java, result)
+        assertTrue(Files.isSymbolicLink(address), "the planted address link must not be written through")
+    }
+
+    @Test
     fun `a link planted at the digest zone refuses the capture and stages nothing outside the store`() {
         val sink = prepare()
         Files.createDirectories(artifactDir)

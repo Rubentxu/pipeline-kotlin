@@ -46,7 +46,7 @@ object CoreStepRegistryFactory {
         // authority for the key.
         CoreArchiveArtifactsStep.registerInto(this)
         // `core.junit.publishReports`: the explicit JUnit publication. It CONSUMES the
-        // archiveArtifacts capture port (PKH-339 receipts) and the certified JUnit parser;
+        // archiveArtifacts capture port (its verified capture receipts) and the certified JUnit parser;
         // it adds no second path into the retention store.
         CorePublishJUnitReportsStep.registerInto(this)
         // `core.artifact.query` is the bridge Step that lets the pipeline ask

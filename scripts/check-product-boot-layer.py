@@ -372,6 +372,35 @@ DECLARED_EXECUTABLES = {
     "scripts/release/verify-tag-signature.sh": (
         "publication: it verifies the signature of a published tag"
     ),
+    "scripts/pipelinek-dsl-index.py": (
+        "offline DSL discovery: it derives a signature index from the Kotlin "
+        "sources of the tree and starts nothing of the product"
+    ),
+    "scripts/pipelinek-local-report.py": (
+        "offline metrics: it reads typed event JSONL a run left behind and "
+        "starts nothing of the product"
+    ),
+    "scripts/pipelinek-resume-state.py": (
+        "offline recovery: it reads the durable journal of a run to compose a "
+        "resume state and starts nothing of the product"
+    ),
+    "scripts/pipelinek-run-with-metrics.py": (
+        "offline runner wrapper: it times a pipeline of an EXTERNAL project "
+        "through the installed distribution and writes a local report, and it "
+        "certifies nothing about the behaviour of this tree"
+    ),
+    "scripts/test_pipelinek_automation_tools.py": (
+        "the regression tests of the offline tooling scripts: they run the "
+        "scripts' own functions and start nothing of the product"
+    ),
+    "scripts/test_pipelinek_metrics_runner.py": (
+        "the offline integration tests of the runner: a fake CLI of an "
+        "external project, no network, and nothing of the product started"
+    ),
+    "scripts/test_pipelinek_resume_state.py": (
+        "the regression tests of the resume-state script: they run its own "
+        "functions and start nothing of the product"
+    ),
 }
 
 # The roots whose scenarios are DOCUMENTATION and not a layer that boots a

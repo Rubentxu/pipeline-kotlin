@@ -157,16 +157,34 @@ class ArchiveArtifactsOperationsAdapterTest {
         val content = "contenido-verificado"
         val source = workspace.resolve("poison.txt")
         Files.writeString(source, content)
-        // A pre-existing address holding other bytes: the write-once store must refuse
-        // the capture instead of minting a receipt for bytes it does not hold.
+        // A pre-existing address holding OTHER bytes of the SAME size: only the digest
+        // read-back can tell them apart, and the write-once store must refuse the
+        // capture instead of minting a receipt for bytes it does not hold.
         val poisoned = artifactDir.resolve("_blobs").resolve(Sha256.ofText(content))
         Files.createDirectories(poisoned.parent)
-        Files.writeString(poisoned, "otra-cosa")
+        Files.writeString(poisoned, "XXXXXXXXXXXXXXXXXXXX")
 
         val result = adapter(sink).archive(ArchiveArtifactsInput(artifacts = "poison.txt"))
 
         assertInstanceOf(ArchiveArtifactsFailed::class.java, result)
-        assertEquals("otra-cosa", Files.readString(poisoned), "the write-once address is never rewritten by the refused capture")
+        assertEquals("XXXXXXXXXXXXXXXXXXXX", Files.readString(poisoned), "the write-once address is never rewritten by the refused capture")
+    }
+
+    @Test
+    fun `a link planted at the digest zone refuses the capture and stages nothing outside the store`() {
+        val sink = prepare()
+        Files.createDirectories(artifactDir)
+        Files.createDirectories(controlRoot.resolve("outside"))
+        Files.createSymbolicLink(artifactDir.resolve("_blobs"), controlRoot.resolve("outside"))
+        Files.writeString(workspace.resolve("ok.txt"), "contenido-normal")
+
+        val result = adapter(sink).archive(ArchiveArtifactsInput(artifacts = "ok.txt"))
+
+        assertInstanceOf(ArchiveArtifactsFailed::class.java, result)
+        assertTrue(
+            Files.notExists(controlRoot.resolve("outside").resolve("ok.txt")),
+            "no byte may land outside the store through the planted zone link",
+        )
     }
 
     @Test

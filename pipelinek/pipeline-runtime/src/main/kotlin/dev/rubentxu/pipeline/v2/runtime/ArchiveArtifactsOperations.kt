@@ -96,6 +96,18 @@ val ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY: StepCapability =
     StepCapability("artifact-archive.operations")
 
 /**
+ * The typed refusal of a capture the retention store cannot honour (escape of the
+ * workspace or the retention root, a special node where the capture needs a regular
+ * file, bytes that do not match their source).
+ *
+ * It remains an [IllegalStateException] on purpose: [ArchiveArtifactsOperationsAdapter.archive]
+ * catches every exception at its boundary and re-emits the refusal as the typed
+ * [ArchiveArtifactsFailed] result, so naming the failure changes what a reader of the
+ * throw site sees without changing what the handler sees.
+ */
+internal class ArchiveCaptureRefusal(message: String) : IllegalStateException(message)
+
+/**
  * Canonical input payload of `core.archiveArtifacts` (typed contract)
  * Jenkins-verbatim signature `archiveArtifacts(artifacts, allowEmptyArchive=false,
  * excludes="", fingerprint=false)`. `fingerprint` is carried on the wire for envelope
@@ -233,13 +245,13 @@ class ArchiveArtifactsOperationsAdapter(
             for (file in matched) {
                 val relativePath = workspace.relativize(file)
                 if (relativePath.nameCount == 0 || relativePath.isAbsolute || relativePath.startsWith("..")) {
-                    throw IllegalStateException("archived path '$relativePath' escapes the workspace root")
+                    throw ArchiveCaptureRefusal("archived path '$relativePath' escapes the workspace root")
                 }
                 // The walk bounded the NAME to the workspace, but a leaf symlink carries the
                 // BYTES from wherever it points: the resolved source must live inside the
                 // workspace root before any of its bytes are stored.
                 if (!file.toRealPath().startsWith(workspaceReal)) {
-                    throw IllegalStateException("archive source '$file' resolves outside the workspace root")
+                    throw ArchiveCaptureRefusal("archive source '$file' resolves outside the workspace root")
                 }
                 val targetDir = artifactDir.resolve(relativePath.parent ?: Path.of(""))
                 Files.createDirectories(targetDir)
@@ -309,7 +321,7 @@ class ArchiveArtifactsOperationsAdapter(
             // and any other special node at the position the capture wants for itself.
             val stored = readAttributesNoFollow(target)
             if (!stored.isRegularFile) {
-                throw IllegalStateException(
+                throw ArchiveCaptureRefusal(
                     "archive target for '$relativePath' is not a regular stored file: refusing to write through it",
                 )
             }
@@ -324,12 +336,12 @@ class ArchiveArtifactsOperationsAdapter(
         // describing bytes that are no longer under the retention root.
         requireStoredInsideRetention(target.parent, retentionRoot)
         if (!readAttributesNoFollow(target).isRegularFile) {
-            throw IllegalStateException("stored capture for '$relativePath' is not a regular file")
+            throw ArchiveCaptureRefusal("stored capture for '$relativePath' is not a regular file")
         }
         val capturedSha = Sha256.ofFile(target)
         val capturedSize = Files.size(target)
         if (capturedSha != expectedSha || capturedSize != expectedSize) {
-            throw IllegalStateException(
+            throw ArchiveCaptureRefusal(
                 "captured bytes for '$relativePath' do not match the source after the copy",
             )
         }
@@ -355,7 +367,7 @@ class ArchiveArtifactsOperationsAdapter(
      */
     private fun requireStoredInsideRetention(path: Path, retentionRoot: Path) {
         if (!path.toRealPath().startsWith(retentionRoot)) {
-            throw IllegalStateException("archive destination under '$path' resolves outside the retention root")
+            throw ArchiveCaptureRefusal("archive destination under '$path' resolves outside the retention root")
         }
     }
 }

@@ -7,6 +7,13 @@ plugins {
 
 pitest {
     junit5PluginVersion = "1.2.1"
+    // The capture adapter is the third seam of this module: its capture
+    // law is that the bytes an emitted receipt names stay retrievable and
+    // untouched — the digest-addressed write-once securing, the visible
+    // copy and the read-back that mints the receipt are the decisions that
+    // hold it, and a lane that mutated one of them would leave the others
+    // unmeasured.
+    //
     // The type that HOLDS the rules, and the companion that APPLIES them:
     // the two halves of the same subject, and a lane that mutated one of
     // them would leave the other unmeasured.
@@ -29,12 +36,14 @@ pitest {
     // in this lane, so a mutant of the declaration is a RED lane and not a
     // survivor that nobody read.
     targetClasses = listOf(
+        "dev.rubentxu.pipeline.v2.runtime.ArchiveArtifactsOperationsAdapter*",
         "dev.rubentxu.pipeline.v2.runtime.RunConfiguration*",
         "dev.rubentxu.pipeline.v2.runtime.CoreParamStep*",
         "dev.rubentxu.pipeline.v2.runtime.ParamInput",
         "dev.rubentxu.pipeline.v2.runtime.ParamOutput*",
     )
     targetTests = listOf(
+        "dev.rubentxu.pipeline.v2.runtime.ArchiveArtifactsOperationsAdapterTest",
         "dev.rubentxu.pipeline.v2.runtime.RunConfigurationTest",
         "dev.rubentxu.pipeline.v2.runtime.CoreParamStepTest",
         "dev.rubentxu.pipeline.v2.runtime.CoreStepInputSchemaTest",

@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.artefacts.local.AntStyleGlob
 import dev.rubentxu.pipeline.v2.runtime.durable.WorkspaceResolver
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -64,6 +65,10 @@ sealed interface ArchiveArtifactsResult
  * The digest and the size are read back FROM the stored target — never supplied by the
  * producer — and the pair is what the durable `ArtifactArchived` event declares: a receipt
  * never describes bytes other than the ones the retention directory held at capture time.
+ * The bytes a receipt names live at a digest-addressed, write-once location the archive
+ * adapter never rewrites, so a later capture under the same visible name cannot mutate
+ * them: a receipt stays true about retrievable bytes for as long as the retention tree
+ * holds.
  *
  * The identity it carries is logical ([runId], [stageName], [relPath]) and deliberately
  * holds no physical path: the retention location is resolved by [WorkspaceResolver] at
@@ -96,8 +101,17 @@ val ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY: StepCapability =
     StepCapability("artifact-archive.operations")
 
 /**
+ * The first path segment the archive adapter reserves for its digest-addressed
+ * capture zone. A workspace file whose visible name would land inside it cannot be
+ * archived without occupying an address the receipts name, so such a capture is a
+ * typed refusal, never a write.
+ */
+private const val BLOB_ZONE = "_blobs"
+
+/**
  * The typed refusal of a capture the retention store cannot honour (escape of the
- * workspace or the retention root, a special node where the capture needs a regular
+ * workspace or the retention root, a visible name that falls inside the reserved
+ * digest-addressed zone, a special node where the capture needs a regular
  * file, bytes that do not match their source).
  *
  * It remains an [IllegalStateException] on purpose: [ArchiveArtifactsOperationsAdapter.archive]
@@ -163,7 +177,12 @@ data class ArchiveArtifactsInput(
  * 13-entry default excludes. Each matched file is a verified capture: the source is
  * digested before the copy, identical stored bytes are kept without reopening them, and a
  * changed target is re-copied with the receipt minted only from the values read back from
- * the store afterwards. A capture whose stored bytes do not match its source — or whose
+ * the store afterwards. Every capture also secures its bytes under a digest-addressed,
+ * write-once location inside the retention tree —
+ * `<artefacts>/<runId>/<stage>/[BLOB_ZONE]/<sha256>` — and the receipt is read back from
+ * THAT copy: a later capture under the same visible name lands on its own digest address,
+ * so the bytes an emitted receipt names stay retrievable and untouched no matter what the
+ * run archives afterwards. A capture whose stored bytes do not match its source — or whose
  * bytes would reach the store through a symbolic link leaving the workspace or the
  * retention root — is a typed failure with no success event, never a partial success.
 */
@@ -232,6 +251,7 @@ class ArchiveArtifactsOperationsAdapter(
         }
 
         val artifactDir = resolver.resolveArchiveDir(runIdString, stageIdentity.name)
+        val blobDir = artifactDir.resolve(BLOB_ZONE)
         val entries = mutableListOf<CaptureReceipt>()
 
         return try {
@@ -247,6 +267,11 @@ class ArchiveArtifactsOperationsAdapter(
                 if (relativePath.nameCount == 0 || relativePath.isAbsolute || relativePath.startsWith("..")) {
                     throw ArchiveCaptureRefusal("archived path '$relativePath' escapes the workspace root")
                 }
+                if (relativePath.getName(0).toString() == BLOB_ZONE) {
+                    throw ArchiveCaptureRefusal(
+                        "archived path '$relativePath' names the reserved digest-addressed zone '$BLOB_ZONE/'",
+                    )
+                }
                 // The walk bounded the NAME to the workspace, but a leaf symlink carries the
                 // BYTES from wherever it points: the resolved source must live inside the
                 // workspace root before any of its bytes are stored.
@@ -257,7 +282,7 @@ class ArchiveArtifactsOperationsAdapter(
                 Files.createDirectories(targetDir)
                 requireStoredInsideRetention(targetDir, retentionRoot)
                 val target = targetDir.resolve(relativePath.fileName)
-                entries.add(captureVerified(file, target, relativePath.toString(), retentionRoot))
+                entries.add(captureVerified(file, target, blobDir, relativePath.toString(), retentionRoot))
             }
             eventSink.append(
                 dev.rubentxu.pipeline.v2.events.ArtifactArchived(
@@ -300,21 +325,58 @@ class ArchiveArtifactsOperationsAdapter(
     /**
      * Captures one file and returns the receipt of what the store holds afterwards.
      *
-     * The source is digested BEFORE the copy, and the receipt is only minted from values
-     * read back FROM the stored target afterwards: a target that ends holding anything
-     * else — a short write, a writer that raced the copy — is a refused capture, never a
-     * receipt that lies. When the target already stores exactly those bytes the copy is
-     * skipped: REPLACE_EXISTING truncates first, and a re-execution has no reason to open
-     * that window again over bytes it is about to write identically.
+     * The source is digested BEFORE any copy. The visible name keeps the legacy
+     * semantics — the latest capture's bytes, idempotently kept when identical — and the
+     * capture then secures a write-once copy of those bytes at the digest address inside
+     * [blobDir]. The receipt is minted ONLY from values read back from that digest
+     * address: the bytes a receipt names live at a location no later capture rewrites,
+     * so a receipt stays true about retrievable bytes no matter what the run archives
+     * under the same visible name afterwards. A capture whose bytes never match what the
+     * source promised — visible copy or digest address — is a refused capture, never a
+     * receipt that lies.
      */
     private fun captureVerified(
         source: Path,
         target: Path,
+        blobDir: Path,
         relativePath: String,
         retentionRoot: Path,
     ): CaptureReceipt {
         val expectedSha = Sha256.ofFile(source)
         val expectedSize = Files.size(source)
+        captureVisible(source, target, relativePath, expectedSha, expectedSize, retentionRoot)
+        val blob = secureContentBlob(source, blobDir, expectedSha, relativePath, retentionRoot)
+        // The digest address is what the receipt names: re-read its facts from the store
+        // and refuse the capture when the address does not hold what the source promised —
+        // a staged copy that raced, or a pre-existing address holding other bytes.
+        if (!readAttributesNoFollow(blob).isRegularFile) {
+            throw ArchiveCaptureRefusal(
+                "the digest address of '$relativePath' is not a regular stored file",
+            )
+        }
+        val storedSha = Sha256.ofFile(blob)
+        val storedSize = Files.size(blob)
+        if (storedSha != expectedSha || storedSize != expectedSize) {
+            throw ArchiveCaptureRefusal(
+                "the digest address of '$relativePath' does not hold the bytes its name promises",
+            )
+        }
+        return verifiedReceipt(relativePath, storedSha, storedSize)
+    }
+
+    /**
+     * Copies the capture into the visible name, with the semantics the retention layout
+     * has always offered: identical bytes keep the stored file closed, changed bytes
+     * replace it, and every write is verified against the digest read before the copy.
+     */
+    private fun captureVisible(
+        source: Path,
+        target: Path,
+        relativePath: String,
+        expectedSha: String,
+        expectedSize: Long,
+        retentionRoot: Path,
+    ) {
         if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             // NOFOLLOW: under that option a symbolic link is not `isRegularFile`, so one
             // predicate refuses both the link — whose write would land outside the store —
@@ -326,11 +388,11 @@ class ArchiveArtifactsOperationsAdapter(
                 )
             }
             if (Sha256.ofFile(target) == expectedSha && Files.size(target) == expectedSize) {
-                return verifiedReceipt(relativePath, expectedSha, expectedSize)
+                return
             }
         }
         Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
-        // Re-read the facts the receipt will state, and refuse the capture when the store
+        // Re-read what the visible copy became, and refuse the capture when the store
         // does not carry what the source promised. The containment walk repeats too: a
         // link planted between the copy and this read would otherwise leave the receipt
         // describing bytes that are no longer under the retention root.
@@ -345,7 +407,50 @@ class ArchiveArtifactsOperationsAdapter(
                 "captured bytes for '$relativePath' do not match the source after the copy",
             )
         }
-        return verifiedReceipt(relativePath, capturedSha, capturedSize)
+    }
+
+    /**
+     * Secures the capture's bytes at their digest address, write-once.
+     *
+     * The address `<blobDir>/<sha256>` is an identity of content, never a mutable
+     * position: a file already holding that address is left untouched (two captures of
+     * the same content share one address by construction), and only an address nobody
+     * holds yet is created — staged through a temp file and moved atomically, so no
+     * partial write is ever visible under a digest name. A non-regular node planted at
+     * the address is refused, not written through.
+     */
+    private fun secureContentBlob(
+        source: Path,
+        blobDir: Path,
+        expectedSha: String,
+        relativePath: String,
+        retentionRoot: Path,
+    ): Path {
+        Files.createDirectories(blobDir)
+        // The zone the digests name must itself live inside the retention tree: a link
+        // planted at the zone's position would otherwise stage bytes outside it.
+        requireStoredInsideRetention(blobDir, retentionRoot)
+        val blob = blobDir.resolve(expectedSha)
+        if (Files.exists(blob, LinkOption.NOFOLLOW_LINKS)) {
+            if (!readAttributesNoFollow(blob).isRegularFile) {
+                throw ArchiveCaptureRefusal(
+                    "digest address for '$relativePath' is not a regular stored file: refusing to write through it",
+                )
+            }
+        } else {
+            val staging = Files.createTempFile(blobDir, ".capture-", ".tmp")
+            try {
+                Files.copy(source, staging, StandardCopyOption.REPLACE_EXISTING)
+                Files.move(staging, blob, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: FileAlreadyExistsException) {
+                // A concurrent capture of the same content reached the address first:
+                // the digest IS the identity, so the blob already there names the same
+                // bytes this capture verified from its source.
+            } finally {
+                Files.deleteIfExists(staging)
+            }
+        }
+        return blob
     }
 
     private fun readAttributesNoFollow(path: Path): BasicFileAttributes =

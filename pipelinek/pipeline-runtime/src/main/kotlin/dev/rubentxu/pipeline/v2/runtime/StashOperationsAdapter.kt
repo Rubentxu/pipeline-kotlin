@@ -21,6 +21,18 @@ import java.util.Comparator
 import java.util.UUID
 
 /**
+ * The typed refusal of a stash capture the generation cannot honour (a stored node that
+ * resolves outside the generation or is not a regular file, bytes that do not match their
+ * source).
+ *
+ * It remains an [IllegalStateException] on purpose: [StashOperationsAdapter.stash] catches
+ * every exception at its boundary, deletes the staged generation and re-emits the refusal
+ * as the typed [StashFailed] result, so naming the failure changes what a reader of the
+ * throw site sees without changing what the handler sees.
+ */
+internal class StashCaptureRefusal(message: String) : IllegalStateException(message)
+
+/**
  * Production adapter for [StashOperations] (the durable stash tier work / Tier B #1).
  *
  * Storage layout: `<controlDirRoot>/stashes/<runId>/<name>/`, a directory owning one
@@ -523,16 +535,16 @@ class StashOperationsAdapter(
         // link planted between the copy and this read would otherwise leave the receipt
         // describing bytes that are no longer under the generation root.
         if (!target.toRealPath().startsWith(genDirReal)) {
-            throw IllegalStateException("stored capture for '$relativePath' resolves outside the generation")
+            throw StashCaptureRefusal("stored capture for '$relativePath' resolves outside the generation")
         }
         val stored = Files.readAttributes(target, java.nio.file.attribute.BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
         if (!stored.isRegularFile) {
-            throw IllegalStateException("stored capture for '$relativePath' is not a regular file")
+            throw StashCaptureRefusal("stored capture for '$relativePath' is not a regular file")
         }
         val capturedSha = Sha256.ofFile(target)
         val capturedSize = Files.size(target)
         if (capturedSha != expectedSha || capturedSize != expectedSize) {
-            throw IllegalStateException("captured bytes for '$relativePath' do not match the source after the copy")
+            throw StashCaptureRefusal("captured bytes for '$relativePath' do not match the source after the copy")
         }
         return CaptureReceipt(
             runId = runIdString,

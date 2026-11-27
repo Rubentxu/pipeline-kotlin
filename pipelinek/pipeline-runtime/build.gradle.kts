@@ -107,6 +107,9 @@ dependencies {
     implementation(project(":pipeline-step-sdk:runtime"))
     implementation(project(":pipeline-step-sdk:files"))
     implementation(project(":pipeline-step-sdk:scm-git"))
+    // `core.junit.publishReports` verifies reports through the certified JUnit parser the
+    // junit module owns; the runtime consumes that reading rather than redefining it.
+    implementation(project(":pipeline-step-sdk:junit"))
     // The credential scope the engine admits and leases.
     implementation(project(":pipeline-credentials-api"))
     // `api`, not `implementation`: [CredentialScopeFailure.SecretNotMaskable] is part of this

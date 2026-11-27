@@ -463,7 +463,7 @@ core.sh
   deprecation   (none)
 ```
 
-The payload schema is the one the step's codec declares: 31 of the 33 core steps declare an input schema —only `core.agent` and `core.when` declare none— and nine entries declare a schema of the output, the eight of `core-utils` and `http.request`. A step that declares no schema publishes none, and its card says `(none)`.
+The payload schema is the one the step's codec declares: 32 of the 34 core steps declare an input schema —only `core.agent` and `core.when` declare none— and nine entries declare a schema of the output, the eight of `core-utils` and `http.request`. A step that declares no schema publishes none, and its card says `(none)`.
 
 The table of equivalences with Jenkins is NOT written here, and that is the point: it lives in the catalogue, which is built from the code —every step declares its equivalent and its divergence in the descriptor that describes it, and the catalogue reads them. A table written in a document is a second authority for a fact the code already owns, and it drifts the first time a step is added. This README names the verbs that read it (`pipelinek steps` for the index, `pipelinek describe` for the card of one entry, `pipelinek migrate` for what it offers for a step of Jenkins) and the document that carries it; the readable table is generated from that same code for the web.
 

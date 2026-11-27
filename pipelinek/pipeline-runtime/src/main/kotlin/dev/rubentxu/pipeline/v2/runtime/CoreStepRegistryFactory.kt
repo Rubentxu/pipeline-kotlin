@@ -45,6 +45,10 @@ object CoreStepRegistryFactory {
         // `core.archiveArtifacts`: the registry is the canonical production
         // authority for the key.
         CoreArchiveArtifactsStep.registerInto(this)
+        // `core.junit.publishReports`: the explicit JUnit publication. It CONSUMES the
+        // archiveArtifacts capture port (PKH-339 receipts) and the certified JUnit parser;
+        // it adds no second path into the retention store.
+        CorePublishJUnitReportsStep.registerInto(this)
         // `core.artifact.query` is the bridge Step that lets the pipeline ask
         // "where is the JAR named 'app'?" after `core.archiveArtifacts(name='app', ...)`.
         // It reads the ARTIFACT_INDEX_CAPABILITY (admitted via InMemoryArtifactIndex

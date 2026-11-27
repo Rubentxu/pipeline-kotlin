@@ -227,6 +227,7 @@ class CoreStepInputSchemaTest {
             "core.stash" to "stash",
             "core.unstash" to "unstash",
             "core.publishHTML" to "publishHTML",
+            "core.junit.publishReports" to "junitPublish",
             "core.sh" to "shell",
         )
 
@@ -242,6 +243,17 @@ class CoreStepInputSchemaTest {
             "core.error" to mapOf("failureKind" to "\"USER\""),
             "core.sh" to mapOf("returnMode" to "\"NONE\""),
             "core.pwd" to mapOf("tmp" to "false"),
+            // The publication's optionals are declared-only on the wire: the sample has to
+            // carry them or the payload law reads an absent optional as an undeclared argument.
+            "core.junit.publishReports" to mapOf(
+                // The step verifies one kind and fails closed on any other declared format:
+                // the sample has to carry the format the codec accepts or the decode refuses it.
+                "reportFormat" to "\"junit-xml\"",
+                "expectedCount" to "2",
+                "expectedGroup" to "\"unit\"",
+                "archiveName" to "\"junit-unit\"",
+                "maxReportBytes" to "4096",
+            ),
         )
     }
 }

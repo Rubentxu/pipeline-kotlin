@@ -337,7 +337,7 @@ core.sh
   deprecation   (none)
 ```
 
-El esquema de la carga útil es el que declara el códec del step: 31 de los 33 steps del núcleo declaran un esquema de entrada —solo `core.agent` y `core.when` no declaran ninguno— y nueve entradas declaran un esquema de salida, las ocho de `core-utils` y `http.request`. Un step que no declara un esquema no publica ninguno, y su tarjeta dice `(none)`.
+El esquema de la carga útil es el que declara el códec del step: 32 de los 34 steps del núcleo declaran un esquema de entrada —solo `core.agent` y `core.when` no declaran ninguno— y nueve entradas declaran un esquema de salida, las ocho de `core-utils` y `http.request`. Un step que no declara un esquema no publica ninguno, y su tarjeta dice `(none)`.
 
 La tabla de equivalencias con Jenkins NO está escrita aquí, y ese es el punto: vive en el catálogo, que se construye desde el código —cada step declara su equivalente y su divergencia en el descriptor que lo describe, y el catálogo los lee. Una tabla escrita en un documento es una segunda autoridad sobre un hecho que el código ya posee, y se desvía la primera vez que se añade un step. Este README nombra los verbos que la leen (`pipelinek steps` para el índice, `pipelinek describe` para la ficha de una entrada, `pipelinek migrate` para lo que ofrece por un step de Jenkins) y el documento que la lleva; la tabla legible se genera desde ese mismo código para la web.
 

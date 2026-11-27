@@ -46,8 +46,8 @@ import java.nio.file.Path
  *    declared. It never forces a build policy: no Jenkins-style threshold is implied here.
  *
  * Backward compatibility: this is a NEW key. `core.archiveArtifacts` and every existing step
- * keep their bytes and their semantics untouched; this step only CONSUMES the capture port of
- * PKH-339 (`ArchiveArtifactsOperations`) and never redefines it.
+ * keep their bytes and their semantics untouched; this step only CONSUMES the capture port
+ * (`ArchiveArtifactsOperations`) and never redefines it.
  */
 data class PublishJUnitReportsInput(
     val artifacts: String,
@@ -103,7 +103,7 @@ data class PublishedReport(
 
 /**
  * The publication succeeded: every matched report was verified as [JUnitXmlReportFormat.KIND]
- * and captured through the PKH-339 port. [receipts] mirror the verified CaptureReceipts (digest
+ * and captured through the artifact-archive port. [receipts] mirror the verified CaptureReceipts (digest
  * and size read back from the store by the adapter, never supplied here): a verified report the
  * port answered without a receipt fails the step instead, so no unverified digest is ever
  * published under this output.
@@ -276,7 +276,7 @@ object CorePublishJUnitReportsWireCodec : StepCodec<PublishJUnitReportsInput> {
  *  3. every candidate must parse as JUnit XML through the certified parser
  *     (`JUnitReportParser`): absent, invalid and non-matching are three different verdicts, and
  *     an invalid report fails the step BEFORE any byte is archived;
- *  4. only a fully verified set is handed to the PKH-339 capture port
+ *  4. only a fully verified set is handed to the artifact-archive capture port
  *     ([ArchiveArtifactsOperations]), so the publication's receipts are the verified
  *     `CaptureReceipt`s (digest and size read back from the store);
  *  5. an expected count the author declared is checked against what the pattern found, and the

@@ -21,11 +21,14 @@ import java.time.Instant
 /**
  * The capture contract of the archive adapter.
  *
- * Four guarantees are under test, and the fixture is a real directory tree the test owns
+ * Five guarantees are under test, and the fixture is a real directory tree the test owns
  * because the guarantee is about the bytes the retention store holds:
  *
  * - Every receipt states a digest and a size READ BACK from the stored target, and the
  *   durable `ArtifactArchived` event declares exactly what the receipt asserts.
+ * - The bytes a receipt names stay retrievable and untouched: a later capture under the
+ *   same visible name lands on its own digest address and never mutates the write-once
+ *   copy an earlier receipt names.
  * - Re-archiving identical bytes is idempotent and does not reopen the stored file: the
  *   truncate-and-write window is only for bytes that actually changed.
  * - Neither a source reached through a symbolic link outside the workspace, nor a link
@@ -82,9 +85,11 @@ class ArchiveArtifactsOperationsAdapterTest {
         val success = assertInstanceOf(ArchiveArtifactsSuccess::class.java, result)
         val receipt = success.files.single()
         val stored = artifactDir.resolve("build/a.txt")
+        val digestAddress = artifactDir.resolve("_blobs").resolve(receipt.sha256)
 
         assertEquals("build/a.txt", receipt.relPath)
         assertEquals(Sha256.ofFile(stored), receipt.sha256, "the receipt must carry the digest of the STORED bytes")
+        assertEquals(Sha256.ofFile(digestAddress), receipt.sha256, "the receipt must name the bytes the write-once address holds")
         assertEquals(Files.size(stored), receipt.size)
         assertEquals("run-1", receipt.runId)
         assertEquals("stage-a", receipt.stageName)
@@ -96,6 +101,128 @@ class ArchiveArtifactsOperationsAdapterTest {
         assertEquals(receipt.relPath, entry.relPath)
         assertEquals(receipt.sha256, entry.sha256, "the event must declare exactly what the receipt asserts")
         assertEquals(receipt.size, entry.size)
+    }
+
+    @Test
+    fun `a later capture with the same visible name never mutates the bytes an earlier receipt names`() {
+        val sink = prepare()
+        val source = workspace.resolve("dup.txt")
+        Files.writeString(source, "first-bytes")
+        val first = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "dup.txt")),
+        ).files.single()
+
+        Files.writeString(source, "second-bytes-longer")
+        val second = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "dup.txt")),
+        ).files.single()
+
+        val firstBlob = artifactDir.resolve("_blobs").resolve(first.sha256)
+        assertEquals("first-bytes", Files.readString(firstBlob), "the first receipt's bytes must stay retrievable at their digest address")
+        assertEquals(first.sha256, Sha256.ofFile(firstBlob))
+        assertEquals(first.size, Files.size(firstBlob))
+
+        val secondBlob = artifactDir.resolve("_blobs").resolve(second.sha256)
+        assertEquals("second-bytes-longer", Files.readString(secondBlob), "the second capture lands on its own digest address")
+        assertEquals("second-bytes-longer", Files.readString(artifactDir.resolve("dup.txt")), "the visible name keeps the latest capture")
+    }
+
+    @Test
+    fun `re-capturing identical bytes never rewrites the digest address that already holds them`() {
+        val sink = prepare()
+        Files.writeString(workspace.resolve("same.txt"), "mismo-contenido")
+        val first = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "same.txt")),
+        ).files.single()
+
+        val blob = artifactDir.resolve("_blobs").resolve(first.sha256)
+        val sentinel = FileTime.from(Instant.parse("2000-01-01T00:00:00Z"))
+        Files.setLastModifiedTime(blob, sentinel)
+
+        val second = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "same.txt")),
+        ).files.single()
+
+        assertEquals(first.sha256, second.sha256)
+        assertEquals(sentinel, Files.getLastModifiedTime(blob), "a digest address is write-once: no later capture reopens it")
+    }
+
+    @Test
+    fun `a digest address that does not hold the bytes its name promises refuses the capture`() {
+        val sink = prepare()
+        val content = "contenido-verificado"
+        val source = workspace.resolve("poison.txt")
+        Files.writeString(source, content)
+        // A pre-existing address holding OTHER bytes of the SAME size: only the digest
+        // read-back can tell them apart, and the write-once store must refuse the
+        // capture instead of minting a receipt for bytes it does not hold.
+        val poisoned = artifactDir.resolve("_blobs").resolve(Sha256.ofText(content))
+        Files.createDirectories(poisoned.parent)
+        Files.writeString(poisoned, "XXXXXXXXXXXXXXXXXXXX")
+
+        val result = adapter(sink).archive(ArchiveArtifactsInput(artifacts = "poison.txt"))
+
+        assertInstanceOf(ArchiveArtifactsFailed::class.java, result)
+        assertEquals("XXXXXXXXXXXXXXXXXXXX", Files.readString(poisoned), "the write-once address is never rewritten by the refused capture")
+    }
+
+    @Test
+    fun `a link planted at a digest address refuses the capture and never writes through it`() {
+        val sink = prepare()
+        val content = "contenido-direccional"
+        Files.writeString(workspace.resolve("addr.txt"), content)
+        // The link points at bytes OUTSIDE the store whose digest matches the capture:
+        // only the no-follow regular-file check can refuse it, so a receipt is never
+        // minted over bytes the retention tree does not hold.
+        Files.writeString(controlRoot.resolve("fuera.txt"), content)
+        Files.createDirectories(artifactDir.resolve("_blobs"))
+        Files.createSymbolicLink(
+            artifactDir.resolve("_blobs").resolve(Sha256.ofText(content)),
+            controlRoot.resolve("fuera.txt"),
+        )
+
+        val result = adapter(sink).archive(ArchiveArtifactsInput(artifacts = "addr.txt"))
+
+        val address = artifactDir.resolve("_blobs").resolve(Sha256.ofText(content))
+        assertInstanceOf(ArchiveArtifactsFailed::class.java, result)
+        assertTrue(Files.isSymbolicLink(address), "the planted address link must not be written through")
+    }
+
+    @Test
+    fun `a link planted at the digest zone refuses the capture and stages nothing outside the store`() {
+        val sink = prepare()
+        Files.createDirectories(artifactDir)
+        Files.createDirectories(controlRoot.resolve("outside"))
+        Files.createSymbolicLink(artifactDir.resolve("_blobs"), controlRoot.resolve("outside"))
+        Files.writeString(workspace.resolve("ok.txt"), "contenido-normal")
+
+        val result = adapter(sink).archive(ArchiveArtifactsInput(artifacts = "ok.txt"))
+
+        assertInstanceOf(ArchiveArtifactsFailed::class.java, result)
+        assertTrue(
+            Files.notExists(controlRoot.resolve("outside").resolve("ok.txt")),
+            "no byte may land outside the store through the planted zone link",
+        )
+    }
+
+    @Test
+    fun `a capture whose visible name falls in the reserved digest zone is refused and stores nothing`() {
+        val sink = prepare()
+        Files.writeString(workspace.resolve("_blobs"), "no-archivo-esto")
+        val bare = adapter(sink).archive(ArchiveArtifactsInput(artifacts = "_blobs"))
+        assertInstanceOf(ArchiveArtifactsFailed::class.java, bare)
+        assertTrue(Files.notExists(artifactDir), "nothing may be stored by a refused capture")
+
+        Files.delete(workspace.resolve("_blobs"))
+        Files.createDirectories(workspace.resolve("_blobs"))
+        Files.writeString(workspace.resolve("_blobs/hex"), "no-archivo-esto-tampoco")
+        val nested = adapter(sink).archive(ArchiveArtifactsInput(artifacts = "_blobs/**"))
+        assertInstanceOf(ArchiveArtifactsFailed::class.java, nested)
+        assertTrue(Files.notExists(artifactDir), "nothing may be stored by a refused capture")
     }
 
     @Test

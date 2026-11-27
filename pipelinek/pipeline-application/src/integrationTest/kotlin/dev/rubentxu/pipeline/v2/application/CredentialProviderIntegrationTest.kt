@@ -156,7 +156,7 @@ class CredentialProviderIntegrationTest {
         // The close-on-tail script prints the head of the credential on standard output and the
         // tail of it as the LAST word the step writes, on standard error. The step ends on the
         // final piece: whatever the redactor still holds when its channel closes has to be
-        // decided there, and never released in the clear (PKH-250).
+        // decided there, and never released in the clear.
         Files.writeString(
             scripts.resolve(CLOSE_ON_TAIL_SCRIPT_NAME),
             "pipeline {\n    stages {\n        stage(\"eager\") {\n" +
@@ -644,7 +644,7 @@ class CredentialProviderIntegrationTest {
     }
 
     /**
-     * PKH-250: a step that ENDS on the last piece of the credential, with the pieces split
+     * A step that ENDS on the last piece of the credential, with the pieces split
      * across the two channels. The red from the Fabric audit (2/5) showed the close releasing
      * the whole value in the clear on BOTH channels; this row walks the same shape through the
      * same machinery the audit walked: a real service, a brokered credential handed over the

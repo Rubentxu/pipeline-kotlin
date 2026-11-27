@@ -21,7 +21,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * The generation contract of the stash adapter (PKH-351).
+ * The generation contract of the stash adapter.
  *
  * The stash reuses the capture port of 339 — every row digested and sized by reading
  * it back FROM the stored target — but stays the run's temporary tier: no durable

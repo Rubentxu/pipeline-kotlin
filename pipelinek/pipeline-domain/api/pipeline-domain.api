@@ -9508,9 +9508,342 @@ public final class dev/rubentxu/pipeline/v2/domain/step/artifact/ArtifactQueryIn
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/AuthorizedFileDescriptor {
+	public fun <init> (Ljava/nio/file/Path;Ljava/lang/String;JLjava/lang/String;Z)V
+	public synthetic fun <init> (Ljava/nio/file/Path;Ljava/lang/String;JLjava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Z
+	public final fun copy (Ljava/nio/file/Path;Ljava/lang/String;JLjava/lang/String;Z)Ldev/rubentxu/pipeline/v2/domain/step/artifact/AuthorizedFileDescriptor;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/AuthorizedFileDescriptor;Ljava/nio/file/Path;Ljava/lang/String;JLjava/lang/String;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/AuthorizedFileDescriptor;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExecutable ()Z
+	public final fun getExpectedSha256 ()Ljava/lang/String;
+	public final fun getExpectedSizeBytes ()J
+	public final fun getRelativeDestination ()Ljava/lang/String;
+	public final fun getSourcePath ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/CollisionPolicy : java/lang/Enum {
+	public static final field OVERWRITE Ldev/rubentxu/pipeline/v2/domain/step/artifact/CollisionPolicy;
+	public static final field REJECT Ldev/rubentxu/pipeline/v2/domain/step/artifact/CollisionPolicy;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/CollisionPolicy;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/step/artifact/CollisionPolicy;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/DirectoryCollisionPolicy : java/lang/Enum {
+	public static final field REJECT Ldev/rubentxu/pipeline/v2/domain/step/artifact/DirectoryCollisionPolicy;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/DirectoryCollisionPolicy;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/step/artifact/DirectoryCollisionPolicy;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/artifact/DuplicateArtifactNameException : java/lang/RuntimeException {
 	public fun <init> (Ljava/lang/String;)V
 	public final fun getName ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/ExecutablePermissionPolicy : java/lang/Enum {
+	public static final field ALLOW_AUTHORIZED Ldev/rubentxu/pipeline/v2/domain/step/artifact/ExecutablePermissionPolicy;
+	public static final field FORBID Ldev/rubentxu/pipeline/v2/domain/step/artifact/ExecutablePermissionPolicy;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/ExecutablePermissionPolicy;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/step/artifact/ExecutablePermissionPolicy;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$ChecksumMismatch : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$ChecksumMismatch;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$ChecksumMismatch;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$ChecksumMismatch;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActualSha256 ()Ljava/lang/String;
+	public final fun getExpectedSha256 ()Ljava/lang/String;
+	public final fun getSource ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DestinationCollision : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/nio/file/Path;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun copy (Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DestinationCollision;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DestinationCollision;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DestinationCollision;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDestination ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DestinationIsDirectory : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/nio/file/Path;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun copy (Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DestinationIsDirectory;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DestinationIsDirectory;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DestinationIsDirectory;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDestination ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DuplicateDestination : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/lang/String;Ljava/nio/file/Path;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/nio/file/Path;
+	public final fun copy (Ljava/lang/String;Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DuplicateDestination;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DuplicateDestination;Ljava/lang/String;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$DuplicateDestination;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRelativeDestination ()Ljava/lang/String;
+	public final fun getResolvedPath ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$ExecutableNotAuthorized : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$ExecutableNotAuthorized;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$ExecutableNotAuthorized;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$ExecutableNotAuthorized;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRelativeDestination ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$HardlinkRejected : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/nio/file/Path;ILjava/lang/String;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/nio/file/Path;ILjava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$HardlinkRejected;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$HardlinkRejected;Ljava/nio/file/Path;ILjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$HardlinkRejected;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLinkCount ()I
+	public final fun getPath ()Ljava/nio/file/Path;
+	public final fun getRole ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$InvalidDestination : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$InvalidDestination;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$InvalidDestination;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$InvalidDestination;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDestination ()Ljava/lang/String;
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$InvalidSource : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/nio/file/Path;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/nio/file/Path;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$InvalidSource;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$InvalidSource;Ljava/nio/file/Path;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$InvalidSource;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public final fun getSource ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$IoFailure : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/nio/file/Path;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/nio/file/Path;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$IoFailure;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$IoFailure;Ljava/nio/file/Path;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$IoFailure;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/nio/file/Path;
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$PathTraversalRejected : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$PathTraversalRejected;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$PathTraversalRejected;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$PathTraversalRejected;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDestination ()Ljava/lang/String;
+	public final fun getError ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$SizeMismatch : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/nio/file/Path;JJ)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun copy (Ljava/nio/file/Path;JJ)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$SizeMismatch;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$SizeMismatch;Ljava/nio/file/Path;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$SizeMismatch;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActualBytes ()J
+	public final fun getExpectedBytes ()J
+	public final fun getSource ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$SymlinkRejected : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError {
+	public fun <init> (Ljava/nio/file/Path;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/nio/file/Path;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$SymlinkRejected;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$SymlinkRejected;Ljava/nio/file/Path;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError$SymlinkRejected;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/nio/file/Path;
+	public final fun getRole ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome$Failed : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome$Failed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome$Failed;Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome$Materialized : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome$Materialized;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome$Materialized;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome$Materialized;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFiles ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan$Planned : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan$Planned;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan$Planned;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan$Planned;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEntries ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan$Rejected : dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan$Rejected;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan$Rejected;Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan$Rejected;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationError;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPolicy {
+	public fun <init> ()V
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/artifact/CollisionPolicy;Ldev/rubentxu/pipeline/v2/domain/step/artifact/DirectoryCollisionPolicy;Ldev/rubentxu/pipeline/v2/domain/step/artifact/ExecutablePermissionPolicy;Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;)V
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/artifact/CollisionPolicy;Ldev/rubentxu/pipeline/v2/domain/step/artifact/DirectoryCollisionPolicy;Ldev/rubentxu/pipeline/v2/domain/step/artifact/ExecutablePermissionPolicy;Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/CollisionPolicy;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/DirectoryCollisionPolicy;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/ExecutablePermissionPolicy;
+	public final fun component4 ()Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/artifact/CollisionPolicy;Ldev/rubentxu/pipeline/v2/domain/step/artifact/DirectoryCollisionPolicy;Ldev/rubentxu/pipeline/v2/domain/step/artifact/ExecutablePermissionPolicy;Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPolicy;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPolicy;Ldev/rubentxu/pipeline/v2/domain/step/artifact/CollisionPolicy;Ldev/rubentxu/pipeline/v2/domain/step/artifact/DirectoryCollisionPolicy;Ldev/rubentxu/pipeline/v2/domain/step/artifact/ExecutablePermissionPolicy;Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnchor ()Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;
+	public final fun getCollisionPolicy ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/CollisionPolicy;
+	public final fun getDirectoryPolicy ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/DirectoryCollisionPolicy;
+	public final fun getExecutablePolicy ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/ExecutablePermissionPolicy;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationRequest {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPolicy;)V
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPolicy;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPolicy;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationRequest;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationRequest;Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPolicy;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFiles ()Ljava/util/List;
+	public final fun getLocation ()Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;
+	public final fun getPolicy ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPolicy;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/MaterializedFile {
+	public fun <init> (Ljava/lang/String;Ljava/nio/file/Path;JLjava/lang/String;Z)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/nio/file/Path;
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/nio/file/Path;JLjava/lang/String;Z)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializedFile;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializedFile;Ljava/lang/String;Ljava/nio/file/Path;JLjava/lang/String;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializedFile;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExecutable ()Z
+	public final fun getRelativeDestination ()Ljava/lang/String;
+	public final fun getResolvedPath ()Ljava/nio/file/Path;
+	public final fun getSha256 ()Ljava/lang/String;
+	public final fun getSizeBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/PlannedMaterializationEntry {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/artifact/AuthorizedFileDescriptor;Ljava/nio/file/Path;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/AuthorizedFileDescriptor;
+	public final fun component2 ()Ljava/nio/file/Path;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/artifact/AuthorizedFileDescriptor;Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/PlannedMaterializationEntry;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/PlannedMaterializationEntry;Ldev/rubentxu/pipeline/v2/domain/step/artifact/AuthorizedFileDescriptor;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/PlannedMaterializationEntry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDescriptor ()Ldev/rubentxu/pipeline/v2/domain/step/artifact/AuthorizedFileDescriptor;
+	public final fun getResolvedDestination ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/WorkspaceFileMaterializationKt {
+	public static final fun toAuthorizedDescriptor (Ldev/rubentxu/pipeline/v2/domain/step/artifact/ArchivedFileEntry;Ljava/lang/String;Z)Ldev/rubentxu/pipeline/v2/domain/step/artifact/AuthorizedFileDescriptor;
+	public static synthetic fun toAuthorizedDescriptor$default (Ldev/rubentxu/pipeline/v2/domain/step/artifact/ArchivedFileEntry;Ljava/lang/String;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/AuthorizedFileDescriptor;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/artifact/WorkspaceFileMaterializer {
+	public abstract fun materialize (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationRequest;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationOutcome;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/artifact/WorkspaceMaterializationPlanner {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/artifact/WorkspaceMaterializationPlanner;
+	public final fun plan (Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationRequest;)Ldev/rubentxu/pipeline/v2/domain/step/artifact/MaterializationPlan;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/workspace/DestructiveAuthorization {

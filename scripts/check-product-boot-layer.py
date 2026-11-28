@@ -397,6 +397,11 @@ DECLARED_EXECUTABLES = {
         "the offline integration tests of the runner: a fake CLI of an "
         "external project, no network, and nothing of the product started"
     ),
+    "scripts/test_sdkman_publish.py": (
+        "the contract test of the SDKMAN publication script: it points the "
+        "script at a loopback stub, publishes nothing and starts nothing of "
+        "the product"
+    ),
     "scripts/test_pipelinek_resume_state.py": (
         "the regression tests of the resume-state script: they run its own "
         "functions and start nothing of the product"

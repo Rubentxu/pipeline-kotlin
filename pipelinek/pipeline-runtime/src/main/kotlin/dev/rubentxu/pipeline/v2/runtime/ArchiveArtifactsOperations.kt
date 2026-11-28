@@ -62,37 +62,41 @@ sealed interface ArchiveArtifactsResult
 /**
  * The verified local capture of one archived file.
  *
+ * Three identities, never interchangeable:
+ * - [captureId] identifies THE CAPTURE — an identity minted per capture event, equal to
+ *   no other capture's, independent of the captured name, path and bytes.
+ * - [blobId] identifies THE BYTES — the canonical digest whose write-once address the
+ *   retention tree holds them at.
+ * - [name] is the visible name the capture was taken under — a description, not an
+ *   identity; several captures may share one, so no consumer may resolve a capture by
+ *   it alone.
+ *
  * The digest and the size are read back FROM the stored target — never supplied by the
  * producer — and the pair is what the durable `ArtifactArchived` event declares: a receipt
  * never describes bytes other than the ones the retention directory held at capture time.
  * The bytes a receipt names live at a digest-addressed, write-once location the archive
  * adapter never rewrites, so a later capture under the same visible name cannot mutate
  * them: a receipt stays true about retrievable bytes for as long as the retention tree
- * holds.
+ * holds, and two receipts under one visible name always resolve to their own digest
+ * addresses.
  *
- * The identity it carries is logical ([runId], [stageName], [relPath]) and deliberately
+ * The run and stage bind the receipt to the context that produced it and it deliberately
  * holds no physical path: the retention location is resolved by [WorkspaceResolver] at
  * read time, so the receipt survives a relocated control root. The seam binds a run and a
  * stage and nothing finer, so step and attempt identity are explicitly absent — the event
  * emission is what pairs this receipt with its place in the run's history.
  */
 data class CaptureReceipt(
+    val captureId: ArtifactId,
     val runId: String,
     val stageName: String,
-    val relPath: String,
-    val sha256: String,
+    val name: ArtifactName,
+    val blobId: BlobId,
     val size: Long,
 ) {
     init {
         require(runId.isNotBlank()) { "CaptureReceipt requires the run identity that produced the capture" }
         require(stageName.isNotBlank()) { "CaptureReceipt requires the stage identity that produced the capture" }
-        require(relPath.isNotBlank()) { "CaptureReceipt requires the workspace-relative path of the captured file" }
-        // One predicate, owned by the class that mints the format: a receipt whose digest
-        // is not the canonical lowercase hex form could never match a re-read target.
-        require(Sha256.isSha256Hex(sha256)) {
-            "CaptureReceipt requires a verified 64-character lowercase hex digest; " +
-                "got '${sha256.take(8)}...' (${sha256.length} chars)"
-        }
         require(size >= 0L) { "CaptureReceipt size must be non-negative, got $size" }
     }
 }
@@ -294,8 +298,8 @@ class ArchiveArtifactsOperationsAdapter(
                         dev.rubentxu.pipeline.v2.events.ArtifactEntry(
                             runId = it.runId,
                             stageName = it.stageName,
-                            relPath = it.relPath,
-                            sha256 = it.sha256,
+                            relPath = it.name.value,
+                            sha256 = it.blobId.value,
                             size = it.size,
                             archivedAt = java.time.Instant.now(),
                         )
@@ -458,10 +462,11 @@ class ArchiveArtifactsOperationsAdapter(
 
     private fun verifiedReceipt(relativePath: String, sha256: String, size: Long): CaptureReceipt =
         CaptureReceipt(
+            captureId = ArtifactId.mint(),
             runId = runIdString,
             stageName = stageIdentity.name,
-            relPath = relativePath,
-            sha256 = sha256,
+            name = ArtifactName(relativePath),
+            blobId = BlobId(sha256),
             size = size,
         )
 

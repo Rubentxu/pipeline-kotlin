@@ -95,18 +95,21 @@ class StashGenerationManifestTest {
         val manifest = StashManifest.readFrom(genDir)
         assertEquals("files", manifest.name)
         assertEquals(1, manifest.generation)
-        assertEquals(setOf("src/a.txt", "src/deep/b.txt"), manifest.rows.map { it.relPath }.toSet())
+        assertEquals(setOf("src/a.txt", "src/deep/b.txt"), manifest.rows.map { it.name.value }.toSet())
+        // The capture identity is minted per capture and survives the manifest record:
+        // two rows are two captures even when name, digest and size would agree.
+        assertEquals(2, manifest.rows.map { it.captureId }.distinct().size)
         for (row in manifest.rows) {
-            val stored = genDir.resolve(StashStoreLayout.SNAPSHOT_DIR).resolve(row.relPath)
-            assertTrue(Files.isRegularFile(stored), "the snapshot must hold '${row.relPath}'")
-            assertEquals(Sha256.ofFile(stored), row.sha256, "the row digest is read back from the store")
+            val stored = genDir.resolve(StashStoreLayout.SNAPSHOT_DIR).resolve(row.name.value)
+            assertTrue(Files.isRegularFile(stored), "the snapshot must hold '${row.name.value}'")
+            assertEquals(Sha256.ofFile(stored), row.blobId.value, "the row digest is read back from the store")
             assertEquals(Files.size(stored), row.size, "the row size is read back from the store")
         }
 
         // The success event declares exactly the rows the manifest states.
         val created = sink.appended.filterIsInstance<StashCreated>().single()
         assertEquals(
-            manifest.rows.sortedBy { it.relPath }.map { Triple(it.relPath, it.sha256, it.size) },
+            manifest.rows.sortedBy { it.name.value }.map { Triple(it.name.value, it.blobId.value, it.size) },
             created.files.sortedBy { it.relPath }.map { Triple(it.relPath, it.sha256, it.sizeBytes) },
         )
         // Nothing loose survives outside the generation directory.

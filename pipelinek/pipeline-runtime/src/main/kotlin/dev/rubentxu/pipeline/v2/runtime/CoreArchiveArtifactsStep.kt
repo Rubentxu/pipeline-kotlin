@@ -167,8 +167,8 @@ object CoreArchiveArtifactsStep {
                             name = input.name,
                             files = result.files.map {
                                 dev.rubentxu.pipeline.v2.domain.step.artifact.ArchivedFileEntry(
-                                    relPath = it.relPath,
-                                    sha256 = it.sha256,
+                                    relPath = it.name.value,
+                                    sha256 = it.blobId.value,
                                     sizeBytes = it.size,
                                     // ArchiveArtifactsOperations does NOT
                                     // expose absolutePath in the typed result
@@ -178,7 +178,7 @@ object CoreArchiveArtifactsStep {
                                     // and the absolute path is recovered via
                                     // WorkspaceResolver at materialisation
                                     // time. Recorded as future-work item.
-                                    absolutePath = "<archive://${it.relPath}>",
+                                    absolutePath = "<archive://${it.name.value}>",
                                 )
                             },
                         )

@@ -26,6 +26,9 @@ import java.time.Instant
  *
  * - Every receipt states a digest and a size READ BACK from the stored target, and the
  *   durable `ArtifactArchived` event declares exactly what the receipt asserts.
+ * - Every receipt carries an identity minted per capture, independent of the visible
+ *   name and of the bytes: two captures under one visible name — or over the same
+ *   bytes — are two captures, each resolving to its own digest address.
  * - The bytes a receipt names stay retrievable and untouched: a later capture under the
  *   same visible name lands on its own digest address and never mutates the write-once
  *   copy an earlier receipt names.
@@ -85,11 +88,11 @@ class ArchiveArtifactsOperationsAdapterTest {
         val success = assertInstanceOf(ArchiveArtifactsSuccess::class.java, result)
         val receipt = success.files.single()
         val stored = artifactDir.resolve("build/a.txt")
-        val digestAddress = artifactDir.resolve("_blobs").resolve(receipt.sha256)
+        val digestAddress = artifactDir.resolve("_blobs").resolve(receipt.blobId.value)
 
-        assertEquals("build/a.txt", receipt.relPath)
-        assertEquals(Sha256.ofFile(stored), receipt.sha256, "the receipt must carry the digest of the STORED bytes")
-        assertEquals(Sha256.ofFile(digestAddress), receipt.sha256, "the receipt must name the bytes the write-once address holds")
+        assertEquals("build/a.txt", receipt.name.value)
+        assertEquals(Sha256.ofFile(stored), receipt.blobId.value, "the receipt must carry the digest of the STORED bytes")
+        assertEquals(Sha256.ofFile(digestAddress), receipt.blobId.value, "the receipt must name the bytes the write-once address holds")
         assertEquals(Files.size(stored), receipt.size)
         assertEquals("run-1", receipt.runId)
         assertEquals("stage-a", receipt.stageName)
@@ -98,8 +101,8 @@ class ArchiveArtifactsOperationsAdapterTest {
         val entry = event.files.single()
         assertEquals(receipt.runId, entry.runId)
         assertEquals(receipt.stageName, entry.stageName)
-        assertEquals(receipt.relPath, entry.relPath)
-        assertEquals(receipt.sha256, entry.sha256, "the event must declare exactly what the receipt asserts")
+        assertEquals(receipt.name.value, entry.relPath)
+        assertEquals(receipt.blobId.value, entry.sha256, "the event must declare exactly what the receipt asserts")
         assertEquals(receipt.size, entry.size)
     }
 
@@ -119,12 +122,12 @@ class ArchiveArtifactsOperationsAdapterTest {
             adapter(sink).archive(ArchiveArtifactsInput(artifacts = "dup.txt")),
         ).files.single()
 
-        val firstBlob = artifactDir.resolve("_blobs").resolve(first.sha256)
+        val firstBlob = artifactDir.resolve("_blobs").resolve(first.blobId.value)
         assertEquals("first-bytes", Files.readString(firstBlob), "the first receipt's bytes must stay retrievable at their digest address")
-        assertEquals(first.sha256, Sha256.ofFile(firstBlob))
+        assertEquals(first.blobId.value, Sha256.ofFile(firstBlob))
         assertEquals(first.size, Files.size(firstBlob))
 
-        val secondBlob = artifactDir.resolve("_blobs").resolve(second.sha256)
+        val secondBlob = artifactDir.resolve("_blobs").resolve(second.blobId.value)
         assertEquals("second-bytes-longer", Files.readString(secondBlob), "the second capture lands on its own digest address")
         assertEquals("second-bytes-longer", Files.readString(artifactDir.resolve("dup.txt")), "the visible name keeps the latest capture")
     }
@@ -138,7 +141,7 @@ class ArchiveArtifactsOperationsAdapterTest {
             adapter(sink).archive(ArchiveArtifactsInput(artifacts = "same.txt")),
         ).files.single()
 
-        val blob = artifactDir.resolve("_blobs").resolve(first.sha256)
+        val blob = artifactDir.resolve("_blobs").resolve(first.blobId.value)
         val sentinel = FileTime.from(Instant.parse("2000-01-01T00:00:00Z"))
         Files.setLastModifiedTime(blob, sentinel)
 
@@ -147,7 +150,8 @@ class ArchiveArtifactsOperationsAdapterTest {
             adapter(sink).archive(ArchiveArtifactsInput(artifacts = "same.txt")),
         ).files.single()
 
-        assertEquals(first.sha256, second.sha256)
+        assertEquals(first.blobId, second.blobId)
+        assertNotEquals(first.captureId, second.captureId, "same bytes, same name, still two captures")
         assertEquals(sentinel, Files.getLastModifiedTime(blob), "a digest address is write-once: no later capture reopens it")
     }
 
@@ -241,16 +245,16 @@ class ArchiveArtifactsOperationsAdapterTest {
             adapter(sink).archive(ArchiveArtifactsInput(artifacts = "dup.txt")),
         ).files.single()
 
-        assertNotEquals(first.sha256, second.sha256)
-        assertEquals(Sha256.ofText("first-bytes"), first.sha256)
-        assertEquals(Sha256.ofText("second-bytes-longer"), second.sha256)
+        assertNotEquals(first.blobId, second.blobId)
+        assertEquals(Sha256.ofText("first-bytes"), first.blobId.value)
+        assertEquals(Sha256.ofText("second-bytes-longer"), second.blobId.value)
 
         val stored = artifactDir.resolve("dup.txt")
         assertEquals("second-bytes-longer", Files.readString(stored), "the store keeps the latest capture")
 
         val entries = sink.appended.archivedEvents().flatMap { it.files }
         assertEquals(
-            listOf(first.sha256, second.sha256),
+            listOf(first.blobId.value, second.blobId.value),
             entries.map { it.sha256 },
             "each event keeps the identity of the bytes its capture verified",
         )
@@ -276,7 +280,7 @@ class ArchiveArtifactsOperationsAdapterTest {
             adapter(sink).archive(ArchiveArtifactsInput(artifacts = "same.txt")),
         ).files.single()
 
-        assertEquals(first.sha256, second.sha256, "same content means the same receipt")
+        assertEquals(first.blobId.value, second.blobId.value, "same content means the same bytes identity")
         assertEquals(first.size, second.size)
         assertEquals(sentinel, Files.getLastModifiedTime(stored), "identical stored bytes must not be rewritten")
     }
@@ -374,7 +378,62 @@ class ArchiveArtifactsOperationsAdapterTest {
         )
 
         val success = assertInstanceOf(ArchiveArtifactsSuccess::class.java, result)
-        assertEquals(listOf("build/a.txt"), success.files.map { it.relPath })
+        assertEquals(listOf("build/a.txt"), success.files.map { it.name.value })
         assertTrue(Files.notExists(artifactDir.resolve("build/skip.txt")))
+    }
+
+    @Test
+    fun `two captures with the same visible name are never confusable by identity`() {
+        val sink = prepare()
+        val source = workspace.resolve("dup.txt")
+        Files.writeString(source, "first-bytes")
+        val first = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "dup.txt")),
+        ).files.single()
+
+        Files.writeString(source, "second-bytes-longer")
+        val second = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "dup.txt")),
+        ).files.single()
+
+        // The visible name is shared, and it decides nothing: the two receipts stay
+        // distinguishable by their minted capture identities and by their digest
+        // identities, and each resolves to ITS OWN digest address.
+        assertEquals(first.name, second.name, "the scenario: one visible name, two captures")
+        assertNotEquals(first.captureId, second.captureId, "the capture identity is minted per capture, never per name")
+        assertNotEquals(first.blobId, second.blobId, "different bytes are different digest identities")
+
+        val firstAddress = artifactDir.resolve("_blobs").resolve(first.blobId.value)
+        val secondAddress = artifactDir.resolve("_blobs").resolve(second.blobId.value)
+        assertEquals("first-bytes", Files.readString(firstAddress), "the first receipt resolves to its own bytes")
+        assertEquals("second-bytes-longer", Files.readString(secondAddress), "the second receipt resolves to its own bytes")
+        assertEquals(Sha256.ofText("first-bytes"), Sha256.ofFile(firstAddress))
+        assertEquals(Sha256.ofText("second-bytes-longer"), Sha256.ofFile(secondAddress))
+    }
+
+    @Test
+    fun `captures of identical bytes share the digest identity and never the capture identity`() {
+        val sink = prepare()
+        Files.writeString(workspace.resolve("a.txt"), "mismos-bytes")
+        Files.writeString(workspace.resolve("b.txt"), "mismos-bytes")
+
+        val receipts = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "*.txt")),
+        ).files.sortedBy { it.name.value }
+
+        assertEquals(2, receipts.size)
+        val (namedA, namedB) = receipts
+        assertNotEquals(namedA.name, namedB.name, "different visible names, one archive call")
+        assertEquals(namedA.blobId, namedB.blobId, "the digest identifies the bytes both captures secured")
+        assertNotEquals(namedA.captureId, namedB.captureId, "two captures under two names are two captures")
+
+        // Both receipts resolve to the same write-once address, and that address holds
+        // the bytes: the content identity is shared, the capture identity is not.
+        val address = artifactDir.resolve("_blobs").resolve(namedA.blobId.value)
+        assertEquals(address, artifactDir.resolve("_blobs").resolve(namedB.blobId.value))
+        assertEquals("mismos-bytes", Files.readString(address))
     }
 }

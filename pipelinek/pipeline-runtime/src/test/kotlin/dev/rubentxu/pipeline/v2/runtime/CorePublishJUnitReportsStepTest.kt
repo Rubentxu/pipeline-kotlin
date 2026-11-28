@@ -109,12 +109,17 @@ class CorePublishJUnitReportsStepTest {
         private val storeRoot: Path,
     ) : ArchiveArtifactsOperations {
         val inputs = mutableListOf<ArchiveArtifactsInput>()
+
+        /** Every read-back the step asked for, in order: an empty list proves a refusal decided BEFORE the expensive work. */
+        val readBacks = mutableListOf<String>()
+
         override fun archive(input: ArchiveArtifactsInput): ArchiveArtifactsResult {
             inputs += input
             return result
         }
 
         override fun openCapture(receipt: CaptureReceipt): CapturedBytesResult {
+            readBacks += receipt.name.value
             val stored = storeRoot.resolve(receipt.name.value)
             if (!Files.exists(stored, LinkOption.NOFOLLOW_LINKS) ||
                 !Files.isRegularFile(stored, LinkOption.NOFOLLOW_LINKS)
@@ -422,6 +427,117 @@ class CorePublishJUnitReportsStepTest {
             successOps("r/a.xml", "r/b.xml"),
         )
         assertEquals("unit", assertInstanceOf(PublishedReportsOutput::class.java, exact).group)
+    }
+
+    @Test
+    fun `a selection that shrank before the capture diverges typed — never a silent wrong count`() {
+        // The step's preflight glob and the port's own glob select a LIVE tree at two
+        // moments: two files were selected and promised, the capture answers for one. The
+        // divergence is a typed SCRIPT failure naming both counts, decided before any byte
+        // is read back.
+        Files.createDirectories(workspace.resolve("r"))
+        Files.writeString(workspace.resolve("r/a.xml"), surefireXml)
+        Files.writeString(workspace.resolve("r/b.xml"), vitestXml)
+        val ops = successOps("r/a.xml")
+
+        val output = execute(PublishJUnitReportsInput(artifacts = "r/*.xml", expectedCount = 2), ops)
+
+        val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
+        assertEquals(FailureKind.SCRIPT, failed.failureKind)
+        assertTrue(
+            failed.message.contains("expected 2") && failed.message.contains("answered 1"),
+            "the divergence names the promised count and the captured one, got: ${failed.message}",
+        )
+        assertEquals(0, ops.readBacks.size, "the set divergence decides before the first read-back")
+    }
+
+    @Test
+    fun `a capture that answered for more than was selected fails as a set, reading nothing back`() {
+        // The other side of the same law: one file selected and promised, the capture answers
+        // two receipts. The publication refuses the WHOLE set — it never reads back the
+        // receipts it will not answer for, and the ghost bytes never reach the store.
+        Files.createDirectories(workspace.resolve("r"))
+        Files.writeString(workspace.resolve("r/a.xml"), surefireXml)
+        val ops = FakeArchiveOps(
+            ArchiveArtifactsSuccess(
+                listOf(
+                    receipt("r/a.xml"),
+                    receiptNaming("r/extra.xml", BlobId("0".repeat(64)), 1L),
+                ),
+            ),
+            workspace,
+        )
+
+        val output = execute(PublishJUnitReportsInput(artifacts = "r/*.xml", expectedCount = 1), ops)
+
+        val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
+        assertEquals(FailureKind.SCRIPT, failed.failureKind)
+        assertTrue(
+            failed.message.contains("expected 1") && failed.message.contains("answered 2"),
+            "the divergence names the promised count and the captured one, got: ${failed.message}",
+        )
+        assertEquals(0, ops.readBacks.size, "the refusal is the whole set, not a partial publication")
+    }
+
+    @Test
+    fun `the published set is exactly the receipts the capture answered for`() {
+        // Undeclared expectation: no count is invented and none is subtracted — what travels
+        // into PUBLISHED is the receipt set, no more and no less.
+        Files.createDirectories(workspace.resolve("r"))
+        Files.writeString(workspace.resolve("r/a.xml"), surefireXml)
+        Files.writeString(workspace.resolve("r/b.xml"), vitestXml)
+
+        val output = execute(PublishJUnitReportsInput(artifacts = "r/*.xml"), successOps("r/a.xml"))
+
+        val published = assertInstanceOf(PublishedReportsOutput::class.java, output)
+        assertEquals(1, published.receipts.size)
+        assertEquals("r/a.xml", published.receipts.single().relPath)
+    }
+
+    @Test
+    fun `a set over the entries ceiling is refused before any read-back`() {
+        // A runaway pattern matched into the capture buys zero read-backs and zero parses:
+        // the ceiling on entries per publication decides from the receipt COUNT alone.
+        Files.createDirectories(workspace.resolve("r"))
+        Files.writeString(workspace.resolve("r/a.xml"), surefireXml)
+        val ghosts = (1..CorePublishJUnitReportsStep.MAX_PUBLISHED_REPORTS + 1).map {
+            receiptNaming("g/ghost-$it.xml", BlobId("0".repeat(64)), 1L)
+        }
+        val ops = FakeArchiveOps(ArchiveArtifactsSuccess(ghosts), workspace)
+
+        val output = execute(PublishJUnitReportsInput(artifacts = "r/*.xml"), ops)
+
+        val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
+        assertEquals(FailureKind.USER, failed.failureKind)
+        assertTrue(
+            failed.message.contains((CorePublishJUnitReportsStep.MAX_PUBLISHED_REPORTS + 1).toString()) &&
+                failed.message.contains(CorePublishJUnitReportsStep.MAX_PUBLISHED_REPORTS.toString()),
+            "the refusal names the captured count and the ceiling that refused it, got: ${failed.message}",
+        )
+        assertEquals(0, ops.readBacks.size, "the entries ceiling decides before the first byte leaves the store")
+    }
+
+    @Test
+    fun `a set over the aggregate byte ceiling is refused before any read-back`() {
+        // Every receipt fits its own per-report cap and the set fits the entries cap, yet the
+        // AGGREGATE of the promised sizes is over the ceiling — the sum the read-backs would
+        // pay, refused from the receipt sizes before any of them is read.
+        Files.createDirectories(workspace.resolve("r"))
+        Files.writeString(workspace.resolve("r/a.xml"), surefireXml)
+        val perReport = 9L * 1024L * 1024L
+        val count = 500
+        val ghosts = (1..count).map { receiptNaming("g/ghost-$it.xml", BlobId("0".repeat(64)), perReport) }
+        val ops = FakeArchiveOps(ArchiveArtifactsSuccess(ghosts), workspace)
+
+        val output = execute(PublishJUnitReportsInput(artifacts = "r/*.xml"), ops)
+
+        val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
+        assertEquals(FailureKind.USER, failed.failureKind)
+        assertTrue(
+            failed.message.contains((perReport * count).toString()),
+            "the refusal names the aggregate the set carries, got: ${failed.message}",
+        )
+        assertEquals(0, ops.readBacks.size, "the aggregate ceiling decides before the first byte leaves the store")
     }
 
     @Test

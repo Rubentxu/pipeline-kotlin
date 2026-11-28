@@ -246,8 +246,11 @@ data class ArchiveArtifactsInput(
  * whose stored bytes do not match its source — or whose
  * bytes would reach the store through a symbolic link leaving the workspace or the
  * retention root — is a typed failure with no success event, never a partial success.
+ * The class is `open` for one reason: [readStoredBytesOnce] is the seam that owns the
+ * single authorized opening of a digest address, and a test subclass must be able to act
+ * inside the window that seam closes to exercise the swap law deterministically.
 */
-class ArchiveArtifactsOperationsAdapter(
+open class ArchiveArtifactsOperationsAdapter(
     private val runIdString: String,
     private val stageIdentity: StageIdentity,
     private val controlDirRoot: Path,

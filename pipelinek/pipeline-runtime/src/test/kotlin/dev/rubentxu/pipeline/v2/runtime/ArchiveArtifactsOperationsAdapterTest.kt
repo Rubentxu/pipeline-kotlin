@@ -21,6 +21,7 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.FileTime
 import java.time.Instant
 import java.util.Collections
+import java.util.Comparator
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -676,5 +677,210 @@ class ArchiveArtifactsOperationsAdapterTest {
                     "on a free machine",
             )
         }
+    }
+
+    // ---- the public capture identity and the single opening (PKH-395) ----
+
+    /**
+     * The adapter with the read window made into a call order: [beforeOpen] acts on the
+     * digest address immediately BEFORE the single authorized opening, [afterRead]
+     * immediately after its bytes were consumed and before they are delivered. The
+     * check-then-use window the read-back law closes cannot be timed with a second
+     * thread against production code — it is exercised here by overriding the seam that
+     * owns the opening, so every swap lands exactly where the law says nothing may.
+     */
+    private inner class ReadWindowAdapter(
+        eventSink: EventSink,
+        private val beforeOpen: (Path) -> Unit = {},
+        private val afterRead: (Path) -> Unit = {},
+    ) : ArchiveArtifactsOperationsAdapter(
+        runIdString = "run-1",
+        stageIdentity = StageIdentity(name = "stage-a", index = 0),
+        controlDirRoot = controlRoot,
+        eventSink = eventSink,
+        executionLocation = ExecutionLocation(
+            workspace = WorkspaceLease.Managed(workspace),
+            cwd = workspace,
+        ),
+    ) {
+        override fun readStoredBytesOnce(blob: Path, expectedSize: Long): ByteArray {
+            beforeOpen(blob)
+            val delivered = super.readStoredBytesOnce(blob, expectedSize)
+            afterRead(blob)
+            return delivered
+        }
+    }
+
+    @Test
+    fun `two same-name captures surface distinct public capture identities on the durable event`() {
+        val sink = prepare()
+        val source = workspace.resolve("dup.txt")
+        Files.writeString(source, "first-bytes")
+        val first = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "dup.txt")),
+        ).files.single()
+
+        Files.writeString(source, "second-bytes-longer")
+        val second = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "dup.txt")),
+        ).files.single()
+
+        val entries = sink.appended.archivedEvents().flatMap { it.files }
+        assertEquals(2, entries.size, "one archived event per capture, each with its entry")
+        val identities = entries.map { it.captureId }
+        assertTrue(
+            identities.none { it == null },
+            "a capture the adapter minted never reaches the durable channel anonymous",
+        )
+        assertEquals(2, identities.distinct().size, "two captures under one name are two public identities")
+
+        // The pairing is the law's shape: each durable row pairs ITS capture identity with
+        // the digest of the receipt that capture minted — never the other capture's.
+        assertEquals(
+            mapOf(
+                first.captureId.value to first.blobId.value,
+                second.captureId.value to second.blobId.value,
+            ),
+            entries.associate { it.captureId!! to it.sha256 },
+            "each public identity stays paired with the bytes of its own capture",
+        )
+    }
+
+    @Test
+    fun `public capture identities recover exactly their own bytes after the workspace is erased`() {
+        val sink = prepare()
+        val source = workspace.resolve("dup.txt")
+        Files.writeString(source, "bytes-of-A")
+        val first = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "dup.txt")),
+        ).files.single()
+
+        Files.writeString(source, "bytes-of-B-longer")
+        val second = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "dup.txt")),
+        ).files.single()
+
+        // The whole workspace is erased: whatever recovery remains must come from the
+        // retention tree alone, keyed by the identities the public event carried.
+        Files.walk(workspace).use { walk ->
+            walk.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+        }
+        assertTrue(Files.notExists(workspace), "the fixture erased the workspace, not one file")
+
+        val receipts = listOf(first, second).associateBy { it.captureId.value }
+        val publishedIds = sink.appended.archivedEvents().flatMap { it.files }.map { it.captureId }
+        assertEquals(
+            receipts.keys,
+            publishedIds.filterNotNull().toSet(),
+            "every public identity the event names resolves to exactly one receipt",
+        )
+
+        val recovered = receipts.mapValues { (_, receipt) ->
+            val bytes = assertInstanceOf(
+                CapturedBytes::class.java,
+                adapter(RecordingSink()).openCapture(receipt),
+                "the capture must be answerable from retention with no workspace at all",
+            )
+            Sha256.ofBytes(bytes.bytes)
+        }
+
+        assertEquals(
+            receipts.mapValues { it.value.blobId.value },
+            recovered,
+            "each identity recovers exactly its own bytes, never the other capture's",
+        )
+        assertEquals(2, recovered.values.distinct().size, "two homonymous captures stay two recoveries")
+    }
+
+    @Test
+    fun `a node swapped after the authorized read never replaces the delivered bytes`() {
+        val sink = prepare()
+        Files.writeString(workspace.resolve("swap.txt"), "verified-window-bytes")
+        val receipt = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "swap.txt")),
+        ).files.single()
+        // A same-size node planted at the address after the read: every content-computed
+        // guard it passes by construction, so only a delivery that reopens the PATH could
+        // ever mistake its bytes for the receipt's answer.
+        val planted = tempDir.resolve("after-the-read")
+        Files.writeString(planted, "X".repeat(receipt.size.toInt()))
+
+        val read = ReadWindowAdapter(
+            RecordingSink(),
+            afterRead = { blob ->
+                Files.delete(blob)
+                Files.createSymbolicLink(blob, planted)
+            },
+        ).openCapture(receipt)
+
+        val bytes = assertInstanceOf(CapturedBytes::class.java, read)
+        assertEquals(
+            receipt.blobId.value,
+            Sha256.ofBytes(bytes.bytes),
+            "the delivered bytes are exactly the bytes the one authorized opening read",
+        )
+        assertNotEquals(
+            receipt.blobId.value,
+            Sha256.ofFile(planted),
+            "the swapped node holds other bytes: a path-reopening delivery would hand them out",
+        )
+    }
+
+    @Test
+    fun `an address turned into a link before the authorized open is refused even when the link holds the receipt bytes`() {
+        val sink = prepare()
+        Files.writeString(workspace.resolve("twin.txt"), "twin-bytes-outside")
+        val receipt = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "twin.txt")),
+        ).files.single()
+        // The twin holds the IDENTICAL bytes outside the retention tree: size and digest
+        // computed over content fit the receipt perfectly, so nothing but opening the
+        // address without following the link can keep the read inside the authorized roots.
+        val twin = tempDir.resolve("twin-target")
+        Files.writeString(twin, "twin-bytes-outside")
+
+        val read = ReadWindowAdapter(
+            RecordingSink(),
+            beforeOpen = { blob ->
+                Files.delete(blob)
+                Files.createSymbolicLink(blob, twin)
+            },
+        ).openCapture(receipt)
+
+        assertInstanceOf(
+            CapturedBytesRefusal::class.java,
+            read,
+            "a link grown at the address after the guards is refused at the open, never read through",
+        )
+    }
+
+    @Test
+    fun `a receipt naming more bytes than the read-back ceiling is refused rather than read`() {
+        val sink = prepare()
+        Files.writeString(workspace.resolve("cap.txt"), "capped")
+        val receipt = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "cap.txt")),
+        ).files.single()
+
+        val read = adapter(sink).openCapture(
+            receipt.copy(size = ArchiveArtifactsOperations.MAX_READ_BACK_BYTES + 1),
+        )
+
+        val refusal = assertInstanceOf(CapturedBytesRefusal::class.java, read)
+        assertTrue(
+            refusal.message.contains(ArchiveArtifactsOperations.MAX_READ_BACK_BYTES.toString()),
+            "the refusal names the ceiling the contract states: ${refusal.message}",
+        )
+        assertTrue(
+            refusal.message.contains(receipt.name.value),
+            "the refusal names the capture it refuses: ${refusal.message}",
+        )
     }
 }

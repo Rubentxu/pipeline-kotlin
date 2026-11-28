@@ -194,5 +194,61 @@ class DslIndexTest(unittest.TestCase):
                 dsl.generate(Path(name))
 
 
+class JenkinsSurfaceMaskerTest(unittest.TestCase):
+    """The masker of the Jenkins-surface guard blanks char literals.
+
+    A char literal holding a double quote opened a phantom string, and the
+    phantom swallowed the declarations that followed it: the key constant of
+    a step disappeared from the index and the guard reported a key the tree
+    did declare.
+    """
+
+    def surface(self):
+        return load("check-jenkins-surface.py")
+
+    def test_char_literal_holding_a_quote_does_not_swallow_the_next_declaration(self):
+        source = "\n".join([
+            "fun quote(value: String): String {",
+            "    val out = StringBuilder()",
+            "    out.append('\"')",
+            "    for (ch in value) {",
+            "        when (ch) {",
+            "            '\"' -> out.append(\"\\\\\\\"\")",
+            "            else -> out.append(ch)",
+            "        }",
+            "    }",
+            "    out.append('\"')",
+            "    return out.toString()",
+            "}",
+            "",
+            "val KEY: PluginStepId = PluginStepId(\"core.junit.publishReports\")",
+        ])
+        mask = self.surface().masked(source)
+        self.assertEqual(len(source), len(mask))
+        hits = list(self.surface().KEY_CONSTANT.finditer(mask))
+        self.assertEqual(1, len(hits))
+        self.assertEqual("KEY", source[hits[0].start(1):hits[0].end(1)])
+        self.assertEqual(
+            "core.junit.publishReports", source[hits[0].start(2):hits[0].end(2)]
+        )
+
+    def test_char_literal_holding_an_escaped_quote_blanks_only_its_body(self):
+        source = "val tab = '\\t' + '\\'' + '\\\\'\nval KEY: PluginStepId = PluginStepId(\"a.b\")\n"
+        mask = self.surface().masked(source)
+        self.assertEqual(len(source), len(mask))
+        for body in ("\\t", "\\'", "\\\\"):
+            start = source.index(body)
+            for position in range(start, start + len(body)):
+                self.assertEqual(" ", mask[position])
+        self.assertEqual(1, len(list(self.surface().KEY_CONSTANT.finditer(mask))))
+
+    def test_raw_string_holding_quotes_and_braces_blanks_its_whole_body(self):
+        source = 'val template = """{ "key": KEY }"""\nval KEY: PluginStepId = PluginStepId("x.y")\n'
+        mask = self.surface().masked(source)
+        self.assertEqual(len(source), len(mask))
+        self.assertNotIn("KEY }", mask)
+        self.assertEqual(1, len(list(self.surface().KEY_CONSTANT.finditer(mask))))
+
+
 if __name__ == "__main__":
     unittest.main()

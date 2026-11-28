@@ -5,11 +5,14 @@ import dev.rubentxu.pipeline.v2.artefacts.local.AntStyleGlob
 import dev.rubentxu.pipeline.v2.runtime.durable.WorkspaceResolver
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
 
 /**
@@ -42,6 +45,10 @@ interface ArchiveArtifactsOperations {
     /**
      * Archives workspace files matching the Ant-style [ArchiveArtifactsInput.artifacts]
      * pattern into the run's artefacts retention directory.
+     * Each capture's minted identity travels with it into the public channels the
+     * adapter feeds — the durable event entry, and, through the step, the wire output
+     * and the recorded handle — so a consumer outside the runtime can tell two captures
+     * of one visible name apart without ever touching the private retention layout.
 */
     fun archive(input: ArchiveArtifactsInput): ArchiveArtifactsResult
 
@@ -53,14 +60,33 @@ interface ArchiveArtifactsOperations {
      * are the ones the receipt was minted from, read from the digest address no later
      * capture rewrites — so a consumer that parses what this returns publishes facts
      * about exactly the bytes the receipt's digest names, whatever the workspace does
-     * after the capture. The read is verified before anything is handed out: the
-     * stored node must be a regular file (a link planted at the address is refused,
-     * not followed), must occupy exactly [CaptureReceipt.size] bytes, and must digest
-     * to [CaptureReceipt.blobId]. A read that cannot honour the receipt — an address
-     * that holds nothing, a non-regular node, bytes that diverge from the receipt's
-     * identity — is a typed [CapturedBytesRefusal], never bytes under suspicion.
+     * after the capture. The read is ONE authorized opening of the address: the node
+     * is opened without following a final-symbolic link, its size is taken from that
+     * open, and exactly that many bytes are consumed through the same opening — so
+     * the bytes verified are byte-for-byte the bytes delivered, and no swap of the
+     * node between a check and a read can put either outside the authorized roots.
+     * The read is capped at [MAX_READ_BACK_BYTES] bytes and at the receipt's own
+     * size: an address that holds more bytes than the receipt names, fewer than it
+     * names, or a receipt naming more than the cap, is refused rather than read.
+     * A read that cannot honour the receipt — an address that holds nothing, a
+     * non-regular node, bytes that diverge from the receipt's identity — is a typed
+     * [CapturedBytesRefusal], never bytes under suspicion. A file store that cannot
+     * open without following links answers with a refusal, never with bytes that may
+     * have travelled through a link.
      */
     fun openCapture(receipt: CaptureReceipt): CapturedBytesResult
+
+    companion object {
+        /**
+         * The explicit byte ceiling of one [openCapture] read-back.
+         *
+         * The read-back holds the whole capture in memory, so the contract states the
+         * largest receipt it will answer for instead of letting the machine decide by
+         * exhausting itself. A capture beyond this size stays stored and true at its
+         * digest address; it is simply not handed out in one read.
+         */
+        const val MAX_READ_BACK_BYTES: Long = 1_073_741_824L
+    }
 }
 
 /** The captured bytes, read back verified from the digest address the receipt names. */
@@ -224,8 +250,11 @@ data class ArchiveArtifactsInput(
  * whose stored bytes do not match its source — or whose
  * bytes would reach the store through a symbolic link leaving the workspace or the
  * retention root — is a typed failure with no success event, never a partial success.
+ * The class is `open` for one reason: [readStoredBytesOnce] is the seam that owns the
+ * single authorized opening of a digest address, and a test subclass must be able to act
+ * inside the window that seam closes to exercise the swap law deterministically.
 */
-class ArchiveArtifactsOperationsAdapter(
+open class ArchiveArtifactsOperationsAdapter(
     private val runIdString: String,
     private val stageIdentity: StageIdentity,
     private val controlDirRoot: Path,
@@ -337,6 +366,7 @@ class ArchiveArtifactsOperationsAdapter(
                             sha256 = it.blobId.value,
                             size = it.size,
                             archivedAt = java.time.Instant.now(),
+                            captureId = it.captureId.value,
                         )
                     },
                 ),
@@ -513,8 +543,11 @@ class ArchiveArtifactsOperationsAdapter(
      * the location its bytes live at, whatever adapter instance answers the read —
      * and the same guards the write applied hold the read: the zone must sit inside
      * the retention tree, the node at the address must be a regular file (a link
-     * planted there is refused, never followed), and the bytes must occupy the size
-     * and carry the digest the receipt names before any of them leaves the store.
+     * planted there is refused, never followed), and the bytes must carry the digest
+     * the receipt names before any of them leaves the store. Verification and
+     * delivery share ONE opening: the digest is computed over the exact bytes
+     * [readStoredBytesOnce] consumed, so no node swapped after the read can deliver
+     * bytes that were not themselves verified.
      */
     override fun openCapture(receipt: CaptureReceipt): CapturedBytesResult {
         try {
@@ -534,25 +567,74 @@ class ArchiveArtifactsOperationsAdapter(
                     "the digest address of '${receipt.name.value}' is not a regular stored file",
                 )
             }
-            val storedSize = Files.size(blob)
-            if (storedSize != receipt.size) {
+            if (receipt.size > ArchiveArtifactsOperations.MAX_READ_BACK_BYTES) {
                 return CapturedBytesRefusal(
-                    "the digest address of '${receipt.name.value}' holds $storedSize bytes, " +
-                        "the receipt names ${receipt.size}",
+                    "the receipt of '${receipt.name.value}' names ${receipt.size} bytes, " +
+                        "over the read-back ceiling of ${ArchiveArtifactsOperations.MAX_READ_BACK_BYTES}",
                 )
             }
-            val storedSha = Sha256.ofFile(blob)
-            if (storedSha != receipt.blobId.value) {
+            val delivered = readStoredBytesOnce(blob, receipt.size)
+            // The digest is taken over THE DELIVERED BYTES — the ones this call read
+            // through the single authorized opening — never over a second read of the
+            // path, which a node swapped in between could answer for with other bytes.
+            val deliveredSha = Sha256.ofBytes(delivered)
+            if (deliveredSha != receipt.blobId.value) {
                 return CapturedBytesRefusal(
                     "the digest address of '${receipt.name.value}' holds bytes digesting to " +
-                        "$storedSha, the receipt names ${receipt.blobId.value}",
+                        "$deliveredSha, the receipt names ${receipt.blobId.value}",
                 )
             }
-            return CapturedBytes(Files.readAllBytes(blob))
+            return CapturedBytes(delivered)
         } catch (e: Exception) {
             return CapturedBytesRefusal(
                 "the capture of '${receipt.name.value}' could not be read back: ${e.message ?: "unknown"}",
             )
+        }
+    }
+
+    /**
+     * Opens the digest address ONCE and consumes exactly [expectedSize] bytes through
+     * that single opening.
+     *
+     * The opening is the whole point: `NOFOLLOW_LINKS` makes the operating system bind
+     * the channel to the node the address named at open time (a final-symbolic link is
+     * refused at the open, on platforms whose file store supports the option; one that
+     * does not throws here and the caller answers with a refusal, never with
+     * link-followed bytes), the size is fstat'd from that same channel, and the read
+     * cannot be diverted by swapping the node afterwards — the channel holds the node.
+     * The consumption is bounded: allocation happens only once the open's own fstat
+     * confirms [expectedSize], the loop stops at that many bytes, and one extra probe
+     * read refuses a node that GREW beyond the receipt's promise instead of truncating
+     * it silently. An address that shrank below the promise is refused the same way.
+     *
+     * It is `internal open` because the window this closes — between the authorized
+     * opening and the delivery of its bytes — cannot be made deterministic by timing a
+     * second thread against production code. The test subclass drives the swap through
+     * this seam, so the race is decided by call order, never by a sleep.
+     */
+    internal open fun readStoredBytesOnce(blob: Path, expectedSize: Long): ByteArray {
+        FileChannel.open(blob, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS).use { channel ->
+            val storedSize = channel.size()
+            if (storedSize != expectedSize) {
+                throw ArchiveCaptureRefusal(
+                    "the address holds $storedSize bytes, the receipt names $expectedSize",
+                )
+            }
+            val bytes = ByteArray(expectedSize.toInt())
+            val buffer = ByteBuffer.wrap(bytes)
+            while (buffer.hasRemaining()) {
+                if (channel.read(buffer) < 0) {
+                    throw ArchiveCaptureRefusal(
+                        "the address yielded ${buffer.position()} of the $expectedSize bytes the receipt names",
+                    )
+                }
+            }
+            if (channel.read(ByteBuffer.allocate(1)) > 0) {
+                throw ArchiveCaptureRefusal(
+                    "the address grew beyond the $expectedSize bytes the receipt names",
+                )
+            }
+            return bytes
         }
     }
 

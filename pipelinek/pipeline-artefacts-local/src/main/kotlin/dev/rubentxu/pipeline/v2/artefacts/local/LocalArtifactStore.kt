@@ -27,6 +27,14 @@ import java.util.UUID
  * `<controlRoot>/workspace/<stageName>-<stageIndex>/`. They are siblings under
  * `<controlRoot>`, not nested. `WorkspaceResolver.cleanupAfterComplete()` only
  * deletes `<controlRoot>/workspace/...`. The artefacts directory is untouched.
+ * ## Legacy reader contract (capture identity)
+ * This store is the direct-layout consumer of the retention tree: it derives
+ * [ArtifactEntry] rows by tarring the files it finds and mints no capture, so its
+ * entries state that absence with a null `captureId` — which the durable contract
+ * defines as "names no capture", not "names one it forgot to say". The decided
+ * compatibility is deliberate: the legacy path keeps working exactly as before, and a
+ * consumer that needs a capture identity reads the archive step's output or the
+ * `ArtifactArchived` events, never this layout.
 */
 class LocalArtifactStore(
     private val controlRoot: Path,

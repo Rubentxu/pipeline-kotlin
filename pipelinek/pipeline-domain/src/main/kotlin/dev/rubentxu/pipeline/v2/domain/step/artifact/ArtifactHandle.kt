@@ -62,7 +62,9 @@ data class ArtifactHandle(
 /**
  * Single archived file entry within an [ArtifactHandle].
  * Mirrors the certified `CaptureReceipt`
- * shape (relPath / sha256 / size) without timestamps. The bridge from
+ * shape — visible path, digest identity, size — and adds the third identity the
+ * receipt mints: [captureId], so a consumer that queries the handle by its logical
+ * name can still tell two captures of one visible name apart. The bridge from
  * `core.archiveArtifacts` to `core.artifact.query` materialises
  * `CaptureReceipt` records into these ADT entries.
  * @property relPath  workspace-relative path of the archived file
@@ -70,12 +72,18 @@ data class ArtifactHandle(
  * @property sizeBytes file size in bytes
  * @property absolutePath absolute on-disk path inside the run's
  *                        artefacts retention directory
+ * @property captureId identity of the capture that produced this entry, minted per
+ *                     capture and distinct from every other capture's. Null means the
+ *                     entry names no capture — the same explicit absence the durable
+ *                     archive entry documents — and no capture-scoped read may be
+ *                     resolved from it.
 */
 data class ArchivedFileEntry(
     val relPath: String,
     val sha256: String,
     val sizeBytes: Long,
     val absolutePath: String,
+    val captureId: String? = null,
 ) {
     init {
         require(relPath.isNotEmpty()) { "relPath must not be empty" }
@@ -87,5 +95,10 @@ data class ArchivedFileEntry(
         }
         require(sizeBytes >= 0) { "sizeBytes must be non-negative" }
         require(absolutePath.isNotEmpty()) { "absolutePath must not be empty" }
+        // A capture identity that is present says WHICH capture; a blank says nothing
+        // while pretending to say something, so the absent case stays null, never "".
+        require(captureId == null || captureId.isNotBlank()) {
+            "captureId must be null or non-blank (a blank identity names no capture)"
+        }
     }
 }

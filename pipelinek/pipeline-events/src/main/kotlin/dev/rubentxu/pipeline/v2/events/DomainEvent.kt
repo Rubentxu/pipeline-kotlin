@@ -773,6 +773,16 @@ data class GitPollChanged(
  * @param sha256 SHA-256 hex digest of the file
  * @param size Size in bytes
  * @param archivedAt When the file was archived
+ * @param captureId Identity of THE CAPTURE that produced this entry, minted per capture
+ *   and never shared between two captures. It is the durable public projection of the
+ *   capture identity the archive receipt carries: two captures under one visible name
+ *   stay distinguishable through it, and a consumer resolves a capture — never just
+ *   bytes — by pairing it with [sha256]. Null says so explicitly: entries written
+ *   before captures carried an identity, and entries a legacy direct-layout consumer
+ *   derives from the retention files themselves (like the tar-based local store),
+ *   name no capture. Such an entry is still a true statement about bytes
+ *   ([sha256], [size]) at a visible position ([relPath]); it simply authorizes no
+ *   capture-scoped read, and a consumer must not invent an identity for it.
 */
 @Serializable
 data class ArtifactEntry(
@@ -783,6 +793,7 @@ data class ArtifactEntry(
     val size: Long,
     @Serializable(with = InstantWireSerializer::class)
     val archivedAt: Instant,
+    val captureId: String? = null,
 )
 
 /**

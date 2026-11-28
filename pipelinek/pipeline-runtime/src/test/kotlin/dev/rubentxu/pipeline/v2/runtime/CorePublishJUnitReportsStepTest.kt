@@ -16,8 +16,10 @@ import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 import kotlinx.coroutines.runBlocking
+import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitReportParser
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -26,6 +28,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import kotlin.reflect.KClass
@@ -36,11 +39,15 @@ import kotlin.reflect.KClass
  * The fixtures are the real shapes the card names: a JVM (Surefire) report, an adversarial
  * Vitest `jest-junit` report, a file with a name NO convention could have guessed (`r.dat`),
  * an invalid XML and an empty directory the glob cannot match. Two halves:
- *  - the verdict law against a faked capture port (required/optional/absent/invalid/no-match,
- *    declared-only expectation and group);
+ *  - the verdict law against a faked capture port whose read-back is verified against the
+ *    receipt exactly as the production adapter verifies it (required/optional/absent/invalid/
+ *    no-match, declared-only expectation and group, and the refusals of receipts the store
+ *    cannot answer for);
  *  - the real local publication against the production `ArchiveArtifactsOperationsAdapter`:
  *    verified bytes in the retention store, receipts whose digest is what the store holds,
- *    and no archive event when a report is invalid.
+ *    and the law the publication lives by — the summary is parsed from THE CAPTURE, so a
+ *    workspace file rewritten between the capture and the parse cannot alter what was
+ *    published.
  */
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
 class CorePublishJUnitReportsStepTest {
@@ -71,6 +78,14 @@ class CorePublishJUnitReportsStepTest {
         </testsuites>
     """.trimIndent()
 
+    /** A valid report whose totals differ from [surefireXml]: what the workspace holds AFTER the capture. */
+    private val rewrittenXml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <testsuite name="dev.rubentxu.RewrittenSpec" tests="7" failures="0" errors="0" skipped="0" time="3.0">
+          <testcase name="later" classname="RewrittenSpec" time="0.5"/>
+        </testsuite>
+    """.trimIndent()
+
     private class RecordingSink : EventSink {
         val appended = mutableListOf<DomainEvent>()
         override fun append(event: DomainEvent) {
@@ -79,13 +94,65 @@ class CorePublishJUnitReportsStepTest {
         override fun eventsFor(runId: String): Sequence<DomainEvent> = appended.asSequence()
     }
 
-    /** The capture port, faked to the two facts the verdict law needs: the answer and the ask. */
-    private class FakeArchiveOps(private val result: ArchiveArtifactsResult) : ArchiveArtifactsOperations {
+    /**
+     * The capture port, faked to the contract the verdict law needs: archive answers with
+     * what it is told to answer, and the read-back is verified against the receipt the same
+     * way the production adapter verifies it — a regular stored node, of the receipt's size,
+     * digesting to the receipt's identity — so a receipt the store cannot vouch for is a
+     * typed refusal, never bytes under suspicion.
+     */
+    private class FakeArchiveOps(
+        private val result: ArchiveArtifactsResult,
+        private val storeRoot: Path,
+    ) : ArchiveArtifactsOperations {
         val inputs = mutableListOf<ArchiveArtifactsInput>()
         override fun archive(input: ArchiveArtifactsInput): ArchiveArtifactsResult {
             inputs += input
             return result
         }
+
+        override fun openCapture(receipt: CaptureReceipt): CapturedBytesResult {
+            val stored = storeRoot.resolve(receipt.name.value)
+            if (!Files.exists(stored, LinkOption.NOFOLLOW_LINKS) ||
+                !Files.isRegularFile(stored, LinkOption.NOFOLLOW_LINKS)
+            ) {
+                return CapturedBytesRefusal("the digest address of '${receipt.name.value}' holds no capture")
+            }
+            val storedSize = Files.size(stored)
+            if (storedSize != receipt.size) {
+                return CapturedBytesRefusal(
+                    "the digest address of '${receipt.name.value}' holds $storedSize bytes, " +
+                        "the receipt names ${receipt.size}",
+                )
+            }
+            val digest = Sha256.ofFile(stored)
+            if (digest != receipt.blobId.value) {
+                return CapturedBytesRefusal(
+                    "the digest address of '${receipt.name.value}' holds bytes digesting to $digest, " +
+                        "the receipt names ${receipt.blobId.value}",
+                )
+            }
+            return CapturedBytes(Files.readAllBytes(stored))
+        }
+    }
+
+    /**
+     * The production adapter, wrapped so the workspace is rewritten ONCE, right after the
+     * capture returns and before any read-back: the exact window the capture→parse law
+     * must survive.
+     */
+    private class MutatingAfterCapture(
+        private val delegate: ArchiveArtifactsOperations,
+        private val mutationRoot: Path,
+        private val mutation: (Path) -> Unit,
+    ) : ArchiveArtifactsOperations {
+        override fun archive(input: ArchiveArtifactsInput): ArchiveArtifactsResult {
+            val result = delegate.archive(input)
+            mutation(mutationRoot)
+            return result
+        }
+
+        override fun openCapture(receipt: CaptureReceipt): CapturedBytesResult = delegate.openCapture(receipt)
     }
 
     private class Seams(
@@ -151,6 +218,7 @@ class CorePublishJUnitReportsStepTest {
 
     private fun successOps(vararg relPaths: String) = FakeArchiveOps(
         ArchiveArtifactsSuccess(relPaths.map { receipt(it) }),
+        workspace,
     )
 
     // ---- AC #1: the producer declares type and format; nothing is guessed from names ----
@@ -200,7 +268,7 @@ class CorePublishJUnitReportsStepTest {
             failed.message.contains("junit-xml v2") && failed.message.contains("text/xml"),
             "the refusal must echo the producer's declaration, got: ${failed.message}",
         )
-        assertTrue(ops.inputs.isEmpty(), "an unverified byte must never reach the capture port")
+        assertTrue(ops.inputs.size == 1, "the capture happens first; the verdict reads the capture")
     }
 
     // ---- AC #2: publication after failure; required/optional/absent/invalid distinguished ----
@@ -246,7 +314,10 @@ class CorePublishJUnitReportsStepTest {
     }
 
     @Test
-    fun `invalid XML is a verdict apart from absent, and nothing is archived`() {
+    fun `invalid XML is a verdict apart from absent, read from the capture`() {
+        // The capture precedes the parse: the refusal is a verdict about the CAPTURED
+        // bytes, and the capture itself stays — an internal, truthful record of what the
+        // run held when it published.
         Files.createDirectories(workspace.resolve("r"))
         Files.writeString(workspace.resolve("r/broken.xml"), "<testsuite tests=\"abc\"")
         val ops = successOps("r/broken.xml")
@@ -256,7 +327,7 @@ class CorePublishJUnitReportsStepTest {
         val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
         assertEquals(FailureKind.USER, failed.failureKind)
         assertTrue(failed.message.contains("r/broken.xml"), failed.message)
-        assertTrue(ops.inputs.isEmpty())
+        assertTrue(ops.inputs.size == 1, "the capture happened; the parse refused the captured bytes")
     }
 
     @Test
@@ -273,9 +344,10 @@ class CorePublishJUnitReportsStepTest {
     }
 
     @Test
-    fun `a report over the declared cap is refused before it is parsed`() {
-        // The cap is the hard limit the schema documents, and it decides BEFORE the parse: a
-        // valid-but-oversized report must never reach the parser, and nothing reaches the port.
+    fun `a report over the declared cap is refused from the capture's size, before any byte is read`() {
+        // The cap is the hard limit the schema documents, and it decides from the SIZE THE
+        // STORE read back — before the read-back and the parse. The capture happened; the
+        // oversized bytes are never parsed.
         Files.createDirectories(workspace.resolve("r"))
         Files.writeString(
             workspace.resolve("r/fat.xml"),
@@ -294,7 +366,33 @@ class CorePublishJUnitReportsStepTest {
             failed.message.contains("r/fat.xml") && failed.message.contains("maxReportBytes=4096"),
             "the refusal must name the oversized report and the cap that refused it, got: ${failed.message}",
         )
-        assertTrue(ops.inputs.isEmpty(), "a byte the cap refuses must never reach the capture port")
+        assertTrue(ops.inputs.size == 1, "the capture happened; the cap refused the captured size")
+    }
+
+    @Test
+    fun `a report of exactly maxReportBytes is parsed — the cap is over, not at, the cap`() {
+        // The cap is inclusive on the report side: a valid report of EXACTLY the declared
+        // cap is a report the parser will read. This boundary is the law, not an accident
+        // of the comparison.
+        Files.createDirectories(workspace.resolve("r"))
+        // The padding sits between the declaration and the root: a comment BEFORE the
+        // declaration is not XML a parser may accept, and this row is about the cap, not
+        // about a malformed document.
+        val declaration = surefireXml.substringBefore("\n")
+        val rest = surefireXml.substringAfter("\n")
+        val pad = 4096 - surefireXml.length - 8 // the seam the split dropped plus "\n<!--"+"-->"+"\n"
+        val exact = declaration + "\n<!--" + "x".repeat(pad) + "-->\n" + rest
+        assertEquals(4096, exact.length)
+        Files.writeString(workspace.resolve("r/exact.xml"), exact)
+
+        val output = execute(
+            PublishJUnitReportsInput(artifacts = "r/*.xml", maxReportBytes = 4096),
+            successOps("r/exact.xml"),
+        )
+
+        val published = assertInstanceOf(PublishedReportsOutput::class.java, output)
+        assertEquals(4096L, published.receipts.single().sizeBytes)
+        assertEquals(3, published.receipts.single().tests)
     }
 
     // ---- AC #3: expectation and group are declared-only; no-match never passes ----
@@ -358,24 +456,23 @@ class CorePublishJUnitReportsStepTest {
     }
 
     @Test
-    fun `a verified report whose receipt the port lost fails — never an empty digest`() {
-        // The visible name only selects the candidate receipt: the step normalizes
-        // separators while a port on another platform records its own, and a success whose
-        // receipt is missing says NOTHING about the digest. Publishing the placeholder ""
-        // as a verified digest is the lie this row forbids — the absence of the receipt is
-        // the failure.
+    fun `a receipt whose bytes the store cannot answer fails — never a publication`() {
+        // The publication is built FROM the capture: a receipt the store cannot vouch for
+        // — an address that holds nothing the receipt names — is an ENGINE failure that
+        // names the receipt, never a summary about bytes nobody can produce.
         Files.createDirectories(workspace.resolve("out"))
         Files.writeString(workspace.resolve("out/r.dat"), surefireXml)
         val ops = FakeArchiveOps(
             ArchiveArtifactsSuccess(
                 listOf(
                     receiptNaming(
-                        "out\\r.dat",
+                        "ghost/absent.xml",
                         BlobId(Sha256.ofText(surefireXml)),
                         surefireXml.length.toLong(),
                     ),
                 ),
             ),
+            workspace,
         )
 
         val output = execute(PublishJUnitReportsInput(artifacts = "out/r.dat"), ops)
@@ -383,17 +480,61 @@ class CorePublishJUnitReportsStepTest {
         val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
         assertEquals(FailureKind.ENGINE, failed.failureKind)
         assertTrue(
-            failed.message.contains("out/r.dat"),
-            "the failure must name the report left without a receipt, got: ${failed.message}",
+            failed.message.contains("ghost/absent.xml"),
+            "the failure must name the receipt the store cannot answer, got: ${failed.message}",
         )
     }
 
     @Test
-    fun `a receipt naming bytes the parsed report does not carry is never published`() {
-        // The name selects the candidate, and the receipt's digest must be the identity of
-        // the bytes the step parsed: a port that answers with a receipt whose digest names
-        // other bytes — a diverged capture, a raced source — is the failure, never a
-        // published digest the report cannot vouch for.
+    fun `a capture that answers without receipts is never published`() {
+        // A success naming no receipt would publish "PUBLISHED" about nothing: the capture
+        // is the authority, and a capture without receipts names no bytes at all.
+        Files.createDirectories(workspace.resolve("r"))
+        Files.writeString(workspace.resolve("r/a.xml"), surefireXml)
+        val output = execute(
+            PublishJUnitReportsInput(artifacts = "r/*.xml"),
+            FakeArchiveOps(ArchiveArtifactsSuccess(emptyList()), workspace),
+        )
+
+        val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
+        assertEquals(FailureKind.ENGINE, failed.failureKind)
+    }
+
+    @Test
+    fun `a receipt naming a size the captured bytes do not occupy is never published`() {
+        // The read-back verifies the SIZE the receipt names before any byte leaves the
+        // store: a receipt whose size lies about its own capture is the failure.
+        Files.createDirectories(workspace.resolve("out"))
+        Files.writeString(workspace.resolve("out/r.dat"), surefireXml)
+        val wrongSize = surefireXml.length.toLong() + 5L
+        val ops = FakeArchiveOps(
+            ArchiveArtifactsSuccess(
+                listOf(
+                    receiptNaming(
+                        "out/r.dat",
+                        BlobId(Sha256.ofFile(workspace.resolve("out/r.dat"))),
+                        wrongSize,
+                    ),
+                ),
+            ),
+            workspace,
+        )
+
+        val output = execute(PublishJUnitReportsInput(artifacts = "out/r.dat"), ops)
+
+        val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
+        assertEquals(FailureKind.ENGINE, failed.failureKind)
+        assertTrue(
+            failed.message.contains(wrongSize.toString()),
+            "the refusal must name the size the receipt wrongly carried, got: ${failed.message}",
+        )
+    }
+
+    @Test
+    fun `a receipt naming bytes the captured report does not carry is never published`() {
+        // The receipt's digest must be the identity of the bytes the read-back verifies:
+        // a receipt whose digest names other bytes — a diverged capture, a raced source —
+        // is the failure, never a published digest the report cannot vouch for.
         Files.createDirectories(workspace.resolve("out"))
         Files.writeString(workspace.resolve("out/r.dat"), surefireXml)
         val otherBytes = BlobId(Sha256.ofText("bytes-the-step-never-parsed"))
@@ -401,6 +542,7 @@ class CorePublishJUnitReportsStepTest {
             ArchiveArtifactsSuccess(
                 listOf(receiptNaming("out/r.dat", otherBytes, surefireXml.length.toLong())),
             ),
+            workspace,
         )
 
         val output = execute(PublishJUnitReportsInput(artifacts = "out/r.dat"), ops)
@@ -415,6 +557,51 @@ class CorePublishJUnitReportsStepTest {
             failed.message.contains(otherBytes.value),
             "the refusal must name the digest the receipt wrongly carried, got: ${failed.message}",
         )
+    }
+
+    @Test
+    fun `the published summary corresponds exactly to the captured bytes — a report changed after its capture does not alter it`() {
+        // THE LAW, and the window it survives: the workspace report is rewritten AFTER the
+        // capture returns and BEFORE any read-back. The publication declares the capture's
+        // totals, the capture's digest and the capture's size; the live file now holds
+        // different bytes and nothing published describes them.
+        Files.createDirectories(workspace.resolve("build/test-results"))
+        Files.createDirectories(controlRoot)
+        val liveFile = workspace.resolve("build/test-results/jvm.xml")
+        Files.writeString(liveFile, surefireXml)
+        val sink = RecordingSink()
+        val adapter = ArchiveArtifactsOperationsAdapter(
+            runIdString = "run-1",
+            stageIdentity = StageIdentity(name = "stage-a", index = 0),
+            controlDirRoot = controlRoot,
+            eventSink = sink,
+            executionLocation = ExecutionLocation(
+                workspace = WorkspaceLease.Managed(workspace),
+                cwd = workspace,
+            ),
+        )
+        val ops = MutatingAfterCapture(adapter, workspace) { root ->
+            Files.writeString(root.resolve("build/test-results/jvm.xml"), rewrittenXml)
+        }
+
+        val output = execute(PublishJUnitReportsInput(artifacts = "build/test-results/**/*.xml"), ops)
+
+        val published = assertInstanceOf(PublishedReportsOutput::class.java, output)
+        val report = published.receipts.single()
+        assertEquals(3, report.tests, "the published totals are the CAPTURE's")
+        assertEquals(1, report.failures)
+        assertEquals(1, report.skipped)
+        // The published digest names the captured bytes, and those bytes carry the summary:
+        val blob = controlRoot.resolve("artefacts/run-1/stage-a/_blobs").resolve(report.sha256)
+        assertTrue(Files.isRegularFile(blob), "the published digest is an address the store holds")
+        assertEquals(report.sizeBytes, Files.size(blob), "the published size is the captured size")
+        val capturedSummary = JUnitReportParser.parse(Files.newInputStream(blob), "blob")
+        assertEquals(report.tests, capturedSummary.tests, "the summary is the parse of the published bytes")
+        assertEquals(report.failures, capturedSummary.failures)
+        assertEquals(report.skipped, capturedSummary.skipped)
+        // And the live file holds DIFFERENT bytes the publication ignores:
+        assertNotEquals(report.sha256, Sha256.ofFile(liveFile), "the rewritten workspace bytes are not what was published")
+        assertEquals(surefireXml.length.toLong(), report.sizeBytes, "the published size is the capture's size")
     }
 
     // ---- AC #4: wire compatibility, registry presence, real local publication ----
@@ -523,7 +710,7 @@ class CorePublishJUnitReportsStepTest {
     }
 
     @Test
-    fun `real local publication — verified bytes reach the retention store with receipts read back`() {
+    fun `real local publication — the summary is the parse of the captured bytes the digest names`() {
         Files.createDirectories(workspace.resolve("build/test-results"))
         Files.createDirectories(controlRoot)
         Files.writeString(workspace.resolve("build/test-results/jvm.xml"), surefireXml)
@@ -545,10 +732,16 @@ class CorePublishJUnitReportsStepTest {
         val published = assertInstanceOf(PublishedReportsOutput::class.java, output)
         assertEquals(listOf("build/test-results/jvm.xml", "build/test-results/vitest.junit.xml"), published.receipts.map { it.relPath })
         for (report in published.receipts) {
-            val stored = controlRoot.resolve("artefacts/run-1/stage-a").resolve(report.relPath)
-            assertTrue(Files.isRegularFile(stored), "the publication must leave real bytes: $stored")
-            assertEquals(Sha256.ofFile(stored), report.sha256, "the receipt states what the store holds")
-            assertEquals(Files.size(stored), report.sizeBytes)
+            // The published digest is the address of the WRITE-ONCE capture, and the parse
+            // of exactly those bytes is the summary the publication declares:
+            val blob = controlRoot.resolve("artefacts/run-1/stage-a/_blobs").resolve(report.sha256)
+            assertTrue(Files.isRegularFile(blob), "the published digest must be a capture address: $blob")
+            assertEquals(report.sizeBytes, Files.size(blob), "the published size is the captured size")
+            val capturedSummary = JUnitReportParser.parse(Files.newInputStream(blob), report.relPath)
+            assertEquals(report.tests, capturedSummary.tests)
+            assertEquals(report.failures, capturedSummary.failures)
+            assertEquals(report.errors, capturedSummary.errors)
+            assertEquals(report.skipped, capturedSummary.skipped)
         }
         assertTrue(sink.appended.filterIsInstance<ArtifactArchived>().size == 1, "one success event for one publication")
     }
@@ -566,7 +759,10 @@ class CorePublishJUnitReportsStepTest {
     }
 
     @Test
-    fun `real local publication archives nothing when a report is invalid`() {
+    fun `an invalid report fails the publication after its capture, and the event tells the truth`() {
+        // The capture precedes the parse: an invalid report is a USER failure ABOUT the
+        // captured bytes, and the capture event the adapter emitted stays truthful — the
+        // bytes really were secured, whatever the publication then refused to declare.
         Files.createDirectories(workspace.resolve("r"))
         Files.createDirectories(controlRoot)
         Files.writeString(workspace.resolve("r/good.xml"), vitestXml)
@@ -585,9 +781,11 @@ class CorePublishJUnitReportsStepTest {
 
         val output = execute(PublishJUnitReportsInput(artifacts = "r/*.xml"), adapter)
 
-        assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
-        assertTrue(sink.appended.filterIsInstance<ArtifactArchived>().isEmpty(), "no success event on an invalid report")
-        val retention = controlRoot.resolve("artefacts/run-1/stage-a")
-        assertTrue(!Files.exists(retention) || Files.list(retention).use { !it.findAny().isPresent }, "no byte archived")
+        val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
+        assertEquals(FailureKind.USER, failed.failureKind)
+        assertTrue(failed.message.contains("r/bad.xml"), failed.message)
+        assertEquals(1, sink.appended.filterIsInstance<ArtifactArchived>().size, "the capture happened before the parse")
+        val retention = controlRoot.resolve("artefacts/run-1/stage-a/_blobs")
+        assertTrue(Files.list(retention).use { it.findAny().isPresent }, "the captured bytes are the ones the parse refused")
     }
 }

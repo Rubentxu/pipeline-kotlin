@@ -44,6 +44,15 @@ pitest {
     // vocabulary would let a name-shaped value pass as content identity, so
     // the vocabulary and the receipt are named targets with the tests that
     // refuse the wrong shapes.
+    //
+    // The JUnit publication is the fifth seam: its handler decides what a
+    // publication declares about captured bytes, and the ORDER of capture and
+    // parse is the law it lives by — every total it publishes is parsed from
+    // the bytes read back against the receipt, so a workspace file rewritten
+    // after the capture cannot change what was published, and a capture the
+    // store cannot answer for is a refusal, never a summary. A lane that
+    // mutated the handler would leave that order, those refusals and the wire
+    // they travel on unmeasured.
     targetClasses = listOf(
         "dev.rubentxu.pipeline.v2.runtime.ArchiveArtifactsOperationsAdapter*",
         "dev.rubentxu.pipeline.v2.runtime.CaptureReceipt",
@@ -52,6 +61,7 @@ pitest {
         "dev.rubentxu.pipeline.v2.runtime.BlobId",
         "dev.rubentxu.pipeline.v2.runtime.CustodyReceipt",
         "dev.rubentxu.pipeline.v2.runtime.TransferTicket",
+        "dev.rubentxu.pipeline.v2.runtime.CorePublishJUnitReportsStep*",
         "dev.rubentxu.pipeline.v2.runtime.RunConfiguration*",
         "dev.rubentxu.pipeline.v2.runtime.CoreParamStep*",
         "dev.rubentxu.pipeline.v2.runtime.ParamInput",
@@ -60,6 +70,7 @@ pitest {
     targetTests = listOf(
         "dev.rubentxu.pipeline.v2.runtime.ArchiveArtifactsOperationsAdapterTest",
         "dev.rubentxu.pipeline.v2.runtime.CaptureReceiptIdentityTest",
+        "dev.rubentxu.pipeline.v2.runtime.CorePublishJUnitReportsStepTest",
         "dev.rubentxu.pipeline.v2.runtime.RunConfigurationTest",
         "dev.rubentxu.pipeline.v2.runtime.CoreParamStepTest",
         "dev.rubentxu.pipeline.v2.runtime.CoreStepInputSchemaTest",

@@ -44,7 +44,39 @@ interface ArchiveArtifactsOperations {
      * pattern into the run's artefacts retention directory.
 */
     fun archive(input: ArchiveArtifactsInput): ArchiveArtifactsResult
+
+    /**
+     * Reads back the captured bytes one [CaptureReceipt] names, from the write-once
+     * digest address the retention tree holds them at.
+     *
+     * The answer is about THE CAPTURE, never about the workspace: the bytes returned
+     * are the ones the receipt was minted from, read from the digest address no later
+     * capture rewrites — so a consumer that parses what this returns publishes facts
+     * about exactly the bytes the receipt's digest names, whatever the workspace does
+     * after the capture. The read is verified before anything is handed out: the
+     * stored node must be a regular file (a link planted at the address is refused,
+     * not followed), must occupy exactly [CaptureReceipt.size] bytes, and must digest
+     * to [CaptureReceipt.blobId]. A read that cannot honour the receipt — an address
+     * that holds nothing, a non-regular node, bytes that diverge from the receipt's
+     * identity — is a typed [CapturedBytesRefusal], never bytes under suspicion.
+     */
+    fun openCapture(receipt: CaptureReceipt): CapturedBytesResult
 }
+
+/** The captured bytes, read back verified from the digest address the receipt names. */
+class CapturedBytes(val bytes: ByteArray) : CapturedBytesResult
+
+/**
+ * The typed refusal to hand out bytes the receipt cannot vouch for.
+ *
+ * The message names the receipt whose read failed and the fact that failed — the
+ * address, the node shape, the size or the digest — so the consumer's refusal carries
+ * a truthful diagnostic instead of a suspicion.
+ */
+class CapturedBytesRefusal(val message: String) : CapturedBytesResult
+
+/** The closed answer of a verified read-back of a capture. */
+sealed interface CapturedBytesResult
 
 /** Successful archive outcome with deterministic per-file receipts (no timestamps). */
 data class ArchiveArtifactsSuccess(
@@ -459,6 +491,56 @@ class ArchiveArtifactsOperationsAdapter(
 
     private fun readAttributesNoFollow(path: Path): BasicFileAttributes =
         Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+
+    /**
+     * Reads a capture back from its digest address, verified against the receipt.
+     *
+     * The address is resolved from the receipt's own run and stage — a receipt names
+     * the location its bytes live at, whatever adapter instance answers the read —
+     * and the same guards the write applied hold the read: the zone must sit inside
+     * the retention tree, the node at the address must be a regular file (a link
+     * planted there is refused, never followed), and the bytes must occupy the size
+     * and carry the digest the receipt names before any of them leaves the store.
+     */
+    override fun openCapture(receipt: CaptureReceipt): CapturedBytesResult {
+        try {
+            val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
+            val archiveDir = resolver.resolveArchiveDir(receipt.runId, receipt.stageName)
+            val blobDir = archiveDir.resolve(BLOB_ZONE)
+            val retentionRoot = archiveDir.parent!!.parent.toRealPath()
+            requireStoredInsideRetention(blobDir, retentionRoot)
+            val blob = blobDir.resolve(receipt.blobId.value)
+            if (!Files.exists(blob, LinkOption.NOFOLLOW_LINKS)) {
+                return CapturedBytesRefusal(
+                    "the digest address of '${receipt.name.value}' holds no capture",
+                )
+            }
+            if (!readAttributesNoFollow(blob).isRegularFile) {
+                return CapturedBytesRefusal(
+                    "the digest address of '${receipt.name.value}' is not a regular stored file",
+                )
+            }
+            val storedSize = Files.size(blob)
+            if (storedSize != receipt.size) {
+                return CapturedBytesRefusal(
+                    "the digest address of '${receipt.name.value}' holds $storedSize bytes, " +
+                        "the receipt names ${receipt.size}",
+                )
+            }
+            val storedSha = Sha256.ofFile(blob)
+            if (storedSha != receipt.blobId.value) {
+                return CapturedBytesRefusal(
+                    "the digest address of '${receipt.name.value}' holds bytes digesting to " +
+                        "$storedSha, the receipt names ${receipt.blobId.value}",
+                )
+            }
+            return CapturedBytes(Files.readAllBytes(blob))
+        } catch (e: Exception) {
+            return CapturedBytesRefusal(
+                "the capture of '${receipt.name.value}' could not be read back: ${e.message ?: "unknown"}",
+            )
+        }
+    }
 
     private fun verifiedReceipt(relativePath: String, sha256: String, size: Long): CaptureReceipt =
         CaptureReceipt(

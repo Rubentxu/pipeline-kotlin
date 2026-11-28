@@ -39,8 +39,11 @@ import java.util.Locale
  *
  * The declaration carries the verdict rules too, and they are all declared-only:
  *  - `required` (default true): a publication whose pattern matched no report is NOT a pass.
- *  - `expectedCount`: when non-null, the number of reports the publication must find; when
- *    null the publication declares no expectation and none is invented.
+ *  - `expectedCount`: when non-null, the number of reports the publication must find and the
+ *    capture must answer for — the promise is held to the selection AND to the receipts, and a
+ *    divergence between either and the promise is a typed failure; when null the publication
+ *    declares no expectation and none is invented, and the published count is then exactly the
+ *    receipts the capture answered for.
  *  - `expectedGroup`: a label for the report group, carried into the output only when
  *    declared. It never forces a build policy: no Jenkins-style threshold is implied here.
  *
@@ -272,13 +275,22 @@ object CorePublishJUnitReportsWireCodec : StepCodec<PublishJUnitReportsInput> {
  *  1. the declared pattern selects the candidates (the producer's word, never a name guess);
  *  2. an empty selection is a failure unless the author declared the publication optional —
  *     and even then the status says ABSENT, never published;
- *  3. an expected count the author declared is checked against the selection BEFORE the
- *     capture, and the group label is carried only when declared. No build policy is forced;
- *  4. the matched set is handed to the artifact-archive capture port
+ *  3. a declared expected count is checked against the preflight selection (fail-fast, before
+ *     any capture work) and REVALIDATED against the receipts after the capture: the step's own
+ *     glob and the port's glob are two selections of a live tree, so a set that changed
+ *     between them is a typed SCRIPT failure naming both counts, never a silent PUBLISHED
+ *     with a count no selection promised;
+ *  4. the group label is carried only when declared. No build policy is forced;
+ *  5. the matched set is handed to the artifact-archive capture port
  *     ([ArchiveArtifactsOperations]) FIRST: the capture secures the bytes write-once at
  *     their digest addresses and answers with `CaptureReceipt`s whose digest and size are
  *     read back from the store;
- *  5. the parse then reads THE CAPTURE, never the workspace file again: every report is
+ *  6. the publication is then bounded from the RECEIPTS — the published set and count are
+ *     exactly what the capture answered for, never what the preflight matched — and its
+ *     ceilings decide BEFORE any byte is read back: the per-report byte cap comes from the
+ *     input, the number of entries per publication from [MAX_PUBLISHED_REPORTS], the
+ *     aggregate bytes of the set from [MAX_TOTAL_PUBLISHED_BYTES];
+ *  7. the parse then reads THE CAPTURE, never the workspace file again: every report is
  *     parsed from the bytes read back through the port against its own receipt (a regular
  *     stored node, of the receipt's size, digesting to the receipt's identity), so the
  *     summary published corresponds EXACTLY to the bytes the published digest names — a
@@ -296,6 +308,26 @@ object CorePublishJUnitReportsWireCodec : StepCodec<PublishJUnitReportsInput> {
 object CorePublishJUnitReportsStep {
 
     val KEY: PluginStepId = PluginStepId("core.junit.publishReports")
+
+    /**
+     * The ceiling on the number of reports ONE publication answers for.
+     *
+     * The pattern is the author's word, and a pattern that matches the whole tree would
+     * otherwise buy one read-back and one parse per matched file before anybody noticed.
+     * The ceiling is decided from the capture's receipts BEFORE any byte is read back, so the
+     * expensive work never starts for a set the publication will not answer for; a set over
+     * it is a typed USER failure, never a truncated publication.
+     */
+    const val MAX_PUBLISHED_REPORTS: Int = 10_000
+
+    /**
+     * The ceiling on the AGGREGATE bytes one publication reads back and parses.
+     *
+     * The per-report cap bounds one file; this bounds the set. Both are decided from the
+     * sizes the receipts already carry — facts the store read back at capture time — so the
+     * refusal costs one pass over the receipts and never touches the store.
+     */
+    const val MAX_TOTAL_PUBLISHED_BYTES: Long = 4L * 1024L * 1024L * 1024L
 
     /** The output wire format: the canonical kind plus the status the step decided. */
     private const val OUTPUT_KIND = "junitPublish"
@@ -441,6 +473,9 @@ object CorePublishJUnitReportsStep {
             }
 
             if (input.expectedCount != null && matched.size != input.expectedCount) {
+                // Fail-fast only: this glob and the port's own glob select a LIVE tree at two
+                // moments, so passing here buys nothing for the publication — the count is
+                // revalidated against the receipts below, and that check is the authority.
                 return@StepHandler PublishJUnitReportsFailureOutput(
                     failureKind = FailureKind.SCRIPT,
                     message = "core.junit.publishReports: expected ${input.expectedCount} report(s) " +
@@ -476,6 +511,11 @@ object CorePublishJUnitReportsStep {
      * Publishes from the capture, never from the workspace: each receipt is read back
      * verified through the port and its bytes are what the parse reads, so every fact
      * the output declares is a fact about the bytes the receipt's digest names.
+     *
+     * The capture is the authority on the SET too: the published reports are exactly the
+     * receipts answered for, a declared expectation is revalidated against them (the
+     * preflight selection may no longer describe a live tree), and the per-set ceilings —
+     * entries and aggregate bytes — decide here, before the first read-back.
      */
     private fun publishFromCapture(
         input: PublishJUnitReportsInput,
@@ -489,6 +529,36 @@ object CorePublishJUnitReportsStep {
                 failureKind = FailureKind.ENGINE,
                 message = "core.junit.publishReports: the capture port succeeded without receipts; " +
                     "refusing to publish a summary about bytes nobody names",
+            )
+        }
+        // The count the author promised is held to the set the capture actually secured:
+        // a file added or removed between the step's selection and the port's own would
+        // otherwise publish a PUBLISHED whose count belongs to no real set.
+        if (input.expectedCount != null && result.files.size != input.expectedCount) {
+            return PublishJUnitReportsFailureOutput(
+                failureKind = FailureKind.SCRIPT,
+                message = "core.junit.publishReports: the publication expected ${input.expectedCount} " +
+                    "report(s) from '${input.artifacts}' and the capture answered ${result.files.size}; " +
+                    "the selected set changed between the selection and the capture",
+            )
+        }
+        // The ceilings of the set decide from the receipts alone — before any byte leaves
+        // the store and before any parse starts.
+        if (result.files.size > MAX_PUBLISHED_REPORTS) {
+            return PublishJUnitReportsFailureOutput(
+                failureKind = FailureKind.USER,
+                message = "core.junit.publishReports: the capture answered ${result.files.size} " +
+                    "reports for '${input.artifacts}', over the ceiling of $MAX_PUBLISHED_REPORTS " +
+                    "per publication; refusing to read back",
+            )
+        }
+        val totalCapturedBytes = result.files.sumOf { it.size }
+        if (totalCapturedBytes > MAX_TOTAL_PUBLISHED_BYTES) {
+            return PublishJUnitReportsFailureOutput(
+                failureKind = FailureKind.USER,
+                message = "core.junit.publishReports: the captured set for '${input.artifacts}' holds " +
+                    "$totalCapturedBytes bytes, over the aggregate ceiling of $MAX_TOTAL_PUBLISHED_BYTES " +
+                    "per publication; refusing to read back",
             )
         }
         val reports = mutableListOf<PublishedReport>()

@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.StepArgumentType
 import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
@@ -278,7 +279,10 @@ object CorePublishJUnitReportsWireCodec : StepCodec<PublishJUnitReportsInput> {
  *     an invalid report fails the step BEFORE any byte is archived;
  *  4. only a fully verified set is handed to the artifact-archive capture port
  *     ([ArchiveArtifactsOperations]), so the publication's receipts are the verified
- *     `CaptureReceipt`s (digest and size read back from the store);
+ *     `CaptureReceipt`s (digest and size read back from the store), and each receipt is
+ *     identity-verified before its digest travels in the output: the visible name only
+ *     selects the candidate, and the receipt's digest must equal the digest of the bytes
+ *     the step parsed;
  *  5. an expected count the author declared is checked against what the pattern found, and the
  *     group label is carried only when declared. No build policy is forced.
  *
@@ -436,6 +440,9 @@ object CorePublishJUnitReportsStep {
             // Verify every candidate BEFORE archiving anything: an invalid report is a
             // different verdict from an absent one, and no unverified byte reaches the store.
             val totals = mutableListOf<PublishedReport>()
+            // The digest of the bytes each candidate held when the step parsed it: the
+            // identity the pairing below verifies the receipt against.
+            val parsedDigests = mutableMapOf<String, String>()
             for (file in matched) {
                 val relative = root.relativize(file).toString().replace('\\', '/')
                 val size = Files.size(file)
@@ -466,7 +473,8 @@ object CorePublishJUnitReportsStep {
                 totals += PublishedReport(
                     relPath = relative,
                     // The digest is NOT the receipt yet: the port reads the stored bytes back
-                    // after the copy. It is filled from the CaptureReceipt below.
+                    // after the copy. It is filled from the CaptureReceipt below, once the
+                    // receipt's identity has been checked against the parsed bytes.
                     sha256 = "",
                     sizeBytes = size,
                     tests = summary.tests,
@@ -474,6 +482,7 @@ object CorePublishJUnitReportsStep {
                     errors = summary.errors,
                     skipped = summary.skipped,
                 )
+                parsedDigests[relative] = Sha256.ofFile(file)
             }
 
             val ops: ArchiveArtifactsOperations =
@@ -488,19 +497,32 @@ object CorePublishJUnitReportsStep {
                 ),
             )) {
                 is ArchiveArtifactsSuccess -> {
-                    // A success whose receipt is missing says nothing about the digest: the
-                    // pairing diverges when the port records a path the step cannot name (the
-                    // separators are platform's own), and the placeholder "" would then travel
-                    // as a verified digest. The lost receipt is the failure, not a silent pass.
+                    // The pairing is identity-verified, never trusted by name alone: the
+                    // visible name only SELECTS the candidate receipt, and the receipt's
+                    // digest must equal the digest of the bytes this step parsed before any
+                    // digest travels in the output. A receipt the port answered with, whose
+                    // name selects it but whose bytes the step did not parse — a diverged
+                    // capture, a raced source — is the failure, and so is a report whose
+                    // receipt is missing (the placeholder "" would otherwise travel as a
+                    // verified digest).
                     val mirrored = mutableListOf<PublishedReport>()
                     for (report in totals) {
-                        val receipt = result.files.firstOrNull { it.relPath == report.relPath }
+                        val receipt = result.files.firstOrNull { it.name.value == report.relPath }
                             ?: return@StepHandler PublishJUnitReportsFailureOutput(
                                 failureKind = FailureKind.ENGINE,
                                 message = "core.junit.publishReports: the capture port succeeded without a " +
                                     "receipt for '${report.relPath}'; refusing to publish an unverified digest",
                             )
-                        mirrored += report.copy(sha256 = receipt.sha256, sizeBytes = receipt.size)
+                        val parsedDigest = parsedDigests.getValue(report.relPath)
+                        if (receipt.blobId.value != parsedDigest) {
+                            return@StepHandler PublishJUnitReportsFailureOutput(
+                                failureKind = FailureKind.ENGINE,
+                                message = "core.junit.publishReports: the receipt for '${report.relPath}' " +
+                                    "names digest ${receipt.blobId.value} but the parsed bytes digest to " +
+                                    "$parsedDigest; refusing to publish a digest the parsed report does not carry",
+                            )
+                        }
+                        mirrored += report.copy(sha256 = receipt.blobId.value, sizeBytes = receipt.size)
                     }
                     PublishedReportsOutput(group = input.expectedGroup, receipts = mirrored)
                 }

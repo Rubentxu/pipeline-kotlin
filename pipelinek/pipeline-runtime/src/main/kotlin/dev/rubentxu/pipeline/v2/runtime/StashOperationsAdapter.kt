@@ -294,7 +294,7 @@ class StashOperationsAdapter(
                 .writeTo(genDir)
             publishCurrentPointer(stashRoot, StashStoreLayout.generationDir(generation))
 
-            val entries = receipts.map { StashedEntry(relPath = it.relPath, sha256 = it.sha256, sizeBytes = it.size) }
+            val entries = receipts.map { StashedEntry(relPath = it.name.value, sha256 = it.blobId.value, sizeBytes = it.size) }
             eventSink.append(
                 StashCreated(
                     eventId = UUID.randomUUID().toString(),
@@ -547,10 +547,11 @@ class StashOperationsAdapter(
             throw StashCaptureRefusal("captured bytes for '$relativePath' do not match the source after the copy")
         }
         return CaptureReceipt(
+            captureId = ArtifactId.mint(),
             runId = runIdString,
             stageName = stageIdentity.name,
-            relPath = relativePath,
-            sha256 = capturedSha,
+            name = ArtifactName(relativePath),
+            blobId = BlobId(capturedSha),
             size = capturedSize,
         )
     }

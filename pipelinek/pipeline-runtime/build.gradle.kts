@@ -35,8 +35,23 @@ pitest {
     // compares the declaration with the payload the codec really encodes runs
     // in this lane, so a mutant of the declaration is a RED lane and not a
     // survivor that nobody read.
+    //
+    // The receipt and the identity vocabulary it carries are the fourth seam:
+    // a receipt promises an identity for every capture — a minted capture id
+    // independent of name, path and bytes, a digest identity for the bytes,
+    // and a visible name that describes and never identifies — and the guard
+    // clauses of those types ARE that promise. A lane that mutated the
+    // vocabulary would let a name-shaped value pass as content identity, so
+    // the vocabulary and the receipt are named targets with the tests that
+    // refuse the wrong shapes.
     targetClasses = listOf(
         "dev.rubentxu.pipeline.v2.runtime.ArchiveArtifactsOperationsAdapter*",
+        "dev.rubentxu.pipeline.v2.runtime.CaptureReceipt",
+        "dev.rubentxu.pipeline.v2.runtime.ArtifactId",
+        "dev.rubentxu.pipeline.v2.runtime.ArtifactName",
+        "dev.rubentxu.pipeline.v2.runtime.BlobId",
+        "dev.rubentxu.pipeline.v2.runtime.CustodyReceipt",
+        "dev.rubentxu.pipeline.v2.runtime.TransferTicket",
         "dev.rubentxu.pipeline.v2.runtime.RunConfiguration*",
         "dev.rubentxu.pipeline.v2.runtime.CoreParamStep*",
         "dev.rubentxu.pipeline.v2.runtime.ParamInput",
@@ -44,6 +59,7 @@ pitest {
     )
     targetTests = listOf(
         "dev.rubentxu.pipeline.v2.runtime.ArchiveArtifactsOperationsAdapterTest",
+        "dev.rubentxu.pipeline.v2.runtime.CaptureReceiptIdentityTest",
         "dev.rubentxu.pipeline.v2.runtime.RunConfigurationTest",
         "dev.rubentxu.pipeline.v2.runtime.CoreParamStepTest",
         "dev.rubentxu.pipeline.v2.runtime.CoreStepInputSchemaTest",

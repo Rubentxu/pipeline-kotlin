@@ -103,12 +103,29 @@ class CorePublishJUnitReportsStepTest {
         }
     }
 
-    private fun receipt(relPath: String, bytes: ByteArray) = CaptureReceipt(
+    /**
+     * A receipt the capture port would really answer for the named file: the digest and
+     * the size of the bytes the workspace holds under that name, read back the same way
+     * the production adapter reads them. A fake that answers with a digest the parsed
+     * bytes do not carry is the lie the pairing law refuses, so the fixture cannot tell it.
+     */
+    private fun receipt(relPath: String) = CaptureReceipt(
+        captureId = ArtifactId("capture-$relPath"),
         runId = "run-1",
         stageName = "stage-a",
-        relPath = relPath,
-        sha256 = Sha256.ofBytes(bytes),
-        size = bytes.size.toLong(),
+        name = ArtifactName(relPath),
+        blobId = BlobId(Sha256.ofFile(workspace.resolve(relPath))),
+        size = Files.size(workspace.resolve(relPath)),
+    )
+
+    /** A well-formed receipt carrying an identity of OTHER bytes, for the pairing refusals. */
+    private fun receiptNaming(name: String, blobId: BlobId, size: Long) = CaptureReceipt(
+        captureId = ArtifactId("capture-$name"),
+        runId = "run-1",
+        stageName = "stage-a",
+        name = ArtifactName(name),
+        blobId = blobId,
+        size = size,
     )
 
     private fun execute(
@@ -133,7 +150,7 @@ class CorePublishJUnitReportsStepTest {
     }
 
     private fun successOps(vararg relPaths: String) = FakeArchiveOps(
-        ArchiveArtifactsSuccess(relPaths.map { receipt(it, "x".toByteArray()) }),
+        ArchiveArtifactsSuccess(relPaths.map { receipt(it) }),
     )
 
     // ---- AC #1: the producer declares type and format; nothing is guessed from names ----
@@ -342,14 +359,23 @@ class CorePublishJUnitReportsStepTest {
 
     @Test
     fun `a verified report whose receipt the port lost fails — never an empty digest`() {
-        // The pairing is by relPath: the step normalizes separators while a port on another
-        // platform records its own. A success whose receipt is missing says NOTHING about the
-        // digest, so publishing the placeholder "" as a verified digest is the lie this row
-        // forbids — the absence of the receipt is the failure.
+        // The visible name only selects the candidate receipt: the step normalizes
+        // separators while a port on another platform records its own, and a success whose
+        // receipt is missing says NOTHING about the digest. Publishing the placeholder ""
+        // as a verified digest is the lie this row forbids — the absence of the receipt is
+        // the failure.
         Files.createDirectories(workspace.resolve("out"))
         Files.writeString(workspace.resolve("out/r.dat"), surefireXml)
         val ops = FakeArchiveOps(
-            ArchiveArtifactsSuccess(listOf(receipt("out\\r.dat", surefireXml.toByteArray()))),
+            ArchiveArtifactsSuccess(
+                listOf(
+                    receiptNaming(
+                        "out\\r.dat",
+                        BlobId(Sha256.ofText(surefireXml)),
+                        surefireXml.length.toLong(),
+                    ),
+                ),
+            ),
         )
 
         val output = execute(PublishJUnitReportsInput(artifacts = "out/r.dat"), ops)
@@ -359,6 +385,35 @@ class CorePublishJUnitReportsStepTest {
         assertTrue(
             failed.message.contains("out/r.dat"),
             "the failure must name the report left without a receipt, got: ${failed.message}",
+        )
+    }
+
+    @Test
+    fun `a receipt naming bytes the parsed report does not carry is never published`() {
+        // The name selects the candidate, and the receipt's digest must be the identity of
+        // the bytes the step parsed: a port that answers with a receipt whose digest names
+        // other bytes — a diverged capture, a raced source — is the failure, never a
+        // published digest the report cannot vouch for.
+        Files.createDirectories(workspace.resolve("out"))
+        Files.writeString(workspace.resolve("out/r.dat"), surefireXml)
+        val otherBytes = BlobId(Sha256.ofText("bytes-the-step-never-parsed"))
+        val ops = FakeArchiveOps(
+            ArchiveArtifactsSuccess(
+                listOf(receiptNaming("out/r.dat", otherBytes, surefireXml.length.toLong())),
+            ),
+        )
+
+        val output = execute(PublishJUnitReportsInput(artifacts = "out/r.dat"), ops)
+
+        val failed = assertInstanceOf(PublishJUnitReportsFailureOutput::class.java, output)
+        assertEquals(FailureKind.ENGINE, failed.failureKind)
+        assertTrue(
+            failed.message.contains("out/r.dat"),
+            "the refusal must name the report whose receipt diverged, got: ${failed.message}",
+        )
+        assertTrue(
+            failed.message.contains(otherBytes.value),
+            "the refusal must name the digest the receipt wrongly carried, got: ${failed.message}",
         )
     }
 

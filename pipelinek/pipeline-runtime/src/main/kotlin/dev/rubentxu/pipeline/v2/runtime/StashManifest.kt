@@ -58,11 +58,11 @@ internal object StashStoreLayout {
 /**
  * Tree manifest of one published stash generation.
  *
- * The rows are [CaptureReceipt]s — the same capture port 339 introduced for the durable
- * archive tier: relative path, digest and size READ BACK from the stored target, logical
- * run/stage identity, no physical path. The stash reuses that verified capture but stays
- * the run's temporary tier: the manifest is an on-disk audit record of the snapshot, not
- * an entry in any durable artifact index.
+ * The rows are [CaptureReceipt]s — the same verified capture the durable archive tier
+ * mints: capture identity, visible name, digest and size READ BACK from the stored
+ * target, logical run/stage identity, no physical path. The stash reuses that verified
+ * capture but stays the run's temporary tier: the manifest is an on-disk audit record of
+ * the snapshot, not an entry in any durable artifact index.
  *
  * Immutability: a manifest is written once inside its generation directory, before the
  * reference moves to it, and the generation is never written into afterwards. [writeTo]
@@ -77,11 +77,14 @@ data class StashManifest(
     init {
         require(name.isNotBlank()) { "StashManifest requires the stash name it describes" }
         require(generation >= 1) { "StashManifest generation must be a positive number, got $generation" }
-        require(rows.map { it.relPath }.distinct().size == rows.size) {
+        require(rows.map { it.name.value }.distinct().size == rows.size) {
             "StashManifest carries one row per stored path"
         }
         require(rows.all { it.runId.isNotBlank() }) {
             "StashManifest rows must carry the run identity that captured them"
+        }
+        require(rows.map { it.captureId }.distinct().size == rows.size) {
+            "StashManifest rows must each carry their own capture identity"
         }
     }
 
@@ -91,8 +94,9 @@ data class StashManifest(
             for (row in rows) {
                 add(
                     buildJsonObject {
-                        put("relPath", JsonPrimitive(row.relPath))
-                        put("sha256", JsonPrimitive(row.sha256))
+                        put("captureId", JsonPrimitive(row.captureId.value))
+                        put("relPath", JsonPrimitive(row.name.value))
+                        put("sha256", JsonPrimitive(row.blobId.value))
                         put("sizeBytes", JsonPrimitive(row.size))
                         put("runId", JsonPrimitive(row.runId))
                         put("stageName", JsonPrimitive(row.stageName))
@@ -138,9 +142,9 @@ data class StashManifest(
 
         /**
          * Parses the stored JSON back into a manifest. A document of another kind, a row
-         * without a canonical digest, or a duplicate path is a refusal: the manifest is
-         * the audit record of the snapshot, and a record that does not parse says the
-         * generation cannot be trusted.
+         * without its capture identity, without a canonical digest, or a duplicate path is
+         * a refusal: the manifest is the audit record of the snapshot, and a record that
+         * does not parse says the generation cannot be trusted.
          */
         fun fromJson(text: String): StashManifest {
             val document: JsonObject = strictJson.parseToJsonElement(text).jsonObject
@@ -150,10 +154,11 @@ data class StashManifest(
             val rows = (document.getValue("files") as JsonElement).jsonArray.map { element ->
                 val row = element.jsonObject
                 CaptureReceipt(
+                    captureId = ArtifactId(row.getValue("captureId").jsonPrimitive.content),
                     runId = row.getValue("runId").jsonPrimitive.content,
                     stageName = row.getValue("stageName").jsonPrimitive.content,
-                    relPath = row.getValue("relPath").jsonPrimitive.content,
-                    sha256 = row.getValue("sha256").jsonPrimitive.content,
+                    name = ArtifactName(row.getValue("relPath").jsonPrimitive.content),
+                    blobId = BlobId(row.getValue("sha256").jsonPrimitive.content),
                     size = row.getValue("sizeBytes").jsonPrimitive.content.toLong(),
                 )
             }

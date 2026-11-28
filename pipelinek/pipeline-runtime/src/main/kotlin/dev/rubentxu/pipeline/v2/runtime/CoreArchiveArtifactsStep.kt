@@ -15,6 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -53,9 +54,17 @@ object CoreArchiveArtifactsStep {
      */
     private val inputCodec = CoreArchiveArtifactsWireCodec
 
-    /** Successful typed output; per-file evidence flows through the `ArtifactArchived` event. */
+    /**
+     * Successful typed output. [archivedCount] is how many captures the step secured;
+     * [captureIds] carries the identity of EACH of those captures, in receipt order —
+     * the step-result channel of the capture identity, so a consumer of the wire output
+     * alone can name which captures a run took, not only how many. A payload decoded
+     * from before the field existed answers with the empty list: absent ids state that
+     * the record names no captures, they never stand in for ones.
+     */
     data class ArchiveArtifactsOutput(
         val archivedCount: Int,
+        val captureIds: List<String> = emptyList(),
     ) : TypedStepOutput {
         override val outcome: StepOutcome get() = StepOutcome.Success
     }
@@ -79,6 +88,10 @@ object CoreArchiveArtifactsStep {
                         buildJsonObject {
                             put("kind", JsonPrimitive("archiveArtifacts"))
                             put("archivedCount", JsonPrimitive(value.archivedCount))
+                            put(
+                                "captureIds",
+                                JsonArray(value.captureIds.map { JsonPrimitive(it) }),
+                            )
                         },
                     ),
                 )
@@ -112,6 +125,10 @@ object CoreArchiveArtifactsStep {
             }
             return ArchiveArtifactsOutput(
                 archivedCount = obj.getValue("archivedCount").jsonPrimitive.content.toInt(),
+                // A payload written before the field existed carries no capture identities;
+                // decoding it must not fail, and it must not invent identities either.
+                captureIds = (obj["captureIds"] as? JsonArray)?.map { it.jsonPrimitive.content }
+                    ?: emptyList(),
             )
         }
     }
@@ -179,6 +196,9 @@ object CoreArchiveArtifactsStep {
                                     // WorkspaceResolver at materialisation
                                     // time. Recorded as future-work item.
                                     absolutePath = "<archive://${it.name.value}>",
+                                    // The capture identity travels with the entry: two
+                                    // archives under one logical name stay two captures.
+                                    captureId = it.captureId.value,
                                 )
                             },
                         )
@@ -191,7 +211,10 @@ object CoreArchiveArtifactsStep {
                             )
                         }
                     }
-                    ArchiveArtifactsOutput(archivedCount = result.files.size)
+                    ArchiveArtifactsOutput(
+                        archivedCount = result.files.size,
+                        captureIds = result.files.map { it.captureId.value },
+                    )
                 }
                 is ArchiveArtifactsFailed -> ArchiveArtifactsFailureOutput(
                     failureKind = result.failureKind,

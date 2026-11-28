@@ -218,7 +218,10 @@ data class ArchiveArtifactsInput(
  * `<artefacts>/<runId>/<stage>/[BLOB_ZONE]/<sha256>` — and the receipt is read back from
  * THAT copy: a later capture under the same visible name lands on its own digest address,
  * so the bytes an emitted receipt names stay retrievable and untouched no matter what the
- * run archives afterwards. A capture whose stored bytes do not match its source — or whose
+ * run archives afterwards. The staged copy of an address nobody holds is measured against
+ * the digest and size that address names BEFORE it moves into place, so no race with a
+ * rewritten source can occupy a digest address with bytes it does not name. A capture
+ * whose stored bytes do not match its source — or whose
  * bytes would reach the store through a symbolic link leaving the workspace or the
  * retention root — is a typed failure with no success event, never a partial success.
 */
@@ -381,7 +384,7 @@ class ArchiveArtifactsOperationsAdapter(
         val expectedSha = Sha256.ofFile(source)
         val expectedSize = Files.size(source)
         captureVisible(source, target, relativePath, expectedSha, expectedSize, retentionRoot)
-        val blob = secureContentBlob(source, blobDir, expectedSha, relativePath, retentionRoot)
+        val blob = secureContentBlob(source, blobDir, expectedSha, expectedSize, relativePath, retentionRoot)
         // The digest address is what the receipt names: re-read its facts from the store
         // and refuse the capture when the address does not hold what the source promised —
         // a staged copy that raced, or a pre-existing address holding other bytes.
@@ -451,14 +454,19 @@ class ArchiveArtifactsOperationsAdapter(
      * The address `<blobDir>/<sha256>` is an identity of content, never a mutable
      * position: a file already holding that address is left untouched (two captures of
      * the same content share one address by construction), and only an address nobody
-     * holds yet is created — staged through a temp file and moved atomically, so no
-     * partial write is ever visible under a digest name. A non-regular node planted at
-     * the address is refused, not written through.
+     * holds yet is created — staged through a temp file whose bytes are MEASURED against
+     * the digest and size the address names before it is moved atomically. A staged copy
+     * that does not match its address is refused, and an address is never occupied by
+     * bytes it does not name: a source flipped between this capture's digest and the
+     * staged copy would otherwise poison the write-once identity for every later honest
+     * capture of that content. A non-regular node planted at the address is refused,
+     * not written through.
      */
     private fun secureContentBlob(
         source: Path,
         blobDir: Path,
         expectedSha: String,
+        expectedSize: Long,
         relativePath: String,
         retentionRoot: Path,
     ): Path {
@@ -477,11 +485,17 @@ class ArchiveArtifactsOperationsAdapter(
             val staging = Files.createTempFile(blobDir, ".capture-", ".tmp")
             try {
                 Files.copy(source, staging, StandardCopyOption.REPLACE_EXISTING)
+                if (Sha256.ofFile(staging) != expectedSha || Files.size(staging) != expectedSize) {
+                    throw ArchiveCaptureRefusal(
+                        "the staged copy for '$relativePath' does not hold the bytes its digest address names",
+                    )
+                }
                 Files.move(staging, blob, StandardCopyOption.ATOMIC_MOVE)
             } catch (_: FileAlreadyExistsException) {
                 // A concurrent capture of the same content reached the address first:
-                // the digest IS the identity, so the blob already there names the same
-                // bytes this capture verified from its source.
+                // the digest IS the identity, and every write to an address passes the
+                // measurement above, so the blob already there names the same bytes
+                // this capture verified from its source.
             } finally {
                 Files.deleteIfExists(staging)
             }

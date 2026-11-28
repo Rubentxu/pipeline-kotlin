@@ -24,6 +24,7 @@ import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionS
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitReportParseException
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitReportParser
 import java.nio.file.Path
+import java.util.Locale
 
 /**
  * The producer's explicit declaration of what a JUnit report is, and of how it is published.
@@ -255,7 +256,7 @@ object CorePublishJUnitReportsWireCodec : StepCodec<PublishJUnitReportsInput> {
                 '\n' -> append("\\n")
                 '\r' -> append("\\r")
                 '\t' -> append("\\t")
-                else -> if (ch.code < 0x20) append("\\u%04x".format(ch.code)) else append(ch)
+                else -> if (ch.code < 0x20) append("\\u%04x".format(Locale.ROOT, ch.code)) else append(ch)
             }
         }
         append('"')
@@ -351,13 +352,13 @@ object CorePublishJUnitReportsStep {
                     val reports = (obj.getValue("reports") as kotlinx.serialization.json.JsonArray).map {
                         it as kotlinx.serialization.json.JsonObject
                         PublishedReport(
-                            relPath = textIn(obj = it, name = "relPath")!!,
-                            sha256 = textIn(obj = it, name = "sha256")!!,
-                            sizeBytes = textIn(obj = it, name = "sizeBytes")!!.toLong(),
-                            tests = textIn(obj = it, name = "tests")!!.toInt(),
-                            failures = textIn(obj = it, name = "failures")!!.toInt(),
-                            errors = textIn(obj = it, name = "errors")!!.toInt(),
-                            skipped = textIn(obj = it, name = "skipped")!!.toInt(),
+                            relPath = requiredText(obj = it, name = "relPath"),
+                            sha256 = requiredText(obj = it, name = "sha256"),
+                            sizeBytes = requiredText(obj = it, name = "sizeBytes").toLong(),
+                            tests = requiredText(obj = it, name = "tests").toInt(),
+                            failures = requiredText(obj = it, name = "failures").toInt(),
+                            errors = requiredText(obj = it, name = "errors").toInt(),
+                            skipped = requiredText(obj = it, name = "skipped").toInt(),
                         )
                     }
                     PublishedReportsOutput(group = prim("group"), receipts = reports)
@@ -367,7 +368,11 @@ object CorePublishJUnitReportsStep {
                     group = prim("group"),
                 )
                 "FAILED" -> PublishJUnitReportsFailureOutput(
-                    failureKind = FailureKind.valueOf(prim("failureKind")!!),
+                    failureKind = FailureKind.valueOf(
+                        requireNotNull(prim("failureKind")) {
+                            "core.junit.publishReports output FAILED payload is missing the field 'failureKind'"
+                        },
+                    ),
                     message = prim("message").orEmpty(),
                 )
                 else -> throw IllegalArgumentException(
@@ -378,6 +383,12 @@ object CorePublishJUnitReportsStep {
 
         private fun textIn(obj: kotlinx.serialization.json.JsonObject, name: String): String? =
             (obj[name] as? kotlinx.serialization.json.JsonPrimitive)?.content
+
+        /** The report field [name] as text; a payload that omits it is refused by name. */
+        private fun requiredText(obj: kotlinx.serialization.json.JsonObject, name: String): String =
+            requireNotNull(textIn(obj = obj, name = name)) {
+                "core.junit.publishReports output PUBLISHED report is missing the field '$name'"
+            }
     }
 
     private val descriptor = StepDescriptor(

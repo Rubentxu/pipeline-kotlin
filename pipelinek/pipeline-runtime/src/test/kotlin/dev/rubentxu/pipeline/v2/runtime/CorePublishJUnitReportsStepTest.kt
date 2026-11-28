@@ -17,6 +17,7 @@ import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 import kotlinx.coroutines.runBlocking
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitReportParser
+import org.junit.jupiter.api.Assumptions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -30,7 +31,9 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.reflect.KClass
 
 /**
@@ -604,6 +607,133 @@ class CorePublishJUnitReportsStepTest {
         assertEquals(surefireXml.length.toLong(), report.sizeBytes, "the published size is the capture's size")
     }
 
+    @Test
+    fun `a symlink planted over the report after its capture never reaches the publication`() {
+        // The TOCTOU vector the filesystem-symlink audit names: the live report is not
+        // rewritten but REPLACED BY A LINK pointing at another whole report between the
+        // capture and the read-back. An opening that follows links would publish the
+        // target's totals while the receipt's digest names the capture's bytes — a
+        // summary about bytes no digest vouches for. The publication must survive the
+        // swap noticing nothing: every fact it declares describes the captured bytes.
+        Files.createDirectories(workspace.resolve("build/test-results"))
+        Files.createDirectories(controlRoot)
+        val outside = tempDir.resolve("outside")
+        Files.createDirectories(outside)
+        val otherReport = outside.resolve("other.xml")
+        Files.writeString(otherReport, vitestXml)
+        val liveFile = workspace.resolve("build/test-results/jvm.xml")
+        Files.writeString(liveFile, surefireXml)
+        val adapter = ArchiveArtifactsOperationsAdapter(
+            runIdString = "run-1",
+            stageIdentity = StageIdentity(name = "stage-a", index = 0),
+            controlDirRoot = controlRoot,
+            eventSink = RecordingSink(),
+            executionLocation = ExecutionLocation(
+                workspace = WorkspaceLease.Managed(workspace),
+                cwd = workspace,
+            ),
+        )
+        val ops = MutatingAfterCapture(adapter, workspace) { root ->
+            val victim = root.resolve("build/test-results/jvm.xml")
+            Files.delete(victim)
+            Files.createSymbolicLink(victim, otherReport)
+        }
+
+        val output = execute(PublishJUnitReportsInput(artifacts = "build/test-results/**/*.xml"), ops)
+
+        val published = assertInstanceOf(PublishedReportsOutput::class.java, output)
+        val report = published.receipts.single()
+        // The link target holds a 2-test report; the capture holds the 3-test one.
+        assertEquals(3, report.tests, "the published totals are the capture's, never the swapped link's target")
+        assertEquals(1, report.failures)
+        assertEquals(1, report.skipped)
+        assertEquals(surefireXml.length.toLong(), report.sizeBytes)
+        val blob = controlRoot.resolve("artefacts/run-1/stage-a/_blobs").resolve(report.sha256)
+        val capturedSummary = JUnitReportParser.parse(Files.newInputStream(blob), "blob")
+        assertEquals(report.tests, capturedSummary.tests, "the summary is the parse of the published bytes")
+        assertEquals(report.failures, capturedSummary.failures)
+        assertEquals(report.skipped, capturedSummary.skipped)
+        // The live path is a link NOW, pointing at bytes the publication refused to describe:
+        assertTrue(Files.isSymbolicLink(liveFile), "the swap itself happened inside the measured window")
+        assertNotEquals(report.sha256, Sha256.ofFile(liveFile), "the link target's bytes are not what was published")
+    }
+
+    @Test
+    fun `a live rewrite racing the publication never mixes the published summary`() {
+        // The race certification, free-running: a real thread flips the live report
+        // between WHOLE versions (atomic renames, so the file is never half-written)
+        // while the publication runs — no forced window. The law holds for EVERY
+        // interleaving: a success publishes totals that are the parse of the very
+        // bytes its own digest names at its own size, and a capture interrupted by
+        // the race is a typed refusal, never a silent one. The margin this law needs
+        // is a machine that lets one attempt finish between two flips, and the clock
+        // it reads is the outcome itself: an attempt publishes or it refuses. When
+        // the machine is so saturated that NOTHING published, the row aborts —
+        // NOT_MEASURED is not a green, and a run that never exercised the law
+        // certifies nothing.
+        Files.createDirectories(workspace.resolve("build/test-results"))
+        Files.createDirectories(controlRoot)
+        val liveFile = workspace.resolve("build/test-results/jvm.xml")
+        Files.writeString(liveFile, surefireXml)
+        val wholeVersions = listOf(surefireXml, rewrittenXml, vitestXml)
+        val flipStop = AtomicBoolean(false)
+        val flipper = Thread {
+            var i = 0
+            val staged = workspace.resolve("build/test-results/.flip.tmp")
+            while (!flipStop.get()) {
+                Files.writeString(staged, wholeVersions[i % wholeVersions.size])
+                Files.move(staged, liveFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                i++
+                java.util.concurrent.locks.LockSupport.parkNanos(1_000_000)
+            }
+        }.also(Thread::start)
+        var publishedAttempts = 0
+        try {
+            repeat(12) { attempt ->
+                val ops = ArchiveArtifactsOperationsAdapter(
+                    runIdString = "run-1",
+                    stageIdentity = StageIdentity(name = "stage-a", index = 0),
+                    controlDirRoot = controlRoot,
+                    eventSink = RecordingSink(),
+                    executionLocation = ExecutionLocation(
+                        workspace = WorkspaceLease.Managed(workspace),
+                        cwd = workspace,
+                    ),
+                )
+                when (val output = execute(PublishJUnitReportsInput(artifacts = "build/test-results/**/*.xml"), ops)) {
+                    is PublishedReportsOutput -> {
+                        publishedAttempts++
+                        val report = output.receipts.single()
+                        val blob = controlRoot.resolve("artefacts/run-1/stage-a/_blobs").resolve(report.sha256)
+                        assertEquals(report.sizeBytes, Files.size(blob), "attempt $attempt: the published size is the stored size")
+                        assertEquals(report.sha256, Sha256.ofFile(blob), "attempt $attempt: the published digest names the stored bytes")
+                        val stored = JUnitReportParser.parse(Files.newInputStream(blob), "blob")
+                        assertEquals(stored.tests, report.tests, "attempt $attempt: the published totals are the parse of the published bytes")
+                        assertEquals(stored.failures, report.failures)
+                        assertEquals(stored.skipped, report.skipped)
+                    }
+                    else -> {
+                        val failed = assertInstanceOf(
+                            PublishJUnitReportsFailureOutput::class.java,
+                            output,
+                            "attempt $attempt: a publication interrupted by the race fails typed, never silently",
+                        )
+                        assertNotNull(failed.message)
+                    }
+                }
+            }
+        } finally {
+            flipStop.set(true)
+            flipper.join(10_000)
+        }
+        if (publishedAttempts == 0) {
+            Assumptions.abort<Any>(
+                "the rewriter left no attempt room to publish: on this saturated machine the law had no " +
+                    "margin to be exercised — the row measures nothing and is repaid on a free machine",
+            )
+        }
+    }
+
     // ---- AC #4: wire compatibility, registry presence, real local publication ----
 
     @Test
@@ -619,7 +749,7 @@ class CorePublishJUnitReportsStepTest {
             archiveName = "junit-unit",
             maxReportBytes = 4096,
         )
-        val fromFaçade = JUnitPublicationPayload.encode(
+        val fromFacade = JUnitPublicationPayload.encode(
             artifacts = input.artifacts,
             reportFormat = input.reportFormat,
             formatVersion = input.formatVersion,
@@ -631,8 +761,8 @@ class CorePublishJUnitReportsStepTest {
             maxReportBytes = input.maxReportBytes,
         )
 
-        assertEquals(CorePublishJUnitReportsWireCodec.encode(input), fromFaçade)
-        assertEquals(input, CorePublishJUnitReportsWireCodec.decode(fromFaçade))
+        assertEquals(CorePublishJUnitReportsWireCodec.encode(input), fromFacade)
+        assertEquals(input, CorePublishJUnitReportsWireCodec.decode(fromFacade))
         assertEquals(PluginStepId("core.junit.publishReports"), JUnitPublicationPayload.STEP_KEY)
     }
 
@@ -732,7 +862,7 @@ class CorePublishJUnitReportsStepTest {
         val published = assertInstanceOf(PublishedReportsOutput::class.java, output)
         assertEquals(listOf("build/test-results/jvm.xml", "build/test-results/vitest.junit.xml"), published.receipts.map { it.relPath })
         for (report in published.receipts) {
-            // The published digest is the address of the WRITE-ONCE capture, and the parse
+            // The published digest is the address of the write-once capture, and the parse
             // of exactly those bytes is the summary the publication declares:
             val blob = controlRoot.resolve("artefacts/run-1/stage-a/_blobs").resolve(report.sha256)
             assertTrue(Files.isRegularFile(blob), "the published digest must be a capture address: $blob")

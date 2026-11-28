@@ -90,6 +90,9 @@ class CaptureReceiptIdentityTest {
         assertThrows(IllegalArgumentException::class.java) {
             receipt().copy(size = -1L)
         }
+        // Zero bytes is a legal capture (an empty file): the boundary of the size guard
+        // admits 0 and refuses only below it.
+        assertEquals(0L, receipt().copy(size = 0L).size)
     }
 
     @Test

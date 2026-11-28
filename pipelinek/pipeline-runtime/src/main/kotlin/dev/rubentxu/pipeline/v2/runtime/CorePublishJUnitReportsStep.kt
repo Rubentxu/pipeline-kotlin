@@ -507,7 +507,10 @@ object CorePublishJUnitReportsStep {
                 is CapturedBytes -> read.bytes
             }
             val summary = try {
-                JUnitReportParser.parse(java.nio.file.Files.newInputStream(root.resolve(receipt.name.value)), relative)
+                // The parse reads THE CAPTURE: the bytes the port just verified against the
+                // receipt. Reading the workspace file again here would publish totals about
+                // bytes no digest names — the window the capture→parse order exists to close.
+                JUnitReportParser.parse(java.io.ByteArrayInputStream(bytes), relative)
             } catch (e: JUnitReportParseException) {
                 return PublishJUnitReportsFailureOutput(
                     failureKind = FailureKind.USER,

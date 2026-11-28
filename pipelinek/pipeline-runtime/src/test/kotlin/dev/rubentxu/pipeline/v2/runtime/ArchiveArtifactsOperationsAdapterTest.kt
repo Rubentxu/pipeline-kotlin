@@ -78,6 +78,105 @@ class ArchiveArtifactsOperationsAdapterTest {
 
     private fun List<DomainEvent>.archivedEvents(): List<ArtifactArchived> = filterIsInstance<ArtifactArchived>()
 
+    // ---- the verified read-back of a capture (openCapture) ----
+    //
+    // The read-back is the half of the capture law the publisher consumes: the bytes it
+    // returns must be the bytes the receipt names, read from the write-once address —
+    // never the workspace's current answer. Every guard the write applied holds the read:
+    // an address that holds nothing, a link planted at the address, a size or a digest
+    // that diverges from the receipt, each refuses the read instead of handing out bytes
+    // under suspicion.
+
+    @Test
+    fun `openCapture returns the captured bytes their receipt names, never the workspace's current answer`() {
+        val sink = prepare()
+        Files.createDirectories(workspace.resolve("build"))
+        Files.writeString(workspace.resolve("build/a.txt"), "captured-content")
+        val receipt = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "build/**")),
+        ).files.single()
+        Files.writeString(workspace.resolve("build/a.txt"), "changed-live-bytes")
+
+        val read = adapter(sink).openCapture(receipt)
+
+        val bytes = assertInstanceOf(CapturedBytes::class.java, read)
+        assertEquals("captured-content", String(bytes.bytes, Charsets.UTF_8), "the read answers about the CAPTURE")
+    }
+
+    @Test
+    fun `an address that holds no capture refuses the read-back`() {
+        val sink = prepare()
+        Files.createDirectories(workspace.resolve("build"))
+        Files.writeString(workspace.resolve("build/a.txt"), "captured-content")
+        val receipt = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "build/**")),
+        ).files.single()
+
+        val read = adapter(sink).openCapture(receipt.copy(blobId = BlobId(Sha256.ofText("bytes-never-captured"))))
+
+        val refusal = assertInstanceOf(CapturedBytesRefusal::class.java, read)
+        assertTrue(refusal.message.contains(receipt.name.value), refusal.message)
+        assertTrue(refusal.message.contains("holds no capture"), refusal.message)
+    }
+
+    @Test
+    fun `a receipt naming a size the stored bytes do not occupy refuses the read-back`() {
+        val sink = prepare()
+        Files.createDirectories(workspace.resolve("build"))
+        Files.writeString(workspace.resolve("build/a.txt"), "captured-content")
+        val receipt = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "build/**")),
+        ).files.single()
+
+        val read = adapter(sink).openCapture(receipt.copy(size = receipt.size + 1))
+
+        val refusal = assertInstanceOf(CapturedBytesRefusal::class.java, read)
+        assertTrue(refusal.message.contains((receipt.size + 1).toString()), refusal.message)
+        assertTrue(refusal.message.contains(receipt.size.toString()), refusal.message)
+    }
+
+    @Test
+    fun `an address holding bytes that digest to another identity refuses the read-back`() {
+        val sink = prepare()
+        Files.createDirectories(workspace.resolve("build"))
+        Files.writeString(workspace.resolve("build/a.txt"), "captured-content")
+        val receipt = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "build/**")),
+        ).files.single()
+        val blob = artifactDir.resolve("_blobs").resolve(receipt.blobId.value)
+        // Same size, different content: the size guard passes, the identity guard must not.
+        Files.writeString(blob, "z".repeat(receipt.size.toInt()))
+
+        val read = adapter(sink).openCapture(receipt)
+
+        val refusal = assertInstanceOf(CapturedBytesRefusal::class.java, read)
+        assertTrue(refusal.message.contains("digesting to"), refusal.message)
+        assertTrue(refusal.message.contains(receipt.blobId.value), refusal.message)
+    }
+
+    @Test
+    fun `a link planted at the digest address refuses the read-back instead of being followed`() {
+        val sink = prepare()
+        Files.createDirectories(workspace.resolve("build"))
+        Files.writeString(workspace.resolve("build/a.txt"), "captured-content")
+        val receipt = assertInstanceOf(
+            ArchiveArtifactsSuccess::class.java,
+            adapter(sink).archive(ArchiveArtifactsInput(artifacts = "build/**")),
+        ).files.single()
+        val blob = artifactDir.resolve("_blobs").resolve(receipt.blobId.value)
+        Files.delete(blob)
+        Files.createSymbolicLink(blob, workspace.resolve("build/a.txt").toAbsolutePath())
+
+        val read = adapter(sink).openCapture(receipt)
+
+        val refusal = assertInstanceOf(CapturedBytesRefusal::class.java, read)
+        assertTrue(refusal.message.contains("not a regular stored file"), refusal.message)
+    }
+
     @Test
     fun `the receipt states the digest read back from the stored target`() {
         val sink = prepare()

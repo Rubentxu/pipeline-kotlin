@@ -10,7 +10,6 @@ import dev.rubentxu.pipeline.v2.domain.StepArgumentType
 import dev.rubentxu.pipeline.v2.domain.StepArguments
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
-import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
@@ -24,8 +23,6 @@ import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitReportParseException
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitReportParser
-import java.io.BufferedInputStream
-import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -91,7 +88,7 @@ object JUnitXmlReportFormat {
     const val MEDIA_TYPE: String = "application/xml"
 }
 
-/** One published report: the capture receipt of the bytes plus the totals the parse read. */
+/** One published report: the identities of the captured bytes plus the totals the parse read from THOSE bytes. */
 data class PublishedReport(
     val relPath: String,
     val sha256: String,
@@ -103,11 +100,11 @@ data class PublishedReport(
 )
 
 /**
- * The publication succeeded: every matched report was verified as [JUnitXmlReportFormat.KIND]
- * and captured through the artifact-archive port. [receipts] mirror the verified CaptureReceipts (digest
- * and size read back from the store by the adapter, never supplied here): a verified report the
- * port answered without a receipt fails the step instead, so no unverified digest is ever
- * published under this output.
+ * The publication succeeded: every matched report was captured through the artifact-archive
+ * port and parsed from its own captured bytes. [receipts] carry the identities the
+ * CaptureReceipts read back from the store (digest and size, never supplied by the step),
+ * and every total was parsed from the bytes those identities name: the output never
+ * describes bytes other than the ones the capture secured.
  */
 data class PublishedReportsOutput(
     val group: String?,
@@ -274,17 +271,20 @@ object CorePublishJUnitReportsWireCodec : StepCodec<PublishJUnitReportsInput> {
  *  1. the declared pattern selects the candidates (the producer's word, never a name guess);
  *  2. an empty selection is a failure unless the author declared the publication optional —
  *     and even then the status says ABSENT, never published;
- *  3. every candidate must parse as JUnit XML through the certified parser
- *     (`JUnitReportParser`): absent, invalid and non-matching are three different verdicts, and
- *     an invalid report fails the step BEFORE any byte is archived;
- *  4. only a fully verified set is handed to the artifact-archive capture port
- *     ([ArchiveArtifactsOperations]), so the publication's receipts are the verified
- *     `CaptureReceipt`s (digest and size read back from the store), and each receipt is
- *     identity-verified before its digest travels in the output: the visible name only
- *     selects the candidate, and the receipt's digest must equal the digest of the bytes
- *     the step parsed;
- *  5. an expected count the author declared is checked against what the pattern found, and the
- *     group label is carried only when declared. No build policy is forced.
+ *  3. an expected count the author declared is checked against the selection BEFORE the
+ *     capture, and the group label is carried only when declared. No build policy is forced;
+ *  4. the matched set is handed to the artifact-archive capture port
+ *     ([ArchiveArtifactsOperations]) FIRST: the capture secures the bytes write-once at
+ *     their digest addresses and answers with `CaptureReceipt`s whose digest and size are
+ *     read back from the store;
+ *  5. the parse then reads THE CAPTURE, never the workspace file again: every report is
+ *     parsed from the bytes read back through the port against its own receipt (a regular
+ *     stored node, of the receipt's size, digesting to the receipt's identity), so the
+ *     summary published corresponds EXACTLY to the bytes the published digest names — a
+ *     report the workspace rewrites after its capture cannot alter what the publication
+ *     declares about it. Absent, invalid and non-matching stay three different verdicts:
+ *     an invalid report is a USER failure about captured bytes, and a capture the port
+ *     cannot answer for is an ENGINE failure, never a publication.
  *
  * Capability discipline: the handler consumes EXECUTION_LOCATION (the report root) and the
  * archive port only. It never touches the event sink — `ArtifactArchived` is emitted by the
@@ -437,54 +437,11 @@ object CorePublishJUnitReportsStep {
                 )
             }
 
-            // Verify every candidate BEFORE archiving anything: an invalid report is a
-            // different verdict from an absent one, and no unverified byte reaches the store.
-            val totals = mutableListOf<PublishedReport>()
-            // The digest of the bytes each candidate held when the step parsed it: the
-            // identity the pairing below verifies the receipt against.
-            val parsedDigests = mutableMapOf<String, String>()
-            for (file in matched) {
-                val relative = root.relativize(file).toString().replace('\\', '/')
-                val size = Files.size(file)
-                if (size == 0L) {
-                    return@StepHandler PublishJUnitReportsFailureOutput(
-                        failureKind = FailureKind.USER,
-                        message = "core.junit.publishReports: ${input.reportFormat} report is empty (0 bytes): $relative",
-                    )
-                }
-                if (size > input.maxReportBytes) {
-                    return@StepHandler PublishJUnitReportsFailureOutput(
-                        failureKind = FailureKind.USER,
-                        message = "core.junit.publishReports: $relative is $size bytes " +
-                            "(maxReportBytes=${input.maxReportBytes}); refusing to parse",
-                    )
-                }
-                val summary = try {
-                    Files.newInputStream(file).use { raw ->
-                        BufferedInputStream(raw, 64 * 1024).use { JUnitReportParser.parse(it, relative) }
-                    }
-                } catch (e: JUnitReportParseException) {
-                    return@StepHandler PublishJUnitReportsFailureOutput(
-                        failureKind = FailureKind.USER,
-                        message = "core.junit.publishReports: $relative is not valid ${input.reportFormat} " +
-                            "v${input.formatVersion} (declared mediaType ${input.mediaType}): ${e.message ?: "unknown"}",
-                    )
-                }
-                totals += PublishedReport(
-                    relPath = relative,
-                    // The digest is NOT the receipt yet: the port reads the stored bytes back
-                    // after the copy. It is filled from the CaptureReceipt below, once the
-                    // receipt's identity has been checked against the parsed bytes.
-                    sha256 = "",
-                    sizeBytes = size,
-                    tests = summary.tests,
-                    failures = summary.failures,
-                    errors = summary.errors,
-                    skipped = summary.skipped,
-                )
-                parsedDigests[relative] = Sha256.ofFile(file)
-            }
-
+            // The capture comes FIRST: the port secures the matched bytes write-once and
+            // answers with receipts whose digest and size are read back from the store.
+            // Everything the publication declares below is read from THE CAPTURE, never
+            // from the workspace files again, so a report rewritten after this point
+            // cannot change what the publication says about it.
             val ops: ArchiveArtifactsOperations =
                 ctx.capabilities.get(ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY, ArchiveArtifactsOperations::class)
             return@StepHandler when (val result = ops.archive(
@@ -496,42 +453,80 @@ object CorePublishJUnitReportsStep {
                     name = input.archiveName,
                 ),
             )) {
-                is ArchiveArtifactsSuccess -> {
-                    // The pairing is identity-verified, never trusted by name alone: the
-                    // visible name only SELECTS the candidate receipt, and the receipt's
-                    // digest must equal the digest of the bytes this step parsed before any
-                    // digest travels in the output. A receipt the port answered with, whose
-                    // name selects it but whose bytes the step did not parse — a diverged
-                    // capture, a raced source — is the failure, and so is a report whose
-                    // receipt is missing (the placeholder "" would otherwise travel as a
-                    // verified digest).
-                    val mirrored = mutableListOf<PublishedReport>()
-                    for (report in totals) {
-                        val receipt = result.files.firstOrNull { it.name.value == report.relPath }
-                            ?: return@StepHandler PublishJUnitReportsFailureOutput(
-                                failureKind = FailureKind.ENGINE,
-                                message = "core.junit.publishReports: the capture port succeeded without a " +
-                                    "receipt for '${report.relPath}'; refusing to publish an unverified digest",
-                            )
-                        val parsedDigest = parsedDigests.getValue(report.relPath)
-                        if (receipt.blobId.value != parsedDigest) {
-                            return@StepHandler PublishJUnitReportsFailureOutput(
-                                failureKind = FailureKind.ENGINE,
-                                message = "core.junit.publishReports: the receipt for '${report.relPath}' " +
-                                    "names digest ${receipt.blobId.value} but the parsed bytes digest to " +
-                                    "$parsedDigest; refusing to publish a digest the parsed report does not carry",
-                            )
-                        }
-                        mirrored += report.copy(sha256 = receipt.blobId.value, sizeBytes = receipt.size)
-                    }
-                    PublishedReportsOutput(group = input.expectedGroup, receipts = mirrored)
-                }
                 is ArchiveArtifactsFailed -> PublishJUnitReportsFailureOutput(
                     failureKind = result.failureKind,
                     message = "core.junit.publishReports: capture failed: ${result.message}",
                 )
+                is ArchiveArtifactsSuccess -> publishFromCapture(input, ops, result)
             }
         }
+
+    /**
+     * Publishes from the capture, never from the workspace: each receipt is read back
+     * verified through the port and its bytes are what the parse reads, so every fact
+     * the output declares is a fact about the bytes the receipt's digest names.
+     */
+    private fun publishFromCapture(
+        input: PublishJUnitReportsInput,
+        ops: ArchiveArtifactsOperations,
+        result: ArchiveArtifactsSuccess,
+    ): TypedStepOutput {
+        // A success naming no receipt would publish "PUBLISHED" about nothing: the
+        // capture is the authority and it names the bytes it holds.
+        if (result.files.isEmpty()) {
+            return PublishJUnitReportsFailureOutput(
+                failureKind = FailureKind.ENGINE,
+                message = "core.junit.publishReports: the capture port succeeded without receipts; " +
+                    "refusing to publish a summary about bytes nobody names",
+            )
+        }
+        val reports = mutableListOf<PublishedReport>()
+        for (receipt in result.files) {
+            val relative = receipt.name.value
+            // The size is a fact the store read back at capture time, so the empty and
+            // the cap verdicts decide from the capture too — before any byte is read.
+            if (receipt.size == 0L) {
+                return PublishJUnitReportsFailureOutput(
+                    failureKind = FailureKind.USER,
+                    message = "core.junit.publishReports: ${input.reportFormat} report is empty (0 bytes): $relative",
+                )
+            }
+            if (receipt.size > input.maxReportBytes) {
+                return PublishJUnitReportsFailureOutput(
+                    failureKind = FailureKind.USER,
+                    message = "core.junit.publishReports: $relative is ${receipt.size} bytes " +
+                        "(maxReportBytes=${input.maxReportBytes}); refusing to parse",
+                )
+            }
+            val bytes = when (val read = ops.openCapture(receipt)) {
+                is CapturedBytesRefusal -> return PublishJUnitReportsFailureOutput(
+                    failureKind = FailureKind.ENGINE,
+                    message = "core.junit.publishReports: the captured bytes for '$relative' " +
+                        "could not be verified: ${read.message}",
+                )
+                is CapturedBytes -> read.bytes
+            }
+            val summary = try {
+                JUnitReportParser.parse(java.nio.file.Files.newInputStream(root.resolve(receipt.name.value)), relative)
+            } catch (e: JUnitReportParseException) {
+                return PublishJUnitReportsFailureOutput(
+                    failureKind = FailureKind.USER,
+                    message = "core.junit.publishReports: $relative is not valid ${input.reportFormat} " +
+                        "v${input.formatVersion} (declared mediaType ${input.mediaType}): ${e.message ?: "unknown"}",
+                )
+            }
+            reports += PublishedReport(
+                relPath = relative,
+                sha256 = receipt.blobId.value,
+                sizeBytes = receipt.size,
+                tests = summary.tests,
+                failures = summary.failures,
+                errors = summary.errors,
+                skipped = summary.skipped,
+            )
+        }
+        return PublishedReportsOutput(group = input.expectedGroup, receipts = reports)
+    }
 
     val definition: StepDefinition<PublishJUnitReportsInput, TypedStepOutput> =
         object : StepDefinition<PublishJUnitReportsInput, TypedStepOutput> {

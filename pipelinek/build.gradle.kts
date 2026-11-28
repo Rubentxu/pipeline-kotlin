@@ -203,7 +203,15 @@ repositories {
 // in the portal, because the API of the publisher cannot drop a deployment
 // that is already published. The 0.99.0 train opens here (ProductVersion
 // 0.99.0) and its candidates can be tagged v0.99.0-rcN.
-version = "0.99.0"
+// 2026-11-28: the stable tag v0.99.0 names bytes cut before the capture-law
+// corrections this board certified the release with — the write-once digest
+// address, the per-capture identity, and the parse of the immutable capture —
+// and the same window re-opened under a racing source: an address nobody held
+// could be occupied by bytes it does not name. A published tag is never moved
+// and never replaced, so the published 0.99.0 bytes stay as they are and the
+// corrected iteration ships as a new version. The 0.99.1 train opens here
+// (ProductVersion 0.99.1) and its candidates can be tagged v0.99.1-rcN.
+version = "0.99.1"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

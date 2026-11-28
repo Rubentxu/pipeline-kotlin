@@ -862,7 +862,7 @@ class CorePublishJUnitReportsStepTest {
         val published = assertInstanceOf(PublishedReportsOutput::class.java, output)
         assertEquals(listOf("build/test-results/jvm.xml", "build/test-results/vitest.junit.xml"), published.receipts.map { it.relPath })
         for (report in published.receipts) {
-            // The published digest is the address of the WRITE-ONCE capture, and the parse
+            // The published digest is the address of the write-once capture, and the parse
             // of exactly those bytes is the summary the publication declares:
             val blob = controlRoot.resolve("artefacts/run-1/stage-a/_blobs").resolve(report.sha256)
             assertTrue(Files.isRegularFile(blob), "the published digest must be a capture address: $blob")

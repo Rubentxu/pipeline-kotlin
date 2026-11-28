@@ -96,6 +96,20 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# The staging repository is deleted and recreated below, so a value that names the root, the
+# home of the user, this checkout, or a directory that contains it is refused up front.
+# Both sides are resolved: HOME and the checkout may be reached through a symlink.
+staging_real="$(realpath -m -- "${STAGING_REPO:-/}")"
+home_real="$(realpath -m -- "${HOME:-/}")"
+checkout_real="$(realpath -m -- "$repo_root")"
+if [[ -z "$STAGING_REPO" || "$staging_real" == "/" || "$staging_real" == "$home_real" \
+      || "$home_real" == "$staging_real"/* \
+      || "$checkout_real" == "$staging_real" || "$checkout_real" == "$staging_real"/* ]]; then
+    printf 'stage-sdk-bundle: refusing --repo %q: it would delete the root, the home or this checkout.\n' \
+        "$STAGING_REPO" >&2
+    exit 2
+fi
+
 # shellcheck source=/dev/null
 source "$repo_root/scripts/release/read-signing-trust.sh"
 

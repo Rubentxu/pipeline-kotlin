@@ -440,7 +440,12 @@ if [[ "$(attestation_claim RC-Commit)" != "$RC_COMMIT" ]]; then
     exit 1
 fi
 
-RC_VERDICT_FILE="$(mktemp "${TMPDIR:-/tmp}/promote-stable-rc.XXXXXX")"
+# Every verdict file lives in one scratch directory that is removed on any exit,
+# so a refusal at any step leaves nothing behind in the temporary directory.
+SCRATCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/promote-stable.XXXXXX")"
+trap 'rm -rf -- "$SCRATCH_DIR"' EXIT
+
+RC_VERDICT_FILE="$SCRATCH_DIR/rc"
 
 if ! "${repo_root}/scripts/release/verify-tag-signature.sh" \
     --tag "$RC_TAG" \
@@ -451,7 +456,6 @@ if ! "${repo_root}/scripts/release/verify-tag-signature.sh" \
     printf 'promote-stable: refusing — the RC tag %s does not carry a verified signature.\n' "$RC_TAG" >&2
     printf '           A stable tag is promoted from a VERIFIED RC. The verdict is at %s\n' \
         "$RC_VERDICT_FILE" >&2
-    rm -f -- "$RC_VERDICT_FILE"
     exit 1
 fi
 
@@ -488,7 +492,7 @@ fi
 #    certifier is answered where the trust anchor lives.
 # ----------------------------------------------------------------------------
 
-CERTIFICATION_VERDICT_FILE="$(mktemp "${TMPDIR:-/tmp}/promote-stable-certification.XXXXXX")"
+CERTIFICATION_VERDICT_FILE="$SCRATCH_DIR/certification"
 
 if ! "${repo_root}/scripts/release/verify-promotion-certification.sh" \
     --certification "$CERTIFICATION" \
@@ -498,7 +502,6 @@ if ! "${repo_root}/scripts/release/verify-promotion-certification.sh" \
     printf '           A stable release is promoted only against the complete certification\n' >&2
     printf '           of the candidate it carries. The verdict is at %s\n' >&2
     printf '           %s\n' "$CERTIFICATION_VERDICT_FILE" >&2
-    rm -f -- "$RC_VERDICT_FILE" "$CERTIFICATION_VERDICT_FILE"
     exit 1
 fi
 
@@ -507,7 +510,7 @@ fi
 #    publish-tag.sh, which is the shipping code for that ordering.
 # ----------------------------------------------------------------------------
 
-TAG_VERDICT_FILE="$(mktemp "${TMPDIR:-/tmp}/promote-stable-tag.XXXXXX")"
+TAG_VERDICT_FILE="$SCRATCH_DIR/tag"
 
 if ! "${repo_root}/scripts/release/publish-tag.sh" \
     --tag "$STABLE_TAG" \
@@ -521,7 +524,6 @@ if ! "${repo_root}/scripts/release/publish-tag.sh" \
     --out "$TAG_VERDICT_FILE"; then
     printf 'promote-stable: refusing — the stable tag %s was not published.\n' "$STABLE_TAG" >&2
     printf '           The verdict is at %s\n' "$TAG_VERDICT_FILE" >&2
-    rm -f -- "$RC_VERDICT_FILE" "$CERTIFICATION_VERDICT_FILE"
     exit 1
 fi
 
@@ -531,7 +533,7 @@ fi
 #    The audit is the same script that would have caught v0.90.0.
 # ----------------------------------------------------------------------------
 
-AUDIT_VERDICT_FILE="$(mktemp "${TMPDIR:-/tmp}/promote-stable-audit.XXXXXX")"
+AUDIT_VERDICT_FILE="$SCRATCH_DIR/audit"
 
 if ! "${repo_root}/scripts/release/verify-published-tags.sh" \
     --tag "$STABLE_TAG" \
@@ -542,7 +544,6 @@ if ! "${repo_root}/scripts/release/verify-published-tags.sh" \
     printf 'promote-stable: refusing — the published-tag audit does not pass for %s.\n' "$STABLE_TAG" >&2
     printf '           The tag was pushed; the audit says what the remote holds. Verdict at %s\n' \
         "$AUDIT_VERDICT_FILE" >&2
-    rm -f -- "$RC_VERDICT_FILE" "$CERTIFICATION_VERDICT_FILE" "$TAG_VERDICT_FILE"
     exit 1
 fi
 
@@ -550,9 +551,7 @@ fi
 # 9. The verdict. It carries what was checked, not only that it passed.
 # ----------------------------------------------------------------------------
 
-VERDICT_FILE="$(mktemp "${TMPDIR:-/tmp}/promote-stable-verdict.XXXXXX")"
-cleanup() { rm -f -- "$VERDICT_FILE"; }
-trap cleanup EXIT
+VERDICT_FILE="$SCRATCH_DIR/verdict"
 
 {
     printf 'promote-stable: PASS stable=%s rc=%s commit=%s candidate_id=%s remote=%s\n' \
@@ -585,7 +584,6 @@ trap cleanup EXIT
     printf '      --asset <rc asset>... --expect-sums <rc SHA256SUMS>\n'
 } > "$VERDICT_FILE"
 
-rm -f -- "$RC_VERDICT_FILE" "$CERTIFICATION_VERDICT_FILE" "$TAG_VERDICT_FILE" "$AUDIT_VERDICT_FILE"
 
 mkdir -p -- "$(dirname -- "$OUT_FILE")"
 cp "$VERDICT_FILE" "$OUT_FILE"

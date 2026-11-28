@@ -16,12 +16,23 @@
 
 set -euo pipefail
 
+# The consumer key and token are expanded by bash while this script runs, and
+# xtrace would print each expansion to stderr. Tracing is therefore off for the
+# whole script, whatever the caller asked for.
+set +x
+
 if [ "$#" -ne 1 ]; then
   echo "usage: $0 VERSION" >&2
   exit 2
 fi
 
 VERSION="$1"
+# VERSION is embedded in the URLs and in the JSON payload: only a release
+# version shape is accepted, so nothing else can travel inside them.
+if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+)*$ ]]; then
+  echo "❌ VERSION '${VERSION}' is not a release version (X.Y.Z[-suffix])" >&2
+  exit 2
+fi
 GIT_TAG="v${VERSION}"
 CANDIDATE="pipelinek"
 ASSET="pipelinek-${VERSION}.zip"
@@ -58,7 +69,7 @@ echo "sha256:    $SHA256"
 # archive bytes themselves. Reading a manifest is not verification: if GitHub
 # ever serves a manifest that disagrees with the asset, fail closed. (Cheap;
 # one curl.)
-EXPECTED_VIA_LOCAL_SHA=$(curl -fsSL "${URL}" | sha256sum | awk '{print $1}')
+EXPECTED_VIA_LOCAL_SHA=$(curl -fsSL --max-time 300 "${URL}" | sha256sum | awk '{print $1}')
 if [ "${EXPECTED_VIA_LOCAL_SHA}" != "${SHA256}" ]; then
   echo "❌ SHA mismatch: ${SUMS_URL} says ${SHA256} for ${ASSET}" >&2
   echo "   but recomputing from ${URL} gives ${EXPECTED_VIA_LOCAL_SHA}" >&2
@@ -91,18 +102,28 @@ SDKMAN_CANDIDATE_ENDPOINT="${PIPELINEK_SDKMAN_CANDIDATE_ENDPOINT:-https://api.sd
 
 echo
 echo "=== POST ${SDKMAN_RELEASE_ENDPOINT} ==="
-RESPONSE=$(curl -fsS -X POST \
-  -H "Consumer-Key: ${SDKMAN_CONSUMER_KEY}" \
-  -H "Consumer-Token: ${SDKMAN_CONSUMER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  -d "${PAYLOAD}" \
-  "${SDKMAN_RELEASE_ENDPOINT}")
+# The credentials travel to curl as its configuration on standard input, so
+# they are never in the argument list that `ps` shows to other users.
+# A key or token with a quote, a backslash or a line break would break out of
+# the configuration value: they are refused instead of escaped.
+case "${SDKMAN_CONSUMER_KEY}${SDKMAN_CONSUMER_TOKEN}" in
+  *[\"\\]* | *$'\n'* | *$'\r'*)
+    echo "❌ the SDKMAN credentials contain a quote, backslash or line break" >&2
+    exit 2
+    ;;
+esac
+RESPONSE=$(printf 'header = "Consumer-Key: %s"\nheader = "Consumer-Token: %s"\n' \
+    "${SDKMAN_CONSUMER_KEY}" "${SDKMAN_CONSUMER_TOKEN}" \
+  | curl --config - -fsS --max-time 60 -X POST \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d "${PAYLOAD}" \
+    "${SDKMAN_RELEASE_ENDPOINT}")
 echo "${RESPONSE}"
 echo
 echo "=== verify ==="
 curl -fsS --max-time 15 "${SDKMAN_CANDIDATE_ENDPOINT}" \
-  | python3 -c "import json,sys; d=json.load(sys.stdin); v=[x for x in d.get('versions',[]) if x.get('version')=='${VERSION}']; print('version visible:', bool(v), v[0] if v else 'NOT FOUND')"
+  | python3 -c "import json,sys; d=json.load(sys.stdin); v=[x for x in d.get('versions',[]) if x.get('version')==sys.argv[1]]; print('version visible:', bool(v), v[0] if v else 'NOT FOUND')" "${VERSION}"
 echo
 echo "✅ ${CANDIDATE} ${VERSION} published to SDKMAN (UNIVERSAL)."
 echo "   Note: not yet DEFAULT. Promote with:"

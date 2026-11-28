@@ -7,10 +7,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.OutputChunk
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream
-import dev.rubentxu.pipeline.v2.events.durable.DurableStores
-import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
-import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
-import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.runtime.durable.OutputPlaneProvider

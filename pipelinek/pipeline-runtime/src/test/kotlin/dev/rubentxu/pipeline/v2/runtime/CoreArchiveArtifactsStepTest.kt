@@ -97,6 +97,8 @@ class CoreArchiveArtifactsStepTest {
 
     @Test
     fun `the step output carries one capture id per archived file, paired by the handle too`() {
+        Files.createDirectories(workspace)
+        Files.createDirectories(controlRoot)
         Files.writeString(workspace.resolve("a.txt"), "wire-bytes-a")
         Files.writeString(workspace.resolve("b.txt"), "wire-bytes-b-longer")
         val sink = RecordingSink()

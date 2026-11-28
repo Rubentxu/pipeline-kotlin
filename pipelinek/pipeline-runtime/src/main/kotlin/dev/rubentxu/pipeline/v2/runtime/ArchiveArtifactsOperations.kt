@@ -45,6 +45,10 @@ interface ArchiveArtifactsOperations {
     /**
      * Archives workspace files matching the Ant-style [ArchiveArtifactsInput.artifacts]
      * pattern into the run's artefacts retention directory.
+     * Each capture's minted identity travels with it into the public channels the
+     * adapter feeds — the durable event entry, and, through the step, the wire output
+     * and the recorded handle — so a consumer outside the runtime can tell two captures
+     * of one visible name apart without ever touching the private retention layout.
 */
     fun archive(input: ArchiveArtifactsInput): ArchiveArtifactsResult
 

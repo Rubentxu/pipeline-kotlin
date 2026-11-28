@@ -52,6 +52,15 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   names at its size, `openCapture` answers them back, the durable event repeats them,
  *   and each capture carries its own minted identity. A raced source is refused, never
  *   succeeded into a receipt the store cannot answer.
+ * - The minted identity is PUBLIC: it travels on the durable event entry, the step's
+ *   wire output and the recorded handle, two same-name captures stay distinguishable by
+ *   it after the whole workspace is erased, and each identity recovers exactly its own
+ *   bytes from the retention tree.
+ * - The read-back is ONE authorized opening: the delivered bytes are byte-for-byte the
+ *   bytes that single opening digested — a node swapped in after it delivers nothing —
+ *   a link grown at the address before the opening is refused even when its bytes fit
+ *   the receipt, and a receipt naming more bytes than the contract's ceiling is refused,
+ *   never read. The swap windows are call order through the read seam, never a timed race.
  */
 class ArchiveArtifactsOperationsAdapterTest {
 

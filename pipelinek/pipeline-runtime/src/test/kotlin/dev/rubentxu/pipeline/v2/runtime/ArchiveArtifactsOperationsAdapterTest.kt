@@ -11,12 +11,19 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.FileTime
 import java.time.Instant
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The capture contract of the archive adapter.
@@ -39,6 +46,11 @@ import java.time.Instant
  *   authorized roots. The refusal is fail-closed: no success event on a violated capture.
  * - The legacy envelope is preserved: an empty match with `allowEmptyArchive` is one
  *   empty event, without it a typed failure, and `excludes` keeps a file out of the capture.
+ * - Under a live race — the source flipped between whole versions while captures run —
+ *   every emitted receipt keeps its labels true: its address holds the bytes its digest
+ *   names at its size, `openCapture` answers them back, the durable event repeats them,
+ *   and each capture carries its own minted identity. A raced source is refused, never
+ *   succeeded into a receipt the store cannot answer.
  */
 class ArchiveArtifactsOperationsAdapterTest {
 
@@ -534,5 +546,131 @@ class ArchiveArtifactsOperationsAdapterTest {
         val address = artifactDir.resolve("_blobs").resolve(namedA.blobId.value)
         assertEquals(address, artifactDir.resolve("_blobs").resolve(namedB.blobId.value))
         assertEquals("mismos-bytes", Files.readString(address))
+    }
+
+    @Test
+    fun `captures of a concurrently rewritten source never emit a receipt the store cannot answer`() {
+        // The race certification of the receipt identity. A real thread flips the source
+        // between two WHOLE versions (atomic renames, so the file is never half-written)
+        // while eight workers capture the same visible name. For every possible
+        // interleaving the law is the same: a success names bytes the digest address
+        // actually holds — `openCapture` answers them back, at the receipt's size, as
+        // exactly one whole version — and its durable event repeats the receipt's own
+        // labels. A capture whose bytes diverged mid-flight is an honest typed refusal
+        // with a failed event and no success event, never a receipt that lies.
+        val versionA = "capture-race-A".repeat(256)
+        val versionB = "capture-race-BB".repeat(512)
+        prepare()
+        val source = workspace.resolve("race.txt")
+        Files.writeString(source, versionA)
+
+        val workerCount = 8
+        val roundsPerWorker = 5
+        val start = CountDownLatch(1)
+        val finished = CountDownLatch(workerCount)
+        val flipStop = AtomicBoolean(false)
+        val flipper = Thread {
+            val staged = workspace.resolve(".flip.tmp")
+            var flip = false
+            while (!flipStop.get()) {
+                Files.writeString(staged, if (flip) versionA else versionB)
+                Files.move(staged, source, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                flip = !flip
+                // The margin the law needs: a whole version stands still long enough
+                // for a capture to finish between two flips. An attempt publishes or it
+                // refuses — the outcome itself says whether the machine gave the margin.
+                java.util.concurrent.locks.LockSupport.parkNanos(1_000_000)
+            }
+        }.also(Thread::start)
+        val outcomes = Collections.synchronizedList(
+            mutableListOf<Pair<ArchiveArtifactsResult, RecordingSink>>(),
+        )
+        val threads = (0 until workerCount).map {
+            Thread {
+                try {
+                    start.await()
+                    repeat(roundsPerWorker) {
+                        val sink = RecordingSink()
+                        outcomes += adapter(sink).archive(ArchiveArtifactsInput(artifacts = "race.txt")) to sink
+                    }
+                } finally {
+                    finished.countDown()
+                }
+            }.also(Thread::start)
+        }
+        start.countDown()
+        assertTrue(finished.await(60, TimeUnit.SECONDS), "every capture must return")
+        flipStop.set(true)
+        threads.forEach { it.join(10_000) }
+        flipper.join(10_000)
+
+        var successes = 0
+        val captureIds = mutableSetOf<String>()
+        for ((worker, pair) in outcomes.withIndex()) {
+            val (outcome, sink) = pair
+            when (outcome) {
+                is ArchiveArtifactsSuccess -> {
+                    successes++
+                    val receipt = outcome.files.single()
+                    // The label law, measured after the store is still: the read-back
+                    // answers the receipt's own bytes, or the success is a lie.
+                    val read = adapter(RecordingSink()).openCapture(receipt)
+                    val bytes = assertInstanceOf(
+                        CapturedBytes::class.java,
+                        read,
+                        "worker $worker: a success receipt must be answerable from its digest address",
+                    )
+                    assertEquals(receipt.size, bytes.bytes.size.toLong(), "worker $worker: the receipt's size is the stored size")
+                    assertEquals(receipt.blobId.value, Sha256.ofText(String(bytes.bytes, Charsets.UTF_8)), "worker $worker: the receipt's digest is the stored content")
+                    val capturedText = String(bytes.bytes, Charsets.UTF_8)
+                    assertTrue(
+                        capturedText == versionA || capturedText == versionB,
+                        "worker $worker: the capture is one whole version, never a mix of the raced states",
+                    )
+                    // The durable record repeats the receipt's labels, not the workspace's
+                    // state at event time.
+                    val events = sink.appended.archivedEvents()
+                    assertEquals(1, events.size, "worker $worker: the success has exactly its archived event")
+                    val entry = events.single().files.single()
+                    assertEquals(receipt.blobId.value, entry.sha256, "worker $worker: the event names the receipt's digest")
+                    assertEquals(receipt.size, entry.size, "worker $worker: the event names the receipt's size")
+                    captureIds += receipt.captureId.value
+                }
+                is ArchiveArtifactsFailed -> {
+                    assertTrue(outcome.message.isNotBlank(), "worker $worker: a raced refusal names its reason")
+                    assertEquals(
+                        0,
+                        sink.appended.archivedEvents().size,
+                        "worker $worker: a refused capture never emits a success event",
+                    )
+                }
+            }
+        }
+        assertEquals(successes, captureIds.size, "two captures are two captures even under the race: no identity is reused")
+        // The store's identity law, read once the race is still: a digest address is a
+        // name of content, and the race of writes never leaves an address holding bytes
+        // it does not name — a poisoned address would make every later honest capture
+        // of that content a refusal, and no receipt truth survives that.
+        val blobDir = artifactDir.resolve("_blobs")
+        if (Files.exists(blobDir, LinkOption.NOFOLLOW_LINKS)) {
+            Files.list(blobDir).use { addresses ->
+                addresses
+                    .filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
+                    .forEach { address ->
+                        assertEquals(
+                            address.fileName.toString(),
+                            Sha256.ofFile(address),
+                            "the digest address '${address.fileName}' holds bytes it does not name",
+                        )
+                    }
+            }
+        }
+        if (successes == 0) {
+            Assumptions.abort<Any>(
+                "the flipper left no capture room to finish between two flips: on this saturated machine " +
+                    "the label law had no margin to be exercised — the row measures nothing and is repaid " +
+                    "on a free machine",
+            )
+        }
     }
 }

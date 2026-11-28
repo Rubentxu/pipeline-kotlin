@@ -753,13 +753,14 @@ def production_files(repo: Path) -> list[Path]:
 
 
 def masked(text: str) -> str:
-    """The text with its strings and its comments blanked.
+    """The text with its strings, its char literals and its comments blanked.
 
     The blanks keep the length of the text, so a span of the masked text is
     the same span of the original one. A reader that looks for a shape can
     therefore look at the masked text and read the VALUE at the same offsets
     of the original: a parenthesis inside a comment does not close a block,
-    and a parenthesis inside a string does not either.
+    a parenthesis inside a string does not either, and a quote inside a char
+    literal does not open a string.
     """
     out = list(text)
     length = len(text)
@@ -784,6 +785,21 @@ def masked(text: str) -> str:
             for position in range(index + 1, min(end, length)):
                 out[position] = " "
             index = end + 1
+            continue
+        if text[index] == "'":
+            end = index + 1
+            while end < length and text[end] not in "\\\n'":
+                end += 1
+            if end < length and text[end] == "\\":
+                end += 2
+                while end < length and text[end] not in "\n'":
+                    end += 1
+            if end < length and text[end] == "'":
+                for position in range(index + 1, end):
+                    out[position] = " "
+                index = end + 1
+                continue
+            index += 1
             continue
         if text.startswith("//", index):
             end = text.find("\n", index)

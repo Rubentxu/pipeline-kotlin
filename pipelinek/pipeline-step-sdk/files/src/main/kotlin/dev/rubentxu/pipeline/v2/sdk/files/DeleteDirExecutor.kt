@@ -6,10 +6,17 @@ import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import java.nio.file.Path
 
 /**
- * Result of a deleteDir operation.
+ * Result of a converged deleteDir operation.
+ *
+ * Only a deletion that left nothing behind produces this value: a run where an
+ * entry survived arrives as [DeleteDirIncompleteException] instead, so a
+ * present result IS the verification that the target is empty of content.
  * @property path Resolved absolute path that was deleted
- * @property deletedCount Number of files/directories deleted (0 if already deleted)
- * @property sha256 SHA-256 hex of the .deleted marker content
+ * @property deletedCount Entries the filesystem confirmed gone this run — a
+ *   measurement of the deletion, never a pre-walk promise (0 when the target
+ *   held nothing to remove)
+ * @property sha256 SHA-256 hex of the `.deleted` marker content. Evidence for
+ *   the journal only: no later invocation reads the marker to skip the work.
 */
 data class DeleteDirResult(
     val path: Path,
@@ -18,12 +25,25 @@ data class DeleteDirResult(
 )
 
 /**
- * Executor for [StepSpec.DeleteDir] — atomic workspace directory deletion.
+ * Executor for [StepSpec.DeleteDir] — convergent workspace directory deletion.
  * ## Behavior
  * 1. Resolves `path` against workspace (default ".")
- * 2. Checks for MEMOIZED marker at `<path>/.deleted` — if sha matches, returns deletedCount=0 (no-op)
- * 3. Deletes all contents recursively using walk+delete (post-order)
- * 4. Writes `.deleted` marker with sha256 for MEMOIZED replay
+ * 2. Deletes all contents recursively using walk+delete (post-order); the
+ *    target directory itself stays so the marker has a home
+ * 3. Verifies against the filesystem: whatever the walk left behind is a
+ *    survivor, and a survivor is a failure
+ * 4. Writes the `.deleted` marker — with a sha256 of its content — only when
+ *    the verification found nothing left. The marker is evidence for the
+ *    journal, never proof of cleanliness.
+ * ## Convergence
+ * - Every invocation consults the filesystem. A marker that exists — valid,
+ *   forged or stale — is never read as a no-op: content recreated after a
+ *   historical receipt is deleted by the next run, not skipped.
+ * - If any entry survives, the result is [DeleteDirIncompleteException] with
+ *   the survivors and no marker is written; once the cause is resolved, a new
+ *   attempt deletes the rest. A deletion that reports itself done while
+ *   content survives is the defect this executor refuses to repeat.
+ * - `deletedCount` measures the entries the filesystem confirmed gone.
  * ## Path Safety
  * - Enforces workspace-root guard: resolved path MUST start with workspace root
  * - Refuses to act through a symbolic link that the decision did not resolve:
@@ -39,8 +59,6 @@ data class DeleteDirResult(
  *   resolves to exactly that root, so the Step's own default would erase the
  *   checkout. The default per-stage workspace is disposable scratch space, so
  *   wiping it stays allowed.
- * ## Idempotency
- * - Re-execution with same marker sha = no-op (deletedCount=0)
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
  * @param fileSystem The filesystem the deletion is applied to.
  * @param rootDestruction Whether the root may be wiped. A closed type, not a
@@ -54,12 +72,16 @@ class DeleteDirExecutor(
 ) {
 
     /**
-     * Executes a [StepSpec.DeleteDir] step.
+     * Executes a convergent [StepSpec.DeleteDir] step.
      * @param stageName The stage name (used as workspace identifier)
      * @param stageIndex The stage index (passed to workspace resolver)
      * @param spec The deleteDir step specification
-     * @return [DeleteDirResult]
+     * @return [DeleteDirResult] only when the filesystem verification found the
+     *   target empty of content; `deletedCount` is the measured deletion
      * @throws IllegalArgumentException if path escapes workspace root
+     * @throws DeleteDirIncompleteException if an entry survived the deletion;
+     *   no marker is written, and re-running after the cause is resolved
+     *   deletes the rest
     */
     fun execute(stageName: String, stageIndex: Int, spec: StepSpec.DeleteDir): DeleteDirResult {
         val workspace = workspaceResolver(stageName, stageIndex)
@@ -133,58 +155,61 @@ class DeleteDirExecutor(
             fileSystem.deleteIfExists(markerFile)
         }
 
-        // MEMOIZED idempotency: check for existing marker
-        if (fileSystem.exists(markerFile)) {
-            // A marker this executor wrote is a SHA-256 of the marker content; anything else in
-            // the file was not written here (a hand edit, a truncated write, a different producer).
-            // Such a file is treated as NOT a marker, and the cleanup proceeds normally, rather
-            // than refusing. The refusal was the obvious form and it is wrong: it wedges the
-            // workspace permanently, because once a bad marker exists no future run could clean
-            // it either. Re-running a cleanup is safe by definition — deleting already-deleted
-            // content is a no-op — so the convergent answer is also the operable one. What must
-            // not happen is the marker value flowing on as a digest, which is what the old
-            // `isNotEmpty()` gate did: any non-empty text reached DeleteDirOutput.sha256 and
-            // then the journal, where it could never match a real digest.
-            val existingSha = try {
-                String(fileSystem.readAllBytes(markerFile), Charsets.UTF_8)
-                    .trim().takeIf(Sha256::isSha256Hex).orEmpty()
-            } catch (_: Exception) {
-                ""
-            }
-            if (existingSha.isNotEmpty()) {
-                // Idempotent re-run: marker exists, treat as no-op
-                return DeleteDirResult(
-                    path = declaredTarget,
-                    deletedCount = 0,
-                    sha256 = existingSha,
-                )
-            }
-        }
-
-        // Count items before deletion (children only, not the root directory itself)
-        val deletedCount = countItems(realTarget)
-
-        // Delete all contents recursively (but NOT the root targetPath itself)
-        // This preserves the workspace root and allows the .deleted marker to be written inside it
+        // The marker is evidence, never authority. The previous reading consulted
+        // `<target>/.deleted` here and returned a no-op when a sha-shaped value
+        // was present — which made the marker a claim the filesystem was never
+        // asked to confirm: content that survived a swallowed deletion, or that
+        // an author created after the receipt, stayed invisible to every later
+        // run. Each invocation now walks the real filesystem; the marker written
+        // at the end records what happened, it does not decide what happens.
+        //
+        // Delete all contents recursively (but NOT the root targetPath itself).
         // Same reason: the walk is anchored to the real path, so a link named
         // `escape` is removed as a link and never followed into its target.
-        val walked = realTarget
-        if (fileSystem.exists(walked)) {
-            fileSystem.walk(walked)
-                .filter { it != walked } // do NOT delete the root directory itself
-                .sortedWith(Comparator.reverseOrder<Path>())
-                .forEach { p ->
-                    try {
-                        fileSystem.deleteIfExists(p)
-                    } catch (_: Exception) {
-                        // Ignore deletion errors for individual files
-                    }
+        val observed = if (fileSystem.exists(realTarget)) {
+            fileSystem.walk(realTarget).filter { it != realTarget }
+        } else {
+            emptyList()
+        }
+        observed
+            .sortedWith(Comparator.reverseOrder<Path>())
+            .forEach { p ->
+                try {
+                    fileSystem.deleteIfExists(p)
+                } catch (_: Exception) {
+                    // An entry whose removal raised is not forgiven here: it is
+                    // still under the target, and the verification below reads
+                    // it back from the filesystem and fails the run with it. The
+                    // loop continues because a partial deletion is the progress
+                    // the next attempt converges from.
                 }
+            }
+
+        // The verification IS the verdict: the filesystem, read after the walk,
+        // says whether the deletion converged. Anything there — a refused entry,
+        // one resurrected under a delete that reported success, one created
+        // during the window — is a survivor, and survivors are a typed failure.
+        val survivors = if (fileSystem.exists(realTarget)) {
+            fileSystem.walk(realTarget).filter { it != realTarget }
+        } else {
+            emptyList()
+        }
+        // Measured, not promised: the entries the filesystem now confirms gone.
+        val deletedCount = observed.count { entry -> !fileSystem.exists(entry) }
+
+        if (survivors.isNotEmpty()) {
+            // No marker: a receipt of cleanliness the verification just refuted
+            // is exactly the false success this executor no longer writes.
+            throw DeleteDirIncompleteException(
+                target = declaredTarget,
+                survivors = survivors,
+                deletedCount = deletedCount,
+            )
         }
 
-        // Write MEMOIZED marker inside targetPath. The name was emptied above,
-        // so the write lands on the name the product emptied and not on the
-        // target of a link.
+        // Write the marker inside targetPath — only over a verified-empty
+        // target, as journal evidence. The name was emptied above, so the write
+        // lands on the name the product emptied and not on the target of a link.
         val markerContent = "deleted:${System.currentTimeMillis()}"
         val sha256 = sha256(markerContent.toByteArray())
         fileSystem.writeBytes(markerFile, sha256.toByteArray(Charsets.UTF_8))
@@ -194,15 +219,6 @@ class DeleteDirExecutor(
             deletedCount = deletedCount,
             sha256 = sha256,
         )
-    }
-
-    private fun countItems(path: Path): Int {
-        if (!fileSystem.exists(path)) return 0
-        // The walk is a list here, so it holds no open directory handle per level
-        // until it is closed. This runs once per deleteDir, and the leak is
-        // invisible until the process hits its descriptor limit.
-        return fileSystem.walk(path)
-            .count { it != path } // don't count the root itself
     }
 
     companion object {

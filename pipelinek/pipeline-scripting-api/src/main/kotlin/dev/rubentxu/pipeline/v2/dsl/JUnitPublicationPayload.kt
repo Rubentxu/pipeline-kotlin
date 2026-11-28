@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import java.util.Locale
 
 /**
  * The canonical wire payload of a JUnit report publication declaration.
@@ -95,7 +96,7 @@ object JUnitPublicationPayload {
                 '\n' -> append("\\n")
                 '\r' -> append("\\r")
                 '\t' -> append("\\t")
-                else -> if (ch.code < 0x20) append("\\u%04x".format(ch.code)) else append(ch)
+                else -> if (ch.code < 0x20) append("\\u%04x".format(Locale.ROOT, ch.code)) else append(ch)
             }
         }
         append('"')

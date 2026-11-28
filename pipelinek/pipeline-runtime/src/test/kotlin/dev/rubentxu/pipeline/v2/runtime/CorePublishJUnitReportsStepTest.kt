@@ -749,7 +749,7 @@ class CorePublishJUnitReportsStepTest {
             archiveName = "junit-unit",
             maxReportBytes = 4096,
         )
-        val fromFaçade = JUnitPublicationPayload.encode(
+        val fromFacade = JUnitPublicationPayload.encode(
             artifacts = input.artifacts,
             reportFormat = input.reportFormat,
             formatVersion = input.formatVersion,
@@ -761,8 +761,8 @@ class CorePublishJUnitReportsStepTest {
             maxReportBytes = input.maxReportBytes,
         )
 
-        assertEquals(CorePublishJUnitReportsWireCodec.encode(input), fromFaçade)
-        assertEquals(input, CorePublishJUnitReportsWireCodec.decode(fromFaçade))
+        assertEquals(CorePublishJUnitReportsWireCodec.encode(input), fromFacade)
+        assertEquals(input, CorePublishJUnitReportsWireCodec.decode(fromFacade))
         assertEquals(PluginStepId("core.junit.publishReports"), JUnitPublicationPayload.STEP_KEY)
     }
 

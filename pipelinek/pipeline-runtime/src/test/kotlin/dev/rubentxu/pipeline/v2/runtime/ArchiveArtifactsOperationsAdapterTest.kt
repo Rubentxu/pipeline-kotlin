@@ -621,7 +621,11 @@ class ArchiveArtifactsOperationsAdapterTest {
                         "worker $worker: a success receipt must be answerable from its digest address",
                     )
                     assertEquals(receipt.size, bytes.bytes.size.toLong(), "worker $worker: the receipt's size is the stored size")
-                    assertEquals(receipt.blobId.value, Sha256.ofText(String(bytes.bytes, Charsets.UTF_8)), "worker $worker: the receipt's digest is the stored content")
+                    assertEquals(
+                        receipt.blobId.value,
+                        Sha256.ofText(String(bytes.bytes, Charsets.UTF_8)),
+                        "worker $worker: the receipt's digest is the stored content",
+                    )
                     val capturedText = String(bytes.bytes, Charsets.UTF_8)
                     assertTrue(
                         capturedText == versionA || capturedText == versionB,
